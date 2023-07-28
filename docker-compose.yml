@@ -87,12 +87,14 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
       - MYSQL_PASSWORD=iznik
       - PHEANSTALK_SERVER=beanstalkd
       - REDIS_CONNECT=redis
+      - IMAGE_DOMAIN=apiv1
 
   freegle:
     build: https://github.com/Freegle/iznik-nuxt3.git
