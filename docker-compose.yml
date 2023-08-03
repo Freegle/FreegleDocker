@@ -1,15 +1,17 @@
 services:
   reverse-proxy:
-    image: traefik:v2.10
+    image: traefik:latest
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.api.address=:8192"
+      - "--accesslog=true"
     ports:
       - "80:80"
       - "8192:8192"
+      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
@@ -48,7 +50,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
-      - "traefik.http.routers.mailhog.entrypoints=websecure"
+      - "traefik.http.routers.mailhog.entrypoints=web"
       - "traefik.http.services.mailhog.loadbalancer.server.port=8025"
 
   beanstalkd:
@@ -93,7 +95,6 @@ services:
       - IMAGE_DOMAIN=apiv1
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.apiv1.tls=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
       - "traefik.http.routers.apiv1.entrypoints=web"
 
@@ -107,10 +108,9 @@ services:
       - MYSQL_PORT=3306
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.apiv2.tls=true"
       - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"
       - "traefik.http.routers.apiv2.entrypoints=api"
-      - "traefik.http.services.freegle.loadbalancer.server.port=8192"
+      - "traefik.http.services.apiv2.loadbalancer.server.port=8192"
 
   freegle:
     build: https://github.com/Freegle/iznik-nuxt3.git
@@ -120,7 +120,6 @@ services:
     restart: always
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.freegle.tls=true"
       - "traefik.http.routers.freegle.rule=Host(`freegle.localhost`)"
       - "traefik.http.routers.freegle.entrypoints=web"
       - "traefik.http.services.freegle.loadbalancer.server.port=3000"
@@ -133,7 +132,6 @@ services:
     restart: always
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.modtools.tls=true"
       - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
       - "traefik.http.routers.modtools.entrypoints=web"
       - "traefik.http.services.modtools.loadbalancer.server.port=3000"

@@ -14,18 +14,27 @@ This takes a few minutes to settle down.  It pulls up to date code from git each
 
 Then you can access:
 * [Freegle](http://freegle.localhost), the user site.  Log in as `test@test.com` / `freegle`, or register.
-* [ModTools](http://modtools.localhost), the moderator site.  Log in as `testmod@test.com` / `freegle`
+* [ModTools](http://modtools.localhost/modtools), the moderator site.  Log in as `testmod@test.com` / `freegle`
 * [PhpMyAdmin](http://phpmyadmin.localhost), to view or tweak the database.
 * [Mailhog](http://mailhog.localhost) (to view emails sent by the system; TODO none actually sent yet)
 
-There is a self-signed certificate which your browser may not accept.  If you right click on an image and open in a new tab, then you can use the Advanced option (or similar) to proceed to view the image.  After that the site should load images ok.
+Note that these are all http links; no SSL.  This means that at the moment images won't work in local testing
+because they are served over https.
 
 # Configuration
 
-The system contains one test group, FreeglePlayground, centered around Edinburgh.  The only recognised postcode is EH3 6SS.
+The system contains one test group, FreeglePlayground, centered around Edinburgh.  
+The only recognised postcode is EH3 6SS.
 
 # Rebuilding
 
 If you need to wipe it and build from scratch:
 
 `docker system prune -a`
+
+# Google Cloud
+
+You can also deploy this on Google Cloud.
+
+* Get `gcloud` from https://cloud.google.com/sdk/docs/install
+* 
