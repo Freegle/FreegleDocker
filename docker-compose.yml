@@ -1,12 +1,24 @@
 services:
+  reverse-proxy:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.api.address=:8192"
+    ports:
+      - "80:80"
+      - "8192:8192"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   percona:
     image: percona:8.0.33-25-centos
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik
-    ports:
-      - 8306:3306
 
   postgres:
     image: postgis/postgis:13-3.1
@@ -15,33 +27,33 @@ services:
       POSTGRES_DB: iznik
       POSTGRES_PASSWORD: iznik
       POSTGRES_USER: root
-    ports:
-     - 8432:5432
 
   phpmyadmin:
     image: phpmyadmin
     depends_on:
       - percona
     restart: always
-    ports:
-      - 8081:80
     environment:
       - PMA_HOST=percona
       - PMA_USER=root
       - PMA_PASSWORD=iznik
+    labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.phpmyadmin.rule=Host(`phpmyadmin.localhost`)"
+    - "traefik.http.routers.phpmyadmin.entrypoints=web"
 
   mailhog:
     image: mailhog/mailhog
     container_name: 'mailhog'
-    ports:
-      - "1025:1025"
-      - "8025:8025"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
+      - "traefik.http.routers.mailhog.entrypoints=websecure"
+      - "traefik.http.services.mailhog.loadbalancer.server.port=8025"
 
   beanstalkd:
     image: schickling/beanstalkd
     container_name: 'beanstalkd'
-    ports:
-      - "11300:11300"
 
 #  Spam Assassin fails to start with rules issue.  No spam checking will occur until we fix this.
 #
@@ -61,23 +73,10 @@ services:
   redis:
     image: redis:6.2-alpine
     restart: always
-    ports:
-      - '6379:6379'
     command: redis-server --save 20 1 --loglevel warning
 
   # Freegle images.
-  apiv2:
-    build: https://github.com/Freegle/iznik-server-go.git
-    depends_on:
-      - percona
-    restart: always
-    ports:
-      - "8192:8192"
-    environment:
-      - MYSQL_HOST=percona
-      - MYSQL_PORT=3306
-
-  apiv1:
+  apiv1.localhost:
     build: https://github.com/Freegle/iznik-server.git
     depends_on:
       - percona
@@ -85,9 +84,6 @@ services:
       - mailhog
       - redis
     restart: always
-    ports:
-      - "80:80"
-      - "443:443"
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
@@ -95,21 +91,49 @@ services:
       - PHEANSTALK_SERVER=beanstalkd
       - REDIS_CONNECT=redis
       - IMAGE_DOMAIN=apiv1
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.apiv1.tls=true"
+      - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
+      - "traefik.http.routers.apiv1.entrypoints=web"
+
+  apiv2.localhost:
+    build: https://github.com/Freegle/iznik-server-go.git
+    depends_on:
+      - percona
+    restart: always
+    environment:
+      - MYSQL_HOST=percona
+      - MYSQL_PORT=3306
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.apiv2.tls=true"
+      - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"
+      - "traefik.http.routers.apiv2.entrypoints=api"
+      - "traefik.http.services.freegle.loadbalancer.server.port=8192"
 
   freegle:
     build: https://github.com/Freegle/iznik-nuxt3.git
     depends_on:
-      - apiv1
-      - apiv2
+      - apiv1.localhost
+      - apiv2.localhost
     restart: always
-    ports:
-      - "8080:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.freegle.tls=true"
+      - "traefik.http.routers.freegle.rule=Host(`freegle.localhost`)"
+      - "traefik.http.routers.freegle.entrypoints=web"
+      - "traefik.http.services.freegle.loadbalancer.server.port=3000"
 
   modtools:
     build: https://github.com/Freegle/iznik-nuxt.git
     depends_on:
-      - apiv1
-      - apiv2
+      - apiv1.localhost
+      - apiv2.localhost
     restart: always
-    ports:
-      - "8082:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.modtools.tls=true"
+      - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
+      - "traefik.http.routers.modtools.entrypoints=web"
+      - "traefik.http.services.modtools.loadbalancer.server.port=3000"

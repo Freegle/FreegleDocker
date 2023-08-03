@@ -13,10 +13,10 @@ This takes a few minutes to settle down.  It pulls up to date code from git each
 # Using
 
 Then you can access:
-* [Freegle](http://localhost:8080), the user site.  Log in as `test@test.com` / `freegle`, or register.
-* [ModTools](http://localhost:8082/modtools), the moderator site.  Log in as `testmod@test.com` / `freegle`
-* [PhpMyAdmin](http://localhost:8081), to view or tweak the database.
-* [Mailhog](http://localhost:8025) (to view emails sent by the system; TODO none actually sent yet)
+* [Freegle](http://freegle.localhost), the user site.  Log in as `test@test.com` / `freegle`, or register.
+* [ModTools](http://modtools.localhost), the moderator site.  Log in as `testmod@test.com` / `freegle`
+* [PhpMyAdmin](http://phpmyadmin.localhost), to view or tweak the database.
+* [Mailhog](http://mailhog.localhost) (to view emails sent by the system; TODO none actually sent yet)
 
 There is a self-signed certificate which your browser may not accept.  If you right click on an image and open in a new tab, then you can use the Advanced option (or similar) to proceed to view the image.  After that the site should load images ok.
 
