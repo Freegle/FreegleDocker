@@ -137,3 +137,10 @@ services:
       - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
       - "traefik.http.routers.modtools.entrypoints=web"
       - "traefik.http.services.modtools.loadbalancer.server.port=3000"
+
+secrets:
+  LOVE_JUNK_API:
+    file: ./secrets/lovejunk-api
+  LOVE_JUNK_SECRET:
+    file: ./secrets/lovejunk-secret
+    
