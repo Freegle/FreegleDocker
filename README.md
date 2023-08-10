@@ -26,15 +26,13 @@ because they are served over https.
 The system contains one test group, FreeglePlayground, centered around Edinburgh.  
 The only recognised postcode is EH3 6SS.
 
+# Using a real domain
+
+Although this setup is hardcoded to use the hostnames above, you can use it on a real domain with appropriate
+nginx configuration.  See `nginx.conf` for an example.
+
 # Rebuilding
 
 If you need to wipe it and build from scratch:
 
 `docker system prune -a`
-
-# Google Cloud
-
-You can also deploy this on Google Cloud.
-
-* Get `gcloud` from https://cloud.google.com/sdk/docs/install
-* 

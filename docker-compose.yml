@@ -93,6 +93,8 @@ services:
       - PHEANSTALK_SERVER=beanstalkd
       - REDIS_CONNECT=redis
       - IMAGE_DOMAIN=apiv1
+    ports:
+      - "1022:22"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
