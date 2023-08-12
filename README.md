@@ -1,6 +1,8 @@
 This is a Docker Compose file which starts up a standalone Freegle system, typically for development.
 
-First, add `apiv1` and `apiv2` to your hosts file, resolving to `127.0.0.1`.
+# Pre-requisites
+
+You'll need [Docker](https://www.docker.com/get-started/) 
 
 # Building
 
