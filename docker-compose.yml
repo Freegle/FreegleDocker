@@ -99,6 +99,9 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
       - "traefik.http.routers.apiv1.entrypoints=web"
+    secrets:
+      - LOVE_JUNK_API
+      - LOVE_JUNK_SECRET
 
   apiv2.localhost:
     build: https://github.com/Freegle/iznik-server-go.git
@@ -143,4 +146,3 @@ secrets:
     file: ./secrets/lovejunk-api
   LOVE_JUNK_SECRET:
     file: ./secrets/lovejunk-secret
-    
