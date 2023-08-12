@@ -33,6 +33,7 @@ nginx configuration.  See `nginx.conf` for an example, which is used to provide:
 
 * [Freegle](https://staging.ilovefreegle.org/), the user site.  Log in as `test@test.com` / `freegle`, or register.
 * [ModTools](https://staging.ilovefreegle.org:444/modtools), the moderator site.  Log in as `testmod@test.com` / `freegle`
+* [PhpMyAdmin](http://staging.ilovefreegle.org/phpmyadmin), to view or tweak the database.
 * [Mailhog](http://mailhog.localhost) (to view emails sent by the system; TODO none actually sent yet)
 
 
