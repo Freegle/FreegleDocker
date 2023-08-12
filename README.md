@@ -2,7 +2,7 @@ This is a Docker Compose file which starts up a standalone Freegle system, typic
 
 # Pre-requisites
 
-You'll need [Docker](https://www.docker.com/get-started/) 
+You'll need [Docker](https://www.docker.com/get-started/) and a clone of this repo. 
 
 # Building
 
