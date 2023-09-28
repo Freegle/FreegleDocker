@@ -14,8 +14,6 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    labels:
-      - "traefik.http.middlewares.limit.buffering.maxRequestBodyBytes=8000000"
 
   percona:
     image: percona:8.0.33-25-centos
@@ -99,6 +97,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
       - "traefik.http.routers.apiv1.entrypoints=web"
+      - "traefik.http.middlewares.limit.buffering.maxRequestBodyBytes=8000000"
     secrets:
       - LOVE_JUNK_API
       - LOVE_JUNK_SECRET
