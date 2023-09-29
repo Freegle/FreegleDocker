@@ -97,13 +97,13 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
       - "traefik.http.routers.apiv1.entrypoints=web"
-      - "traefik.http.middlewares.upload-limit.buffering.maxRequestBodyBytes=8000000"
-      - "traefik.http.routers.backoffice.middlewares=upload-limit"
+      - "traefik.http.middlewares.limit.buffering.maxRequestBodyBytes=8000000"
     secrets:
       - LOVE_JUNK_API
       - LOVE_JUNK_SECRET
     ports:
       - "1022:22"
+      - "81:80"
 
   apiv2.localhost:
     build: https://github.com/Freegle/iznik-server-go.git
@@ -142,7 +142,12 @@ services:
       - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
       - "traefik.http.routers.modtools.entrypoints=web"
       - "traefik.http.services.modtools.loadbalancer.server.port=3000"
-
+traefik:
+  http:
+    middlewares:
+      limit:
+        buffering:
+          maxRequestBodyBytes=10737418240:
 secrets:
   LOVE_JUNK_API:
     file: ./secrets/lovejunk-api
