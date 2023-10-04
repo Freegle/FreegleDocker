@@ -101,6 +101,7 @@ services:
     secrets:
       - LOVE_JUNK_API
       - LOVE_JUNK_SECRET
+      - PARTNER_KEY
     ports:
       - "1022:22"
       - "81:80"
@@ -148,3 +149,5 @@ secrets:
     file: ./secrets/lovejunk-api
   LOVE_JUNK_SECRET:
     file: ./secrets/lovejunk-secret
+  PARTNER_KEY:
+    file: ./secrets/partner-key
