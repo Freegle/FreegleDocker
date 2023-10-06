@@ -102,6 +102,7 @@ services:
       - LOVE_JUNK_API
       - LOVE_JUNK_SECRET
       - PARTNER_KEY
+      - PARTNER_NAME
       - IMAGE_DOMAIN
     ports:
       - "1022:22"
@@ -152,5 +153,7 @@ secrets:
     file: ./secrets/lovejunk-secret
   PARTNER_KEY:
     file: ./secrets/partner-key
+  PARTNER_NAME:
+    file: ./secrets/partner-name
   IMAGE_DOMAIN:
     file: ./secrets/image-domain
