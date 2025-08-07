@@ -1,4 +1,21 @@
 services:
+  # Init service to clone repositories
+  git-clone:
+    image: alpine/git
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo 'Checking and cloning repositories...'
+        [ ! -d 'iznik-server' ] && git clone https://github.com/Freegle/iznik-server.git || echo 'iznik-server already exists'
+        [ ! -d 'iznik-server-go' ] && git clone https://github.com/Freegle/iznik-server-go.git || echo 'iznik-server-go already exists'
+        [ ! -d 'iznik-nuxt3' ] && git clone https://github.com/Freegle/iznik-nuxt3.git || echo 'iznik-nuxt3 already exists'
+        [ ! -d 'iznik-nuxt' ] && git clone https://github.com/Freegle/iznik-nuxt.git || echo 'iznik-nuxt already exists'
+        echo 'Repository setup complete'
+
   reverse-proxy:
     image: traefik:latest
     command:
@@ -9,7 +26,7 @@ services:
       - "--entrypoints.api.address=:8192"
       - "--accesslog=true"
     ports:
-      - "80:80"
+      - "82:80"
       - "8192:8192"
       - "8080:8080"
     volumes:
@@ -79,12 +96,18 @@ services:
 
   # Freegle images.
   apiv1.localhost:
-    build: https://github.com/Freegle/iznik-server.git
+    build: ./iznik-server
     depends_on:
-      - percona
-      - beanstalkd
-      - mailhog
-      - redis
+      git-clone:
+        condition: service_completed_successfully
+      percona:
+        condition: service_started
+      beanstalkd:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      redis:
+        condition: service_started
     restart: always
     environment:
       - MYSQL_HOST=percona
@@ -105,13 +128,16 @@ services:
       - PARTNER_NAME
       - IMAGE_DOMAIN
     ports:
-      - "1022:22"
-      - "81:80"
+      - "1023:22"
+      - "83:80"
 
   apiv2.localhost:
-    build: https://github.com/Freegle/iznik-server-go.git
+    build: ./iznik-server-go
     depends_on:
-      - percona
+      git-clone:
+        condition: service_completed_successfully
+      percona:
+        condition: service_started
     restart: always
     environment:
       - MYSQL_HOST=percona
@@ -123,28 +149,41 @@ services:
       - "traefik.http.services.apiv2.loadbalancer.server.port=8192"
 
   freegle:
-    build: https://github.com/Freegle/iznik-nuxt3.git
+    build: ./iznik-nuxt3
     depends_on:
-      - apiv1.localhost
-      - apiv2.localhost
+      git-clone:
+        condition: service_completed_successfully
+      apiv1.localhost:
+        condition: service_started
+      apiv2.localhost:
+        condition: service_started
     restart: always
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle.rule=Host(`freegle.localhost`)"
       - "traefik.http.routers.freegle.entrypoints=web"
-      - "traefik.http.services.freegle.loadbalancer.server.port=3000"
+      - "traefik.http.services.freegle.loadbalancer.server.port=3002"
 
   modtools:
-    build: https://github.com/Freegle/iznik-nuxt.git
+    build: ./iznik-nuxt
     depends_on:
-      - apiv1.localhost
-      - apiv2.localhost
+      git-clone:
+        condition: service_completed_successfully
+      apiv1.localhost:
+        condition: service_started
+      apiv2.localhost:
+        condition: service_started
     restart: always
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
       - "traefik.http.routers.modtools.entrypoints=web"
       - "traefik.http.services.modtools.loadbalancer.server.port=3000"
+
+networks:
+  cont:
+    driver:  bridge
+    enable_ipv6: false
 
 secrets:
   LOVE_JUNK_API:
