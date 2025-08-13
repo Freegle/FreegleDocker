@@ -9,11 +9,31 @@ services:
     command:
       - -c
       - |
-        echo 'Checking and cloning repositories...'
-        [ ! -d 'iznik-server' ] && git clone https://github.com/Freegle/iznik-server.git || echo 'iznik-server already exists'
-        [ ! -d 'iznik-server-go' ] && git clone https://github.com/Freegle/iznik-server-go.git || echo 'iznik-server-go already exists'
-        [ ! -d 'iznik-nuxt3' ] && git clone https://github.com/Freegle/iznik-nuxt3.git || echo 'iznik-nuxt3 already exists'
-        [ ! -d 'iznik-nuxt' ] && git clone https://github.com/Freegle/iznik-nuxt.git || echo 'iznik-nuxt already exists'
+        echo 'Checking and cloning/updating repositories...'
+        if [ ! -d 'iznik-server' ]; then 
+          git clone https://github.com/Freegle/iznik-server.git
+        else
+          echo 'Updating iznik-server...'
+          cd iznik-server && git pull && cd ..
+        fi
+        if [ ! -d 'iznik-server-go' ]; then 
+          git clone https://github.com/Freegle/iznik-server-go.git
+        else
+          echo 'Updating iznik-server-go...'
+          cd iznik-server-go && git pull && cd ..
+        fi
+        if [ ! -d 'iznik-nuxt3' ]; then 
+          git clone https://github.com/Freegle/iznik-nuxt3.git
+        else
+          echo 'Updating iznik-nuxt3...'
+          cd iznik-nuxt3 && git pull && cd ..
+        fi
+        if [ ! -d 'iznik-nuxt' ]; then 
+          git clone https://github.com/Freegle/iznik-nuxt.git
+        else
+          echo 'Updating iznik-nuxt...'
+          cd iznik-nuxt && git pull && cd ..
+        fi
         echo 'Repository setup complete'
 
   reverse-proxy:
