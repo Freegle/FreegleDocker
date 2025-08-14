@@ -94,20 +94,18 @@ services:
     image: schickling/beanstalkd
     container_name: 'beanstalkd'
 
-#  Spam Assassin fails to start with rules issue.  No spam checking will occur until we fix this.
-#
-#  spamassassin-app:
-#    image: tiredofit/spamassassin
-#    container_name: spamassassin-app
-#    ports:
-#      - 783:783
-#    volumes:
-#      - ./logs/spamassassin:/logs
-#      - ./conf:/config
-#      - ./data:/data
-#    environment:
-#      - CONTAINER_NAME=spamassassin-app
-#    restart: always
+  spamassassin-app:
+    image: tiredofit/spamassassin
+    container_name: spamassassin-app
+    ports:
+      - 783:783
+    volumes:
+      - ./logs/spamassassin:/logs
+      - ./conf:/config
+      - ./data:/data
+    environment:
+      - CONTAINER_NAME=spamassassin-app
+    restart: always
 
   redis:
     image: redis:6.2-alpine
