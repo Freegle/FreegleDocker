@@ -1,22 +1,6 @@
 services:
-  # Init service to clone repositories
-  git-clone:
-    image: alpine/git
-    volumes:
-      - .:/workspace
-    working_dir: /workspace
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        echo 'Checking and cloning repositories...'
-        [ ! -d 'iznik-server' ] && git clone https://github.com/Freegle/iznik-server.git || echo 'iznik-server already exists'
-        [ ! -d 'iznik-server-go' ] && git clone https://github.com/Freegle/iznik-server-go.git || echo 'iznik-server-go already exists'
-        [ ! -d 'iznik-nuxt3' ] && git clone https://github.com/Freegle/iznik-nuxt3.git || echo 'iznik-nuxt3 already exists'
-        [ ! -d 'iznik-nuxt' ] && git clone https://github.com/Freegle/iznik-nuxt.git || echo 'iznik-nuxt already exists'
-        echo 'Repository setup complete'
-
   reverse-proxy:
+    container_name: freegle-traefik
     image: traefik:latest
     command:
       - "--api.insecure=true"
@@ -25,45 +9,84 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.api.address=:8192"
       - "--accesslog=true"
+      - "--entrypoints.web.forwardedHeaders.insecure=true"
     ports:
-      - "82:80"
+      - "80:80"
       - "8192:8192"
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/dashboard/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   percona:
+    container_name: freegle-percona
     image: percona:8.0.33-25-centos
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h localhost -u root -piznik -e 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
 
   postgres:
+    container_name: freegle-postgres
     image: postgis/postgis:13-3.1
     restart: always
     environment:
       POSTGRES_DB: iznik
       POSTGRES_PASSWORD: iznik
       POSTGRES_USER: root
+    healthcheck:
+      test: ["CMD-SHELL", "psql -h localhost -U root -d iznik -c 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
 
   phpmyadmin:
+    container_name: freegle-phpmyadmin
     image: phpmyadmin
     depends_on:
-      - percona
+      percona:
+        condition: service_started
+      reverse-proxy:
+        condition: service_started
     restart: always
     environment:
       - PMA_HOST=percona
       - PMA_USER=root
       - PMA_PASSWORD=iznik
     labels:
-    - "traefik.enable=true"
-    - "traefik.http.routers.phpmyadmin.rule=Host(`phpmyadmin.localhost`)"
-    - "traefik.http.routers.phpmyadmin.entrypoints=web"
+      - "traefik.enable=true"
+      - "traefik.http.routers.phpmyadmin.rule=Host(`phpmyadmin.localhost`)"
+      - "traefik.http.routers.phpmyadmin.entrypoints=web"
+      - "traefik.http.services.phpmyadmin.loadbalancer.server.port=80"
 
   mailhog:
     image: mailhog/mailhog
-    container_name: 'mailhog'
+    container_name: freegle-mailhog
+    depends_on:
+      percona:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      beanstalkd:
+        condition: service_healthy
+      spamassassin-app:
+        condition: service_healthy
+      reverse-proxy:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
@@ -72,34 +95,90 @@ services:
 
   beanstalkd:
     image: schickling/beanstalkd
-    container_name: 'beanstalkd'
+    container_name: freegle-beanstalkd
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 11300 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
-#  Spam Assassin fails to start with rules issue.  No spam checking will occur until we fix this.
-#
-#  spamassassin-app:
-#    image: tiredofit/spamassassin
-#    container_name: spamassassin-app
-#    ports:
-#      - 783:783
-#    volumes:
-#      - ./logs/spamassassin:/logs
-#      - ./conf:/config
-#      - ./data:/data
-#    environment:
-#      - CONTAINER_NAME=spamassassin-app
-#    restart: always
+  spamassassin-app:
+    image: tiredofit/spamassassin
+    container_name: freegle-spamassassin
+    ports:
+      - 783:783
+    volumes:
+      - ./logs/spamassassin:/logs
+      - ./conf:/config
+      - ./data:/data
+    environment:
+      - CONTAINER_NAME=spamassassin-app
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 783"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   redis:
+    container_name: freegle-redis
     image: redis:6.2-alpine
     restart: always
     command: redis-server --save 20 1 --loglevel warning
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  tusd:
+    image: tusproject/tusd:latest
+    container_name: freegle-tusd
+    ports:
+      - "1080:8080"
+    command: -hooks-http=http://freegle-apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/
+    depends_on:
+      reverse-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/tus/ 2>&1 | grep -E '(200|405)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tusd.rule=Host(`tusd.localhost`)"
+      - "traefik.http.routers.tusd.entrypoints=web"
+      - "traefik.http.services.tusd.loadbalancer.server.port=8080"
+
+  status:
+    build: ./status
+    container_name: freegle-status
+    ports:
+      - "8081:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./status/index.html:/app/index.html:ro
+      - ./status/logs.html:/app/logs.html:ro
+      - ./status/server.js:/app/server.js:ro
+      - ./ssl/certs:/app/ssl:ro
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.status.rule=Host(`status.localhost`)"
+      - "traefik.http.routers.status.entrypoints=web"
+      - "traefik.http.services.status.loadbalancer.server.port=80"
 
   # Freegle images.
   apiv1.localhost:
+    container_name: freegle-apiv1
     build: ./iznik-server
     depends_on:
-      git-clone:
-        condition: service_completed_successfully
       percona:
         condition: service_started
       beanstalkd:
@@ -107,6 +186,8 @@ services:
       mailhog:
         condition: service_started
       redis:
+        condition: service_started
+      spamassassin-app:
         condition: service_started
     restart: always
     environment:
@@ -116,6 +197,14 @@ services:
       - PHEANSTALK_SERVER=beanstalkd
       - REDIS_CONNECT=redis
       - IMAGE_DOMAIN=apiv1
+      - SPAMD_HOST=spamassassin-app
+      - SPAMD_PORT=783
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
@@ -132,10 +221,9 @@ services:
       - "83:80"
 
   apiv2.localhost:
+    container_name: freegle-apiv2
     build: ./iznik-server-go
     depends_on:
-      git-clone:
-        condition: service_completed_successfully
       percona:
         condition: service_started
     restart: always
@@ -149,15 +237,34 @@ services:
       - "traefik.http.services.apiv2.loadbalancer.server.port=8192"
 
   freegle:
+    container_name: freegle-freegle
     build: ./iznik-nuxt3
+    tmpfs:
+      - /tmp
     depends_on:
-      git-clone:
-        condition: service_completed_successfully
+      phpmyadmin:
+        condition: service_started
+      mailhog:
+        condition: service_started
       apiv1.localhost:
         condition: service_started
       apiv2.localhost:
         condition: service_started
     restart: always
+    environment:
+      - IZNIK_API_V1=http://apiv1.localhost/api
+      - IZNIK_API_V2=http://apiv2.localhost:8192/api
+      - TUSD_URL=http://freegle-tusd:8080
+      - NITRO_PRESET=node-server
+      - NITRO_HTTPS=false
+      - NUXT_NITRO_PRERENDER_ROUTES=false
+      - NUXT_DEV_MODE=true
+      - NUXT_SSR_LOG=false
+      - NODE_ENV=development
+      - NUXT_BUILD_MODE=development
+      - HTTPS=false
+      - SSL=false
+      - NUXT_SECURITY_HTTPS_ENABLED=false
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle.rule=Host(`freegle.localhost`)"
@@ -165,15 +272,35 @@ services:
       - "traefik.http.services.freegle.loadbalancer.server.port=3002"
 
   modtools:
-    build: ./iznik-nuxt
+    container_name: freegle-modtools
+    build: 
+      context: ./iznik-nuxt3-modtools
+      dockerfile: modtools/Dockerfile
+    tmpfs:
+      - /tmp
     depends_on:
-      git-clone:
-        condition: service_completed_successfully
+      phpmyadmin:
+        condition: service_started
+      mailhog:
+        condition: service_started
       apiv1.localhost:
         condition: service_started
       apiv2.localhost:
         condition: service_started
     restart: always
+    environment:
+      - IZNIK_API_V1=http://apiv1.localhost/api
+      - IZNIK_API_V2=http://apiv2.localhost:8192/api
+      - TUSD_URL=http://freegle-tusd:8080
+      - NITRO_PRESET=node-server
+      - NITRO_HTTPS=false
+      - NUXT_DEV_MODE=true
+      - NUXT_SSR_LOG=false
+      - NODE_ENV=development
+      - NUXT_BUILD_MODE=development
+      - HTTPS=false
+      - SSL=false
+      - NUXT_SECURITY_HTTPS_ENABLED=false
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
@@ -187,12 +314,12 @@ networks:
 
 secrets:
   LOVE_JUNK_API:
-    file: ./secrets/lovejunk-api
+    file: ./secrets/lovejunk-api.txt
   LOVE_JUNK_SECRET:
-    file: ./secrets/lovejunk-secret
+    file: ./secrets/lovejunk-secret.txt
   PARTNER_KEY:
-    file: ./secrets/partner-key
+    file: ./secrets/partner-key.txt
   PARTNER_NAME:
-    file: ./secrets/partner-name
+    file: ./secrets/partner-name.txt
   IMAGE_DOMAIN:
-    file: ./secrets/image-domain
+    file: ./secrets/image-domain.txt

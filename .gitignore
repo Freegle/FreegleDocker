@@ -4,3 +4,9 @@
 /.idea/php.xml
 /.idea/inspectionProfiles/Project_Default.xml
 /.idea/vcs.xml
+/data/
+/conf/
+/.claude/settings.local.json
+/logs/
+/.idea/prettier.xml
+/ssl/

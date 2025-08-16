@@ -1,0 +1,2 @@
+- Always restart the status monitor after making changes to its code.
+- Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.

@@ -1,0 +1,9 @@
+{
+  "name": "freegle-status",
+  "version": "1.0.0",
+  "description": "Freegle Docker Status Monitor",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

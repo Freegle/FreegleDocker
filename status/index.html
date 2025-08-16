@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Freegle Docker Status</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        .service { margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .service.online { background: #d4edda; border-left: 4px solid #28a745; display: flex; justify-content: space-between; align-items: center; position: relative; }
+        .service.offline { background: #f8d7da; border-left: 4px solid #dc3545; display: flex; justify-content: space-between; align-items: center; position: relative; }
+        .service.loading { background: #fff3cd; border-left: 4px solid #ffc107; position: relative; }
+        .status { font-weight: bold; }
+        .url { font-family: monospace; color: #666; }
+        .logs { font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; margin-top: 10px; border-radius: 3px; max-height: 100px; overflow-y: auto; white-space: pre-wrap; }
+        h1 { color: #333; text-align: center; }
+        .refresh { text-align: center; margin: 20px 0; }
+        .visit-button { background: #007bff; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-weight: bold; margin-left: 10px; }
+        .visit-button:hover { background: #0056b3; color: white; }
+        .cpu-indicator { position: absolute; top: 10px; right: 10px; width: 70px; height: 20px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 2px; overflow: hidden; }
+        .cpu-bar { height: 100%; background: #28a745; transition: all 0.3s ease; }
+        .cpu-bar.medium { background: #ffc107; }
+        .cpu-bar.high { background: #dc3545; }
+        .cpu-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 9px; color: #000; font-weight: bold; text-shadow: 0 0 2px rgba(255,255,255,0.8); z-index: 10; white-space: nowrap; }
+        .traffic-light { width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 10px; border: 3px solid #333; transition: background-color 0.3s ease; }
+        .traffic-light.green { background-color: #28a745; box-shadow: 0 0 20px #28a745; }
+        .traffic-light.amber { background-color: #ffc107; box-shadow: 0 0 20px #ffc107; }
+        .traffic-light.red { background-color: #dc3545; box-shadow: 0 0 20px #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle Logo" style="height: 60px; margin-bottom: 10px;">
+            <div id="trafficLight" class="traffic-light red"></div>
+            <h1>Freegle Docker Environment Status</h1>
+        </div>
+        <div class="refresh">
+            <span id="lastCheck"></span>
+        </div>
+        
+        
+        <h2>🏠 Freegle Components</h2>
+        
+        <div id="freegle" class="service loading">
+            <div>
+                <strong>Freegle (User Site)</strong> - iznik-nuxt3<br>
+                <span class="url">http://freegle.localhost</span><br>
+                <small>Login: test@test.com / freegle</small><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-freegle</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="modtools" class="service loading">
+            <div>
+                <strong>ModTools (Moderator Site)</strong> - iznik-nuxt3/modtools<br>
+                <span class="url">http://modtools.localhost</span><br>
+                <small>Login: testmod@test.com / freegle</small><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-modtools</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="apiv1" class="service loading">
+            <div>
+                <strong>API v1 (Legacy PHP)</strong> - iznik-server<br>
+                <span class="url">http://apiv1.localhost</span><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="apiv2" class="service loading">
+            <div>
+                <strong>API v2 (Modern Go)</strong> - iznik-server-go<br>
+                <span class="url">http://apiv2.localhost:8192</span><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <h2>🧪 Development Tools</h2>
+        
+        <div id="phpmyadmin" class="service loading">
+            <div>
+                <strong>PhpMyAdmin</strong> - Database management<br>
+                <span class="url">http://phpmyadmin.localhost</span><br>
+                <small>Login: root / iznik</small><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-phpmyadmin</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="mailhog" class="service loading">
+            <div>
+                <strong>MailHog</strong> - Email testing<br>
+                <span class="url">http://mailhog.localhost</span><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-mailhog</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <h2>🔧 Infrastructure</h2>
+        
+        <div id="traefik" class="service loading">
+            <div>
+                <strong>Traefik</strong> - Reverse proxy<br>
+                <span class="url">http://localhost:8080</span><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-traefik</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="tusd" class="service loading">
+            <div>
+                <strong>TusD</strong> - File upload service<br>
+                <span class="url">http://tusd.localhost</span><br>
+                <small>Direct access: http://localhost:1080</small><br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-tusd</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="percona" class="service loading">
+            <div>
+                <strong>Percona MySQL</strong> - Primary database<br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-percona</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="postgres" class="service loading">
+            <div>
+                <strong>PostgreSQL</strong> - PostGIS database<br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-postgres</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="redis" class="service loading">
+            <div>
+                <strong>Redis</strong> - Cache<br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-redis</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="beanstalkd" class="service loading">
+            <div>
+                <strong>Beanstalkd</strong> - Job queue<br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-beanstalkd</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="spamassassin" class="service loading">
+            <div>
+                <strong>SpamAssassin</strong> - Email filtering<br>
+                <small style="color: #999; font-family: monospace;">Container: freegle-spamassassin</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const services = [
+            { id: 'freegle', container: 'freegle-freegle' },
+            { id: 'modtools', container: 'freegle-modtools' },
+            { id: 'apiv1', container: 'freegle-apiv1' },
+            { id: 'apiv2', container: 'freegle-apiv2' },
+            { id: 'phpmyadmin', container: 'freegle-phpmyadmin' },
+            { id: 'mailhog', container: 'freegle-mailhog' },
+            { id: 'percona', container: 'freegle-percona' },
+            { id: 'postgres', container: 'freegle-postgres' },
+            { id: 'redis', container: 'freegle-redis' },
+            { id: 'beanstalkd', container: 'freegle-beanstalkd' },
+            { id: 'spamassassin', container: 'freegle-spamassassin' },
+            { id: 'traefik', container: 'freegle-traefik' },
+            { id: 'tusd', container: 'freegle-tusd' }
+        ];
+
+        function addVisitButton(service, element) {
+            if (service.id === 'freegle' || service.id === 'modtools') {
+                const serviceUrl = service.id === 'freegle' ? 'http://freegle.localhost' : 'http://modtools.localhost';
+                const serviceName = service.id === 'freegle' ? 'Freegle' : 'ModTools';
+                
+                if (!element.querySelector('.visit-button')) {
+                    const visitButton = document.createElement('a');
+                    visitButton.href = serviceUrl;
+                    visitButton.target = '_blank';
+                    visitButton.className = 'visit-button';
+                    visitButton.textContent = `Visit ${serviceName}`;
+                    visitButton.style.position = 'absolute';
+                    visitButton.style.right = '10px';
+                    visitButton.style.bottom = '10px';
+                    visitButton.style.zIndex = '1000';
+                    element.appendChild(visitButton);
+                }
+            } else if (service.id === 'phpmyadmin' || service.id === 'mailhog') {
+                const serviceUrl = service.id === 'phpmyadmin' ? 'http://phpmyadmin.localhost' : 'http://mailhog.localhost';
+                const serviceName = service.id === 'phpmyadmin' ? 'PhpMyAdmin' : 'MailHog';
+                
+                if (!element.querySelector('.visit-button')) {
+                    const visitButton = document.createElement('a');
+                    visitButton.href = serviceUrl;
+                    visitButton.target = '_blank';
+                    visitButton.className = 'visit-button';
+                    visitButton.textContent = `Visit ${serviceName}`;
+                    visitButton.style.position = 'absolute';
+                    visitButton.style.right = '10px';
+                    visitButton.style.bottom = '10px';
+                    visitButton.style.zIndex = '1000';
+                    element.appendChild(visitButton);
+                }
+            }
+        }
+
+        function updateServiceDisplay(service, data) {
+            const element = document.getElementById(service.id);
+            if (!element) return;
+            
+            const statusElement = element.querySelector('.status');
+            addVisitButton(service, element);
+            
+            if (data.status === 'success') {
+                statusElement.innerHTML = `Running<br><small style="font-weight: normal; color: #666;">✓ ${data.message}</small>`;
+                element.className = 'service online';
+                
+                // Update CPU indicator
+                if (data.cpu !== undefined) {
+                    let cpuIndicator = element.querySelector('.cpu-indicator');
+                    if (!cpuIndicator) {
+                        cpuIndicator = document.createElement('div');
+                        cpuIndicator.className = 'cpu-indicator';
+                        element.appendChild(cpuIndicator);
+                    }
+                    
+                    const cpu = Math.round(data.cpu || 0);
+                    cpuIndicator.innerHTML = `
+                        <div class="cpu-bar ${cpu > 80 ? 'high' : cpu > 50 ? 'medium' : ''}" style="width: ${cpu}%;"></div>
+                        <div class="cpu-text">CPU ${cpu}%</div>
+                    `;
+                }
+            } else {
+                statusElement.innerHTML = `Offline<br><small style="font-weight: normal; color: #666;">${data.message}</small>`;
+                element.className = 'service offline';
+            }
+        }
+
+        async function checkAllServices() {
+            try {
+                const response = await fetch('/api/status/all');
+                if (response.ok) {
+                    const allStatus = await response.json();
+                    
+                    // Update all services from cached data
+                    for (const service of services) {
+                        const data = allStatus[service.id];
+                        if (data) {
+                            updateServiceDisplay(service, data);
+                        }
+                    }
+                    
+                    // Update traffic light
+                    const allOnline = services.every(service => {
+                        const element = document.getElementById(service.id);
+                        return element && element.className.includes('online');
+                    });
+                    
+                    const trafficLight = document.getElementById('trafficLight');
+                    if (allOnline) {
+                        trafficLight.className = 'traffic-light green';
+                    } else {
+                        trafficLight.className = 'traffic-light amber';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to get status data:', error);
+            }
+            
+            document.getElementById('lastCheck').textContent = 'Last checked: ' + new Date().toLocaleTimeString();
+        }
+
+        // Add visit buttons on page load
+        services.forEach(service => {
+            const element = document.getElementById(service.id);
+            if (element) {
+                addVisitButton(service, element);
+            }
+        });
+        
+        // Initial check and then every 10 seconds
+        checkAllServices();
+        setInterval(checkAllServices, 10000);
+    </script>
+</body>
+</html>

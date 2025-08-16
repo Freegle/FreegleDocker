@@ -1,0 +1,9 @@
+[submodule "iznik-server"]
+	path = iznik-server
+	url = https://github.com/Freegle/iznik-server.git
+[submodule "iznik-server-go"]
+	path = iznik-server-go
+	url = https://github.com/Freegle/iznik-server-go.git
+[submodule "iznik-nuxt3"]
+	path = iznik-nuxt3
+	url = https://github.com/Freegle/iznik-nuxt3.git
