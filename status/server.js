@@ -23,7 +23,8 @@ const healthCheckMessages = {
   'freegle-phpmyadmin': 'Database management interface responding (HTTP)',
   'freegle-mailhog': 'Email testing interface responding (HTTP)',
   'freegle-apiv1': 'API config endpoint responding (curl /api/config)',
-  'freegle-apiv2': 'API group endpoint responding (curl /api/group)'
+  'freegle-apiv2': 'API group endpoint responding (curl /api/group)',
+  'freegle-delivery': 'wsrv.nl image transformation service responding (wget /)'
 };
 
 // Service definitions
@@ -45,7 +46,8 @@ const services = [
   { id: 'beanstalkd', container: 'freegle-beanstalkd', checkType: 'beanstalkd', category: 'infra' },
   { id: 'spamassassin', container: 'freegle-spamassassin', checkType: 'spamassassin', category: 'infra' },
   { id: 'traefik', container: 'freegle-traefik', checkType: 'traefik', category: 'infra' },
-  { id: 'tusd', container: 'freegle-tusd', checkType: 'tusd', category: 'infra' }
+  { id: 'tusd', container: 'freegle-tusd', checkType: 'tusd', category: 'infra' },
+  { id: 'delivery', container: 'freegle-delivery', checkType: 'delivery', category: 'infra' }
 ];
 
 // HTTP Agent with keep-alive for better performance

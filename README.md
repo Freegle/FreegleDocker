@@ -43,6 +43,7 @@ Add these to your hosts file:
 127.0.0.1 status.localhost
 127.0.0.1 apiv1.localhost
 127.0.0.1 apiv2.localhost
+127.0.0.1 delivery.localhost
 ```
 
 ## Linux
@@ -113,7 +114,7 @@ Once all services show as **Running** in the status monitor, you can access:
 * **[Freegle](https://freegle.localhost)** - User site (Login: `test@test.com` / `freegle`)
 * **[ModTools](https://modtools.localhost)** - Moderator site (Login: `testmod@test.com` / `freegle`)
 
-**Note:** It's normal for Freegle and ModTools pages to reload a few times on first view - this is expected Nuxt.js development mode behavior. Additionally, this development environment uses HTTP/1.1 which serializes asset loading, making it slower than the live system which uses HTTP/2.
+**Note:** It's normal for Freegle and ModTools pages to reload a few times on first view - this is expected Nuxt.js development mode behavior. Additionally, this development environment uses HTTP/1.1 which serializes asset loading, making it slower than the live system which uses HTTP/2.  This means the page load can be quite slow until the browser has cached the code.  You can see this via 'Pending' calls in the Network tab.
 
 ## Development Tools
 * **[PhpMyAdmin](https://phpmyadmin.localhost)** - Database management (Login: `root` / `iznik`)
@@ -134,3 +135,11 @@ Once all services show as **Running** in the status monitor, you can access:
 
 The system contains one test group, FreeglePlayground, centered around Edinburgh.  
 The only recognised postcode is EH3 6SS.
+
+# Troubleshooting
+
+* Sometimes  
+# Limitations
+
+* Email to Mailhog not yet verified.
+* This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.

@@ -4,10 +4,12 @@ services:
     image: traefik:latest
     command:
       - "--api.insecure=true"
+      - "--api.dashboard=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.api.address=:8192"
+      - "--entrypoints.traefik.address=:8080"
       - "--accesslog=true"
       - "--entrypoints.web.forwardedHeaders.insecure=true"
     ports:
@@ -134,6 +136,23 @@ services:
       retries: 5
       start_period: 10s
 
+  delivery:
+    container_name: freegle-delivery
+    image: ghcr.io/weserv/images:5.x
+    restart: always
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.delivery.rule=Host(`delivery.localhost`)"
+      - "traefik.http.routers.delivery.entrypoints=web"
+      - "traefik.http.services.delivery.loadbalancer.server.port=80"
+
   tusd:
     image: tusproject/tusd:latest
     container_name: freegle-tusd
@@ -175,7 +194,7 @@ services:
       - "traefik.http.services.status.loadbalancer.server.port=80"
 
   # Freegle images.
-  apiv1.localhost:
+  apiv1:
     container_name: freegle-apiv1
     build: ./iznik-server
     depends_on:
@@ -201,6 +220,7 @@ services:
       - SPAMD_PORT=783
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
+      - IMAGE_DELIVERY=http://delivery.localhost
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
       interval: 10s
@@ -228,7 +248,7 @@ services:
       - "1023:22"
       - "83:80"
 
-  apiv2.localhost:
+  apiv2:
     container_name: freegle-apiv2
     build: ./iznik-server-go
     depends_on:
@@ -246,17 +266,17 @@ services:
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8192/api/group || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
+      - IMAGE_DELIVERY=http://delivery.localhost
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"
-      - "traefik.http.routers.apiv2.entrypoints=api"
+      - "traefik.http.routers.apiv2.entrypoints=web"
+      - "traefik.http.routers.apiv2.middlewares=apiv2-cors"
       - "traefik.http.services.apiv2.loadbalancer.server.port=8192"
+      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
+      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
+      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
 
   freegle:
     container_name: freegle-freegle
@@ -268,14 +288,14 @@ services:
         condition: service_started
       mailhog:
         condition: service_started
-      apiv1.localhost:
+      apiv1:
         condition: service_started
-      apiv2.localhost:
+      apiv2:
         condition: service_started
     restart: always
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost:8192/api
+      - IZNIK_API_V2=http://apiv2.localhost/api
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
       - NITRO_HTTPS=false
@@ -287,6 +307,10 @@ services:
       - HTTPS=false
       - SSL=false
       - NUXT_SECURITY_HTTPS_ENABLED=false
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+    extra_hosts:
+      - "apiv1.localhost:172.18.0.14"
+      - "apiv2.localhost:172.18.0.13"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle.rule=Host(`freegle.localhost`)"
@@ -305,14 +329,14 @@ services:
         condition: service_started
       mailhog:
         condition: service_started
-      apiv1.localhost:
+      apiv1:
         condition: service_started
-      apiv2.localhost:
+      apiv2:
         condition: service_started
     restart: always
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost:8192/api
+      - IZNIK_API_V2=http://apiv2.localhost/api
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
       - NITRO_HTTPS=false
@@ -323,6 +347,10 @@ services:
       - HTTPS=false
       - SSL=false
       - NUXT_SECURITY_HTTPS_ENABLED=false
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+    extra_hosts:
+      - "apiv1.localhost:172.18.0.14"
+      - "apiv2.localhost:172.18.0.13"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"

@@ -164,6 +164,15 @@
                 <span class="status">Loading...</span>
             </div>
         </div>
+        
+        <div id="delivery" class="service loading">
+            <div>
+                <strong>Image Delivery</strong> - wsrv.nl transformation service<br>
+                <span class="url">http://delivery.localhost</span><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-delivery</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -189,7 +198,8 @@
             { id: 'beanstalkd', container: 'freegle-beanstalkd' },
             { id: 'spamassassin', container: 'freegle-spamassassin' },
             { id: 'traefik', container: 'freegle-traefik' },
-            { id: 'tusd', container: 'freegle-tusd' }
+            { id: 'tusd', container: 'freegle-tusd' },
+            { id: 'delivery', container: 'freegle-delivery' }
         ];
 
         function addActionButtons(service, element) {
