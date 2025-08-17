@@ -199,6 +199,8 @@ services:
       - IMAGE_DOMAIN=apiv1
       - SPAMD_HOST=spamassassin-app
       - SPAMD_PORT=783
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
       interval: 10s
@@ -231,11 +233,25 @@ services:
     build: ./iznik-server-go
     depends_on:
       percona:
-        condition: service_started
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      beanstalkd:
+        condition: service_healthy
+      reverse-proxy:
+        condition: service_healthy
     restart: always
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8192/api/group || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"

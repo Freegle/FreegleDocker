@@ -7,3 +7,10 @@
 [submodule "iznik-nuxt3"]
 	path = iznik-nuxt3
 	url = https://github.com/Freegle/iznik-nuxt3.git
+[submodule "iznik-nuxt"]
+	path = iznik-nuxt
+	url = https://github.com/Freegle/iznik-nuxt.git
+[submodule "iznik-nuxt3-modtools"]
+	path = iznik-nuxt3-modtools
+	url = https://github.com/Freegle/iznik-nuxt3.git
+	branch = modtools

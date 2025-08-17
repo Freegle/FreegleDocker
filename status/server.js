@@ -11,6 +11,21 @@ let lastFullCheck = 0;
 const CHECK_INTERVAL = 30000; // 30 seconds
 let isRunningChecks = false;
 
+// Health check messages for services
+const healthCheckMessages = {
+  'freegle-traefik': 'Reverse proxy dashboard accessible (wget /dashboard/)',
+  'freegle-percona': 'MySQL database query test passed (SELECT 1)',
+  'freegle-postgres': 'PostgreSQL database query test passed (SELECT 1)', 
+  'freegle-redis': 'Cache service ping test successful (redis-cli ping)',
+  'freegle-beanstalkd': 'Job queue port connection test passed (nc -z 11300)',
+  'freegle-spamassassin': 'Email filtering port connection test passed (nc -z 783)',
+  'freegle-tusd': 'File upload endpoint responding (wget /tus/)',
+  'freegle-phpmyadmin': 'Database management interface responding (HTTP)',
+  'freegle-mailhog': 'Email testing interface responding (HTTP)',
+  'freegle-apiv1': 'API config endpoint responding (curl /api/config)',
+  'freegle-apiv2': 'API group endpoint responding (curl /api/group)'
+};
+
 // Service definitions
 const services = [
   // Freegle Components
@@ -131,24 +146,16 @@ async function checkServiceStatus(service) {
           } else if (logs.includes('ready') || logs.includes('Listening') || logs.includes('GET request:') || logs.includes('optimized dependencies')) {
             return { status: 'success', message: 'Nuxt application ready and serving requests' };
           } else {
-            return { status: 'starting', message: 'Building...' };
+            // Show last build line when building
+            const logLines = logs.trim().split('\n');
+            const lastLine = logLines[logLines.length - 1] || 'Building...';
+            const truncatedLine = lastLine.length > 80 ? lastLine.substring(0, 80) + '...' : lastLine;
+            return { status: 'starting', message: `Building: ${truncatedLine}` };
           }
         } catch (logError) {
           return { status: 'starting', message: 'Building...' };
         }
       } else {
-        const healthCheckMessages = {
-          'freegle-traefik': 'Reverse proxy dashboard accessible (wget /dashboard/)',
-          'freegle-percona': 'MySQL database query test passed (SELECT 1)',
-          'freegle-postgres': 'PostgreSQL database query test passed (SELECT 1)', 
-          'freegle-redis': 'Cache service ping test successful (redis-cli ping)',
-          'freegle-beanstalkd': 'Job queue port connection test passed (nc -z 11300)',
-          'freegle-spamassassin': 'Email filtering port connection test passed (nc -z 783)',
-          'freegle-tusd': 'File upload endpoint responding (wget /tus/)',
-          'freegle-phpmyadmin': 'Database management interface responding (HTTP)',
-          'freegle-mailhog': 'Email testing interface responding (HTTP)',
-          'freegle-apiv1': 'API config endpoint responding (curl /api/config)'
-        };
         
         return { 
           status: 'success', 
@@ -209,8 +216,12 @@ async function runBackgroundChecks() {
               status = 'success';
               message = 'Nuxt application ready and serving requests';
             } else {
+              // Show last build line when building
+              const logLines = logs.trim().split('\n');
+              const lastLine = logLines[logLines.length - 1] || 'Building...';
+              const truncatedLine = lastLine.length > 80 ? lastLine.substring(0, 80) + '...' : lastLine;
               status = 'starting';
-              message = 'Building...';
+              message = `Building: ${truncatedLine}`;
             }
           } catch (logError) {
             status = 'starting';
@@ -218,18 +229,6 @@ async function runBackgroundChecks() {
           }
         } else {
           status = 'success';
-          const healthCheckMessages = {
-            'freegle-traefik': 'Reverse proxy dashboard accessible (wget /dashboard/)',
-            'freegle-percona': 'MySQL database query test passed (SELECT 1)',
-            'freegle-postgres': 'PostgreSQL database query test passed (SELECT 1)', 
-            'freegle-redis': 'Cache service ping test successful (redis-cli ping)',
-            'freegle-beanstalkd': 'Job queue port connection test passed (nc -z 11300)',
-            'freegle-spamassassin': 'Email filtering port connection test passed (nc -z 783)',
-            'freegle-tusd': 'File upload endpoint responding (wget /tus/)',
-            'freegle-phpmyadmin': 'Database management interface responding (HTTP)',
-            'freegle-mailhog': 'Email testing interface responding (HTTP)',
-            'freegle-apiv1': 'API config endpoint responding (curl /api/config)'
-          };
           
           message = healthCheckMessages[service.container] || 'Container running and healthy';
         }
