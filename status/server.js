@@ -128,8 +128,8 @@ async function checkServiceStatus(service) {
             const errorMatch = logs.match(/ERROR.*?(?=\n|$)/);
             const error = errorMatch ? errorMatch[0].substring(0, 60) + '...' : 'Build failed';
             return { status: 'failed', message: `Build error: ${error}` };
-          } else if (logs.includes('ready') || logs.includes('Listening')) {
-            return { status: 'success', message: 'Service ready' };
+          } else if (logs.includes('ready') || logs.includes('Listening') || logs.includes('GET request:') || logs.includes('optimized dependencies')) {
+            return { status: 'success', message: 'Nuxt application ready and serving requests' };
           } else {
             return { status: 'starting', message: 'Building...' };
           }
@@ -205,9 +205,9 @@ async function runBackgroundChecks() {
               const error = errorMatch ? errorMatch[0].substring(0, 60) + '...' : 'Build failed';
               status = 'failed';
               message = `Build error: ${error}`;
-            } else if (logs.includes('ready') || logs.includes('Listening')) {
+            } else if (logs.includes('ready') || logs.includes('Listening') || logs.includes('GET request:') || logs.includes('optimized dependencies')) {
               status = 'success';
-              message = 'Service ready';
+              message = 'Nuxt application ready and serving requests';
             } else {
               status = 'starting';
               message = 'Building...';
