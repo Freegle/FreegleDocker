@@ -1,38 +1,28 @@
-This is a top-level development environment that uses Docker Compose to start up a standalone Freegle system. It uses git submodules to manage the various Freegle repositories.
+This is a top-level Docker Compose environment for a [Freegle](https://www.ilovefreegle.org) development system.  You should be able to start up a local development environment and make changes to each of the client/server components.
 
-# Installation
+<details>
+<summary>📦 Installation</summary>
 
-After cloning this repository, initialize the submodules:
+## Installation
 
-```bash
-git submodule update --init --recursive
-```
+After cloning this repository, a post-checkout git hook should automatically update submodules.  But if not,
+initialize the submodules:
+
+`git submodule update --init --recursive`
+
+**Note:**
 
 This will clone the required Freegle repositories:
-- `iznik-server` (PHP API)
-- `iznik-server-go` (Go API) 
-- `iznik-nuxt3` (User website)
-- `iznik-nuxt` (ModTools website)
-- `iznik-nuxt3-modtools` (ModTools from nuxt3 repo, modtools branch)
+- `iznik-nuxt3` (User website aka FD)
+- `iznik-nuxt3-modtools` (Moderate website aka ModTools, which uses the nuxt3 repo modtools branch)
+- `iznik-server` (legacy PHP API)
+- `iznik-server-go` (more modern Go API)
 
 Since these are [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
 
 ## Windows
 
-On Windows, you have two options for running this Docker setup:
-
-### Option 1: WSL2 (Recommended - Much Faster)
-1. Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) with WSL2 backend
-2. Install a WSL2 distribution (Ubuntu recommended)
-3. Clone this repository to a WSL2 path (e.g., `\\wsl$\Ubuntu\home\edward\FreegleDockerWSL`)
-4. Run `docker-compose up -d` from within the WSL2 environment
-
-### Option 2: Docker Desktop (Much Slower)
-1. Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)
-2. Clone this repository to any Windows directory
-3. Run `docker compose up -d` from the cloned directory
-
-Add these to your hosts file:
+Add these to your hosts file first:
 
 ```
 127.0.0.1 freegle.localhost
@@ -46,30 +36,40 @@ Add these to your hosts file:
 127.0.0.1 delivery.localhost
 ```
 
+On Windows, using Docker Desktop works but is unusably slow.  So we won't document that.  Instead we use WSL2, with some jiggery-pokery to get round issues with file syncing and WSL2.
+
+Here are instructions on the assumption that you have a JetBrains IDE (e.g. PhpStorm):
+1. Install a WSL2 distribution (Ubuntu recommended)
+2. Clone this repository from JetBrains **and give it a WSL2 path** (e.g., `\\wsl$\Ubuntu\home\edward\FreegleDockerWSL`).
+3. Use `wsl` to open a WSL2 terminal in the repository directory.
+4. Move on to the Running section.
+
 ## Linux
 
 Feel free to write this.
 
+</details>
+
+<details>
+<summary>🚀 Running</summary>
+
 # Running
 
-Start the entire system:
+On Windows:
+* Run `docker-compose up -d` from within the WSL2 environment to start the system.
+* Run `./file-sync.sh` from within WSL2.  This monitors file changes (e.g. from your Windows IDE) and syncs them to the Docker containers.
 
-```docker-compose up -d```
+`file-sync.sh` only monitors changes while it's running.  So if you do bulk changes (e.g. switching branches) while this isn't running, you may need to docker stop/prune/start to make sure they're picked up by the container.
 
-# Build Process Monitoring
+# Monitoring
 
 Monitor the startup progress at [Status Monitor](http://status.localhost:8081) to see when all services are ready.
 
 The system builds in stages:
 
 1. **Infrastructure** (databases, queues, reverse proxy) - ~2-3 minutes
-2. **Development Tools** (PhpMyAdmin, MailHog) - ~1 minute  
+2. **Development Tools** (PhpMyAdmin, MailHog) - ~1 minute
 3. **Freegle Components** (websites, APIs) - ~10-15 minutes
-
-The Freegle and ModTools sites take the longest as they need to:
-- Install npm dependencies
-- Build Nuxt.js applications  
-- Start the web servers
 
 **Container Status Indicators:**
 - 🟢 **Running** - Service is ready
@@ -110,7 +110,7 @@ Once all services show as **Running** in the status monitor, you can access:
 ## Status & Monitoring
 * **[Status Monitor](http://localhost:8081)** - Real-time service health with CPU monitoring and visit buttons
 
-## Main Applications  
+## Main Applications
 * **[Freegle](https://freegle.localhost)** - User site (Login: `test@test.com` / `freegle`)
 * **[ModTools](https://modtools.localhost)** - Moderator site (Login: `testmod@test.com` / `freegle`)
 
@@ -126,20 +126,25 @@ Once all services show as **Running** in the status monitor, you can access:
 * **[API v1](https://apiv1.localhost)** - Legacy PHP API
 * **[API v2](https://apiv2.localhost:8192)** - Modern Go API
 
-**Important Notes:**
-- HTTP is also available on port 82 for compatibility
-- Port 8081 is used for the status monitor (HTTP only)
-- Port 8192 is used for API v2
+</details>
+
+<details>
+<summary>🧪 Test Configuration</summary>
 
 # Test Configuration
 
 The system contains one test group, FreeglePlayground, centered around Edinburgh.  
 The only recognised postcode is EH3 6SS.
 
-# Troubleshooting
+</details>
 
-* Sometimes  
+<details>
+<summary>⚠️ Limitations</summary>
+
 # Limitations
 
 * Email to Mailhog not yet verified.
 * This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
+* Image upload not tested yet.
+
+</details>

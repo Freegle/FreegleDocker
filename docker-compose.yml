@@ -247,6 +247,7 @@ services:
     ports:
       - "1023:22"
       - "83:80"
+      - "8181:80"
 
   apiv2:
     container_name: freegle-apiv2
@@ -267,6 +268,8 @@ services:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
       - IMAGE_DELIVERY=http://delivery.localhost
+    ports:
+      - "8193:8192"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"
