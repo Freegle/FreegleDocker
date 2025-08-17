@@ -48,31 +48,28 @@ sync_file() {
     fi
 }
 
-# Start file watching
-if true; then
-    # Install inotify-tools if not present
-    if ! command -v inotifywait &> /dev/null; then
-        echo "Installing inotify-tools..."
-        sudo apt-get update && sudo apt-get install -y inotify-tools
-    fi
-
-    echo "Starting file watcher..."
-    echo ""
-
-    # Monitor file changes
-    inotifywait -m -r -e modify,create,move \
-        --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|~|\.tmp|\.swp|\.log)' \
-        "$PROJECT_DIR/iznik-nuxt3" \
-        "$PROJECT_DIR/iznik-nuxt3-modtools" \
-        "$PROJECT_DIR/iznik-server" \
-        "$PROJECT_DIR/iznik-server-go" \
-        2>/dev/null | while read -r directory events filename; do
-        
-        full_path="$directory$filename"
-        
-        # Only process regular files
-        if [[ -f "$full_path" ]]; then
-            sync_file "$full_path"
-        fi
-    done
+# Install inotify-tools if not present
+if ! command -v inotifywait &> /dev/null; then
+    echo "Installing inotify-tools..."
+    sudo apt-get update && sudo apt-get install -y inotify-tools
 fi
+
+echo "Starting file watcher..."
+echo ""
+
+# Monitor file changes
+inotifywait -m -r -e modify,create,move \
+    --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|~|\.tmp|\.swp|\.log)' \
+    "$PROJECT_DIR/iznik-nuxt3" \
+    "$PROJECT_DIR/iznik-nuxt3-modtools" \
+    "$PROJECT_DIR/iznik-server" \
+    "$PROJECT_DIR/iznik-server-go" \
+    2>/dev/null | while read -r directory events filename; do
+    
+    full_path="$directory$filename"
+    
+    # Only process regular files
+    if [[ -f "$full_path" ]]; then
+        sync_file "$full_path"
+    fi
+done

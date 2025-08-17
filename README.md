@@ -114,7 +114,11 @@ Once all services show as **Running** in the status monitor, you can access:
 * **[Freegle](https://freegle.localhost)** - User site (Login: `test@test.com` / `freegle`)
 * **[ModTools](https://modtools.localhost)** - Moderator site (Login: `testmod@test.com` / `freegle`)
 
-**Note:** It's normal for Freegle and ModTools pages to reload a few times on first view - this is expected Nuxt.js development mode behavior. Additionally, this development environment uses HTTP/1.1 which serializes asset loading, making it slower than the live system which uses HTTP/2.  This means the page load can be quite slow until the browser has cached the code.  You can see this via 'Pending' calls in the Network tab.
+**Note:** It's normal for Freegle and ModTools pages to reload a few times on first view - 
+this is expected Nuxt.js development mode behavior. Also, `nuxt dev` uses HTTP/1.1 which 
+serializes asset loading, making it slower than the live system which uses HTTP/2.  
+This means the page load can be quite slow until the browser has cached the code.  
+You can see this via 'Pending' calls in the Network tab.
 
 ## Development Tools
 * **[PhpMyAdmin](https://phpmyadmin.localhost)** - Database management (Login: `root` / `iznik`)
@@ -144,7 +148,9 @@ The only recognised postcode is EH3 6SS.
 # Limitations
 
 * Email to Mailhog not yet verified.
-* This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
 * Image upload not tested yet.
+* We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
+* The Go API doesn't have HMR or equivalent, so you'll need to rebuild the container to pick up code changes.
+* This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
 
 </details>
