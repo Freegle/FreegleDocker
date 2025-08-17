@@ -138,15 +138,16 @@ async function checkServiceStatus(service) {
         }
       } else {
         const healthCheckMessages = {
-          'freegle-traefik': 'Reverse proxy dashboard accessible',
-          'freegle-percona': 'MySQL database accepting connections',
-          'freegle-postgres': 'PostgreSQL database accepting connections', 
-          'freegle-redis': 'Cache service responding to ping',
-          'freegle-beanstalkd': 'Job queue accepting connections',
-          'freegle-spamassassin': 'Email filtering service ready',
-          'freegle-tusd': 'File upload service ready',
-          'freegle-phpmyadmin': 'Database management interface accessible',
-          'freegle-mailhog': 'Email testing interface accessible'
+          'freegle-traefik': 'Reverse proxy dashboard accessible (wget /dashboard/)',
+          'freegle-percona': 'MySQL database query test passed (SELECT 1)',
+          'freegle-postgres': 'PostgreSQL database query test passed (SELECT 1)', 
+          'freegle-redis': 'Cache service ping test successful (redis-cli ping)',
+          'freegle-beanstalkd': 'Job queue port connection test passed (nc -z 11300)',
+          'freegle-spamassassin': 'Email filtering port connection test passed (nc -z 783)',
+          'freegle-tusd': 'File upload endpoint responding (wget /tus/)',
+          'freegle-phpmyadmin': 'Database management interface responding (HTTP)',
+          'freegle-mailhog': 'Email testing interface responding (HTTP)',
+          'freegle-apiv1': 'API config endpoint responding (curl /api/config)'
         };
         
         return { 
@@ -218,15 +219,16 @@ async function runBackgroundChecks() {
         } else {
           status = 'success';
           const healthCheckMessages = {
-            'freegle-traefik': 'Reverse proxy dashboard accessible',
-            'freegle-percona': 'MySQL database accepting connections',
-            'freegle-postgres': 'PostgreSQL database accepting connections', 
-            'freegle-redis': 'Cache service responding to ping',
-            'freegle-beanstalkd': 'Job queue accepting connections',
-            'freegle-spamassassin': 'Email filtering service ready',
-            'freegle-tusd': 'File upload service ready',
-            'freegle-phpmyadmin': 'Database management interface accessible',
-            'freegle-mailhog': 'Email testing interface accessible'
+            'freegle-traefik': 'Reverse proxy dashboard accessible (wget /dashboard/)',
+            'freegle-percona': 'MySQL database query test passed (SELECT 1)',
+            'freegle-postgres': 'PostgreSQL database query test passed (SELECT 1)', 
+            'freegle-redis': 'Cache service ping test successful (redis-cli ping)',
+            'freegle-beanstalkd': 'Job queue port connection test passed (nc -z 11300)',
+            'freegle-spamassassin': 'Email filtering port connection test passed (nc -z 783)',
+            'freegle-tusd': 'File upload endpoint responding (wget /tus/)',
+            'freegle-phpmyadmin': 'Database management interface responding (HTTP)',
+            'freegle-mailhog': 'Email testing interface responding (HTTP)',
+            'freegle-apiv1': 'API config endpoint responding (curl /api/config)'
           };
           
           message = healthCheckMessages[service.container] || 'Container running and healthy';

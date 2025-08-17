@@ -209,7 +209,13 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
       - "traefik.http.routers.apiv1.entrypoints=web"
+      - "traefik.http.routers.apiv1.middlewares=apiv1-cors"
+      - "traefik.http.services.apiv1-localhost-freegledocker.loadbalancer.server.port=80"
       - "traefik.http.middlewares.limit.buffering.maxRequestBodyBytes=8000000"
+      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
+      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
+      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
     secrets:
       - LOVE_JUNK_API
       - LOVE_JUNK_SECRET
