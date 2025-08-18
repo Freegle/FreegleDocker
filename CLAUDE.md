@@ -2,3 +2,4 @@
 - Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
 - You don't need to rebuild the Freegle or ModTools containers to pick up code fixes - they run nuxt dev which will do that.
 - After making changes to the status code, remember to restart the container
+- When running in a docker compose environment and making changes, be careful to copy them to the container.

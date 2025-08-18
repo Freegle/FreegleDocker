@@ -5,3 +5,4 @@
 /logs/
 /.idea/prettier.xml
 /ssl/
+/.env

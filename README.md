@@ -20,6 +20,64 @@ This will clone the required Freegle repositories:
 
 Since these are [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
 
+## Configuration
+
+The system can be customized through environment variables in a `.env` file. Copy `.env.example` to `.env` and modify as needed. The basic system will work without any configuration, but some features require API keys.
+
+**Branch Selection (Optional):**
+- `IZNIK_SERVER_BRANCH` - Branch for the PHP API server (default: master)
+- `IZNIK_SERVER_GO_BRANCH` - Branch for the Go API server (default: master)  
+- `IZNIK_NUXT3_BRANCH` - Branch for the user website (default: master)
+- `IZNIK_NUXT3_MODTOOLS_BRANCH` - Branch for ModTools (default: master)
+
+**External Service API Keys (Optional but Recommended):**
+These keys enable full functionality and are used for both application features and PHPUnit testing:
+
+- `GOOGLE_CLIENT_ID` - Google OAuth client ID for user authentication
+- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret for user authentication
+- `GOOGLE_PUSH_KEY` - Google API key for push notifications
+- `GOOGLE_VISION_KEY` - Google Vision API key for image analysis
+- `GOOGLE_PERSPECTIVE_KEY` - Google Perspective API key for content moderation
+- `GOOGLE_GEMINI_API_KEY` - Google Gemini API key for AI services
+- `GOOGLE_PROJECT` - Google Cloud project ID
+- `GOOGLE_APP_NAME` - Application name for Google services (usually "Freegle")
+- `MAPBOX_KEY` - Mapbox API key for map tiles and routing
+- `MAXMIND_ACCOUNT` - MaxMind account ID for GeoIP services
+- `MAXMIND_KEY` - MaxMind license key for GeoIP services
+
+**Example `.env` file:**
+```bash
+# Branch configuration (optional)
+IZNIK_SERVER_BRANCH=better-phpunit
+IZNIK_SERVER_GO_BRANCH=master
+IZNIK_NUXT3_BRANCH=master
+IZNIK_NUXT3_MODTOOLS_BRANCH=master
+
+# API Keys (optional but recommended)
+GOOGLE_CLIENT_ID=your_google_client_id_here.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_PUSH_KEY=your_google_push_key_here
+GOOGLE_VISION_KEY=your_google_vision_api_key_here
+GOOGLE_PERSPECTIVE_KEY=your_google_perspective_api_key_here
+GOOGLE_GEMINI_API_KEY=your_google_gemini_api_key_here
+GOOGLE_PROJECT=your_google_project_id_here
+GOOGLE_APP_NAME=Freegle
+MAPBOX_KEY=your_mapbox_api_key_here
+MAXMIND_ACCOUNT=your_maxmind_account_here
+MAXMIND_KEY=your_maxmind_key_here
+```
+
+**After Configuration Changes:**
+If you modify branch settings or API keys, rebuild the affected containers:
+
+```bash
+# Rebuild specific container
+docker-compose build --no-cache apiv1
+
+# Or rebuild all containers
+docker-compose build --no-cache
+```
+
 ## Windows
 
 Add these to your hosts file first:

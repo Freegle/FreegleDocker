@@ -196,7 +196,10 @@ services:
   # Freegle images.
   apiv1:
     container_name: freegle-apiv1
-    build: ./iznik-server
+    build: 
+      context: ./iznik-server
+      args:
+        IZNIK_SERVER_BRANCH: ${IZNIK_SERVER_BRANCH:-master}
     depends_on:
       percona:
         condition: service_started
@@ -221,6 +224,17 @@ services:
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
       - IMAGE_DELIVERY=http://delivery.localhost
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_PUSH_KEY=${GOOGLE_PUSH_KEY}
+      - GOOGLE_VISION_KEY=${GOOGLE_VISION_KEY}
+      - GOOGLE_PERSPECTIVE_KEY=${GOOGLE_PERSPECTIVE_KEY}
+      - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY}
+      - GOOGLE_PROJECT=${GOOGLE_PROJECT}
+      - GOOGLE_APP_NAME=${GOOGLE_APP_NAME}
+      - MAPBOX_KEY=${MAPBOX_KEY}
+      - MAXMIND_ACCOUNT=${MAXMIND_ACCOUNT}
+      - MAXMIND_KEY=${MAXMIND_KEY}
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
       interval: 10s
@@ -251,7 +265,10 @@ services:
 
   apiv2:
     container_name: freegle-apiv2
-    build: ./iznik-server-go
+    build: 
+      context: ./iznik-server-go
+      args:
+        IZNIK_SERVER_GO_BRANCH: ${IZNIK_SERVER_GO_BRANCH:-master}
     depends_on:
       percona:
         condition: service_healthy
@@ -283,7 +300,10 @@ services:
 
   freegle:
     container_name: freegle-freegle
-    build: ./iznik-nuxt3
+    build: 
+      context: ./iznik-nuxt3
+      args:
+        IZNIK_NUXT3_BRANCH: ${IZNIK_NUXT3_BRANCH:-master}
     tmpfs:
       - /tmp
     depends_on:
@@ -325,6 +345,8 @@ services:
     build: 
       context: ./iznik-nuxt3-modtools
       dockerfile: modtools/Dockerfile
+      args:
+        IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
     tmpfs:
       - /tmp
     depends_on:
