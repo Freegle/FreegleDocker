@@ -15,7 +15,8 @@ If you cloned without the `--recurse-submodules` flag, you can initialize them w
 
 `git submodule update --init --recursive`
 
-**Note:**
+**Make sure you do this from a WSL page (e.g. /home/user/whatever) not from a Windows path (e.g. /mnt/c/whatever).**  
+(Not 100% sure this is necessary, but it is what is tested)
 
 This will clone the required Freegle repositories:
 - `iznik-nuxt3` (User website aka FD)

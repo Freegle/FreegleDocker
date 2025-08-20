@@ -163,7 +163,7 @@ services:
     container_name: freegle-tusd
     ports:
       - "1080:8080"
-    command: -hooks-http=http://freegle-apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/
+    command: -hooks-http=http://freegle-apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/ -cors-allow-headers=baggage,sentry-trace
     depends_on:
       reverse-proxy:
         condition: service_healthy
@@ -177,7 +177,9 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.tusd.rule=Host(`tusd.localhost`)"
       - "traefik.http.routers.tusd.entrypoints=web"
+      - "traefik.http.routers.tusd.middlewares=tusd-cors-headers"
       - "traefik.http.services.tusd.loadbalancer.server.port=8080"
+      - "traefik.http.middlewares.tusd-cors-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Authorization, Origin, X-Requested-With, X-Request-ID, X-HTTP-Method-Override, Content-Type, Upload-Length, Upload-Offset, Tus-Resumable, Upload-Metadata, Upload-Defer-Length, Upload-Concat, Upload-Complete, Upload-Draft-Interop-Version, x-token, baggage, sentry-trace"
 
   status:
     build: ./status
@@ -325,7 +327,7 @@ services:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
       - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost
+      - TUS_UPLOADER=http://tusd.localhost/tus/
       - USER_SITE=http://172.18.0.15:3002
       - IMAGE_BASE_URL=http://172.18.0.15:3002
       - TUSD_URL=http://freegle-tusd:8080
@@ -372,7 +374,7 @@ services:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
       - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost
+      - TUS_UPLOADER=http://tusd.localhost/tus/
       - USER_SITE=http://172.18.0.16:3000
       - IMAGE_BASE_URL=http://172.18.0.16:3000
       - TUSD_URL=http://freegle-tusd:8080
