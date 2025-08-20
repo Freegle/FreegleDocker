@@ -182,6 +182,7 @@ You can see this via 'Pending' calls in the Network tab.
 * **[PhpMyAdmin](https://phpmyadmin.localhost)** - Database management (Login: `root` / `iznik`)
 * **[MailHog](https://mailhog.localhost)** - Email testing interface
 * **[TusD](https://tusd.localhost)** - Image upload service
+* **[Image Delivery](https://delivery.localhost)** - Image processing service (weserv/images)
 * **[Traefik Dashboard](http://localhost:8080)** - Reverse proxy dashboard
 
 ## API Endpoints
@@ -210,5 +211,15 @@ The only recognised postcode is EH3 6SS.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
 * The Go API doesn't have HMR or equivalent, so you'll need to rebuild the container to pick up code changes.
 * This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
+
+# Image Delivery Service
+
+The image delivery service uses weserv/images for image processing and resizing. For local development:
+
+* **Custom Configuration**: Uses `delivery-nginx.conf` to disable SSRF protection for Docker network access
+* **Local URLs**: Applications use direct IP addresses (e.g., `http://172.18.0.15:3002`) for image source URLs
+* **Test URL**: `http://delivery.localhost/?url=http://172.18.0.15:3002/icon.png&w=116&output=png`
+
+**Note**: If containers are recreated, IP addresses may change. Update the `extra_hosts` and environment variables in `docker-compose.yml` if image delivery stops working.
 
 </details>

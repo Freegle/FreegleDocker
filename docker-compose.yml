@@ -141,8 +141,13 @@ services:
     image: ghcr.io/weserv/images:5.x
     restart: always
     shm_size: 1gb
+    extra_hosts:
+      - "freegle.internal:172.18.0.15"
+      - "modtools.internal:172.18.0.16"
+    volumes:
+      - ./delivery-nginx.conf:/etc/nginx/nginx.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -319,6 +324,10 @@ services:
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
+      - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://tusd.localhost
+      - USER_SITE=http://172.18.0.15:3002
+      - IMAGE_BASE_URL=http://172.18.0.15:3002
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
       - NITRO_HTTPS=false
@@ -362,6 +371,10 @@ services:
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
+      - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://tusd.localhost
+      - USER_SITE=http://172.18.0.16:3000
+      - IMAGE_BASE_URL=http://172.18.0.16:3000
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
       - NITRO_HTTPS=false
