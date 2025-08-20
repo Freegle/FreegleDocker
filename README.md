@@ -5,8 +5,13 @@ This is a top-level Docker Compose environment for a [Freegle](https://www.ilove
 
 ## Installation
 
-After cloning this repository, a post-checkout git hook should automatically update submodules.  But if not,
-initialize the submodules:
+This top-level repository has a number of [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) (see `.gitmodules` in project root).
+
+To clone this repository and all submodules:
+
+`git clone --recurse-submodules https://github.com/freegle/FreegleDocker`
+
+If you cloned without the `--recurse-submodules` flag, you can initialize them with:
 
 `git submodule update --init --recursive`
 
@@ -18,7 +23,7 @@ This will clone the required Freegle repositories:
 - `iznik-server` (legacy PHP API)
 - `iznik-server-go` (more modern Go API)
 
-Since these are [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
+Since these are git submodules, you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
 
 ## Configuration
 
@@ -97,10 +102,18 @@ Add these to your hosts file first:
 On Windows, using Docker Desktop works but is unusably slow.  So we won't document that.  Instead we use WSL2, with some jiggery-pokery to get round issues with file syncing and WSL2.
 
 Here are instructions on the assumption that you have a JetBrains IDE (e.g. PhpStorm):
-1. Install a WSL2 distribution (Ubuntu recommended)
+1. Install a WSL2 distribution (Ubuntu recommended). If you already have a WSL installation, you may benefit from installing a dedicated freegle one `wsl --install --name freegle`
 2. Clone this repository from JetBrains **and give it a WSL2 path** (e.g., `\\wsl$\Ubuntu\home\edward\FreegleDockerWSL`).
-3. Use `wsl` to open a WSL2 terminal in the repository directory.
-4. Move on to the Running section.
+3. [Install docker](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository)
+4. Use `wsl` to open a WSL2 terminal in the repository directory.
+5. Start the docker service: `sudo service docker start`
+6. Move on to the Running section.
+
+### Troubleshooting
+
+If the localhost domains above don't work, check that Windows hasn't blocked access: `curl -I freegle.localhost` should give a 200 response.
+
+If this is the case, you can open a proxy port: `sudo netsh interface portproxy add v4tov4 listenport=80 listenaddress=0.0.0.0 connectport=80 connectaddress=<wsl IP address>` (see [SO post](https://stackoverflow.com/questions/70566305/unable-to-connect-to-local-server-on-wsl2-from-windows-host) for more info)
 
 ## Linux
 
