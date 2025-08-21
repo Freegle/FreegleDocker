@@ -1,6 +1,9 @@
 services:
   reverse-proxy:
     container_name: freegle-traefik
+    networks:
+      default:
+        ipv4_address: 172.20.0.2
     image: traefik:latest
     command:
       - "--api.insecure=true"
@@ -27,6 +30,9 @@ services:
 
   percona:
     container_name: freegle-percona
+    networks:
+      default:
+        ipv4_address: 172.20.0.3
     image: percona:8.0.33-25-centos
     restart: always
     environment:
@@ -41,6 +47,9 @@ services:
 
   postgres:
     container_name: freegle-postgres
+    networks:
+      default:
+        ipv4_address: 172.20.0.4
     image: postgis/postgis:13-3.1
     restart: always
     environment:
@@ -56,6 +65,9 @@ services:
 
   phpmyadmin:
     container_name: freegle-phpmyadmin
+    networks:
+      default:
+        ipv4_address: 172.20.0.5
     image: phpmyadmin
     depends_on:
       percona:
@@ -76,6 +88,9 @@ services:
   mailhog:
     image: mailhog/mailhog
     container_name: freegle-mailhog
+    networks:
+      default:
+        ipv4_address: 172.20.0.6
     depends_on:
       percona:
         condition: service_healthy
@@ -98,6 +113,9 @@ services:
   beanstalkd:
     image: schickling/beanstalkd
     container_name: freegle-beanstalkd
+    networks:
+      default:
+        ipv4_address: 172.20.0.7
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 11300 || exit 1"]
       interval: 5s
@@ -108,6 +126,9 @@ services:
   spamassassin-app:
     image: tiredofit/spamassassin
     container_name: freegle-spamassassin
+    networks:
+      default:
+        ipv4_address: 172.20.0.8
     ports:
       - 783:783
     volumes:
@@ -126,6 +147,9 @@ services:
 
   redis:
     container_name: freegle-redis
+    networks:
+      default:
+        ipv4_address: 172.20.0.9
     image: redis:6.2-alpine
     restart: always
     command: redis-server --save 20 1 --loglevel warning
@@ -138,11 +162,18 @@ services:
 
   delivery:
     container_name: freegle-delivery
+    networks:
+      default:
+        ipv4_address: 172.20.0.14
     image: ghcr.io/weserv/images:5.x
     restart: always
     shm_size: 1gb
     depends_on:
       - tusd
+      - freegle
+      - modtools
+    extra_hosts:
+      - "tusd.localhost:172.20.0.15"
     volumes:
       - ./delivery-nginx.conf:/etc/nginx/nginx.conf:ro
       - ./delivery-imagesweserv.conf:/etc/nginx/imagesweserv.conf:ro
@@ -163,6 +194,7 @@ services:
     container_name: freegle-tusd
     networks:
       default:
+        ipv4_address: 172.20.0.15
         aliases:
           - tusd.localhost
     ports:
@@ -188,6 +220,9 @@ services:
   status:
     build: ./status
     container_name: freegle-status
+    networks:
+      default:
+        ipv4_address: 172.20.0.16
     ports:
       - "8081:80"
     volumes:
@@ -196,6 +231,7 @@ services:
       - ./status/logs.html:/app/logs.html:ro
       - ./status/server.js:/app/server.js:ro
       - ./ssl/certs:/app/ssl:ro
+      - .:/project:ro
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
     labels:
@@ -207,6 +243,9 @@ services:
   # Freegle images.
   apiv1:
     container_name: freegle-apiv1
+    networks:
+      default:
+        ipv4_address: 172.20.0.10
     build: 
       context: ./iznik-server
       args:
@@ -233,6 +272,7 @@ services:
       - SPAMD_HOST=spamassassin-app
       - SPAMD_PORT=783
       - SMTP_HOST=mailhog
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - SMTP_PORT=1025
       - IMAGE_DELIVERY=http://delivery.localhost
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -276,6 +316,9 @@ services:
 
   apiv2:
     container_name: freegle-apiv2
+    networks:
+      default:
+        ipv4_address: 172.20.0.11
     build: 
       context: ./iznik-server-go
       args:
@@ -296,6 +339,7 @@ services:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
       - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
     ports:
       - "8193:8192"
     labels:
@@ -311,6 +355,14 @@ services:
 
   freegle:
     container_name: freegle-freegle
+    networks:
+      default:
+        ipv4_address: 172.20.0.12
+        aliases:
+          - freegle.localhost
+    extra_hosts:
+      - "apiv1.localhost:172.20.0.10"
+      - "apiv2.localhost:172.20.0.11"
     build: 
       context: ./iznik-nuxt3
       args:
@@ -346,9 +398,6 @@ services:
       - SSL=false
       - NUXT_SECURITY_HTTPS_ENABLED=false
       - NODE_TLS_REJECT_UNAUTHORIZED=0
-    extra_hosts:
-      - "apiv1.localhost:172.18.0.14"
-      - "apiv2.localhost:172.18.0.13"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle.rule=Host(`freegle.localhost`)"
@@ -357,6 +406,14 @@ services:
 
   modtools:
     container_name: freegle-modtools
+    networks:
+      default:
+        ipv4_address: 172.20.0.13
+        aliases:
+          - modtools.localhost
+    extra_hosts:
+      - "apiv1.localhost:172.20.0.10"
+      - "apiv2.localhost:172.20.0.11"
     build: 
       context: ./iznik-nuxt3-modtools
       dockerfile: modtools/Dockerfile
@@ -392,9 +449,6 @@ services:
       - SSL=false
       - NUXT_SECURITY_HTTPS_ENABLED=false
       - NODE_TLS_REJECT_UNAUTHORIZED=0
-    extra_hosts:
-      - "apiv1.localhost:172.18.0.14"
-      - "apiv2.localhost:172.18.0.13"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
@@ -402,8 +456,13 @@ services:
       - "traefik.http.services.modtools.loadbalancer.server.port=3000"
 
 networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
   cont:
-    driver:  bridge
+    driver: bridge
     enable_ipv6: false
 
 secrets:

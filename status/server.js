@@ -91,7 +91,7 @@ async function fetch(targetUrl) {
 async function getAllContainerStats() {
   try {
     // Get all container info in one command
-    const output = execSync(`docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.State}}" --filter "name=freegle-"`, { 
+    const output = execSync(`docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.State}}"`, { 
       encoding: 'utf8', timeout: 1000 
     });
     
@@ -134,28 +134,62 @@ async function checkServiceStatus(service) {
     }
     
     if (containerInfo.status === 'running') {
-      // For Freegle components, check if build is actually successful
+      // For Freegle components, check if they are actually serving pages
       if (service.checkType === 'freegle-component') {
         try {
-          const logs = execSync(`docker logs ${service.container} --tail=5`, { 
-            encoding: 'utf8', timeout: 1000 
-          });
+          let testUrl, testDescription;
           
-          if (logs.includes('ERROR') || logs.includes('Build failed')) {
-            const errorMatch = logs.match(/ERROR.*?(?=\n|$)/);
-            const error = errorMatch ? errorMatch[0].substring(0, 60) + '...' : 'Build failed';
-            return { status: 'failed', message: `Build error: ${error}` };
-          } else if (logs.includes('ready') || logs.includes('Listening') || logs.includes('GET request:') || logs.includes('optimized dependencies')) {
-            return { status: 'success', message: 'Nuxt application ready and serving requests' };
-          } else {
-            // Show last build line when building
-            const logLines = logs.trim().split('\n');
-            const lastLine = logLines[logLines.length - 1] || 'Building...';
-            const truncatedLine = lastLine.length > 80 ? lastLine.substring(0, 80) + '...' : lastLine;
-            return { status: 'starting', message: `Building: ${truncatedLine}` };
+          if (service.id === 'freegle') {
+            testUrl = 'http://freegle-freegle:3002/';
+            testDescription = 'Freegle site responding';
+          } else if (service.id === 'modtools') {
+            testUrl = 'http://freegle-modtools:3000/';
+            testDescription = 'ModTools site responding';
           }
-        } catch (logError) {
-          return { status: 'starting', message: 'Building...' };
+          
+          if (testUrl) {
+            // Try to fetch the page to verify it's actually working
+            try {
+              const response = await fetch(testUrl);
+              if (response.ok) {
+                return { status: 'success', message: `${testDescription} (HTTP ${response.status})` };
+              } else if (response.status === 502 || response.status === 503) {
+                return { status: 'starting', message: `Service building/starting (HTTP ${response.status})` };
+              } else {
+                return { status: 'failed', message: `HTTP ${response.status}` };
+              }
+            } catch (fetchError) {
+              // If fetch fails, check logs for more context
+              if (fetchError.code === 'ECONNREFUSED' || fetchError.message.includes('ECONNREFUSED')) {
+                try {
+                  const logs = execSync(`docker logs ${service.container} --tail=3`, { 
+                    encoding: 'utf8', timeout: 1000 
+                  });
+                  
+                  if (logs.includes('ERROR') || logs.includes('Build failed')) {
+                    const errorMatch = logs.match(/ERROR.*?(?=\n|$)/);
+                    const error = errorMatch ? errorMatch[0].substring(0, 60) + '...' : 'Build failed';
+                    return { status: 'failed', message: `Build error: ${error}` };
+                  } else {
+                    // Show building status with last log line
+                    const logLines = logs.trim().split('\n');
+                    const lastLine = logLines[logLines.length - 1] || 'Building...';
+                    const truncatedLine = lastLine.length > 80 ? lastLine.substring(0, 80) + '...' : lastLine;
+                    return { status: 'starting', message: `Building: ${truncatedLine}` };
+                  }
+                } catch (logError) {
+                  return { status: 'starting', message: 'Service building/starting (connection refused)' };
+                }
+              } else {
+                return { status: 'failed', message: fetchError.message };
+              }
+            }
+          } else {
+            // Fallback for unknown components
+            return { status: 'success', message: 'Container running' };
+          }
+        } catch (error) {
+          return { status: 'failed', message: error.message };
         }
       } else {
         
@@ -202,32 +236,71 @@ async function runBackgroundChecks() {
       
       let status, message;
       if (containerInfo.status === 'running') {
-        // For Freegle components, check if build is actually successful
+        // For Freegle components, check if they are actually serving pages
         if (service.checkType === 'freegle-component') {
           try {
-            const logs = execSync(`docker logs ${service.container} --tail=5`, { 
-              encoding: 'utf8', timeout: 1000 
-            });
+            let testUrl, testDescription;
             
-            if (logs.includes('ERROR') || logs.includes('Build failed')) {
-              const errorMatch = logs.match(/ERROR.*?(?=\n|$)/);
-              const error = errorMatch ? errorMatch[0].substring(0, 60) + '...' : 'Build failed';
-              status = 'failed';
-              message = `Build error: ${error}`;
-            } else if (logs.includes('ready') || logs.includes('Listening') || logs.includes('GET request:') || logs.includes('optimized dependencies')) {
-              status = 'success';
-              message = 'Nuxt application ready and serving requests';
-            } else {
-              // Show last build line when building
-              const logLines = logs.trim().split('\n');
-              const lastLine = logLines[logLines.length - 1] || 'Building...';
-              const truncatedLine = lastLine.length > 80 ? lastLine.substring(0, 80) + '...' : lastLine;
-              status = 'starting';
-              message = `Building: ${truncatedLine}`;
+            if (service.id === 'freegle') {
+              testUrl = 'http://freegle-freegle:3002/';
+              testDescription = 'Freegle site responding';
+            } else if (service.id === 'modtools') {
+              testUrl = 'http://freegle-modtools:3000/';
+              testDescription = 'ModTools site responding';
             }
-          } catch (logError) {
-            status = 'starting';
-            message = 'Building...';
+            
+            if (testUrl) {
+              // Try to fetch the page to verify it's actually working
+              try {
+                const response = await fetch(testUrl);
+                if (response.ok) {
+                  status = 'success';
+                  message = `${testDescription} (HTTP ${response.status})`;
+                } else if (response.status === 502 || response.status === 503) {
+                  status = 'starting';
+                  message = `Service building/starting (HTTP ${response.status})`;
+                } else {
+                  status = 'failed';
+                  message = `HTTP ${response.status}`;
+                }
+              } catch (fetchError) {
+                // If fetch fails, check logs for more context
+                if (fetchError.code === 'ECONNREFUSED' || fetchError.message.includes('ECONNREFUSED')) {
+                  try {
+                    const logs = execSync(`docker logs ${service.container} --tail=3`, { 
+                      encoding: 'utf8', timeout: 1000 
+                    });
+                    
+                    if (logs.includes('ERROR') || logs.includes('Build failed')) {
+                      const errorMatch = logs.match(/ERROR.*?(?=\n|$)/);
+                      const error = errorMatch ? errorMatch[0].substring(0, 60) + '...' : 'Build failed';
+                      status = 'failed';
+                      message = `Build error: ${error}`;
+                    } else {
+                      // Show building status with last log line
+                      const logLines = logs.trim().split('\n');
+                      const lastLine = logLines[logLines.length - 1] || 'Building...';
+                      const truncatedLine = lastLine.length > 80 ? lastLine.substring(0, 80) + '...' : lastLine;
+                      status = 'starting';
+                      message = `Building: ${truncatedLine}`;
+                    }
+                  } catch (logError) {
+                    status = 'starting';
+                    message = 'Service building/starting (connection refused)';
+                  }
+                } else {
+                  status = 'failed';
+                  message = fetchError.message;
+                }
+              }
+            } else {
+              // Fallback to log checking for unknown components
+              status = 'success';
+              message = 'Container running';
+            }
+          } catch (error) {
+            status = 'failed';
+            message = error.message;
           }
         } else {
           status = 'success';
@@ -260,7 +333,7 @@ async function runBackgroundChecks() {
 // Get CPU usage for all containers in one call
 async function getAllCpuUsage() {
   try {
-    const output = execSync(`docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}" --filter "name=freegle-"`, { 
+    const output = execSync(`docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}"`, { 
       encoding: 'utf8', timeout: 3000 
     });
     
@@ -270,7 +343,7 @@ async function getAllCpuUsage() {
     for (const line of lines) {
       if (line.trim()) {
         const [name, cpu] = line.split('\t');
-        if (name && name.startsWith('freegle-')) {
+        if (name && name.startsWith('freegle-') && cpu) {
           cpuData[name] = parseFloat(cpu.replace('%', '')) || 0;
         }
       }
@@ -302,6 +375,74 @@ const httpServer = http.createServer(async (req, res) => {
   }
 
   const parsedUrl = url.parse(req.url, true);
+
+  // Container restart endpoint
+  if (parsedUrl.pathname === '/api/container/restart' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk.toString());
+    req.on('end', async () => {
+      try {
+        const { container } = JSON.parse(body);
+        
+        if (!container || !/^freegle-[a-zA-Z0-9_-]+$/.test(container)) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Invalid container name');
+          return;
+        }
+        
+        console.log(`Restarting container: ${container}`);
+        execSync(`docker restart ${container}`, { timeout: 30000 });
+        
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(`Container ${container} restarted successfully`);
+      } catch (error) {
+        console.error('Restart error:', error);
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end(`Failed to restart container: ${error.message}`);
+      }
+    });
+    return;
+  }
+
+  // Container rebuild endpoint  
+  if (parsedUrl.pathname === '/api/container/rebuild' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk.toString());
+    req.on('end', async () => {
+      try {
+        const { container, service } = JSON.parse(body);
+        
+        if (!container || !/^freegle-[a-zA-Z0-9_-]+$/.test(container)) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Invalid container name');
+          return;
+        }
+        
+        if (!service || !/^[a-zA-Z0-9_-]+$/.test(service)) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Invalid service name');
+          return;
+        }
+        
+        console.log(`Rebuilding service: ${service} (${container})`);
+        
+        // Change to docker compose project directory
+        process.chdir('/project');
+        
+        // Build and restart the specific service
+        const buildCommand = `docker-compose build ${service} && docker-compose up -d ${service}`;
+        execSync(buildCommand, { timeout: 300000 }); // 5 minutes timeout
+        
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(`Service ${service} rebuilt and restarted successfully`);
+      } catch (error) {
+        console.error('Rebuild error:', error);
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end(`Failed to rebuild service: ${error.message}`);
+      }
+    });
+    return;
+  }
   
   // New cached status endpoint
   if (parsedUrl.pathname === '/api/status') {

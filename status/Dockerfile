@@ -2,7 +2,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache docker-cli
+RUN apk add --no-cache docker-cli docker-compose
 
 COPY package.json ./
 RUN npm install

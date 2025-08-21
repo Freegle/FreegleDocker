@@ -29,6 +29,12 @@
         .traffic-light.green { background-color: #28a745; box-shadow: 0 0 20px #28a745; }
         .traffic-light.amber { background-color: #ffc107; box-shadow: 0 0 20px #ffc107; }
         .traffic-light.red { background-color: #dc3545; box-shadow: 0 0 20px #dc3545; }
+        .action-button { background: #17a2b8; color: white; padding: 6px 12px; border: none; border-radius: 4px; font-size: 11px; margin: 2px; cursor: pointer; }
+        .action-button:hover { background: #138496; }
+        .action-button.danger { background: #dc3545; }
+        .action-button.danger:hover { background: #c82333; }
+        .action-button:disabled { background: #6c757d; cursor: not-allowed; }
+        .container-actions { margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -248,6 +254,30 @@
                 logsLink.textContent = 'logs';
                 containerLine.appendChild(logsLink);
             }
+            
+            // Add container action buttons
+            if (!element.querySelector('.container-actions')) {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'container-actions';
+                
+                // Restart button
+                const restartBtn = document.createElement('button');
+                restartBtn.className = 'action-button';
+                restartBtn.textContent = 'Restart';
+                restartBtn.onclick = () => restartContainer(service.container);
+                actionsDiv.appendChild(restartBtn);
+                
+                // Rebuild button (for containers that can be rebuilt - those with build context)
+                if (['freegle', 'modtools', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
+                    const rebuildBtn = document.createElement('button');
+                    rebuildBtn.className = 'action-button danger';
+                    rebuildBtn.textContent = 'Rebuild';
+                    rebuildBtn.onclick = () => rebuildContainer(service.container, service.id);
+                    actionsDiv.appendChild(rebuildBtn);
+                }
+                
+                element.appendChild(actionsDiv);
+            }
         }
 
         function updateServiceDisplay(service, data) {
@@ -282,6 +312,74 @@
                     <div class="cpu-bar ${cpu > 80 ? 'high' : cpu > 50 ? 'medium' : ''}" style="width: ${cpu}%;"></div>
                     <div class="cpu-text">CPU ${cpu}%</div>
                 `;
+            }
+        }
+
+        async function restartContainer(containerName) {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Restarting...';
+            
+            try {
+                const response = await fetch('/api/container/restart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ container: containerName })
+                });
+                
+                const result = await response.text();
+                if (response.ok) {
+                    button.textContent = 'Restarted!';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.disabled = false;
+                    }, 3000);
+                } else {
+                    alert(`Failed to restart: ${result}`);
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        async function rebuildContainer(containerName, serviceName) {
+            if (!confirm(`Are you sure you want to rebuild ${serviceName}? This will take several minutes.`)) {
+                return;
+            }
+            
+            const button = event.target;
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Rebuilding...';
+            
+            try {
+                const response = await fetch('/api/container/rebuild', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ container: containerName, service: serviceName })
+                });
+                
+                const result = await response.text();
+                if (response.ok) {
+                    button.textContent = 'Rebuilt!';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.disabled = false;
+                    }, 5000);
+                } else {
+                    alert(`Failed to rebuild: ${result}`);
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+                button.textContent = originalText;
+                button.disabled = false;
             }
         }
 

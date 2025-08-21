@@ -180,7 +180,9 @@ docker restart freegle-modtools
 Once all services show as **Running** in the status monitor, you can access:
 
 ## Status & Monitoring
-* **[Status Monitor](http://localhost:8081)** - Real-time service health with CPU monitoring and visit buttons
+* **[Status Monitor](http://localhost:8081)** - Real-time service health with CPU monitoring, visit buttons, and container management
+  - **Restart Button** - Available for all containers to quickly restart services
+  - **Rebuild Button** - Available for containers with build context (freegle, modtools, apiv1, apiv2, status) to rebuild and restart
 
 ## Main Applications
 * **[Freegle](https://freegle.localhost)** - User site (Login: `test@test.com` / `freegle`)
@@ -221,9 +223,9 @@ The only recognised postcode is EH3 6SS.
 # Limitations
 
 * Email to Mailhog not yet verified.
-* Image upload not tested yet.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
-* The Go API doesn't have HMR or equivalent, so you'll need to rebuild the container to pick up code changes.
 * This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
+
+**Note for Go API Development:** The Go API doesn't have hot module reloading (HMR). Use the **Rebuild Button** in the [Status Monitor](http://localhost:8081) for quick container rebuilds when making code changes.
 
 </details>
