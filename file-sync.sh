@@ -17,7 +17,12 @@ get_container_info() {
     if [[ "$relative_path" == iznik-nuxt3-modtools/* ]]; then
         echo "freegle-modtools /app/${relative_path#iznik-nuxt3-modtools/} ModTools"
     elif [[ "$relative_path" == iznik-nuxt3/* ]]; then
-        echo "freegle-freegle /app/${relative_path#iznik-nuxt3/} Freegle"
+        # Sync to both Freegle and Playwright containers for test files
+        if [[ "$relative_path" == iznik-nuxt3/tests/* || "$relative_path" == iznik-nuxt3/playwright.config.js ]]; then
+            echo "freegle-playwright /app/${relative_path#iznik-nuxt3/} Playwright"
+        else
+            echo "freegle-freegle-dev /app/${relative_path#iznik-nuxt3/} Freegle-Dev"$'\n'"freegle-freegle-prod /app/${relative_path#iznik-nuxt3/} Freegle-Prod"
+        fi
     elif [[ "$relative_path" == iznik-server-go/* ]]; then
         echo "freegle-apiv2 /app/${relative_path#iznik-server-go/} API-v2"
     elif [[ "$relative_path" == iznik-server/* ]]; then
@@ -35,17 +40,22 @@ sync_file() {
         return
     fi
     
-    read -r container target_path service <<< "$container_info"
     local filename=$(basename "$file_path")
     local timestamp=$(date '+%H:%M:%S')
     
-    echo "[$timestamp] $service: $filename"
-    
-    if docker cp "$file_path" "$container:$target_path" 2>/dev/null; then
-        echo "  ✓ Synced to $container"
-    else
-        echo "  ✗ Failed to sync to $container"
-    fi
+    # Handle multiple containers (for test files)
+    while IFS= read -r line; do
+        if [[ -n "$line" ]]; then
+            read -r container target_path service <<< "$line"
+            echo "[$timestamp] $service: $filename"
+            
+            if docker cp "$file_path" "$container:$target_path" 2>/dev/null; then
+                echo "  ✓ Synced to $container"
+            else
+                echo "  ✗ Failed to sync to $container"
+            fi
+        fi
+    done <<< "$container_info"
 }
 
 # Install inotify-tools if not present

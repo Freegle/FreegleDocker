@@ -19,10 +19,10 @@ If you cloned without the `--recurse-submodules` flag, you can initialize them w
 (Not 100% sure this is necessary, but it is what is tested)
 
 This will clone the required Freegle repositories:
-- `iznik-nuxt3` (User website aka FD)
-- `iznik-nuxt3-modtools` (Moderate website aka ModTools, which uses the nuxt3 repo modtools branch)
+- `iznik-nuxt3` (User website aka FD - runs as both dev and prod containers)
+- `iznik-nuxt3-modtools` (Moderator website aka ModTools)
 - `iznik-server` (legacy PHP API)
-- `iznik-server-go` (more modern Go API)
+- `iznik-server-go` (modern Go API)
 
 Since these are git submodules, you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
 
@@ -90,6 +90,8 @@ Add these to your hosts file first:
 
 ```
 127.0.0.1 freegle.localhost
+127.0.0.1 freegle-dev.localhost
+127.0.0.1 freegle-prod.localhost
 127.0.0.1 modtools.localhost
 127.0.0.1 phpmyadmin.localhost
 127.0.0.1 mailhog.localhost
@@ -164,16 +166,58 @@ All containers use consistent `freegle-*` naming:
 
 ```bash
 # View logs
-docker logs freegle-freegle
-docker logs freegle-modtools
+docker logs freegle-freegle-dev    # Development Freegle site
+docker logs freegle-freegle-prod   # Production Freegle site
+docker logs freegle-modtools       # ModTools site
+docker logs freegle-apiv1          # PHP API
+docker logs freegle-apiv2          # Go API
+docker logs freegle-status         # Status monitor
+docker logs freegle-delivery       # Image delivery service
+docker logs freegle-playwright     # Test runner
 
 # Execute commands in containers  
-docker exec -it freegle-freegle bash
+docker exec -it freegle-freegle-dev bash
 docker exec -it freegle-percona mysql -u root -piznik
 
 # Restart specific services
 docker restart freegle-modtools
+docker restart freegle-status
 ```
+
+## Running Playwright Tests Manually
+
+To run Playwright tests manually within the playwright container:
+
+```bash
+# Enter the playwright container
+docker exec -it freegle-playwright bash
+
+# Run all tests
+npm run test
+
+# Run specific test file
+npx playwright test tests/e2e/filename.spec.js
+
+# Run tests with UI (requires X11 forwarding in WSL)
+npm run test:ui
+
+# Run tests in headed mode (requires X11 forwarding in WSL)
+npm run test:headed
+
+# View test report after running tests
+npm run test:show-report
+```
+
+**Accessing Test Reports:**
+After running `npm run test:show-report` inside the container, the Playwright HTML report will be accessible at:
+- **[Test Report](http://localhost:9324)** - Playwright HTML test report
+
+The report server will display:
+```
+Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.
+```
+
+Note: The report runs on port 9323 inside the container but is mapped to port 9324 on the host system.
 
 # Using the System
 
@@ -183,13 +227,18 @@ Once all services show as **Running** in the status monitor, you can access:
 * **[Status Monitor](http://localhost:8081)** - Real-time service health with CPU monitoring, visit buttons, and container management
   - **Restart Button** - Available for all containers to quickly restart services
   - **Rebuild Button** - Available for containers with build context (freegle, modtools, apiv1, apiv2, status) to rebuild and restart
+  - **Playwright Test Runner** - Run end-to-end tests with real-time progress tracking and HTML reports
+  
+  > ⚠️ **Development Tool Notice**: The status monitor and test runner functionality was created by [Claude Code](https://claude.ai/code) and is intended for development use only. It is not production-quality code and should not be used in production environments.
 
 ## Main Applications
-* **[Freegle](https://freegle.localhost)** - User site (Login: `test@test.com` / `freegle`)
+* **[Freegle Dev](https://freegle-dev.localhost)** - User site development version (Login: `test@test.com` / `freegle`)
+* **[Freegle Prod](https://freegle-prod.localhost)** - User site production build (Login: `test@test.com` / `freegle`) 
 * **[ModTools](https://modtools.localhost)** - Moderator site (Login: `testmod@test.com` / `freegle`)
 
-**Note:** It's normal for Freegle and ModTools pages to reload a few times on first view - 
-this is expected Nuxt.js development mode behavior. Also, `nuxt dev` uses HTTP/1.1 which 
+**Note:** It's normal for Freegle Dev and ModTools pages to reload a few times on first view - 
+this is expected Nuxt.js development mode behavior. The Freegle Prod container runs a production 
+build for testing production-like behavior. Also, `nuxt dev` uses HTTP/1.1 which 
 serializes asset loading, making it slower than the live system which uses HTTP/2.  
 This means the page load can be quite slow until the browser has cached the code.  
 You can see this via 'Pending' calls in the Network tab.
@@ -225,7 +274,13 @@ The only recognised postcode is EH3 6SS.
 * Email to Mailhog not yet verified.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
 * This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
+* **Test Coverage Reports:** Code coverage reporting is disabled in the Docker environment to prevent test hangs. Coverage reports are only generated in CI/CircleCI environments.
 
-**Note for Go API Development:** The Go API doesn't have hot module reloading (HMR). Use the **Rebuild Button** in the [Status Monitor](http://localhost:8081) for quick container rebuilds when making code changes.
+**Container Development Notes:**
+- **Freegle Dev**: Runs `nuxt dev` with hot module reloading for rapid development
+- **Freegle Prod**: Runs production build to test optimized behavior without HMR
+- **ModTools**: Runs `nuxt dev` with hot module reloading for rapid development  
+- **Go API (apiv2)**: No hot module reloading - use **Rebuild Button** in [Status Monitor](http://localhost:8081) for quick rebuilds
+- **Playwright**: Dedicated container for running end-to-end tests with network access to all services
 
 </details>

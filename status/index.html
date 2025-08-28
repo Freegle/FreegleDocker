@@ -51,12 +51,22 @@
         
         <h2>🏠 Freegle Components</h2>
         
-        <div id="freegle" class="service loading">
+        <div id="freegle-dev" class="service loading">
             <div>
-                <strong>Freegle (User Site)</strong> - iznik-nuxt3<br>
-                <span class="url">http://freegle.localhost</span><br>
+                <strong>Freegle Dev (User Site)</strong> - iznik-nuxt3 development<br>
+                <span class="url">http://freegle-dev.localhost</span><br>
                 <small>Login: test@test.com / freegle</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-freegle</small><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-freegle-dev</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+        
+        <div id="freegle-prod" class="service loading">
+            <div>
+                <strong>Freegle Prod (User Site)</strong> - iznik-nuxt3 production<br>
+                <span class="url">http://freegle-prod.localhost</span><br>
+                <small>Login: test@test.com / freegle</small><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-freegle-prod</small><br>
                 <span class="status">Loading...</span>
             </div>
         </div>
@@ -109,6 +119,7 @@
                 <span class="status">Loading...</span>
             </div>
         </div>
+        
         
         <h2>🔧 Infrastructure</h2>
         
@@ -179,6 +190,32 @@
                 <span class="status">Loading...</span>
             </div>
         </div>
+        
+        <h2>🧪 Testing</h2>
+        
+        
+        <div id="playwright" class="service loading">
+            <div>
+                <strong>Playwright E2E Tests</strong> - Run automated end-to-end tests<br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-playwright</small><br>
+                <span class="status">Loading...</span>
+                <div class="container-actions" style="margin-top: 8px;">
+                    <button id="runTestsBtn" class="action-button" style="background: #0070f3;">Run Tests</button>
+                </div>
+                <div id="testStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                <div id="testProgress" style="margin-top: 8px; display: none;">
+                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 20px; overflow: hidden;">
+                        <div id="testProgressBar" style="background: #0070f3; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                    <div id="testProgressText" style="font-size: 11px; color: #666; margin-top: 2px;"></div>
+                </div>
+                <div id="testLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                <div style="margin-top: 8px;">
+                    <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; margin-right: 4px; display: none;">Show/Hide Logs</button>
+                    <a id="reportLinkBtn" href="http://playwright.localhost" target="_blank" class="action-button" style="background: #17a2b8; font-size: 10px; text-decoration: none;">HTML Report</a>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -192,12 +229,14 @@
         }
         
         const services = [
-            { id: 'freegle', container: 'freegle-freegle' },
+            { id: 'freegle-dev', container: 'freegle-freegle-dev' },
+            { id: 'freegle-prod', container: 'freegle-freegle-prod' },
             { id: 'modtools', container: 'freegle-modtools' },
             { id: 'apiv1', container: 'freegle-apiv1' },
             { id: 'apiv2', container: 'freegle-apiv2' },
             { id: 'phpmyadmin', container: 'freegle-phpmyadmin' },
             { id: 'mailhog', container: 'freegle-mailhog' },
+            { id: 'playwright', container: 'freegle-playwright' },
             { id: 'percona', container: 'freegle-percona' },
             { id: 'postgres', container: 'freegle-postgres' },
             { id: 'redis', container: 'freegle-redis' },
@@ -210,9 +249,13 @@
 
         function addActionButtons(service, element) {
             // Add visit button for web services
-            if (service.id === 'freegle' || service.id === 'modtools') {
-                const serviceUrl = service.id === 'freegle' ? 'http://freegle.localhost' : 'http://modtools.localhost';
-                const serviceName = service.id === 'freegle' ? 'Freegle' : 'ModTools';
+            if (service.id === 'freegle-dev' || service.id === 'freegle-prod' || service.id === 'modtools') {
+                const serviceUrl = service.id === 'freegle-dev' ? 'http://freegle-dev.localhost' : 
+                                 service.id === 'freegle-prod' ? 'http://freegle-prod.localhost' : 
+                                 'http://modtools.localhost';
+                const serviceName = service.id === 'freegle-dev' ? 'Freegle Dev' : 
+                                  service.id === 'freegle-prod' ? 'Freegle Prod' : 
+                                  'ModTools';
                 
                 if (!element.querySelector('.visit-button')) {
                     const visitButton = document.createElement('a');
@@ -256,27 +299,32 @@
             }
             
             // Add container action buttons
-            if (!element.querySelector('.container-actions')) {
-                const actionsDiv = document.createElement('div');
+            let actionsDiv = element.querySelector('.container-actions');
+            if (!actionsDiv) {
+                actionsDiv = document.createElement('div');
                 actionsDiv.className = 'container-actions';
-                
+                element.appendChild(actionsDiv);
+            }
+            
+            // Only add buttons if they don't already exist
+            if (!actionsDiv.querySelector('.restart-btn')) {
                 // Restart button
                 const restartBtn = document.createElement('button');
-                restartBtn.className = 'action-button';
+                restartBtn.className = 'action-button restart-btn';
                 restartBtn.textContent = 'Restart';
                 restartBtn.onclick = () => restartContainer(service.container);
                 actionsDiv.appendChild(restartBtn);
-                
-                // Rebuild button (for containers that can be rebuilt - those with build context)
-                if (['freegle', 'modtools', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
+            }
+            
+            // Rebuild button (for containers that can be rebuilt - those with build context)
+            if (['freegle-dev', 'freegle-prod', 'modtools', 'apiv1', 'apiv2', 'playwright', 'status'].includes(service.id)) {
+                if (!actionsDiv.querySelector('.rebuild-btn')) {
                     const rebuildBtn = document.createElement('button');
-                    rebuildBtn.className = 'action-button danger';
+                    rebuildBtn.className = 'action-button danger rebuild-btn';
                     rebuildBtn.textContent = 'Rebuild';
                     rebuildBtn.onclick = () => rebuildContainer(service.container, service.id);
                     actionsDiv.appendChild(rebuildBtn);
                 }
-                
-                element.appendChild(actionsDiv);
             }
         }
 
@@ -287,14 +335,22 @@
             const statusElement = element.querySelector('.status');
             addActionButtons(service, element);
             
+            // Format start time and uptime
+            let timeInfo = '';
+            if (data.startTime && data.uptime !== null) {
+                const startTime = new Date(data.startTime);
+                const uptimeStr = formatUptime(data.uptime);
+                timeInfo = `<br><small style="font-weight: normal; color: #999; font-size: 10px;">Started: ${formatDateTime(startTime)} (${uptimeStr})</small>`;
+            }
+            
             if (data.status === 'success') {
-                statusElement.innerHTML = `Running<br><small style="font-weight: normal; color: #666;">✓ ${data.message}</small>`;
+                statusElement.innerHTML = `Running<br><small style="font-weight: normal; color: #666;">✓ ${data.message}</small>${timeInfo}`;
                 element.className = 'service online';
             } else if (data.status === 'starting') {
-                statusElement.innerHTML = `Starting...<br><small style="font-weight: normal; color: #666;">${data.message}</small>`;
+                statusElement.innerHTML = `Starting...<br><small style="font-weight: normal; color: #666;">${data.message}</small>${timeInfo}`;
                 element.className = 'service loading';
             } else {
-                statusElement.innerHTML = `Offline<br><small style="font-weight: normal; color: #666;">${data.message}</small>`;
+                statusElement.innerHTML = `Offline<br><small style="font-weight: normal; color: #666;">${data.message}</small>${timeInfo}`;
                 element.className = 'service offline';
             }
             
@@ -313,7 +369,10 @@
                     <div class="cpu-text">CPU ${cpu}%</div>
                 `;
             }
+            
+            // Test button is always enabled since dependencies are handled by Docker Compose
         }
+
 
         async function restartContainer(containerName) {
             const button = event.target;
@@ -418,21 +477,355 @@
             countdownSeconds = 10;
         }
 
-        // Add action buttons on page load
-        services.forEach(service => {
-            const element = document.getElementById(service.id);
-            if (element) {
-                addActionButtons(service, element);
+        async function runPlaywrightTests() {
+            console.log('runPlaywrightTests called');
+            const button = document.getElementById('runTestsBtn');
+            const statusDiv = document.getElementById('testStatus');
+            const logsDiv = document.getElementById('testLogs');
+            const progressDiv = document.getElementById('testProgress');
+            const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+            
+            // Dependencies are handled by Docker Compose, so tests can run immediately
+            
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Starting Tests...';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Initializing test environment...</span>';
+            logsDiv.style.display = 'none';
+            progressDiv.style.display = 'block';
+            toggleLogsBtn.style.display = 'none';
+            updateProgress(0, 'Starting...');
+            
+            try {
+                console.log('Making API request to /api/tests/playwright');
+                const response = await fetch('/api/tests/playwright', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                console.log('API response status:', response.status);
+                
+                if (response.ok) {
+                    button.textContent = 'Tests Running...';
+                    statusDiv.innerHTML = '<span style="color: #0070f3;">🧪 Tests are running in Docker container...</span>';
+                    updateProgress(10, 'Test environment starting...');
+                    
+                    // Start polling for test results
+                    console.log('Starting test result polling');
+                    pollTestResults();
+                } else {
+                    const error = await response.text();
+                    console.error('API error response:', error);
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Failed to start tests: ${error}</span>`;
+                    resetTestUI(originalText);
+                }
+            } catch (error) {
+                console.error('Test start error:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                resetTestUI(originalText);
             }
-        });
+        }
+
+        function updateProgress(percentage, text) {
+            const progressBar = document.getElementById('testProgressBar');
+            const progressText = document.getElementById('testProgressText');
+            
+            progressBar.style.width = percentage + '%';
+            progressText.textContent = text;
+        }
+
+        function resetTestUI(buttonText) {
+            const button = document.getElementById('runTestsBtn');
+            const progressDiv = document.getElementById('testProgress');
+            const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+            
+            button.textContent = buttonText;
+            button.disabled = false;
+            progressDiv.style.display = 'none';
+            toggleLogsBtn.style.display = 'inline-block';
+        }
         
-        // Start countdown timer (updates every second)
-        updateCountdown();
-        setInterval(updateCountdown, 1000);
+        async function pollTestResults() {
+            console.log('Polling test results...');
+            const statusDiv = document.getElementById('testStatus');
+            const logsDiv = document.getElementById('testLogs');
+            
+            try {
+                const response = await fetch('/api/tests/playwright/status');
+                console.log('Poll response status:', response.status);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Poll result:', result.status, result.message);
+                    
+                    if (result.status === 'running') {
+                        statusDiv.innerHTML = `<span style="color: #0070f3;">🧪 ${result.message}</span>`;
+                        
+                        // Update progress based on log content
+                        const progress = estimateProgressFromLogs(result.logs, result);
+                        updateProgress(progress.percentage, progress.text);
+                        
+                        // Update logs
+                        if (result.logs) {
+                            logsDiv.textContent = result.logs;
+                        }
+                        
+                        // Continue polling
+                        console.log('Continuing to poll in 2 seconds...');
+                        setTimeout(pollTestResults, 2000);
+                    } else if (result.status === 'completed') {
+                        const color = result.success ? '#28a745' : '#dc3545';
+                        const icon = result.success ? '✅' : '❌';
+                        statusDiv.innerHTML = `<span style="color: ${color};">${icon} ${result.message}</span>`;
+                        updateProgress(100, result.success ? 'All tests passed!' : 'Tests completed with failures');
+                        
+                        if (result.logs) {
+                            logsDiv.textContent = result.logs;
+                        }
+                        console.log('Tests completed, stopping polling');
+                        resetTestUI('Run Playwright Tests');
+                    } else if (result.status === 'failed') {
+                        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ${result.message}</span>`;
+                        updateProgress(0, 'Test execution failed');
+                        
+                        if (result.logs) {
+                            logsDiv.textContent = result.logs;
+                        }
+                        console.log('Tests failed, stopping polling');
+                        resetTestUI('Run Playwright Tests');
+                    } else if (result.status === 'idle') {
+                        console.log('Tests are idle, stopping polling');
+                        resetTestUI('Run Playwright Tests');
+                    }
+                } else {
+                    // If status check fails, assume tests are done
+                    console.error('Status check failed with:', response.status);
+                    statusDiv.innerHTML = '<span style="color: #6c757d;">❓ Test status unknown</span>';
+                    resetTestUI('Run Playwright Tests');
+                }
+            } catch (error) {
+                console.error('Error polling test results:', error);
+                statusDiv.innerHTML = '<span style="color: #6c757d;">❓ Unable to check test status</span>';
+                resetTestUI('Run Playwright Tests');
+            }
+        }
+
+        function estimateProgressFromLogs(logs, result) {
+            if (!logs) return { percentage: 5, text: 'Starting...' };
+            
+            const lowerLogs = logs.toLowerCase();
+            
+            // Use server-provided test progress data if available
+            if (result && result.completedTests !== undefined && result.totalTests !== undefined) {
+                const completed = result.completedTests;
+                const total = result.totalTests;
+                const basePercentage = 65; // Base percentage when tests start
+                const testProgressPercentage = (completed / total) * 30; // Tests take up 30% of total progress
+                const percentage = Math.min(95, basePercentage + testProgressPercentage);
+                return { percentage: Math.round(percentage), text: `${completed}/${total} tests completed` };
+            }
+            
+            // More granular progress tracking
+            if (lowerLogs.includes('checking package.json')) {
+                return { percentage: 10, text: 'Initializing environment...' };
+            } else if (lowerLogs.includes('installing dependencies')) {
+                return { percentage: 25, text: 'Installing dependencies...' };
+            } else if (lowerLogs.includes('installing playwright')) {
+                return { percentage: 45, text: 'Installing Playwright browsers...' };
+            } else if (lowerLogs.includes('running playwright') || lowerLogs.includes('running') && lowerLogs.includes('tests')) {
+                // Fallback progress estimation from logs
+                const testMatch = logs.match(/(\d+)\/(\d+) tests completed/i);
+                const runningMatch = logs.match(/running (\d+) tests?/i);
+                
+                if (testMatch) {
+                    const completed = parseInt(testMatch[1]);
+                    const total = parseInt(testMatch[2]);
+                    const basePercentage = 65;
+                    const testProgressPercentage = (completed / total) * 30;
+                    const percentage = Math.min(95, basePercentage + testProgressPercentage);
+                    return { percentage: Math.round(percentage), text: `${completed}/${total} tests completed` };
+                } else if (runningMatch) {
+                    return { percentage: 65, text: `Running ${runningMatch[1]} tests...` };
+                }
+                return { percentage: 65, text: 'Running tests...' };
+            } else if (lowerLogs.includes('passed') && lowerLogs.includes('failed')) {
+                // Extract test summary
+                const passedMatch = logs.match(/(\d+) passed/i);
+                const failedMatch = logs.match(/(\d+) failed/i);
+                if (passedMatch || failedMatch) {
+                    const passed = passedMatch ? passedMatch[1] : '0';
+                    const failed = failedMatch ? failedMatch[1] : '0';
+                    return { percentage: 85, text: `${passed} passed, ${failed} failed` };
+                }
+                return { percentage: 85, text: 'Processing results...' };
+            } else if (lowerLogs.includes('generating reports')) {
+                return { percentage: 90, text: 'Generating reports...' };
+            } else if (lowerLogs.includes('test results')) {
+                return { percentage: 80, text: 'Processing results...' };
+            } else if (lowerLogs.includes('cleaned up') || lowerLogs.includes('freegle container is running')) {
+                return { percentage: 15, text: 'Environment ready...' };
+            } else {
+                return { percentage: 35, text: 'Test environment working...' };
+            }
+        }
+
+        function toggleLogs() {
+            const logsDiv = document.getElementById('testLogs');
+            logsDiv.style.display = logsDiv.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Helper functions for formatting times
+        function formatDateTime(date) {
+            if (!date) return 'Unknown';
+            const now = new Date();
+            const diffMs = now - date;
+            const diffHours = diffMs / (1000 * 60 * 60);
+            
+            if (diffHours < 24) {
+                // Show time if less than 24 hours ago
+                return date.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false 
+                });
+            } else {
+                // Show date and time if more than 24 hours ago
+                return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false
+                });
+            }
+        }
         
-        // Initial check and then every 10 seconds
-        checkAllServices();
-        setInterval(checkAllServices, 10000);
+        function formatUptime(seconds) {
+            if (seconds === null || seconds < 0) return 'Unknown';
+            
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (days > 0) {
+                return `${days}d ${hours}h ${minutes}m`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+
+
+        // Check for existing test status on page load
+        async function checkInitialTestStatus() {
+            console.log('Checking for existing test status...');
+            try {
+                const response = await fetch('/api/tests/playwright/status');
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Initial test status:', result.status);
+                    
+                    if (result.status === 'running') {
+                        console.log('Found running tests, starting UI polling');
+                        const button = document.getElementById('runTestsBtn');
+                        const statusDiv = document.getElementById('testStatus');
+                        const progressDiv = document.getElementById('testProgress');
+                        
+                        // Update UI to show tests are running
+                        button.disabled = true;
+                        button.textContent = 'Tests Running...';
+                        statusDiv.innerHTML = `<span style="color: #0070f3;">🧪 ${result.message || 'Tests in progress...'}</span>`;
+                        progressDiv.style.display = 'block';
+                        
+                        // Update progress based on current status
+                        const progress = estimateProgressFromLogs(result.logs, result);
+                        updateProgress(progress.percentage, progress.text);
+                        
+                        // Update logs if available
+                        const logsDiv = document.getElementById('testLogs');
+                        if (result.logs) {
+                            logsDiv.textContent = result.logs;
+                        }
+                        
+                        // Start polling
+                        setTimeout(pollTestResults, 2000);
+                    } else if (result.status === 'completed' || result.status === 'failed') {
+                        console.log('Found completed test results');
+                        const statusDiv = document.getElementById('testStatus');
+                        const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+                        
+                        // Show final status
+                        const color = result.success ? '#28a745' : '#dc3545';
+                        const icon = result.success ? '✅' : '❌';
+                        statusDiv.innerHTML = `<span style="color: ${color};">${icon} ${result.message}</span>`;
+                        
+                        // Show logs and controls
+                        const logsDiv = document.getElementById('testLogs');
+                        if (result.logs) {
+                            logsDiv.textContent = result.logs;
+                        }
+                        
+                        // Make artifacts available
+                        resetTestUI('Run Playwright Tests');
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking initial test status:', error);
+            }
+        }
+
+        // Initialize when DOM is ready
+        function initializePage() {
+            // Add action buttons on page load
+            services.forEach(service => {
+                const element = document.getElementById(service.id);
+                if (element) {
+                    addActionButtons(service, element);
+                }
+            });
+            
+            // Add event listener for test button
+            const runTestsBtn = document.getElementById('runTestsBtn');
+            if (runTestsBtn) {
+                runTestsBtn.addEventListener('click', runPlaywrightTests);
+                console.log('Test button event listener added');
+                
+                // Test button is always enabled since dependencies are handled by Docker Compose
+            } else {
+                console.error('runTestsBtn not found');
+            }
+            
+            // Add event listener for toggle logs button
+            const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+            if (toggleLogsBtn) {
+                toggleLogsBtn.addEventListener('click', toggleLogs);
+            }
+            
+            // Check for existing test status first
+            checkInitialTestStatus();
+            
+            // Start countdown timer (updates every second)
+            updateCountdown();
+            setInterval(updateCountdown, 1000);
+            
+            // Initial check and then every 10 seconds
+            checkAllServices();
+            setInterval(checkAllServices, 10000);
+            
+            console.log('Status page initialized');
+        }
+        
+
+        // Initialize when DOM is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializePage);
+        } else {
+            initializePage();
+        }
     </script>
 </body>
 </html>
