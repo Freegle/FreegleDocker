@@ -503,7 +503,9 @@ async function runPlaywrightTests() {
     logs: '',
     success: false,
     startTime: new Date(),
-    endTime: null
+    endTime: null,
+    completedTests: 0,
+    totalTests: 0 // Will be determined dynamically by the progress tracker
   };
 
   console.log('Starting Playwright tests in Docker...');
@@ -537,10 +539,13 @@ async function runPlaywrightTests() {
     testStatus.message = 'Executing tests in Playwright container...';
     testStatus.logs += 'Playwright container is ready\n';
 
-    // Execute tests in the persistent Playwright container using docker exec
-    const testCommand = `docker exec freegle-playwright npx playwright test --reporter=html`;
+    // Execute tests in the Playwright container using docker exec (without nohup for proper output capture)
+    const testCommand = `docker exec freegle-playwright sh -c "
+      cd /app &&
+      npx playwright test --reporter=html
+    "`;
 
-    console.log('Executing Playwright tests in persistent container...');
+    console.log('Executing Playwright tests in container...');
     
     // Execute the command and capture output in real-time
     const { spawn } = require('child_process');
@@ -549,29 +554,40 @@ async function runPlaywrightTests() {
     });
 
     let testOutput = '';
+    let stdoutBuffer = '';
+    let stderrBuffer = '';
 
-    testProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      testOutput += output;
-      testStatus.logs += output;
+    function processCompleteLines(buffer, isStderr = false) {
+      const lines = buffer.split('\n');
+      // Keep the last incomplete line in the buffer
+      const incompleteLineIndex = buffer.endsWith('\n') ? lines.length : lines.length - 1;
+      const completeLines = lines.slice(0, incompleteLineIndex);
+      const remainingBuffer = buffer.endsWith('\n') ? '' : lines[incompleteLineIndex] || '';
       
-      // Get the last meaningful line from the recent output for detailed progress
-      const lines = output.trim().split('\n');
-      const lastLine = lines[lines.length - 1] || '';
-      const secondLastLine = lines.length > 1 ? lines[lines.length - 2] : '';
+      // Process each complete line
+      completeLines.forEach(line => {
+        if (line.trim()) {
+          updateProgressFromLine(line.trim(), isStderr);
+        }
+      });
       
-      // Update status based on log content with more detailed progress
-      const lowerOutput = output.toLowerCase();
-      if (lowerOutput.includes('checking test environment')) {
+      return remainingBuffer;
+    }
+
+    function updateProgressFromLine(line, isStderr = false) {
+      const lowerLine = line.toLowerCase();
+      
+      // Update status based on line content with more detailed progress
+      if (lowerLine.includes('checking test environment')) {
         testStatus.message = 'Initializing test environment...';
-      } else if (lowerOutput.includes('installing alpine') || lowerOutput.includes('apk add')) {
+      } else if (lowerLine.includes('installing alpine') || lowerLine.includes('apk add')) {
         testStatus.message = 'Installing system dependencies...';
-      } else if (lowerOutput.includes('installing playwright')) {
+      } else if (lowerLine.includes('installing playwright')) {
         testStatus.message = 'Installing Playwright browsers...';
-      } else if (lowerOutput.includes('running playwright')) {
+      } else if (lowerLine.includes('running playwright')) {
         testStatus.message = 'Running Playwright tests...';
-      } else if (lowerOutput.includes('running') && lowerOutput.includes('tests')) {
-        const testMatch = output.match(/running (\d+) tests?\s+using/i);
+      } else if (lowerLine.includes('running') && lowerLine.includes('tests')) {
+        const testMatch = line.match(/running (\d+) tests?\s+using/i);
         if (testMatch) {
           testStatus.totalTests = parseInt(testMatch[1]);
           const currentTest = testStatus.completedTests ? testStatus.completedTests + 1 : 1;
@@ -579,9 +595,23 @@ async function runPlaywrightTests() {
         } else {
           testStatus.message = 'Running Playwright tests...';
         }
-      } else if (output.match(/^\s*[✓✘]\s+\d+/m)) {
-        // Extract current test progress from individual test results
-        // Count all test results in the entire log, not just the current output chunk
+      } else if (line.includes('Closed browser context after test')) {
+        // Use browser context closure to count completed tests - this is very reliable
+        const allContextClosures = (testStatus.logs.match(/Closed browser context after test/g) || []);
+        const completed = allContextClosures.length;
+        const totalTests = testStatus.totalTests || 40;
+        
+        // Store test progress for progress bar
+        testStatus.completedTests = completed;
+        
+        // Also try to get pass/fail counts from test result markers if available
+        const passed = (testStatus.logs.match(/^\s*✓\s+\d+/gm) || []).length;
+        const failed = (testStatus.logs.match(/^\s*✘\s+\d+/gm) || []).length;
+        
+        testStatus.message = `${completed}/${totalTests} tests completed (${passed}✓ ${failed}✘)`;
+      } else if (line.match(/^\s*[✓✘]\s+\d+/)) {
+        // Extract current test progress from individual test results as fallback
+        // Count all test results in the entire log, not just the current line
         const allResults = (testStatus.logs.match(/^\s*[✓✘]\s+\d+/gm) || []);
         if (allResults.length > 0) {
           const completed = allResults.length;
@@ -589,21 +619,18 @@ async function runPlaywrightTests() {
           const failed = (testStatus.logs.match(/^\s*✘\s+\d+/gm) || []).length;
           const totalTests = testStatus.totalTests || 40;
           
-          // Store test progress for progress bar
-          testStatus.completedTests = completed;
+          // Store test progress for progress bar (but prefer context closure count)
+          if (!testStatus.completedTests || testStatus.completedTests < completed) {
+            testStatus.completedTests = completed;
+          }
           
           // Show the actual test result line for context
-          const testResultLine = output.match(/^\s*[✓✘]\s+\d+.*$/m);
-          if (testResultLine) {
-            const result = testResultLine[0].trim();
-            testStatus.message = `${completed}/${totalTests} tests completed (${passed}✓ ${failed}✘) | ${result}`;
-          } else {
-            testStatus.message = `${completed}/${totalTests} tests completed (${passed} passed, ${failed} failed)`;
-          }
+          const result = line.trim();
+          testStatus.message = `${completed}/${totalTests} tests completed (${passed}✓ ${failed}✘) | ${result}`;
         }
-      } else if (output.match(/^\s*\d+\)\s+.+\.spec\.js:\d+:\d+\s+›/m)) {
+      } else if (line.match(/^\s*\d+\)\s+.+\.spec\.js:\d+:\d+\s+›/)) {
         // Detect active test execution by looking for test file references
-        const testMatch = output.match(/^\s*\d+\)\s+(.+\.spec\.js):\d+:\d+\s+›\s+(.+)$/m);
+        const testMatch = line.match(/^\s*\d+\)\s+(.+\.spec\.js):\d+:\d+\s+›\s+(.+)$/);
         if (testMatch) {
           const testFile = testMatch[1].replace(/.*\//, ''); // Get just the filename
           const testName = testMatch[2];
@@ -611,20 +638,15 @@ async function runPlaywrightTests() {
           const totalTests = testStatus.totalTests || 40;
           testStatus.message = `Running test ${currentTest}/${totalTests}: ${testName} (${testFile})`;
         }
-      } else if (output.includes('› ') && (output.includes('test-') || output.includes('.spec.js'))) {
+      } else if (line.includes('› ') && (line.includes('test-') || line.includes('.spec.js'))) {
         // Generic test execution detection - show the actual line
-        const testLine = lines.find(line => line.includes('› ') && (line.includes('test-') || line.includes('.spec.js')));
-        if (testLine) {
-          const cleanLine = testLine.replace(/^\s*\d+\)\s*/, '').trim();
-          testStatus.message = `Running: ${cleanLine}`;
-        } else {
-          testStatus.message = 'Running tests...';
-        }
-      } else if (lowerOutput.includes('passed') && lowerOutput.includes('failed') && output.match(/\d+\s+passed.*\d+\s+failed/i)) {
+        const cleanLine = line.replace(/^\s*\d+\)\s*/, '').trim();
+        testStatus.message = `Running: ${cleanLine}`;
+      } else if (lowerLine.includes('passed') && lowerLine.includes('failed') && line.match(/\d+\s+passed.*\d+\s+failed/i)) {
         // Only show final results when we see a complete summary line
-        const passedMatch = output.match(/(\d+)\s+passed/i);
-        const failedMatch = output.match(/(\d+)\s+failed/i);
-        const skippedMatch = output.match(/(\d+)\s+skipped/i);
+        const passedMatch = line.match(/(\d+)\s+passed/i);
+        const failedMatch = line.match(/(\d+)\s+failed/i);
+        const skippedMatch = line.match(/(\d+)\s+skipped/i);
         
         if (passedMatch || failedMatch) {
           const passed = passedMatch ? passedMatch[1] : '0';
@@ -632,28 +654,38 @@ async function runPlaywrightTests() {
           const skipped = skippedMatch ? skippedMatch[1] : '0';
           testStatus.message = `Tests completed: ${passed} passed, ${failed} failed${skipped !== '0' ? ', ' + skipped + ' skipped' : ''}`;
         }
-      } else if (lowerOutput.includes('generating') && (lowerOutput.includes('html report') || lowerOutput.includes('playwright report'))) {
+      } else if (lowerLine.includes('generating') && (lowerLine.includes('html report') || lowerLine.includes('playwright report'))) {
         // Only show "generating reports" when we explicitly see HTML report generation
         testStatus.message = 'Generating HTML test reports...';
-      } else if (lowerOutput.includes('generating') && lowerOutput.includes('coverage')) {
+      } else if (lowerLine.includes('generating') && lowerLine.includes('coverage')) {
         testStatus.message = 'Generating code coverage reports...';
-      } else if (lastLine.length > 10) {
+      } else if (!isStderr && line.length > 10) {
         // Show the most recent meaningful line for general progress
-        const meaningfulLine = lastLine.length > 80 ? lastLine.substring(0, 80) + '...' : lastLine;
+        const meaningfulLine = line.length > 80 ? line.substring(0, 80) + '...' : line;
         const currentMessage = testStatus.message || 'Running tests...';
         const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
         
         // Only update if this looks like meaningful progress (not just whitespace or timestamps)
-        if (lastLine.match(/[a-zA-Z]/) && !lastLine.match(/^\s*$/)) {
+        if (line.match(/[a-zA-Z]/) && !line.match(/^\s*$/)) {
           // Check if it's a test action or navigation
-          if (lastLine.includes('page.') || lastLine.includes('test') || lastLine.includes('browser') || 
-              lastLine.includes('click') || lastLine.includes('fill') || lastLine.includes('wait') ||
-              lastLine.includes('navigation') || lastLine.includes('loading') || lastLine.includes('error')) {
+          if (line.includes('page.') || line.includes('test') || line.includes('browser') || 
+              line.includes('click') || line.includes('fill') || line.includes('wait') ||
+              line.includes('navigation') || line.includes('loading') || line.includes('error')) {
             testStatus.message = `${currentMessage.split(' | ')[0]} | ${meaningfulLine} (${timestamp})`;
             testStatus.lastOutputTime = Date.now();
           }
         }
       }
+    }
+
+    testProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      testOutput += output;
+      testStatus.logs += output;
+      
+      // Add to buffer and process complete lines
+      stdoutBuffer += output;
+      stdoutBuffer = processCompleteLines(stdoutBuffer, false);
       
       console.log('Test stdout:', output);
     });
@@ -663,16 +695,59 @@ async function runPlaywrightTests() {
       testOutput += output;
       testStatus.logs += output;
       
-      // Update status for stderr as well
-      const lowerOutput = output.toLowerCase();
-      if (lowerOutput.includes('error') && !lowerOutput.includes('warning')) {
-        testStatus.message = 'Processing test output...';
-      }
+      // Add to buffer and process complete lines
+      stderrBuffer += output;
+      stderrBuffer = processCompleteLines(stderrBuffer, true);
       
       console.log('Test stderr:', output);
     });
 
+    // Periodically check test progress by reading the progress file
+    const progressCheckInterval = setInterval(() => {
+      if (testStatus.status === 'running') {
+        try {
+          const { execSync } = require('child_process');
+          const progressOutput = execSync('docker exec freegle-playwright cat /app/test-progress.json 2>/dev/null || echo "{}"', { encoding: 'utf8', timeout: 5000 });
+          const progress = JSON.parse(progressOutput.trim() || '{}');
+          
+          if (progress.totalTests !== undefined) {
+            const completedAndFailed = (progress.completedTests || 0) + (progress.failedTests || 0);
+            const currentTotal = progress.totalTests || testStatus.totalTests;
+            
+            // Find currently running test
+            let currentRunningTest = null;
+            if (progress.tests) {
+              for (const [testId, test] of Object.entries(progress.tests)) {
+                if (test.status === 'running') {
+                  currentRunningTest = {
+                    title: test.title,
+                    testId: testId
+                  };
+                  break;
+                }
+              }
+            }
+            
+            console.log(`Progress check: ${completedAndFailed}/${currentTotal} tests completed (${progress.runningTests || 0} running, ${progress.failedTests || 0} failed)`);
+            
+            // Update status with accurate counts
+            testStatus.completedTests = completedAndFailed;
+            testStatus.totalTests = currentTotal;
+            testStatus.currentRunningTest = currentRunningTest;
+            testStatus.message = `${completedAndFailed}/${currentTotal} tests completed`;
+            
+            if (progress.failedTests > 0) {
+              testStatus.message += ` (${progress.failedTests} failed)`;
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to read test progress file:', error.message);
+        }
+      }
+    }, 5000); // Check every 5 seconds for more responsive updates
+
     testProcess.on('close', (code) => {
+      clearInterval(progressCheckInterval);
       testStatus.endTime = new Date();
       const duration = Math.round((testStatus.endTime - testStatus.startTime) / 1000);
 
@@ -713,6 +788,18 @@ async function runPlaywrightTests() {
         testStatus.success = false;
         testStatus.message = `Tests failed (exit code ${code}) after ${duration}s`;
         testStatus.logs += `\n❌ Tests failed with exit code ${code}`;
+      }
+
+      // Start report server automatically after test completion (both success and failure)
+      try {
+        console.log('Starting Playwright report server...');
+        const reportServerCommand = 'docker exec -d freegle-playwright sh -c "cd /app && nohup npx playwright show-report --host=0.0.0.0 --port=9323 > /tmp/report-server.log 2>&1 &"';
+        execSync(reportServerCommand);
+        console.log('Playwright report server started successfully on port 9323');
+        testStatus.logs += '\n📊 HTML report server started on port 9323';
+      } catch (reportError) {
+        console.warn('Failed to start report server:', reportError.message);
+        testStatus.logs += '\n⚠️ Warning: Failed to start report server';
       }
 
       console.log(`Test process finished with code ${code}`);
@@ -808,11 +895,11 @@ const httpServer = http.createServer(async (req, res) => {
         
         console.log(`Rebuilding service: ${service} (${container})`);
         
-        // Change to docker compose project directory
-        process.chdir('/project');
+        // Change to docker compose project directory (parent of status container)
+        process.chdir('..');
         
-        // Build and restart the specific service
-        const buildCommand = `docker-compose build ${service} && docker-compose up -d ${service}`;
+        // Stop, remove, build and restart the specific service
+        const buildCommand = `docker-compose stop ${service} && docker-compose rm -f ${service} && docker-compose build ${service} && docker-compose up -d ${service}`;
         execSync(buildCommand, { timeout: 300000 }); // 5 minutes timeout
         
         res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -863,6 +950,7 @@ const httpServer = http.createServer(async (req, res) => {
       endTime: testStatus.endTime,
       completedTests: testStatus.completedTests,
       totalTests: testStatus.totalTests,
+      currentRunningTest: testStatus.currentRunningTest,
       lastOutputTime: testStatus.lastOutputTime,
       timeSinceLastOutput: timeSinceLastOutput
     }));
@@ -872,7 +960,7 @@ const httpServer = http.createServer(async (req, res) => {
   // Playwright report redirect endpoint - redirect to container's built-in server
   if (parsedUrl.pathname === '/api/tests/playwright/report' && req.method === 'GET') {
     res.writeHead(302, { 
-      'Location': 'http://localhost:9327' 
+      'Location': 'http://localhost:9323' 
     });
     res.end();
     return;

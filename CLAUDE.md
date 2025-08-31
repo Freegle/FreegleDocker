@@ -34,6 +34,7 @@ The Playwright container is configured with special networking to behave exactly
 - **Volume mounts**: Test files are mounted for automatic sync without container rebuilds
 - **Base URL**: Uses `http://freegle-prod.localhost` to test against production build
 - **Testing Target**: **IMPORTANT** - Tests run against the **production container** to ensure testing matches production behavior
+- **Container Lifecycle**: Container is restarted for each test run to ensure clean state, but report server persists using `nohup`
 
 Test URLs work properly:
 - `http://freegle-dev.localhost/` - Development Freegle site (fast, hot-reload)
@@ -48,3 +49,45 @@ Test URLs work properly:
 - Never fix Playwright tests by direct navigation - we need to simular user behaviour via clicks.  Similarly never bypass Playwright's checks by doing native Javascript click.
 - In Playwright tests, always use type() not fill() where possible to simulate user behaviour.
 Fix Withdraw issue.
+
+## CircleCI Submodule Integration
+
+This repository uses CircleCI to automatically test submodule changes. Each submodule is configured with a GitHub Actions workflow that triggers the parent repository's CircleCI pipeline.
+
+### Current Submodule Configuration
+
+The following submodules have `.github/workflows/trigger-parent-ci.yml` configured:
+- `iznik-nuxt3`
+- `iznik-nuxt3-modtools` 
+- `iznik-server`
+- `iznik-server-go`
+
+### Adding New Submodules
+
+When adding new submodules to this repository, follow these steps:
+
+1. **Add the submodule** to the repository using `git submodule add`
+
+2. **Create webhook workflow** in the new submodule repository:
+   ```bash
+   mkdir -p NEW_SUBMODULE/.github/workflows
+   ```
+
+3. **Copy the trigger workflow** from an existing submodule:
+   ```bash
+   cp iznik-nuxt3/.github/workflows/trigger-parent-ci.yml NEW_SUBMODULE/.github/workflows/
+   ```
+
+4. **Add CIRCLECI_TOKEN secret** to the new submodule repository:
+   - Go to Settings → Secrets and Variables → Actions
+   - Add repository secret named `CIRCLECI_TOKEN`
+   - Use the CircleCI API token value
+
+5. **Update documentation** in:
+   - Main `README.md` (add to webhook integration list)
+   - `.circleci/README.md` (add to configured submodules list)
+   - This `CLAUDE.md` file (add to current configuration list)
+
+6. **Test the integration** by making a test commit to the new submodule and verifying it triggers the FreegleDocker CircleCI pipeline.
+
+The webhook workflow automatically triggers CircleCI builds when changes are pushed to master/main branches, enabling continuous integration testing of the complete Docker stack.

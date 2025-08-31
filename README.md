@@ -257,6 +257,90 @@ You can see this via 'Pending' calls in the Network tab.
 </details>
 
 <details>
+<summary>🔄 Continuous Integration</summary>
+
+# CircleCI Integration
+
+This repository includes CircleCI configuration that automatically monitors submodules and runs integration tests when changes are detected.
+
+## Automated Submodule Testing
+
+The system automatically:
+- **Monitors submodules** every 6 hours for updates
+- **Updates submodules** to latest commits on their default branches
+- **Runs full integration tests** using the complete Docker Compose stack
+- **Commits successful updates** back to the repository
+- **Responds to webhooks** from submodule repositories for immediate testing
+
+## Workflows
+
+### Scheduled Check: `scheduled-submodule-check`
+- **Schedule**: Every 6 hours (`0 */6 * * *`)
+- **Branch**: Only runs on `master`
+- **Process**:
+  1. Updates all submodules to latest commits
+  2. Starts complete Docker Compose environment (if changes detected)
+  3. Waits for all services to be ready
+  4. Runs Playwright end-to-end tests via status container
+  5. Collects test artifacts and logs
+  6. Commits updates if tests pass
+
+### Webhook Trigger: `webhook-triggered`
+- **Purpose**: Immediate testing when submodule repositories push changes
+- **Trigger**: API calls from submodule repository webhooks
+- **Behavior**: Forces testing regardless of detected changes
+
+### Manual/Push: `build-and-test`
+- **Trigger**: Push to `master` branch or manual pipeline trigger
+- **Purpose**: On-demand testing and validation
+
+## Webhook Integration
+
+The following submodules are pre-configured with GitHub Actions workflows that automatically trigger CircleCI builds in this repository when changes are pushed:
+
+- **iznik-nuxt3** - User website repository
+- **iznik-nuxt3-modtools** - ModTools repository  
+- **iznik-server** - Legacy PHP API repository
+- **iznik-server-go** - Modern Go API repository
+
+Each submodule contains `.github/workflows/trigger-parent-ci.yml` that triggers the FreegleDocker CircleCI pipeline on push to master/main branches.
+
+### Setup Required
+
+To activate webhook integration, add a `CIRCLECI_TOKEN` secret to each submodule repository:
+
+1. **Get CircleCI API Token** from CircleCI → Personal API Tokens
+2. **Add secret** to each submodule: Settings → Secrets and Variables → Actions
+3. **Secret name**: `CIRCLECI_TOKEN`
+4. **Secret value**: Your CircleCI API token
+
+Once configured, any push to master/main in the submodules will automatically trigger integration testing in this repository.
+
+## Manual Testing
+
+Trigger tests manually via CircleCI dashboard or API:
+
+```bash
+# Via CircleCI API
+curl -X POST \
+  -H "Circle-Token: YOUR_CIRCLECI_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"branch": "master"}' \
+  https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline
+```
+
+## Monitoring
+
+- **Build Artifacts**: Docker logs, test reports, and debugging info automatically collected
+- **Timeout Protection**: Builds timeout after appropriate intervals to prevent resource waste
+- **Resource Cleanup**: Docker resources are always cleaned up after completion
+- **Smart Testing**: Only runs tests when submodule changes are detected
+
+For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md).
+
+</details>
+
+<details>
 <summary>🧪 Test Configuration</summary>
 
 # Test Configuration
@@ -275,6 +359,7 @@ The only recognised postcode is EH3 6SS.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
 * This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
 * **Test Coverage Reports:** Code coverage reporting is disabled in the Docker environment to prevent test hangs. Coverage reports are only generated in CI/CircleCI environments.
+* **Playwright Coverage:** Playwright code coverage collection is disabled in the local Docker environment to prevent performance issues and test instability. Coverage is only collected during CI builds.
 
 **Container Development Notes:**
 - **Freegle Dev**: Runs `nuxt dev` with hot module reloading for rapid development

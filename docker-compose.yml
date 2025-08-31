@@ -302,7 +302,6 @@ services:
       - "1023:22"
       - "83:80"
       - "8181:80"
-      - "9323:9323"
 
   apiv2:
     container_name: freegle-apiv2
@@ -389,8 +388,6 @@ services:
       - "traefik.http.routers.freegle-dev.rule=Host(`freegle-dev.localhost`)"
       - "traefik.http.routers.freegle-dev.entrypoints=web"
       - "traefik.http.services.freegle-dev.loadbalancer.server.port=3002"
-    ports:
-      - "9324:9323"
 
   freegle-prod:
     container_name: freegle-freegle-prod
@@ -438,8 +435,6 @@ services:
       - "traefik.http.routers.freegle-prod.rule=Host(`freegle-prod.localhost`)"
       - "traefik.http.routers.freegle-prod.entrypoints=web"
       - "traefik.http.services.freegle-prod.loadbalancer.server.port=3003"
-    ports:
-      - "9325:9323"
 
   modtools:
     container_name: freegle-modtools
@@ -489,6 +484,10 @@ services:
   playwright:
     container_name: freegle-playwright
     network_mode: "host"
+    build: 
+      context: ./iznik-nuxt3
+      dockerfile: Dockerfile.playwright
+    working_dir: /app
     extra_hosts:
       - "freegle-dev.localhost:127.0.0.1"
       - "freegle-prod.localhost:127.0.0.1"
@@ -496,15 +495,9 @@ services:
       - "apiv2.localhost:127.0.0.1"
       - "delivery.localhost:127.0.0.1"
       - "modtools.localhost:127.0.0.1"
-    build: 
-      context: ./iznik-nuxt3
-      dockerfile: Dockerfile.playwright
-    working_dir: /app
     volumes:
       - ./iznik-nuxt3/tests:/host-tests:ro
       - ./iznik-nuxt3:/host-playwright-config:ro
-    ports:
-      - "9326:9323"
     environment:
       - TEST_BASE_URL=http://freegle-prod.localhost
       - NODE_ENV=test
