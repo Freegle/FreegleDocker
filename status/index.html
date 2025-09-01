@@ -196,11 +196,19 @@
         
         <div id="playwright" class="service loading">
             <div>
-                <strong>Playwright E2E Tests</strong> - Run automated end-to-end tests against prod<br>
+                <strong>Playwright E2E Tests</strong> - Run automated end-to-end tests against prod container<br>
                 <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-playwright</small><br>
                 <span class="status">Loading...</span>
                 <div class="container-actions" style="margin-top: 8px;">
-                    <button id="runTestsBtn" class="action-button" style="background: #0070f3;">Run Tests</button>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button id="runTestsBtn" class="action-button" style="background: #0070f3;">Run Tests</button>
+                        <input id="testFileInput" type="text" placeholder="Optional: specific test file (e.g., test-marketing-consent.spec.js)" 
+                               style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 300px;">
+                        <button id="clearTestFileBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Clear</button>
+                    </div>
+                    <div style="margin-top: 4px; font-size: 10px; color: #666;">
+                        Leave blank to run all tests, or specify a test file name to run only that test.
+                    </div>
                 </div>
                 <div id="testStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
                 <div id="testProgress" style="margin-top: 8px; display: none;">
@@ -208,6 +216,14 @@
                     <div id="currentTestName" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;"></div>
                 </div>
                 <div id="testLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                <!-- Progress bar within the container -->
+                <div id="inContainerProgress" style="display: none; margin: 8px 0;">
+                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <div id="inContainerProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center;">
+                            <span id="inContainerProgressText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
+                        </div>
+                    </div>
+                </div>
                 <div style="margin-top: 8px;">
                     <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; margin-right: 4px; display: none;">Show/Hide Logs</button>
                     <a id="reportLinkBtn" href="http://localhost:9323" target="_blank" class="action-button" style="background: #17a2b8; font-size: 10px; text-decoration: none;">HTML Report</a>
@@ -215,11 +231,35 @@
             </div>
         </div>
         
-        <!-- Full-width progress bar outside the service container -->
-        <div id="fullWidthProgress" style="display: none; margin: 10px 0; position: sticky; top: 10px; z-index: 1000;">
-            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <div id="testProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center;">
-                    <span id="progressBarText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
+        <div id="go-tests" class="service loading">
+            <div>
+                <strong>Go API Tests (WIP)</strong> - Run Go unit and integration tests for iznik-server-go<br>
+                <small>Requires .circleci testenv script setup</small><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
+                <span class="status">Work In Progress</span>
+                <div class="container-actions" style="margin-top: 8px;">
+                    <button id="runGoTestsBtn" class="action-button" style="background: #6c757d;" disabled>Run Go Tests (WIP)</button>
+                </div>
+                <div id="goTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                <div id="goTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                <div style="margin-top: 8px;">
+                    <button id="toggleGoLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="php-tests" class="service loading">
+            <div>
+                <strong>PHPUnit Tests (WIP)</strong> - Run PHP unit tests for iznik-server<br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
+                <span class="status">Work In Progress</span>
+                <div class="container-actions" style="margin-top: 8px;">
+                    <button id="runPhpTestsBtn" class="action-button" style="background: #6c757d;" disabled>Run PHP Tests (WIP)</button>
+                </div>
+                <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                <div id="phpTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                <div style="margin-top: 8px;">
+                    <button id="togglePhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
                 </div>
             </div>
         </div>
@@ -324,7 +364,7 @@
             }
             
             // Rebuild button (for containers that can be rebuilt - those with build context)
-            if (['freegle-dev', 'freegle-prod', 'modtools', 'apiv1', 'apiv2', 'playwright', 'status'].includes(service.id)) {
+            if (['freegle-dev', 'freegle-prod', 'modtools', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
                 if (!actionsDiv.querySelector('.rebuild-btn')) {
                     const rebuildBtn = document.createElement('button');
                     rebuildBtn.className = 'action-button danger rebuild-btn';
@@ -491,13 +531,24 @@
             const logsDiv = document.getElementById('testLogs');
             const progressDiv = document.getElementById('testProgress');
             const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+            const testFileInput = document.getElementById('testFileInput');
+            
+            // Get the test file value
+            const testFile = testFileInput.value.trim();
             
             // Dependencies are handled by Docker Compose, so tests can run immediately
             
             const originalText = button.textContent;
             button.disabled = true;
-            button.textContent = 'Starting Tests...';
-            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Initializing test environment...</span>';
+            
+            if (testFile) {
+                button.textContent = 'Starting Specific Test...';
+                statusDiv.innerHTML = `<span style="color: #0070f3;">▶ Running test file: ${testFile}...</span>`;
+            } else {
+                button.textContent = 'Starting Tests...';
+                statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Initializing test environment...</span>';
+            }
+            
             logsDiv.style.display = 'none';
             progressDiv.style.display = 'block';
             toggleLogsBtn.style.display = 'none';
@@ -505,9 +556,11 @@
             
             try {
                 console.log('Making API request to /api/tests/playwright');
+                const requestBody = testFile ? { testFile: testFile } : {};
                 const response = await fetch('/api/tests/playwright', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
                 });
                 
                 console.log('API response status:', response.status);
@@ -534,22 +587,25 @@
         }
 
         function updateProgress(percentage, text, currentTest = null) {
-            const progressBar = document.getElementById('testProgressBar');
             const progressText = document.getElementById('testProgressText');
-            const progressBarText = document.getElementById('progressBarText');
             const currentTestName = document.getElementById('currentTestName');
-            const fullWidthProgress = document.getElementById('fullWidthProgress');
+            const inContainerProgress = document.getElementById('inContainerProgress');
+            const inContainerProgressBar = document.getElementById('inContainerProgressBar');
+            const inContainerProgressText = document.getElementById('inContainerProgressText');
             
-            // Update both progress bars
-            progressBar.style.width = percentage + '%';
-            progressText.textContent = text;
-            progressBarText.textContent = `${percentage}%`;
+            // Update progress text and in-container progress bar
+            if (progressText) progressText.textContent = text;
             
-            // Show/hide full width progress bar based on test status
+            if (inContainerProgressBar) {
+                inContainerProgressBar.style.width = percentage + '%';
+                inContainerProgressText.textContent = `${percentage}%`;
+            }
+            
+            // Show/hide progress bar based on test status
             if (percentage > 0 && document.getElementById('runTestsBtn').disabled) {
-                fullWidthProgress.style.display = 'block';
+                if (inContainerProgress) inContainerProgress.style.display = 'block';
             } else {
-                fullWidthProgress.style.display = 'none';
+                if (inContainerProgress) inContainerProgress.style.display = 'none';
             }
             
             // Update current test name
@@ -565,12 +621,12 @@
             const button = document.getElementById('runTestsBtn');
             const progressDiv = document.getElementById('testProgress');
             const toggleLogsBtn = document.getElementById('toggleLogsBtn');
-            const fullWidthProgress = document.getElementById('fullWidthProgress');
+            const inContainerProgress = document.getElementById('inContainerProgress');
             
             button.textContent = buttonText;
             button.disabled = false;
             progressDiv.style.display = 'none';
-            fullWidthProgress.style.display = 'none';
+            if (inContainerProgress) inContainerProgress.style.display = 'none';
             toggleLogsBtn.style.display = 'inline-block';
         }
         
@@ -805,6 +861,91 @@
         }
 
         // Initialize when DOM is ready
+        async function runGoTests() {
+            const button = document.getElementById('runGoTestsBtn');
+            const statusDiv = document.getElementById('goTestStatus');
+            const logsDiv = document.getElementById('goTestLogs');
+            const toggleLogsBtn = document.getElementById('toggleGoLogsBtn');
+            
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Running Tests...';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Running Go tests...</span>';
+            logsDiv.style.display = 'none';
+            toggleLogsBtn.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/tests/go', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.text();
+                if (response.ok) {
+                    statusDiv.innerHTML = '<span style="color: #28a745;">✅ Go tests completed successfully</span>';
+                    logsDiv.textContent = result;
+                    logsDiv.style.display = 'block';
+                    toggleLogsBtn.style.display = 'inline-block';
+                } else {
+                    statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Go tests failed</span>';
+                    logsDiv.textContent = result;
+                    logsDiv.style.display = 'block';
+                    toggleLogsBtn.style.display = 'inline-block';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+            }
+            
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+
+        async function runPhpTests() {
+            const button = document.getElementById('runPhpTestsBtn');
+            const statusDiv = document.getElementById('phpTestStatus');
+            const logsDiv = document.getElementById('phpTestLogs');
+            const toggleLogsBtn = document.getElementById('togglePhpLogsBtn');
+            
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Running Tests...';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Running PHP tests...</span>';
+            logsDiv.style.display = 'none';
+            toggleLogsBtn.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/tests/php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.text();
+                if (response.ok) {
+                    statusDiv.innerHTML = '<span style="color: #28a745;">✅ PHP tests completed successfully</span>';
+                    logsDiv.textContent = result;
+                    logsDiv.style.display = 'block';
+                    toggleLogsBtn.style.display = 'inline-block';
+                } else {
+                    statusDiv.innerHTML = '<span style="color: #dc3545;">❌ PHP tests failed</span>';
+                    logsDiv.textContent = result;
+                    logsDiv.style.display = 'block';
+                    toggleLogsBtn.style.display = 'inline-block';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+            }
+            
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+
+        function toggleTestLogs(testType) {
+            const logsDiv = document.getElementById(`${testType}TestLogs`);
+            if (logsDiv) {
+                logsDiv.style.display = logsDiv.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
         function initializePage() {
             // Add action buttons on page load
             services.forEach(service => {
@@ -825,10 +966,39 @@
                 console.error('runTestsBtn not found');
             }
             
+            // Add event listener for clear test file button
+            const clearTestFileBtn = document.getElementById('clearTestFileBtn');
+            if (clearTestFileBtn) {
+                clearTestFileBtn.addEventListener('click', () => {
+                    document.getElementById('testFileInput').value = '';
+                });
+            }
+            
+            // Add event listeners for new test buttons
+            const runGoTestsBtn = document.getElementById('runGoTestsBtn');
+            if (runGoTestsBtn) {
+                runGoTestsBtn.addEventListener('click', runGoTests);
+            }
+            
+            const runPhpTestsBtn = document.getElementById('runPhpTestsBtn');
+            if (runPhpTestsBtn) {
+                runPhpTestsBtn.addEventListener('click', runPhpTests);
+            }
+            
             // Add event listener for toggle logs button
             const toggleLogsBtn = document.getElementById('toggleLogsBtn');
             if (toggleLogsBtn) {
                 toggleLogsBtn.addEventListener('click', toggleLogs);
+            }
+            
+            const toggleGoLogsBtn = document.getElementById('toggleGoLogsBtn');
+            if (toggleGoLogsBtn) {
+                toggleGoLogsBtn.addEventListener('click', () => toggleTestLogs('go'));
+            }
+            
+            const togglePhpLogsBtn = document.getElementById('togglePhpLogsBtn');
+            if (togglePhpLogsBtn) {
+                togglePhpLogsBtn.addEventListener('click', () => toggleTestLogs('php'));
             }
             
             // Check for existing test status first

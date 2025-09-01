@@ -222,8 +222,54 @@ services:
       - ./status/server.js:/app/server.js:ro
       - ./ssl/certs:/app/ssl:ro
       - .:/project:ro
+      - rebuild-requests:/rebuild-requests
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
+
+  host-scripts:
+    image: alpine:latest
+    container_name: freegle-host-scripts
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
+      - rebuild-requests:/rebuild-requests
+    working_dir: /workspace
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache docker-cli docker-compose jq
+        echo 'Starting rebuild monitor and file sync...'
+        (
+          echo 'Starting rebuild monitor...'
+          while true; do
+            for request_file in /rebuild-requests/rebuild-*.json; do
+              [ ! -f "$$request_file" ] && continue
+              echo "Processing rebuild request: $$request_file"
+              service=$$(jq -r '.service' "$$request_file" 2>/dev/null)
+              container=$$(jq -r '.container' "$$request_file" 2>/dev/null)
+              if [ "$$service" != "null" ] && [ "$$container" != "null" ]; then
+                echo "Rebuilding service: $$service ($$container)"
+                if docker-compose -p freegledockerwsl stop "$$service" && 
+                   docker-compose -p freegledockerwsl rm -f "$$service" && 
+                   docker-compose -p freegledockerwsl build "$$service" && 
+                   docker-compose -p freegledockerwsl up --no-deps -d "$$service"; then
+                  echo "Rebuild completed successfully for $$service"
+                else
+                  echo "Rebuild failed for $$service"
+                fi
+              fi
+              rm -f "$$request_file"
+            done
+            sleep 2
+          done
+        ) &
+        (
+          echo 'Starting file sync...'
+          ./file-sync.sh
+        ) &
+        wait
+    restart: unless-stopped
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.status.rule=Host(`status.localhost`)"
@@ -519,6 +565,10 @@ services:
         condition: service_healthy
       beanstalkd:
         condition: service_healthy
+
+volumes:
+  rebuild-requests:
+    driver: local
 
 networks:
   default:

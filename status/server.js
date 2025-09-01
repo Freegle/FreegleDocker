@@ -492,25 +492,36 @@ async function getAllCpuUsage() {
 }
 
 // Function to run Playwright tests in Docker
-async function runPlaywrightTests() {
+async function runPlaywrightTests(testFile = null) {
   if (testStatus.status === 'running') {
     throw new Error('Tests are already running');
   }
 
+  const testFileMsg = testFile ? ` for file: ${testFile}` : ' (all tests)';
   testStatus = {
     status: 'running',
-    message: 'Initializing test environment...',
+    message: testFile ? `Running specific test file: ${testFile}` : 'Initializing test environment...',
     logs: '',
     success: false,
     startTime: new Date(),
     endTime: null,
     completedTests: 0,
-    totalTests: 0 // Will be determined dynamically by the progress tracker
+    totalTests: 0, // Reset to 0 - will be determined dynamically by the progress tracker
+    testFile: testFile // Store the test file for reference
   };
 
-  console.log('Starting Playwright tests in Docker...');
+  console.log('Starting Playwright tests in Docker' + testFileMsg);
 
   try {
+    // Clear any stale progress files from previous test runs
+    try {
+      const { execSync } = require('child_process');
+      execSync('docker exec freegle-playwright sh -c "rm -f /app/test-progress.json /app/playwright-results.json"', { timeout: 5000 });
+      console.log('Cleared stale progress files');
+    } catch (error) {
+      console.warn('Could not clear progress files:', error.message);
+    }
+
     // First, ensure the freegle container is running and accessible
     testStatus.message = 'Checking Freegle container status...';
     
@@ -540,9 +551,10 @@ async function runPlaywrightTests() {
     testStatus.logs += 'Playwright container is ready\n';
 
     // Execute tests in the Playwright container using docker exec (without nohup for proper output capture)
+    const playwrightArgs = testFile ? `tests/e2e/${testFile}` : '';
     const testCommand = `docker exec freegle-playwright sh -c "
       cd /app &&
-      npx playwright test --reporter=html
+      npx playwright test ${playwrightArgs} --reporter=html
     "`;
 
     console.log('Executing Playwright tests in container...');
@@ -577,6 +589,26 @@ async function runPlaywrightTests() {
     function updateProgressFromLine(line, isStderr = false) {
       const lowerLine = line.toLowerCase();
       
+      // Extract total test count from initial Playwright output
+      if (testStatus.totalTests === 0) {
+        // Look for patterns like "Running 40 tests using 3 workers" or "Running 5 tests using 1 worker"
+        const testCountMatch = line.match(/running (\d+) tests?\s+using/i);
+        if (testCountMatch) {
+          testStatus.totalTests = parseInt(testCountMatch[1]);
+          console.log(`Total tests detected from "Running X tests": ${testStatus.totalTests}`);
+        }
+        
+        // Also look for patterns like "[1/5]" which indicates test number out of total
+        const testProgressMatch = line.match(/\[(\d+)\/(\d+)\]/);
+        if (testProgressMatch) {
+          const total = parseInt(testProgressMatch[2]);
+          if (total > 0 && (testStatus.totalTests === 0 || total < testStatus.totalTests)) {
+            testStatus.totalTests = total;
+            console.log(`Total tests detected from progress marker: ${testStatus.totalTests}`);
+          }
+        }
+      }
+      
       // Update status based on line content with more detailed progress
       if (lowerLine.includes('checking test environment')) {
         testStatus.message = 'Initializing test environment...';
@@ -588,27 +620,34 @@ async function runPlaywrightTests() {
         testStatus.message = 'Running Playwright tests...';
       } else if (lowerLine.includes('running') && lowerLine.includes('tests')) {
         const testMatch = line.match(/running (\d+) tests?\s+using/i);
-        if (testMatch) {
+        if (testMatch && testStatus.totalTests === 0) {
           testStatus.totalTests = parseInt(testMatch[1]);
-          const currentTest = testStatus.completedTests ? testStatus.completedTests + 1 : 1;
-          testStatus.message = `Running test ${currentTest}/${testMatch[1]}`;
-        } else {
-          testStatus.message = 'Running Playwright tests...';
+          console.log(`Total tests detected: ${testStatus.totalTests}`);
         }
+        const currentTest = (testStatus.completedTests || 0) + 1;
+        const total = testStatus.totalTests || (testMatch ? parseInt(testMatch[1]) : 'unknown');
+        testStatus.message = `Running test ${currentTest}/${total}`;
+      } else if (testStatus.totalTests > 0 && lowerLine.includes('running') && lowerLine.includes('test')) {
+        // Once we have total, show progress for any running test mentions
+        const currentTest = (testStatus.completedTests || 0) + 1;
+        testStatus.message = `Running test ${currentTest}/${testStatus.totalTests}`;
       } else if (line.includes('Closed browser context after test')) {
-        // Use browser context closure to count completed tests - this is very reliable
-        const allContextClosures = (testStatus.logs.match(/Closed browser context after test/g) || []);
-        const completed = allContextClosures.length;
-        const totalTests = testStatus.totalTests || 40;
+        // Use browser context closure to count completed tests - but don't count retries
+        // Only count unique test completions, not retry attempts
+        const logLines = testStatus.logs.split('\n');
+        const passedTests = logLines.filter(line => line.includes('✓') || line.match(/\d+\s+passed/)).length;
+        const completed = Math.min(passedTests, testStatus.totalTests || 999);
         
-        // Store test progress for progress bar
-        testStatus.completedTests = completed;
+        // Store test progress for progress bar (only if higher than current)
+        if (completed >= (testStatus.completedTests || 0)) {
+          testStatus.completedTests = completed;
+        }
         
         // Also try to get pass/fail counts from test result markers if available
         const passed = (testStatus.logs.match(/^\s*✓\s+\d+/gm) || []).length;
         const failed = (testStatus.logs.match(/^\s*✘\s+\d+/gm) || []).length;
         
-        testStatus.message = `${completed}/${totalTests} tests completed (${passed}✓ ${failed}✘)`;
+        testStatus.message = `${completed}/${testStatus.totalTests || '?'} tests completed (${passed}✓ ${failed}✘)`;
       } else if (line.match(/^\s*[✓✘]\s+\d+/)) {
         // Extract current test progress from individual test results as fallback
         // Count all test results in the entire log, not just the current line
@@ -617,10 +656,10 @@ async function runPlaywrightTests() {
           const completed = allResults.length;
           const passed = (testStatus.logs.match(/^\s*✓\s+\d+/gm) || []).length;
           const failed = (testStatus.logs.match(/^\s*✘\s+\d+/gm) || []).length;
-          const totalTests = testStatus.totalTests || 40;
+          const totalTests = testStatus.totalTests;
           
-          // Store test progress for progress bar (but prefer context closure count)
-          if (!testStatus.completedTests || testStatus.completedTests < completed) {
+          // Store test progress for progress bar (only if higher than current)
+          if (completed >= (testStatus.completedTests || 0)) {
             testStatus.completedTests = completed;
           }
           
@@ -634,8 +673,8 @@ async function runPlaywrightTests() {
         if (testMatch) {
           const testFile = testMatch[1].replace(/.*\//, ''); // Get just the filename
           const testName = testMatch[2];
-          const currentTest = testStatus.completedTests ? testStatus.completedTests + 1 : 1;
-          const totalTests = testStatus.totalTests || 40;
+          const currentTest = (testStatus.completedTests || 0) + 1;
+          const totalTests = testStatus.totalTests;
           testStatus.message = `Running test ${currentTest}/${totalTests}: ${testName} (${testFile})`;
         }
       } else if (line.includes('› ') && (line.includes('test-') || line.includes('.spec.js'))) {
@@ -710,9 +749,15 @@ async function runPlaywrightTests() {
           const progressOutput = execSync('docker exec freegle-playwright cat /app/test-progress.json 2>/dev/null || echo "{}"', { encoding: 'utf8', timeout: 5000 });
           const progress = JSON.parse(progressOutput.trim() || '{}');
           
-          if (progress.totalTests !== undefined) {
-            const completedAndFailed = (progress.completedTests || 0) + (progress.failedTests || 0);
-            const currentTotal = progress.totalTests || testStatus.totalTests;
+          if (progress.totalTests !== undefined && testStatus.totalTests === 0) {
+            // Update total tests if we haven't detected it yet
+            testStatus.totalTests = progress.totalTests;
+          }
+          
+          if (testStatus.totalTests > 0) {
+            // Only count actually completed (passed) tests, NOT failed tests or retries
+            const actuallyCompleted = progress.completedTests || 0;
+            const currentTotal = testStatus.totalTests;
             
             // Find currently running test
             let currentRunningTest = null;
@@ -728,13 +773,14 @@ async function runPlaywrightTests() {
               }
             }
             
-            console.log(`Progress check: ${completedAndFailed}/${currentTotal} tests completed (${progress.runningTests || 0} running, ${progress.failedTests || 0} failed)`);
+            console.log(`Progress check: ${actuallyCompleted}/${currentTotal} tests completed (${progress.runningTests || 0} running, ${progress.failedTests || 0} failed)`);
             
-            // Update status with accurate counts
-            testStatus.completedTests = completedAndFailed;
-            testStatus.totalTests = currentTotal;
+            // Only update if the count is higher (never go backwards) or if we have a current running test
+            if (actuallyCompleted >= (testStatus.completedTests || 0)) {
+              testStatus.completedTests = actuallyCompleted;
+            }
             testStatus.currentRunningTest = currentRunningTest;
-            testStatus.message = `${completedAndFailed}/${currentTotal} tests completed`;
+            testStatus.message = `${testStatus.completedTests}/${currentTotal} tests completed`;
             
             if (progress.failedTests > 0) {
               testStatus.message += ` (${progress.failedTests} failed)`;
@@ -895,12 +941,44 @@ const httpServer = http.createServer(async (req, res) => {
         
         console.log(`Rebuilding service: ${service} (${container})`);
         
-        // Change to docker compose project directory (parent of status container)
-        process.chdir('..');
+        // Write rebuild request to shared volume for host to process
+        const rebuildRequest = {
+          service: service,
+          container: container,
+          timestamp: Date.now(),
+          id: Math.random().toString(36).substr(2, 9)
+        };
         
-        // Stop, remove, build and restart the specific service
-        const buildCommand = `docker-compose stop ${service} && docker-compose rm -f ${service} && docker-compose build ${service} && docker-compose up -d ${service}`;
-        execSync(buildCommand, { timeout: 300000 }); // 5 minutes timeout
+        const fs = require('fs');
+        const requestFile = `/rebuild-requests/rebuild-${rebuildRequest.id}.json`;
+        fs.writeFileSync(requestFile, JSON.stringify(rebuildRequest));
+        
+        // Wait for completion or timeout
+        let completed = false;
+        let attempts = 0;
+        const maxAttempts = 60; // 5 minutes max
+        
+        while (!completed && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+          attempts++;
+          
+          try {
+            // Check if request file was processed (removed by host script)
+            if (!fs.existsSync(requestFile)) {
+              completed = true;
+              break;
+            }
+          } catch (e) {
+            // File might be being processed
+          }
+        }
+        
+        if (!completed) {
+          // Clean up and timeout
+          try { fs.unlinkSync(requestFile); } catch (e) {}
+          throw new Error('Rebuild request timed out');
+        }
+        
         
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end(`Service ${service} rebuilt and restarted successfully`);
@@ -915,21 +993,41 @@ const httpServer = http.createServer(async (req, res) => {
 
   // Playwright test execution endpoint
   if (parsedUrl.pathname === '/api/tests/playwright' && req.method === 'POST') {
-    try {
-      console.log('Received request to run Playwright tests');
-      
-      // Start tests asynchronously (dependencies are handled by Docker Compose)
-      runPlaywrightTests().catch(error => {
-        console.error('Test execution error:', error);
-      });
-      
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('Playwright tests started successfully');
-    } catch (error) {
-      console.error('Failed to start tests:', error);
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
-      res.end(`Failed to start tests: ${error.message}`);
-    }
+    let body = '';
+    
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    
+    req.on('end', () => {
+      try {
+        let testFile = null;
+        
+        // Parse request body if it exists
+        if (body.trim()) {
+          try {
+            const requestData = JSON.parse(body);
+            testFile = requestData.testFile;
+          } catch (parseError) {
+            console.warn('Failed to parse request body:', parseError.message);
+          }
+        }
+        
+        console.log('Received request to run Playwright tests', testFile ? `for file: ${testFile}` : '(all tests)');
+        
+        // Start tests asynchronously (dependencies are handled by Docker Compose)
+        runPlaywrightTests(testFile).catch(error => {
+          console.error('Test execution error:', error);
+        });
+        
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Playwright tests started successfully');
+      } catch (error) {
+        console.error('Failed to start tests:', error);
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end(`Failed to start tests: ${error.message}`);
+      }
+    });
     return;
   }
 
@@ -963,6 +1061,95 @@ const httpServer = http.createServer(async (req, res) => {
       'Location': 'http://localhost:9323' 
     });
     res.end();
+    return;
+  }
+
+  // Go tests endpoint
+  if (parsedUrl.pathname === '/api/tests/go' && req.method === 'POST') {
+    console.log('Starting Go tests...');
+    
+    try {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      
+      // First set up test environment, then run Go tests in the apiv2 container
+      const { spawn } = require('child_process');
+      const testProcess = spawn('bash', ['-c', `
+        echo "Setting up test environment..." &&
+        docker exec freegle-apiv1 php ./install/testenv.php &&
+        echo "Running Go tests..." &&
+        docker exec freegle-apiv2 go test ./... -v
+      `], {
+        stdio: 'pipe'
+      });
+      
+      let output = '';
+      
+      testProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      testProcess.stderr.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      testProcess.on('close', (code) => {
+        if (code === 0) {
+          res.end(output + '\n\nGo tests completed successfully!');
+        } else {
+          res.end(output + '\n\nGo tests failed with exit code: ' + code);
+        }
+      });
+      
+      testProcess.on('error', (error) => {
+        res.end('Error running Go tests: ' + error.message);
+      });
+      
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Failed to start Go tests: ' + error.message);
+    }
+    return;
+  }
+
+  // PHP tests endpoint
+  if (parsedUrl.pathname === '/api/tests/php' && req.method === 'POST') {
+    console.log('Starting PHP tests...');
+    
+    try {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      
+      // Run PHPUnit tests in the apiv1 container
+      const { spawn } = require('child_process');
+      const testProcess = spawn('docker', ['exec', '-w', '/var/www/iznik', 'freegle-apiv1', './composer/vendor/bin/phpunit', 'test/'], {
+        stdio: 'pipe'
+      });
+      
+      let output = '';
+      
+      testProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      testProcess.stderr.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      testProcess.on('close', (code) => {
+        if (code === 0) {
+          res.end(output + '\n\nPHP tests completed successfully!');
+        } else {
+          res.end(output + '\n\nPHP tests failed with exit code: ' + code);
+        }
+      });
+      
+      testProcess.on('error', (error) => {
+        res.end('Error running PHP tests: ' + error.message);
+      });
+      
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Failed to start PHP tests: ' + error.message);
+    }
     return;
   }
 

@@ -6,3 +6,4 @@
 /.idea/prettier.xml
 /ssl/
 /.env
+/rebuild-monitor.log
