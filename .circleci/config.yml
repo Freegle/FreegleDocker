@@ -23,10 +23,12 @@ executors:
   machine-executor:
     machine:
       image: ubuntu-2204:2024.05.1
+    resource_class: large  # 4 vCPUs, 15 GB RAM for faster builds
     working_directory: ~/project
     environment:
-      DOCKER_BUILDKIT: 0
-      COMPOSE_DOCKER_CLI_BUILD: 0
+      DOCKER_BUILDKIT: 1
+      COMPOSE_DOCKER_CLI_BUILD: 1
+      COMPOSE_BAKE: true
 
 # Define jobs
 jobs:
@@ -135,9 +137,9 @@ jobs:
             if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
               echo "Waiting for all services to be healthy..."
               
-              # Wait up to 15 minutes for all containers to be healthy
+              # Wait up to 25 minutes for all containers to be healthy (freegle-prod build is slow in CI)
               start_time=$(date +%s)
-              timeout_duration=900  # 15 minutes
+              timeout_duration=1500  # 25 minutes
               
               while true; do
                 current_time=$(date +%s)
@@ -162,9 +164,12 @@ jobs:
                   # Check if all services are healthy by looking at status response
                   all_healthy="true"
                   if echo "$health_response" | jq -e '. | length > 0' >/dev/null 2>&1; then
-                    # If we have status data, check if any services are not healthy
-                    if echo "$health_response" | jq -e 'to_entries[] | select(.value != "healthy" and .value != "running")' >/dev/null 2>&1; then
+                    # If we have status data, check if any services are still starting or failed
+                    if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
                       all_healthy="false"
+                      # Show which services are not ready
+                      echo "Services not ready:"
+                      echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | "\(.key): \(.value.status) - \(.value.message)"'
                     fi
                   else
                     all_healthy="false"
@@ -475,9 +480,9 @@ jobs:
           command: |
             echo "Waiting for all services to be healthy..."
             
-            # Wait up to 15 minutes for all containers to be healthy
+            # Wait up to 25 minutes for all containers to be healthy (freegle-prod build is slow in CI)
             start_time=$(date +%s)
-            timeout_duration=900  # 15 minutes
+            timeout_duration=1500  # 25 minutes
             
             while true; do
               current_time=$(date +%s)
@@ -507,9 +512,12 @@ jobs:
                 # Check if all services are healthy by looking at status response
                 all_healthy="true"
                 if echo "$health_response" | jq -e '. | length > 0' >/dev/null 2>&1; then
-                  # If we have status data, check if any services are not healthy
-                  if echo "$health_response" | jq -e 'to_entries[] | select(.value != "healthy" and .value != "running")' >/dev/null 2>&1; then
+                  # If we have status data, check if any services are still starting or failed
+                  if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
                     all_healthy="false"
+                    # Show which services are not ready
+                    echo "Services not ready:"
+                    echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | "\(.key): \(.value.status) - \(.value.message)"'
                   fi
                 else
                   all_healthy="false"
