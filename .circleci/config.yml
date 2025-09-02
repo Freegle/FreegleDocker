@@ -151,8 +151,11 @@ jobs:
                   echo "✅ Status service is responding!"
                   
                   # Get health status from status service
+                  echo "DEBUG: Checking status service health endpoint..."
                   health_response=$(curl -s http://localhost:8081/health 2>/dev/null || echo '{"allHealthy": false}')
+                  echo "DEBUG: Raw health response: $health_response"
                   all_healthy=$(echo "$health_response" | jq -r '.allHealthy // false' 2>/dev/null || echo "false")
+                  echo "DEBUG: Parsed allHealthy value: $all_healthy"
                   
                   if [ "$all_healthy" = "true" ]; then
                     echo "✅ All containers are healthy!"
@@ -453,8 +456,11 @@ jobs:
                 echo "✅ Status service is responding!"
                 
                 # Get health status from status service
+                echo "DEBUG: Checking status service health endpoint..."
                 health_response=$(curl -s http://localhost:8081/health 2>/dev/null || echo '{"allHealthy": false}')
+                echo "DEBUG: Raw health response: $health_response"
                 all_healthy=$(echo "$health_response" | jq -r '.allHealthy // false' 2>/dev/null || echo "false")
+                echo "DEBUG: Parsed allHealthy value: $all_healthy"
                 
                 if [ "$all_healthy" = "true" ]; then
                   echo "✅ All containers are healthy!"
