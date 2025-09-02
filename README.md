@@ -313,7 +313,7 @@ For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md
 
 # Limitations
 
-* Email to Mailhog not yet verified and probably not yet working..
+* Email to Mailhog not yet verified and probably not yet working.
 * This doesn't run most of the various background jobs, so it won't be sending out emails in the way the live system would.
 * Code coverage reporting is disabled.  This has previously worked on CircleCI but we've not activated it since moving to Docker Compose.
 * Go and PHP unit tests are not yet running from the status page.
