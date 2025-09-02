@@ -20,9 +20,9 @@ parameters:
 
 # Define executors
 executors:
-  docker-executor:
-    docker:
-      - image: cimg/base:stable
+  machine-executor:
+    machine:
+      image: ubuntu-2204:2024.05.1
     working_directory: ~/project
     environment:
       DOCKER_BUILDKIT: 0
@@ -31,7 +31,7 @@ executors:
 # Define jobs
 jobs:
   update-submodules-start-docker-and-test:
-    executor: docker-executor
+    executor: machine-executor
     steps:
       - checkout:
           # Checkout with submodules
@@ -39,8 +39,6 @@ jobs:
             - git submodule sync
             - git submodule update --init --recursive
 
-      - setup_remote_docker:
-          docker_layer_caching: true
 
       - run:
           name: Install system dependencies
@@ -99,8 +97,12 @@ jobs:
               echo "Starting Docker Compose services..."
               echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
               
-              # Create secrets files right before Docker startup
-              echo "Creating secrets files in Docker startup step:"
+              # Clean up any existing containers first
+              docker-compose down --remove-orphans || true
+              docker system prune -f || true
+              
+              # Create secrets files after cleanup, right before Docker startup
+              echo "Creating secrets files after cleanup:"
               mkdir -p secrets
               echo "placeholder" > secrets/lovejunk-api.txt
               echo "placeholder" > secrets/lovejunk-secret.txt
@@ -109,10 +111,6 @@ jobs:
               echo "placeholder" > secrets/image-domain.txt
               echo "Current working directory: $(pwd)"
               ls -la secrets/
-              
-              # Clean up any existing containers
-              docker-compose down --remove-orphans || true
-              docker system prune -f || true
               
               # Start services in detached mode
               docker-compose up -d
@@ -358,15 +356,13 @@ jobs:
 
   # Webhook-triggered Playwright testing (no submodule update needed)
   webhook-start-docker-and-test:
-    executor: docker-executor
+    executor: machine-executor
     steps:
       - checkout:
           post:
             - git submodule sync
             - git submodule update --init --recursive
 
-      - setup_remote_docker:
-          docker_layer_caching: true
 
       - run:
           name: Force submodule update and test
@@ -407,8 +403,12 @@ jobs:
             echo "Branch: << pipeline.parameters.webhook_branch >>"
             echo "Commit: << pipeline.parameters.webhook_commit >>"
             
-            # Create secrets files right before Docker startup
-            echo "Creating secrets files in Docker startup step:"
+            # Clean up any existing containers first
+            docker-compose down --remove-orphans || true
+            docker system prune -f || true
+            
+            # Create secrets files after cleanup, right before Docker startup
+            echo "Creating secrets files after cleanup:"
             mkdir -p secrets
             echo "placeholder" > secrets/lovejunk-api.txt
             echo "placeholder" > secrets/lovejunk-secret.txt
@@ -417,10 +417,6 @@ jobs:
             echo "placeholder" > secrets/image-domain.txt
             echo "Current working directory: $(pwd)"
             ls -la secrets/
-            
-            # Clean up any existing containers
-            docker-compose down --remove-orphans || true
-            docker system prune -f || true
             
             # Start services in detached mode
             docker-compose up -d
