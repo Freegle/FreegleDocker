@@ -1,5 +1,23 @@
 version: 2.1
 
+# Define pipeline parameters
+parameters:
+  webhook_repository:
+    type: string
+    default: ""
+  webhook_branch:
+    type: string
+    default: ""
+  webhook_commit:
+    type: string
+    default: ""
+  webhook_message:
+    type: string
+    default: ""
+  webhook_pusher:
+    type: string
+    default: ""
+
 # Define executors
 executors:
   docker-executor:
@@ -342,9 +360,11 @@ jobs:
           name: Force submodule update and test
           command: |
             echo "🔔 Webhook triggered submodule check"
-            echo "Repository: ${WEBHOOK_REPOSITORY:-unknown}"
-            echo "Branch: ${WEBHOOK_BRANCH:-unknown}"
-            echo "Commit: ${WEBHOOK_COMMIT:-unknown}"
+            echo "Repository: << pipeline.parameters.webhook_repository >>"
+            echo "Branch: << pipeline.parameters.webhook_branch >>"
+            echo "Commit: << pipeline.parameters.webhook_commit >>"
+            echo "Message: << pipeline.parameters.webhook_message >>"
+            echo "Pusher: << pipeline.parameters.webhook_pusher >>"
             
             # Force update submodules
             git submodule sync
