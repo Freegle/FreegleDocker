@@ -462,6 +462,23 @@ jobs:
                 else
                   echo "⚠️ Some containers not yet healthy, checking details..."
                   echo "$health_response" | jq '.' 2>/dev/null || echo "Health check response: $health_response"
+                  
+                  # Show detailed container status
+                  echo "=== Container Status Details ==="
+                  docker-compose ps
+                  
+                  # Show last few lines of logs for unhealthy containers
+                  echo "=== Recent logs for containers ==="
+                  for container in freegle-freegle-dev freegle-freegle-prod freegle-modtools freegle-apiv1 freegle-apiv2 freegle-percona freegle-postgres freegle-redis freegle-status; do
+                    if docker ps --filter "name=$container" --filter "status=running" | grep -q "$container"; then
+                      echo "--- $container (last 3 lines) ---"
+                      docker logs "$container" --tail 3 2>&1 | tail -3
+                    else
+                      echo "--- $container (not running) ---"
+                      docker ps --filter "name=$container" --format "{{.Status}}"
+                    fi
+                  done
+                  echo "=== End Container Details ==="
                 fi
               else
                 echo "Status service not yet responding..."
