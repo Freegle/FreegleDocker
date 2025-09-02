@@ -53,18 +53,6 @@ jobs:
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
 
-      - run:
-          name: Create missing secrets files
-          command: |
-            echo "Current working directory: $(pwd)"
-            mkdir -p secrets
-            echo "placeholder" > secrets/lovejunk-api.txt
-            echo "placeholder" > secrets/lovejunk-secret.txt
-            echo "placeholder" > secrets/partner-key.txt
-            echo "placeholder" > secrets/partner-name.txt
-            echo "placeholder" > secrets/image-domain.txt
-            echo "Created secrets files:"
-            ls -la secrets/
 
       - run:
           name: Update submodules to latest
@@ -111,9 +99,16 @@ jobs:
               echo "Starting Docker Compose services..."
               echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
               
-              # Verify secrets files exist before starting Docker
-              echo "Verifying secrets files before Docker startup:"
-              ls -la secrets/ || echo "No secrets directory found!"
+              # Create secrets files right before Docker startup
+              echo "Creating secrets files in Docker startup step:"
+              mkdir -p secrets
+              echo "placeholder" > secrets/lovejunk-api.txt
+              echo "placeholder" > secrets/lovejunk-secret.txt
+              echo "placeholder" > secrets/partner-key.txt
+              echo "placeholder" > secrets/partner-name.txt
+              echo "placeholder" > secrets/image-domain.txt
+              echo "Current working directory: $(pwd)"
+              ls -la secrets/
               
               # Clean up any existing containers
               docker-compose down --remove-orphans || true
@@ -392,7 +387,7 @@ jobs:
             echo "FORCE_TESTING=true" >> $BASH_ENV
 
       - run:
-          name: Install dependencies and create secrets
+          name: Install system dependencies
           command: |
             sudo apt-get update
             sudo apt-get install -y curl jq
@@ -401,17 +396,6 @@ jobs:
             sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
-            
-            # Create missing secrets files
-            echo "Current working directory: $(pwd)"
-            mkdir -p secrets
-            echo "placeholder" > secrets/lovejunk-api.txt
-            echo "placeholder" > secrets/lovejunk-secret.txt
-            echo "placeholder" > secrets/partner-key.txt
-            echo "placeholder" > secrets/partner-name.txt
-            echo "placeholder" > secrets/image-domain.txt
-            echo "Created secrets files:"
-            ls -la secrets/
 
 
       # Start Docker services and run tests (same logic as main job)
@@ -423,9 +407,16 @@ jobs:
             echo "Branch: << pipeline.parameters.webhook_branch >>"
             echo "Commit: << pipeline.parameters.webhook_commit >>"
             
-            # Verify secrets files exist before starting Docker
-            echo "Verifying secrets files before Docker startup:"
-            ls -la secrets/ || echo "No secrets directory found!"
+            # Create secrets files right before Docker startup
+            echo "Creating secrets files in Docker startup step:"
+            mkdir -p secrets
+            echo "placeholder" > secrets/lovejunk-api.txt
+            echo "placeholder" > secrets/lovejunk-secret.txt
+            echo "placeholder" > secrets/partner-key.txt
+            echo "placeholder" > secrets/partner-name.txt
+            echo "placeholder" > secrets/image-domain.txt
+            echo "Current working directory: $(pwd)"
+            ls -la secrets/
             
             # Clean up any existing containers
             docker-compose down --remove-orphans || true
