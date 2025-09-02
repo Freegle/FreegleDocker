@@ -101,6 +101,10 @@ jobs:
               docker-compose down --remove-orphans || true
               docker system prune -f || true
               
+              # Fix memory overcommit for Redis
+              sudo sysctl vm.overcommit_memory=1
+              echo "Set vm.overcommit_memory=1 for Redis"
+              
               # Create secrets files after cleanup, right before Docker startup
               echo "Creating secrets files after cleanup:"
               mkdir -p secrets
@@ -150,12 +154,22 @@ jobs:
                 if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
                   echo "✅ Status service is responding!"
                   
-                  # Get health status from status service
-                  echo "DEBUG: Checking status service health endpoint..."
-                  health_response=$(curl -s http://localhost:8081/health 2>/dev/null || echo '{"allHealthy": false}')
+                  # Get health status from status service (use existing /api/status/all endpoint)
+                  echo "DEBUG: Checking status service via /api/status/all endpoint..."
+                  health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
                   echo "DEBUG: Raw health response: $health_response"
-                  all_healthy=$(echo "$health_response" | jq -r '.allHealthy // false' 2>/dev/null || echo "false")
-                  echo "DEBUG: Parsed allHealthy value: $all_healthy"
+                  
+                  # Check if all services are healthy by looking at status response
+                  all_healthy="true"
+                  if echo "$health_response" | jq -e '. | length > 0' >/dev/null 2>&1; then
+                    # If we have status data, check if any services are not healthy
+                    if echo "$health_response" | jq -e 'to_entries[] | select(.value != "healthy" and .value != "running")' >/dev/null 2>&1; then
+                      all_healthy="false"
+                    fi
+                  else
+                    all_healthy="false"
+                  fi
+                  echo "DEBUG: Calculated allHealthy value: $all_healthy"
                   
                   if [ "$all_healthy" = "true" ]; then
                     echo "✅ All containers are healthy!"
@@ -431,6 +445,10 @@ jobs:
             docker-compose down --remove-orphans || true
             docker system prune -f || true
             
+            # Fix memory overcommit for Redis
+            sudo sysctl vm.overcommit_memory=1
+            echo "Set vm.overcommit_memory=1 for Redis"
+            
             # Create secrets files after cleanup, right before Docker startup
             echo "Creating secrets files after cleanup:"
             mkdir -p secrets
@@ -476,12 +494,27 @@ jobs:
               if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
                 echo "✅ Status service is responding!"
                 
-                # Get health status from status service
-                echo "DEBUG: Checking status service health endpoint..."
-                health_response=$(curl -s http://localhost:8081/health 2>/dev/null || echo '{"allHealthy": false}')
+                # Debug: Test if status service can reach other containers
+                echo "DEBUG: Testing container connectivity from CircleCI..."
+                curl -s "http://localhost:8081/api/status?service=freegle-percona" || echo "Failed to check percona status"
+                curl -s "http://localhost:8081/api/status?service=freegle-redis" || echo "Failed to check redis status"
+                
+                # Get health status from status service (use existing /api/status/all endpoint)
+                echo "DEBUG: Checking status service via /api/status/all endpoint..."
+                health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
                 echo "DEBUG: Raw health response: $health_response"
-                all_healthy=$(echo "$health_response" | jq -r '.allHealthy // false' 2>/dev/null || echo "false")
-                echo "DEBUG: Parsed allHealthy value: $all_healthy"
+                
+                # Check if all services are healthy by looking at status response
+                all_healthy="true"
+                if echo "$health_response" | jq -e '. | length > 0' >/dev/null 2>&1; then
+                  # If we have status data, check if any services are not healthy
+                  if echo "$health_response" | jq -e 'to_entries[] | select(.value != "healthy" and .value != "running")' >/dev/null 2>&1; then
+                    all_healthy="false"
+                  fi
+                else
+                  all_healthy="false"
+                fi
+                echo "DEBUG: Calculated allHealthy value: $all_healthy"
                 
                 if [ "$all_healthy" = "true" ]; then
                   echo "✅ All containers are healthy!"
