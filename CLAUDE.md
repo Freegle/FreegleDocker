@@ -91,3 +91,5 @@ When adding new submodules to this repository, follow these steps:
 6. **Test the integration** by making a test commit to the new submodule and verifying it triggers the FreegleDocker CircleCI pipeline.
 
 The webhook workflow automatically triggers CircleCI builds when changes are pushed to master/main branches, enabling continuous integration testing of the complete Docker stack.
+- When removing code, never leave comments about what used to be there, or "this is now" stuff - the code should reflect the current behaviour.
+- When making changes to iznik-nuxt3, don't make the corresponding changes to the modtools branch which contains the same code.  That will get handled later via merge.

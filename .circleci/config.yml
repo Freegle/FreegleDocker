@@ -60,10 +60,26 @@ jobs:
             fi
 
       - run:
+          name: Check for FreegleDocker changes
+          command: |
+            echo "=== Checking for FreegleDocker repository changes ==="
+            
+            # Check if there are changes to FreegleDocker files (excluding submodule updates)
+            if git diff HEAD~1 --name-only | grep -v '^[^/]*/$' | head -1; then
+              echo "DOCKER_CHANGES_DETECTED=true" >> $BASH_ENV
+              echo "FreegleDocker repository changes detected"
+              git diff HEAD~1 --name-only | grep -v '^[^/]*/$' || true
+            else
+              echo "DOCKER_CHANGES_DETECTED=false" >> $BASH_ENV
+              echo "No FreegleDocker repository changes detected"
+            fi
+
+      - run:
           name: Start Docker services
           command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ]; then
+            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
               echo "Starting Docker Compose services..."
+              echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
               
               # Clean up any existing containers
               docker-compose down --remove-orphans || true
@@ -78,47 +94,67 @@ jobs:
               echo "Service status:"
               docker-compose ps
             else
-              echo "No submodule changes detected and not on master branch - skipping Docker startup"
+              echo "No changes detected and not on master branch - skipping Docker startup"
             fi
           no_output_timeout: 10m
 
       - run:
           name: Wait for services to be ready
           command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ]; then
-              echo "Waiting for status service to be ready..."
+            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
+              echo "Waiting for all services to be healthy..."
               
-              # Wait up to 10 minutes for status service to respond
-              for i in {1..60}; do
-                if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
-                  echo "✅ Status service is ready!"
-                  break
+              # Wait up to 15 minutes for all containers to be healthy
+              start_time=$(date +%s)
+              timeout_duration=900  # 15 minutes
+              
+              while true; do
+                current_time=$(date +%s)
+                elapsed=$((current_time - start_time))
+                
+                if [ $elapsed -gt $timeout_duration ]; then
+                  echo "⏰ Timeout waiting for services to be healthy"
+                  echo "Docker service status:"
+                  docker-compose ps
+                  exit 1
                 fi
-                echo "Attempt $i/60: Status service not ready, waiting 10s..."
+                
+                # Check if status service is responding
+                if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
+                  echo "✅ Status service is responding!"
+                  
+                  # Get health status from status service
+                  health_response=$(curl -s http://localhost:8081/health 2>/dev/null || echo '{"allHealthy": false}')
+                  all_healthy=$(echo "$health_response" | jq -r '.allHealthy // false' 2>/dev/null || echo "false")
+                  
+                  if [ "$all_healthy" = "true" ]; then
+                    echo "✅ All containers are healthy!"
+                    break
+                  else
+                    echo "⚠️ Some containers not yet healthy, checking details..."
+                    echo "$health_response" | jq '.' 2>/dev/null || echo "Health check response: $health_response"
+                  fi
+                else
+                  echo "Status service not yet responding..."
+                fi
+                
+                elapsed_min=$((elapsed / 60))
+                echo "[${elapsed_min}m] Waiting for all services to be healthy..."
                 sleep 10
               done
               
-              # Final check
-              if ! curl -f -s http://localhost:8081 > /dev/null 2>&1; then
-                echo "❌ Status service failed to start properly"
-                echo "Docker service status:"
-                docker-compose ps
-                echo "Status container logs:"
-                docker-compose logs status | tail -50
-                exit 1
-              fi
-              
-              echo "Services are ready!"
+              echo "🎉 All services are ready and healthy!"
             else
               echo "Skipping service readiness check - no changes detected"
             fi
-          no_output_timeout: 15m
+          no_output_timeout: 20m
 
       - run:
           name: Run Playwright tests
           command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ]; then
+            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
               echo "🧪 Triggering Playwright tests..."
+              echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
               
               # Trigger tests via API
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
@@ -164,22 +200,26 @@ jobs:
                   
                   if [ "$success" = "true" ]; then
                     echo "✅ All tests passed!"
+                    echo "TESTS_PASSED=true" >> $BASH_ENV
                     break
                   else
                     echo "❌ Some tests failed!"
                     echo "Test logs:"
                     echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                    echo "TESTS_PASSED=false" >> $BASH_ENV
                     exit 1
                   fi
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "❌ Tests failed to run!"
                   echo "Error details:"
                   echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                  echo "TESTS_PASSED=false" >> $BASH_ENV
                   exit 1
                 fi
               done
             else
-              echo "Skipping tests - no submodule changes detected"
+              echo "Skipping tests - no changes detected"
+              echo "TESTS_PASSED=skipped" >> $BASH_ENV
             fi
           no_output_timeout: 35m
 
@@ -237,6 +277,45 @@ jobs:
               echo "✅ Submodule updates committed and pushed successfully!"
             else
               echo "Skipping commit - no changes detected or not on master branch"
+            fi
+          when: on_success
+
+      - run:
+          name: Auto-merge master to production
+          command: |
+            if [ "$TESTS_PASSED" = "true" ] && ([ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]); then
+              echo "🔀 Auto-merging master to production in iznik-nuxt3..."
+              echo "Tests passed successfully - proceeding with merge"
+              
+              # Configure git for the submodule
+              cd iznik-nuxt3
+              git config user.name "CircleCI"
+              git config user.email "ci@freegle.org"
+              
+              # Fetch all branches
+              git fetch origin
+              
+              # Check out production branch (create if it doesn't exist)
+              git checkout production || git checkout -b production origin/production || git checkout -b production
+              
+              # Merge master into production
+              git merge origin/master --no-ff -m "Auto-merge master to production after successful tests
+
+              Updated by CircleCI build #${CIRCLE_BUILD_NUM}
+              Build URL: ${CIRCLE_BUILD_URL}
+              
+              🤖 Automated merge after successful Playwright tests"
+              
+              # Push to production
+              git push origin production
+              
+              echo "✅ Successfully merged master to production in iznik-nuxt3!"
+            else
+              echo "Skipping auto-merge"
+              echo "TESTS_PASSED=$TESTS_PASSED"
+              echo "SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED"
+              echo "DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED"
+              echo "CIRCLE_BRANCH=$CIRCLE_BRANCH"
             fi
           when: on_success
 
@@ -309,10 +388,7 @@ workflows:
   # Manual and push-triggered workflow  
   build-and-test:
     jobs:
-      - check-submodules:
-          filters:
-            branches:
-              only: master
+      - check-submodules
 
   # Webhook-triggered workflow (triggered via API)
   webhook-triggered:

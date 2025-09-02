@@ -15,8 +15,12 @@ If you cloned without the `--recurse-submodules` flag, you can initialize them w
 
 `git submodule update --init --recursive`
 
-**Make sure you do this from a WSL page (e.g. /home/user/whatever) not from a Windows path (e.g. /mnt/c/whatever).**  
-(Not 100% sure this is necessary, but it is what is tested)
+On Windows, using Docker Desktop works but is unusably slow.  So we won't document that.  Instead we use WSL2, with some jiggery-pokery to get round issues with file syncing and WSL2. Here are instructions on the assumption that you have a JetBrains IDE (e.g. PhpStorm):
+1. Install a WSL2 distribution (Ubuntu recommended). If you already have a WSL installation, you may benefit from installing a dedicated freegle one `wsl --install --name freegle`
+2. Clone this repository from JetBrains **and give it a WSL2 path** (e.g., `\\wsl$\Ubuntu\home\edward\FreegleDockerWSL`).
+3. [Install docker](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository)
+4. Use `wsl` to open a WSL2 terminal in the repository directory.
+5. Start the docker service: `sudo service docker start`
 
 This will clone the required Freegle repositories:
 - `iznik-nuxt3` (User website aka FD - runs as both dev and prod containers)
@@ -25,6 +29,30 @@ This will clone the required Freegle repositories:
 - `iznik-server-go` (modern Go API)
 
 Since these are git submodules, you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
+
+### Windows
+
+Add these to your hosts file:
+
+```
+127.0.0.1 freegle.localhost
+127.0.0.1 freegle-dev.localhost
+127.0.0.1 freegle-prod.localhost
+127.0.0.1 modtools.localhost
+127.0.0.1 phpmyadmin.localhost
+127.0.0.1 mailhog.localhost
+127.0.0.1 tusd.localhost
+127.0.0.1 status.localhost
+127.0.0.1 apiv1.localhost
+127.0.0.1 apiv2.localhost
+127.0.0.1 delivery.localhost
+```
+
+(not sure if this is necessary)  
+
+### Linux
+
+Feel free to write this.
 
 ## Configuration
 
@@ -37,6 +65,7 @@ The system can be customized through environment variables in a `.env` file. Cop
 - `IZNIK_NUXT3_MODTOOLS_BRANCH` - Branch for ModTools (default: master)
 
 **External Service API Keys (Optional but Recommended):**
+
 These keys enable full functionality and are used for both application features and PHPUnit testing:
 
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID for user authentication
@@ -74,54 +103,12 @@ MAXMIND_KEY=your_maxmind_key_here
 ```
 
 **After Configuration Changes:**
-If you modify branch settings or API keys, rebuild the affected containers:
+
+If you modify branch settings or API keys, probably best to do a complete rebuild. 
 
 ```bash
-# Rebuild specific container
-docker-compose build --no-cache apiv1
-
-# Or rebuild all containers
 docker-compose build --no-cache
 ```
-
-## Windows
-
-Add these to your hosts file first:
-
-```
-127.0.0.1 freegle.localhost
-127.0.0.1 freegle-dev.localhost
-127.0.0.1 freegle-prod.localhost
-127.0.0.1 modtools.localhost
-127.0.0.1 phpmyadmin.localhost
-127.0.0.1 mailhog.localhost
-127.0.0.1 tusd.localhost
-127.0.0.1 status.localhost
-127.0.0.1 apiv1.localhost
-127.0.0.1 apiv2.localhost
-127.0.0.1 delivery.localhost
-```
-
-On Windows, using Docker Desktop works but is unusably slow.  So we won't document that.  Instead we use WSL2, with some jiggery-pokery to get round issues with file syncing and WSL2.
-
-Here are instructions on the assumption that you have a JetBrains IDE (e.g. PhpStorm):
-1. Install a WSL2 distribution (Ubuntu recommended). If you already have a WSL installation, you may benefit from installing a dedicated freegle one `wsl --install --name freegle`
-2. Clone this repository from JetBrains **and give it a WSL2 path** (e.g., `\\wsl$\Ubuntu\home\edward\FreegleDockerWSL`).
-3. [Install docker](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository)
-4. Use `wsl` to open a WSL2 terminal in the repository directory.
-5. Start the docker service: `sudo service docker start`
-6. Move on to the Running section.
-
-### Troubleshooting
-
-If the localhost domains above don't work, check that Windows hasn't blocked access: `curl -I freegle.localhost` should give a 200 response.
-
-If this is the case, you can open a proxy port: `sudo netsh interface portproxy add v4tov4 listenport=80 listenaddress=0.0.0.0 connectport=80 connectaddress=<wsl IP address>` (see [SO post](https://stackoverflow.com/questions/70566305/unable-to-connect-to-local-server-on-wsl2-from-windows-host) for more info)
-
-## Linux
-
-Feel free to write this.
-
 </details>
 
 <details>
@@ -149,6 +136,12 @@ The system builds in stages:
 - 🟢 **Running** - Service is ready
 - 🟡 **Starting...** - Service is building/starting up
 - 🔴 **Offline** - Service has failed
+
+## Troubleshooting
+
+If the localhost domains above don't work, check that Windows hasn't blocked access: `curl -I freegle.localhost` should give a 200 response.
+
+If this is the case, you can open a proxy port: `sudo netsh interface portproxy add v4tov4 listenport=80 listenaddress=0.0.0.0 connectport=80 connectaddress=<wsl IP address>` (see [SO post](https://stackoverflow.com/questions/70566305/unable-to-connect-to-local-server-on-wsl2-from-windows-host) for more info)
 
 ## Rebuild from Scratch
 
@@ -183,41 +176,6 @@ docker exec -it freegle-percona mysql -u root -piznik
 docker restart freegle-modtools
 docker restart freegle-status
 ```
-
-## Running Playwright Tests Manually
-
-To run Playwright tests manually within the playwright container:
-
-```bash
-# Enter the playwright container
-docker exec -it freegle-playwright bash
-
-# Run all tests
-npm run test
-
-# Run specific test file
-npx playwright test tests/e2e/filename.spec.js
-
-# Run tests with UI (requires X11 forwarding in WSL)
-npm run test:ui
-
-# Run tests in headed mode (requires X11 forwarding in WSL)
-npm run test:headed
-
-# View test report after running tests
-npm run test:show-report
-```
-
-**Accessing Test Reports:**
-After running `npm run test:show-report` inside the container, the Playwright HTML report will be accessible at:
-- **[Test Report](http://localhost:9324)** - Playwright HTML test report
-
-The report server will display:
-```
-Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.
-```
-
-Note: The report runs on port 9323 inside the container but is mapped to port 9324 on the host system.
 
 # Using the System
 
@@ -257,9 +215,19 @@ You can see this via 'Pending' calls in the Network tab.
 </details>
 
 <details>
-<summary>🔄 Continuous Integration</summary>
+<summary>🧪 Test Configuration</summary>
 
-# CircleCI Integration
+# Test Configuration
+
+The system contains one test group, FreeglePlayground, centered around Edinburgh.  
+The only recognised postcode is EH3 6SS.
+
+</details>
+
+<details>
+<summary>🔄 CircleCI Continuous Integration</summary>
+
+# CircleCI Continuous Integration
 
 This repository includes CircleCI configuration that automatically monitors submodules and runs integration tests when changes are detected.
 
@@ -341,31 +309,14 @@ For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md
 </details>
 
 <details>
-<summary>🧪 Test Configuration</summary>
-
-# Test Configuration
-
-The system contains one test group, FreeglePlayground, centered around Edinburgh.  
-The only recognised postcode is EH3 6SS.
-
-</details>
-
-<details>
 <summary>⚠️ Limitations</summary>
 
 # Limitations
 
-* Email to Mailhog not yet verified.
+* Email to Mailhog not yet verified and probably not yet working..
+* This doesn't run most of the various background jobs, so it won't be sending out emails in the way the live system would.
+* Code coverage reporting is disabled.  This has previously worked on CircleCI but we've not activated it since moving to Docker Compose.
+* Go and PHP unit tests are not yet running from the status page.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
-* This doesn't run the various background jobs, so it won't be sending out emails in the way the live system would.
-* **Test Coverage Reports:** Code coverage reporting is disabled in the Docker environment to prevent test hangs. Coverage reports are only generated in CI/CircleCI environments.
-* **Playwright Coverage:** Playwright code coverage collection is disabled in the local Docker environment to prevent performance issues and test instability. Coverage is only collected during CI builds.
-
-**Container Development Notes:**
-- **Freegle Dev**: Runs `nuxt dev` with hot module reloading for rapid development
-- **Freegle Prod**: Runs production build to test optimized behavior without HMR
-- **ModTools**: Runs `nuxt dev` with hot module reloading for rapid development  
-- **Go API (apiv2)**: No hot module reloading - use **Rebuild Button** in [Status Monitor](http://localhost:8081) for quick rebuilds
-- **Playwright**: Dedicated container for running end-to-end tests with network access to all services
 
 </details>
