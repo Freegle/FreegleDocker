@@ -378,7 +378,7 @@ workflows:
   scheduled-submodule-check:
     triggers:
       - schedule:
-          cron: "0 */6 * * *"  # Every 6 hours
+          cron: "0 0,6,12,18 * * *"  # Every 6 hours (at 00:00, 06:00, 12:00, 18:00 UTC)
           filters:
             branches:
               only: master
