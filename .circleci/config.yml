@@ -30,7 +30,7 @@ executors:
 
 # Define jobs
 jobs:
-  check-submodules:
+  update-submodules-start-docker-and-test:
     executor: docker-executor
     steps:
       - checkout:
@@ -52,6 +52,16 @@ jobs:
             sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
+
+      - run:
+          name: Create missing secrets files
+          command: |
+            mkdir -p secrets
+            echo "placeholder" > secrets/lovejunk-api.txt
+            echo "placeholder" > secrets/lovejunk-secret.txt
+            echo "placeholder" > secrets/partner-key.txt
+            echo "placeholder" > secrets/partner-name.txt
+            echo "placeholder" > secrets/image-domain.txt
 
       - run:
           name: Update submodules to latest
@@ -344,8 +354,8 @@ jobs:
             docker system prune -f || true
           when: always
 
-  # Webhook-triggered job for immediate submodule testing
-  webhook-submodule-check:
+  # Webhook-triggered Playwright testing (no submodule update needed)
+  webhook-start-docker-and-test:
     executor: docker-executor
     steps:
       - checkout:
@@ -374,7 +384,25 @@ jobs:
             echo "SUBMODULE_CHANGES_DETECTED=true" >> $BASH_ENV
             echo "FORCE_TESTING=true" >> $BASH_ENV
 
-      # Reuse the same steps from check-submodules job
+      - run:
+          name: Install dependencies and create secrets
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y curl jq
+            
+            # Install latest docker-compose
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+            
+            # Create missing secrets files
+            mkdir -p secrets
+            echo "placeholder" > secrets/lovejunk-api.txt
+            echo "placeholder" > secrets/lovejunk-secret.txt
+            echo "placeholder" > secrets/partner-key.txt
+            echo "placeholder" > secrets/partner-name.txt
+            echo "placeholder" > secrets/image-domain.txt
+
+      # Reuse the same Docker and testing steps from the main job
       - run:
           name: Install system dependencies
           command: |
@@ -392,8 +420,8 @@ jobs:
 workflows:
   version: 2
   
-  # Regular scheduled check
-  scheduled-submodule-check:
+  # Scheduled integration testing every 6 hours
+  scheduled-integration-test:
     triggers:
       - schedule:
           cron: "0 0,6,12,18 * * *"  # Every 6 hours (at 00:00, 06:00, 12:00, 18:00 UTC)
@@ -401,17 +429,17 @@ workflows:
             branches:
               only: master
     jobs:
-      - check-submodules
+      - update-submodules-start-docker-and-test
 
-  # Manual and push-triggered workflow  
-  build-and-test:
+  # Manual and push-triggered Playwright testing
+  manual-playwright-test:
     jobs:
-      - check-submodules
+      - update-submodules-start-docker-and-test
 
-  # Webhook-triggered workflow (triggered via API)
-  webhook-triggered:
+  # Webhook-triggered Playwright testing (from submodule repositories)
+  webhook-playwright-test:
     when:
       condition:
         equal: [ webhook, << pipeline.trigger_source >> ]
     jobs:
-      - webhook-submodule-check
+      - webhook-start-docker-and-test
