@@ -95,7 +95,7 @@ jobs:
       - run:
           name: Start Docker services
           command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
+            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [[ "$CIRCLE_BRANCH" == feature/* ]] || [ -n "$CIRCLE_BUILD_URL" ]; then
               echo "Starting Docker Compose services..."
               echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
               
@@ -129,28 +129,15 @@ jobs:
             else
               echo "No changes detected and not on master branch - skipping Docker startup"
             fi
-          no_output_timeout: 10m
 
       - run:
           name: Wait for services to be ready
           command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
+            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [[ "$CIRCLE_BRANCH" == feature/* ]] || [ -n "$CIRCLE_BUILD_URL" ]; then
               echo "Waiting for all services to be healthy..."
               
-              # Wait up to 25 minutes for all containers to be healthy (freegle-prod build is slow in CI)
-              start_time=$(date +%s)
-              timeout_duration=1500  # 25 minutes
-              
+              # Wait for all containers to be healthy (let CircleCI handle timeout)
               while true; do
-                current_time=$(date +%s)
-                elapsed=$((current_time - start_time))
-                
-                if [ $elapsed -gt $timeout_duration ]; then
-                  echo "⏰ Timeout waiting for services to be healthy"
-                  echo "Docker service status:"
-                  docker-compose ps
-                  exit 1
-                fi
                 
                 # Check if status service is responding
                 if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
@@ -187,29 +174,41 @@ jobs:
                       echo "Health check response (not JSON): $health_response"
                     fi
                     
-                    # Always show detailed container status when not healthy
-                    echo "=== Container Status Details ==="
-                    docker-compose ps
-                    
-                    # Show last few lines of logs for key containers
-                    echo "=== Recent logs for containers ==="
-                    for container in freegle-freegle-dev freegle-freegle-prod freegle-modtools freegle-apiv1 freegle-apiv2 freegle-percona freegle-postgres freegle-redis freegle-status; do
-                      if docker ps --filter "name=$container" --filter "status=running" | grep -q "$container"; then
-                        echo "--- $container (last 3 lines) ---"
-                        docker logs "$container" --tail 3 2>&1 | tail -3
-                      else
-                        echo "--- $container (not running) ---"
-                        docker ps --filter "name=$container" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "Container not found"
-                      fi
-                    done
-                    echo "=== End Container Details ==="
+                    # Show status details only for unhealthy containers
+                    if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
+                      echo "=== Unhealthy Container Details ==="
+                      
+                      # Show only containers that are not healthy
+                      echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | .key' | while read container_service; do
+                        # Map service names to container names
+                        case "$container_service" in
+                          "freegle-dev") container_name="freegle-freegle-dev" ;;
+                          "freegle-prod") container_name="freegle-freegle-prod" ;;
+                          "modtools") container_name="freegle-modtools" ;;
+                          "apiv1") container_name="freegle-apiv1" ;;
+                          "apiv2") container_name="freegle-apiv2" ;;
+                          "percona") container_name="freegle-percona" ;;
+                          "postgres") container_name="freegle-postgres" ;;
+                          "redis") container_name="freegle-redis" ;;
+                          "status") container_name="freegle-status" ;;
+                          *) container_name="freegle-$container_service" ;;
+                        esac
+                        
+                        echo "--- $container_name (unhealthy) ---"
+                        if docker ps --filter "name=$container_name" --filter "status=running" | grep -q "$container_name"; then
+                          docker logs "$container_name" --tail 5 2>&1 | tail -5
+                        else
+                          docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "Container not found"
+                        fi
+                      done
+                      echo "=== End Unhealthy Container Details ==="
+                    fi
                   fi
                 else
                   echo "Status service not yet responding..."
                 fi
                 
-                elapsed_min=$((elapsed / 60))
-                echo "[${elapsed_min}m] Waiting for all services to be healthy..."
+                echo "Waiting for all services to be healthy..."
                 sleep 10
               done
               
@@ -291,7 +290,6 @@ jobs:
               echo "Skipping tests - no changes detected"
               echo "TESTS_PASSED=skipped" >> $BASH_ENV
             fi
-          no_output_timeout: 35m
 
       - run:
           name: Collect artifacts
@@ -473,27 +471,14 @@ jobs:
             
             echo "Service status:"
             docker-compose ps
-          no_output_timeout: 10m
 
       - run:
           name: Wait for services to be ready
           command: |
             echo "Waiting for all services to be healthy..."
             
-            # Wait up to 25 minutes for all containers to be healthy (freegle-prod build is slow in CI)
-            start_time=$(date +%s)
-            timeout_duration=1500  # 25 minutes
-            
+            # Wait for all containers to be healthy (let CircleCI handle timeout)
             while true; do
-              current_time=$(date +%s)
-              elapsed=$((current_time - start_time))
-              
-              if [ $elapsed -gt $timeout_duration ]; then
-                echo "⏰ Timeout waiting for services to be healthy"
-                echo "Docker service status:"
-                docker-compose ps
-                exit 1
-              fi
               
               # Check if status service is responding
               if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
@@ -535,34 +520,45 @@ jobs:
                     echo "Health check response (not JSON): $health_response"
                   fi
                   
-                  # Always show detailed container status when not healthy
-                  echo "=== Container Status Details ==="
-                  docker-compose ps
-                  
-                  # Show last few lines of logs for key containers
-                  echo "=== Recent logs for containers ==="
-                  for container in freegle-freegle-dev freegle-freegle-prod freegle-modtools freegle-apiv1 freegle-apiv2 freegle-percona freegle-postgres freegle-redis freegle-status; do
-                    if docker ps --filter "name=$container" --filter "status=running" | grep -q "$container"; then
-                      echo "--- $container (last 3 lines) ---"
-                      docker logs "$container" --tail 3 2>&1 | tail -3
-                    else
-                      echo "--- $container (not running) ---"
-                      docker ps --filter "name=$container" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "Container not found"
-                    fi
-                  done
-                  echo "=== End Container Details ==="
+                  # Show status details only for unhealthy containers
+                  if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
+                    echo "=== Unhealthy Container Details ==="
+                    
+                    # Show only containers that are not healthy
+                    echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | .key' | while read container_service; do
+                      # Map service names to container names
+                      case "$container_service" in
+                        "freegle-dev") container_name="freegle-freegle-dev" ;;
+                        "freegle-prod") container_name="freegle-freegle-prod" ;;
+                        "modtools") container_name="freegle-modtools" ;;
+                        "apiv1") container_name="freegle-apiv1" ;;
+                        "apiv2") container_name="freegle-apiv2" ;;
+                        "percona") container_name="freegle-percona" ;;
+                        "postgres") container_name="freegle-postgres" ;;
+                        "redis") container_name="freegle-redis" ;;
+                        "status") container_name="freegle-status" ;;
+                        *) container_name="freegle-$container_service" ;;
+                      esac
+                      
+                      echo "--- $container_name (unhealthy) ---"
+                      if docker ps --filter "name=$container_name" --filter "status=running" | grep -q "$container_name"; then
+                        docker logs "$container_name" --tail 5 2>&1 | tail -5
+                      else
+                        docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "Container not found"
+                      fi
+                    done
+                    echo "=== End Unhealthy Container Details ==="
+                  fi
                 fi
               else
                 echo "Status service not yet responding..."
               fi
               
-              elapsed_min=$((elapsed / 60))
-              echo "[${elapsed_min}m] Waiting for all services to be healthy..."
+              echo "Waiting for all services to be healthy..."
               sleep 10
             done
             
             echo "🎉 All services are ready and healthy!"
-          no_output_timeout: 20m
 
       - run:
           name: Run Playwright tests
@@ -628,7 +624,6 @@ jobs:
                 exit 1
               fi
             done
-          no_output_timeout: 35m
 
       - run:
           name: Collect artifacts

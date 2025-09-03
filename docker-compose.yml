@@ -48,7 +48,7 @@ services:
     networks:
       - default
     image: postgis/postgis:13-3.1
-    restart: always
+    restart: "no"
     environment:
       POSTGRES_DB: iznik
       POSTGRES_PASSWORD: iznik
@@ -70,7 +70,7 @@ services:
         condition: service_started
       reverse-proxy:
         condition: service_started
-    restart: always
+    restart: "no"
     environment:
       - PMA_HOST=percona
       - PMA_USER=root
@@ -130,7 +130,7 @@ services:
       - ./data:/data
     environment:
       - CONTAINER_NAME=spamassassin-app
-    restart: always
+    restart: "no"
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 783"]
       interval: 10s
@@ -143,7 +143,7 @@ services:
     networks:
       - default
     image: redis:6.2-alpine
-    restart: always
+    restart: "no"
     command: redis-server --save 20 1 --loglevel warning
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
@@ -157,7 +157,7 @@ services:
     networks:
       - default
     image: ghcr.io/weserv/images:5.x
-    restart: always
+    restart: "no"
     shm_size: 1gb
     depends_on:
       - tusd
@@ -296,7 +296,7 @@ services:
         condition: service_started
       spamassassin-app:
         condition: service_started
-    restart: always
+    restart: "no"
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
@@ -370,7 +370,7 @@ services:
         condition: service_healthy
       reverse-proxy:
         condition: service_healthy
-    restart: always
+    restart: "no"
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
@@ -413,7 +413,7 @@ services:
         condition: service_started
       apiv2:
         condition: service_started
-    restart: always
+    restart: "no"
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
@@ -460,7 +460,7 @@ services:
         condition: service_started
       apiv2:
         condition: service_started
-    restart: always
+    restart: "no"
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
@@ -507,7 +507,7 @@ services:
         condition: service_started
       apiv2:
         condition: service_started
-    restart: always
+    restart: "no"
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
