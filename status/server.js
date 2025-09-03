@@ -1074,9 +1074,16 @@ const httpServer = http.createServer(async (req, res) => {
       // First set up test environment, then run Go tests in the apiv2 container
       const { spawn } = require('child_process');
       const testProcess = spawn('sh', ['-c', `
-        echo "Setting up test environment..." &&
-        docker exec -w /var/www/iznik freegle-apiv1 php install/testenv.php &&
-        echo "Running Go tests..." &&
+        set -e
+        echo "Setting up test environment..."
+        docker exec -w /var/www/iznik freegle-apiv1 php install/testenv.php
+        echo "Setting up Go-specific test data..."
+        docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
+        # Fix the include path to work in the apiv1 container
+        sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
+        docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
+        docker exec -w /var/www/iznik freegle-apiv1 php go-testenv.php
+        echo "Running Go tests..."
         docker exec -w /app freegle-apiv2 go test ./test/... -v
       `], {
         stdio: 'pipe'

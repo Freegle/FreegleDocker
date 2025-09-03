@@ -376,6 +376,7 @@ services:
       - MYSQL_PORT=3306
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
     ports:
       - "8193:8192"
     labels:
