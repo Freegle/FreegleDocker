@@ -226,7 +226,7 @@ jobs:
               echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
               
               # Run Go tests inside the apiv2 container where environment is already configured
-              docker-compose exec -T apiv2 sh -c "cd app && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./... && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || { echo "❌ Go tests failed!"; exit 1; }
+              docker-compose exec -T apiv2 sh -c "find ./ -name go.mod && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./... && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || { echo "❌ Go tests failed!"; exit 1; }
               
               echo "✅ Go tests passed!"
             else
@@ -582,7 +582,7 @@ jobs:
             echo "Triggered by webhook from << pipeline.parameters.webhook_repository >>"
             
             # Run Go tests inside the apiv2 container where environment is already configured
-            docker-compose exec -T apiv2 sh -c "cd app && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./... && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || { echo "❌ Go tests failed!"; exit 1; }
+            docker-compose exec -T apiv2 sh -c "find ./ -name go.mod && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./... && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || { echo "❌ Go tests failed!"; exit 1; }
             
             echo "✅ Go tests passed!"
 
