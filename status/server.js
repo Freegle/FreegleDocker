@@ -1073,11 +1073,11 @@ const httpServer = http.createServer(async (req, res) => {
       
       // First set up test environment, then run Go tests in the apiv2 container
       const { spawn } = require('child_process');
-      const testProcess = spawn('bash', ['-c', `
+      const testProcess = spawn('sh', ['-c', `
         echo "Setting up test environment..." &&
-        docker exec freegle-apiv1 php ./install/testenv.php &&
+        docker exec -w /var/www/iznik freegle-apiv1 php install/testenv.php &&
         echo "Running Go tests..." &&
-        docker exec freegle-apiv2 go test ./... -v
+        docker exec -w /app freegle-apiv2 go test ./test/... -v
       `], {
         stdio: 'pipe'
       });

@@ -249,14 +249,16 @@ The system automatically:
   1. Updates all submodules to latest commits
   2. Starts complete Docker Compose environment (if changes detected)
   3. Waits for all services to be ready
-  4. Runs Playwright end-to-end tests via status container
-  5. Collects test artifacts and logs
-  6. Commits updates if tests pass
+  4. Runs Go API unit tests with coverage reporting
+  5. Runs Playwright end-to-end tests via status container
+  6. Collects test artifacts and logs
+  7. Commits updates if tests pass
 
 ### Webhook Trigger: `webhook-triggered`
 - **Purpose**: Immediate testing when submodule repositories push changes
 - **Trigger**: API calls from submodule repository webhooks
 - **Behavior**: Forces testing regardless of detected changes
+- **Process**: Same as scheduled check but runs immediately on submodule changes
 
 ### Manual/Push: `build-and-test`
 - **Trigger**: Push to `master` branch or manual pipeline trigger
@@ -315,8 +317,10 @@ For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md
 
 * Email to Mailhog not yet verified and probably not yet working.
 * This doesn't run most of the various background jobs, so it won't be sending out emails in the way the live system would.
-* Code coverage reporting is disabled.  This has previously worked on CircleCI but we've not activated it since moving to Docker Compose.
-* Go and PHP unit tests are not yet running from the status page.
+* Code coverage reporting is disabled for PHP tests.  This has previously worked on CircleCI but we've not activated it since moving to Docker Compose.
+* PHP unit tests are not yet running from the status page.
+* Go unit tests run in CircleCI with coverage reporting to Coveralls, but are not yet accessible from the status page.
+* We don't yet have a development container for ModTools - only production build is available.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
 
 </details>
