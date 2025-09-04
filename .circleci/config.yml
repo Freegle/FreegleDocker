@@ -6,30 +6,65 @@ commands:
     description: "Cancel other running builds to avoid conflicts"
     steps:
       - run:
-          name: Cancel redundant builds
+          name: Cancel redundant builds and wait
           command: |
-            echo "🛑 Checking for other running builds to cancel..."
+            echo "🛑 Attempting to cancel redundant builds..."
+            echo "Current pipeline: $CIRCLE_PIPELINE_ID"
+            echo "Trigger source: << pipeline.trigger_source >>"
+            echo "Workflow: $CIRCLE_WORKFLOW_ID"
             
-            # Get current workflow ID
-            CURRENT_WORKFLOW_ID=$(curl -s -H "Circle-Token: $CIRCLE_TOKEN" \
-              "https://circleci.com/api/v2/pipeline/${CIRCLE_PIPELINE_ID}/workflow" | \
-              jq -r '.items[0].id')
+            # Always add a small delay to let other builds start before we cancel them
+            echo "Waiting 10 seconds for other builds to start..."
+            sleep 10
             
-            echo "Current workflow ID: $CURRENT_WORKFLOW_ID"
+            # Check if CIRCLE_TOKEN is available
+            if [ -z "$CIRCLE_TOKEN" ]; then
+              echo "⚠️ CIRCLE_TOKEN not available - cannot cancel redundant builds"
+              echo "This is expected in fork PRs. Builds may run in parallel."
+              echo "To enable cancellation, add CIRCLE_TOKEN to project environment variables"
+              exit 0
+            fi
             
             # Cancel other running workflows for this project
-            curl -s -H "Circle-Token: $CIRCLE_TOKEN" \
-              "https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline?branch=$CIRCLE_BRANCH" | \
-              jq -r '.items[] | select(.state == "created" or .state == "running") | .id' | \
-              while read pipeline_id; do
-                if [ "$pipeline_id" != "$CIRCLE_PIPELINE_ID" ]; then
+            echo "Fetching running pipelines on branch $CIRCLE_BRANCH..."
+            PIPELINES_RESPONSE=$(curl -s -H "Circle-Token: $CIRCLE_TOKEN" \
+              "https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline?branch=$CIRCLE_BRANCH" 2>/dev/null)
+            
+            if [ $? -ne 0 ] || [ -z "$PIPELINES_RESPONSE" ]; then
+              echo "⚠️ Failed to fetch pipeline list - API request failed"
+              exit 0
+            fi
+            
+            # Extract other running pipeline IDs
+            OTHER_PIPELINES=$(echo "$PIPELINES_RESPONSE" | \
+              jq -r '.items[] | select(.state == "created" or .state == "running") | select(.id != "'$CIRCLE_PIPELINE_ID'") | .id' 2>/dev/null)
+            
+            if [ -z "$OTHER_PIPELINES" ]; then
+              echo "✅ No other running pipelines found"
+            else
+              echo "Found other running pipelines:"
+              echo "$OTHER_PIPELINES"
+              
+              # Cancel each pipeline
+              echo "$OTHER_PIPELINES" | while read -r pipeline_id; do
+                if [ -n "$pipeline_id" ] && [ "$pipeline_id" != "null" ]; then
                   echo "Canceling pipeline: $pipeline_id"
-                  curl -s -X POST -H "Circle-Token: $CIRCLE_TOKEN" \
-                    "https://circleci.com/api/v2/pipeline/${pipeline_id}/cancel"
+                  CANCEL_RESULT=$(curl -s -w "%{http_code}" -X POST -H "Circle-Token: $CIRCLE_TOKEN" \
+                    "https://circleci.com/api/v2/pipeline/${pipeline_id}/cancel" 2>/dev/null)
+                  
+                  HTTP_CODE="${CANCEL_RESULT: -3}"
+                  if [ "$HTTP_CODE" -eq "200" ] || [ "$HTTP_CODE" -eq "202" ]; then
+                    echo "✅ Successfully canceled pipeline $pipeline_id"
+                  else
+                    echo "⚠️ Failed to cancel pipeline $pipeline_id (HTTP $HTTP_CODE)"
+                  fi
                 fi
               done
-            
-            echo "✅ Redundant build cancellation complete"
+              
+              echo "🎯 Redundant build cancellation complete"
+              echo "Waiting 5 seconds for cancellations to take effect..."
+              sleep 5
+            fi
 
   setup-dependencies:
     description: "Install system dependencies and docker-compose"
@@ -1219,8 +1254,11 @@ workflows:
   # Manual and push-triggered Playwright testing  
   manual-playwright-test:
     when:
-      not:
-        equal: [ webhook, << pipeline.trigger_source >> ]
+      and:
+        - not:
+            equal: [ webhook, << pipeline.trigger_source >> ]
+        - not:
+            equal: [ scheduled_pipeline, << pipeline.trigger_source >> ]
     jobs:
       - update-submodules-start-docker-and-test
 
@@ -1230,4 +1268,6 @@ workflows:
       condition:
         equal: [ webhook, << pipeline.trigger_source >> ]
     jobs:
-      - webhook-start-docker-and-test
+      - webhook-start-docker-and-test:
+          # Add a small delay to allow cancellation to work
+          requires: []
