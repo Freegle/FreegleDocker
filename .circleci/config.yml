@@ -822,6 +822,9 @@ workflows:
 
   # Manual and push-triggered Playwright testing
   manual-playwright-test:
+    when:
+      not:
+        equal: [ webhook, << pipeline.trigger_source >> ]
     jobs:
       - update-submodules-start-docker-and-test
 
