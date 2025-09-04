@@ -53,6 +53,11 @@ jobs:
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
 
+      - restore_cache:
+          name: Restore MaxMind GeoIP database cache
+          keys:
+            - maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
+            - maxmind-geoip-v1-
 
       - run:
           name: Update submodules to latest
@@ -120,6 +125,13 @@ jobs:
               
               # Start services in detached mode
               docker-compose up -d
+              
+              # Restore cached MaxMind databases if available
+              if [ -d ~/maxmind-cache ]; then
+                echo "Restoring cached MaxMind databases..."
+                docker cp ~/maxmind-cache/GeoLite2-Country.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null || echo "Country DB not in cache"
+                docker cp ~/maxmind-cache/GeoLite2-City.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb 2>/dev/null || echo "City DB not in cache"
+              fi
               
               echo "Waiting for services to start..."
               sleep 60
@@ -217,6 +229,33 @@ jobs:
               echo "Skipping service readiness check - no changes detected"
             fi
           no_output_timeout: 20m
+
+      - run:
+          name: Extract and cache MaxMind databases
+          command: |
+            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [[ "$CIRCLE_BRANCH" == feature/* ]] || [ -n "$CIRCLE_BUILD_URL" ]; then
+              echo "Extracting MaxMind databases for caching..."
+              mkdir -p ~/maxmind-cache
+              
+              # Extract databases from container if they exist
+              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-Country.mmdb; then
+                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb ~/maxmind-cache/GeoLite2-Country.mmdb
+                echo "Extracted Country database"
+              else
+                echo "Country database not found in container"
+              fi
+              
+              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-City.mmdb; then
+                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb ~/maxmind-cache/GeoLite2-City.mmdb  
+                echo "Extracted City database"
+              else
+                echo "City database not found in container"
+              fi
+              
+              ls -la ~/maxmind-cache/ || echo "Cache directory is empty"
+            else
+              echo "Skipping MaxMind extraction - no changes detected"
+            fi
 
       - run:
           name: Run Go tests
@@ -417,6 +456,12 @@ jobs:
             fi
           when: on_success
 
+      - save_cache:
+          name: Save MaxMind GeoIP database cache
+          key: maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
+          paths:
+            - ~/maxmind-cache
+
       - run:
           name: Clean up Docker resources
           command: |
@@ -464,6 +509,11 @@ jobs:
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
 
+      - restore_cache:
+          name: Restore MaxMind GeoIP database cache
+          keys:
+            - maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
+            - maxmind-geoip-v1-
 
       # Start Docker services and run tests (same logic as main job)
       - run:
@@ -495,6 +545,13 @@ jobs:
             
             # Start services in detached mode
             docker-compose up -d
+            
+            # Restore cached MaxMind databases if available
+            if [ -d ~/maxmind-cache ]; then
+              echo "Restoring cached MaxMind databases..."
+              docker cp ~/maxmind-cache/GeoLite2-Country.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null || echo "Country DB not in cache"
+              docker cp ~/maxmind-cache/GeoLite2-City.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb 2>/dev/null || echo "City DB not in cache"
+            fi
             
             echo "Waiting for services to start..."
             sleep 60
@@ -589,6 +646,29 @@ jobs:
             done
             
             echo "🎉 All services are ready and healthy!"
+
+      - run:
+          name: Extract and cache MaxMind databases
+          command: |
+            echo "Extracting MaxMind databases for caching..."
+            mkdir -p ~/maxmind-cache
+            
+            # Extract databases from container if they exist
+            if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-Country.mmdb; then
+              docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb ~/maxmind-cache/GeoLite2-Country.mmdb
+              echo "Extracted Country database"
+            else
+              echo "Country database not found in container"
+            fi
+            
+            if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-City.mmdb; then
+              docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb ~/maxmind-cache/GeoLite2-City.mmdb  
+              echo "Extracted City database"
+            else
+              echo "City database not found in container"
+            fi
+            
+            ls -la ~/maxmind-cache/ || echo "Cache directory is empty"
 
       - run:
           name: Run Go tests
@@ -710,6 +790,12 @@ jobs:
 
       - store_artifacts:
           path: ~/artifacts
+
+      - save_cache:
+          name: Save MaxMind GeoIP database cache
+          key: maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
+          paths:
+            - ~/maxmind-cache
 
       - run:
           name: Clean up Docker resources
