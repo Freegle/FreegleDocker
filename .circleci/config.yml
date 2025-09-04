@@ -225,6 +225,21 @@ jobs:
               echo "🧪 Running Go tests in container..."
               echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
               
+              # Set up test environment first (similar to status page implementation)
+              echo "Setting up test environment..."
+              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+              
+              echo "Setting up Go-specific test data..."
+              # Copy Go test environment file from container to temp location
+              docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
+              # Fix the include path to work in the apiv1 container
+              sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
+              # Copy back to apiv1 container
+              docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
+              # Run Go test environment setup
+              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
+              
+              echo "Running Go tests..."
               # Run Go tests inside the apiv2 container where environment is already configured
               docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./... && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || { echo "❌ Go tests failed!"; exit 1; }
               
@@ -581,6 +596,21 @@ jobs:
             echo "🧪 Running Go tests in container..."
             echo "Triggered by webhook from << pipeline.parameters.webhook_repository >>"
             
+            # Set up test environment first (similar to status page implementation)
+            echo "Setting up test environment..."
+            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+            
+            echo "Setting up Go-specific test data..."
+            # Copy Go test environment file from container to temp location
+            docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
+            # Fix the include path to work in the apiv1 container
+            sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
+            # Copy back to apiv1 container
+            docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
+            # Run Go test environment setup
+            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
+            
+            echo "Running Go tests..."
             # Run Go tests inside the apiv2 container where environment is already configured
             docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./... && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || { echo "❌ Go tests failed!"; exit 1; }
             
