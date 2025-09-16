@@ -91,5 +91,32 @@ When adding new submodules to this repository, follow these steps:
 6. **Test the integration** by making a test commit to the new submodule and verifying it triggers the FreegleDocker CircleCI pipeline.
 
 The webhook workflow automatically triggers CircleCI builds when changes are pushed to master/main branches, enabling continuous integration testing of the complete Docker stack.
+
+## Testing Consolidation
+
+All testing is now consolidated in the FreegleDocker CircleCI pipeline for consistency and efficiency:
+
+### Test Suites
+- **Go API Tests**: Test the fast v2 API (iznik-server-go)
+- **PHPUnit Tests**: Test v1 API and background functions (iznik-server)
+- **Playwright E2E Tests**: End-to-end browser testing against production build (iznik-nuxt3)
+
+### Test Execution
+- Tests run via the status page API endpoints for consistency
+- All tests must pass for auto-merge to production
+- Tests can be triggered manually via the status page at `http://status.localhost`
+- CircleCI tests are disabled in individual submodule repositories to avoid duplication
+
+### Auto-merge Logic
+When all tests pass successfully, the system automatically:
+1. Merges master to production branch in iznik-nuxt3
+2. Triggers production deployment
+3. Only proceeds if all three test suites pass
+
+### Test Commands
+- **Go Tests**: `curl -X POST http://localhost:8081/api/tests/go`
+- **PHPUnit Tests**: `curl -X POST http://localhost:8081/api/tests/php`
+- **Playwright Tests**: `curl -X POST http://localhost:8081/api/tests/playwright`
+
 - When removing code, never leave comments about what used to be there, or "this is now" stuff - the code should reflect the current behaviour.
 - When making changes to iznik-nuxt3, don't make the corresponding changes to the modtools branch which contains the same code.  That will get handled later via merge.

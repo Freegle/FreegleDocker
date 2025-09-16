@@ -1126,9 +1126,17 @@ const httpServer = http.createServer(async (req, res) => {
     try {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       
-      // Run PHPUnit tests in the apiv1 container
+      // Run PHPUnit tests using the exact command from CircleCI
       const { spawn } = require('child_process');
-      const testProcess = spawn('docker', ['exec', '-w', '/var/www/iznik', 'freegle-apiv1', './composer/vendor/bin/phpunit', 'test/'], {
+      const testProcess = spawn('sh', ['-c', `
+        docker exec -w /var/www/iznik/http/api freegle-apiv1 \\
+        ../../composer/vendor/bin/phpunit \\
+        -d memory_limit=512M \\
+        --stderr \\
+        --bootstrap ../../composer/vendor/autoload.php \\
+        --configuration ../../test/ut/php/phpunit.xml \\
+        ../../test/ut/php/
+      `], {
         stdio: 'pipe'
       });
       

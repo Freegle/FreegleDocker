@@ -234,7 +234,7 @@
         <div id="go-tests" class="service loading">
             <div>
                 <strong>Go API Tests</strong> - Run Go unit and integration tests for iznik-server-go<br>
-                <small>Tests database interactions and API functionality</small><br>
+                <small>Test fast v2 API</small><br>
                 <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
                 <span class="status">Ready</span>
                 <div class="container-actions" style="margin-top: 8px;">
@@ -248,13 +248,14 @@
             </div>
         </div>
         
-        <div id="php-tests" class="service loading">
+        <div id="php-tests" class="service online">
             <div>
-                <strong>PHPUnit Tests (WIP)</strong> - Run PHP unit tests for iznik-server<br>
+                <strong>PHPUnit Tests</strong> - Run PHP unit tests for iznik-server<br>
+                <small>Tests v1 API and background function</small><br>
                 <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
-                <span class="status">Work In Progress</span>
+                <span class="status">Ready</span>
                 <div class="container-actions" style="margin-top: 8px;">
-                    <button id="runPhpTestsBtn" class="action-button" style="background: #6c757d;" disabled>Run PHP Tests (WIP)</button>
+                    <button id="runPhpTestsBtn" class="action-button">Run PHP Tests</button>
                 </div>
                 <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
                 <div id="phpTestLogs" class="logs" style="display: none; max-height: 200px;"></div>

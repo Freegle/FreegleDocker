@@ -312,11 +312,47 @@ commands:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
+                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci GIT_BRANCH=\$CIRCLE_BRANCH GIT_COMMIT=\$CIRCLE_SHA1 && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/FreegleDocker -reponame=FreegleDocker -repourl=https://github.com/Freegle/FreegleDocker.git -flag=go-api"
                 echo "✅ Go tests passed!"
                 break
               fi
             done
+
+  run-php-tests:
+    description: "Run PHPUnit tests via the status service API"
+    parameters:
+      reason:
+        type: string
+        default: "Running PHPUnit tests"
+    steps:
+      - run:
+          name: Run PHPUnit tests
+          command: |
+            echo "🐘 << parameters.reason >>..."
+
+            # Trigger tests via API
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+            http_code="${response: -3}"
+
+            if [ "$http_code" -ne "200" ]; then
+              echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
+              echo "Response: $response"
+              exit 1
+            fi
+
+            echo "✅ PHP tests completed"
+            echo "Test output:"
+            echo "${response%???}"  # Remove last 3 characters (HTTP code)
+
+            # Check if tests passed by looking for success indicators
+            if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
+              echo "✅ PHPUnit tests passed!"
+              echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "❌ PHPUnit tests failed!"
+              echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+              exit 1
+            fi
 
   run-playwright-tests:
     description: "Run Playwright tests via the status service API"
@@ -771,13 +807,49 @@ jobs:
                 else
                   # Tests passed, upload coverage
                   echo "$test_output"
-                  docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
+                  docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci GIT_BRANCH=\$CIRCLE_BRANCH GIT_COMMIT=\$CIRCLE_SHA1 && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/FreegleDocker -reponame=FreegleDocker -repourl=https://github.com/Freegle/FreegleDocker.git -flag=go-api"
                   echo "✅ Go tests passed!"
                   break
                 fi
               done
             else
               echo "Skipping Go tests - no changes detected"
+              echo "GO_TESTS_PASSED=skipped" >> $BASH_ENV
+            fi
+
+      - run:
+          name: Run PHPUnit tests
+          command: |
+            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
+              echo "🐘 Running PHPUnit tests in container..."
+              echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
+
+              # Trigger tests via API (matches status page implementation)
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+              http_code="${response: -3}"
+
+              if [ "$http_code" -ne "200" ]; then
+                echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
+                echo "Response: $response"
+                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+                exit 1
+              fi
+
+              echo "Test output:"
+              echo "${response%???}"  # Remove last 3 characters (HTTP code)
+
+              # Check if tests passed by looking for success indicators
+              if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
+                echo "✅ PHPUnit tests passed!"
+                echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+              else
+                echo "❌ PHPUnit tests failed!"
+                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+                exit 1
+              fi
+            else
+              echo "Skipping PHPUnit tests - no changes detected"
+              echo "PHP_TESTS_PASSED=skipped" >> $BASH_ENV
             fi
 
       - run:
@@ -929,25 +1001,41 @@ jobs:
           command: |
             echo "=== Overall Test Results ==="
             echo "GO_TESTS_PASSED=${GO_TESTS_PASSED:-not_run}"
+            echo "PHP_TESTS_PASSED=${PHP_TESTS_PASSED:-not_run}"
             echo "PLAYWRIGHT_TESTS_PASSED=${PLAYWRIGHT_TESTS_PASSED:-not_run}"
 
             # Determine if all required tests passed
             ALL_TESTS_PASSED="false"
 
-            # Currently only Go and Playwright tests are required
-            # PHPUnit tests would be added here when re-enabled
-            if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+            # All three test suites are now required: Go, PHPUnit, and Playwright
+            if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
               ALL_TESTS_PASSED="true"
               echo "✅ All tests passed successfully!"
-            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
               ALL_TESTS_PASSED="true"
               echo "✅ All required tests passed (Go tests were skipped)"
-            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
+            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+              ALL_TESTS_PASSED="true"
+              echo "✅ All required tests passed (PHPUnit tests were skipped)"
+            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
               ALL_TESTS_PASSED="true"
               echo "✅ All required tests passed (Playwright tests were skipped)"
+            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+              ALL_TESTS_PASSED="true"
+              echo "✅ All required tests passed (Go and PHPUnit tests were skipped)"
+            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
+              ALL_TESTS_PASSED="true"
+              echo "✅ All required tests passed (Go and Playwright tests were skipped)"
+            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
+              ALL_TESTS_PASSED="true"
+              echo "✅ All required tests passed (PHPUnit and Playwright tests were skipped)"
+            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
+              ALL_TESTS_PASSED="false"
+              echo "❌ All tests were skipped - auto-merge will be skipped"
             else
               echo "❌ Not all tests passed - auto-merge will be skipped"
               echo "  Go tests: $GO_TESTS_PASSED"
+              echo "  PHPUnit tests: $PHP_TESTS_PASSED"
               echo "  Playwright tests: $PLAYWRIGHT_TESTS_PASSED"
             fi
 
@@ -977,8 +1065,8 @@ jobs:
 
               Updated by CircleCI build #${CIRCLE_BUILD_NUM}
               Build URL: ${CIRCLE_BUILD_URL}
-              
-              🤖 Automated merge after successful Playwright tests"
+
+              🤖 Automated merge after successful Go, PHPUnit, and Playwright tests"
               
               # Push to production
               git push origin production
@@ -988,6 +1076,7 @@ jobs:
               echo "Skipping auto-merge"
               echo "ALL_TESTS_PASSED=$ALL_TESTS_PASSED"
               echo "GO_TESTS_PASSED=$GO_TESTS_PASSED"
+              echo "PHP_TESTS_PASSED=$PHP_TESTS_PASSED"
               echo "PLAYWRIGHT_TESTS_PASSED=$PLAYWRIGHT_TESTS_PASSED"
               echo "SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED"
               echo "DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED"
@@ -1292,7 +1381,7 @@ jobs:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
+                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci GIT_BRANCH=\$CIRCLE_BRANCH GIT_COMMIT=\$CIRCLE_SHA1 && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/FreegleDocker -reponame=FreegleDocker -repourl=https://github.com/Freegle/FreegleDocker.git -flag=go-api"
                 echo "✅ Go tests passed!"
                 break
               fi
