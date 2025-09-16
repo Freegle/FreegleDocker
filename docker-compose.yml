@@ -544,12 +544,14 @@ services:
       - "modtools.localhost:127.0.0.1"
     volumes:
       - ./iznik-nuxt3/tests:/host-tests:ro
+      - ./iznik-nuxt3:/app/src:ro
       - ./iznik-nuxt3:/host-playwright-config:ro
     environment:
       - TEST_BASE_URL=http://freegle-prod.localhost
       - NODE_ENV=test
       - CI=false
       - ENABLE_MONOCART_REPORTER=true
+      - COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN}
     depends_on:
       freegle-dev:
         condition: service_started
