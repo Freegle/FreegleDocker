@@ -312,7 +312,7 @@ commands:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                docker-compose exec -T apiv2 sh -c "goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || echo "Coverage upload failed"
+                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
               fi
@@ -757,7 +757,7 @@ jobs:
                 else
                   # Tests passed, upload coverage
                   echo "$test_output"
-                  docker-compose exec -T apiv2 sh -c "goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || echo "Coverage upload failed"
+                  docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
                   echo "✅ Go tests passed!"
                   break
                 fi
@@ -1232,7 +1232,7 @@ jobs:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                docker-compose exec -T apiv2 sh -c "goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN" || echo "Coverage upload failed"
+                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
               fi
