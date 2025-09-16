@@ -312,10 +312,10 @@ commands:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                # Upload Go coverage using Node.js coveralls package (same as Playwright)
+                # Upload Go coverage using Node.js coveralls package (install npm first)
                 echo "Converting Go coverage to LCOV format and uploading with Node coveralls..."
-                docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="\$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go" || echo "Coverage upload failed, but tests passed"
+                docker-compose exec -T apiv2 sh -c "apk add --no-cache nodejs npm && cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
               fi
@@ -449,6 +449,19 @@ commands:
             # Try to collect test reports
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
+            fi
+
+            # Collect Playwright test artifacts (traces, screenshots, videos)
+            if docker exec freegle-playwright test -d /app/test-results 2>/dev/null; then
+              echo "Collecting Playwright test artifacts..."
+              docker cp freegle-playwright:/app/test-results ~/artifacts/test-results || true
+              echo "Collected test-results directory"
+            fi
+
+            if docker exec freegle-playwright test -d /app/playwright-report 2>/dev/null; then
+              echo "Collecting Playwright report directory..."
+              docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
+              echo "Collected playwright-report directory"
             fi
 
             # Collect coverage reports if they exist
@@ -810,10 +823,10 @@ jobs:
                 else
                   # Tests passed, upload coverage
                   echo "$test_output"
-                  # Upload Go coverage using Node.js coveralls package (same as Playwright)
+                  # Upload Go coverage using Node.js coveralls package (install npm first)
                 echo "Converting Go coverage to LCOV format and uploading with Node coveralls..."
-                docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="\$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go" || echo "Coverage upload failed, but tests passed"
+                docker-compose exec -T apiv2 sh -c "apk add --no-cache nodejs npm && cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go"
                   echo "✅ Go tests passed!"
                   break
                 fi
@@ -946,6 +959,19 @@ jobs:
             # Try to collect test reports
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
+            fi
+
+            # Collect Playwright test artifacts (traces, screenshots, videos)
+            if docker exec freegle-playwright test -d /app/test-results 2>/dev/null; then
+              echo "Collecting Playwright test artifacts..."
+              docker cp freegle-playwright:/app/test-results ~/artifacts/test-results || true
+              echo "Collected test-results directory"
+            fi
+
+            if docker exec freegle-playwright test -d /app/playwright-report 2>/dev/null; then
+              echo "Collecting Playwright report directory..."
+              docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
+              echo "Collected playwright-report directory"
             fi
 
             # Collect coverage reports if they exist
@@ -1387,10 +1413,10 @@ jobs:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                # Upload Go coverage using Node.js coveralls package (same as Playwright)
+                # Upload Go coverage using Node.js coveralls package (install npm first)
                 echo "Converting Go coverage to LCOV format and uploading with Node coveralls..."
-                docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="\$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go" || echo "Coverage upload failed, but tests passed"
+                docker-compose exec -T apiv2 sh -c "apk add --no-cache nodejs npm && cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
               fi
@@ -1476,6 +1502,19 @@ jobs:
             # Try to collect test reports
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
+            fi
+
+            # Collect Playwright test artifacts (traces, screenshots, videos)
+            if docker exec freegle-playwright test -d /app/test-results 2>/dev/null; then
+              echo "Collecting Playwright test artifacts..."
+              docker cp freegle-playwright:/app/test-results ~/artifacts/test-results || true
+              echo "Collected test-results directory"
+            fi
+
+            if docker exec freegle-playwright test -d /app/playwright-report 2>/dev/null; then
+              echo "Collecting Playwright report directory..."
+              docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
+              echo "Collected playwright-report directory"
             fi
 
             # Collect coverage reports if they exist
