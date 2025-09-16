@@ -549,6 +549,7 @@ services:
       - TEST_BASE_URL=http://freegle-prod.localhost
       - NODE_ENV=test
       - CI=false
+      - ENABLE_MONOCART_REPORTER=true
     depends_on:
       freegle-dev:
         condition: service_started

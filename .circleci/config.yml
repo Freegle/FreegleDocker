@@ -411,6 +411,20 @@ commands:
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
             fi
+
+            # Collect coverage reports if they exist
+            if docker exec freegle-playwright test -f /app/coverage/lcov.info 2>/dev/null; then
+              echo "Collecting coverage report..."
+              docker cp freegle-playwright:/app/coverage ~/artifacts/coverage || true
+
+              # Upload coverage to Coveralls if in CI and tests passed
+              if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
+                echo "Uploading coverage to Coveralls..."
+                docker exec freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+              fi
+            else
+              echo "No coverage report found"
+            fi
             
             # Collect system info
             echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
@@ -854,6 +868,20 @@ jobs:
             # Try to collect test reports
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
+            fi
+
+            # Collect coverage reports if they exist
+            if docker exec freegle-playwright test -f /app/coverage/lcov.info 2>/dev/null; then
+              echo "Collecting coverage report..."
+              docker cp freegle-playwright:/app/coverage ~/artifacts/coverage || true
+
+              # Upload coverage to Coveralls if in CI and tests passed
+              if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
+                echo "Uploading coverage to Coveralls..."
+                docker exec freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+              fi
+            else
+              echo "No coverage report found"
             fi
             
             # Collect system info
@@ -1318,6 +1346,20 @@ jobs:
             # Try to collect test reports
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
+            fi
+
+            # Collect coverage reports if they exist
+            if docker exec freegle-playwright test -f /app/coverage/lcov.info 2>/dev/null; then
+              echo "Collecting coverage report..."
+              docker cp freegle-playwright:/app/coverage ~/artifacts/coverage || true
+
+              # Upload coverage to Coveralls if in CI and tests passed
+              if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
+                echo "Uploading coverage to Coveralls..."
+                docker exec freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+              fi
+            else
+              echo "No coverage report found"
             fi
             
             # Collect system info
