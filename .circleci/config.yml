@@ -420,7 +420,7 @@ commands:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
               fi
             else
               echo "No coverage report found"
@@ -878,7 +878,7 @@ jobs:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
               fi
             else
               echo "No coverage report found"
@@ -1356,7 +1356,7 @@ jobs:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
               fi
             else
               echo "No coverage report found"
