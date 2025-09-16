@@ -5,26 +5,26 @@ This directory contains CircleCI configuration that automatically monitors submo
 ## Overview
 
 The CircleCI pipeline:
-- **Monitors submodules** every 6 hours for updates
-- **Updates submodules** to latest commits on their default branches  
+- **Updates submodules** to latest commits on their default branches
 - **Runs full integration tests** using the complete Docker Compose stack
 - **Commits successful updates** back to the repository
 - **Responds to webhooks** from submodule repositories for immediate testing
+- **Monitors submodules** every 2 days for updates
 
 ## Workflows
 
-### 1. `scheduled-submodule-check`
-- **Trigger**: Scheduled cron job every 6 hours (`0 */6 * * *`)
-- **Branch**: Only runs on `master`
-- **Purpose**: Regular automated checking for submodule updates
+### 1. `webhook-triggered`
+- **Trigger**: API webhook calls from submodule repositories
+- **Purpose**: Immediate testing when submodules are updated
 
-### 2. `build-and-test` 
+### 2. `build-and-test`
 - **Trigger**: Push to `master` branch
 - **Purpose**: Test submodule integration on manual pushes
 
-### 3. `webhook-triggered`
-- **Trigger**: API webhook calls from submodule repositories
-- **Purpose**: Immediate testing when submodules are updated
+### 3. `scheduled-integration-test`
+- **Trigger**: Scheduled cron job every 2 days at 4pm UTC (`0 16 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31 * *`)
+- **Branch**: Only runs on `master`
+- **Purpose**: Regular automated checking for submodule updates
 
 ## Jobs
 
@@ -125,7 +125,7 @@ Key configuration options:
 
 ```yaml
 # Adjust schedule frequency
-cron: "0 */6 * * *"  # Every 6 hours
+cron: "0 16 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31 * *"  # Every 2 days at 4pm UTC
 
 # Modify test timeout  
 timeout_duration=1800  # 30 minutes
