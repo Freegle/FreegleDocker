@@ -1355,7 +1355,7 @@ workflows:
   scheduled-integration-test:
     triggers:
       - schedule:
-          cron: "0 0 */2 * *"  # Every 2 days at 00:00 UTC
+          cron: "0 16 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31 * *"  # Every 2 days at 16:00 UTC
           filters:
             branches:
               only: master
