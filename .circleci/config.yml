@@ -374,20 +374,20 @@ commands:
                 
                 if [ "$success" = "true" ]; then
                   echo "✅ All tests passed!"
-                  echo "TESTS_PASSED=true" >> $BASH_ENV
+                  echo "GO_TESTS_PASSED=true" >> $BASH_ENV
                   break
                 else
                   echo "❌ Some tests failed!"
                   echo "Test logs:"
                   echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                  echo "TESTS_PASSED=false" >> $BASH_ENV
+                  echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
                   exit 1
                 fi
               elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                 echo "❌ Tests failed to run!"
                 echo "Error details:"
                 echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                echo "TESTS_PASSED=false" >> $BASH_ENV
+                echo "GO_TESTS_PASSED=false" >> $BASH_ENV
                 exit 1
               fi
             done
@@ -420,7 +420,7 @@ commands:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls"
               fi
             else
               echo "No coverage report found"
@@ -831,26 +831,26 @@ jobs:
                   
                   if [ "$success" = "true" ]; then
                     echo "✅ All tests passed!"
-                    echo "TESTS_PASSED=true" >> $BASH_ENV
+                    echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
                     break
                   else
                     echo "❌ Some tests failed!"
                     echo "Test logs:"
                     echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                    echo "TESTS_PASSED=false" >> $BASH_ENV
+                    echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
                     exit 1
                   fi
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "❌ Tests failed to run!"
                   echo "Error details:"
                   echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                  echo "TESTS_PASSED=false" >> $BASH_ENV
+                  echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
                   exit 1
                 fi
               done
             else
               echo "Skipping tests - no changes detected"
-              echo "TESTS_PASSED=skipped" >> $BASH_ENV
+              echo "PLAYWRIGHT_TESTS_PASSED=skipped" >> $BASH_ENV
             fi
 
       - run:
@@ -878,7 +878,7 @@ jobs:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls"
               fi
             else
               echo "No coverage report found"
@@ -925,9 +925,39 @@ jobs:
           when: on_success
 
       - run:
+          name: Evaluate overall test results
+          command: |
+            echo "=== Overall Test Results ==="
+            echo "GO_TESTS_PASSED=${GO_TESTS_PASSED:-not_run}"
+            echo "PLAYWRIGHT_TESTS_PASSED=${PLAYWRIGHT_TESTS_PASSED:-not_run}"
+
+            # Determine if all required tests passed
+            ALL_TESTS_PASSED="false"
+
+            # Currently only Go and Playwright tests are required
+            # PHPUnit tests would be added here when re-enabled
+            if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+              ALL_TESTS_PASSED="true"
+              echo "✅ All tests passed successfully!"
+            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+              ALL_TESTS_PASSED="true"
+              echo "✅ All required tests passed (Go tests were skipped)"
+            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
+              ALL_TESTS_PASSED="true"
+              echo "✅ All required tests passed (Playwright tests were skipped)"
+            else
+              echo "❌ Not all tests passed - auto-merge will be skipped"
+              echo "  Go tests: $GO_TESTS_PASSED"
+              echo "  Playwright tests: $PLAYWRIGHT_TESTS_PASSED"
+            fi
+
+            echo "ALL_TESTS_PASSED=$ALL_TESTS_PASSED" >> $BASH_ENV
+          when: always
+
+      - run:
           name: Auto-merge master to production
           command: |
-            if [ "$TESTS_PASSED" = "true" ] && ([ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]); then
+            if [ "$ALL_TESTS_PASSED" = "true" ] && ([ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]); then
               echo "🔀 Auto-merging master to production in iznik-nuxt3..."
               echo "Tests passed successfully - proceeding with merge"
               
@@ -956,7 +986,9 @@ jobs:
               echo "✅ Successfully merged master to production in iznik-nuxt3!"
             else
               echo "Skipping auto-merge"
-              echo "TESTS_PASSED=$TESTS_PASSED"
+              echo "ALL_TESTS_PASSED=$ALL_TESTS_PASSED"
+              echo "GO_TESTS_PASSED=$GO_TESTS_PASSED"
+              echo "PLAYWRIGHT_TESTS_PASSED=$PLAYWRIGHT_TESTS_PASSED"
               echo "SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED"
               echo "DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED"
               echo "CIRCLE_BRANCH=$CIRCLE_BRANCH"
@@ -1356,7 +1388,7 @@ jobs:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls" || echo "Coverage upload failed (non-fatal)"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app && npm install coveralls && cat coverage/lcov.info | npx coveralls"
               fi
             else
               echo "No coverage report found"

@@ -552,9 +552,10 @@ async function runPlaywrightTests(testFile = null) {
 
     // Execute tests in the Playwright container using docker exec (without nohup for proper output capture)
     const playwrightArgs = testFile ? `tests/e2e/${testFile}` : '';
+    // Use default reporters from config which includes monocart for coverage when ENABLE_MONOCART_REPORTER is set
     const testCommand = `docker exec freegle-playwright sh -c "
       cd /app &&
-      npx playwright test ${playwrightArgs} --reporter=html
+      npx playwright test ${playwrightArgs}
     "`;
 
     console.log('Executing Playwright tests in container...');
