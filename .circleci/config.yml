@@ -312,7 +312,7 @@ commands:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci GIT_BRANCH=\$CIRCLE_BRANCH GIT_COMMIT=\$CIRCLE_SHA1 && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/FreegleDocker -reponame=FreegleDocker"
+                docker-compose exec -T apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci COVERALLS_REPO_TOKEN=\$COVERALLS_TOKEN GIT_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
               fi
@@ -456,7 +456,7 @@ commands:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --repo-url=https://github.com/Freegle/FreegleDocker.git --flag-name=playwright-e2e"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --service=circle-ci --repo-name=iznik-nuxt3"
               fi
             else
               echo "No coverage report found"
@@ -807,7 +807,7 @@ jobs:
                 else
                   # Tests passed, upload coverage
                   echo "$test_output"
-                  docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci GIT_BRANCH=\$CIRCLE_BRANCH GIT_COMMIT=\$CIRCLE_SHA1 && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/FreegleDocker -reponame=FreegleDocker"
+                  docker-compose exec -T apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci COVERALLS_REPO_TOKEN=\$COVERALLS_TOKEN GIT_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
                   echo "✅ Go tests passed!"
                   break
                 fi
@@ -950,7 +950,7 @@ jobs:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --repo-url=https://github.com/Freegle/FreegleDocker.git --flag-name=playwright-e2e"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --service=circle-ci --repo-name=iznik-nuxt3"
               fi
             else
               echo "No coverage report found"
@@ -1381,7 +1381,7 @@ jobs:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                docker-compose exec -T apiv2 sh -c "export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci GIT_BRANCH=\$CIRCLE_BRANCH GIT_COMMIT=\$CIRCLE_SHA1 && goveralls -coverprofile=./coverage.out -service=circle-ci -repotoken=\$COVERALLS_TOKEN -package=github.com/Freegle/FreegleDocker -reponame=FreegleDocker"
+                docker-compose exec -T apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci COVERALLS_REPO_TOKEN=\$COVERALLS_TOKEN GIT_BRANCH=\$CIRCLE_BRANCH && goveralls -coverprofile=./coverage.out -service=circle-ci -package=github.com/Freegle/iznik-server-go -reponame=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
               fi
@@ -1477,7 +1477,7 @@ jobs:
               # Upload coverage to Coveralls if in CI and tests passed
               if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
                 echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --repo-url=https://github.com/Freegle/FreegleDocker.git --flag-name=playwright-e2e"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --service=circle-ci --repo-name=iznik-nuxt3"
               fi
             else
               echo "No coverage report found"
