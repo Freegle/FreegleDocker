@@ -312,9 +312,9 @@ commands:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                # Upload Go coverage using Node.js coveralls package (install npm first)
+                # Upload Go coverage using Node.js coveralls package (npm now pre-installed in Docker image)
                 echo "Converting Go coverage to LCOV format and uploading with Node coveralls..."
-                docker-compose exec -T apiv2 sh -c "apk add --no-cache nodejs npm && cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
+                docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
                 docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
@@ -823,9 +823,9 @@ jobs:
                 else
                   # Tests passed, upload coverage
                   echo "$test_output"
-                  # Upload Go coverage using Node.js coveralls package (install npm first)
+                  # Upload Go coverage using Node.js coveralls package (npm now pre-installed in Docker image)
                 echo "Converting Go coverage to LCOV format and uploading with Node coveralls..."
-                docker-compose exec -T apiv2 sh -c "apk add --no-cache nodejs npm && cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
+                docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
                 docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go"
                   echo "✅ Go tests passed!"
                   break
@@ -1413,9 +1413,9 @@ jobs:
               else
                 # Tests passed, upload coverage
                 echo "$test_output"
-                # Upload Go coverage using Node.js coveralls package (install npm first)
+                # Upload Go coverage using Node.js coveralls package (npm now pre-installed in Docker image)
                 echo "Converting Go coverage to LCOV format and uploading with Node coveralls..."
-                docker-compose exec -T apiv2 sh -c "apk add --no-cache nodejs npm && cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
+                docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
                 docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" freegle-apiv2 sh -c "cd /app && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat coverage.lcov | npx coveralls --service=circle-ci --repo-name=iznik-server-go"
                 echo "✅ Go tests passed!"
                 break
