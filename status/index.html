@@ -906,44 +906,158 @@
             const statusDiv = document.getElementById('phpTestStatus');
             const logsDiv = document.getElementById('phpTestLogs');
             const toggleLogsBtn = document.getElementById('togglePhpLogsBtn');
-            
+
             const originalText = button.textContent;
             button.disabled = true;
-            button.textContent = 'Running Tests...';
-            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Running PHP tests...</span>';
+            button.textContent = 'Starting Tests...';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Starting PHP tests...</span>';
             logsDiv.style.display = 'none';
             toggleLogsBtn.style.display = 'none';
-            
+
             try {
+                // Start the tests
                 const response = await fetch('/api/tests/php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
-                
-                const result = await response.text();
-                if (response.ok) {
-                    statusDiv.innerHTML = '<span style="color: #28a745;">✅ PHP tests completed successfully</span>';
-                    logsDiv.textContent = result;
-                    logsDiv.style.display = 'block';
-                    toggleLogsBtn.style.display = 'inline-block';
-                } else {
-                    statusDiv.innerHTML = '<span style="color: #dc3545;">❌ PHP tests failed</span>';
-                    logsDiv.textContent = result;
-                    logsDiv.style.display = 'block';
-                    toggleLogsBtn.style.display = 'inline-block';
+
+                if (!response.ok) {
+                    throw new Error(await response.text());
                 }
+
+                // Poll for status
+                button.textContent = 'Running Tests...';
+                statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Running PHP tests...</span>';
+
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch('/api/tests/php/status');
+                        const status = await statusResponse.json();
+
+                        // Update status message with progress
+                        if (status.status === 'running') {
+                            // Show the last line or message for progress
+                            let progressMsg = status.message || 'Running tests...';
+                            // Truncate long messages to prevent overflow
+                            if (progressMsg.length > 60) {
+                                progressMsg = progressMsg.substring(0, 57) + '...';
+                            }
+                            console.log('PHP Test Progress:', progressMsg);
+                            statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
+
+                            // Update logs with latest output
+                            if (status.logs) {
+                                logsDiv.textContent = status.logs;
+                                logsDiv.style.display = 'block';
+                                toggleLogsBtn.style.display = 'inline-block';
+                            }
+                        } else if (status.status === 'completed') {
+                            clearInterval(pollInterval);
+                            statusDiv.innerHTML = '<span style="color: #28a745;">✅ PHP tests completed successfully</span>';
+                            logsDiv.textContent = status.logs || 'Tests completed';
+                            logsDiv.style.display = 'block';
+                            toggleLogsBtn.style.display = 'inline-block';
+                            button.textContent = originalText;
+                            button.disabled = false;
+                        } else if (status.status === 'failed') {
+                            clearInterval(pollInterval);
+                            statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ${status.message || 'PHP tests failed'}</span>`;
+                            logsDiv.textContent = status.logs || 'Test failed';
+                            logsDiv.style.display = 'block';
+                            toggleLogsBtn.style.display = 'inline-block';
+                            button.textContent = originalText;
+                            button.disabled = false;
+                        }
+                    } catch (pollError) {
+                        console.error('Error polling PHP test status:', pollError);
+                    }
+                }, 2000); // Poll every 2 seconds
+
+                // Timeout after 30 minutes
+                setTimeout(() => {
+                    clearInterval(pollInterval);
+                    if (button.disabled) {
+                        statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Tests timed out</span>';
+                        button.textContent = originalText;
+                        button.disabled = false;
+                    }
+                }, 30 * 60 * 1000);
+
             } catch (error) {
                 statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                button.textContent = originalText;
+                button.disabled = false;
             }
-            
-            button.textContent = originalText;
-            button.disabled = false;
         }
 
         function toggleTestLogs(testType) {
             const logsDiv = document.getElementById(`${testType}TestLogs`);
             if (logsDiv) {
                 logsDiv.style.display = logsDiv.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        // Check if PHP tests are already running on page load
+        async function checkPhpTestStatus() {
+            try {
+                const response = await fetch('/api/tests/php/status');
+                const status = await response.json();
+
+                if (status.status === 'running') {
+                    const statusDiv = document.getElementById('phpTestStatus');
+                    const logsDiv = document.getElementById('phpTestLogs');
+                    const toggleLogsBtn = document.getElementById('togglePhpLogsBtn');
+                    const button = document.getElementById('runPhpTestsBtn');
+
+                    button.disabled = true;
+                    button.textContent = 'Tests Running...';
+
+                    // Show current status immediately
+                    let progressMsg = status.message || 'Running tests...';
+                    // Truncate long messages to prevent overflow
+                    if (progressMsg.length > 60) {
+                        progressMsg = progressMsg.substring(0, 57) + '...';
+                    }
+                    statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
+
+                    // Start polling for updates
+                    const pollInterval = setInterval(async () => {
+                        try {
+                            const statusResponse = await fetch('/api/tests/php/status');
+                            const pollStatus = await statusResponse.json();
+
+                            if (pollStatus.status === 'running') {
+                                let progressMsg = pollStatus.message || 'Running tests...';
+                                // Truncate long messages to prevent overflow
+                                if (progressMsg.length > 60) {
+                                    progressMsg = progressMsg.substring(0, 57) + '...';
+                                }
+                                console.log('PHP Test Progress (auto-poll):', progressMsg);
+                                statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
+
+                                if (pollStatus.logs) {
+                                    logsDiv.textContent = pollStatus.logs;
+                                    logsDiv.style.display = 'block';
+                                    toggleLogsBtn.style.display = 'inline-block';
+                                }
+                            } else {
+                                clearInterval(pollInterval);
+                                button.disabled = false;
+                                button.textContent = 'Run PHP Tests';
+
+                                if (pollStatus.status === 'completed') {
+                                    statusDiv.innerHTML = '<span style="color: #00a000;">✓ Tests completed successfully</span>';
+                                } else if (pollStatus.status === 'failed') {
+                                    statusDiv.innerHTML = `<span style="color: #d00;">✗ ${pollStatus.message || 'Tests failed'}</span>`;
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error polling PHP test status:', error);
+                        }
+                    }, 2000);
+                }
+            } catch (error) {
+                console.error('Error checking PHP test status:', error);
             }
         }
 
@@ -955,7 +1069,10 @@
                     addActionButtons(service, element);
                 }
             });
-            
+
+            // Check if PHP tests are already running
+            checkPhpTestStatus();
+
             // Add event listener for test button
             const runTestsBtn = document.getElementById('runTestsBtn');
             if (runTestsBtn) {

@@ -464,6 +464,12 @@ commands:
               echo "Collected playwright-report directory"
             fi
 
+            if docker exec freegle-playwright test -d /app/playwright-screenshots 2>/dev/null; then
+              echo "Collecting Playwright screenshots directory..."
+              docker cp freegle-playwright:/app/playwright-screenshots ~/artifacts/playwright-screenshots || true
+              echo "Collected playwright-screenshots directory"
+            fi
+
             # Collect coverage reports if they exist
             if docker exec freegle-playwright test -f /app/coverage/lcov.info 2>/dev/null; then
               echo "Collecting coverage report..."
@@ -972,6 +978,12 @@ jobs:
               echo "Collecting Playwright report directory..."
               docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
               echo "Collected playwright-report directory"
+            fi
+
+            if docker exec freegle-playwright test -d /app/playwright-screenshots 2>/dev/null; then
+              echo "Collecting Playwright screenshots directory..."
+              docker cp freegle-playwright:/app/playwright-screenshots ~/artifacts/playwright-screenshots || true
+              echo "Collected playwright-screenshots directory"
             fi
 
             # Collect coverage reports if they exist
@@ -1515,6 +1527,12 @@ jobs:
               echo "Collecting Playwright report directory..."
               docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
               echo "Collected playwright-report directory"
+            fi
+
+            if docker exec freegle-playwright test -d /app/playwright-screenshots 2>/dev/null; then
+              echo "Collecting Playwright screenshots directory..."
+              docker cp freegle-playwright:/app/playwright-screenshots ~/artifacts/playwright-screenshots || true
+              echo "Collected playwright-screenshots directory"
             fi
 
             # Collect coverage reports if they exist

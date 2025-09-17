@@ -21,6 +21,13 @@ let testStatus = {
   endTime: null
 };
 
+// Individual test statuses for different test suites
+const testStatuses = {
+  phpTests: null,
+  goTests: null,
+  playwrightTests: null
+};
+
 // Health check messages for services
 const healthCheckMessages = {
   'freegle-traefik': 'Reverse proxy dashboard accessible (wget /dashboard/)',
@@ -1122,54 +1129,184 @@ const httpServer = http.createServer(async (req, res) => {
   // PHP tests endpoint
   if (parsedUrl.pathname === '/api/tests/php' && req.method === 'POST') {
     console.log('Starting PHP tests...');
-    
+
+    // Check if tests are already running
+    if (testStatuses.phpTests && testStatuses.phpTests.status === 'running') {
+      res.writeHead(409, { 'Content-Type': 'text/plain' });
+      res.end('PHP tests are already running');
+      return;
+    }
+
+    // Initialize test status
+    testStatuses.phpTests = {
+      status: 'running',
+      message: 'Starting PHP tests...',
+      logs: '',
+      startTime: Date.now(),
+      lastLine: ''
+    };
+
     try {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
-      
-      // Run PHPUnit tests using the exact command from CircleCI
+      res.end('PHP tests started successfully');
+
+      // Run PHPUnit tests and write output to file
       const { spawn } = require('child_process');
+      const outputFile = '/tmp/phpunit-output.log';
+
+      // First, clear the output file
+      execSync(`docker exec freegle-apiv1 sh -c "rm -f ${outputFile} && touch ${outputFile}"`);
+
       const testProcess = spawn('sh', ['-c', `
-        docker exec -w /var/www/iznik/http/api freegle-apiv1 \\
-        ../../composer/vendor/bin/phpunit \\
-        -d memory_limit=512M \\
-        --stderr \\
-        --bootstrap ../../composer/vendor/autoload.php \\
-        --configuration ../../test/ut/php/phpunit.xml \\
-        ../../test/ut/php/
+        docker exec -w /var/www/iznik/http/api freegle-apiv1 sh -c "
+          ../../composer/vendor/bin/phpunit \\
+          -d memory_limit=512M \\
+          --bootstrap ../../composer/vendor/autoload.php \\
+          --configuration ../../test/ut/php/phpunit.xml \\
+          ../../test/ut/php/ \\
+          2>&1 | tee ${outputFile}"
       `], {
         stdio: 'pipe'
       });
-      
-      let output = '';
-      
-      testProcess.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-      
-      testProcess.stderr.on('data', (data) => {
-        output += data.toString();
-      });
-      
-      testProcess.on('close', (code) => {
-        if (code === 0) {
-          res.end(output + '\n\nPHP tests completed successfully!');
-        } else {
-          res.end(output + '\n\nPHP tests failed with exit code: ' + code);
+
+      const testStatus = testStatuses.phpTests;
+      let fullOutput = '';
+
+      // Monitor the output file for progress
+      const monitorInterval = setInterval(() => {
+        try {
+          // Get the last few lines from the output file
+          const lastLines = execSync(`docker exec freegle-apiv1 sh -c "tail -n 5 ${outputFile} 2>/dev/null || echo ''"`, { encoding: 'utf8' }).trim();
+          if (lastLines) {
+            const lines = lastLines.split('\n').filter(line => line.trim());
+            if (lines.length > 0) {
+              const lastLine = lines[lines.length - 1];
+              testStatus.lastLine = lastLine;
+
+              // Update status message based on content
+              // Check all recent lines for meaningful content
+              let meaningfulMessage = null;
+              for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i];
+                if (line.match(/✔\s+\w+/)) {
+                  const testMatch = line.match(/✔\s+(.+)/);
+                  meaningfulMessage = `Test passed: ${testMatch ? testMatch[1].trim() : 'Test'}`;
+                  break;
+                } else if (line.match(/✘\s+\w+/)) {
+                  const testMatch = line.match(/✘\s+(.+)/);
+                  meaningfulMessage = `Test failed: ${testMatch ? testMatch[1].trim() : 'Test'}`;
+                  break;
+                } else if (line.match(/^\w+\s+API\s+\(/)) {
+                  meaningfulMessage = `Running: ${line.substring(0, 50)}...`;
+                  break;
+                } else if (line.includes('FAILURES!') || line.includes('ERRORS!')) {
+                  meaningfulMessage = 'Tests failed!';
+                  break;
+                } else if (line.includes('OK (')) {
+                  meaningfulMessage = line;
+                  break;
+                }
+              }
+
+              if (meaningfulMessage) {
+                testStatus.message = meaningfulMessage;
+              } else if (lastLine.length > 80) {
+                // For long lines (likely JSON), just show the last 80 chars
+                testStatus.message = '...' + lastLine.substring(lastLine.length - 80);
+              } else if (lastLine.length > 10) {
+                testStatus.message = lastLine;
+              }
+            }
+          }
+        } catch (err) {
+          // Ignore errors reading the file
         }
+      }, 1000);
+
+      testProcess.stdout.on('data', (data) => {
+        const text = data.toString();
+        fullOutput += text;
+        testStatus.logs = fullOutput.slice(-10000); // Keep last 10KB of logs
       });
-      
+
+      testProcess.stderr.on('data', (data) => {
+        const text = data.toString();
+        fullOutput += text;
+        testStatus.logs = fullOutput.slice(-10000);
+      });
+
+      testProcess.on('close', (code) => {
+        clearInterval(monitorInterval);
+
+        // Get final output
+        try {
+          const finalOutput = execSync(`docker exec freegle-apiv1 sh -c "cat ${outputFile} 2>/dev/null || echo ''"`, { encoding: 'utf8' });
+          testStatus.logs = finalOutput;
+        } catch (err) {
+          // Keep existing logs
+        }
+
+        if (code === 0) {
+          testStatus.status = 'completed';
+          testStatus.message = '✅ PHP tests completed successfully!';
+        } else {
+          testStatus.status = 'failed';
+          testStatus.message = `❌ PHP tests failed with exit code: ${code}`;
+        }
+        testStatus.endTime = Date.now();
+      });
+
       testProcess.on('error', (error) => {
-        res.end('Error running PHP tests: ' + error.message);
+        clearInterval(monitorInterval);
+        testStatus.status = 'failed';
+        testStatus.message = 'Error running PHP tests: ' + error.message;
+        testStatus.endTime = Date.now();
       });
-      
+
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('Failed to start PHP tests: ' + error.message);
+      testStatuses.phpTests = {
+        status: 'failed',
+        message: 'Failed to start: ' + error.message,
+        logs: '',
+        endTime: Date.now()
+      };
     }
     return;
   }
 
-  
+  // PHP Test status endpoint
+  if (parsedUrl.pathname === '/api/tests/php/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+
+    if (!testStatuses.phpTests) {
+      res.end(JSON.stringify({
+        status: 'idle',
+        message: 'No PHP tests have been run yet'
+      }));
+      return;
+    }
+
+    const testStatus = testStatuses.phpTests;
+    const now = Date.now();
+    const timeSinceStart = testStatus.startTime ? Math.floor((now - testStatus.startTime) / 1000) : null;
+
+    res.end(JSON.stringify({
+      status: testStatus.status,
+      message: testStatus.message,
+      logs: testStatus.logs.length > 5000 ?
+        '...(truncated)\n' + testStatus.logs.slice(-5000) :
+        testStatus.logs,
+      startTime: testStatus.startTime,
+      endTime: testStatus.endTime,
+      timeSinceStart: timeSinceStart,
+      lastLine: testStatus.lastLine
+    }));
+    return;
+  }
+
+
   // New cached status endpoint
   if (parsedUrl.pathname === '/api/status') {
     const service = parsedUrl.query.service;
