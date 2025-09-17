@@ -194,15 +194,49 @@
         <h2>🧪 Testing</h2>
         
         
+        <div id="go-tests" class="service loading">
+            <div>
+                <strong>Go API Tests (iznik-server-go)</strong><br>
+                <small>Test fast v2 API</small><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
+                <span class="status">Ready</span>
+                <div class="container-actions" style="margin-top: 8px;">
+                    <button id="runGoTestsBtn" class="action-button">Run Go Tests</button>
+                </div>
+                <div id="goTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                <div id="goTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                <div style="margin-top: 8px;">
+                    <button id="toggleGoLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="php-tests" class="service online">
+            <div>
+                <strong>PHPUnit Tests (iznik-server)</strong><br>
+                <small>Tests v1 API and background function</small><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
+                <span class="status">Ready</span>
+                <div class="container-actions" style="margin-top: 8px;">
+                    <button id="runPhpTestsBtn" class="action-button">Run PHP Tests</button>
+                </div>
+                <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                <div id="phpTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                <div style="margin-top: 8px;">
+                    <button id="togglePhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
+                </div>
+            </div>
+        </div>
+
         <div id="playwright" class="service loading">
             <div>
-                <strong>Playwright E2E Tests</strong> - Run automated end-to-end tests against prod container<br>
+                <strong>Playwright E2E Tests (iznik-nuxt3)</strong><br>
                 <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-playwright</small><br>
                 <span class="status">Loading...</span>
                 <div class="container-actions" style="margin-top: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <button id="runTestsBtn" class="action-button" style="background: #0070f3;">Run Tests</button>
-                        <input id="testFileInput" type="text" placeholder="Optional: specific test file (e.g., test-marketing-consent.spec.js)" 
+                        <input id="testFileInput" type="text" placeholder="Optional: specific test file (e.g., test-marketing-consent.spec.js)"
                                style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 300px;">
                         <button id="clearTestFileBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Clear</button>
                     </div>
@@ -227,40 +261,6 @@
                 <div style="margin-top: 8px;">
                     <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; margin-right: 4px; display: none;">Show/Hide Logs</button>
                     <a id="reportLinkBtn" href="http://localhost:9323" target="_blank" class="action-button" style="background: #17a2b8; font-size: 10px; text-decoration: none;">HTML Report</a>
-                </div>
-            </div>
-        </div>
-        
-        <div id="go-tests" class="service loading">
-            <div>
-                <strong>Go API Tests</strong> - Run Go unit and integration tests for iznik-server-go<br>
-                <small>Test fast v2 API</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
-                <span class="status">Ready</span>
-                <div class="container-actions" style="margin-top: 8px;">
-                    <button id="runGoTestsBtn" class="action-button">Run Go Tests</button>
-                </div>
-                <div id="goTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
-                <div id="goTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
-                <div style="margin-top: 8px;">
-                    <button id="toggleGoLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
-                </div>
-            </div>
-        </div>
-        
-        <div id="php-tests" class="service online">
-            <div>
-                <strong>PHPUnit Tests</strong> - Run PHP unit tests for iznik-server<br>
-                <small>Tests v1 API and background function</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
-                <span class="status">Ready</span>
-                <div class="container-actions" style="margin-top: 8px;">
-                    <button id="runPhpTestsBtn" class="action-button">Run PHP Tests</button>
-                </div>
-                <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
-                <div id="phpTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
-                <div style="margin-top: 8px;">
-                    <button id="togglePhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
                 </div>
             </div>
         </div>
