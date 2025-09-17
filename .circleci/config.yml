@@ -229,25 +229,29 @@ commands:
       - run:
           name: Extract and cache MaxMind databases
           command: |
-            echo "Extracting MaxMind databases for caching..."
-            mkdir -p ~/maxmind-cache
-            
-            # Extract databases from container if they exist
-            if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-Country.mmdb; then
-              docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb ~/maxmind-cache/GeoLite2-Country.mmdb
-              echo "Extracted Country database"
+            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
+              echo "Extracting MaxMind databases for caching..."
+              mkdir -p ~/maxmind-cache
+
+              # Extract databases from container if they exist
+              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-Country.mmdb; then
+                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb ~/maxmind-cache/GeoLite2-Country.mmdb
+                echo "Extracted Country database"
+              else
+                echo "Country database not found in container"
+              fi
+
+              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-City.mmdb; then
+                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb ~/maxmind-cache/GeoLite2-City.mmdb
+                echo "Extracted City database"
+              else
+                echo "City database not found in container"
+              fi
+
+              ls -la ~/maxmind-cache/ || echo "Cache directory is empty"
             else
-              echo "Country database not found in container"
+              echo "Skipping MaxMind extraction - no changes detected"
             fi
-            
-            if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-City.mmdb; then
-              docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb ~/maxmind-cache/GeoLite2-City.mmdb  
-              echo "Extracted City database"
-            else
-              echo "City database not found in container"
-            fi
-            
-            ls -la ~/maxmind-cache/ || echo "Cache directory is empty"
 
   run-go-tests:
     description: "Run Go tests in the API v2 container"
@@ -259,67 +263,72 @@ commands:
       - run:
           name: Run Go tests
           command: |
-            echo "🧪 << parameters.reason >>..."
+            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
+              echo "🧪 << parameters.reason >>..."
 
-            # Set up test environment first (similar to status page implementation)
-            echo "Setting up test environment..."
-            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+              # Set up test environment first (similar to status page implementation)
+              echo "Setting up test environment..."
+              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
-            echo "Setting up Go-specific test data..."
-            # Copy Go test environment file from container to temp location
-            docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
-            # Fix the include path to work in the apiv1 container
-            sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
-            # Copy back to apiv1 container
-            docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
-            # Run Go test environment setup
-            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
+              echo "Setting up Go-specific test data..."
+              # Copy Go test environment file from container to temp location
+              docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
+              # Fix the include path to work in the apiv1 container
+              sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
+              # Copy back to apiv1 container
+              docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
+              # Run Go test environment setup
+              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
 
-            echo "Running Go tests with retry logic for race conditions..."
+              echo "Running Go tests with retry logic for race conditions..."
 
-            # Run tests with retry logic for GORM race condition
-            # Note: This is a known bug in GORM that only occurs during tests with race detection enabled.
-            # It does not affect production code as it's specific to the race detector's timing.
-            max_retries=3
-            retry_count=0
+              # Run tests with retry logic for GORM race condition
+              # Note: This is a known bug in GORM that only occurs during tests with race detection enabled.
+              # It does not affect production code as it's specific to the race detector's timing.
+              max_retries=3
+              retry_count=0
 
-            while [ $retry_count -lt $max_retries ]; do
-              echo "Attempt $((retry_count + 1)) of $max_retries..."
+              while [ $retry_count -lt $max_retries ]; do
+                echo "Attempt $((retry_count + 1)) of $max_retries..."
 
-              # Capture test output to check for specific race condition
-              test_output=$(docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..." 2>&1) && test_result=$? || test_result=$?
+                # Capture test output to check for specific race condition
+                test_output=$(docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..." 2>&1) && test_result=$? || test_result=$?
 
-              # Check if the failure is due to the specific GORM race condition
-              if [ $test_result -ne 0 ]; then
-                if echo "$test_output" | grep -q "gorm.io/gorm/schema.*guessRelation"; then
-                  echo "⚠️ Detected GORM race condition in Schema.guessRelation()"
-                  retry_count=$((retry_count + 1))
-                  if [ $retry_count -lt $max_retries ]; then
-                    echo "Retrying in 5 seconds..."
-                    sleep 5
-                    continue
+                # Check if the failure is due to the specific GORM race condition
+                if [ $test_result -ne 0 ]; then
+                  if echo "$test_output" | grep -q "gorm.io/gorm/schema.*guessRelation"; then
+                    echo "⚠️ Detected GORM race condition in Schema.guessRelation()"
+                    retry_count=$((retry_count + 1))
+                    if [ $retry_count -lt $max_retries ]; then
+                      echo "Retrying in 5 seconds..."
+                      sleep 5
+                      continue
+                    else
+                      echo "❌ Go tests failed after $max_retries attempts due to persistent GORM race condition!"
+                      echo "$test_output"
+                      exit 1
+                    fi
                   else
-                    echo "❌ Go tests failed after $max_retries attempts due to persistent GORM race condition!"
+                    # Different failure, don't retry
+                    echo "❌ Go tests failed (not a GORM race condition)!"
                     echo "$test_output"
                     exit 1
                   fi
                 else
-                  # Different failure, don't retry
-                  echo "❌ Go tests failed (not a GORM race condition)!"
+                  # Tests passed, upload coverage
                   echo "$test_output"
-                  exit 1
+                  # Upload Go coverage using official Coveralls coverage-reporter binary
+                  echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
+                  docker-compose exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
+                  docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
+                  echo "✅ Go tests passed!"
+                  break
                 fi
-              else
-                # Tests passed, upload coverage
-                echo "$test_output"
-                # Upload Go coverage using official Coveralls coverage-reporter binary
-                echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
-                docker-compose exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
-                echo "✅ Go tests passed!"
-                break
-              fi
-            done
+              done
+            else
+              echo "Skipping Go tests - no changes detected"
+              echo "GO_TESTS_PASSED=skipped" >> $BASH_ENV
+            fi
 
   run-php-tests:
     description: "Run PHPUnit tests via the status service API"
@@ -331,45 +340,50 @@ commands:
       - run:
           name: Run PHPUnit tests
           command: |
-            echo "🐘 << parameters.reason >>..."
+            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
+              echo "🐘 << parameters.reason >>..."
 
-            # Trigger tests via API
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
-            http_code="${response: -3}"
+              # Trigger tests via API
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+              http_code="${response: -3}"
 
-            if [ "$http_code" -ne "200" ]; then
-              echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
-              echo "Response: $response"
-              exit 1
-            fi
+              if [ "$http_code" -ne "200" ]; then
+                echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
+                echo "Response: $response"
+                exit 1
+              fi
 
-            echo "✅ PHP tests completed"
-            echo "Test output:"
-            echo "${response%???}"  # Remove last 3 characters (HTTP code)
+              echo "✅ PHP tests completed"
+              echo "Test output:"
+              echo "${response%???}"  # Remove last 3 characters (HTTP code)
 
-            # Check if tests passed by looking for success indicators
-            if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
-              echo "✅ PHPUnit tests passed!"
-              echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+              # Check if tests passed by looking for success indicators
+              if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
+                echo "✅ PHPUnit tests passed!"
+                echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
 
-              # Upload PHPUnit coverage to Coveralls if available
-              if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
-                echo "PHPUnit coverage file found, uploading to Coveralls..."
+                # Upload PHPUnit coverage to Coveralls if available
+                if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
+                  echo "PHPUnit coverage file found, uploading to Coveralls..."
 
-                # Convert PHPUnit XML coverage to LCOV format
-                docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
+                  # Convert PHPUnit XML coverage to LCOV format
+                  docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
 
-                # Download and use the official Coveralls coverage-reporter binary
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
+                  # Download and use the official Coveralls coverage-reporter binary
+                  docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
 
-                echo "✅ PHPUnit coverage uploaded to Coveralls"
+                  echo "✅ PHPUnit coverage uploaded to Coveralls"
+                else
+                  echo "⚠️ PHPUnit coverage file not found"
+                fi
               else
-                echo "⚠️ PHPUnit coverage file not found"
+                echo "❌ PHPUnit tests failed!"
+                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+                exit 1
               fi
             else
-              echo "❌ PHPUnit tests failed!"
-              echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
-              exit 1
+              echo "Skipping PHPUnit tests - no changes detected"
+              echo "PHP_TESTS_PASSED=skipped" >> $BASH_ENV
             fi
 
   run-playwright-tests:
@@ -382,69 +396,74 @@ commands:
       - run:
           name: Run Playwright tests
           command: |
-            echo "🧪 << parameters.reason >>..."
-            
-            # Trigger tests via API
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
-            http_code="${response: -3}"
-            
-            if [ "$http_code" -ne "200" ]; then
-              echo "❌ Failed to trigger tests. HTTP code: $http_code"
-              echo "Response: $response"
-              exit 1
-            fi
-            
-            echo "✅ Tests triggered successfully"
-            
-            # Monitor test progress with timeout
-            echo "📊 Monitoring test progress..."
-            start_time=$(date +%s)
-            timeout_duration=1800  # 30 minutes
-            
-            while true; do
-              current_time=$(date +%s)
-              elapsed=$((current_time - start_time))
-              
-              if [ $elapsed -gt $timeout_duration ]; then
-                echo "⏰ Tests timed out after 30 minutes"
+            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
+              echo "🧪 << parameters.reason >>..."
+
+              # Trigger tests via API
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
+              http_code="${response: -3}"
+
+              if [ "$http_code" -ne "200" ]; then
+                echo "❌ Failed to trigger tests. HTTP code: $http_code"
+                echo "Response: $response"
                 exit 1
               fi
-              
-              sleep 10
-              
-              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
-              status=$(echo "$status_response" | jq -r '.status // "unknown"')
-              message=$(echo "$status_response" | jq -r '.message // "No message"')
-              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-              total=$(echo "$status_response" | jq -r '.totalTests // 0')
-              
-              elapsed_min=$((elapsed / 60))
-              echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
-              echo "Message: $message"
-              
-              if [ "$status" = "completed" ]; then
-                success=$(echo "$status_response" | jq -r '.success // false')
-                echo "🎉 Tests completed! Success: $success"
-                
-                if [ "$success" = "true" ]; then
-                  echo "✅ All tests passed!"
-                  echo "GO_TESTS_PASSED=true" >> $BASH_ENV
-                  break
-                else
-                  echo "❌ Some tests failed!"
-                  echo "Test logs:"
+
+              echo "✅ Tests triggered successfully"
+
+              # Monitor test progress with timeout
+              echo "📊 Monitoring test progress..."
+              start_time=$(date +%s)
+              timeout_duration=1800  # 30 minutes
+
+              while true; do
+                current_time=$(date +%s)
+                elapsed=$((current_time - start_time))
+
+                if [ $elapsed -gt $timeout_duration ]; then
+                  echo "⏰ Tests timed out after 30 minutes"
+                  exit 1
+                fi
+
+                sleep 10
+
+                status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+                status=$(echo "$status_response" | jq -r '.status // "unknown"')
+                message=$(echo "$status_response" | jq -r '.message // "No message"')
+                completed=$(echo "$status_response" | jq -r '.completedTests // 0')
+                total=$(echo "$status_response" | jq -r '.totalTests // 0')
+
+                elapsed_min=$((elapsed / 60))
+                echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
+                echo "Message: $message"
+
+                if [ "$status" = "completed" ]; then
+                  success=$(echo "$status_response" | jq -r '.success // false')
+                  echo "🎉 Tests completed! Success: $success"
+
+                  if [ "$success" = "true" ]; then
+                    echo "✅ All tests passed!"
+                    echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
+                    break
+                  else
+                    echo "❌ Some tests failed!"
+                    echo "Test logs:"
+                    echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                    echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
+                    exit 1
+                  fi
+                elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                  echo "❌ Tests failed to run!"
+                  echo "Error details:"
                   echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
                   echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
                   exit 1
                 fi
-              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
-                echo "❌ Tests failed to run!"
-                echo "Error details:"
-                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                echo "GO_TESTS_PASSED=false" >> $BASH_ENV
-                exit 1
-              fi
-            done
+              done
+            else
+              echo "Skipping Playwright tests - no changes detected"
+              echo "PLAYWRIGHT_TESTS_PASSED=skipped" >> $BASH_ENV
+            fi
 
   collect-artifacts:
     description: "Collect build artifacts and logs"
@@ -503,6 +522,10 @@ commands:
             echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
             echo "Branch: $CIRCLE_BRANCH" >> ~/artifacts/build-info.txt
             echo "Commit: $CIRCLE_SHA1" >> ~/artifacts/build-info.txt
+            echo "Submodule changes detected: ${SUBMODULE_CHANGES_DETECTED:-unknown}" >> ~/artifacts/build-info.txt
+            echo "Webhook Repository: ${CIRCLE_PIPELINE_PARAM_WEBHOOK_REPOSITORY:-none}" >> ~/artifacts/build-info.txt
+            echo "Webhook Branch: ${CIRCLE_PIPELINE_PARAM_WEBHOOK_BRANCH:-none}" >> ~/artifacts/build-info.txt
+            echo "Webhook Commit: ${CIRCLE_PIPELINE_PARAM_WEBHOOK_COMMIT:-none}" >> ~/artifacts/build-info.txt
             date >> ~/artifacts/build-info.txt
           when: always
       - store_artifacts:
@@ -760,286 +783,24 @@ jobs:
           no_output_timeout: 20m
 
       - run:
-          name: Extract and cache MaxMind databases
+          name: Conditionally extract MaxMind and run tests
           command: |
             if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [[ "$CIRCLE_BRANCH" == feature/* ]] || [ -n "$CIRCLE_BUILD_URL" ]; then
-              echo "Extracting MaxMind databases for caching..."
-              mkdir -p ~/maxmind-cache
-              
-              # Extract databases from container if they exist
-              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-Country.mmdb; then
-                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb ~/maxmind-cache/GeoLite2-Country.mmdb
-                echo "Extracted Country database"
-              else
-                echo "Country database not found in container"
-              fi
-              
-              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-City.mmdb; then
-                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb ~/maxmind-cache/GeoLite2-City.mmdb  
-                echo "Extracted City database"
-              else
-                echo "City database not found in container"
-              fi
-              
-              ls -la ~/maxmind-cache/ || echo "Cache directory is empty"
+              echo "SHOULD_RUN_TESTS=true" >> $BASH_ENV
             else
-              echo "Skipping MaxMind extraction - no changes detected"
-            fi
-
-      - run:
-          name: Run Go tests
-          command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
-              echo "🧪 Running Go tests in container..."
-              echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
-
-              # Set up test environment first (similar to status page implementation)
-              echo "Setting up test environment..."
-              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
-
-              echo "Setting up Go-specific test data..."
-              # Copy Go test environment file from container to temp location
-              docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
-              # Fix the include path to work in the apiv1 container
-              sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
-              # Copy back to apiv1 container
-              docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
-              # Run Go test environment setup
-              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
-
-              echo "Running Go tests with retry logic for race conditions..."
-
-              # Run tests with retry logic for GORM race condition
-              # Note: This is a known bug in GORM that only occurs during tests with race detection enabled.
-              # It does not affect production code as it's specific to the race detector's timing.
-              max_retries=3
-              retry_count=0
-
-              while [ $retry_count -lt $max_retries ]; do
-                echo "Attempt $((retry_count + 1)) of $max_retries..."
-
-                # Capture test output to check for specific race condition
-                test_output=$(docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..." 2>&1) && test_result=$? || test_result=$?
-
-                # Check if the failure is due to the specific GORM race condition
-                if [ $test_result -ne 0 ]; then
-                  if echo "$test_output" | grep -q "gorm.io/gorm/schema.*guessRelation"; then
-                    echo "⚠️ Detected GORM race condition in Schema.guessRelation()"
-                    retry_count=$((retry_count + 1))
-                    if [ $retry_count -lt $max_retries ]; then
-                      echo "Retrying in 5 seconds..."
-                      sleep 5
-                      continue
-                    else
-                      echo "❌ Go tests failed after $max_retries attempts due to persistent GORM race condition!"
-                      echo "$test_output"
-                      exit 1
-                    fi
-                  else
-                    # Different failure, don't retry
-                    echo "❌ Go tests failed (not a GORM race condition)!"
-                    echo "$test_output"
-                    exit 1
-                  fi
-                else
-                  # Tests passed, upload coverage
-                  echo "$test_output"
-                  # Upload Go coverage using official Coveralls coverage-reporter binary
-                echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
-                docker-compose exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
-                  echo "✅ Go tests passed!"
-                  break
-                fi
-              done
-            else
-              echo "Skipping Go tests - no changes detected"
-              echo "GO_TESTS_PASSED=skipped" >> $BASH_ENV
-            fi
-
-      - run:
-          name: Run PHPUnit tests
-          command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
-              echo "🐘 Running PHPUnit tests in container..."
-              echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
-
-              # Trigger tests via API (matches status page implementation)
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
-              http_code="${response: -3}"
-
-              if [ "$http_code" -ne "200" ]; then
-                echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
-                echo "Response: $response"
-                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
-                exit 1
-              fi
-
-              echo "Test output:"
-              echo "${response%???}"  # Remove last 3 characters (HTTP code)
-
-              # Check if tests passed by looking for success indicators
-              if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
-                echo "✅ PHPUnit tests passed!"
-                echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
-
-                # Upload PHPUnit coverage to Coveralls if available
-                if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
-                  echo "PHPUnit coverage file found, uploading to Coveralls..."
-
-                  # Convert PHPUnit XML coverage to LCOV format
-                  docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
-
-                  # Download and use the official Coveralls coverage-reporter binary
-                  docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
-
-                  echo "✅ PHPUnit coverage uploaded to Coveralls"
-                else
-                  echo "⚠️ PHPUnit coverage file not found"
-                fi
-              else
-                echo "❌ PHPUnit tests failed!"
-                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
-                exit 1
-              fi
-            else
-              echo "Skipping PHPUnit tests - no changes detected"
-              echo "PHP_TESTS_PASSED=skipped" >> $BASH_ENV
-            fi
-
-      - run:
-          name: Run Playwright tests
-          command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]; then
-              echo "🧪 Triggering Playwright tests..."
-              echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
-              
-              # Trigger tests via API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
-              http_code="${response: -3}"
-              
-              if [ "$http_code" -ne "200" ]; then
-                echo "❌ Failed to trigger tests. HTTP code: $http_code"
-                echo "Response: $response"
-                exit 1
-              fi
-              
-              echo "✅ Tests triggered successfully"
-              
-              # Monitor test progress with timeout
-              echo "📊 Monitoring test progress..."
-              start_time=$(date +%s)
-              timeout_duration=1800  # 30 minutes
-              
-              while true; do
-                current_time=$(date +%s)
-                elapsed=$((current_time - start_time))
-                
-                if [ $elapsed -gt $timeout_duration ]; then
-                  echo "⏰ Tests timed out after 30 minutes"
-                  exit 1
-                fi
-                
-                sleep 10
-                
-                status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
-                status=$(echo "$status_response" | jq -r '.status // "unknown"')
-                message=$(echo "$status_response" | jq -r '.message // "No message"')
-                completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-                total=$(echo "$status_response" | jq -r '.totalTests // 0')
-                
-                elapsed_min=$((elapsed / 60))
-                echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
-                echo "Message: $message"
-                
-                if [ "$status" = "completed" ]; then
-                  success=$(echo "$status_response" | jq -r '.success // false')
-                  echo "🎉 Tests completed! Success: $success"
-                  
-                  if [ "$success" = "true" ]; then
-                    echo "✅ All tests passed!"
-                    echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
-                    break
-                  else
-                    echo "❌ Some tests failed!"
-                    echo "Test logs:"
-                    echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                    echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
-                    exit 1
-                  fi
-                elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
-                  echo "❌ Tests failed to run!"
-                  echo "Error details:"
-                  echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                  echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
-                  exit 1
-                fi
-              done
-            else
+              echo "SHOULD_RUN_TESTS=false" >> $BASH_ENV
               echo "Skipping tests - no changes detected"
-              echo "PLAYWRIGHT_TESTS_PASSED=skipped" >> $BASH_ENV
             fi
 
-      - run:
-          name: Collect artifacts
-          command: |
-            mkdir -p ~/artifacts
-            
-            # Collect Docker logs
-            if docker-compose ps > /dev/null 2>&1; then
-              echo "Collecting Docker logs..."
-              docker-compose logs > ~/artifacts/docker-logs.txt 2>&1 || true
-              docker-compose ps > ~/artifacts/docker-status.txt 2>&1 || true
-            fi
-            
-            # Try to collect test reports
-            if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
-              echo "Collected Playwright HTML report"
-            fi
+      - extract-and-cache-maxmind
+      - run-go-tests:
+          reason: "Running Go tests after changes detected"
+      - run-php-tests:
+          reason: "Running PHPUnit tests after Go tests"
+      - run-playwright-tests:
+          reason: "Running Playwright tests after PHPUnit tests"
 
-            # Collect Playwright test artifacts (traces, screenshots, videos)
-            if docker exec freegle-playwright test -d /app/test-results 2>/dev/null; then
-              echo "Collecting Playwright test artifacts..."
-              docker cp freegle-playwright:/app/test-results ~/artifacts/test-results || true
-              echo "Collected test-results directory"
-            fi
-
-            if docker exec freegle-playwright test -d /app/playwright-report 2>/dev/null; then
-              echo "Collecting Playwright report directory..."
-              docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
-              echo "Collected playwright-report directory"
-            fi
-
-            if docker exec freegle-playwright test -d /app/playwright-screenshots 2>/dev/null; then
-              echo "Collecting Playwright screenshots directory..."
-              docker cp freegle-playwright:/app/playwright-screenshots ~/artifacts/playwright-screenshots || true
-              echo "Collected playwright-screenshots directory"
-            fi
-
-            # Collect coverage reports if they exist
-            if docker exec freegle-playwright test -f /app/coverage/lcov.info 2>/dev/null; then
-              echo "Collecting coverage report..."
-              docker cp freegle-playwright:/app/coverage ~/artifacts/coverage || true
-
-              # Upload coverage to Coveralls if in CI and tests passed
-              if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
-                echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --service=circle-ci --repo-name=iznik-nuxt3"
-              fi
-            else
-              echo "No coverage report found"
-            fi
-            
-            # Collect system info
-            echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
-            echo "Branch: $CIRCLE_BRANCH" >> ~/artifacts/build-info.txt
-            echo "Commit: $CIRCLE_SHA1" >> ~/artifacts/build-info.txt
-            echo "Submodule changes detected: $SUBMODULE_CHANGES_DETECTED" >> ~/artifacts/build-info.txt
-            date >> ~/artifacts/build-info.txt
-          when: always
-
-      - store_artifacts:
-          path: ~/artifacts
+      - collect-artifacts
 
       - run:
           name: Commit submodule updates
@@ -1158,19 +919,8 @@ jobs:
             fi
           when: on_success
 
-      - save_cache:
-          name: Save MaxMind GeoIP database cache
-          key: maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
-          paths:
-            - ~/maxmind-cache
-
-      - run:
-          name: Clean up Docker resources
-          command: |
-            echo "🧹 Cleaning up Docker resources..."
-            docker-compose down --remove-orphans || true
-            docker system prune -f || true
-          when: always
+      - save-maxmind-cache
+      - cleanup-docker
 
   # Webhook-triggered Playwright testing (no submodule update needed)
   webhook-start-docker-and-test:
@@ -1376,235 +1126,22 @@ jobs:
             echo "🎉 All services are ready and healthy!"
 
       - run:
-          name: Extract and cache MaxMind databases
+          name: Enable webhook testing mode
           command: |
-            echo "Extracting MaxMind databases for caching..."
-            mkdir -p ~/maxmind-cache
-            
-            # Extract databases from container if they exist
-            if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-Country.mmdb; then
-              docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb ~/maxmind-cache/GeoLite2-Country.mmdb
-              echo "Extracted Country database"
-            else
-              echo "Country database not found in container"
-            fi
-            
-            if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-City.mmdb; then
-              docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb ~/maxmind-cache/GeoLite2-City.mmdb  
-              echo "Extracted City database"
-            else
-              echo "City database not found in container"
-            fi
-            
-            ls -la ~/maxmind-cache/ || echo "Cache directory is empty"
+            echo "SHOULD_RUN_TESTS=true" >> $BASH_ENV
+            echo "Webhook testing enabled for repository: << pipeline.parameters.webhook_repository >>"
 
-      - run:
-          name: Run Go tests
-          command: |
-            echo "🧪 Running Go tests in container..."
-            echo "Triggered by webhook from << pipeline.parameters.webhook_repository >>"
+      - extract-and-cache-maxmind
+      - run-go-tests:
+          reason: "Running Go tests triggered by webhook from << pipeline.parameters.webhook_repository >>"
+      - run-php-tests:
+          reason: "Running PHPUnit tests after Go tests (webhook triggered)"
+      - run-playwright-tests:
+          reason: "Running Playwright tests after PHPUnit tests (webhook triggered)"
 
-            # Set up test environment first (similar to status page implementation)
-            echo "Setting up test environment..."
-            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
-
-            echo "Setting up Go-specific test data..."
-            # Copy Go test environment file from container to temp location
-            docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
-            # Fix the include path to work in the apiv1 container
-            sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
-            # Copy back to apiv1 container
-            docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
-            # Run Go test environment setup
-            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
-
-            echo "Running Go tests with retry logic for race conditions..."
-
-            # Run tests with retry logic for GORM race condition
-            # Note: This is a known bug in GORM that only occurs during tests with race detection enabled.
-            # It does not affect production code as it's specific to the race detector's timing.
-            max_retries=3
-            retry_count=0
-
-            while [ $retry_count -lt $max_retries ]; do
-              echo "Attempt $((retry_count + 1)) of $max_retries..."
-
-              # Capture test output to check for specific race condition
-              test_output=$(docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..." 2>&1) && test_result=$? || test_result=$?
-
-              # Check if the failure is due to the specific GORM race condition
-              if [ $test_result -ne 0 ]; then
-                if echo "$test_output" | grep -q "gorm.io/gorm/schema.*guessRelation"; then
-                  echo "⚠️ Detected GORM race condition in Schema.guessRelation()"
-                  retry_count=$((retry_count + 1))
-                  if [ $retry_count -lt $max_retries ]; then
-                    echo "Retrying in 5 seconds..."
-                    sleep 5
-                    continue
-                  else
-                    echo "❌ Go tests failed after $max_retries attempts due to persistent GORM race condition!"
-                    echo "$test_output"
-                    exit 1
-                  fi
-                else
-                  # Different failure, don't retry
-                  echo "❌ Go tests failed (not a GORM race condition)!"
-                  echo "$test_output"
-                  exit 1
-                fi
-              else
-                # Tests passed, upload coverage
-                echo "$test_output"
-                # Upload Go coverage using official Coveralls coverage-reporter binary
-                echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
-                docker-compose exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
-                echo "✅ Go tests passed!"
-                break
-              fi
-            done
-
-      - run:
-          name: Run Playwright tests
-          command: |
-            echo "🧪 Triggering Playwright tests..."
-            echo "Triggered by webhook from << pipeline.parameters.webhook_repository >>"
-            
-            # Trigger tests via API
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
-            http_code="${response: -3}"
-            
-            if [ "$http_code" -ne "200" ]; then
-              echo "❌ Failed to trigger tests. HTTP code: $http_code"
-              echo "Response: $response"
-              exit 1
-            fi
-            
-            echo "✅ Tests triggered successfully"
-            
-            # Monitor test progress with timeout
-            echo "📊 Monitoring test progress..."
-            start_time=$(date +%s)
-            timeout_duration=1800  # 30 minutes
-            
-            while true; do
-              current_time=$(date +%s)
-              elapsed=$((current_time - start_time))
-              
-              if [ $elapsed -gt $timeout_duration ]; then
-                echo "⏰ Tests timed out after 30 minutes"
-                exit 1
-              fi
-              
-              sleep 10
-              
-              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
-              status=$(echo "$status_response" | jq -r '.status // "unknown"')
-              message=$(echo "$status_response" | jq -r '.message // "No message"')
-              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-              total=$(echo "$status_response" | jq -r '.totalTests // 0')
-              
-              elapsed_min=$((elapsed / 60))
-              echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
-              echo "Message: $message"
-              
-              if [ "$status" = "completed" ]; then
-                success=$(echo "$status_response" | jq -r '.success // false')
-                echo "🎉 Tests completed! Success: $success"
-                
-                if [ "$success" = "true" ]; then
-                  echo "✅ All tests passed!"
-                  break
-                else
-                  echo "❌ Some tests failed!"
-                  echo "Test logs:"
-                  echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                  exit 1
-                fi
-              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
-                echo "❌ Tests failed to run!"
-                echo "Error details:"
-                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                exit 1
-              fi
-            done
-
-      - run:
-          name: Collect artifacts
-          command: |
-            mkdir -p ~/artifacts
-            
-            # Collect Docker logs
-            if docker-compose ps > /dev/null 2>&1; then
-              echo "Collecting Docker logs..."
-              docker-compose logs > ~/artifacts/docker-logs.txt 2>&1 || true
-              docker-compose ps > ~/artifacts/docker-status.txt 2>&1 || true
-            fi
-            
-            # Try to collect test reports
-            if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
-              echo "Collected Playwright HTML report"
-            fi
-
-            # Collect Playwright test artifacts (traces, screenshots, videos)
-            if docker exec freegle-playwright test -d /app/test-results 2>/dev/null; then
-              echo "Collecting Playwright test artifacts..."
-              docker cp freegle-playwright:/app/test-results ~/artifacts/test-results || true
-              echo "Collected test-results directory"
-            fi
-
-            if docker exec freegle-playwright test -d /app/playwright-report 2>/dev/null; then
-              echo "Collecting Playwright report directory..."
-              docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
-              echo "Collected playwright-report directory"
-            fi
-
-            if docker exec freegle-playwright test -d /app/playwright-screenshots 2>/dev/null; then
-              echo "Collecting Playwright screenshots directory..."
-              docker cp freegle-playwright:/app/playwright-screenshots ~/artifacts/playwright-screenshots || true
-              echo "Collected playwright-screenshots directory"
-            fi
-
-            # Collect coverage reports if they exist
-            if docker exec freegle-playwright test -f /app/coverage/lcov.info 2>/dev/null; then
-              echo "Collecting coverage report..."
-              docker cp freegle-playwright:/app/coverage ~/artifacts/coverage || true
-
-              # Upload coverage to Coveralls if in CI and tests passed
-              if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
-                echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --service=circle-ci --repo-name=iznik-nuxt3"
-              fi
-            else
-              echo "No coverage report found"
-            fi
-            
-            # Collect system info
-            echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
-            echo "Branch: $CIRCLE_BRANCH" >> ~/artifacts/build-info.txt
-            echo "Commit: $CIRCLE_SHA1" >> ~/artifacts/build-info.txt
-            echo "Webhook Repository: << pipeline.parameters.webhook_repository >>" >> ~/artifacts/build-info.txt
-            echo "Webhook Branch: << pipeline.parameters.webhook_branch >>" >> ~/artifacts/build-info.txt
-            echo "Webhook Commit: << pipeline.parameters.webhook_commit >>" >> ~/artifacts/build-info.txt
-            date >> ~/artifacts/build-info.txt
-          when: always
-
-      - store_artifacts:
-          path: ~/artifacts
-
-      - save_cache:
-          name: Save MaxMind GeoIP database cache
-          key: maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
-          paths:
-            - ~/maxmind-cache
-
-      - run:
-          name: Clean up Docker resources
-          command: |
-            echo "🧹 Cleaning up Docker resources..."
-            docker-compose down --remove-orphans || true
-            docker system prune -f || true
-          when: always
+      - collect-artifacts
+      - save-maxmind-cache
+      - cleanup-docker
 
 # Define workflows
 workflows:
