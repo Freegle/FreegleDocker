@@ -1130,44 +1130,74 @@ const httpServer = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/tests/php' && req.method === 'POST') {
     console.log('Starting PHP tests...');
 
-    // Check if tests are already running
-    if (testStatuses.phpTests && testStatuses.phpTests.status === 'running') {
-      res.writeHead(409, { 'Content-Type': 'text/plain' });
-      res.end('PHP tests are already running');
-      return;
-    }
+    // Parse request body for filter parameter
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
 
-    // Initialize test status
-    testStatuses.phpTests = {
-      status: 'running',
-      message: 'Starting PHP tests...',
-      logs: '',
-      startTime: Date.now(),
-      lastLine: ''
-    };
+    req.on('end', () => {
+      let filter = '';
+      if (body) {
+        try {
+          const data = JSON.parse(body);
+          if (data.filter) {
+            filter = `--filter "${data.filter}"`;
+            console.log(`Running PHP tests with filter: ${data.filter}`);
+          }
+        } catch (e) {
+          console.log('Error parsing request body:', e);
+        }
+      }
 
-    try {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('PHP tests started successfully');
+      // Check if tests are already running
+      if (testStatuses.phpTests && testStatuses.phpTests.status === 'running') {
+        res.writeHead(409, { 'Content-Type': 'text/plain' });
+        res.end('PHP tests are already running');
+        return;
+      }
 
-      // Run PHPUnit tests and write output to file
-      const { spawn } = require('child_process');
-      const outputFile = '/tmp/phpunit-output.log';
+      // Initialize test status
+      testStatuses.phpTests = {
+        status: 'running',
+        message: 'Setting up test environment...',
+        logs: '',
+        startTime: Date.now(),
+        lastLine: ''
+      };
 
-      // First, clear the output file
-      execSync(`docker exec freegle-apiv1 sh -c "rm -f ${outputFile} && touch ${outputFile}"`);
+      try {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('PHP tests started successfully');
 
-      const testProcess = spawn('sh', ['-c', `
-        docker exec -w /var/www/iznik/http/api freegle-apiv1 sh -c "
-          ../../composer/vendor/bin/phpunit \\
-          -d memory_limit=512M \\
-          --bootstrap ../../composer/vendor/autoload.php \\
-          --configuration ../../test/ut/php/phpunit.xml \\
-          ../../test/ut/php/ \\
-          2>&1 | tee ${outputFile}"
-      `], {
-        stdio: 'pipe'
-      });
+        // Run PHPUnit tests and write output to file
+        const { spawn } = require('child_process');
+        const outputFile = '/tmp/phpunit-output.log';
+
+        // First, clear the output file
+        execSync(`docker exec freegle-apiv1 sh -c "rm -f ${outputFile} && touch ${outputFile}"`);
+
+        const testProcess = spawn('sh', ['-c', `
+          docker exec -w /var/www/iznik freegle-apiv1 sh -c "
+            echo 'Setting up test environment...' | tee ${outputFile} && \\
+            if [ -f install/testenv.php ]; then \\
+              php install/testenv.php 2>&1 | tee -a ${outputFile} || echo 'Warning: testenv.php failed but continuing...' | tee -a ${outputFile}; \\
+            else \\
+              echo 'Warning: testenv.php not found, skipping test environment setup' | tee -a ${outputFile}; \\
+            fi && \\
+            echo 'Running PHPUnit tests...' | tee -a ${outputFile} && \\
+            cd http/api && \\
+            ../../composer/vendor/bin/phpunit \\
+            -d memory_limit=512M \\
+            --bootstrap ../../composer/vendor/autoload.php \\
+            --configuration ../../test/ut/php/phpunit.xml \\
+            --coverage-clover=/tmp/phpunit-coverage.xml \\
+            ${filter} \\
+            ../../test/ut/php/ \\
+            2>&1 | tee -a ${outputFile}"
+        `], {
+          stdio: 'pipe'
+        });
 
       const testStatus = testStatuses.phpTests;
       let fullOutput = '';
@@ -1226,13 +1256,14 @@ const httpServer = http.createServer(async (req, res) => {
       testProcess.stdout.on('data', (data) => {
         const text = data.toString();
         fullOutput += text;
-        testStatus.logs = fullOutput.slice(-10000); // Keep last 10KB of logs
+        // Don't truncate during execution
+        testStatus.logs = fullOutput;
       });
 
       testProcess.stderr.on('data', (data) => {
         const text = data.toString();
         fullOutput += text;
-        testStatus.logs = fullOutput.slice(-10000);
+        testStatus.logs = fullOutput;
       });
 
       testProcess.on('close', (code) => {
@@ -1240,18 +1271,44 @@ const httpServer = http.createServer(async (req, res) => {
 
         // Get final output
         try {
-          const finalOutput = execSync(`docker exec freegle-apiv1 sh -c "cat ${outputFile} 2>/dev/null || echo ''"`, { encoding: 'utf8' });
+          const finalOutput = execSync(`docker exec freegle-apiv1 sh -c "cat ${outputFile} 2>/dev/null || echo ''"`, { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }); // 50MB buffer
           testStatus.logs = finalOutput;
         } catch (err) {
           // Keep existing logs
+          console.error('Error reading final output:', err.message);
         }
 
-        if (code === 0) {
+        // Check for test failures in the output
+        const hasFailures = testStatus.logs.includes('FAILURES!') ||
+                          testStatus.logs.includes('ERRORS!') ||
+                          testStatus.logs.includes('INCOMPLETE!') ||
+                          testStatus.logs.includes('SKIPPED!') ||
+                          testStatus.logs.includes('No tests executed!') ||
+                          (testStatus.logs.includes('Tests:') && testStatus.logs.match(/Failures: [1-9]/)) ||
+                          (testStatus.logs.includes('Tests:') && testStatus.logs.match(/Errors: [1-9]/));
+
+        if (code === 0 && !hasFailures) {
           testStatus.status = 'completed';
           testStatus.message = '✅ PHP tests completed successfully!';
         } else {
           testStatus.status = 'failed';
-          testStatus.message = `❌ PHP tests failed with exit code: ${code}`;
+
+          // Extract detailed failure information
+          const summaryMatch = testStatus.logs.match(/Tests: (\d+), Assertions: (\d+)(?:, (Failures: \d+))?(?:, (Errors: \d+))?(?:, (Skipped: \d+))?(?:, (Incomplete: \d+))?/);
+          if (summaryMatch) {
+            const parts = [];
+            if (summaryMatch[3]) parts.push(summaryMatch[3]);
+            if (summaryMatch[4]) parts.push(summaryMatch[4]);
+            if (summaryMatch[5]) parts.push(summaryMatch[5]);
+            if (summaryMatch[6]) parts.push(summaryMatch[6]);
+            testStatus.message = `❌ PHP tests failed - ${parts.join(', ')}`;
+          } else if (testStatus.logs.includes('No tests executed!')) {
+            testStatus.message = `❌ No tests matched the filter`;
+          } else if (hasFailures) {
+            testStatus.message = `❌ PHP tests failed - check logs for details`;
+          } else {
+            testStatus.message = `❌ PHP tests failed with exit code: ${code}`;
+          }
         }
         testStatus.endTime = Date.now();
       });
@@ -1273,6 +1330,7 @@ const httpServer = http.createServer(async (req, res) => {
         endTime: Date.now()
       };
     }
+    }); // End of req.on('end')
     return;
   }
 
@@ -1295,9 +1353,7 @@ const httpServer = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       status: testStatus.status,
       message: testStatus.message,
-      logs: testStatus.logs.length > 5000 ?
-        '...(truncated)\n' + testStatus.logs.slice(-5000) :
-        testStatus.logs,
+      logs: testStatus.logs, // Don't truncate - return full logs
       startTime: testStatus.startTime,
       endTime: testStatus.endTime,
       timeSinceStart: timeSinceStart,

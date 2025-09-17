@@ -351,6 +351,21 @@ commands:
             if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
               echo "✅ PHPUnit tests passed!"
               echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+
+              # Upload PHPUnit coverage to Coveralls if available
+              if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
+                echo "PHPUnit coverage file found, uploading to Coveralls..."
+
+                # Convert PHPUnit XML coverage to LCOV format
+                docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
+
+                # Download and use the official Coveralls coverage-reporter binary
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
+
+                echo "✅ PHPUnit coverage uploaded to Coveralls"
+              else
+                echo "⚠️ PHPUnit coverage file not found"
+              fi
             else
               echo "❌ PHPUnit tests failed!"
               echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
@@ -867,6 +882,21 @@ jobs:
               if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
                 echo "✅ PHPUnit tests passed!"
                 echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+
+                # Upload PHPUnit coverage to Coveralls if available
+                if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
+                  echo "PHPUnit coverage file found, uploading to Coveralls..."
+
+                  # Convert PHPUnit XML coverage to LCOV format
+                  docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
+
+                  # Download and use the official Coveralls coverage-reporter binary
+                  docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
+
+                  echo "✅ PHPUnit coverage uploaded to Coveralls"
+                else
+                  echo "⚠️ PHPUnit coverage file not found"
+                fi
               else
                 echo "❌ PHPUnit tests failed!"
                 echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
