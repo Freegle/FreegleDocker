@@ -315,7 +315,7 @@ commands:
                 # Upload Go coverage using official Coveralls coverage-reporter binary
                 echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
                 docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
                 echo "✅ Go tests passed!"
                 break
               fi
@@ -826,7 +826,7 @@ jobs:
                   # Upload Go coverage using official Coveralls coverage-reporter binary
                 echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
                 docker-compose exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
                   echo "✅ Go tests passed!"
                   break
                 fi
@@ -1416,7 +1416,7 @@ jobs:
                 # Upload Go coverage using official Coveralls coverage-reporter binary
                 echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
                 docker-compose exec -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci"
+                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
                 echo "✅ Go tests passed!"
                 break
               fi
