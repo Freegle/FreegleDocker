@@ -353,34 +353,59 @@ commands:
                 exit 1
               fi
 
-              echo "✅ PHP tests completed"
-              echo "Test output:"
-              echo "${response%???}"  # Remove last 3 characters (HTTP code)
+              echo "✅ PHP tests triggered successfully"
 
-              # Check if tests passed by looking for success indicators
-              if echo "${response%???}" | grep -q "PHP tests completed successfully"; then
-                echo "✅ PHPUnit tests passed!"
-                echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+              # Monitor test progress with timeout
+              echo "📊 Monitoring PHP test progress..."
+              start_time=$(date +%s)
+              timeout_duration=1800  # 30 minutes
 
-                # Upload PHPUnit coverage to Coveralls if available
-                if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
-                  echo "PHPUnit coverage file found, uploading to Coveralls..."
+              while true; do
+                current_time=$(date +%s)
+                elapsed=$((current_time - start_time))
 
-                  # Convert PHPUnit XML coverage to LCOV format
-                  docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
-
-                  # Download and use the official Coveralls coverage-reporter binary
-                  docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
-
-                  echo "✅ PHPUnit coverage uploaded to Coveralls"
-                else
-                  echo "⚠️ PHPUnit coverage file not found"
+                if [ $elapsed -gt $timeout_duration ]; then
+                  echo "❌ PHP tests timed out after 30 minutes"
+                  exit 1
                 fi
-              else
-                echo "❌ PHPUnit tests failed!"
-                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
-                exit 1
-              fi
+
+                sleep 10
+                status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
+                status=$(echo "$status_response" | jq -r '.status // "unknown"')
+                message=$(echo "$status_response" | jq -r '.message // "No message"')
+
+                elapsed_min=$((elapsed / 60))
+                echo "[${elapsed_min}m] Status: $status"
+                echo "Message: $message"
+
+                if [ "$status" = "completed" ]; then
+                  echo "🎉 PHP tests completed!"
+                  echo "✅ PHPUnit tests passed!"
+                  echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+
+                  # Upload PHPUnit coverage to Coveralls if available
+                  if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
+                    echo "PHPUnit coverage file found, uploading to Coveralls..."
+
+                    # Convert PHPUnit XML coverage to LCOV format
+                    docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
+
+                    # Download and use the official Coveralls coverage-reporter binary
+                    docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
+
+                    echo "✅ PHPUnit coverage uploaded to Coveralls"
+                  else
+                    echo "⚠️ PHPUnit coverage file not found"
+                  fi
+                  break
+                elif [ "$status" = "failed" ]; then
+                  echo "❌ PHPUnit tests failed!"
+                  echo "Test logs:"
+                  curl -s http://localhost:8081/api/tests/php/status | jq -r '.logs // "No logs available"' | tail -100
+                  echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+                  exit 1
+                fi
+              done
             else
               echo "Skipping PHPUnit tests - no changes detected"
               echo "PHP_TESTS_PASSED=skipped" >> $BASH_ENV
