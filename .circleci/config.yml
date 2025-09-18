@@ -479,6 +479,29 @@ commands:
               docker-compose logs > ~/artifacts/docker-logs.txt 2>&1 || true
               docker-compose ps > ~/artifacts/docker-status.txt 2>&1 || true
             fi
+
+            # Collect PHPUnit test logs and coverage
+            echo "Collecting PHPUnit test artifacts..."
+            if docker exec freegle-apiv1 test -f /tmp/phpunit-output.log 2>/dev/null; then
+              echo "Found PHPUnit output log"
+              docker cp freegle-apiv1:/tmp/phpunit-output.log ~/artifacts/phpunit-output.log || true
+            else
+              echo "PHPUnit output log not found"
+            fi
+
+            if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
+              echo "Found PHPUnit coverage file"
+              docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit-coverage.xml || true
+            else
+              echo "PHPUnit coverage file not found"
+            fi
+
+            # Also collect the status service logs which may contain PHPUnit execution details
+            if docker logs freegle-status > ~/artifacts/status-service.log 2>&1; then
+              echo "Collected status service logs"
+            else
+              echo "Failed to collect status service logs"
+            fi
             
             # Try to collect test reports
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
