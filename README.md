@@ -217,10 +217,22 @@ You can see this via 'Pending' calls in the Network tab.
 <details>
 <summary>🧪 Test Configuration</summary>
 
-# Test Configuration
+# Sample Configuration
 
 The system contains one test group, FreeglePlayground, centered around Edinburgh.  
 The only recognised postcode is EH3 6SS.
+
+</details>
+
+<details>
+<summary>🧪 Running Tests</summary>
+
+# Running Tests
+
+We have the following tests, which can be run from the status page:
+* PHPUnit tests for iznik-server (v1 API and background processing)
+* Go tests for iznik-server-go (v2 API)
+* Playwright end-to-end tests for the user-facing site only.
 
 </details>
 
@@ -286,19 +298,6 @@ To activate webhook integration, add a `CIRCLECI_TOKEN` secret to each submodule
 
 Once configured, any push to master/main in the submodules will automatically trigger integration testing in this repository.
 
-## Manual Testing
-
-Trigger tests manually via CircleCI dashboard or API:
-
-```bash
-# Via CircleCI API
-curl -X POST \
-  -H "Circle-Token: YOUR_CIRCLECI_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"branch": "master"}' \
-  https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline
-```
-
 ## Monitoring
 
 - **Build Artifacts**: Docker logs, test reports, and debugging info automatically collected
@@ -315,11 +314,7 @@ For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md
 
 # Limitations
 
-* Email to Mailhog not yet verified and probably not yet working.
 * This doesn't run most of the various background jobs, so it won't be sending out emails in the way the live system would.
-* Code coverage reporting is disabled for PHP tests.  This has previously worked on CircleCI but we've not activated it since moving to Docker Compose.
-* PHP unit tests are not yet running from the status page.
-* Go unit tests run in CircleCI with coverage reporting to Coveralls, but are not yet accessible from the status page.
 * We don't yet have a development container for ModTools - only production build is available.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
 

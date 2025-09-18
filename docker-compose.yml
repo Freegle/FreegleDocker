@@ -238,7 +238,7 @@ services:
       - sh
       - -c
       - |
-        apk add --no-cache docker-cli docker-compose jq
+        apk add --no-cache docker-cli docker-compose jq bash inotify-tools
         echo 'Starting rebuild monitor and file sync...'
         (
           echo 'Starting rebuild monitor...'
@@ -266,7 +266,7 @@ services:
         ) &
         (
           echo 'Starting file sync...'
-          ./file-sync.sh
+          bash ./file-sync.sh
         ) &
         wait
     restart: unless-stopped

@@ -61,7 +61,12 @@ sync_file() {
 # Install inotify-tools if not present
 if ! command -v inotifywait &> /dev/null; then
     echo "Installing inotify-tools..."
-    sudo apt-get update && sudo apt-get install -y inotify-tools
+    # Check if we're in Alpine Linux container
+    if [ -f /etc/alpine-release ]; then
+        apk add --no-cache inotify-tools
+    else
+        sudo apt-get update && sudo apt-get install -y inotify-tools
+    fi
 fi
 
 echo "Starting file watcher..."
