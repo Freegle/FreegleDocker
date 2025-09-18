@@ -521,6 +521,27 @@ commands:
               echo "PHPUnit coverage file not found"
             fi
 
+            # Collect all /tmp/*.out files from apiv1 container
+            echo "Collecting background job logs from apiv1 container..."
+            docker exec freegle-apiv1 ls -la /tmp/*.out 2>/dev/null || echo "No .out files found in /tmp"
+
+            # Create a temporary directory to copy the files
+            docker exec freegle-apiv1 bash -c 'cd /tmp && tar czf /tmp/background-logs.tar.gz *.out 2>/dev/null' || true
+
+            # Copy the archive if it was created
+            if docker exec freegle-apiv1 test -f /tmp/background-logs.tar.gz 2>/dev/null; then
+              echo "Found background logs archive"
+              docker cp freegle-apiv1:/tmp/background-logs.tar.gz ~/artifacts/background-logs.tar.gz || true
+
+              # Extract in artifacts directory for easier viewing
+              cd ~/artifacts
+              tar xzf background-logs.tar.gz 2>/dev/null || true
+              cd -
+              echo "Extracted background logs to artifacts directory"
+            else
+              echo "No background logs found"
+            fi
+
             # Also collect the status service logs which may contain PHPUnit execution details
             if docker logs freegle-status > ~/artifacts/status-service.log 2>&1; then
               echo "Collected status service logs"
