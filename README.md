@@ -118,9 +118,7 @@ docker-compose build --no-cache
 
 On Windows:
 * Run `docker-compose up -d` from within the WSL2 environment to start the system.
-* Run `./file-sync.sh` from within WSL2.  This monitors file changes (e.g. from your Windows IDE) and syncs them to the Docker containers.
-
-`file-sync.sh` only monitors changes while it's running.  So if you do bulk changes (e.g. switching branches) while this isn't running, you may need to docker stop/prune/start to make sure they're picked up by the container.
+* File syncing to Docker containers happens automatically via the host-scripts container (this works around a inotifywait issue).
 
 # Monitoring
 

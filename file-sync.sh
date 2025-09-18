@@ -2,7 +2,7 @@
 # File sync script for Freegle Docker development
 # Monitors WSL filesystem changes and syncs to Docker containers
 
-PROJECT_DIR="/home/edward/FreegleDockerWSL"
+PROJECT_DIR="/workspace"
 
 echo "Starting Freegle file sync monitor..."
 echo "Project: $PROJECT_DIR"
@@ -26,7 +26,7 @@ get_container_info() {
     elif [[ "$relative_path" == iznik-server-go/* ]]; then
         echo "freegle-apiv2 /app/${relative_path#iznik-server-go/} API-v2"
     elif [[ "$relative_path" == iznik-server/* ]]; then
-        echo "freegle-apiv1 /var/www/${relative_path#iznik-server/} API-v1"
+        echo "freegle-apiv1 /var/www/iznik/${relative_path#iznik-server/} API-v1"
     fi
 }
 

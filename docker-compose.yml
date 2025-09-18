@@ -264,11 +264,19 @@ services:
             sleep 2
           done
         ) &
-        (
-          echo 'Starting file sync...'
-          bash ./file-sync.sh
-        ) &
-        wait
+        echo 'Starting file sync in background...'
+        bash ./file-sync.sh &
+        SYNC_PID=$$!
+
+        # Keep container running
+        while true; do
+          if ! kill -0 $$SYNC_PID 2>/dev/null; then
+            echo "File sync stopped, restarting..."
+            bash ./file-sync.sh &
+            SYNC_PID=$$!
+          fi
+          sleep 10
+        done
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
