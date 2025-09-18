@@ -1185,16 +1185,8 @@ const httpServer = http.createServer(async (req, res) => {
             else \\
               echo 'Warning: testenv.php not found, skipping test environment setup' | tee -a ${outputFile}; \\
             fi && \\
-            echo 'Running PHPUnit tests...' | tee -a ${outputFile} && \\
-            cd http/api && \\
-            ../../composer/vendor/bin/phpunit \\
-            -d memory_limit=512M \\
-            --bootstrap ../../composer/vendor/autoload.php \\
-            --configuration ../../test/ut/php/phpunit.xml \\
-            --coverage-clover=/tmp/phpunit-coverage.xml \\
-            ${filter} \\
-            ../../test/ut/php/ \\
-            2>&1 | tee -a ${outputFile}"
+            echo 'Running PHPUnit tests via wrapper script...' | tee -a ${outputFile} && \\
+            /var/www/iznik/run-phpunit.sh ${filter || '/var/www/iznik/test/ut/php/'} 2>&1 | tee -a ${outputFile}"
         `], {
           stdio: 'pipe'
         });
