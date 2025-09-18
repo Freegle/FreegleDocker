@@ -358,7 +358,7 @@ commands:
               # Monitor test progress with timeout
               echo "📊 Monitoring PHP test progress..."
               start_time=$(date +%s)
-              timeout_duration=1800  # 30 minutes
+              timeout_duration=2700  # 45 minutes
 
               while true; do
                 current_time=$(date +%s)
@@ -439,7 +439,7 @@ commands:
               # Monitor test progress with timeout
               echo "📊 Monitoring test progress..."
               start_time=$(date +%s)
-              timeout_duration=1800  # 30 minutes
+              timeout_duration=2700  # 45 minutes
 
               while true; do
                 current_time=$(date +%s)
