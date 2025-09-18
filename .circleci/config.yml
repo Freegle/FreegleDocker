@@ -108,7 +108,7 @@ commands:
             # Fix memory overcommit for Redis
             sudo sysctl vm.overcommit_memory=1
             echo "Set vm.overcommit_memory=1 for Redis"
-            
+
             # Create secrets files after cleanup, right before Docker startup
             echo "Creating secrets files after cleanup:"
             mkdir -p secrets
@@ -1078,7 +1078,7 @@ jobs:
             # Fix memory overcommit for Redis
             sudo sysctl vm.overcommit_memory=1
             echo "Set vm.overcommit_memory=1 for Redis"
-            
+
             # Create secrets files after cleanup, right before Docker startup
             echo "Creating secrets files after cleanup:"
             mkdir -p secrets

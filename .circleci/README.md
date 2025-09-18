@@ -94,7 +94,7 @@ The configuration uses these environment variables:
 - `CIRCLE_BUILD_URL` - URL to build details
 - `CIRCLE_SHA1` - Git commit SHA
 - `WEBHOOK_REPOSITORY` - Repository that triggered webhook (if applicable)
-- `WEBHOOK_BRANCH` - Branch that triggered webhook (if applicable)  
+- `WEBHOOK_BRANCH` - Branch that triggered webhook (if applicable)
 - `WEBHOOK_COMMIT` - Commit that triggered webhook (if applicable)
 
 ## Monitoring and Debugging
