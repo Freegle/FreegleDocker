@@ -1186,7 +1186,7 @@ const httpServer = http.createServer(async (req, res) => {
               echo 'Warning: testenv.php not found, skipping test environment setup' | tee -a ${outputFile}; \\
             fi && \\
             echo 'Running PHPUnit tests via wrapper script...' | tee -a ${outputFile} && \\
-            /var/www/iznik/run-phpunit.sh ${filter || '/var/www/iznik/test/ut/php/api/sessionTest.php'} 2>&1 | tee -a ${outputFile}"
+            /var/www/iznik/run-phpunit.sh ${filter || '/var/www/iznik/test/ut/php/'} 2>&1 | tee -a ${outputFile}"
         `], {
           stdio: 'pipe'
         });
