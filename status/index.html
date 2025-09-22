@@ -10,7 +10,7 @@
         .service { margin: 10px 0; padding: 15px; border-radius: 5px; }
         .service.online { background: #d4edda; border-left: 4px solid #28a745; display: flex; justify-content: space-between; align-items: center; position: relative; }
         .service.offline { background: #f8d7da; border-left: 4px solid #dc3545; display: flex; justify-content: space-between; align-items: center; position: relative; }
-        .service.loading { background: #d4edda; border-left: 4px solid #28a745; position: relative; }
+        .service.loading { background: #fff3cd; border-left: 4px solid #ffc107; display: flex; justify-content: space-between; align-items: center; position: relative; }
         .status { font-weight: bold; }
         .url { font-family: monospace; color: #666; }
         .logs { font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; margin-top: 10px; border-radius: 3px; max-height: 100px; overflow-y: auto; white-space: pre-wrap; }
@@ -199,7 +199,7 @@
                 <strong>Go API Tests (iznik-server-go)</strong><br>
                 <small>Test fast v2 API</small><br>
                 <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
-                <span class="status">Ready</span>
+                <span class="status">Waiting for services...</span>
                 <div class="container-actions" style="margin-top: 8px;">
                     <button id="runGoTestsBtn" class="action-button">Run Go Tests</button>
                 </div>
@@ -211,12 +211,12 @@
             </div>
         </div>
         
-        <div id="php-tests" class="service online">
+        <div id="php-tests" class="service loading">
             <div>
                 <strong>PHPUnit Tests (iznik-server)</strong><br>
                 <small>Tests v1 API and background function</small><br>
                 <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
-                <span class="status">Ready</span>
+                <span class="status">Waiting for services...</span>
                 <div class="container-actions" style="margin-top: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <button id="runPhpTestsBtn" class="action-button">Run PHP Tests</button>
@@ -505,7 +505,97 @@
                             updateServiceDisplay(service, data);
                         }
                     }
-                    
+
+                    // Update test container statuses based on their dependencies
+                    // Check if basic services (API v1 and v2) are healthy
+                    const apiv1Ready = allStatus['apiv1'] && allStatus['apiv1'].status === 'success';
+                    const apiv2Ready = allStatus['apiv2'] && allStatus['apiv2'].status === 'success';
+                    const basicServicesReady = apiv1Ready && apiv2Ready;
+
+                    // Go tests depend on API v1 and v2 being ready
+                    const goTestsElement = document.getElementById('go-tests');
+                    const goTestBtn = document.getElementById('runGoTestsBtn');
+                    if (goTestsElement) {
+                        if (basicServicesReady) {
+                            // Only update class if not currently running tests
+                            if (!goTestsElement.querySelector('#goTestStatus').textContent.includes('Running')) {
+                                goTestsElement.className = 'service online';
+                                goTestsElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Click to run tests</small>';
+                                if (goTestBtn) {
+                                    goTestBtn.disabled = false;
+                                    goTestBtn.style.background = '#17a2b8';
+                                }
+                            }
+                        } else {
+                            goTestsElement.className = 'service loading';
+                            const waitingFor = [];
+                            if (!apiv1Ready) waitingFor.push('API v1');
+                            if (!apiv2Ready) waitingFor.push('API v2');
+                            goTestsElement.querySelector('.status').innerHTML = `Waiting for services...<br><small style="font-weight: normal; color: #666;">Needs: ${waitingFor.join(', ')}</small>`;
+                            if (goTestBtn) {
+                                goTestBtn.disabled = true;
+                                goTestBtn.style.background = '#6c757d';
+                            }
+                        }
+                    }
+
+                    // PHP tests also depend on API v1 and v2 being ready
+                    const phpTestsElement = document.getElementById('php-tests');
+                    const phpTestBtn = document.getElementById('runPhpTestsBtn');
+                    if (phpTestsElement) {
+                        if (basicServicesReady) {
+                            // Only update class if not currently running tests
+                            if (!phpTestsElement.querySelector('#phpTestStatus').textContent.includes('Running')) {
+                                phpTestsElement.className = 'service online';
+                                phpTestsElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Click to run tests</small>';
+                                if (phpTestBtn) {
+                                    phpTestBtn.disabled = false;
+                                    phpTestBtn.style.background = '#17a2b8';
+                                }
+                            }
+                        } else {
+                            phpTestsElement.className = 'service loading';
+                            const waitingFor = [];
+                            if (!apiv1Ready) waitingFor.push('API v1');
+                            if (!apiv2Ready) waitingFor.push('API v2');
+                            phpTestsElement.querySelector('.status').innerHTML = `Waiting for services...<br><small style="font-weight: normal; color: #666;">Needs: ${waitingFor.join(', ')}</small>`;
+                            if (phpTestBtn) {
+                                phpTestBtn.disabled = true;
+                                phpTestBtn.style.background = '#6c757d';
+                            }
+                        }
+                    }
+
+                    // Playwright tests depend on production container
+                    const playwrightElement = document.getElementById('playwright');
+                    const playwrightBtn = document.getElementById('runTestsBtn');
+                    const prodReady = allStatus['freegle-prod'] && allStatus['freegle-prod'].status === 'success';
+
+                    if (playwrightElement) {
+                        if (prodReady) {
+                            // Only update if not currently running tests
+                            if (!playwrightElement.querySelector('#testStatus').textContent.includes('Running')) {
+                                playwrightElement.className = 'service online';
+                                playwrightElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Production container healthy</small>';
+                                if (playwrightBtn) {
+                                    playwrightBtn.disabled = false;
+                                    playwrightBtn.style.background = '#0070f3';
+                                }
+                            }
+                        } else {
+                            playwrightElement.className = 'service loading';
+                            if (allStatus['freegle-prod'] && allStatus['freegle-prod'].status === 'starting') {
+                                playwrightElement.querySelector('.status').innerHTML = 'Waiting for Production...<br><small style="font-weight: normal; color: #666;">Container building/starting</small>';
+                            } else {
+                                playwrightElement.querySelector('.status').innerHTML = 'Waiting for Production...<br><small style="font-weight: normal; color: #666;">Production container not ready</small>';
+                            }
+                            if (playwrightBtn) {
+                                playwrightBtn.disabled = true;
+                                playwrightBtn.style.background = '#6c757d';
+                            }
+                        }
+                    }
+
                     // Update traffic light
                     const allOnline = services.every(service => {
                         const element = document.getElementById(service.id);
