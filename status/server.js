@@ -1172,6 +1172,8 @@ const httpServer = http.createServer(async (req, res) => {
         }
       };
 
+      const testStatus = testStatuses.phpTests;
+
       try {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('PHP tests started successfully');
@@ -1213,8 +1215,6 @@ const httpServer = http.createServer(async (req, res) => {
         `], {
           stdio: 'pipe'
         });
-
-      const testStatus = testStatuses.phpTests;
       let fullOutput = '';
 
       // Monitor the output file for progress
@@ -1409,8 +1409,8 @@ const httpServer = http.createServer(async (req, res) => {
       });
 
     } catch (error) {
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
-      res.end('Failed to start PHP tests: ' + error.message);
+      // Response already sent, just log the error
+      console.error('Failed to start PHP tests:', error);
       testStatuses.phpTests = {
         status: 'failed',
         message: 'Failed to start: ' + error.message,
