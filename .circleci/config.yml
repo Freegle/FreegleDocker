@@ -371,6 +371,18 @@ jobs:
             - git submodule sync
             - git submodule update --init --recursive
 
+      - run:
+          name: Debug submodule structure
+          command: |
+            echo "=== Debugging submodule structure ==="
+            echo "Current directory: $(pwd)"
+            echo "Contents of iznik-nuxt3-modtools:"
+            ls -la iznik-nuxt3-modtools/ || echo "Directory not found"
+            echo "Looking for modtools subdirectory:"
+            ls -la iznik-nuxt3-modtools/modtools/ || echo "Modtools subdirectory not found"
+            echo "Git submodule status:"
+            git submodule status
+
       - setup-dependencies
 
       - start-docker-services:
