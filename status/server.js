@@ -1163,7 +1163,13 @@ const httpServer = http.createServer(async (req, res) => {
         message: 'Setting up test environment...',
         logs: '',
         startTime: Date.now(),
-        lastLine: ''
+        lastLine: '',
+        progress: {
+          total: 0,
+          completed: 0,
+          failed: 0,
+          current: null
+        }
       };
 
       try {
@@ -1177,6 +1183,22 @@ const httpServer = http.createServer(async (req, res) => {
         // First, clear the output file
         execSync(`docker exec freegle-apiv1 sh -c "rm -f ${outputFile} && touch ${outputFile}"`);
 
+        // Try to get test count first
+        try {
+          const testPath = filter || '/var/www/iznik/test/ut/php/';
+          testStatus.message = 'Counting tests...';
+
+          const listOutput = execSync(`docker exec -w /var/www/iznik freegle-apiv1 sh -c "php composer/vendor/phpunit/phpunit/phpunit --configuration test/ut/php/phpunit.xml --list-tests ${testPath} 2>/dev/null | wc -l"`, { encoding: 'utf8' }).trim();
+          const testCount = parseInt(listOutput);
+          if (!isNaN(testCount) && testCount > 0) {
+            testStatus.progress.total = testCount;
+            testStatus.message = `Found ${testCount} tests to run`;
+          }
+        } catch (err) {
+          // Ignore errors getting test count
+          console.log('Could not get test count:', err.message);
+        }
+
         const testProcess = spawn('sh', ['-c', `
           docker exec -w /var/www/iznik freegle-apiv1 sh -c "
             echo 'Setting up test environment...' | tee ${outputFile} && \\
@@ -1186,6 +1208,7 @@ const httpServer = http.createServer(async (req, res) => {
               echo 'Warning: testenv.php not found, skipping test environment setup' | tee -a ${outputFile}; \\
             fi && \\
             echo 'Running PHPUnit tests via wrapper script...' | tee -a ${outputFile} && \\
+            echo 'Total tests: ${testStatus.progress.total}' | tee -a ${outputFile} && \\
             /var/www/iznik/run-phpunit.sh ${filter || '/var/www/iznik/test/ut/php/'} 2>&1 | tee -a ${outputFile}"
         `], {
           stdio: 'pipe'
@@ -1198,12 +1221,51 @@ const httpServer = http.createServer(async (req, res) => {
       const monitorInterval = setInterval(() => {
         try {
           // Get the last few lines from the output file
-          const lastLines = execSync(`docker exec freegle-apiv1 sh -c "tail -n 5 ${outputFile} 2>/dev/null || echo ''"`, { encoding: 'utf8' }).trim();
+          const lastLines = execSync(`docker exec freegle-apiv1 sh -c "tail -n 10 ${outputFile} 2>/dev/null || echo ''"`, { encoding: 'utf8' }).trim();
           if (lastLines) {
             const lines = lastLines.split('\n').filter(line => line.trim());
             if (lines.length > 0) {
               const lastLine = lines[lines.length - 1];
               testStatus.lastLine = lastLine;
+
+              // Update progress tracking
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+
+                // Look for PHPUnit progress indicators
+                if (line.match(/^\.\s*\d+\s*\/\s*\d+/) || line.match(/^[\.FESR]+$/)) {
+                  // This is a progress line like "......." or ". 60 / 120"
+                  const dots = (testStatus.logs + '\n' + lastLines).match(/[\.FESR]/g);
+                  if (dots) {
+                    testStatus.progress.completed = dots.length;
+                    testStatus.progress.failed = dots.filter(d => d === 'F' || d === 'E').length;
+                  }
+                }
+
+                // Look for TeamCity format progress
+                if (line.includes('##teamcity[testStarted')) {
+                  const nameMatch = line.match(/name='([^']+)'/);
+                  if (nameMatch) {
+                    testStatus.progress.current = nameMatch[1];
+                    testStatus.progress.completed++;
+                  }
+                } else if (line.includes('##teamcity[testFailed')) {
+                  testStatus.progress.failed++;
+                } else if (line.includes('##teamcity[testSuiteStarted')) {
+                  const nameMatch = line.match(/name='([^']+)'/);
+                  if (nameMatch) {
+                    testStatus.message = `Running test suite: ${nameMatch[1]}`;
+                  }
+                }
+
+                // Look for test count at the beginning
+                if (line.includes('PHPUnit') && line.includes('tests')) {
+                  const countMatch = line.match(/(\d+)\s+tests?/);
+                  if (countMatch) {
+                    testStatus.progress.total = parseInt(countMatch[1]);
+                  }
+                }
+              }
 
               // Update status message based on content
               // Check all recent lines for meaningful content
@@ -1213,10 +1275,13 @@ const httpServer = http.createServer(async (req, res) => {
                 if (line.match(/✔\s+\w+/)) {
                   const testMatch = line.match(/✔\s+(.+)/);
                   meaningfulMessage = `Test passed: ${testMatch ? testMatch[1].trim() : 'Test'}`;
+                  testStatus.progress.completed++;
                   break;
                 } else if (line.match(/✘\s+\w+/)) {
                   const testMatch = line.match(/✘\s+(.+)/);
                   meaningfulMessage = `Test failed: ${testMatch ? testMatch[1].trim() : 'Test'}`;
+                  testStatus.progress.failed++;
+                  testStatus.progress.completed++;
                   break;
                 } else if (line.match(/^\w+\s+API\s+\(/)) {
                   meaningfulMessage = `Running: ${line.substring(0, 50)}...`;
@@ -1230,7 +1295,17 @@ const httpServer = http.createServer(async (req, res) => {
                 }
               }
 
-              if (meaningfulMessage) {
+              // Include progress in message if available
+              if (testStatus.progress.total > 0) {
+                const progressText = ` (${testStatus.progress.completed}/${testStatus.progress.total})`;
+                if (meaningfulMessage) {
+                  testStatus.message = meaningfulMessage + progressText;
+                } else if (testStatus.progress.current) {
+                  testStatus.message = `Running: ${testStatus.progress.current}${progressText}`;
+                } else {
+                  testStatus.message = `Running tests...${progressText}`;
+                }
+              } else if (meaningfulMessage) {
                 testStatus.message = meaningfulMessage;
               } else if (lastLine.length > 80) {
                 // For long lines (likely JSON), just show the last 80 chars
@@ -1370,7 +1445,8 @@ const httpServer = http.createServer(async (req, res) => {
       startTime: testStatus.startTime,
       endTime: testStatus.endTime,
       timeSinceStart: timeSinceStart,
-      lastLine: testStatus.lastLine
+      lastLine: testStatus.lastLine,
+      progress: testStatus.progress || null
     }));
     return;
   }

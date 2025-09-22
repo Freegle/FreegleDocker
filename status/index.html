@@ -224,6 +224,14 @@
                     </div>
                 </div>
                 <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                <div id="phpTestProgress" style="margin-top: 8px; display: none;">
+                    <div style="background: #333; border-radius: 4px; height: 20px; overflow: hidden; position: relative;">
+                        <div id="phpTestProgressBar" style="background: linear-gradient(90deg, #0070f3, #00a8ff); height: 100%; width: 0%; transition: width 0.3s ease; position: relative;">
+                            <span id="phpTestProgressText" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); color: white; font-size: 11px; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);"></span>
+                        </div>
+                        <span id="phpTestProgressLabel" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #ccc; font-size: 11px; z-index: 1;"></span>
+                    </div>
+                </div>
                 <div style="margin-top: 8px;">
                     <button id="openPhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Open Full Logs</button>
                 </div>
@@ -995,6 +1003,42 @@
 
         let phpTestLogs = '';  // Store logs globally for opening in new tab
 
+        function updatePhpTestProgress(progress) {
+            const progressDiv = document.getElementById('phpTestProgress');
+            const progressBar = document.getElementById('phpTestProgressBar');
+            const progressText = document.getElementById('phpTestProgressText');
+            const progressLabel = document.getElementById('phpTestProgressLabel');
+
+            if (!progress || !progress.total) {
+                progressDiv.style.display = 'none';
+                return;
+            }
+
+            progressDiv.style.display = 'block';
+            const percentage = Math.round((progress.completed / progress.total) * 100);
+            progressBar.style.width = percentage + '%';
+
+            // Show progress text
+            const failText = progress.failed > 0 ? `, ${progress.failed} failed` : '';
+            progressLabel.textContent = `${progress.completed} / ${progress.total} tests${failText}`;
+
+            // If the bar is wide enough, show the text inside it
+            if (percentage > 30) {
+                progressText.textContent = `${percentage}%`;
+                progressLabel.style.color = 'transparent';
+            } else {
+                progressText.textContent = '';
+                progressLabel.style.color = '#ccc';
+            }
+
+            // Change color if there are failures
+            if (progress.failed > 0) {
+                progressBar.style.background = 'linear-gradient(90deg, #d32f2f, #f44336)';
+            } else {
+                progressBar.style.background = 'linear-gradient(90deg, #0070f3, #00a8ff)';
+            }
+        }
+
         async function runPhpTests() {
             const button = document.getElementById('runPhpTestsBtn');
             const statusDiv = document.getElementById('phpTestStatus');
@@ -1047,6 +1091,11 @@
                             console.log('PHP Test Progress:', progressMsg);
                             statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
 
+                            // Update progress bar if available
+                            if (status.progress) {
+                                updatePhpTestProgress(status.progress);
+                            }
+
                             // Store logs
                             if (status.logs) {
                                 phpTestLogs = status.logs;
@@ -1054,6 +1103,7 @@
                             }
                         } else if (status.status === 'completed') {
                             clearInterval(pollInterval);
+                            document.getElementById('phpTestProgress').style.display = 'none';
                             statusDiv.innerHTML = '<span style="color: #28a745;">✅ PHP tests completed successfully</span>';
                             phpTestLogs = status.logs || 'Tests completed';
                             openLogsBtn.style.display = 'inline-block';
@@ -1061,6 +1111,7 @@
                             button.disabled = false;
                         } else if (status.status === 'failed') {
                             clearInterval(pollInterval);
+                            document.getElementById('phpTestProgress').style.display = 'none';
                             // Check if message already has an emoji/symbol
                             const message = status.message || 'PHP tests failed';
                             const hasSymbol = message.includes('❌') || message.includes('✗') || message.includes('✅');
@@ -1081,6 +1132,7 @@
                 setTimeout(() => {
                     clearInterval(pollInterval);
                     if (button.disabled) {
+                        document.getElementById('phpTestProgress').style.display = 'none';
                         statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Tests timed out</span>';
                         button.textContent = originalText;
                         button.disabled = false;
@@ -1088,6 +1140,7 @@
                 }, 30 * 60 * 1000);
 
             } catch (error) {
+                document.getElementById('phpTestProgress').style.display = 'none';
                 statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
                 button.textContent = originalText;
                 button.disabled = false;
@@ -1140,6 +1193,11 @@
                     }
                     statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
 
+                    // Update progress bar if available
+                    if (status.progress) {
+                        updatePhpTestProgress(status.progress)
+                    }
+
                     // Start polling for updates
                     const pollInterval = setInterval(async () => {
                         try {
@@ -1155,6 +1213,11 @@
                                 console.log('PHP Test Progress (auto-poll):', progressMsg);
                                 statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
 
+                                // Update progress bar if available
+                                if (pollStatus.progress) {
+                                    updatePhpTestProgress(pollStatus.progress);
+                                }
+
                                 if (pollStatus.logs) {
                                     phpTestLogs = pollStatus.logs;
                                     openLogsBtn.style.display = 'inline-block';
@@ -1163,6 +1226,7 @@
                                 clearInterval(pollInterval);
                                 button.disabled = false;
                                 button.textContent = 'Run PHP Tests';
+                                document.getElementById('phpTestProgress').style.display = 'none';
 
                                 if (pollStatus.status === 'completed') {
                                     statusDiv.innerHTML = '<span style="color: #00a000;">✓ Tests completed successfully</span>';
