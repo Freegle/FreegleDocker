@@ -317,7 +317,7 @@ services:
       - SMTP_HOST=mailhog
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - SMTP_PORT=1025
-      - IMAGE_DELIVERY=http://delivery.localhost
+      - IMAGE_DELIVERY=http://freegle-delivery
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_PUSH_KEY=${GOOGLE_PUSH_KEY}
