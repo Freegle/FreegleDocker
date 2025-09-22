@@ -1279,9 +1279,30 @@ const httpServer = http.createServer(async (req, res) => {
                           (testStatus.logs.includes('Tests:') && testStatus.logs.match(/Failures: [1-9]/)) ||
                           (testStatus.logs.includes('Tests:') && testStatus.logs.match(/Errors: [1-9]/));
 
-        if (code === 0 && !hasFailures) {
+        // Check if coverage was generated (required for successful test run)
+        const noCoverageGenerated = testStatus.logs.includes('ERROR: Coverage file was not generated') ||
+                                   testStatus.logs.includes('Coverage file was not generated at /tmp/phpunit-coverage.xml');
+
+        // Check if tests actually ran by looking for PHPUnit test execution markers
+        const testsActuallyRan = testStatus.logs.includes('Tests:') && testStatus.logs.includes('Assertions:');
+        const testSummaryMatch = testStatus.logs.match(/Tests:\s+(\d+),\s+Assertions:\s+(\d+)/);
+        const testCount = testSummaryMatch ? parseInt(testSummaryMatch[1]) : 0;
+
+        if (code === 0 && !hasFailures && !noCoverageGenerated && testsActuallyRan && testCount > 0) {
           testStatus.status = 'completed';
           testStatus.message = '✅ PHP tests completed successfully!';
+        } else if (code === 0 && noCoverageGenerated) {
+          // Tests exited with 0 but coverage wasn't generated - this means tests didn't run properly
+          testStatus.status = 'failed';
+          testStatus.message = '❌ PHPUnit exited early without running tests (no coverage generated)';
+        } else if (code === 0 && !testsActuallyRan) {
+          // Exit code 0 but no test execution summary
+          testStatus.status = 'failed';
+          testStatus.message = '❌ PHPUnit exited without executing tests';
+        } else if (code === 0 && testCount === 0) {
+          // Exit code 0 but zero tests ran
+          testStatus.status = 'failed';
+          testStatus.message = '❌ PHPUnit completed but no tests were executed';
         } else {
           testStatus.status = 'failed';
 

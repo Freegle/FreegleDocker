@@ -1237,39 +1237,16 @@ jobs:
             echo "Webhook testing enabled for repository: << pipeline.parameters.webhook_repository >>"
 
       - extract-and-cache-maxmind
+      - run-go-tests:
+          reason: "Running Go tests triggered by webhook from << pipeline.parameters.webhook_repository >>"
+      - run-php-tests:
+          reason: "Running PHPUnit tests after Go tests (webhook triggered)"
+      - run-playwright-tests:
+          reason: "Running Playwright tests after PHPUnit tests (webhook triggered)"
 
-      # TEMPORARY: Skip tests for debugging, keep environment alive
-      - run:
-          name: Keep environment alive for SSH debugging
-          command: |
-            echo "🔧 Environment is ready for SSH debugging"
-            echo "📋 Services are running:"
-            docker-compose ps
-            echo ""
-            echo "🚀 To run PHPUnit tests manually:"
-            echo "docker exec -w /var/www/iznik freegle-apiv1 bash"
-            echo "Then: php composer/vendor/phpunit/phpunit/phpunit --configuration test/ut/php/phpunit.xml test/ut/php/"
-            echo ""
-            echo "💡 To debug coverage generation:"
-            echo "docker exec -w /var/www/iznik freegle-apiv1 bash"
-            echo "export XDEBUG_MODE=coverage"
-            echo "php composer/vendor/phpunit/phpunit/phpunit --configuration test/ut/php/phpunit.xml --coverage-clover /tmp/coverage.xml test/ut/php/"
-            echo ""
-            echo "⏰ Keeping session alive for 2 hours..."
-            sleep 7200
-
-      # Commented out for debugging
-      # - run-go-tests:
-      #     reason: "Running Go tests triggered by webhook from << pipeline.parameters.webhook_repository >>"
-      # - run-php-tests:
-      #     reason: "Running PHPUnit tests after Go tests (webhook triggered)"
-      # - run-playwright-tests:
-      #     reason: "Running Playwright tests after PHPUnit tests (webhook triggered)"
-      # - collect-artifacts
-
+      - collect-artifacts
       - save-maxmind-cache
-      # Skip cleanup to keep environment alive
-      # - cleanup-docker
+      - cleanup-docker
 
 # Define workflows
 workflows:
