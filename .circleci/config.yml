@@ -391,6 +391,20 @@ commands:
                   echo "Checking /tmp directory for PHPUnit files:"
                   docker exec freegle-apiv1 ls -la /tmp/ | grep phpunit || echo "No phpunit files found in /tmp"
 
+                  # Copy PHPUnit debug output as artifact
+                  echo "Copying PHPUnit debug output for analysis..."
+                  mkdir -p ~/artifacts/phpunit
+                  docker exec freegle-apiv1 test -f /tmp/phpunit-debug.log && \
+                    docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/phpunit-debug.log || \
+                    echo "No PHPUnit debug log found"
+                  docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml && \
+                    docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit/phpunit-coverage.xml || \
+                    echo "No PHPUnit coverage file found"
+
+                  # List what we collected
+                  echo "PHPUnit artifacts collected:"
+                  ls -la ~/artifacts/phpunit/ || echo "No PHPUnit artifacts directory"
+
                   # Upload PHPUnit coverage to Coveralls - REQUIRED
                   if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
                     echo "PHPUnit coverage file found, uploading to Coveralls..."
