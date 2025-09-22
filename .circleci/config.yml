@@ -2,70 +2,6 @@ version: 2.1
 
 # Define reusable commands to reduce duplication
 commands:
-  cancel-redundant-builds:
-    description: "Cancel other running builds to avoid conflicts"
-    steps:
-      - run:
-          name: Cancel redundant builds and wait
-          command: |
-            echo "🛑 Attempting to cancel redundant builds..."
-            echo "Current pipeline: $CIRCLE_PIPELINE_ID"
-            echo "Trigger source: << pipeline.trigger_source >>"
-            echo "Workflow: $CIRCLE_WORKFLOW_ID"
-            
-            # Always add a small delay to let other builds start before we cancel them
-            echo "Waiting 10 seconds for other builds to start..."
-            sleep 10
-            
-            # Check if CIRCLE_TOKEN is available
-            if [ -z "$CIRCLE_TOKEN" ]; then
-              echo "⚠️ CIRCLE_TOKEN not available - cannot cancel redundant builds"
-              echo "This is expected in fork PRs. Builds may run in parallel."
-              echo "To enable cancellation, add CIRCLE_TOKEN to project environment variables"
-              exit 0
-            fi
-            
-            # Cancel other running workflows for this project
-            echo "Fetching running pipelines on branch $CIRCLE_BRANCH..."
-            PIPELINES_RESPONSE=$(curl -s -H "Circle-Token: $CIRCLE_TOKEN" \
-              "https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline?branch=$CIRCLE_BRANCH" 2>/dev/null)
-            
-            if [ $? -ne 0 ] || [ -z "$PIPELINES_RESPONSE" ]; then
-              echo "⚠️ Failed to fetch pipeline list - API request failed"
-              exit 0
-            fi
-            
-            # Extract other running pipeline IDs
-            OTHER_PIPELINES=$(echo "$PIPELINES_RESPONSE" | \
-              jq -r '.items[] | select(.state == "created" or .state == "running") | select(.id != "'$CIRCLE_PIPELINE_ID'") | .id' 2>/dev/null)
-            
-            if [ -z "$OTHER_PIPELINES" ]; then
-              echo "✅ No other running pipelines found"
-            else
-              echo "Found other running pipelines:"
-              echo "$OTHER_PIPELINES"
-              
-              # Cancel each pipeline
-              echo "$OTHER_PIPELINES" | while read -r pipeline_id; do
-                if [ -n "$pipeline_id" ] && [ "$pipeline_id" != "null" ]; then
-                  echo "Canceling pipeline: $pipeline_id"
-                  CANCEL_RESULT=$(curl -s -w "%{http_code}" -X POST -H "Circle-Token: $CIRCLE_TOKEN" \
-                    "https://circleci.com/api/v2/pipeline/${pipeline_id}/cancel" 2>/dev/null)
-                  
-                  HTTP_CODE="${CANCEL_RESULT: -3}"
-                  if [ "$HTTP_CODE" -eq "200" ] || [ "$HTTP_CODE" -eq "202" ]; then
-                    echo "✅ Successfully canceled pipeline $pipeline_id"
-                  else
-                    echo "⚠️ Failed to cancel pipeline $pipeline_id (HTTP $HTTP_CODE)"
-                  fi
-                fi
-              done
-              
-              echo "🎯 Redundant build cancellation complete"
-              echo "Waiting 5 seconds for cancellations to take effect..."
-              sleep 5
-            fi
-
   setup-dependencies:
     description: "Install system dependencies and docker-compose"
     steps:
@@ -74,20 +10,11 @@ commands:
           command: |
             sudo apt-get update
             sudo apt-get install -y curl jq
-            
+
             # Install latest docker-compose
             sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
-
-  restore-maxmind-cache:
-    description: "Restore cached MaxMind GeoIP databases"
-    steps:
-      - restore_cache:
-          name: Restore MaxMind GeoIP database cache
-          keys:
-            - maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
-            - maxmind-geoip-v1-
 
   start-docker-services:
     description: "Start Docker Compose services with proper setup"
@@ -100,11 +27,11 @@ commands:
           name: Start Docker services
           command: |
             echo "<< parameters.reason >>"
-            
+
             # Clean up any existing containers first
             docker-compose down --remove-orphans || true
             docker system prune -f || true
-            
+
             # Fix memory overcommit for Redis
             sudo sysctl vm.overcommit_memory=1
             echo "Set vm.overcommit_memory=1 for Redis"
@@ -119,139 +46,63 @@ commands:
             echo "placeholder" > secrets/image-domain.txt
             echo "Current working directory: $(pwd)"
             ls -la secrets/
-            
+
             # Start services in detached mode
             docker-compose up -d
-            
-            # Restore cached MaxMind databases if available
-            if [ -d ~/maxmind-cache ]; then
-              echo "Restoring cached MaxMind databases..."
-              docker cp ~/maxmind-cache/GeoLite2-Country.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null || echo "Country DB not in cache"
-              docker cp ~/maxmind-cache/GeoLite2-City.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb 2>/dev/null || echo "City DB not in cache"
-            fi
-            
-            echo "Waiting for services to start..."
-            sleep 60
-            
+
+            echo "Waiting for basic services to start..."
+            sleep 30
+
             echo "Service status:"
             docker-compose ps
 
-  wait-for-services:
-    description: "Wait for all services to be healthy"
+  wait-for-basic-services:
+    description: "Wait for API v1 and v2 services to be healthy"
     steps:
       - run:
-          name: Wait for services to be ready
+          name: Wait for API services to be ready
           command: |
-            echo "Waiting for all services to be healthy..."
-            
-            # Wait for all containers to be healthy (let CircleCI handle timeout)
+            echo "Waiting for API v1 and v2 services to be healthy..."
+
+            start_time=$(date +%s)
+            timeout_duration=600  # 10 minutes for basic services
+
             while true; do
-              
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "❌ Timeout waiting for API services after 10 minutes"
+                exit 1
+              fi
+
               # Check if status service is responding
               if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
                 echo "✅ Status service is responding!"
-                
-                # Get health status from status service (use existing /api/status/all endpoint)
-                echo "DEBUG: Checking status service via /api/status/all endpoint..."
+
+                # Get health status from status service
                 health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
-                echo "DEBUG: Raw health response: $health_response"
-                
-                # Check if all services are healthy by looking at status response
-                all_healthy="true"
-                if echo "$health_response" | jq -e '. | length > 0' >/dev/null 2>&1; then
-                  # If we have status data, check if any services are still starting or failed
-                  if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
-                    all_healthy="false"
-                    # Show which services are not ready
-                    echo "Services not ready:"
-                    echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | "\(.key): \(.value.status) - \(.value.message)"'
-                  fi
-                else
-                  all_healthy="false"
-                fi
-                echo "DEBUG: Calculated allHealthy value: $all_healthy"
-                
-                if [ "$all_healthy" = "true" ]; then
-                  echo "✅ All containers are healthy!"
+
+                # Check if API v1 and v2 are healthy
+                apiv1_status=$(echo "$health_response" | jq -r '.apiv1.status // "unknown"')
+                apiv2_status=$(echo "$health_response" | jq -r '.apiv2.status // "unknown"')
+
+                if [ "$apiv1_status" = "success" ] && [ "$apiv2_status" = "success" ]; then
+                  echo "✅ API v1 and v2 services are healthy!"
                   break
                 else
-                  echo "⚠️ Some containers not yet healthy, checking details..."
-                  if echo "$health_response" | jq '.' >/dev/null 2>&1; then
-                    echo "$health_response" | jq '.'
-                  else
-                    echo "Health check response (not JSON): $health_response"
-                  fi
-                  
-                  # Show status details only for unhealthy containers
-                  if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
-                    echo "=== Unhealthy Container Details ==="
-                    
-                    # Show only containers that are not healthy
-                    echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | .key' | while read container_service; do
-                      # Map service names to container names
-                      case "$container_service" in
-                        "freegle-dev") container_name="freegle-freegle-dev" ;;
-                        "freegle-prod") container_name="freegle-freegle-prod" ;;
-                        "modtools") container_name="freegle-modtools" ;;
-                        "apiv1") container_name="freegle-apiv1" ;;
-                        "apiv2") container_name="freegle-apiv2" ;;
-                        "percona") container_name="freegle-percona" ;;
-                        "postgres") container_name="freegle-postgres" ;;
-                        "redis") container_name="freegle-redis" ;;
-                        "status") container_name="freegle-status" ;;
-                        *) container_name="freegle-$container_service" ;;
-                      esac
-                      
-                      echo "--- $container_name (unhealthy) ---"
-                      if docker ps --filter "name=$container_name" --filter "status=running" | grep -q "$container_name"; then
-                        docker logs "$container_name" --tail 5 2>&1 | tail -5
-                      else
-                        docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "Container not found"
-                      fi
-                    done
-                    echo "=== End Unhealthy Container Details ==="
-                  fi
+                  elapsed_min=$((elapsed / 60))
+                  echo "[${elapsed_min}m] API v1: $apiv1_status, API v2: $apiv2_status - waiting..."
                 fi
               else
                 echo "Status service not yet responding..."
               fi
-              
-              echo "Waiting for all services to be healthy..."
+
               sleep 10
             done
-            
-            echo "🎉 All services are ready and healthy!"
-          no_output_timeout: 20m
 
-  extract-and-cache-maxmind:
-    description: "Extract and cache MaxMind databases for future runs"
-    steps:
-      - run:
-          name: Extract and cache MaxMind databases
-          command: |
-            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
-              echo "Extracting MaxMind databases for caching..."
-              mkdir -p ~/maxmind-cache
-
-              # Extract databases from container if they exist
-              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-Country.mmdb; then
-                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb ~/maxmind-cache/GeoLite2-Country.mmdb
-                echo "Extracted Country database"
-              else
-                echo "Country database not found in container"
-              fi
-
-              if docker exec freegle-apiv1 test -f /usr/share/GeoIP/GeoLite2-City.mmdb; then
-                docker cp freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb ~/maxmind-cache/GeoLite2-City.mmdb
-                echo "Extracted City database"
-              else
-                echo "City database not found in container"
-              fi
-
-              ls -la ~/maxmind-cache/ || echo "Cache directory is empty"
-            else
-              echo "Skipping MaxMind extraction - no changes detected"
-            fi
+            echo "🎉 API services are ready!"
+          no_output_timeout: 15m
 
   run-go-tests:
     description: "Run Go tests in the API v2 container"
@@ -263,72 +114,27 @@ commands:
       - run:
           name: Run Go tests
           command: |
-            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
-              echo "🧪 << parameters.reason >>..."
+            echo "🧪 << parameters.reason >>..."
 
-              # Set up test environment first (similar to status page implementation)
-              echo "Setting up test environment..."
-              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+            # Set up test environment first
+            echo "Setting up test environment..."
+            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
-              echo "Setting up Go-specific test data..."
-              # Copy Go test environment file from container to temp location
-              docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
-              # Fix the include path to work in the apiv1 container
-              sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
-              # Copy back to apiv1 container
-              docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
-              # Run Go test environment setup
-              docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
+            echo "Setting up Go-specific test data..."
+            # Copy Go test environment file from container to temp location
+            docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
+            # Fix the include path to work in the apiv1 container
+            sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
+            # Copy back to apiv1 container
+            docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
+            # Run Go test environment setup
+            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
 
-              echo "Running Go tests with retry logic for race conditions..."
+            echo "Running Go tests..."
+            docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
 
-              # Run tests with retry logic for GORM race condition
-              # Note: This is a known bug in GORM that only occurs during tests with race detection enabled.
-              # It does not affect production code as it's specific to the race detector's timing.
-              max_retries=3
-              retry_count=0
-
-              while [ $retry_count -lt $max_retries ]; do
-                echo "Attempt $((retry_count + 1)) of $max_retries..."
-
-                # Capture test output to check for specific race condition
-                test_output=$(docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go install github.com/mattn/goveralls@latest && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..." 2>&1) && test_result=$? || test_result=$?
-
-                # Check if the failure is due to the specific GORM race condition
-                if [ $test_result -ne 0 ]; then
-                  if echo "$test_output" | grep -q "gorm.io/gorm/schema.*guessRelation"; then
-                    echo "⚠️ Detected GORM race condition in Schema.guessRelation()"
-                    retry_count=$((retry_count + 1))
-                    if [ $retry_count -lt $max_retries ]; then
-                      echo "Retrying in 5 seconds..."
-                      sleep 5
-                      continue
-                    else
-                      echo "❌ Go tests failed after $max_retries attempts due to persistent GORM race condition!"
-                      echo "$test_output"
-                      exit 1
-                    fi
-                  else
-                    # Different failure, don't retry
-                    echo "❌ Go tests failed (not a GORM race condition)!"
-                    echo "$test_output"
-                    exit 1
-                  fi
-                else
-                  # Tests passed, upload coverage
-                  echo "$test_output"
-                  # Upload Go coverage using official Coveralls coverage-reporter binary
-                  echo "Converting Go coverage to LCOV format and uploading with Coveralls coverage-reporter..."
-                  docker-compose exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -T apiv2 sh -c "cd /app && go install github.com/jandelgado/gcov2lcov@latest && gcov2lcov -infile=coverage.out -outfile=coverage.lcov"
-                  docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv2 sh -c "cd /app && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report coverage.lcov --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
-                  echo "✅ Go tests passed!"
-                  break
-                fi
-              done
-            else
-              echo "Skipping Go tests - no changes detected"
-              echo "GO_TESTS_PASSED=skipped" >> $BASH_ENV
-            fi
+            echo "✅ Go tests passed!"
+            echo "GO_TESTS_PASSED=true" >> $BASH_ENV
 
   run-php-tests:
     description: "Run PHPUnit tests via the status service API"
@@ -340,111 +146,105 @@ commands:
       - run:
           name: Run PHPUnit tests
           command: |
-            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
-              echo "🐘 << parameters.reason >>..."
+            echo "🐘 << parameters.reason >>..."
 
-              # Trigger tests via API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
-              http_code="${response: -3}"
+            # Trigger tests via API
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+            http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
-                echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
-                echo "Response: $response"
+            if [ "$http_code" -ne "200" ]; then
+              echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
+              echo "Response: $response"
+              exit 1
+            fi
+
+            echo "✅ PHP tests triggered successfully"
+
+            # Monitor test progress with timeout
+            echo "📊 Monitoring PHP test progress..."
+            start_time=$(date +%s)
+            timeout_duration=2700  # 45 minutes
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "❌ PHP tests timed out after 45 minutes"
                 exit 1
               fi
 
-              echo "✅ PHP tests triggered successfully"
+              sleep 10
+              status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
+              status=$(echo "$status_response" | jq -r '.status // "unknown"')
+              message=$(echo "$status_response" | jq -r '.message // "No message"')
 
-              # Monitor test progress with timeout
-              echo "📊 Monitoring PHP test progress..."
-              start_time=$(date +%s)
-              timeout_duration=2700  # 45 minutes
+              elapsed_min=$((elapsed / 60))
+              echo "[${elapsed_min}m] Status: $status"
+              echo "Message: $message"
 
-              while true; do
-                current_time=$(date +%s)
-                elapsed=$((current_time - start_time))
+              if [ "$status" = "completed" ]; then
+                echo "🎉 PHP tests completed!"
+                echo "✅ PHPUnit tests passed!"
+                echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
 
-                if [ $elapsed -gt $timeout_duration ]; then
-                  echo "❌ PHP tests timed out after 30 minutes"
-                  exit 1
-                fi
+                # Copy coverage file as artifact
+                echo "Copying PHPUnit coverage file..."
+                mkdir -p ~/artifacts/phpunit
+                docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit/phpunit-coverage.xml || \
+                  echo "WARNING: Coverage file not found"
 
-                sleep 10
-                status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
-                status=$(echo "$status_response" | jq -r '.status // "unknown"')
-                message=$(echo "$status_response" | jq -r '.message // "No message"')
+                break
+              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                echo "❌ PHP tests failed!"
+                echo "Error details:"
+                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+                exit 1
+              fi
+            done
 
+  wait-for-prod-container:
+    description: "Wait for production container to be healthy"
+    steps:
+      - run:
+          name: Wait for production container to be healthy
+          command: |
+            echo "⏳ Waiting for production container to be fully healthy before Playwright tests..."
+
+            start_time=$(date +%s)
+            timeout_duration=1200  # 20 minutes for prod build
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "❌ Timeout waiting for production container after 20 minutes"
+                exit 1
+              fi
+
+              # Check prod container health specifically
+              health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
+              prod_status=$(echo "$health_response" | jq -r '.["freegle-prod"].status // "unknown"')
+
+              if [ "$prod_status" = "success" ]; then
+                echo "✅ Production container is healthy and ready for Playwright tests!"
+                break
+              else
                 elapsed_min=$((elapsed / 60))
-                echo "[${elapsed_min}m] Status: $status"
-                echo "Message: $message"
+                echo "[${elapsed_min}m] Production container status: $prod_status - waiting..."
 
-                if [ "$status" = "completed" ]; then
-                  echo "🎉 PHP tests completed!"
-                  echo "✅ PHPUnit tests passed!"
-                  echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
-
-                  # Small delay to ensure coverage file is fully written
-                  echo "Waiting for coverage file to be finalized..."
-                  sleep 2
-
-                  # Debug: List all files in /tmp to see what's there
-                  echo "Checking /tmp directory for PHPUnit files:"
-                  docker exec freegle-apiv1 ls -la /tmp/ | grep phpunit || echo "No phpunit files found in /tmp"
-
-                  # Copy PHPUnit debug output as artifact
-                  echo "Copying PHPUnit debug output for analysis..."
-                  mkdir -p ~/artifacts/phpunit
-                  docker exec freegle-apiv1 test -f /tmp/phpunit-debug.log && \
-                    docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/phpunit-debug.log || \
-                    echo "No PHPUnit debug log found"
-                  docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml && \
-                    docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit/phpunit-coverage.xml || \
-                    echo "No PHPUnit coverage file found"
-
-                  # List what we collected
-                  echo "PHPUnit artifacts collected:"
-                  ls -la ~/artifacts/phpunit/ || echo "No PHPUnit artifacts directory"
-
-                  # Upload PHPUnit coverage to Coveralls - REQUIRED
-                  if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
-                    echo "PHPUnit coverage file found, uploading to Coveralls..."
-
-                    # Convert PHPUnit XML coverage to LCOV format
-                    docker exec freegle-apiv1 sh -c "apt-get update -qq && apt-get install -qq -y php-xml" || true
-
-                    # Download and use the official Coveralls coverage-reporter binary
-                    docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e CIRCLE_SHA1="$CIRCLE_SHA1" -e CIRCLE_BUILD_NUM="$CIRCLE_BUILD_NUM" -e CIRCLE_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 sh -c "cd /tmp && curl -sL https://coveralls.io/coveralls-linux.tar.gz | tar -xz && ./coveralls report phpunit-coverage.xml --service-name=circle-ci -r \$COVERALLS_REPO_TOKEN"
-
-                    echo "✅ PHPUnit coverage uploaded to Coveralls"
-                  else
-                    echo "❌ PHPUnit coverage file not found - this is a test failure!"
-                    echo "Tests may have passed but coverage generation failed."
-                    exit 1
-                  fi
-                  break
-                elif [ "$status" = "failed" ]; then
-                  echo "❌ PHPUnit tests failed!"
-
-                  # Copy PHPUnit debug output on failure
-                  echo "Collecting PHPUnit debug output for failed tests..."
-                  mkdir -p ~/artifacts/phpunit
-                  docker exec freegle-apiv1 test -f /tmp/phpunit-debug.log && \
-                    docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/phpunit-debug.log || \
-                    echo "No PHPUnit debug log found"
-                  docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml && \
-                    docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit/phpunit-coverage.xml || \
-                    echo "No PHPUnit coverage file found"
-
-                  echo "Test logs:"
-                  curl -s http://localhost:8081/api/tests/php/status | jq -r '.logs // "No logs available"' | tail -100
-                  echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
-                  exit 1
+                # Show prod container logs if it's having issues
+                if [ "$prod_status" = "failed" ] || [ "$prod_status" = "error" ]; then
+                  echo "Production container logs (last 10 lines):"
+                  docker logs freegle-freegle-prod --tail 10 2>&1 || true
                 fi
-              done
-            else
-              echo "Skipping PHPUnit tests - no changes detected"
-              echo "PHP_TESTS_PASSED=skipped" >> $BASH_ENV
-            fi
+
+                sleep 15
+              fi
+            done
+          no_output_timeout: 25m
 
   run-playwright-tests:
     description: "Run Playwright tests via the status service API"
@@ -456,74 +256,69 @@ commands:
       - run:
           name: Run Playwright tests
           command: |
-            if [ "${SHOULD_RUN_TESTS:-true}" = "true" ]; then
-              echo "🧪 << parameters.reason >>..."
+            echo "🎭 << parameters.reason >>..."
 
-              # Trigger tests via API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
-              http_code="${response: -3}"
+            # Trigger tests via API
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
+            http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
-                echo "❌ Failed to trigger tests. HTTP code: $http_code"
-                echo "Response: $response"
+            if [ "$http_code" -ne "200" ]; then
+              echo "❌ Failed to trigger Playwright tests. HTTP code: $http_code"
+              echo "Response: $response"
+              exit 1
+            fi
+
+            echo "✅ Playwright tests triggered successfully"
+
+            # Monitor test progress with timeout
+            echo "📊 Monitoring Playwright test progress..."
+            start_time=$(date +%s)
+            timeout_duration=2700  # 45 minutes
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "⏰ Playwright tests timed out after 45 minutes"
                 exit 1
               fi
 
-              echo "✅ Tests triggered successfully"
+              sleep 10
 
-              # Monitor test progress with timeout
-              echo "📊 Monitoring test progress..."
-              start_time=$(date +%s)
-              timeout_duration=2700  # 45 minutes
+              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+              status=$(echo "$status_response" | jq -r '.status // "unknown"')
+              message=$(echo "$status_response" | jq -r '.message // "No message"')
+              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
+              total=$(echo "$status_response" | jq -r '.totalTests // 0')
 
-              while true; do
-                current_time=$(date +%s)
-                elapsed=$((current_time - start_time))
+              elapsed_min=$((elapsed / 60))
+              echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
+              echo "Message: $message"
 
-                if [ $elapsed -gt $timeout_duration ]; then
-                  echo "⏰ Tests timed out after 30 minutes"
-                  exit 1
-                fi
+              if [ "$status" = "completed" ]; then
+                success=$(echo "$status_response" | jq -r '.success // false')
+                echo "🎉 Playwright tests completed! Success: $success"
 
-                sleep 10
-
-                status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
-                status=$(echo "$status_response" | jq -r '.status // "unknown"')
-                message=$(echo "$status_response" | jq -r '.message // "No message"')
-                completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-                total=$(echo "$status_response" | jq -r '.totalTests // 0')
-
-                elapsed_min=$((elapsed / 60))
-                echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
-                echo "Message: $message"
-
-                if [ "$status" = "completed" ]; then
-                  success=$(echo "$status_response" | jq -r '.success // false')
-                  echo "🎉 Tests completed! Success: $success"
-
-                  if [ "$success" = "true" ]; then
-                    echo "✅ All tests passed!"
-                    echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
-                    break
-                  else
-                    echo "❌ Some tests failed!"
-                    echo "Test logs:"
-                    echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                    echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
-                    exit 1
-                  fi
-                elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
-                  echo "❌ Tests failed to run!"
-                  echo "Error details:"
+                if [ "$success" = "true" ]; then
+                  echo "✅ All Playwright tests passed!"
+                  echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
+                  break
+                else
+                  echo "❌ Some Playwright tests failed!"
+                  echo "Test logs:"
                   echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
                   echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
                   exit 1
                 fi
-              done
-            else
-              echo "Skipping Playwright tests - no changes detected"
-              echo "PLAYWRIGHT_TESTS_PASSED=skipped" >> $BASH_ENV
-            fi
+              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                echo "❌ Playwright tests failed to run!"
+                echo "Error details:"
+                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
+                exit 1
+              fi
+            done
 
   collect-artifacts:
     description: "Collect build artifacts and logs"
@@ -532,7 +327,7 @@ commands:
           name: Collect artifacts
           command: |
             mkdir -p ~/artifacts
-            
+
             # Collect Docker logs
             if docker-compose ps > /dev/null 2>&1; then
               echo "Collecting Docker logs..."
@@ -540,139 +335,19 @@ commands:
               docker-compose ps > ~/artifacts/docker-status.txt 2>&1 || true
             fi
 
-            # Collect PHPUnit test logs and coverage
-            echo "Collecting PHPUnit test artifacts..."
-            if docker exec freegle-apiv1 test -f /tmp/phpunit-output.log 2>/dev/null; then
-              echo "Found PHPUnit output log"
-              docker cp freegle-apiv1:/tmp/phpunit-output.log ~/artifacts/phpunit-output.log || true
-            else
-              echo "PHPUnit output log not found"
-            fi
-
-            if docker exec freegle-apiv1 test -f /tmp/phpunit-coverage.xml 2>/dev/null; then
-              echo "Found PHPUnit coverage file"
-              docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit-coverage.xml || true
-            else
-              echo "WARNING: PHPUnit coverage file not found at /tmp/phpunit-coverage.xml"
-              echo "This should have been generated by the test runner"
-            fi
-
-            # Collect all /tmp/*.out files from apiv1 container
-            echo "Collecting background job logs from apiv1 container..."
-            docker exec freegle-apiv1 ls -la /tmp/*.out 2>/dev/null || echo "No .out files found in /tmp"
-
-            # Create a temporary directory to copy the files
-            docker exec freegle-apiv1 bash -c 'cd /tmp && tar czf /tmp/background-logs.tar.gz *.out 2>/dev/null' || true
-
-            # Copy the archive if it was created
-            if docker exec freegle-apiv1 test -f /tmp/background-logs.tar.gz 2>/dev/null; then
-              echo "Found background logs archive"
-              docker cp freegle-apiv1:/tmp/background-logs.tar.gz ~/artifacts/background-logs.tar.gz || true
-
-              # Extract in artifacts directory for easier viewing
-              cd ~/artifacts
-              tar xzf background-logs.tar.gz 2>/dev/null || true
-              cd -
-              echo "Extracted background logs to artifacts directory"
-            else
-              echo "No background logs found"
-            fi
-
-            # Also collect the status service logs which may contain PHPUnit execution details
-            if docker logs freegle-status > ~/artifacts/status-service.log 2>&1; then
-              echo "Collected status service logs"
-            else
-              echo "Failed to collect status service logs"
-            fi
-            
-            # Try to collect test reports
+            # Collect test reports
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
             fi
 
-            # Collect Playwright test artifacts (traces, screenshots, videos)
-            if docker exec freegle-playwright test -d /app/test-results 2>/dev/null; then
-              echo "Collecting Playwright test artifacts..."
-              docker cp freegle-playwright:/app/test-results ~/artifacts/test-results || true
-              echo "Collected test-results directory"
-            fi
-
-            if docker exec freegle-playwright test -d /app/playwright-report 2>/dev/null; then
-              echo "Collecting Playwright report directory..."
-              docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright-report || true
-              echo "Collected playwright-report directory"
-            fi
-
-            if docker exec freegle-playwright test -d /app/playwright-screenshots 2>/dev/null; then
-              echo "Collecting Playwright screenshots directory..."
-              docker cp freegle-playwright:/app/playwright-screenshots ~/artifacts/playwright-screenshots || true
-              echo "Collected playwright-screenshots directory"
-            fi
-
-            # Collect coverage reports if they exist
-            if docker exec freegle-playwright test -f /app/coverage/lcov.info 2>/dev/null; then
-              echo "Collecting coverage report..."
-              docker cp freegle-playwright:/app/coverage ~/artifacts/coverage || true
-
-              # Upload coverage to Coveralls if in CI and tests passed
-              if [ "$TESTS_PASSED" = "true" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
-                echo "Uploading coverage to Coveralls..."
-                docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" freegle-playwright sh -c "cd /app/src && export CIRCLE_SHA1=\$CIRCLE_SHA1 CIRCLE_BUILD_NUM=\$CIRCLE_BUILD_NUM CIRCLE_BRANCH=\$CIRCLE_BRANCH COVERALLS_SERVICE_NAME=circle-ci && npm install coveralls && cat ../coverage/lcov.info | npx coveralls --service=circle-ci --repo-name=iznik-nuxt3"
-              fi
-            else
-              echo "No coverage report found"
-            fi
-            
             # Collect system info
             echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
             echo "Branch: $CIRCLE_BRANCH" >> ~/artifacts/build-info.txt
             echo "Commit: $CIRCLE_SHA1" >> ~/artifacts/build-info.txt
-            echo "Submodule changes detected: ${SUBMODULE_CHANGES_DETECTED:-unknown}" >> ~/artifacts/build-info.txt
-            echo "Webhook Repository: ${CIRCLE_PIPELINE_PARAM_WEBHOOK_REPOSITORY:-none}" >> ~/artifacts/build-info.txt
-            echo "Webhook Branch: ${CIRCLE_PIPELINE_PARAM_WEBHOOK_BRANCH:-none}" >> ~/artifacts/build-info.txt
-            echo "Webhook Commit: ${CIRCLE_PIPELINE_PARAM_WEBHOOK_COMMIT:-none}" >> ~/artifacts/build-info.txt
             date >> ~/artifacts/build-info.txt
           when: always
       - store_artifacts:
           path: ~/artifacts
-
-  save-maxmind-cache:
-    description: "Save MaxMind databases to cache"
-    steps:
-      - save_cache:
-          name: Save MaxMind GeoIP database cache
-          key: maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
-          paths:
-            - ~/maxmind-cache
-
-  cleanup-docker:
-    description: "Clean up Docker resources"
-    steps:
-      - run:
-          name: Clean up Docker resources
-          command: |
-            echo "🧹 Cleaning up Docker resources..."
-            docker-compose down --remove-orphans || true
-            docker system prune -f || true
-          when: always
-
-# Define pipeline parameters
-parameters:
-  webhook_repository:
-    type: string
-    default: ""
-  webhook_branch:
-    type: string
-    default: ""
-  webhook_commit:
-    type: string
-    default: ""
-  webhook_message:
-    type: string
-    default: ""
-  webhook_pusher:
-    type: string
-    default: ""
 
 # Define executors
 executors:
@@ -684,257 +359,42 @@ executors:
     environment:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
-      COMPOSE_BAKE: true
 
 # Define jobs
 jobs:
-  update-submodules-start-docker-and-test:
+  build-and-test:
     executor: machine-executor
     steps:
-      - cancel-redundant-builds
       - checkout:
           # Checkout with submodules
           post:
             - git submodule sync
             - git submodule update --init --recursive
 
+      - setup-dependencies
 
-      - run:
-          name: Install system dependencies
-          command: |
-            sudo apt-get update
-            sudo apt-get install -y curl jq
-            
-            # Install latest docker-compose
-            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            sudo chmod +x /usr/local/bin/docker-compose
-            docker-compose --version
+      - start-docker-services:
+          reason: "Starting all Docker services"
 
-      - restore_cache:
-          name: Restore MaxMind GeoIP database cache
-          keys:
-            - maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
-            - maxmind-geoip-v1-
+      # Wait for basic API services to be ready
+      - wait-for-basic-services
 
-      - run:
-          name: Update submodules to latest
-          command: |
-            echo "=== Before submodule update ==="
-            git submodule status
-            
-            # Update submodules to latest commits on their default branches
-            git submodule sync
-            git submodule update --init --recursive --remote
-            
-            echo "=== After submodule update ==="
-            git submodule status
-            
-            # Check if there are any changes
-            if [ -n "$(git status --porcelain)" ]; then
-              echo "SUBMODULE_CHANGES_DETECTED=true" >> $BASH_ENV
-              echo "Submodule changes detected:"
-              git status --porcelain
-            else
-              echo "SUBMODULE_CHANGES_DETECTED=false" >> $BASH_ENV
-              echo "No submodule changes detected"
-            fi
-
-      - run:
-          name: Check for FreegleDocker changes
-          command: |
-            echo "=== Checking for FreegleDocker repository changes ==="
-            
-            # Check if there are changes to FreegleDocker files (excluding submodule updates)
-            if git diff HEAD~1 --name-only | grep -v '^[^/]*/$' | head -1; then
-              echo "DOCKER_CHANGES_DETECTED=true" >> $BASH_ENV
-              echo "FreegleDocker repository changes detected"
-              git diff HEAD~1 --name-only | grep -v '^[^/]*/$' || true
-            else
-              echo "DOCKER_CHANGES_DETECTED=false" >> $BASH_ENV
-              echo "No FreegleDocker repository changes detected"
-            fi
-
-      - run:
-          name: Start Docker services
-          command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [[ "$CIRCLE_BRANCH" == feature/* ]] || [ -n "$CIRCLE_BUILD_URL" ]; then
-              echo "Starting Docker Compose services..."
-              echo "Reason: SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED, DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED, CIRCLE_BRANCH=$CIRCLE_BRANCH, MANUAL_TRIGGER=${CIRCLE_BUILD_URL:+true}"
-              
-              # Clean up any existing containers first
-              docker-compose down --remove-orphans || true
-              docker system prune -f || true
-              
-              # Fix memory overcommit for Redis
-              sudo sysctl vm.overcommit_memory=1
-              echo "Set vm.overcommit_memory=1 for Redis"
-              
-              # Create secrets files after cleanup, right before Docker startup
-              echo "Creating secrets files after cleanup:"
-              mkdir -p secrets
-              echo "placeholder" > secrets/lovejunk-api.txt
-              echo "placeholder" > secrets/lovejunk-secret.txt
-              echo "placeholder" > secrets/partner-key.txt
-              echo "placeholder" > secrets/partner-name.txt
-              echo "placeholder" > secrets/image-domain.txt
-              echo "Current working directory: $(pwd)"
-              ls -la secrets/
-              
-              # Start services in detached mode
-              docker-compose up -d
-              
-              # Restore cached MaxMind databases if available
-              if [ -d ~/maxmind-cache ]; then
-                echo "Restoring cached MaxMind databases..."
-                docker cp ~/maxmind-cache/GeoLite2-Country.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null || echo "Country DB not in cache"
-                docker cp ~/maxmind-cache/GeoLite2-City.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb 2>/dev/null || echo "City DB not in cache"
-              fi
-              
-              echo "Waiting for services to start..."
-              sleep 60
-              
-              echo "Service status:"
-              docker-compose ps
-            else
-              echo "No changes detected and not on master branch - skipping Docker startup"
-            fi
-
-      - run:
-          name: Wait for services to be ready
-          command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [[ "$CIRCLE_BRANCH" == feature/* ]] || [ -n "$CIRCLE_BUILD_URL" ]; then
-              echo "Waiting for all services to be healthy..."
-              
-              # Wait for all containers to be healthy (let CircleCI handle timeout)
-              while true; do
-                
-                # Check if status service is responding
-                if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
-                  echo "✅ Status service is responding!"
-                  
-                  # Get health status from status service (use existing /api/status/all endpoint)
-                  echo "DEBUG: Checking status service via /api/status/all endpoint..."
-                  health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
-                  echo "DEBUG: Raw health response: $health_response"
-                  
-                  # Check if all services are healthy by looking at status response
-                  all_healthy="true"
-                  if echo "$health_response" | jq -e '. | length > 0' >/dev/null 2>&1; then
-                    # If we have status data, check if any services are still starting or failed
-                    if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
-                      all_healthy="false"
-                      # Show which services are not ready
-                      echo "Services not ready:"
-                      echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | "\(.key): \(.value.status) - \(.value.message)"'
-                    fi
-                  else
-                    all_healthy="false"
-                  fi
-                  echo "DEBUG: Calculated allHealthy value: $all_healthy"
-                  
-                  if [ "$all_healthy" = "true" ]; then
-                    echo "✅ All containers are healthy!"
-                    break
-                  else
-                    echo "⚠️ Some containers not yet healthy, checking details..."
-                    if echo "$health_response" | jq '.' >/dev/null 2>&1; then
-                      echo "$health_response" | jq '.'
-                    else
-                      echo "Health check response (not JSON): $health_response"
-                    fi
-                    
-                    # Show status details only for unhealthy containers
-                    if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
-                      echo "=== Unhealthy Container Details ==="
-                      
-                      # Show only containers that are not healthy
-                      echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | .key' | while read container_service; do
-                        # Map service names to container names
-                        case "$container_service" in
-                          "freegle-dev") container_name="freegle-freegle-dev" ;;
-                          "freegle-prod") container_name="freegle-freegle-prod" ;;
-                          "modtools") container_name="freegle-modtools" ;;
-                          "apiv1") container_name="freegle-apiv1" ;;
-                          "apiv2") container_name="freegle-apiv2" ;;
-                          "percona") container_name="freegle-percona" ;;
-                          "postgres") container_name="freegle-postgres" ;;
-                          "redis") container_name="freegle-redis" ;;
-                          "status") container_name="freegle-status" ;;
-                          *) container_name="freegle-$container_service" ;;
-                        esac
-                        
-                        echo "--- $container_name (unhealthy) ---"
-                        if docker ps --filter "name=$container_name" --filter "status=running" | grep -q "$container_name"; then
-                          docker logs "$container_name" --tail 5 2>&1 | tail -5
-                        else
-                          docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "Container not found"
-                        fi
-                      done
-                      echo "=== End Unhealthy Container Details ==="
-                    fi
-                  fi
-                else
-                  echo "Status service not yet responding..."
-                fi
-                
-                echo "Waiting for all services to be healthy..."
-                sleep 10
-              done
-              
-              echo "🎉 All services are ready and healthy!"
-            else
-              echo "Skipping service readiness check - no changes detected"
-            fi
-          no_output_timeout: 20m
-
-      - run:
-          name: Conditionally extract MaxMind and run tests
-          command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [[ "$CIRCLE_BRANCH" == feature/* ]] || [ -n "$CIRCLE_BUILD_URL" ]; then
-              echo "SHOULD_RUN_TESTS=true" >> $BASH_ENV
-            else
-              echo "SHOULD_RUN_TESTS=false" >> $BASH_ENV
-              echo "Skipping tests - no changes detected"
-            fi
-
-      - extract-and-cache-maxmind
+      # Run Go tests immediately (doesn't need prod container)
       - run-go-tests:
-          reason: "Running Go tests after changes detected"
+          reason: "Running Go tests immediately after API services start"
+
+      # Run PHP tests after Go tests (doesn't need prod container)
       - run-php-tests:
-          reason: "Running PHPUnit tests after Go tests"
+          reason: "Running PHPUnit tests after Go tests complete"
+
+      # Wait for prod container to be healthy before Playwright tests
+      - wait-for-prod-container
+
+      # Run Playwright tests only after prod is ready
       - run-playwright-tests:
-          reason: "Running Playwright tests after PHPUnit tests"
+          reason: "Running Playwright tests after production container is healthy"
 
       - collect-artifacts
-
-      - run:
-          name: Commit submodule updates
-          command: |
-            if [ "$SUBMODULE_CHANGES_DETECTED" = "true" ] && [ "$CIRCLE_BRANCH" = "master" ]; then
-              echo "💾 Committing submodule updates..."
-              
-              # Configure git
-              git config user.name "CircleCI"
-              git config user.email "ci@freegle.org"
-              
-              # Add and commit changes
-              git add .
-              git commit -m "Auto-update submodules to latest commits
-
-              Updated by CircleCI build #${CIRCLE_BUILD_NUM}
-              Build URL: ${CIRCLE_BUILD_URL}
-              
-              Changes:
-              $(git submodule status)"
-              
-              # Push changes
-              git push origin $CIRCLE_BRANCH
-              
-              echo "✅ Submodule updates committed and pushed successfully!"
-            else
-              echo "Skipping commit - no changes detected or not on master branch"
-            fi
-          when: on_success
 
       - run:
           name: Evaluate overall test results
@@ -945,341 +405,28 @@ jobs:
             echo "PLAYWRIGHT_TESTS_PASSED=${PLAYWRIGHT_TESTS_PASSED:-not_run}"
 
             # Determine if all required tests passed
-            ALL_TESTS_PASSED="false"
-
-            # All three test suites are now required: Go, PHPUnit, and Playwright
             if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
-              ALL_TESTS_PASSED="true"
               echo "✅ All tests passed successfully!"
-            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
-              ALL_TESTS_PASSED="true"
-              echo "✅ All required tests passed (Go tests were skipped)"
-            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
-              ALL_TESTS_PASSED="true"
-              echo "✅ All required tests passed (PHPUnit tests were skipped)"
-            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
-              ALL_TESTS_PASSED="true"
-              echo "✅ All required tests passed (Playwright tests were skipped)"
-            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
-              ALL_TESTS_PASSED="true"
-              echo "✅ All required tests passed (Go and PHPUnit tests were skipped)"
-            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
-              ALL_TESTS_PASSED="true"
-              echo "✅ All required tests passed (Go and Playwright tests were skipped)"
-            elif [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
-              ALL_TESTS_PASSED="true"
-              echo "✅ All required tests passed (PHPUnit and Playwright tests were skipped)"
-            elif [ "$GO_TESTS_PASSED" = "skipped" ] && [ "$PHP_TESTS_PASSED" = "skipped" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "skipped" ]; then
-              ALL_TESTS_PASSED="false"
-              echo "❌ All tests were skipped - auto-merge will be skipped"
             else
-              echo "❌ Not all tests passed - auto-merge will be skipped"
+              echo "❌ Not all tests passed"
               echo "  Go tests: $GO_TESTS_PASSED"
               echo "  PHPUnit tests: $PHP_TESTS_PASSED"
               echo "  Playwright tests: $PLAYWRIGHT_TESTS_PASSED"
+              exit 1
             fi
-
-            echo "ALL_TESTS_PASSED=$ALL_TESTS_PASSED" >> $BASH_ENV
           when: always
 
       - run:
-          name: Auto-merge master to production
+          name: Clean up Docker resources
           command: |
-            if [ "$ALL_TESTS_PASSED" = "true" ] && ([ "$SUBMODULE_CHANGES_DETECTED" = "true" ] || [ "$DOCKER_CHANGES_DETECTED" = "true" ] || [ "$CIRCLE_BRANCH" = "master" ] || [ -n "$CIRCLE_BUILD_URL" ]); then
-              echo "🔀 Auto-merging master to production in iznik-nuxt3..."
-              echo "Tests passed successfully - proceeding with merge"
-              
-              # Configure git for the submodule
-              cd iznik-nuxt3
-              git config user.name "CircleCI"
-              git config user.email "ci@freegle.org"
-              
-              # Fetch all branches
-              git fetch origin
-              
-              # Check out production branch (create if it doesn't exist)
-              git checkout production || git checkout -b production origin/production || git checkout -b production
-              
-              # Merge master into production
-              git merge origin/master --no-ff -m "Auto-merge master to production after successful tests
-
-              Updated by CircleCI build #${CIRCLE_BUILD_NUM}
-              Build URL: ${CIRCLE_BUILD_URL}
-
-              🤖 Automated merge after successful Go, PHPUnit, and Playwright tests"
-              
-              # Push to production
-              git push origin production
-              
-              echo "✅ Successfully merged master to production in iznik-nuxt3!"
-            else
-              echo "Skipping auto-merge"
-              echo "ALL_TESTS_PASSED=$ALL_TESTS_PASSED"
-              echo "GO_TESTS_PASSED=$GO_TESTS_PASSED"
-              echo "PHP_TESTS_PASSED=$PHP_TESTS_PASSED"
-              echo "PLAYWRIGHT_TESTS_PASSED=$PLAYWRIGHT_TESTS_PASSED"
-              echo "SUBMODULE_CHANGES_DETECTED=$SUBMODULE_CHANGES_DETECTED"
-              echo "DOCKER_CHANGES_DETECTED=$DOCKER_CHANGES_DETECTED"
-              echo "CIRCLE_BRANCH=$CIRCLE_BRANCH"
-            fi
-          when: on_success
-
-      - save-maxmind-cache
-      - cleanup-docker
-
-  # Webhook-triggered Playwright testing (no submodule update needed)
-  webhook-start-docker-and-test:
-    executor: machine-executor
-    steps:
-      - run:
-          name: Cancel redundant builds
-          command: |
-            echo "🛑 Checking for other running builds to cancel..."
-            
-            # Get current workflow ID
-            CURRENT_WORKFLOW_ID=$(curl -s -H "Circle-Token: $CIRCLE_TOKEN" \
-              "https://circleci.com/api/v2/pipeline/${CIRCLE_PIPELINE_ID}/workflow" | \
-              jq -r '.items[0].id')
-            
-            echo "Current workflow ID: $CURRENT_WORKFLOW_ID"
-            
-            # Cancel other running workflows for this project
-            curl -s -H "Circle-Token: $CIRCLE_TOKEN" \
-              "https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline?branch=$CIRCLE_BRANCH" | \
-              jq -r '.items[] | select(.state == "created" or .state == "running") | .id' | \
-              while read pipeline_id; do
-                if [ "$pipeline_id" != "$CIRCLE_PIPELINE_ID" ]; then
-                  echo "Canceling pipeline: $pipeline_id"
-                  curl -s -X POST -H "Circle-Token: $CIRCLE_TOKEN" \
-                    "https://circleci.com/api/v2/pipeline/${pipeline_id}/cancel"
-                fi
-              done
-            
-            echo "✅ Redundant build cancellation complete"
-
-      - checkout:
-          post:
-            - git submodule sync
-            - git submodule update --init --recursive
-
-
-      - run:
-          name: Force submodule update and test
-          command: |
-            echo "🔔 Webhook triggered submodule check"
-            echo "Repository: << pipeline.parameters.webhook_repository >>"
-            echo "Branch: << pipeline.parameters.webhook_branch >>"
-            echo "Commit: << pipeline.parameters.webhook_commit >>"
-            echo "Message: << pipeline.parameters.webhook_message >>"
-            echo "Pusher: << pipeline.parameters.webhook_pusher >>"
-            
-            # Force update submodules
-            git submodule sync
-            git submodule update --init --recursive --remote
-            
-            # Always run tests when triggered by webhook
-            echo "SUBMODULE_CHANGES_DETECTED=true" >> $BASH_ENV
-            echo "FORCE_TESTING=true" >> $BASH_ENV
-
-      - run:
-          name: Install system dependencies
-          command: |
-            sudo apt-get update
-            sudo apt-get install -y curl jq
-            
-            # Install latest docker-compose
-            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            sudo chmod +x /usr/local/bin/docker-compose
-            docker-compose --version
-
-      - restore_cache:
-          name: Restore MaxMind GeoIP database cache
-          keys:
-            - maxmind-geoip-v1-{{ .Environment.CIRCLE_WEEK }}
-            - maxmind-geoip-v1-
-
-      # Start Docker services and run tests (same logic as main job)
-      - run:
-          name: Start Docker services
-          command: |
-            echo "Starting Docker Compose services for webhook testing..."
-            echo "Repository: << pipeline.parameters.webhook_repository >>"
-            echo "Branch: << pipeline.parameters.webhook_branch >>"
-            echo "Commit: << pipeline.parameters.webhook_commit >>"
-            
-            # Clean up any existing containers first
+            echo "🧹 Cleaning up Docker resources..."
             docker-compose down --remove-orphans || true
             docker system prune -f || true
-            
-            # Fix memory overcommit for Redis
-            sudo sysctl vm.overcommit_memory=1
-            echo "Set vm.overcommit_memory=1 for Redis"
-
-            # Create secrets files after cleanup, right before Docker startup
-            echo "Creating secrets files after cleanup:"
-            mkdir -p secrets
-            echo "placeholder" > secrets/lovejunk-api.txt
-            echo "placeholder" > secrets/lovejunk-secret.txt
-            echo "placeholder" > secrets/partner-key.txt
-            echo "placeholder" > secrets/partner-name.txt
-            echo "placeholder" > secrets/image-domain.txt
-            echo "Current working directory: $(pwd)"
-            ls -la secrets/
-            
-            # Start services in detached mode
-            docker-compose up -d
-            
-            # Restore cached MaxMind databases if available
-            if [ -d ~/maxmind-cache ]; then
-              echo "Restoring cached MaxMind databases..."
-              docker cp ~/maxmind-cache/GeoLite2-Country.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null || echo "Country DB not in cache"
-              docker cp ~/maxmind-cache/GeoLite2-City.mmdb freegle-apiv1:/usr/share/GeoIP/GeoLite2-City.mmdb 2>/dev/null || echo "City DB not in cache"
-            fi
-            
-            echo "Waiting for services to start..."
-            sleep 60
-            
-            echo "Service status:"
-            docker-compose ps
-
-      - run:
-          name: Wait for services to be ready
-          command: |
-            echo "Waiting for all services to be healthy..."
-            
-            # Wait for all containers to be healthy (let CircleCI handle timeout)
-            while true; do
-              
-              # Check if status service is responding
-              if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
-                echo "✅ Status service is responding!"
-                
-                # Debug: Test if status service can reach other containers
-                echo "DEBUG: Testing container connectivity from CircleCI..."
-                curl -s "http://localhost:8081/api/status?service=freegle-percona" || echo "Failed to check percona status"
-                curl -s "http://localhost:8081/api/status?service=freegle-redis" || echo "Failed to check redis status"
-                
-                # Get health status from status service (use existing /api/status/all endpoint)
-                echo "DEBUG: Checking status service via /api/status/all endpoint..."
-                health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
-                echo "DEBUG: Raw health response: $health_response"
-                
-                # Check if all services are healthy by looking at status response
-                all_healthy="true"
-                if echo "$health_response" | jq -e '. | length > 0' >/dev/null 2>&1; then
-                  # If we have status data, check if any services are still starting or failed
-                  if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
-                    all_healthy="false"
-                    # Show which services are not ready
-                    echo "Services not ready:"
-                    echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | "\(.key): \(.value.status) - \(.value.message)"'
-                  fi
-                else
-                  all_healthy="false"
-                fi
-                echo "DEBUG: Calculated allHealthy value: $all_healthy"
-                
-                if [ "$all_healthy" = "true" ]; then
-                  echo "✅ All containers are healthy!"
-                  break
-                else
-                  echo "⚠️ Some containers not yet healthy, checking details..."
-                  if echo "$health_response" | jq '.' >/dev/null 2>&1; then
-                    echo "$health_response" | jq '.'
-                  else
-                    echo "Health check response (not JSON): $health_response"
-                  fi
-                  
-                  # Show status details only for unhealthy containers
-                  if echo "$health_response" | jq -e 'to_entries[] | select(.value.status != "success")' >/dev/null 2>&1; then
-                    echo "=== Unhealthy Container Details ==="
-                    
-                    # Show only containers that are not healthy
-                    echo "$health_response" | jq -r 'to_entries[] | select(.value.status != "success") | .key' | while read container_service; do
-                      # Map service names to container names
-                      case "$container_service" in
-                        "freegle-dev") container_name="freegle-freegle-dev" ;;
-                        "freegle-prod") container_name="freegle-freegle-prod" ;;
-                        "modtools") container_name="freegle-modtools" ;;
-                        "apiv1") container_name="freegle-apiv1" ;;
-                        "apiv2") container_name="freegle-apiv2" ;;
-                        "percona") container_name="freegle-percona" ;;
-                        "postgres") container_name="freegle-postgres" ;;
-                        "redis") container_name="freegle-redis" ;;
-                        "status") container_name="freegle-status" ;;
-                        *) container_name="freegle-$container_service" ;;
-                      esac
-                      
-                      echo "--- $container_name (unhealthy) ---"
-                      if docker ps --filter "name=$container_name" --filter "status=running" | grep -q "$container_name"; then
-                        docker logs "$container_name" --tail 5 2>&1 | tail -5
-                      else
-                        docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "Container not found"
-                      fi
-                    done
-                    echo "=== End Unhealthy Container Details ==="
-                  fi
-                fi
-              else
-                echo "Status service not yet responding..."
-              fi
-              
-              echo "Waiting for all services to be healthy..."
-              sleep 10
-            done
-            
-            echo "🎉 All services are ready and healthy!"
-
-      - run:
-          name: Enable webhook testing mode
-          command: |
-            echo "SHOULD_RUN_TESTS=true" >> $BASH_ENV
-            echo "Webhook testing enabled for repository: << pipeline.parameters.webhook_repository >>"
-
-      - extract-and-cache-maxmind
-      - run-go-tests:
-          reason: "Running Go tests triggered by webhook from << pipeline.parameters.webhook_repository >>"
-      - run-php-tests:
-          reason: "Running PHPUnit tests after Go tests (webhook triggered)"
-      - run-playwright-tests:
-          reason: "Running Playwright tests after PHPUnit tests (webhook triggered)"
-
-      - collect-artifacts
-      - save-maxmind-cache
-      - cleanup-docker
+          when: always
 
 # Define workflows
 workflows:
   version: 2
-  
-  # Scheduled integration testing every 2 days
-  scheduled-integration-test:
-    triggers:
-      - schedule:
-          cron: "0 16 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31 * *"  # Every 2 days at 16:00 UTC
-          filters:
-            branches:
-              only: master
+  build-test:
     jobs:
-      - update-submodules-start-docker-and-test
-
-  # Manual and push-triggered Playwright testing  
-  manual-playwright-test:
-    when:
-      and:
-        - not:
-            equal: [ webhook, << pipeline.trigger_source >> ]
-        - not:
-            equal: [ scheduled_pipeline, << pipeline.trigger_source >> ]
-    jobs:
-      - update-submodules-start-docker-and-test
-
-  # Webhook-triggered Playwright testing (from submodule repositories)
-  webhook-playwright-test:
-    when:
-      condition:
-        equal: [ webhook, << pipeline.trigger_source >> ]
-    jobs:
-      - webhook-start-docker-and-test:
-          # Add a small delay to allow cancellation to work
-          requires: []
+      - build-and-test
