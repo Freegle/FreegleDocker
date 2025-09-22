@@ -365,22 +365,15 @@ jobs:
   build-and-test:
     executor: machine-executor
     steps:
-      - checkout:
-          # Checkout with submodules
-          post:
-            - git submodule sync
-            - git submodule update --init --recursive
+      - checkout
 
       - run:
-          name: Debug submodule structure
+          name: Initialize and update git submodules
           command: |
-            echo "=== Debugging submodule structure ==="
-            echo "Current directory: $(pwd)"
-            echo "Contents of iznik-nuxt3-modtools:"
-            ls -la iznik-nuxt3-modtools/ || echo "Directory not found"
-            echo "Looking for modtools subdirectory:"
-            ls -la iznik-nuxt3-modtools/modtools/ || echo "Modtools subdirectory not found"
-            echo "Git submodule status:"
+            echo "Initializing and updating git submodules..."
+            git submodule init
+            git submodule update --recursive
+            echo "Submodule status:"
             git submodule status
 
       - setup-dependencies
