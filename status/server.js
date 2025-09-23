@@ -1168,7 +1168,9 @@ const httpServer = http.createServer(async (req, res) => {
           total: 0,
           completed: 0,
           failed: 0,
-          current: null
+          current: null,
+          teamCityMode: false,
+          seenTests: new Set() // Track which tests we've already counted
         }
       };
 
@@ -1232,21 +1234,36 @@ const httpServer = http.createServer(async (req, res) => {
               for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
 
-                // Look for PHPUnit progress indicators
-                if (line.match(/^\.\s*\d+\s*\/\s*\d+/) || line.match(/^[\.FESR]+$/)) {
+                // Look for PHPUnit progress indicators (dots format)
+                // Only use dots if we haven't seen TeamCity format yet
+                const hasTeamCityFormat = testStatus.logs.includes('##teamcity[test');
+
+                if (!hasTeamCityFormat && (line.match(/^\.\s*\d+\s*\/\s*\d+/) || line.match(/^[\.FESR]+$/))) {
                   // This is a progress line like "......." or ". 60 / 120"
-                  const dots = (testStatus.logs + '\n' + lastLines).match(/[\.FESR]/g);
-                  if (dots) {
-                    testStatus.progress.completed = dots.length;
-                    testStatus.progress.failed = dots.filter(d => d === 'F' || d === 'E').length;
+                  // Count only the dots, not from logs (to avoid double counting)
+                  const dotsInCurrentLines = lastLines.match(/[\.FESR]/g);
+                  if (dotsInCurrentLines) {
+                    // Count unique occurrences to get actual progress
+                    const newDots = dotsInCurrentLines.length;
+                    // Only update if we have more dots than before
+                    if (newDots > testStatus.progress.completed) {
+                      testStatus.progress.completed = newDots;
+                      testStatus.progress.failed = dotsInCurrentLines.filter(d => d === 'F' || d === 'E').length;
+                    }
                   }
                 }
 
-                // Look for TeamCity format progress
+                // Look for TeamCity format progress (preferred if available)
                 if (line.includes('##teamcity[testStarted')) {
                   const nameMatch = line.match(/name='([^']+)'/);
                   if (nameMatch) {
                     testStatus.progress.current = nameMatch[1];
+                    // Only increment if not already counted via dots
+                    if (!testStatus.progress.teamCityMode) {
+                      testStatus.progress.teamCityMode = true;
+                      testStatus.progress.completed = 0; // Reset if switching to TeamCity mode
+                      testStatus.progress.failed = 0;
+                    }
                     testStatus.progress.completed++;
                   }
                 } else if (line.includes('##teamcity[testFailed')) {
@@ -1274,14 +1291,24 @@ const httpServer = http.createServer(async (req, res) => {
                 const line = lines[i];
                 if (line.match(/✔\s+\w+/)) {
                   const testMatch = line.match(/✔\s+(.+)/);
-                  meaningfulMessage = `Test passed: ${testMatch ? testMatch[1].trim() : 'Test'}`;
-                  testStatus.progress.completed++;
+                  const testName = testMatch ? testMatch[1].trim() : 'Test';
+                  // Only count this test if we haven't seen it before
+                  if (!testStatus.progress.seenTests.has(testName)) {
+                    testStatus.progress.seenTests.add(testName);
+                    testStatus.progress.completed++;
+                  }
+                  meaningfulMessage = `Test passed: ${testName}`;
                   break;
                 } else if (line.match(/✘\s+\w+/)) {
                   const testMatch = line.match(/✘\s+(.+)/);
-                  meaningfulMessage = `Test failed: ${testMatch ? testMatch[1].trim() : 'Test'}`;
-                  testStatus.progress.failed++;
-                  testStatus.progress.completed++;
+                  const testName = testMatch ? testMatch[1].trim() : 'Test';
+                  // Only count this test if we haven't seen it before
+                  if (!testStatus.progress.seenTests.has(testName)) {
+                    testStatus.progress.seenTests.add(testName);
+                    testStatus.progress.failed++;
+                    testStatus.progress.completed++;
+                  }
+                  meaningfulMessage = `Test failed: ${testName}`;
                   break;
                 } else if (line.match(/^\w+\s+API\s+\(/)) {
                   meaningfulMessage = `Running: ${line.substring(0, 50)}...`;
