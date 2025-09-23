@@ -1215,22 +1215,16 @@ const httpServer = http.createServer(async (req, res) => {
         // First, clear the output file
         execSync(`docker exec freegle-apiv1 sh -c "rm -f ${outputFile} && touch ${outputFile}"`);
 
-        // Try to get test count first - count actual test methods
+        // Don't try to pre-count tests - TeamCity output will give us the correct count
+        // including proper handling of data providers
         try {
           const testPath = filter || '/var/www/iznik/test/ut/php/';
-          testStatus.message = 'Counting tests...';
-
-          // Use --list-tests to count all test methods that will be executed
-          const listOutput = execSync(`docker exec -w /var/www/iznik freegle-apiv1 sh -c "php composer/vendor/phpunit/phpunit/phpunit --configuration test/ut/php/phpunit.xml --list-tests ${testPath} 2>/dev/null | wc -l"`, { encoding: 'utf8' }).trim();
-          const testCount = parseInt(listOutput);
-          if (!isNaN(testCount) && testCount > 0) {
-            testStatus.progress.total = testCount;
-            testStatus.message = `Found ${testCount} test methods to run`;
-            // We'll count actual test executions based on our markers
-            testStatus.progress.useMarkers = true;
-          }
+          testStatus.message = 'Starting PHPUnit tests...';
+          testStatus.progress.total = 0;  // Will be set from TeamCity output
+          testStatus.progress.useMarkers = true;
+          testStatus.progress.totalFromTeamCity = false;
         } catch (err) {
-          // Ignore errors getting test count
+          // Ignore errors
           console.log('Could not get test count:', err.message);
         }
 
@@ -1284,6 +1278,18 @@ const httpServer = http.createServer(async (req, res) => {
                   }
                 }
 
+                // Look for TeamCity format test count first (most accurate)
+                if (line.includes('##teamcity[testCount')) {
+                  const countMatch = line.match(/count='(\d+)'/);
+                  if (countMatch && !testStatus.progress.totalFromTeamCity) {
+                    const teamCityCount = parseInt(countMatch[1]);
+                    testStatus.progress.total = teamCityCount;
+                    testStatus.progress.totalFromTeamCity = true;
+                    testStatus.message = `Found ${teamCityCount} tests to run`;
+                    console.log(`Got test count from TeamCity: ${teamCityCount}`);
+                  }
+                }
+
                 // Look for TeamCity format progress (preferred if available)
                 if (line.includes('##teamcity[testStarted')) {
                   const nameMatch = line.match(/name='([^']+)'/);
@@ -1306,7 +1312,7 @@ const httpServer = http.createServer(async (req, res) => {
                   }
                 }
 
-                // Look for our clear test execution marker
+                // Look for our clear test execution marker (for monitoring, not counting)
                 if (line.includes('##PHPUNIT_TEST_STARTED##:')) {
                   // Extract test name from marker
                   const testMatch = line.match(/##PHPUNIT_TEST_STARTED##:(.+)/);
@@ -1314,7 +1320,8 @@ const httpServer = http.createServer(async (req, res) => {
                     const testName = testMatch[1];
                     if (!testStatus.progress.seenTests.has(testName)) {
                       testStatus.progress.seenTests.add(testName);
-                      // Don't increment completed here, just track that we've started this test
+                      // Don't use this for counting when TeamCity mode is active
+                      // TeamCity gives us the correct count including data providers
                     }
                   }
                 }
@@ -1337,10 +1344,12 @@ const httpServer = http.createServer(async (req, res) => {
                   const testMatch = line.match(/✔\s+(.+)/);
                   const testName = testMatch ? testMatch[1].trim() : 'Test';
 
-                  // If we're using markers, count actual test methods from our markers
-                  // The ✔ lines are test class summaries, not individual test methods
-                  if (testStatus.progress.useMarkers) {
-                    // Update completed count based on test methods seen
+                  // If we're using TeamCity mode, it handles counting
+                  // Otherwise use markers or legacy counting
+                  if (testStatus.progress.teamCityMode) {
+                    // TeamCity mode handles counting, just update message
+                  } else if (testStatus.progress.useMarkers && !testStatus.progress.totalFromTeamCity) {
+                    // Only use seenTests for counting if we don't have TeamCity data
                     testStatus.progress.completed = testStatus.progress.seenTests.size;
                   } else {
                     // Legacy counting for when markers aren't available
@@ -1358,9 +1367,11 @@ const httpServer = http.createServer(async (req, res) => {
                   const testMatch = line.match(/✘\s+(.+)/);
                   const testName = testMatch ? testMatch[1].trim() : 'Test';
 
-                  // If we're using markers, count actual test methods from our markers
-                  if (testStatus.progress.useMarkers) {
-                    // Update completed count based on test methods seen
+                  // If we're using TeamCity mode, it handles counting
+                  if (testStatus.progress.teamCityMode) {
+                    // TeamCity mode handles counting
+                  } else if (testStatus.progress.useMarkers && !testStatus.progress.totalFromTeamCity) {
+                    // Only use seenTests for counting if we don't have TeamCity data
                     testStatus.progress.completed = testStatus.progress.seenTests.size;
                     testStatus.progress.failed++;
                   } else {
