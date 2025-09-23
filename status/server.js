@@ -1372,6 +1372,58 @@ const httpServer = http.createServer(async (req, res) => {
           console.error('Error reading final output:', err.message);
         }
 
+        // Extract detailed failure and skip information
+        const failedTests = [];
+        const skippedTests = [];
+
+        // Look for PHPUnit failure details (format: 1) TestClass::testMethod)
+        const failureBlocks = testStatus.logs.split(/\n(?=\d+\))/);
+        for (const block of failureBlocks) {
+          const failureMatch = block.match(/^(\d+)\)\s+(.+?)$/m);
+          if (failureMatch) {
+            const testName = failureMatch[2];
+            // Extract the failure reason
+            const assertionMatch = block.match(/Failed asserting that (.+?)(?:\n|$)/);
+            const exceptionMatch = block.match(/Exception: (.+?)(?:\n|$)/);
+            const errorMatch = block.match(/Error: (.+?)(?:\n|$)/);
+
+            let reason = '';
+            if (assertionMatch) {
+              reason = `Failed asserting that ${assertionMatch[1]}`;
+            } else if (exceptionMatch) {
+              reason = `Exception: ${exceptionMatch[1]}`;
+            } else if (errorMatch) {
+              reason = `Error: ${errorMatch[1]}`;
+            } else if (block.includes('Failed')) {
+              // Generic failure detection
+              const lines = block.split('\n');
+              for (const line of lines) {
+                if (line.includes('Failed') && !line.match(/^\d+\)/)) {
+                  reason = line.trim();
+                  break;
+                }
+              }
+            }
+
+            if (reason) {
+              failedTests.push({
+                name: testName,
+                reason: reason
+              });
+            }
+          }
+        }
+
+        // Look for skipped tests in output
+        const skippedPattern = /Test skipped:\s+(.+)|Skipped:\s+(.+)|(.+):\s+This test has not been implemented yet\.|(.+):\s+Skipped/g;
+        let skippedMatch;
+        while ((skippedMatch = skippedPattern.exec(testStatus.logs)) !== null) {
+          const skippedTest = skippedMatch[1] || skippedMatch[2] || skippedMatch[3] || skippedMatch[4];
+          if (skippedTest && !skippedTests.includes(skippedTest)) {
+            skippedTests.push(skippedTest);
+          }
+        }
+
         // Check for test failures in the output
         const hasFailures = testStatus.logs.includes('FAILURES!') ||
                           testStatus.logs.includes('ERRORS!') ||
@@ -1417,10 +1469,40 @@ const httpServer = http.createServer(async (req, res) => {
             if (summaryMatch[5]) parts.push(summaryMatch[5]);
             if (summaryMatch[6]) parts.push(summaryMatch[6]);
             testStatus.message = `❌ PHP tests failed - ${parts.join(', ')}`;
+
+            // Add detailed failure information
+            if (failedTests.length > 0) {
+              testStatus.message += '\n\nFailed Tests:';
+              for (const failed of failedTests) {
+                testStatus.message += `\n  • ${failed.name}`;
+                if (failed.reason) {
+                  testStatus.message += `\n    ${failed.reason}`;
+                }
+              }
+            }
+
+            // Add skipped test information
+            if (skippedTests.length > 0) {
+              testStatus.message += '\n\nSkipped Tests:';
+              for (const skipped of skippedTests) {
+                testStatus.message += `\n  • ${skipped}`;
+              }
+            }
           } else if (testStatus.logs.includes('No tests executed!')) {
             testStatus.message = `❌ No tests matched the filter`;
           } else if (hasFailures) {
             testStatus.message = `❌ PHP tests failed - check logs for details`;
+
+            // Add any found failure details even without summary
+            if (failedTests.length > 0) {
+              testStatus.message += '\n\nFailed Tests:';
+              for (const failed of failedTests) {
+                testStatus.message += `\n  • ${failed.name}`;
+                if (failed.reason) {
+                  testStatus.message += `\n    ${failed.reason}`;
+                }
+              }
+            }
           } else {
             testStatus.message = `❌ PHP tests failed with exit code: ${code}`;
           }
