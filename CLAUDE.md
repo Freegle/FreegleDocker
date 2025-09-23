@@ -108,10 +108,12 @@ All testing is now consolidated in the FreegleDocker CircleCI pipeline for consi
 - CircleCI tests are disabled in individual submodule repositories to avoid duplication
 
 ### Auto-merge Logic
-When all tests pass successfully, the system automatically:
+When all tests pass successfully in CircleCI, the system automatically:
 1. Merges master to production branch in iznik-nuxt3
 2. Triggers production deployment
-3. Only proceeds if all three test suites pass
+3. Only proceeds if all three test suites pass (Go, PHPUnit, Playwright)
+4. Auto-merge only happens on master branch builds
+5. The merge commit message is "Auto-merge master to production after successful tests"
 
 ### Test Commands
 - **Go Tests**: `curl -X POST http://localhost:8081/api/tests/go`

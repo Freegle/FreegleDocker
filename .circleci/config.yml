@@ -412,6 +412,7 @@ jobs:
             # Determine if all required tests passed
             if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
               echo "✅ All tests passed successfully!"
+              echo "ALL_TESTS_PASSED=true" >> $BASH_ENV
             else
               echo "❌ Not all tests passed"
               echo "  Go tests: $GO_TESTS_PASSED"
@@ -420,6 +421,64 @@ jobs:
               exit 1
             fi
           when: always
+
+      - run:
+          name: Auto-merge master to production
+          command: |
+            # Only run if all tests passed
+            if [ "$ALL_TESTS_PASSED" != "true" ]; then
+              echo "⏭️ Skipping auto-merge: not all tests passed"
+              exit 0
+            fi
+
+            # Only run on master branch builds
+            if [ "$CIRCLE_BRANCH" != "master" ]; then
+              echo "⏭️ Skipping auto-merge: not on master branch (current: $CIRCLE_BRANCH)"
+              exit 0
+            fi
+
+            echo "🔀 Starting auto-merge of master to production branch in iznik-nuxt3..."
+
+            # Configure git
+            git config --global user.email "circleci@freegle.org"
+            git config --global user.name "CircleCI Auto-merge"
+
+            # Navigate to iznik-nuxt3 submodule
+            cd iznik-nuxt3
+
+            # Fetch latest changes
+            echo "📥 Fetching latest changes from origin..."
+            git fetch origin master:master
+            git fetch origin production:production
+
+            # Checkout production branch
+            echo "📝 Checking out production branch..."
+            git checkout production
+
+            # Merge master into production
+            echo "🔀 Merging master into production..."
+            if git merge master -m "Auto-merge master to production after successful tests"; then
+              echo "✅ Merge successful!"
+
+              # Push to production branch
+              echo "📤 Pushing to production branch..."
+              if git push origin production; then
+                echo "🎉 Successfully pushed merged changes to production!"
+                echo "Production branch has been updated with latest master changes."
+              else
+                echo "❌ Failed to push to production branch"
+                echo "This might be due to permissions or network issues."
+                echo "Manual intervention may be required."
+                exit 1
+              fi
+            else
+              echo "❌ Merge failed - there may be conflicts"
+              echo "Manual intervention required to resolve conflicts."
+              git merge --abort
+              exit 1
+            fi
+
+            echo "✨ Auto-merge completed successfully!"
 
       - run:
           name: Clean up Docker resources
