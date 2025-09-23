@@ -188,9 +188,13 @@ commands:
                 echo "✅ PHPUnit tests passed!"
                 echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
 
-                # Copy coverage file as artifact
-                echo "Copying PHPUnit coverage file..."
+                # Copy all PHPUnit output files as artifacts
+                echo "Copying PHPUnit output files..."
                 mkdir -p ~/artifacts/phpunit
+                docker cp freegle-apiv1:/tmp/phpunit-output.log ~/artifacts/phpunit/phpunit-output.log || \
+                  echo "WARNING: PHPUnit output log not found"
+                docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/phpunit-debug.log || \
+                  echo "WARNING: PHPUnit debug log not found"
                 docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit/phpunit-coverage.xml || \
                   echo "WARNING: Coverage file not found"
 
@@ -199,6 +203,22 @@ commands:
                 echo "❌ PHP tests failed!"
                 echo "Error details:"
                 echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+
+                # Copy PHPUnit output files as artifacts for debugging
+                echo "Copying PHPUnit output files for debugging..."
+                mkdir -p ~/artifacts/phpunit
+                docker cp freegle-apiv1:/tmp/phpunit-output.log ~/artifacts/phpunit/phpunit-output.log || \
+                  echo "WARNING: PHPUnit output log not found"
+                docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/phpunit-debug.log || \
+                  echo "WARNING: PHPUnit debug log not found"
+                docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit/phpunit-coverage.xml || \
+                  echo "WARNING: Coverage file not found"
+
+                # Show the last 100 lines of the PHPUnit debug log if available
+                echo "Last 100 lines of PHPUnit debug output:"
+                docker exec freegle-apiv1 tail -100 /tmp/phpunit-debug.log 2>/dev/null || \
+                  echo "Could not retrieve PHPUnit debug log"
+
                 echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
                 exit 1
               fi
