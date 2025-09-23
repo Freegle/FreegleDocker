@@ -423,16 +423,46 @@ commands:
             docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/phpunit-debug.log 2>/dev/null || echo "No PHPUnit debug log found"
             docker cp freegle-apiv1:/tmp/phpunit-coverage.xml ~/artifacts/phpunit/phpunit-coverage.xml 2>/dev/null || echo "No PHPUnit coverage file found"
 
-            # Collect test reports
+            # Collect Go test coverage
+            echo "Collecting Go test coverage..."
+            mkdir -p ~/artifacts/go
+            docker cp freegle-apiv2:/app/coverage.out ~/artifacts/go/coverage.out 2>/dev/null || echo "No Go coverage file found"
+            docker cp freegle-apiv2:/app/coverage.html ~/artifacts/go/coverage.html 2>/dev/null || echo "No Go coverage HTML found"
+
+            # Generate Go coverage HTML if we have the coverage.out file
+            if [ -f ~/artifacts/go/coverage.out ]; then
+              echo "Generating Go coverage HTML..."
+              docker exec freegle-apiv2 sh -c "go tool cover -html=coverage.out -o coverage.html" 2>/dev/null || echo "Could not generate Go coverage HTML"
+              docker cp freegle-apiv2:/app/coverage.html ~/artifacts/go/coverage.html 2>/dev/null || true
+            fi
+
+            # Collect Playwright test artifacts
+            echo "Collecting Playwright test artifacts..."
+            mkdir -p ~/artifacts/playwright
+
+            # Collect Playwright report
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
             fi
+
+            # Collect Playwright screenshots and traces
+            docker cp freegle-playwright:/app/test-results ~/artifacts/playwright/test-results 2>/dev/null || echo "No Playwright test-results found"
+            docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright/playwright-report 2>/dev/null || echo "No Playwright report directory found"
+
+            # Collect coverage reports if they exist
+            docker cp freegle-playwright:/app/coverage ~/artifacts/playwright/coverage 2>/dev/null || echo "No Playwright coverage found"
+            docker cp freegle-playwright:/app/nyc_output ~/artifacts/playwright/nyc_output 2>/dev/null || echo "No NYC coverage found"
 
             # Collect system info
             echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
             echo "Branch: $CIRCLE_BRANCH" >> ~/artifacts/build-info.txt
             echo "Commit: $CIRCLE_SHA1" >> ~/artifacts/build-info.txt
             date >> ~/artifacts/build-info.txt
+
+            # List what we collected
+            echo ""
+            echo "Artifacts collected:"
+            find ~/artifacts -type f -name "*.xml" -o -name "*.html" -o -name "*.out" -o -name "*.png" -o -name "*.jpg" | head -20
           when: always
       - store_artifacts:
           path: ~/artifacts
