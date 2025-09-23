@@ -320,6 +320,65 @@ commands:
               fi
             done
 
+  upload-coverage:
+    description: "Upload coverage reports to Coveralls"
+    steps:
+      - run:
+          name: Upload coverage to Coveralls
+          command: |
+            echo "📊 Uploading coverage reports to Coveralls..."
+
+            # Check if COVERALLS_REPO_TOKEN is set
+            if [ -z "${COVERALLS_REPO_TOKEN}" ]; then
+              echo "⚠️ COVERALLS_REPO_TOKEN not set - skipping coverage upload"
+              echo "To enable coverage upload, add COVERALLS_REPO_TOKEN to CircleCI project environment variables"
+              exit 0
+            fi
+
+            # Install coveralls uploader
+            npm install -g coveralls
+
+            # Copy Playwright coverage from container if available
+            if docker exec freegle-playwright test -f /app/monocart-report/coverage/lcov.info 2>/dev/null; then
+              echo "Copying Playwright coverage from container..."
+              docker cp freegle-playwright:/app/monocart-report/coverage/lcov.info ./playwright-coverage.lcov
+
+              if [ -f ./playwright-coverage.lcov ]; then
+                echo "Uploading Playwright coverage to Coveralls..."
+                cat ./playwright-coverage.lcov | coveralls || echo "Warning: Playwright coverage upload failed"
+              else
+                echo "Failed to copy Playwright coverage file"
+              fi
+            else
+              echo "No Playwright coverage file found in container at /app/monocart-report/coverage/lcov.info"
+            fi
+
+            # Upload PHPUnit coverage if available
+            if [ -f ~/artifacts/phpunit/phpunit-coverage.xml ]; then
+              echo "PHPUnit coverage file found but needs conversion to lcov format"
+              # Note: PHPUnit coverage is in XML format, would need conversion
+            fi
+
+            # Upload Go coverage if available
+            if docker cp freegle-apiv2:/app/coverage.out /tmp/go-coverage.out 2>/dev/null; then
+              echo "Converting Go coverage to lcov format..."
+              # Install gcov2lcov if needed
+              go install github.com/jandelgado/gcov2lcov@latest || true
+              if command -v gcov2lcov > /dev/null; then
+                gcov2lcov -infile=/tmp/go-coverage.out -outfile=/tmp/go-coverage.lcov
+                cat /tmp/go-coverage.lcov | coveralls || echo "Warning: Go coverage upload failed"
+              else
+                echo "gcov2lcov not available for Go coverage conversion"
+              fi
+            else
+              echo "No Go coverage file found"
+            fi
+          when: always
+          environment:
+            COVERALLS_SERVICE_NAME: circleci
+            COVERALLS_SERVICE_JOB_ID: "${CIRCLE_BUILD_NUM}"
+            COVERALLS_REPO_TOKEN: "${COVERALLS_REPO_TOKEN}"
+
   collect-artifacts:
     description: "Collect build artifacts and logs"
     steps:
@@ -400,6 +459,8 @@ jobs:
           reason: "Running Playwright tests after production container is healthy"
 
       - collect-artifacts
+
+      - upload-coverage
 
       - run:
           name: Evaluate overall test results

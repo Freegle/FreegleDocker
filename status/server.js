@@ -559,9 +559,10 @@ async function runPlaywrightTests(testFile = null) {
 
     // Execute tests in the Playwright container using docker exec (without nohup for proper output capture)
     const playwrightArgs = testFile ? `tests/e2e/${testFile}` : '';
-    // Use default reporters from config which includes monocart for coverage when ENABLE_MONOCART_REPORTER is set
+    // Enable coverage reporter for CI builds
     const testCommand = `docker exec freegle-playwright sh -c "
       cd /app &&
+      export ENABLE_MONOCART_REPORTER=true &&
       npx playwright test ${playwrightArgs}
     "`;
 
@@ -833,10 +834,37 @@ async function runPlaywrightTests(testFile = null) {
         testStatus.message = `Tests failed: ${failedCount} test${failedCount !== '1' ? 's' : ''} failed after ${duration}s`;
         testStatus.logs += `\n❌ Tests failed: ${failedCount} test${failedCount !== '1' ? 's' : ''} failed`;
       } else if (code === 0) {
-        testStatus.status = 'completed';
-        testStatus.success = true;
-        testStatus.message = `Tests completed successfully in ${duration}s`;
-        testStatus.logs += '\n✅ All tests passed!';
+        // Check if coverage was generated (required in CI)
+        let coverageGenerated = false;
+        try {
+          const coverageCheckCommand = 'docker exec freegle-playwright sh -c "test -f /app/monocart-report/coverage/lcov.info && echo exists"';
+          const coverageResult = execSync(coverageCheckCommand, { encoding: 'utf8', timeout: 5000 }).trim();
+          coverageGenerated = (coverageResult === 'exists');
+
+          if (coverageGenerated) {
+            console.log('✅ Coverage file generated at monocart-report/coverage/lcov.info');
+            testStatus.logs += '\n✅ Coverage report generated successfully';
+          } else {
+            console.warn('⚠️ Coverage file not found at monocart-report/coverage/lcov.info');
+          }
+        } catch (coverageError) {
+          console.warn('Failed to check coverage:', coverageError.message);
+        }
+
+        // In CI environment, fail if coverage wasn't generated
+        const isCI = process.env.CI === 'true' || process.env.CIRCLECI === 'true';
+        if (isCI && !coverageGenerated) {
+          testStatus.status = 'failed';
+          testStatus.success = false;
+          testStatus.message = `Tests passed but coverage generation failed after ${duration}s`;
+          testStatus.logs += '\n❌ Tests passed but required coverage report was not generated!';
+          testStatus.logs += '\n⚠️ Ensure ENABLE_MONOCART_REPORTER=true is set';
+        } else {
+          testStatus.status = 'completed';
+          testStatus.success = true;
+          testStatus.message = `Tests completed successfully in ${duration}s`;
+          testStatus.logs += '\n✅ All tests passed!';
+        }
       } else {
         testStatus.status = 'failed';
         testStatus.success = false;
@@ -1187,16 +1215,19 @@ const httpServer = http.createServer(async (req, res) => {
         // First, clear the output file
         execSync(`docker exec freegle-apiv1 sh -c "rm -f ${outputFile} && touch ${outputFile}"`);
 
-        // Try to get test count first
+        // Try to get test count first - count actual test methods
         try {
           const testPath = filter || '/var/www/iznik/test/ut/php/';
           testStatus.message = 'Counting tests...';
 
+          // Use --list-tests to count all test methods that will be executed
           const listOutput = execSync(`docker exec -w /var/www/iznik freegle-apiv1 sh -c "php composer/vendor/phpunit/phpunit/phpunit --configuration test/ut/php/phpunit.xml --list-tests ${testPath} 2>/dev/null | wc -l"`, { encoding: 'utf8' }).trim();
           const testCount = parseInt(listOutput);
           if (!isNaN(testCount) && testCount > 0) {
             testStatus.progress.total = testCount;
-            testStatus.message = `Found ${testCount} tests to run`;
+            testStatus.message = `Found ${testCount} test methods to run`;
+            // We'll count actual test executions based on our markers
+            testStatus.progress.useMarkers = true;
           }
         } catch (err) {
           // Ignore errors getting test count
@@ -1275,6 +1306,19 @@ const httpServer = http.createServer(async (req, res) => {
                   }
                 }
 
+                // Look for our clear test execution marker
+                if (line.includes('##PHPUNIT_TEST_STARTED##:')) {
+                  // Extract test name from marker
+                  const testMatch = line.match(/##PHPUNIT_TEST_STARTED##:(.+)/);
+                  if (testMatch) {
+                    const testName = testMatch[1];
+                    if (!testStatus.progress.seenTests.has(testName)) {
+                      testStatus.progress.seenTests.add(testName);
+                      // Don't increment completed here, just track that we've started this test
+                    }
+                  }
+                }
+
                 // Look for test count at the beginning
                 if (line.includes('PHPUnit') && line.includes('tests')) {
                   const countMatch = line.match(/(\d+)\s+tests?/);
@@ -1292,23 +1336,45 @@ const httpServer = http.createServer(async (req, res) => {
                 if (line.match(/✔\s+\w+/)) {
                   const testMatch = line.match(/✔\s+(.+)/);
                   const testName = testMatch ? testMatch[1].trim() : 'Test';
-                  // Only count this test if we haven't seen it before
-                  if (!testStatus.progress.seenTests.has(testName)) {
-                    testStatus.progress.seenTests.add(testName);
-                    testStatus.progress.completed++;
+
+                  // If we're using markers, count actual test methods from our markers
+                  // The ✔ lines are test class summaries, not individual test methods
+                  if (testStatus.progress.useMarkers) {
+                    // Update completed count based on test methods seen
+                    testStatus.progress.completed = testStatus.progress.seenTests.size;
+                  } else {
+                    // Legacy counting for when markers aren't available
+                    if (!testStatus.progress.seenTestClasses) {
+                      testStatus.progress.seenTestClasses = new Set();
+                    }
+                    if (!testStatus.progress.seenTestClasses.has(testName)) {
+                      testStatus.progress.seenTestClasses.add(testName);
+                      testStatus.progress.completed++;
+                    }
                   }
-                  meaningfulMessage = `Test passed: ${testName}`;
+                  meaningfulMessage = `Test class passed: ${testName}`;
                   break;
                 } else if (line.match(/✘\s+\w+/)) {
                   const testMatch = line.match(/✘\s+(.+)/);
                   const testName = testMatch ? testMatch[1].trim() : 'Test';
-                  // Only count this test if we haven't seen it before
-                  if (!testStatus.progress.seenTests.has(testName)) {
-                    testStatus.progress.seenTests.add(testName);
+
+                  // If we're using markers, count actual test methods from our markers
+                  if (testStatus.progress.useMarkers) {
+                    // Update completed count based on test methods seen
+                    testStatus.progress.completed = testStatus.progress.seenTests.size;
                     testStatus.progress.failed++;
-                    testStatus.progress.completed++;
+                  } else {
+                    // Legacy counting
+                    if (!testStatus.progress.seenTestClasses) {
+                      testStatus.progress.seenTestClasses = new Set();
+                    }
+                    if (!testStatus.progress.seenTestClasses.has(testName)) {
+                      testStatus.progress.seenTestClasses.add(testName);
+                      testStatus.progress.failed++;
+                      testStatus.progress.completed++;
+                    }
                   }
-                  meaningfulMessage = `Test failed: ${testName}`;
+                  meaningfulMessage = `Test class failed: ${testName}`;
                   break;
                 } else if (line.match(/^\w+\s+API\s+\(/)) {
                   meaningfulMessage = `Running: ${line.substring(0, 50)}...`;
