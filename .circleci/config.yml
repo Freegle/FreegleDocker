@@ -428,8 +428,16 @@ commands:
             # Collect Go test coverage
             echo "Collecting Go test coverage..."
             mkdir -p ~/artifacts/go
+
+            echo "Checking Go container files:"
+            docker exec freegle-apiv2 ls -la /app/ | grep -E "(coverage|\.out|\.html)" || echo "No coverage files found in /app/"
+
             docker cp freegle-apiv2:/app/coverage.out ~/artifacts/go/coverage.out 2>/dev/null || echo "No Go coverage file found"
-            docker cp freegle-apiv2:/app/coverage.html ~/artifacts/go/coverage.html 2>/dev/null || echo "No Go coverage HTML found"
+            if docker exec freegle-apiv2 test -f /app/coverage.html 2>/dev/null; then
+              docker cp freegle-apiv2:/app/coverage.html ~/artifacts/go/coverage.html 2>/dev/null || echo "No Go coverage HTML found"
+            else
+              echo "No Go coverage HTML found"
+            fi
 
             # Generate Go coverage HTML if we have the coverage.out file
             if [ -f ~/artifacts/go/coverage.out ]; then
@@ -442,6 +450,9 @@ commands:
             echo "Collecting Playwright test artifacts..."
             mkdir -p ~/artifacts/playwright
 
+            echo "Checking Playwright container files:"
+            docker exec freegle-playwright ls -la /app/ | grep -E "(coverage|nyc|test-results|playwright-report)" || echo "No Playwright output files found in /app/"
+
             # Collect Playwright report
             if curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null; then
               echo "Collected Playwright HTML report"
@@ -453,7 +464,11 @@ commands:
 
             # Collect coverage reports if they exist
             docker cp freegle-playwright:/app/coverage ~/artifacts/playwright/coverage 2>/dev/null || echo "No Playwright coverage found"
-            docker cp freegle-playwright:/app/nyc_output ~/artifacts/playwright/nyc_output 2>/dev/null || echo "No NYC coverage found"
+            if docker exec freegle-playwright test -d /app/nyc_output 2>/dev/null; then
+              docker cp freegle-playwright:/app/nyc_output ~/artifacts/playwright/nyc_output 2>/dev/null || echo "No NYC coverage found"
+            else
+              echo "No NYC coverage found"
+            fi
 
             # Collect system info
             echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
