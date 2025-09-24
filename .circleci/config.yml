@@ -25,6 +25,8 @@ commands:
     steps:
       - run:
           name: Start Docker services
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
           command: |
             echo "<< parameters.reason >>"
 
@@ -498,8 +500,6 @@ jobs:
 
       - start-docker-services:
           reason: "Starting all Docker services"
-          max_auto_reruns: 3
-          auto_rerun_delay: 10s
 
       # Wait for basic API services to be ready
       - wait-for-basic-services
