@@ -585,9 +585,6 @@ volumes:
 networks:
   default:
     driver: bridge
-  cont:
-    driver: bridge
-    enable_ipv6: false
 
 secrets:
   LOVE_JUNK_API:
