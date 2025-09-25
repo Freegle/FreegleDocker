@@ -834,6 +834,23 @@ async function runPlaywrightTests(testFile = null) {
         testStatus.message = `Tests failed: ${failedCount} test${failedCount !== '1' ? 's' : ''} failed after ${duration}s`;
         testStatus.logs += `\n❌ Tests failed: ${failedCount} test${failedCount !== '1' ? 's' : ''} failed`;
       } else if (code === 0) {
+        // Copy coverage files from mounted directory to expected location for CircleCI
+        try {
+          const copyCommands = [
+            // Copy coverage directory if it exists in mounted location
+            'docker exec freegle-playwright sh -c "if [ -d /host-playwright-config/coverage ] && [ \"$(ls -A /host-playwright-config/coverage 2>/dev/null)\" ]; then cp -r /host-playwright-config/coverage/* /app/coverage/; fi"',
+            // Copy monocart-report if it exists in mounted location
+            'docker exec freegle-playwright sh -c "if [ -d /host-playwright-config/monocart-report ] && [ \"$(ls -A /host-playwright-config/monocart-report 2>/dev/null)\" ]; then cp -r /host-playwright-config/monocart-report/* /app/monocart-report/; fi"'
+          ];
+
+          for (const command of copyCommands) {
+            execSync(command, { encoding: 'utf8', timeout: 10000 });
+          }
+          console.log('✅ Copied coverage files from mounted directory to /app/');
+        } catch (copyError) {
+          console.warn('⚠️ Failed to copy coverage files:', copyError.message);
+        }
+
         // Check if coverage was generated (required in CI)
         let coverageGenerated = false;
         try {
