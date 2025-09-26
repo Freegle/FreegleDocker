@@ -539,7 +539,7 @@ commands:
               echo "Copying Playwright coverage directory..."
               if docker cp freegle-playwright:/app/coverage ~/artifacts/playwright/coverage; then
                 echo "✅ Playwright coverage directory copied successfully"
-                ls -la ~/artifacts/playwright/coverage/ | head -5
+                ls -la ~/artifacts/playwright/coverage/ | head -5 || true
               else
                 echo "❌ Failed to copy Playwright coverage directory"
               fi
@@ -552,12 +552,12 @@ commands:
               echo "Copying NYC coverage output..."
               if docker cp freegle-playwright:/app/nyc_output ~/artifacts/playwright/nyc_output; then
                 echo "✅ NYC coverage output copied successfully"
-                ls -la ~/artifacts/playwright/nyc_output/ | head -5
+                ls -la ~/artifacts/playwright/nyc_output/ | head -5 || true
               else
                 echo "❌ Failed to copy NYC coverage output"
               fi
             else
-              echo "⚠️ NYC coverage output directory not found in container"
+              echo "ℹ️ NYC coverage not used (using standard coverage instead - this is fine)"
             fi
 
             # Check for monocart coverage reports (used by some Playwright configs)
@@ -585,7 +585,7 @@ commands:
             # List what we collected
             echo ""
             echo "Artifacts collected:"
-            find ~/artifacts -type f -name "*.xml" -o -name "*.html" -o -name "*.out" -o -name "*.png" -o -name "*.jpg" | head -20
+            find ~/artifacts -type f -name "*.xml" -o -name "*.html" -o -name "*.out" -o -name "*.png" -o -name "*.jpg" 2>/dev/null | head -20 || true
           when: always
       - store_artifacts:
           path: ~/artifacts
@@ -723,14 +723,6 @@ jobs:
 
             echo "✨ Auto-merge completed successfully!"
 
-      # Temporarily disabled for debugging - resources left running for SSH access
-      # - run:
-      #     name: Clean up Docker resources
-      #     command: |
-      #       echo "🧹 Cleaning up Docker resources..."
-      #       docker-compose down --remove-orphans || true
-      #       docker system prune -f || true
-      #     when: always
 
 # Define workflows
 workflows:
