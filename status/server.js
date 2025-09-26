@@ -1399,6 +1399,11 @@ const httpServer = http.createServer(async (req, res) => {
         // Look for PHPUnit failure details (format: 1) TestClass::testMethod)
         const failureBlocks = testStatus.logs.split(/\n(?=\d+\))/);
         for (const block of failureBlocks) {
+          // Skip blocks that contain only fake deadlock exceptions from retry tests
+          if (block.includes('Faked deadlock exception') && !block.match(/Failed asserting that/)) {
+            continue;
+          }
+
           const failureMatch = block.match(/^(\d+)\)\s+(.+?)$/m);
           if (failureMatch) {
             const testName = failureMatch[2];
@@ -1410,7 +1415,7 @@ const httpServer = http.createServer(async (req, res) => {
             let reason = '';
             if (assertionMatch) {
               reason = `Failed asserting that ${assertionMatch[1]}`;
-            } else if (exceptionMatch) {
+            } else if (exceptionMatch && !exceptionMatch[1].includes('Faked deadlock exception')) {
               reason = `Exception: ${exceptionMatch[1]}`;
             } else if (errorMatch) {
               reason = `Error: ${errorMatch[1]}`;
