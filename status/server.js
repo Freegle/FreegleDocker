@@ -1276,60 +1276,18 @@ const httpServer = http.createServer(async (req, res) => {
               for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
 
-                // Look for PHPUnit progress indicators (dots format)
-                // Only use dots if we haven't seen TeamCity format yet
-                const hasTeamCityFormat = testStatus.logs.includes('##teamcity[test');
-
-                if (!hasTeamCityFormat && (line.match(/^\.\s*\d+\s*\/\s*\d+/) || line.match(/^[\.FESR]+$/))) {
-                  // This is a progress line like "......." or ". 60 / 120"
-                  // Count only the dots, not from logs (to avoid double counting)
-                  const dotsInCurrentLines = lastLines.match(/[\.FESR]/g);
-                  if (dotsInCurrentLines) {
-                    // Count unique occurrences to get actual progress
-                    const newDots = dotsInCurrentLines.length;
-                    // Only update if we have more dots than before
-                    if (newDots > testStatus.progress.completed) {
-                      testStatus.progress.completed = newDots;
-                      testStatus.progress.failed = dotsInCurrentLines.filter(d => d === 'F' || d === 'E').length;
-                    }
-                  }
-                }
-
                 // Look for TeamCity format test count first (most accurate)
                 if (line.includes('##teamcity[testCount')) {
                   const countMatch = line.match(/count='(\d+)'/);
-                  if (countMatch && !testStatus.progress.totalFromTeamCity) {
+                  if (countMatch) {
                     const teamCityCount = parseInt(countMatch[1]);
                     testStatus.progress.total = teamCityCount;
-                    testStatus.progress.totalFromTeamCity = true;
                     testStatus.message = `Found ${teamCityCount} tests to run`;
                     console.log(`Got test count from TeamCity: ${teamCityCount}`);
                   }
                 }
 
-                // Look for TeamCity format progress (preferred if available)
-                if (line.includes('##teamcity[testStarted')) {
-                  const nameMatch = line.match(/name='([^']+)'/);
-                  if (nameMatch) {
-                    testStatus.progress.current = nameMatch[1];
-                    // Only increment if not already counted via dots
-                    if (!testStatus.progress.teamCityMode) {
-                      testStatus.progress.teamCityMode = true;
-                      testStatus.progress.completed = 0; // Reset if switching to TeamCity mode
-                      testStatus.progress.failed = 0;
-                    }
-                    testStatus.progress.completed++;
-                  }
-                } else if (line.includes('##teamcity[testFailed')) {
-                  testStatus.progress.failed++;
-                } else if (line.includes('##teamcity[testSuiteStarted')) {
-                  const nameMatch = line.match(/name='([^']+)'/);
-                  if (nameMatch) {
-                    testStatus.message = `Running test suite: ${nameMatch[1]}`;
-                  }
-                }
-
-                // Look for our clear test execution marker (for monitoring, not counting)
+                // Look for our clear test execution marker (use ONLY this for counting)
                 if (line.includes('##PHPUNIT_TEST_STARTED##:')) {
                   // Extract test name from marker
                   const testMatch = line.match(/##PHPUNIT_TEST_STARTED##:(.+)/);
@@ -1337,10 +1295,15 @@ const httpServer = http.createServer(async (req, res) => {
                     const testName = testMatch[1];
                     if (!testStatus.progress.seenTests.has(testName)) {
                       testStatus.progress.seenTests.add(testName);
-                      // Don't use this for counting when TeamCity mode is active
-                      // TeamCity gives us the correct count including data providers
+                      testStatus.progress.completed = testStatus.progress.seenTests.size;
+                      testStatus.progress.current = testName;
                     }
                   }
+                }
+
+                // Look for test failures
+                if (line.includes('##teamcity[testFailed')) {
+                  testStatus.progress.failed++;
                 }
 
                 // Look for test count at the beginning
@@ -1360,48 +1323,11 @@ const httpServer = http.createServer(async (req, res) => {
                 if (line.match(/✔\s+\w+/)) {
                   const testMatch = line.match(/✔\s+(.+)/);
                   const testName = testMatch ? testMatch[1].trim() : 'Test';
-
-                  // If we're using TeamCity mode, it handles counting
-                  // Otherwise use markers or legacy counting
-                  if (testStatus.progress.teamCityMode) {
-                    // TeamCity mode handles counting, just update message
-                  } else if (testStatus.progress.useMarkers && !testStatus.progress.totalFromTeamCity) {
-                    // Only use seenTests for counting if we don't have TeamCity data
-                    testStatus.progress.completed = testStatus.progress.seenTests.size;
-                  } else {
-                    // Legacy counting for when markers aren't available
-                    if (!testStatus.progress.seenTestClasses) {
-                      testStatus.progress.seenTestClasses = new Set();
-                    }
-                    if (!testStatus.progress.seenTestClasses.has(testName)) {
-                      testStatus.progress.seenTestClasses.add(testName);
-                      testStatus.progress.completed++;
-                    }
-                  }
                   meaningfulMessage = `Test class passed: ${testName}`;
                   break;
                 } else if (line.match(/✘\s+\w+/)) {
                   const testMatch = line.match(/✘\s+(.+)/);
                   const testName = testMatch ? testMatch[1].trim() : 'Test';
-
-                  // If we're using TeamCity mode, it handles counting
-                  if (testStatus.progress.teamCityMode) {
-                    // TeamCity mode handles counting
-                  } else if (testStatus.progress.useMarkers && !testStatus.progress.totalFromTeamCity) {
-                    // Only use seenTests for counting if we don't have TeamCity data
-                    testStatus.progress.completed = testStatus.progress.seenTests.size;
-                    testStatus.progress.failed++;
-                  } else {
-                    // Legacy counting
-                    if (!testStatus.progress.seenTestClasses) {
-                      testStatus.progress.seenTestClasses = new Set();
-                    }
-                    if (!testStatus.progress.seenTestClasses.has(testName)) {
-                      testStatus.progress.seenTestClasses.add(testName);
-                      testStatus.progress.failed++;
-                      testStatus.progress.completed++;
-                    }
-                  }
                   meaningfulMessage = `Test class failed: ${testName}`;
                   break;
                 } else if (line.match(/^\w+\s+API\s+\(/)) {
