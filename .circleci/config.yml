@@ -632,13 +632,14 @@ jobs:
 
             echo "✨ Auto-merge completed successfully!"
 
-      - run:
-          name: Clean up Docker resources
-          command: |
-            echo "🧹 Cleaning up Docker resources..."
-            docker-compose down --remove-orphans || true
-            docker system prune -f || true
-          when: always
+      # Temporarily disabled for debugging - resources left running for SSH access
+      # - run:
+      #     name: Clean up Docker resources
+      #     command: |
+      #       echo "🧹 Cleaning up Docker resources..."
+      #       docker-compose down --remove-orphans || true
+      #       docker system prune -f || true
+      #     when: always
 
 # Define workflows
 workflows:
