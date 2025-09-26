@@ -609,6 +609,34 @@ jobs:
       - checkout
 
       - run:
+          name: Check if only plans files changed
+          command: |
+            # Get the list of changed files
+            if [ "$CIRCLE_BRANCH" = "master" ]; then
+              # For master branch, check changes in last commit
+              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+            else
+              # For other branches, compare with master
+              CHANGED_FILES=$(git diff --name-only origin/master...HEAD)
+            fi
+
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+
+            # Check if all changed files are in plans/ directory
+            if [ -n "$CHANGED_FILES" ]; then
+              NON_PLANS_FILES=$(echo "$CHANGED_FILES" | grep -v '^plans/' || true)
+              if [ -z "$NON_PLANS_FILES" ]; then
+                echo "Only plans/ files were changed. Skipping build."
+                circleci-agent step halt
+              else
+                echo "Non-plans files were changed. Proceeding with build."
+              fi
+            else
+              echo "No files changed. Proceeding with build."
+            fi
+
+      - run:
           name: Initialize and update git submodules
           command: |
             echo "Initializing and updating git submodules..."
