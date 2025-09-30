@@ -726,9 +726,15 @@ jobs:
             echo "📝 Checking out production branch..."
             git checkout production
 
-            # Merge master into production
+            # Get the latest commit message from master
+            MASTER_COMMIT_MSG=$(git log master -1 --pretty=%B | head -n 1)
+            echo "📋 Latest master commit: $MASTER_COMMIT_MSG"
+
+            # Merge master into production with enhanced commit message
             echo "🔀 Merging master into production..."
-            if git merge master -m "Auto-merge master to production after successful tests"; then
+            if git merge master -m "Auto-merge master to production after successful tests
+
+Original commit: $MASTER_COMMIT_MSG"; then
               echo "✅ Merge successful!"
 
               # Push to production branch
@@ -757,4 +763,8 @@ workflows:
   version: 2
   build-test:
     jobs:
-      - build-and-test
+      - build-and-test:
+          filters:
+            branches:
+              ignore:
+                - modtools
