@@ -732,9 +732,7 @@ jobs:
 
             # Merge master into production with enhanced commit message
             echo "🔀 Merging master into production..."
-            if git merge master -m "Auto-merge master to production after successful tests
-
-Original commit: $MASTER_COMMIT_MSG"; then
+            if git merge master -m "Auto-merge master to production after successful tests - Original commit: $MASTER_COMMIT_MSG"; then
               echo "✅ Merge successful!"
 
               # Push to production branch
