@@ -139,7 +139,42 @@ rows, err := h.db.Raw(`
 `, id).Rows()
 ```
 
-#### 4.3 Parallel Processing Pattern
+#### 4.3 Handling Configuration Constants
+
+**When v1 uses PHP constants** (like `DONATION_TARGET`, `DONATIONS_EXCLUDE`):
+
+1. **Check current values** in production:
+```bash
+docker exec freegle-apiv1 cat /etc/iznik.conf | grep CONSTANT_NAME
+```
+
+2. **Create Go constants with matching defaults**:
+```go
+const DEFAULT_DONATION_TARGET = 2000  // Matches /etc/iznik.conf
+const DEFAULT_DONATIONS_EXCLUDE = "ppgfukpay@paypalgivingfund.org,paypal.msb@tipalti.com"
+```
+
+3. **Make configurable via environment variables**:
+```go
+func getDonationTarget() int {
+    if target := os.Getenv("DONATION_TARGET"); target != "" {
+        if val, err := strconv.Atoi(target); err == nil {
+            return val
+        }
+    }
+    return DEFAULT_DONATION_TARGET
+}
+```
+
+4. **Benefits of this approach**:
+   - No configuration changes needed during migration
+   - Defaults match existing production values
+   - Future-proof: can be changed via env vars if needed
+   - Zero breaking changes during migration
+
+**Example**: See `/donations` endpoint implementation in `donations/donations.go`
+
+#### 4.4 Parallel Processing Pattern
 ```go
 // Fetch multiple related data in parallel
 func (h *Handler) getCompleteData(ctx context.Context, id string) (CompleteData, error) {
@@ -400,6 +435,7 @@ export const useResourceStore = defineStore('resource', {
 - [ ] Used raw SQL for complex queries
 - [ ] Returns IDs not nested objects
 - [ ] Matches v2 JSON response format
+- [ ] **Configuration constants**: If v1 uses PHP constants (like `DONATION_TARGET`), replicate them in Go with defaults matching current `/etc/iznik.conf` values, then make them configurable via environment variables
 
 #### Testing
 - [ ] Go unit tests written (>90% coverage)

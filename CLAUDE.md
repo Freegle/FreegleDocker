@@ -122,3 +122,4 @@ When all tests pass successfully in CircleCI, the system automatically:
 
 - When removing code, never leave comments about what used to be there, or "this is now" stuff - the code should reflect the current behaviour.
 - When making changes to iznik-nuxt3, don't make the corresponding changes to the modtools branch which contains the same code.  That will get handled later via merge.
+- When creating temporary scripts to run, put them in /tmp.  That way they won't clutter up git.

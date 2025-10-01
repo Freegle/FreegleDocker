@@ -102,163 +102,255 @@ This reflects the different needs: MT requires message search capabilities for m
 <details>
 <summary><strong>📋 Migration Task Tracking</strong></summary>
 
-## Phase 1: FD Migration
+## ⚠️ Email Dependency Constraint
 
-### Core Authentication & Session
-- [ ] Migrate `/session` endpoint
-  - [ ] GET /session - Get current session
-  - [ ] POST /session - Login
-  - [ ] DELETE /session - Logout
-- [ ] Migrate `/user` authentication operations
-  - [ ] PUT /user - Sign up
-  - [ ] POST /user?action=LostPassword
-  - [ ] POST /user?action=Unsubscribe
-- [ ] Update auth store to use v2 endpoints
-- [ ] Test authentication flow end-to-end
+**CRITICAL**: Go v2 API cannot send emails. APIs that send emails must remain in PHP until either:
+1. Email sending capability is added to Go, OR
+2. A separate email service is created that Go can call
 
-### User Profile Management
-- [ ] Migrate remaining `/user` operations
-  - [ ] GET /user - Fetch profile
-  - [ ] PATCH /user - Update profile
-  - [ ] DELETE /user - Delete account
-  - [ ] POST /user?action=Rate
-  - [ ] POST /user?action=AddEmail
-  - [ ] POST /user?action=RemoveEmail
-- [ ] Update user store for v2
-- [ ] Test profile management features
+### APIs That Send Emails (Deferred to Phase 3+)
 
-### Core Messaging (Posts)
-- [ ] Migrate `/message` endpoint
-  - [ ] GET /message - Fetch messages
-  - [ ] PUT /message - Create draft
-  - [ ] POST /message - Submit message
-  - [ ] PATCH /message - Update message
-  - [ ] DELETE /message - Delete message
-  - [ ] POST /message?action=UpdatePublic
-  - [ ] POST /message?action=Outcome
-- [ ] Migrate `/messages` bulk operations (FD portion only)
-  - [ ] POST /messages?action=MarkSeen
-- [ ] Update message store
-- [ ] Test posting/browsing functionality
+**Must Stay in PHP Until Email Solution Implemented:**
+- `/session` - Password reset, verification emails
+- `/user` - Welcome, verification, password reset emails
+- `/memberships` - Group join notifications
+- `/message` - Outcome notifications, reply notifications
+- `/chatmessages` - Chat notifications
+- `/communityevent` - Event notifications
+- `/volunteering` - Volunteer opportunity notifications
+- `/invitation` - Invitation emails
+- `/team` - Team notifications
+- `/admin` - Admin notifications
+- `/group` - Group update notifications
+- `/merge` - Account merge notifications
+- `/profile` - Profile update notifications
+- `/donations` - Donation receipts
+- `/stripecreatesubscription` - Subscription confirmations
+- `/logs` - Log notifications
+- `/dashboard` - Dashboard alerts
 
-### Chat System
-- [ ] Migrate `/chatrooms` endpoint
-  - [ ] GET /chatrooms - List chats
-  - [ ] POST /chatrooms - Create chat
-- [ ] Migrate `/chatmessages` endpoint
-  - [ ] GET /chatmessages - Get messages
-  - [ ] POST /chatmessages - Send message
-  - [ ] DELETE /chatmessages - Delete message
-- [ ] Update chat store
-- [ ] Test chat functionality
+## Phase 0: Non-Email Endpoints (Priority Migration)
 
-### Groups & Memberships
-- [ ] Migrate `/group` endpoint
-  - [ ] GET /group - Fetch group
-  - [ ] PATCH /group - Update group
-- [ ] Migrate `/memberships` endpoint (FD operations only)
-  - [ ] GET /memberships - Get memberships
-  - [ ] POST /memberships - Join group
-  - [ ] DELETE /memberships - Leave group
-- [ ] Update group/membership stores
-- [ ] Test group features
+These endpoints can be safely migrated to Go as they don't send emails.
 
-### Social Features
-- [ ] Migrate `/newsfeed` endpoint
-- [ ] Migrate `/stories` endpoint
-- [ ] Migrate `/comment` - Comments system
-- [ ] Migrate `/mentions` - User mentions
-- [ ] Migrate `/socialactions` - Social media actions
-- [ ] Migrate `/noticeboard` - Notice board
-- [ ] Migrate `/profile` - User profiles
-- [ ] Migrate `/tryst` - Meeting arrangements
-- [ ] Update newsfeed/stories stores
-- [ ] Test social features
+**Migration Strategy**: Prioritize GET verbs first for quick wins, then migrate other verbs.
 
-### Additional Services
-- [ ] Migrate `/communityevent` endpoint
-- [ ] Migrate `/volunteering` endpoint
-- [ ] Migrate `/locations` endpoint
-- [ ] Migrate `/address` endpoint
-- [ ] Migrate `/notification` endpoint
-- [ ] Migrate `/image` - Image handling
-- [ ] Migrate `/shortlink` - URL shortening
-- [ ] Migrate `/export` - Data export
-- [ ] Migrate `/jobs` - Job listings
-- [ ] Migrate `/isochrone` - Geographic isochrone maps
+### Migration Status Summary
 
-### Financial/Donations
-- [ ] Migrate `/donations` - Donation handling
-- [ ] Migrate `/giftaid` - UK Gift Aid
-- [ ] Migrate `/stripecreateintent` - Stripe payment intents
-- [ ] Migrate `/stripecreatesubscription` - Stripe subscriptions
+**Fully Migrated (No v1 usage in FD or MT):**
+- ✅ ~~`/job`~~ - GET, POST - Completed 2025-09-30
+- ✅ ~~`/donations`~~ - GET - Completed 2025-10-01
 
-### Tracking & Analytics
-- [x] ~~Migrate `/src` endpoint~~ **COMPLETED 2025-09-29**
-  - [x] POST /src - Record traffic source (FD only)
-- [ ] Migrate `/abtest` - A/B testing
-- [ ] Migrate `/visualise` - Data visualization
-- [ ] Migrate `/poll` - Polling mechanism
+**Partially Migrated (FD uses v2, MT still uses v1):**
+- 🔄 `/chat` (chatrooms) - FD uses v2 for GET, MT still uses v1 for all operations
+- 🔄 `/config` - FD uses v2 for GET, MT still uses v1 for PATCH
+- 🔄 `/location` (locations) - FD uses v2 for GET, MT still uses v1 for GET/PUT/PATCH/POST
+- 🔄 `/story` (stories) - FD uses v2 for GET, MT still uses v1 for GET/PUT/POST
 
-### System/Utility
-- [ ] Migrate `/error` - Error reporting
-- [ ] Migrate `/changes` - Change tracking
-- [ ] Migrate `/logs` - System logs
-- [ ] Migrate `/status` - System status
-- [ ] Migrate `/config` - Configuration
-- [ ] Migrate `/dashboard` - Dashboard data
-- [ ] Migrate `/usersearch` - User search
-- [ ] Migrate `/merge` - User/account merging
-- [ ] Migrate `/invitation` - Invitations
-- [ ] Migrate `/request` - Generic requests
-- [ ] Migrate `/stdmsg` - Standard messages
-- [ ] Migrate `/team` - Team management
-- [ ] Migrate `/microvolunteering` - Micro-volunteering
-- [ ] Migrate `/authority` - Authority/permissions
-- [ ] Migrate `/domains` - Domain management
-- [ ] Migrate `/groups` - Groups listing
-- [ ] Migrate `/item` - Item management
-- [ ] Migrate `/logo` - Logo management
-- [ ] Migrate `/alert` - System alerts
-- [ ] Migrate `/bulkop` - Bulk operations
+**Partially Migrated (FD uses both v1 and v2):**
+- 🔄 `/address` - FD uses v2 for GET, v1 for PATCH/PUT
+- 🔄 `/authority` - FD uses v2 for GET, v1 for other operations
+- 🔄 `/communityevent` - FD uses v2 for GET, v1 for POST/PATCH/DELETE
+- 🔄 `/group` - FD uses v2 for GET, v1 for POST/PATCH
+- 🔄 `/isochrone` - FD uses v2 for GET, v1 for PUT/POST
+- 🔄 `/message` - FD uses v2 for GET, v1 for POST/PATCH/DELETE
+- 🔄 `/newsfeed` - FD uses v2 for GET, v1 for POST
+- 🔄 `/notification` - FD uses v2 for GET, v1 for POST/DELETE
+- 🔄 `/user` - FD uses v2 for GET, v1 for PUT/PATCH/POST
+- 🔄 `/volunteering` - FD uses v2 for GET, v1 for POST/PATCH/DELETE
 
-### Integration Testing
-- [ ] Full FD integration testing
+### Phase 0.1: Read-Only GET Endpoints (First Priority)
+
+**Note**: Only listing endpoints **actually used by FD** (found via jscodeshift analysis of Pinia stores). MT-only endpoints are in Phase 2.
+
+**Analysis Method**: Used jscodeshift to find all v1 API calls in FD Pinia stores (stores/*.js) that are imported/used by FD components (components/*, pages/*).
+
+#### GET Endpoints Used by FD:
+- [ ] `/giftaid` - GET - Gift Aid data (GiftAidAPI.get)
+- [ ] `/logo` - GET - Logo retrieval (LogoAPI.fetch)
+- [ ] `/microvolunteering` - GET - Micro-volunteering challenges (MicroVolunteeringAPI.challenge)
+- [ ] `/user` - GET - User data by email, MT user data (UserAPI.fetchByEmail, fetchMT)
+
+**Note**: Several endpoints have GET operations already in v2 (like `/newsfeed`, `/group`, `/message`) but FD still uses some v1 methods for these - see "Partially Migrated" section above.
+
+### Phase 0.2: Write Operations (Second Priority)
+
+**Note**: Only listing endpoints **actually used by FD** (found via jscodeshift analysis).
+
+#### POST/PATCH/PUT/DELETE Endpoints Used by FD (Non-Email):
+- [ ] `/image` - POST - Image upload (ImageAPI.post) - Requires file upload support in v2
+- [ ] `/messages` - POST (action: MarkSeen) - Mark messages as seen (MessageAPI.markSeen) - Database write only, no email
+
+**Note**: The following write operations are used by FD but likely send emails (deferred to Phase 3+):
+- `/group` - PATCH - Group updates (GroupAPI.patch) - Likely sends group update notifications
+- `/newsfeed` - POST - Multiple actions: seen, unfollow, unhide, hide, convertToStory, referto, report (NewsAPI.*) - Likely sends notifications
+- `/team` - PATCH - Add/Remove team members (TeamAPI.add, remove) - Likely sends team membership notifications
+
+## Phase 1: FD Migration (Email-Dependent - DEFERRED)
+
+**⚠️ ALL PHASE 1 ENDPOINTS SEND EMAILS - DEFERRED UNTIL EMAIL SOLUTION IMPLEMENTED**
+
+These endpoints cannot be migrated to Go until email sending capability is added. When ready to migrate, follow the same GET-first strategy as Phase 0.
+
+### Phase 1.1: Read Operations (GET verbs only) - DEFERRED
+
+When email solution is ready, migrate these GET operations first:
+
+- [ ] `/session` - GET - Check login status (DEFERRED - related to email endpoints)
+- [ ] `/user` - GET - Fetch user profile (DEFERRED - related to email endpoints)
+- [ ] `/message` - GET - Fetch message details (DEFERRED - related to email endpoints)
+- [ ] `/messages` - GET - List messages (DEFERRED - related to email endpoints)
+- [ ] `/chatrooms` - GET, GET /chatrooms/{id} - List/fetch chats (DEFERRED - sends notifications)
+- [ ] `/chatmessages` - GET - Fetch chat messages (DEFERRED - sends notifications)
+- [ ] `/group` - GET - Fetch group details (DEFERRED - related to email endpoints)
+- [ ] `/memberships` - GET - List memberships (DEFERRED - related to email endpoints)
+- [ ] `/communityevent` - GET - Event details (DEFERRED - sends notifications)
+- [ ] `/volunteering` - GET - Volunteer opportunities (DEFERRED - sends notifications)
+- [ ] `/team` - GET - Team details (DEFERRED - sends notifications)
+- [ ] `/profile` - GET - Profile details (DEFERRED - sends notifications)
+- [ ] `/donations` - GET - Donation history (DEFERRED - sends receipts)
+- [ ] `/giftaid` - GET - Gift aid status (review for email dependencies)
+- [ ] `/logs` - GET - Log retrieval (DEFERRED - sends notifications)
+- [ ] `/dashboard` - GET - Dashboard data (DEFERRED - sends alerts)
+- [ ] `/notification` - GET - Notification list (DEFERRED - notification system)
+- [ ] `/alert` - GET - Alert details (review for email dependencies)
+
+### Phase 1.2: Write Operations - DEFERRED
+
+After GET operations are stable AND email solution implemented, migrate write operations:
+
+#### Core Authentication & Session
+**⚠️ DEFERRED - SENDS EMAILS** (Password reset, verification emails)
+- [ ] `/session` - POST, DELETE, PATCH - Login/logout/session updates (DEFERRED)
+  - POST /session?action=LostPassword - Password reset emails
+  - POST /session?action=Verify - Email verification
+  - POST /session?action=Confirm - Account confirmation
+
+#### User Profile Management
+**⚠️ DEFERRED - SENDS EMAILS** (Email verification, notifications)
+- [ ] `/user` - PUT, PATCH, POST - User CRUD and actions (DEFERRED)
+  - PUT /user - Register user (welcome emails)
+  - PATCH /user - Update profile (verification emails)
+  - POST /user?action=Rate - Rate user
+  - POST /user?action=AddEmail - Add email (verification)
+  - POST /user?action=RemoveEmail - Remove email
+  - POST /user?action=Unbounce - Clear bounce status
+
+#### Core Messaging (Posts)
+**⚠️ DEFERRED - SENDS EMAILS** (Outcome notifications, replies)
+- [ ] `/message` - POST, PATCH, DELETE - Message CRUD (DEFERRED)
+  - POST /message - Create/update (notifications)
+  - POST /message?action=Outcome - Mark outcome (notifications)
+  - POST /message?action=Promise - Promise item
+  - POST /message?action=Renege - Renege on promise
+- [ ] `/messages` - POST - Bulk operations (DEFERRED)
+  - POST /messages?action=MarkSeen - Mark messages seen
+
+#### Chat System
+**⚠️ DEFERRED - SENDS EMAILS** (Chat notifications)
+- [ ] `/chatrooms` - PUT, POST - Chat room CRUD (DEFERRED)
+  - PUT /chatrooms - Create chat room
+  - POST /chatrooms?action=Block - Block chat
+  - POST /chatrooms?action=Report - Report chat
+- [ ] `/chatmessages` - POST, PATCH, DELETE - Chat message CRUD (DEFERRED)
+  - POST /chatmessages - Send message (notifications)
+  - POST /chatmessages?action=MarkSeen - Mark seen
+  - PATCH /chatmessages - Edit message
+  - DELETE /chatmessages - Delete message
+
+#### Groups & Memberships
+**⚠️ DEFERRED - SENDS EMAILS**
+- [ ] `/group` - POST, PATCH - Group management (DEFERRED)
+  - POST /group - Create group
+  - PATCH /group - Update group (notifications)
+- [ ] `/memberships` - POST, PUT, DELETE - Membership CRUD (DEFERRED)
+  - POST /memberships - Join group (welcome emails)
+  - DELETE /memberships - Leave group
+
+#### Community Features
+**⚠️ DEFERRED - SENDS EMAILS** (Event/volunteer notifications)
+- [ ] `/communityevent` - POST, PATCH, DELETE - Event CRUD (DEFERRED)
+- [ ] `/volunteering` - POST, PATCH, DELETE - Volunteer CRUD (DEFERRED)
+- [ ] `/invitation` - POST - Send invitations (DEFERRED - invitation emails)
+- [ ] `/team` - POST, PATCH, DELETE - Team CRUD (DEFERRED)
+- [ ] `/profile` - POST, PATCH - Profile updates (DEFERRED - notifications)
+
+#### Financial/Donations
+**⚠️ DEFERRED - SENDS EMAILS** (Receipts, confirmations)
+- [ ] `/donations` - POST - Create donation (DEFERRED - sends receipts)
+- [ ] `/giftaid` - POST, PATCH - Gift aid management (review for emails)
+- [ ] `/stripecreateintent` - POST - Create payment intent (review for emails)
+- [ ] `/stripecreatesubscription` - POST - Create subscription (DEFERRED - confirmation emails)
+
+#### System/Utility (Email-Dependent)
+**⚠️ DEFERRED - SENDS EMAILS**
+- [ ] `/logs` - POST - Create log entry (DEFERRED - notifications)
+- [ ] `/dashboard` - POST - Dashboard actions (DEFERRED - alerts)
+- [ ] `/merge` - POST - Merge accounts (DEFERRED - merge notifications)
+- [ ] `/admin` - POST, PATCH - Admin operations (DEFERRED - admin notifications)
+- [ ] `/notification` - POST, DELETE - Notification management (DEFERRED)
+- [ ] `/alert` - POST, PATCH - Alert management (review for emails)
 
 ## Phase 2: MT Migration
 
-### Core Moderation
-- [ ] Migrate `/messages` MT-specific operations
-  - [ ] GET /messages - List/search messages (MT only)
-- [ ] Migrate message moderation actions
-  - [ ] POST /message?action=Approve
-  - [ ] POST /message?action=Reject
-  - [ ] POST /message?action=Hold
-  - [ ] POST /message?action=Release
-  - [ ] POST /message?action=Spam
-- [ ] Update MT message store
-- [ ] Test moderation workflow
+**Note**: MT migration depends on Phase 1 completion. Most MT endpoints also send emails and are DEFERRED.
 
-### Week 12: Member Management
-- [ ] Migrate membership moderation
-  - [ ] POST /memberships?action=Ban
-  - [ ] POST /memberships?action=Unban
-  - [ ] POST /memberships?action=Hold
-  - [ ] POST /memberships?action=Release
-- [ ] Migrate `/spammers` endpoint
-- [ ] Test member management
+### Phase 2.1: MT Read Operations (GET verbs) - DEFERRED
 
-### Week 13: Admin Features
-- [ ] Migrate `/admin` endpoint
-- [ ] Migrate `/modconfig` endpoint
-- [ ] Update admin/modconfig stores
-- [ ] Test admin features
+MT-specific GET operations (depends on Phase 1.1 completion):
 
-### Week 14: Final MT Features
-- [ ] Migrate remaining MT-specific endpoints
-- [ ] Full MT integration testing
-- [ ] Performance testing
-- [ ] Rollback planning
+- [ ] `/messages` - GET - List/search messages for moderation (MT only) (DEFERRED - related to email endpoints)
+- [ ] `/chatrooms` - GET /chatrooms?action=ListForReview - Chats for review (MT only) (DEFERRED)
+- [ ] `/config` - GET - Fetch admin config (MT only) (DEFERRED - related to config updates)
+- [ ] `/modconfig` - GET - Moderation configuration (MT only)
+- [ ] `/spammers` - GET - List spammers (MT only)
+- [ ] `/status` - GET - System status (MT only)
+
+### Phase 2.2: MT Write Operations - DEFERRED
+
+After Phase 1.2 completion AND email solution implemented:
+
+#### Core Moderation Actions
+**⚠️ DEFERRED - SENDS EMAILS** (Moderation notifications)
+- [ ] `/message` - POST - MT-specific moderation actions (DEFERRED)
+  - POST /message?action=Approve - Approve message (notifications)
+  - POST /message?action=Reject - Reject message (notifications)
+  - POST /message?action=Hold - Hold message
+  - POST /message?action=Release - Release message (notifications)
+  - POST /message?action=Spam - Mark as spam
+  - POST /message?action=Delete - Delete message
+  - POST /message?action=Reply - Reply to message (notifications)
+  - POST /message?action=ApproveEdits - Approve edits (notifications)
+  - POST /message?action=RevertEdits - Revert edits
+
+#### Member Management
+**⚠️ DEFERRED - SENDS EMAILS** (Ban/moderation notifications)
+- [ ] `/memberships` - POST - MT-specific membership actions (DEFERRED)
+  - POST /memberships?action=Ban - Ban member (notifications)
+  - POST /memberships?action=Unban - Unban member (notifications)
+  - POST /memberships?action=Hold - Hold membership
+  - POST /memberships?action=Release - Release membership (notifications)
+- [ ] `/user` - POST - MT-specific user actions (DEFERRED)
+  - POST /user?action=Merge - Merge users (MT only) (notifications)
+  - POST /user?action=Block - Block user (notifications)
+  - POST /user?action=Unblock - Unblock user (notifications)
+- [ ] `/spammers` - POST, DELETE - Spammer management (MT only)
+
+#### Chat Moderation
+**⚠️ DEFERRED - SENDS EMAILS** (Chat moderation notifications)
+- [ ] `/chatrooms` - POST - MT-specific chat actions (DEFERRED)
+  - POST /chatrooms?action=Block - Block chat (notifications)
+  - POST /chatrooms?action=Report - Report chat (notifications)
+- [ ] `/chatmessages` - POST - MT-specific chat message actions (DEFERRED)
+  - POST /chatmessages?action=sendMT - Send as moderator (notifications)
+
+#### Configuration Management
+- [ ] `/config` - POST, PATCH, DELETE - Admin configuration (MT only)
+  - POST /config?action=AddSpamKeywordv2 - Add spam keyword
+  - DELETE /config?action=DeleteSpamKeywordv2 - Delete spam keyword
+  - POST /config?action=AddWorrywordv2 - Add worry word
+  - DELETE /config?action=DeleteWorrywordv2 - Delete worry word
+- [ ] `/modconfig` - POST, PATCH - Moderation configuration (MT only)
 
 ## Phase 3: Cleanup (Week 15)
 
@@ -512,12 +604,91 @@ This script:
 
 ---
 
+## Migration Procedure for Each Endpoint
+
+When migrating an endpoint from v1 (PHP) to v2 (Go), follow these steps **in order**:
+
+### 1. Implement v2 Go API
+- Create or update handler in `iznik-server-go/{domain}/{domain}.go`
+- Add route in `iznik-server-go/router/routes.go` with Swagger annotations
+- Ensure proper error handling and return format matches v1
+
+### 2. Add or Update Tests
+- Add test functions to `iznik-server-go/test/{domain}_test.go`
+- Test all HTTP methods (GET, POST, PATCH, DELETE, PUT)
+- Test error cases (missing params, invalid IDs, etc.)
+- **Run tests in container**: `docker exec freegle-apiv2 go test ./test/{domain}_test.go ./test/main_test.go ./test/testUtils.go -v`
+- Verify tests pass before proceeding
+
+### 3. Update FD Client Code
+- Check if endpoint is used in FD: `grep -r "api/{endpoint}\|/{endpoint}" iznik-nuxt3/stores iznik-nuxt3/api --include="*.js"`
+- Update API wrapper in `iznik-nuxt3/api/{Domain}API.js`:
+  - Change `$get('/endpoint')` to `$getv2('/endpoint')`
+  - Change `$post('/endpoint')` to `$postv2('/endpoint')`
+  - Change `$patch('/endpoint')` to `$patchv2('/endpoint')`
+- Update store if needed (usually already uses v2 method names)
+- **Stage changes**: `cd iznik-nuxt3 && git add api/{Domain}API.js`
+
+### 4. Update MT Client Code (if applicable)
+- Check if endpoint is used in MT: `grep -r "api/{endpoint}\|/{endpoint}" iznik-nuxt3-modtools --include="*.js" --include="*.vue"`
+- Update API wrapper in `iznik-nuxt3-modtools/api/{Domain}API.js` (same process as FD)
+- **Stage changes**: `cd iznik-nuxt3-modtools && git add api/{Domain}API.js`
+
+### 5. Mark v1 PHP API as Deprecated
+**CONSISTENT FORMAT REQUIRED** - Add deprecation comment at top of function:
+```php
+// TODO: DEPRECATED - This endpoint has been migrated to v2 Go API
+// Can be retired once all FD/MT clients are using v2
+// Migrated: YYYY-MM-DD
+// V2 endpoints: <list of v2 endpoints>
+// Used by: <FD only | MT only | Both FD and MT> for <purpose>
+```
+- Leave the implementation intact (for backwards compatibility)
+- See `src.php` and `jobs.php` for examples
+- **Stage changes**: `cd iznik-server && git add http/api/{endpoint}.php`
+
+### 6. Update Migration Document
+- Mark endpoint as completed with date: `[x] ~~\`/endpoint\` - VERB - Description~~ **COMPLETED YYYY-MM-DD**`
+- Move from pending to completed section if needed
+- **Stage changes**: `cd FreegleDockerWSL && git add plans/api/v1-to-v2-api-migration-complete.md`
+
+### 7. Stage All Changes in Git
+```bash
+# In iznik-server-go submodule
+cd iznik-server-go
+git add {domain}/*.go router/routes.go test/{domain}_test.go
+git status
+
+# In iznik-server submodule
+cd ../iznik-server
+git add http/api/{endpoint}.php
+git status
+
+# In iznik-nuxt3 submodule
+cd ../iznik-nuxt3
+git add api/{Domain}API.js
+git status
+
+# In main repository
+cd ..
+git add plans/api/v1-to-v2-api-migration-complete.md
+git status
+```
+
+### 8. Verify Before Commit
+- [ ] All Go tests pass
+- [ ] v2 API handler implemented
+- [ ] Client code updated to use v2
+- [ ] v1 API marked as deprecated with proper format
+- [ ] Migration document updated
+- [ ] All changes staged in git
+
 ## Next Steps
 
-1. **Start Phase 1**: Begin with core authentication and session management
+1. **Continue Phase 0**: Migrate remaining non-email endpoints (GET verbs first)
 2. **Set up monitoring**: Track v1 vs v2 performance metrics
 3. **Create feature flags**: Enable gradual rollout and quick rollback
-4. **Document v2 API**: Create OpenAPI specification as you migrate
+4. **Document v2 API**: Swagger documentation is auto-generated from annotations
 5. **Test continuously**: Run the analysis script weekly to track progress
 
 ## Supporting Files
