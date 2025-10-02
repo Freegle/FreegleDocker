@@ -609,7 +609,7 @@ jobs:
       - checkout
 
       - run:
-          name: Check if only plans files changed
+          name: Check if only plans files or modtools submodule changed
           command: |
             # Get the list of changed files
             if [ "$CIRCLE_BRANCH" = "master" ]; then
@@ -623,14 +623,14 @@ jobs:
             echo "Changed files:"
             echo "$CHANGED_FILES"
 
-            # Check if all changed files are in plans/ directory
+            # Check if all changed files are in plans/ directory or iznik-nuxt3-modtools submodule
             if [ -n "$CHANGED_FILES" ]; then
-              NON_PLANS_FILES=$(echo "$CHANGED_FILES" | grep -v '^plans/' || true)
-              if [ -z "$NON_PLANS_FILES" ]; then
-                echo "Only plans/ files were changed. Skipping build."
+              NON_SKIPPABLE_FILES=$(echo "$CHANGED_FILES" | grep -v '^plans/' | grep -v '^iznik-nuxt3-modtools$' || true)
+              if [ -z "$NON_SKIPPABLE_FILES" ]; then
+                echo "Only plans/ files or iznik-nuxt3-modtools submodule were changed. Skipping build."
                 circleci-agent step halt
               else
-                echo "Non-plans files were changed. Proceeding with build."
+                echo "Non-skippable files were changed. Proceeding with build."
               fi
             else
               echo "No files changed. Proceeding with build."
