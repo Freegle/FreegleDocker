@@ -386,18 +386,40 @@ commands:
             fi
 
             # Upload Go coverage if available
-            if docker cp freegle-apiv2:/app/coverage.out /tmp/go-coverage.out 2>/dev/null; then
+            if docker cp freegle-apiv2:/app/coverage.out iznik-server-go/coverage.out 2>/dev/null; then
               echo "Converting Go coverage to lcov format..."
               # Install gcov2lcov if needed
               go install github.com/jandelgado/gcov2lcov@latest || true
               if command -v gcov2lcov > /dev/null; then
-                gcov2lcov -infile=/tmp/go-coverage.out -outfile=/tmp/go-coverage.lcov
-                cat /tmp/go-coverage.lcov | coveralls || echo "Warning: Go coverage upload failed"
+                # Run gcov2lcov from the Go project directory so it can access go.mod
+                cd iznik-server-go
+                if gcov2lcov -infile=coverage.out -outfile=coverage.lcov 2>&1; then
+                  echo "Go coverage converted successfully"
+                  # Check if the lcov file has content
+                  if [ -s coverage.lcov ]; then
+                    echo "Uploading Go coverage to Coveralls..."
+                    if cat coverage.lcov | coveralls; then
+                      echo "✅ Go coverage uploaded successfully"
+                    else
+                      echo "❌ Go coverage upload to Coveralls failed"
+                      exit 1
+                    fi
+                  else
+                    echo "❌ Go coverage lcov file is empty after conversion"
+                    exit 1
+                  fi
+                else
+                  echo "❌ gcov2lcov conversion failed"
+                  exit 1
+                fi
+                cd ..
               else
-                echo "gcov2lcov not available for Go coverage conversion"
+                echo "❌ gcov2lcov not available for Go coverage conversion"
+                exit 1
               fi
             else
-              echo "No Go coverage file found"
+              echo "❌ No Go coverage file found in container"
+              exit 1
             fi
           when: always
           environment:
