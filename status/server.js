@@ -40,7 +40,7 @@ const healthCheckMessages = {
   'freegle-phpmyadmin': 'Database management interface responding (HTTP)',
   'freegle-mailhog': 'Email testing interface responding (HTTP)',
   'freegle-apiv1': 'API config endpoint responding (curl /api/config)',
-  'freegle-apiv2': 'API group endpoint responding (curl /api/group)',
+  'freegle-apiv2': 'API online endpoint responding (curl /api/online)',
   'freegle-delivery': 'wsrv.nl image transformation service responding (wget /)',
   'freegle-playwright': 'Playwright test container ready for test execution'
 };
@@ -1657,8 +1657,8 @@ const httpServer = http.createServer(async (req, res) => {
       let testUrl, testDescription;
       
       if (service === 'apiv2') {
-        testUrl = 'http://freegle-apiv2:8192/api/group';
-        testDescription = 'API v2 group endpoint responding';
+        testUrl = 'http://freegle-apiv2:8192/api/online';
+        testDescription = 'API v2 online endpoint responding';
       } else if (service === 'apiv1') {
         testUrl = 'http://freegle-apiv1:80/api/config';
         testDescription = 'API v1 config endpoint responding';
