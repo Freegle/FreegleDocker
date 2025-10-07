@@ -1044,6 +1044,69 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // Recreate test users endpoint
+  if (parsedUrl.pathname === '/api/recreate-test-users' && req.method === 'POST') {
+    try {
+      const results = [];
+
+      // Recreate test@test.com
+      try {
+        const testUserResult = execSync(
+          'docker exec freegle-apiv1 php /var/www/iznik/scripts/cli/user_create.php -e test@test.com -n "Test User" -p freegle',
+          { encoding: 'utf8', timeout: 30000 }
+        );
+        results.push(`test@test.com: ${testUserResult.trim()}`);
+      } catch (error) {
+        // User might already exist, try to get their ID
+        const existingUser = execSync(
+          'docker exec freegle-percona mysql -u root -piznik iznik -sN -e "SELECT u.id FROM users u LEFT JOIN users_emails ue ON u.id = ue.userid WHERE ue.email = \'test@test.com\'"',
+          { encoding: 'utf8', timeout: 10000 }
+        ).trim();
+
+        if (existingUser) {
+          results.push(`test@test.com: Already exists (ID: ${existingUser})`);
+        } else {
+          results.push(`test@test.com: Failed - ${error.message}`);
+        }
+      }
+
+      // Recreate testmod@test.com
+      try {
+        const modUserResult = execSync(
+          'docker exec freegle-apiv1 php /var/www/iznik/scripts/cli/user_create.php -e testmod@test.com -n "Test Mod" -p freegle',
+          { encoding: 'utf8', timeout: 30000 }
+        );
+        results.push(`testmod@test.com: ${modUserResult.trim()}`);
+      } catch (error) {
+        // User might already exist, try to get their ID
+        const existingUser = execSync(
+          'docker exec freegle-percona mysql -u root -piznik iznik -sN -e "SELECT u.id FROM users u LEFT JOIN users_emails ue ON u.id = ue.userid WHERE ue.email = \'testmod@test.com\'"',
+          { encoding: 'utf8', timeout: 10000 }
+        ).trim();
+
+        if (existingUser) {
+          results.push(`testmod@test.com: Already exists (ID: ${existingUser})`);
+        } else {
+          results.push(`testmod@test.com: Failed - ${error.message}`);
+        }
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Users recreated successfully',
+        details: results
+      }));
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        error: `Failed to recreate users: ${error.message}`
+      }));
+    }
+    return;
+  }
+
   // Playwright test execution endpoint
   if (parsedUrl.pathname === '/api/tests/playwright' && req.method === 'POST') {
     let body = '';

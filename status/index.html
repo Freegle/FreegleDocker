@@ -48,9 +48,16 @@
             <span id="countdown"></span>
         </div>
         
-        
+
         <h2>🏠 Freegle Components</h2>
-        
+
+        <div style="margin-bottom: 20px;">
+            <button id="recreate-test-users" onclick="recreateTestUsers()" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+                🔄 Recreate Test Users
+            </button>
+            <span id="recreate-status" style="margin-left: 10px; font-weight: bold;"></span>
+        </div>
+
         <div id="freegle-dev" class="service loading">
             <div>
                 <strong>Freegle Dev (User Site)</strong> - iznik-nuxt3 development<br>
@@ -496,6 +503,44 @@
             } catch (error) {
                 alert(`Error: ${error.message}`);
                 button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function recreateTestUsers() {
+            const button = document.getElementById('recreate-test-users');
+            const statusSpan = document.getElementById('recreate-status');
+
+            button.disabled = true;
+            button.textContent = '⏳ Creating users...';
+            statusSpan.textContent = '';
+            statusSpan.style.color = '#666';
+
+            try {
+                const response = await fetch('/api/recreate-test-users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    button.textContent = '🔄 Recreate Test Users';
+                    statusSpan.textContent = '✅ ' + result.message;
+                    statusSpan.style.color = '#4CAF50';
+                    setTimeout(() => {
+                        statusSpan.textContent = '';
+                        button.disabled = false;
+                    }, 5000);
+                } else {
+                    button.textContent = '🔄 Recreate Test Users';
+                    statusSpan.textContent = '❌ ' + result.error;
+                    statusSpan.style.color = '#f44336';
+                    button.disabled = false;
+                }
+            } catch (error) {
+                button.textContent = '🔄 Recreate Test Users';
+                statusSpan.textContent = '❌ Error: ' + error.message;
+                statusSpan.style.color = '#f44336';
                 button.disabled = false;
             }
         }
