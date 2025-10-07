@@ -397,8 +397,10 @@ commands:
                   echo "Go coverage converted successfully"
                   # Check if the lcov file has content
                   if [ -s coverage.lcov ]; then
+                    # Return to parent directory before running coveralls so it can access the main git repo
+                    cd ..
                     echo "Uploading Go coverage to Coveralls..."
-                    if cat coverage.lcov | coveralls; then
+                    if cat iznik-server-go/coverage.lcov | coveralls; then
                       echo "✅ Go coverage uploaded successfully"
                     else
                       echo "❌ Go coverage upload to Coveralls failed"
