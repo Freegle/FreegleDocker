@@ -400,6 +400,9 @@ commands:
                     # Return to parent directory before running coveralls so it can access the main git repo
                     cd ..
                     echo "Uploading Go coverage to Coveralls..."
+                    # Export environment variables for coveralls
+                    export COVERALLS_SERVICE_NAME="circleci"
+                    export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
                     if cat iznik-server-go/coverage.lcov | coveralls; then
                       echo "✅ Go coverage uploaded successfully"
                     else
@@ -424,10 +427,6 @@ commands:
               exit 1
             fi
           when: always
-          environment:
-            COVERALLS_SERVICE_NAME: circleci
-            COVERALLS_SERVICE_JOB_ID: $CIRCLE_BUILD_NUM
-            COVERALLS_REPO_TOKEN: $COVERALLS_REPO_TOKEN
 
   collect-artifacts:
     description: "Collect build artifacts and logs"
