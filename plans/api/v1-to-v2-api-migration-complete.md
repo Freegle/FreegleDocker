@@ -167,7 +167,7 @@ These endpoints can be safely migrated to Go as they don't send emails.
 
 #### GET Endpoints Used by FD:
 - [ ] `/giftaid` - GET - Gift Aid data (GiftAidAPI.get)
-- [ ] `/logo` - GET - Logo retrieval (LogoAPI.fetch)
+- [x] ~~`/logo` - GET - Logo retrieval (LogoAPI.fetch)~~ **COMPLETED 2025-10-13**
 - [ ] `/microvolunteering` - GET - Micro-volunteering challenges (MicroVolunteeringAPI.challenge)
 - [ ] `/user` - GET - User data by email, MT user data (UserAPI.fetchByEmail, fetchMT)
 

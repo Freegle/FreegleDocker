@@ -391,13 +391,69 @@ function <endpoint>() {
 grep -r "api.*<endpoint>\|/<endpoint>" iznik-nuxt3/ --include="*.js" --include="*.vue" | grep -v node_modules | grep -v modtools
 ```
 
-#### 7.2 Then Consider MT (if endpoint is used there)
+#### 7.2 Update API Wrapper
+**CRITICAL STEP**: Update the API wrapper in `iznik-nuxt3/api/{Domain}API.js`:
+```javascript
+// Change from v1 to v2
+// OLD:
+async fetch(params) {
+  return await this.$get('/endpoint', params)
+}
+
+// NEW:
+async fetch(params) {
+  return await this.$getv2('/endpoint', params)
+}
+```
+
+#### 7.3 Check ALL Usage of API Call
+**DON'T SKIP THIS**: Search for ALL places where the API response is used:
+```bash
+# Find the API class being used
+grep -r "{DomainAPI}\|{domain}Store" iznik-nuxt3 --include="*.js" --include="*.vue"
+
+# Find all actual API calls
+grep -r "\.{endpoint}\|{domain}\.fetch\|fetch{Domain}" iznik-nuxt3 --include="*.js" --include="*.vue" | grep -v node_modules
+```
+
+**IMPORTANT**: v2 API returns data directly - NO `ret`/`status` wrapper like v1!
+
+**Update client code**:
+```javascript
+// v1 format (OLD):
+if (ret.ret === 0 && ret.data) {
+  // use ret.data
+}
+
+// v2 format (NEW):
+if (ret && ret.data) {
+  // use ret.data - no ret.ret check needed
+}
+```
+
+**Real example from Logo migration**:
+```javascript
+// OLD (v1):
+const ret = await logoStore.fetch()
+if (ret.ret === 0 && ret.logo) {
+  logo.value = ret.logo.path.replace(/.*logos/, '/logos')
+}
+
+// NEW (v2):
+const ret = await logoStore.fetch()
+// v2 API returns data directly without ret/status wrapper
+if (ret && ret.logo) {
+  logo.value = ret.logo.path.replace(/.*logos/, '/logos')
+}
+```
+
+#### 7.4 Then Consider MT (if endpoint is used there)
 After FD is working with the minimal v2 implementation:
 - Check if MT can use the same v2 endpoint
 - If MT needs additional functionality, add it without breaking FD
 - If MT needs completely different behavior, consider a separate endpoint
 
-#### 7.3 Modify Pinia Store
+#### 7.5 Modify Pinia Store
 ```javascript
 // stores/resource.js
 export const useResourceStore = defineStore('resource', {
