@@ -166,7 +166,7 @@ These endpoints can be safely migrated to Go as they don't send emails.
 **Analysis Method**: Used jscodeshift to find all v1 API calls in FD Pinia stores (stores/*.js) that are imported/used by FD components (components/*, pages/*).
 
 #### GET Endpoints Used by FD:
-- [ ] `/giftaid` - GET - Gift Aid data (GiftAidAPI.get)
+- [x] ~~`/giftaid` - GET - Gift Aid data (GiftAidAPI.get)~~ **COMPLETED 2025-10-13**
 - [x] ~~`/logo` - GET - Logo retrieval (LogoAPI.fetch)~~ **COMPLETED 2025-10-13**
 - [ ] `/microvolunteering` - GET - Micro-volunteering challenges (MicroVolunteeringAPI.challenge)
 - [ ] `/user` - GET - User data by email, MT user data (UserAPI.fetchByEmail, fetchMT)

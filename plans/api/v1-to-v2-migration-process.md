@@ -42,11 +42,34 @@ grep -r "api.*<endpoint>\|/<endpoint>" iznik-nuxt3/ --include="*.js" --include="
 - Error handling that FD depends on
 - Permissions/authentication as used by FD
 
-#### 2.3 Identify Test Coverage
+#### 2.3 Get Database Schema
+**IMPORTANT**: Always use container names from docker-compose.yml, not from searching all containers on the machine (which may include containers from other systems).
+
+```bash
+# Get container name from docker-compose.yml
+grep "container_name.*percona" docker-compose.yml
+# Output: container_name: freegle-percona
+
+# Get table schema using the correct container name
+docker exec freegle-percona mysql -u root -piznik iznik -e "DESCRIBE <table_name>"
+```
+
+**Why this matters**: Using `docker ps` to find containers searches ALL containers on the machine, which may include unrelated systems. Always use the docker-compose.yml file to ensure you're accessing the correct containers for this project.
+
+#### 2.4 Identify Test Coverage and Examine Test Cases
 ```bash
 # Find existing PHPUnit tests
 find iznik-server/test -name "*.php" | xargs grep -l <endpoint>
 ```
+
+**IMPORTANT**: Examine the existing PHPUnit test cases to understand:
+- What scenarios are being tested
+- Edge cases and error conditions
+- Expected behavior for different inputs
+- Authentication and permission scenarios
+- Data validation rules
+
+Use these test cases to inform your v2 Go tests - replicate the test coverage to ensure v2 behaves the same as v1.
 
 ### 3. Design v2 Implementation
 
