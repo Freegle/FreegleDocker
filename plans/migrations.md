@@ -121,20 +121,6 @@ CREATE TABLE `simulation_message_isochrones_users` (
   KEY `replied` (`replied`),
   CONSTRAINT `simulation_message_isochrones_users_ibfk_1` FOREIGN KEY (`sim_msgid`) REFERENCES `simulation_message_isochrones_messages` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- Session tracking for API browsing (temporary)
-CREATE TABLE `simulation_message_isochrones_sessions` (
-  `id` varchar(32) NOT NULL,
-  `runid` bigint unsigned NOT NULL,
-  `userid` bigint unsigned NOT NULL,
-  `current_index` int DEFAULT 0,
-  `created` timestamp DEFAULT CURRENT_TIMESTAMP,
-  `expires` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `userid` (`userid`),
-  KEY `expires` (`expires`),
-  CONSTRAINT `simulation_message_isochrones_sessions_ibfk_1` FOREIGN KEY (`runid`) REFERENCES `simulation_message_isochrones_runs` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 ```
 
 ---
