@@ -363,7 +363,7 @@ services:
       default:
         aliases:
           - apiv2.localhost
-    build: 
+    build:
       context: ./iznik-server-go
       args:
         IZNIK_SERVER_GO_BRANCH: ${IZNIK_SERVER_GO_BRANCH:-master}
@@ -385,6 +385,12 @@ services:
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8192/api/online || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     ports:
       - "8193:8192"
     labels:
