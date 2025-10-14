@@ -148,16 +148,24 @@ These endpoints can be safely migrated to Go as they don't send emails.
 - 🔄 `/story` (stories) - FD uses v2 for GET, MT still uses v1 for GET/PUT/POST
 
 **Partially Migrated (FD uses both v1 and v2):**
-- 🔄 `/address` - FD uses v2 for GET, v1 for PATCH/PUT
-- 🔄 `/authority` - FD uses v2 for GET, v1 for other operations
-- 🔄 `/communityevent` - FD uses v2 for GET, v1 for POST/PATCH/DELETE
-- 🔄 `/group` - FD uses v2 for GET, v1 for POST/PATCH
-- 🔄 `/isochrone` - FD uses v2 for GET, v1 for PUT/POST
-- 🔄 `/message` - FD uses v2 for GET, v1 for POST/PATCH/DELETE
-- 🔄 `/newsfeed` - FD uses v2 for GET, v1 for POST
-- 🔄 `/notification` - FD uses v2 for GET, v1 for POST/DELETE
-- 🔄 `/user` - FD uses v2 for GET, v1 for PUT/PATCH/POST
-- 🔄 `/volunteering` - FD uses v2 for GET, v1 for POST/PATCH/DELETE
+
+**Non-Email GET Operations (Can be migrated in Phase 0.1):**
+- 🔄 `/authority` - FD uses v2 for GET `/authority/{id}/message`, v1 for GET `/authority` - **NO EMAIL** - Only GET operations exist in v1
+
+**Non-Email Write Operations (Can be migrated in Phase 0.2):**
+- 🔄 `/address` - FD uses v2 for GET, v1 for PATCH/PUT - **NO EMAIL** - **5 FD usages**
+- 🔄 `/isochrone` - FD uses v2 for GET, v1 for PUT/POST/PATCH - **NO EMAIL** - **2 FD usages**
+- 🔄 `/newsfeed` - FD uses v2 for GET, v1 for POST - **NO EMAIL** - **10 FD usages**
+- 🔄 `/notification` - FD uses v2 for GET, v1 for POST - **NO EMAIL** - **3 FD usages**
+- 🔄 `/volunteering` - FD uses v2 for GET, v1 for POST/PATCH/DELETE - **NO EMAIL** - **5 FD usages**
+
+**MT-Only Write Operations (Deferred to Phase 2):**
+- 🔄 `/communityevent` - FD uses v2 for GET only; MT uses v1 for POST/PATCH/DELETE - **NO EMAIL** - **0 FD usages, MT-only**
+- 🔄 `/group` - FD uses v2 for GET only; MT uses v1 for POST/PATCH - **NO EMAIL** - **0 FD usages, MT-only**
+
+**Email-Dependent Write Operations (Deferred to Phase 1+):**
+- 🔄 `/message` - FD uses v2 for GET, v1 for POST/PATCH/DELETE - **SENDS EMAILS** (41 references)
+- 🔄 `/user` - FD uses v2 for GET, v1 for PUT/PATCH/POST - **SENDS EMAILS** (47 references)
 
 ### Phase 0.1: Read-Only GET Endpoints (First Priority)
 
@@ -168,7 +176,7 @@ These endpoints can be safely migrated to Go as they don't send emails.
 #### GET Endpoints Used by FD:
 - [x] ~~`/giftaid` - GET - Gift Aid data (GiftAidAPI.get)~~ **COMPLETED 2025-10-13**
 - [x] ~~`/logo` - GET - Logo retrieval (LogoAPI.fetch)~~ **COMPLETED 2025-10-13**
-- [ ] `/microvolunteering` - GET - Micro-volunteering challenges (MicroVolunteeringAPI.challenge)
+- [x] ~~`/microvolunteering` - GET - Micro-volunteering challenges (MicroVolunteeringAPI.challenge)~~ **COMPLETED 2025-10-14**
 - [ ] `/user` - GET - User data by email, MT user data (UserAPI.fetchByEmail, fetchMT)
 
 **Note**: Several endpoints have GET operations already in v2 (like `/newsfeed`, `/group`, `/message`) but FD still uses some v1 methods for these - see "Partially Migrated" section above.
@@ -178,12 +186,21 @@ These endpoints can be safely migrated to Go as they don't send emails.
 **Note**: Only listing endpoints **actually used by FD** (found via jscodeshift analysis).
 
 #### POST/PATCH/PUT/DELETE Endpoints Used by FD (Non-Email):
-- [ ] `/image` - POST - Image upload (ImageAPI.post) - Requires file upload support in v2
-- [ ] `/messages` - POST (action: MarkSeen) - Mark messages as seen (MessageAPI.markSeen) - Database write only, no email
 
-**Note**: The following write operations are used by FD but likely send emails (deferred to Phase 3+):
-- `/group` - PATCH - Group updates (GroupAPI.patch) - Likely sends group update notifications
-- `/newsfeed` - POST - Multiple actions: seen, unfollow, unhide, hide, convertToStory, referto, report (NewsAPI.*) - Likely sends notifications
+**Already have v2 GET, need v2 write operations:**
+- [ ] `/address` - PATCH/PUT - Address updates (AddressAPI.update, add, del) - **NO EMAIL** - Database only - **5 FD usages**
+- [ ] `/isochrone` - PUT/POST/PATCH - Isochrone management (IsochroneAPI.add, patch, del) - **NO EMAIL** - Database only - **2 FD usages**
+- [ ] `/newsfeed` - POST - Multiple+ actions: seen, unfollow, unhide, hide, convertToStory, referto, report (NewsAPI.*) - **NO EMAIL** - Database only - **10 FD usages**
+- [ ] `/notification` - POST - Notification management (NotificationAPI.seen, allSeen) - **NO EMAIL** - Database only - **3 FD usages**
+- [ ] `/volunteering` - POST/PATCH/DELETE - Volunteer opportunity CRUD (VolunteeringAPI.save, add, del) - **NO EMAIL** - Database only - **5 FD usages**
+
+**Need both v2 GET and write operations:**
+- [ ] `/image` - POST - Image upload (ImageAPI.post) - Requires file upload support in v2 - **NO EMAIL**
+- [ ] `/messages` - POST (action: MarkSeen) - Mark messages as seen (MessageAPI.markSeen) - **NO EMAIL** - Database write only
+
+**Note**: The following write operations send emails and are deferred to Phase 1+:
+- `/message` - POST/PATCH/DELETE - Message CRUD - **SENDS EMAILS** (41 email references)
+- `/user` - PUT/PATCH/POST - User management - **SENDS EMAILS** (47 email references)
 - `/team` - PATCH - Add/Remove team members (TeamAPI.add, remove) - Likely sends team membership notifications
 
 ## Phase 1: FD Migration (Email-Dependent - DEFERRED)

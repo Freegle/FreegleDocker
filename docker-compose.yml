@@ -525,15 +525,15 @@ services:
     restart: "no"
     environment:
       # LIVE SERVER MODE - pointing at production APIs
-#      - IZNIK_API_V1=https://fdapidbg.ilovefreegle.org/api
-#      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
-#      - IMAGE_DELIVERY=https://images.ilovefreegle.org
-#      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
+      - IZNIK_API_V1=https://fdapidbg.ilovefreegle.org/api
+      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      - IMAGE_DELIVERY=https://images.ilovefreegle.org
+      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
       # LOCAL SERVER MODE (comment out above, uncomment below)
-      - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
-      - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost/tus/
+#      - IZNIK_API_V1=http://apiv1.localhost/api
+#      - IZNIK_API_V2=http://apiv2.localhost/api
+#      - IMAGE_DELIVERY=http://delivery.localhost
+#      - TUS_UPLOADER=http://tusd.localhost/tus/
       # END
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
