@@ -2,6 +2,7 @@
 - Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
 - You don't need to rebuild the Freegle Dev or ModTools containers to pick up code fixes - they run nuxt dev which will do that.
 - The Freegle Production container requires a full rebuild to pick up code changes since it runs a production build.
+- The API v2 (Go) container requires a full rebuild to pick up code changes: `docker-compose build apiv2 && docker-compose up -d apiv2`
 - After making changes to the status code, remember to restart the container
 - When running in a docker compose environment and making changes, be careful to copy them to the container.
 

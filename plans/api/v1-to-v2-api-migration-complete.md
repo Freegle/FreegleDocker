@@ -177,7 +177,7 @@ These endpoints can be safely migrated to Go as they don't send emails.
 - [x] ~~`/giftaid` - GET - Gift Aid data (GiftAidAPI.get)~~ **COMPLETED 2025-10-13**
 - [x] ~~`/logo` - GET - Logo retrieval (LogoAPI.fetch)~~ **COMPLETED 2025-10-13**
 - [x] ~~`/microvolunteering` - GET - Micro-volunteering challenges (MicroVolunteeringAPI.challenge)~~ **COMPLETED 2025-10-14**
-- [ ] `/user` - GET - User data by email, MT user data (UserAPI.fetchByEmail, fetchMT)
+- [x] ~~`/user/byemail/{email}` - GET - User data by email (UserAPI.fetchByEmail)~~ **COMPLETED 2025-10-17** (MT search via fetchMT deferred to Phase 2)
 
 **Note**: Several endpoints have GET operations already in v2 (like `/newsfeed`, `/group`, `/message`) but FD still uses some v1 methods for these - see "Partially Migrated" section above.
 
