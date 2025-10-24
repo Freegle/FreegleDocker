@@ -660,6 +660,61 @@ jobs:
             fi
 
       - run:
+          name: Check if only submodule changes to non-master branches
+          command: |
+            # Get the list of changed files
+            if [ "$CIRCLE_BRANCH" = "master" ]; then
+              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+            else
+              CHANGED_FILES=$(git diff --name-only origin/master...HEAD)
+            fi
+
+            # Check if only submodule changes occurred
+            if [ -n "$CHANGED_FILES" ]; then
+              # Filter for submodule directories
+              SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(iznik-nuxt3|iznik-nuxt3-modtools|iznik-server|iznik-server-go)$' || true)
+              NON_SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -v -E '^(iznik-nuxt3|iznik-nuxt3-modtools|iznik-server|iznik-server-go)$' || true)
+
+              if [ -n "$SUBMODULE_CHANGES" ] && [ -z "$NON_SUBMODULE_CHANGES" ]; then
+                echo "Only submodule changes detected:"
+                echo "$SUBMODULE_CHANGES"
+
+                # Initialize submodules to check their branches
+                echo "Initializing submodules..."
+                git submodule init
+                git submodule update --recursive
+
+                # Check each changed submodule
+                for submodule_path in $SUBMODULE_CHANGES; do
+                  if [ -d "$submodule_path" ]; then
+                    echo "Checking branch for $submodule_path..."
+
+                    # Get current branch or commit
+                    current_branch=$(cd "$submodule_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")
+
+                    # If detached HEAD, find which branch contains this commit
+                    if [ "$current_branch" = "HEAD" ]; then
+                      current_commit=$(cd "$submodule_path" && git rev-parse HEAD)
+                      current_branch=$(cd "$submodule_path" && git branch -r --contains "$current_commit" | grep -v HEAD | grep -E 'origin/(master|main|app-ci-fd|modtools)' | head -1 | sed 's/.*origin\///' | xargs)
+                    fi
+
+                    echo "  Submodule $submodule_path is on branch: $current_branch"
+
+                    # Skip build if pointing to non-master/main branch
+                    if [ "$current_branch" != "master" ] && [ "$current_branch" != "main" ]; then
+                      echo "⏭️ Submodule $submodule_path points to non-master branch ($current_branch)."
+                      echo "This branch has its own CircleCI pipeline and doesn't need the FreegleDocker build."
+                      echo "Skipping build."
+                      circleci-agent step halt
+                    fi
+                  fi
+                done
+
+                echo "All changed submodules point to master/main branches. Proceeding with build."
+              fi
+            fi
+
+      - run:
           name: Initialize and update git submodules
           command: |
             echo "Initializing and updating git submodules..."
