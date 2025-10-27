@@ -1,6 +1,10 @@
 # Spiralling Out: Isochrone-Based Message Notification Expansion
 
 > **Environment**: All commands assume you are on the production server in the `iznik-server/scripts/cli/` directory with appropriate database access.
+>
+> **Status**: Fresh analysis in progress using local OpenRouteService (ORS) server - October 2025
+>
+> **Key Change**: We now have a local ORS server, so we can generate isochrones on-demand with no cost constraints. This allows us to simulate ALL messages, not just those with cached Mapbox isochrones.
 
 ## Summary (For Freegle Volunteers)
 
@@ -93,45 +97,6 @@ Instead of one fixed notification area, we **expand in stages**:
 5. **Skip nighttime**: Only expand during active hours (e.g., 8am-8pm)
    - People don't respond to notifications at 3am
    - Avoid waking people up
-
-### Visual Example
-
-```
-Time 0 (Message posted):
-┌─────────────────────────────────────┐
-│   Group Catchment Area              │
-│                                     │
-│         . . . .                     │
-│       .   ●📦  .  ← 5-min isochrone│
-│         . . . .    (50 users)      │
-│                                     │
-│                                     │
-└─────────────────────────────────────┘
-
-Time +4 hours (2 responses, need more):
-┌─────────────────────────────────────┐
-│   Group Catchment Area              │
-│                                     │
-│       . . . . . .                   │
-│     .     ●📦     . ← 10-min        │
-│       . . . . . .    (150 users)   │
-│                                     │
-│                                     │
-└─────────────────────────────────────┘
-
-Time +10 hours (5 responses, need more):
-┌─────────────────────────────────────┐
-│   Group Catchment Area              │
-│     . . . . . . . .                 │
-│   .       ●📦       .  ← 15-min     │
-│     . . . . . . . .     (280 users) │
-│                                     │
-│                                     │
-└─────────────────────────────────────┘
-
-Time +16 hours (8 responses, stop!):
-Algorithm stops - we have enough interest
-```
 
 ### Key Algorithm Parameters
 
@@ -244,36 +209,9 @@ We store simulation data in MySQL tables:
    - **Taker reach time**: How quickly did we notify them?
    - **Expansions**: How many expansion stages were needed?
 
-### Example Metrics Output
+### Metrics Output
 
-```
-=== Simulation Results ===
-Run ID: 42
-Messages analyzed: 150
-Date range: 2025-09-01 to 2025-09-30
-
-Aggregate Metrics:
-- Median replies per message: 5
-- Median users reached: 250
-- Median capture rate: 78%  ← 78% of replies came from within our isochrones
-- Mean efficiency: 2.1%     ← 2.1% of notified users actually replied
-- Median expansions: 2      ← Most messages needed 2-3 expansions
-
-Taker Analysis (messages where we know who took the item):
-- Messages with known taker: 45
-- Takers reached: 89%       ← We notified 89% of takers
-- Takers in initial isochrone: 31%  ← 31% were in the first small area
-- Median time to reach taker: 4 hours ← When taker entered the isochrone
-```
-
-### What Good Metrics Look Like
-
-| Metric | Poor | Good | Excellent |
-|--------|------|------|-----------|
-| Capture rate | <60% | 70-80% | >85% |
-| Efficiency | <1% | 1.5-3% | >3% |
-| Takers reached | <75% | 85-95% | >95% |
-| Time to taker | >24h | 4-12h | <4h |
+Results will be populated as we complete the analysis.
 
 ### Simulation Scripts
 
@@ -304,237 +242,106 @@ php spiralling_investigation_simulate.php \
 
 The key challenge: **What parameter values should we use?**
 
-### The Question Within the Question
+### The Core Question
 
-Before optimizing parameters globally, we must answer: **Do different types of groups need different parameters?**
+**Do different types of groups need different parameters?**
 
 - Urban dense groups (London, Manchester): Small isochrones, high user density
 - Rural large groups (counties): Large isochrones, sparse user density
 - Suburban groups: Medium size, medium density
 
-**Naive approach:** Run full optimization on all 300+ groups individually
-- **Cost**: Weeks of computation time
-- **Problem**: Can't compare across groups effectively
+**With local ORS server (no cost constraints):**
 
-**Smart approach:** Use representative sampling with clustering
+We can now optimize using ALL historical data for each group type. No need for representative sampling or clustering - we use official ONS classification and simulate everything.
 
-### Four-Phase Strategy
+### Simplified Two-Phase Strategy
 
-#### Phase 1: Characterize All Groups
+#### Phase 1: Classify All Groups by Official ONS Category
 
 **Script:** `spiralling_investigation_analyze_group_characteristics.php`
 
-Calculate cheap proxy metrics for every group:
+**What it does:**
+1. Gets all Freegle groups with catchment area (CGA) polygons
+2. Calculates geographic metrics: area, compactness, perimeter
+3. Looks up official ONS Rural-Urban classification from external data
+4. Calculates activity metric: messages per week
+5. Classifies groups based on ONS category
 
-**Geographic:**
-- CGA area (km²)
-- Perimeter, compactness ratio
-- Centroid location
+**Features calculated:**
+- **Geographic:** Area (km²), perimeter, compactness
+- **Activity:** Messages per week
+- **Classification:** ONS RU category (A1-F2), region, group type
 
-**User distribution:**
-- Active users (last 90 days)
-- User density (users/km²)
-- Spatial spread (distance from centroid)
+**ONS Classification System:**
+- **A1** = Urban Major Conurbation (London, Manchester, Glasgow, Edinburgh)
+- **B1** = Urban Minor Conurbation (Aberdeen, Dundee)
+- **C1/C2** = Urban City and Town
+- **D1/D2** = Rural Town and Fringe
+- **E1/E2** = Rural Village
+- **F1/F2** = Rural Hamlets and Isolated Dwellings
 
-**Activity:**
-- Messages per week
+**For Scotland/NI:** Uses geographic fallback (major cities classified correctly, rest defaults to rural)
 
-**Classification:**
-- Urban percentage (estimated from user clustering)
-- Group type (Urban Dense, Suburban, Rural, etc.)
+**Output:** `group_characteristics_ons.csv`
 
-**Output:** `group_characteristics.csv`
+**Time:** ~5-10 minutes for 489 groups (fast - no expensive user queries!)
 
-**Time:** ~2-5 minutes for 300 groups
-
-#### Phase 2: Cluster Similar Groups
-
-**Script:** `spiralling_investigation_cluster_groups.php`
-
-**Step 2a: Determine Optimal Number of Clusters**
-
-Before clustering, evaluate different cluster counts to find the optimal k:
-
+**Run it:**
 ```bash
-php spiralling_investigation_cluster_groups.php --evaluate
+cd /var/www/iznik/scripts/cli
+php spiralling_investigation_analyze_group_characteristics.php \
+  --output=/tmp/group_characteristics_ons.csv
 ```
 
-**Output example:**
-```
-=== Evaluating Cluster Counts ===
+**Phase 1 Results:** *(To be populated when analysis completes)*
 
-k    WCSS        Silhouette     Interpretation
-----------------------------------------------------------------------
-2    245.67      0.6234         Reasonable
-3    198.43      0.5891         Reasonable
-4    167.21      0.5645         Reasonable
-5    145.89      0.4823         Weak but acceptable
-6    132.45      0.4201         Weak but acceptable
-7    121.34      0.3876         Weak but acceptable
-8    113.21      0.3245         Weak but acceptable
-9    107.56      0.2891         Weak but acceptable
-10   103.21      0.2456         Poor
+#### Phase 2: Optimize Parameters by Category
 
-=== Recommendation ===
-Based on the metrics, consider using k = 3
+**Script:** `spiralling_investigation_optimize_parameters.php`
 
-However, also consider domain knowledge:
-  - k=3: Urban, Suburban, Rural
-  - k=4: Dense Urban, Suburban, Rural Large, Rural Small
-  - k=5: Very Dense Urban, Urban, Suburban, Rural, Very Rural
-```
+Now that we have local ORS (no cost constraints), we optimize using ALL historical data for each geographic category.
 
-**How to interpret:**
-- **WCSS (Within-Cluster Sum of Squares)**: Look for the "elbow" where the curve flattens
-  - Sharp drops early indicate clusters are very different
-  - Flatten out = adding more clusters doesn't help much
+**Approach:**
+1. Group all 489 groups by their ONS classification
+2. For each category, run optimization on ALL their recent messages
+3. Compare if parameters differ significantly across categories
 
-- **Silhouette Score** (higher is better):
-  - `> 0.7`: Strong, well-separated clusters
-  - `> 0.5`: Reasonable clustering
-  - `> 0.25`: Weak but acceptable
-  - `< 0.25`: Poor clustering, consider different k
+**Categories to test:**
+- **Urban** (A1, B1, C1): Dense areas, small isochrones
+- **Suburban** (C2, D1, D2): Medium density
+- **Rural** (E1, E2, F1, F2): Sparse areas, large isochrones
 
-**Decision criteria:**
-1. Choose k where silhouette is still reasonable (>0.5) but WCSS has started to plateau
-2. Balance data-driven metrics with domain knowledge
-3. Prefer simpler (fewer clusters) if scores are similar
-
-**Step 2b: Run Actual Clustering**
-
-Once you've chosen k, run the actual clustering:
-
+**Run it:**
 ```bash
-php spiralling_investigation_cluster_groups.php --clusters=4
+# Urban groups
+php spiralling_investigation_optimize_parameters.php \
+  --categories="A1,B1,C1" --iterations=100 --ors-server=http://10.220.0.103:8081/ors \
+  --db-path=/tmp/urban_optimization.db
+
+# Suburban groups
+php spiralling_investigation_optimize_parameters.php \
+  --categories="C2,D1,D2" --iterations=100 --ors-server=http://10.220.0.103:8081/ors \
+  --db-path=/tmp/suburban_optimization.db
+
+# Rural groups
+php spiralling_investigation_optimize_parameters.php \
+  --categories="E1,E2,F1,F2" --iterations=100 --ors-server=http://10.220.0.103:8081/ors \
+  --db-path=/tmp/rural_optimization.db
 ```
 
-**Clustering features:**
-- Area (km²)
-- User density (users/km²)
-- Compactness (shape regularity)
-- Average user distance
-- Urban percentage
+**Time:** Several hours per category (but uses ALL data for robust results)
 
-**Output:**
-- `group_clusters.csv` (all groups with cluster ID)
-- `group_clusters_representatives.csv` (3 representative groups per cluster)
+#### Phase 3: Compare and Decide
 
-**Example clusters:**
-```
-Cluster 0: Urban Dense (12 groups)
-  - Median area: 85 km²
-  - Median density: 15.2 users/km²
-  - Median urban %: 82%
-  - Examples: Hackney, Manchester Central, Bristol
+Compare the optimized parameters across categories:
 
-Cluster 1: Suburban (45 groups)
-  - Median area: 210 km²
-  - Median density: 4.8 users/km²
-  - Median urban %: 48%
-  - Examples: Reading, Norwich, Canterbury
+1. Extract best parameters from each optimization database
+2. Calculate coefficient of variation (CV) for each parameter
+3. **Decision:**
+   - **CV < 20%**: Parameters similar → Use **global parameters**
+   - **CV > 20%**: Parameters differ → Use **category-specific parameters**
 
-Cluster 2: Rural Large (28 groups)
-  - Median area: 1,450 km²
-  - Median density: 1.2 users/km²
-  - Median urban %: 15%
-  - Examples: Devon, Cornwall, Highland
-
-Cluster 3: Rural Small (18 groups)
-  - Median area: 320 km²
-  - Median density: 2.1 users/km²
-  - Median urban %: 22%
-  - Examples: Cotswolds, New Forest, Exmoor
-```
-
-**Time:** ~10 seconds
-
-#### Phase 3: Validate Parameter Differences
-
-**Script:** `spiralling_investigation_validate_clusters.php`
-
-Run optimization on **only 3 representatives per cluster** (e.g., 12 total for 4 clusters):
-
-1. For each cluster, optimize parameters on its representatives
-2. For each representative group, select messages with **good geographic spread**
-   - Not just time-based (could all be from one area of the CGA)
-   - Instead: sample messages distributed across the CGA
-   - Ensures optimization sees diverse scenarios
-3. Compare optimized parameters across clusters
-4. Calculate **coefficient of variation (CV)** for each parameter
-5. Determine if differences are significant
-
-**CV Decision Criteria:**
-- **CV < 20%**: Parameters are similar → Use **global parameters**
-- **CV > 20%**: Parameters differ → Use **cluster-specific parameters**
-
-**Message Selection Strategy:**
-Instead of "all messages from date X to Y", we select:
-- **Target**: ~50 messages per group
-- **Method**: Sample messages distributed across the group's CGA
-- **Benefit**: Ensures we see edge cases (center, edges, corners of coverage area)
-
-**Example output:**
-```
-=== Cross-Cluster Analysis ===
-
-Parameter: initialMinutes
-  Cluster 0: 5
-  Cluster 1: 8
-  Cluster 2: 12
-  Cluster 3: 10
-  Mean: 8.75, Stddev: 2.99
-  CV: 34.2% → VARIES SIGNIFICANTLY
-
-Parameter: minUsers
-  Cluster 0: 140
-  Cluster 1: 135
-  Cluster 2: 130
-  Cluster 3: 145
-  Mean: 137.5, Stddev: 6.45
-  CV: 4.7% → CONSISTENT
-
-Parameter: maxMinutes
-  Cluster 0: 45
-  Cluster 1: 75
-  Cluster 2: 120
-  Cluster 3: 90
-  Mean: 82.5, Stddev: 30.9
-  CV: 37.5% → VARIES SIGNIFICANTLY
-
-=== RECOMMENDATION ===
-
-⚠ Parameters VARY SIGNIFICANTLY across clusters
-
-Recommendation: Use CLUSTER-SPECIFIC parameters.
-
-Why: 2 parameter(s) differ significantly:
-  - initialMinutes: CV = 34.2% (range: 5 - 12)
-  - maxMinutes: CV = 37.5% (range: 45 - 120)
-```
-
-**Time:** ~30-60 minutes with defaults
-
-#### Phase 4: Full Optimization
-
-Based on Phase 3 recommendation:
-
-**If GLOBAL (parameters are consistent):**
-```bash
-# Run full optimization with all groups combined
-php spiralling_investigation_optimize_parameters.php --stage=both --iterations=100
-```
-
-**If CLUSTER-SPECIFIC (parameters vary):**
-```bash
-# Run full optimization for each cluster
-php spiralling_investigation_optimize_parameters.php --stage=both \
-  --groups="<cluster_0_group_ids>" --iterations=100
-
-php spiralling_investigation_optimize_parameters.php --stage=both \
-  --groups="<cluster_1_group_ids>" --iterations=100
-
-# etc.
-```
+**If category-specific:** Map ONS categories to parameter sets in production code
 
 ### Bayesian Optimization
 
@@ -570,70 +377,59 @@ For each parameter set:
 ## Complete Workflow Example
 
 ```bash
-# Step 1: Analyze all groups (~2-5 minutes)
+# Step 1: Classify all groups by ONS category (~5-10 minutes)
+cd /var/www/iznik/scripts/cli
 php spiralling_investigation_analyze_group_characteristics.php \
-  --output=/tmp/group_characteristics.csv
+  --output=/tmp/group_characteristics_ons.csv
 
-# Step 2a: Evaluate optimal number of clusters (~30 seconds)
-php spiralling_investigation_cluster_groups.php \
-  --input=/tmp/group_characteristics.csv \
-  --evaluate
+# Review results - check distribution across ONS categories
+head -20 /tmp/group_characteristics_ons.csv
 
-# Review the output and choose k based on metrics + domain knowledge
-# Example: Script recommends k=3, but you choose k=4 for more granularity
-
-# Step 2b: Run actual clustering (~10 seconds)
-php spiralling_investigation_cluster_groups.php \
-  --input=/tmp/group_characteristics.csv \
-  --output=/tmp/group_clusters.csv \
-  --clusters=4
-
-# Step 3: Validate if clusters need different parameters (~30-60 minutes)
-php spiralling_investigation_validate_clusters.php \
-  --representatives=/tmp/group_clusters_representatives.csv \
-  --iterations=50 \
-  --output=/tmp/cluster_validation.json
-
-# The script will output a clear recommendation:
-# - "Use GLOBAL parameters" OR
-# - "Use CLUSTER-SPECIFIC parameters"
-
-# Step 4a: If global (recommended by validation)
+# Step 2: Optimize parameters for each geographic category
+# Urban groups (A1, B1, C1)
 php spiralling_investigation_optimize_parameters.php \
-  --stage=both --iterations=100
+  --categories="A1,B1,C1" \
+  --iterations=100 \
+  --ors-server=http://10.220.0.103:8081/ors \
+  --db-path=/tmp/urban_optimization.db
 
-# Step 4b: If cluster-specific (recommended by validation)
-# Run optimization for each cluster using group IDs from group_clusters.csv
-
+# Suburban groups (C2, D1, D2)
 php spiralling_investigation_optimize_parameters.php \
-  --stage=both --groups="12345,67890,11111" --iterations=100 --db-path=/tmp/cluster_0.db
+  --categories="C2,D1,D2" \
+  --iterations=100 \
+  --ors-server=http://10.220.0.103:8081/ors \
+  --db-path=/tmp/suburban_optimization.db
 
+# Rural groups (E1, E2, F1, F2)
 php spiralling_investigation_optimize_parameters.php \
-  --stage=both --groups="22222,33333,44444" --iterations=100 --db-path=/tmp/cluster_1.db
+  --categories="E1,E2,F1,F2" \
+  --iterations=100 \
+  --ors-server=http://10.220.0.103:8081/ors \
+  --db-path=/tmp/rural_optimization.db
 
-# Step 5: Export results for analysis
-php spiralling_investigation_optimize_parameters.php \
-  --export-csv=/tmp/cluster_0_results.csv --db-path=/tmp/cluster_0.db
+# Step 3: Compare results and decide
+# Extract best parameters from each database
+# Calculate coefficient of variation
+# If CV < 20%: use global parameters
+# If CV > 20%: use category-specific parameters
 ```
 
 ## Why This Approach Works
 
-### Cost Savings
-- **Naive approach**: Optimize all 300+ groups individually = weeks of compute
-- **Smart approach**: Optimize 12 representatives (3 per cluster × 4 clusters) = hours of compute
-- **Savings**: ~95% reduction in computation time
-- **Validity**: Statistical clustering ensures representatives capture diversity
+### No Cost Constraints
+- **Local ORS server**: Unlimited isochrone generation at no cost
+- **Use ALL data**: Simulate every recent message, not just samples
+- **Statistical robustness**: Larger sample sizes = more confident results
 
-### Statistical Validity
-- K-means clustering ensures representatives are centroid-closest (most typical for their cluster)
-- Coefficient of variation (CV) is a robust measure of parameter consistency
-- 3 representatives per cluster provides redundancy and confidence
-- If parameters are consistent across diverse representatives, they'll work for the whole cluster
+### Official Classification
+- **ONS data**: Government-maintained urban/rural classification
+- **Independent of our users**: Classification based on location, not Freegle penetration
+- **Well-researched**: Categories reflect actual travel patterns and demographics
 
-### Actionable Results
-- Clear binary decision: global vs cluster-specific parameters
-- If cluster-specific, you know exactly which groups belong to which cluster
-- Parameters are optimized on actual historical data, not assumptions or guesses
+### Simple and Direct
+- **No clustering needed**: Official ONS categories are the natural groupings
+- **Clear categories**: Urban (A1, B1, C1), Suburban (C2, D1, D2), Rural (E1, E2, F1, F2)
+- **Actionable results**: Direct answer to "Do different areas need different parameters?"
 
 ## Understanding Metrics and Parameters
 
