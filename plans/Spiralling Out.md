@@ -293,7 +293,29 @@ php spiralling_investigation_analyze_group_characteristics.php \
   --output=/tmp/group_characteristics_ons.csv
 ```
 
-**Phase 1 Results:** *(To be populated when analysis completes)*
+**Phase 1 Results:**
+
+Successfully analyzed **489 active Freegle groups** with the following distribution:
+
+**Groups by Type:**
+- **Urban Dense (A1)**: 86 groups (17.6%)
+- **Urban Moderate (B1, C1)**: 151 groups (30.9%)
+- **Suburban (C2, D1, D2)**: 26 groups (5.3%)
+- **Rural Village (E1, E2)**: 101 groups (20.7%)
+- **Rural Sparse (F1, F2)**: 125 groups (25.6%)
+
+**Geographic Statistics:**
+- **Area (km²)**: Min: 3.01, Max: 24,824.87, Median: 192.57
+- **Activity (messages/week)**: Min: 0, Max: 293.75, Median: 13.25
+
+**Key Insights:**
+- Combined Urban categories (A1, B1, C1) represent 48.5% of all groups (237 groups)
+- Rural categories (E1, E2, F1, F2) represent 46.2% of all groups (226 groups)
+- Suburban groups are relatively rare at just 5.3%
+- Wide variation in group size (3 km² to 24,825 km²) suggests parameters may need to vary
+- Activity levels vary dramatically (0 to 294 msg/wk), confirming diverse group characteristics
+
+**Output:** Results exported to `/tmp/group_characteristics_ons.csv`
 
 #### Phase 2: Optimize Parameters by Category
 
