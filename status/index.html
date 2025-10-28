@@ -1027,7 +1027,7 @@
                 });
                 
                 const result = await response.text();
-                if (response.ok) {
+                if (response.ok && result.includes('Go tests completed successfully')) {
                     statusDiv.innerHTML = '<span style="color: #28a745;">✅ Go tests completed successfully</span>';
                     logsDiv.textContent = result;
                     logsDiv.style.display = 'block';
