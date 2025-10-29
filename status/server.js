@@ -235,9 +235,26 @@ async function checkServiceStatus(service) {
               // If fetch fails, check logs for more context
               if (fetchError.code === 'ECONNREFUSED' || fetchError.message.includes('ECONNREFUSED')) {
                 try {
-                  const logs = execSync(`docker logs ${service.container} --tail=10`, { 
-                    encoding: 'utf8', timeout: 1000 
+                  // Get full logs for production container to save to artifact
+                  const tailLines = service.id === 'freegle-prod' ? 1000 : 10;
+                  const logs = execSync(`docker logs ${service.container} --tail=${tailLines}`, {
+                    encoding: 'utf8', timeout: 3000, maxBuffer: 10 * 1024 * 1024
                   });
+
+                  // Save production container logs to artifact file
+                  if (service.id === 'freegle-prod') {
+                    try {
+                      const artifactPath = '/tmp/freegle-prod-build-logs.txt';
+                      fs.writeFileSync(artifactPath, `=== Production Container Build Logs ===\n` +
+                        `Time: ${new Date().toISOString()}\n` +
+                        `Container: ${service.container}\n` +
+                        `Status: Building/Failed\n` +
+                        `\n${logs}`);
+                      console.log(`Saved production logs to ${artifactPath}`);
+                    } catch (saveError) {
+                      console.warn('Failed to save production logs:', saveError.message);
+                    }
+                  }
                   
                   // Check for various build failure patterns
                   if (logs.includes('ERROR') || logs.includes('Build failed') || 
@@ -381,9 +398,26 @@ async function runBackgroundChecks() {
                 // If fetch fails, check logs for more context
                 if (fetchError.code === 'ECONNREFUSED' || fetchError.message.includes('ECONNREFUSED')) {
                   try {
-                    const logs = execSync(`docker logs ${service.container} --tail=10`, { 
-                      encoding: 'utf8', timeout: 1000 
+                    // Get full logs for production container to save to artifact
+                    const tailLines = service.id === 'freegle-prod' ? 1000 : 10;
+                    const logs = execSync(`docker logs ${service.container} --tail=${tailLines}`, {
+                      encoding: 'utf8', timeout: 3000, maxBuffer: 10 * 1024 * 1024
                     });
+
+                    // Save production container logs to artifact file
+                    if (service.id === 'freegle-prod') {
+                      try {
+                        const artifactPath = '/tmp/freegle-prod-build-logs.txt';
+                        fs.writeFileSync(artifactPath, `=== Production Container Build Logs ===\n` +
+                          `Time: ${new Date().toISOString()}\n` +
+                          `Container: ${service.container}\n` +
+                          `Status: Building/Failed\n` +
+                          `\n${logs}`);
+                        console.log(`Saved production logs to ${artifactPath}`);
+                      } catch (saveError) {
+                        console.warn('Failed to save production logs:', saveError.message);
+                      }
+                    }
                     
                     // Check for various build failure patterns
                     if (logs.includes('ERROR') || logs.includes('Build failed') || 
