@@ -433,6 +433,7 @@ commands:
     steps:
       - run:
           name: Collect artifacts
+          when: always
           command: |
             mkdir -p ~/artifacts
 
@@ -441,6 +442,14 @@ commands:
               echo "Collecting Docker logs..."
               docker-compose logs > ~/artifacts/docker-logs.txt 2>&1 || true
               docker-compose ps > ~/artifacts/docker-status.txt 2>&1 || true
+            fi
+
+            # Collect production container build logs artifact from status container
+            echo "Collecting production container build logs..."
+            if docker cp freegle-status:/tmp/freegle-prod-build-logs.txt ~/artifacts/freegle-prod-build-logs.txt 2>/dev/null; then
+              echo "✅ Production build logs collected from status container ($(stat -c%s ~/artifacts/freegle-prod-build-logs.txt) bytes)"
+            else
+              echo "⚠️ Production build logs not found in status container"
             fi
 
             # Collect cron script logs and error logs
