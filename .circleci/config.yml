@@ -433,7 +433,6 @@ commands:
     steps:
       - run:
           name: Collect artifacts
-          when: always
           command: |
             mkdir -p ~/artifacts
 
