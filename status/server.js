@@ -50,7 +50,8 @@ const services = [
   // Freegle Components
   { id: 'freegle-dev', container: 'freegle-freegle-dev', checkType: 'freegle-component', category: 'freegle' },
   { id: 'freegle-prod', container: 'freegle-freegle-prod', checkType: 'freegle-component', category: 'freegle' },
-  { id: 'modtools', container: 'freegle-modtools', checkType: 'freegle-component', category: 'freegle' },
+  { id: 'modtools-dev', container: 'freegle-modtools-dev', checkType: 'freegle-component', category: 'freegle' },
+  { id: 'modtools-prod', container: 'freegle-modtools-prod', checkType: 'freegle-component', category: 'freegle' },
   { id: 'apiv1', container: 'freegle-apiv1', checkType: 'api-service', category: 'freegle' },
   { id: 'apiv2', container: 'freegle-apiv2', checkType: 'api-service', category: 'freegle' },
   
@@ -215,9 +216,12 @@ async function checkServiceStatus(service) {
           } else if (service.id === 'freegle-prod') {
             testUrl = 'http://freegle-freegle-prod:3003/';
             testDescription = 'Freegle Prod site responding';
-          } else if (service.id === 'modtools') {
-            testUrl = 'http://freegle-modtools:3000/';
-            testDescription = 'ModTools site responding';
+          } else if (service.id === 'modtools-dev') {
+            testUrl = 'http://freegle-modtools-dev:3000/';
+            testDescription = 'ModTools Dev site responding';
+          } else if (service.id === 'modtools-prod') {
+            testUrl = 'http://freegle-modtools-prod:3003/';
+            testDescription = 'ModTools Prod site responding';
           }
           
           if (testUrl) {
@@ -375,9 +379,12 @@ async function runBackgroundChecks() {
             } else if (service.id === 'freegle-prod') {
               testUrl = 'http://freegle-freegle-prod:3003/';
               testDescription = 'Freegle Prod site responding';
-            } else if (service.id === 'modtools') {
-              testUrl = 'http://freegle-modtools:3000/';
-              testDescription = 'ModTools site responding';
+            } else if (service.id === 'modtools-dev') {
+              testUrl = 'http://freegle-modtools-dev:3000/';
+              testDescription = 'ModTools Dev site responding';
+            } else if (service.id === 'modtools-prod') {
+              testUrl = 'http://freegle-modtools-prod:3003/';
+              testDescription = 'ModTools Prod site responding';
             }
             
             if (testUrl) {
@@ -1765,9 +1772,12 @@ const httpServer = http.createServer(async (req, res) => {
       } else if (service === 'freegle-prod') {
         testUrl = 'http://freegle-freegle-prod:3003/';
         testDescription = 'Freegle Prod site responding';
-      } else if (service === 'modtools') {
-        testUrl = 'http://freegle-modtools:3000/';
-        testDescription = 'ModTools site responding';
+      } else if (service === 'modtools-dev') {
+        testUrl = 'http://freegle-modtools-dev:3000/';
+        testDescription = 'ModTools Dev site responding';
+      } else if (service === 'modtools-prod') {
+        testUrl = 'http://freegle-modtools-prod:3003/';
+        testDescription = 'ModTools Prod site responding';
       } else {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Unknown service');
@@ -1794,7 +1804,8 @@ const httpServer = http.createServer(async (req, res) => {
           let containerName = '';
           if (service === 'freegle-dev') containerName = 'freegle-freegle-dev';
           else if (service === 'freegle-prod') containerName = 'freegle-freegle-prod';
-          else if (service === 'modtools') containerName = 'freegle-modtools';
+          else if (service === 'modtools-dev') containerName = 'freegle-modtools-dev';
+          else if (service === 'modtools-prod') containerName = 'freegle-modtools-prod';
           else if (service === 'apiv1') containerName = 'freegle-apiv1';
           else if (service === 'apiv2') containerName = 'freegle-apiv2';
           

@@ -1,7 +1,7 @@
 - Always restart the status monitor after making changes to its code.
 - Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
-- You don't need to rebuild the Freegle Dev or ModTools containers to pick up code fixes - they run nuxt dev which will do that.
-- The Freegle Production container requires a full rebuild to pick up code changes since it runs a production build.
+- You don't need to rebuild the Freegle Dev or ModTools Dev containers to pick up code fixes - they run nuxt dev which will do that.
+- The Freegle Production and ModTools Production containers require a full rebuild to pick up code changes since they run production builds.
 - The API v2 (Go) container requires a full rebuild to pick up code changes: `docker-compose build apiv2 && docker-compose up -d apiv2`
 - After making changes to the status code, remember to restart the container
 - When running in a docker compose environment and making changes, be careful to copy them to the container.
@@ -13,6 +13,13 @@
 - **freegle-prod** (`freegle-prod.localhost`): Production mode with `npm run build`, full optimization, slower startup
 - Both containers use the same codebase but different Dockerfiles and environment configurations
 - Production container uses `Dockerfile.prod` with hardcoded production build process
+
+### ModTools Development vs Production
+- **modtools** (`modtools.localhost`): Development mode with `npm run dev`, fast startup, hot reloading
+- **modtools-prod** (`modtools-prod.localhost`): Production mode with `npm run build`, full optimization, slower startup
+- Both containers use the same codebase but different Dockerfiles and environment configurations
+- Development container uses `modtools/Dockerfile` and production container uses `Dockerfile.prod`
+- Production container requires a full rebuild to pick up code changes since it runs a production build
 
 ## Networking Configuration
 
@@ -126,3 +133,4 @@ When all tests pass successfully in CircleCI, the system automatically:
 - When making app changes, remember to update README-APP.md
 - When you make changes to Go code, you need to rebuild the v2 API container and check it starts successfully.
 - Never add Claude Code to commit messages
+- Don't commit unless you've been told to - you're committing code with bugs in before testing.

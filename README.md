@@ -38,7 +38,8 @@ Add these to your hosts file:
 127.0.0.1 freegle.localhost
 127.0.0.1 freegle-dev.localhost
 127.0.0.1 freegle-prod.localhost
-127.0.0.1 modtools.localhost
+127.0.0.1 modtools-dev.localhost
+127.0.0.1 modtools-prod.localhost
 127.0.0.1 phpmyadmin.localhost
 127.0.0.1 mailhog.localhost
 127.0.0.1 tusd.localhost
@@ -190,21 +191,23 @@ All containers use consistent `freegle-*` naming:
 
 ```bash
 # View logs
-docker logs freegle-freegle-dev    # Development Freegle site
-docker logs freegle-freegle-prod   # Production Freegle site
-docker logs freegle-modtools       # ModTools site
-docker logs freegle-apiv1          # PHP API
-docker logs freegle-apiv2          # Go API
-docker logs freegle-status         # Status monitor
-docker logs freegle-delivery       # Image delivery service
-docker logs freegle-playwright     # Test runner
+docker logs freegle-freegle-dev      # Development Freegle site
+docker logs freegle-freegle-prod     # Production Freegle site
+docker logs freegle-modtools-dev     # ModTools development site
+docker logs freegle-modtools-prod    # ModTools production site
+docker logs freegle-apiv1            # PHP API
+docker logs freegle-apiv2            # Go API
+docker logs freegle-status           # Status monitor
+docker logs freegle-delivery         # Image delivery service
+docker logs freegle-playwright       # Test runner
 
-# Execute commands in containers  
+# Execute commands in containers
 docker exec -it freegle-freegle-dev bash
 docker exec -it freegle-percona mysql -u root -piznik
 
 # Restart specific services
-docker restart freegle-modtools
+docker restart freegle-modtools-dev
+docker restart freegle-modtools-prod
 docker restart freegle-status
 ```
 
@@ -215,21 +218,22 @@ Once all services show as **Running** in the status monitor, you can access:
 ## Status & Monitoring
 * **[Status Monitor](http://localhost:8081)** - Real-time service health with CPU monitoring, visit buttons, and container management
   - **Restart Button** - Available for all containers to quickly restart services
-  - **Rebuild Button** - Available for containers with build context (freegle, modtools, apiv1, apiv2, status) to rebuild and restart
+  - **Rebuild Button** - Available for containers with build context (freegle-dev, freegle-prod, modtools-dev, modtools-prod, apiv1, apiv2, status) to rebuild and restart
   - **Playwright Test Runner** - Run end-to-end tests with real-time progress tracking and HTML reports
   
   > ⚠️ **Development Tool Notice**: The status monitor and test runner functionality was created by [Claude Code](https://claude.ai/code) and is intended for development use only. It is not production-quality code and should not be used in production environments.
 
 ## Main Applications
 * **[Freegle Dev](https://freegle-dev.localhost)** - User site development version (Login: `test@test.com` / `freegle`)
-* **[Freegle Prod](https://freegle-prod.localhost)** - User site production build (Login: `test@test.com` / `freegle`) 
-* **[ModTools](https://modtools.localhost)** - Moderator site (Login: `testmod@test.com` / `freegle`)
+* **[Freegle Prod](https://freegle-prod.localhost)** - User site production build (Login: `test@test.com` / `freegle`)
+* **[ModTools Dev](https://modtools-dev.localhost)** - Moderator site development version (Login: `testmod@test.com` / `freegle`)
+* **[ModTools Prod](https://modtools-prod.localhost)** - Moderator site production build (Login: `testmod@test.com` / `freegle`)
 
-**Note:** It's normal for Freegle Dev and ModTools pages to reload a few times on first view - 
-this is expected Nuxt.js development mode behavior. The Freegle Prod container runs a production 
-build for testing production-like behavior. Also, `nuxt dev` uses HTTP/1.1 which 
-serializes asset loading, making it slower than the live system which uses HTTP/2.  
-This means the page load can be quite slow until the browser has cached the code.  
+**Note:** It's normal for Freegle Dev and ModTools Dev pages to reload a few times on first view -
+this is expected Nuxt.js development mode behavior. The Freegle Prod and ModTools Prod containers run production
+builds for testing production-like behavior. Also, `nuxt dev` uses HTTP/1.1 which
+serializes asset loading, making it slower than the live system which uses HTTP/2.
+This means the page load can be quite slow until the browser has cached the code.
 You can see this via 'Pending' calls in the Network tab.
 
 ## Development Tools
@@ -346,7 +350,6 @@ For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md
 # Limitations
 
 * This doesn't run most of the various background jobs, so it won't be sending out emails in the way the live system would.
-* We don't yet have a development container for ModTools - only production build is available.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
 
 </details>

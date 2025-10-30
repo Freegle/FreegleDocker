@@ -78,16 +78,26 @@
             </div>
         </div>
         
-        <div id="modtools" class="service loading">
+        <div id="modtools-dev" class="service loading">
             <div>
-                <strong>ModTools (Moderator Site)</strong> - iznik-nuxt3/modtools<br>
-                <span class="url">http://modtools.localhost</span><br>
+                <strong>ModTools Dev (Moderator Site)</strong> - iznik-nuxt3-modtools development<br>
+                <span class="url">http://modtools-dev.localhost</span><br>
                 <small>Login: testmod@test.com / freegle</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-modtools</small><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-modtools-dev</small><br>
                 <span class="status">Loading...</span>
             </div>
         </div>
-        
+
+        <div id="modtools-prod" class="service loading">
+            <div>
+                <strong>ModTools Prod (Moderator Site)</strong> - iznik-nuxt3-modtools production<br>
+                <span class="url">http://modtools-prod.localhost</span><br>
+                <small>Login: testmod@test.com / freegle</small><br>
+                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-modtools-prod</small><br>
+                <span class="status">Loading...</span>
+            </div>
+        </div>
+
         <div id="apiv1" class="service loading">
             <div>
                 <strong>API v1 (Legacy PHP)</strong> - iznik-server<br>
@@ -296,7 +306,8 @@
         const services = [
             { id: 'freegle-dev', container: 'freegle-freegle-dev' },
             { id: 'freegle-prod', container: 'freegle-freegle-prod' },
-            { id: 'modtools', container: 'freegle-modtools' },
+            { id: 'modtools-dev', container: 'freegle-modtools-dev' },
+            { id: 'modtools-prod', container: 'freegle-modtools-prod' },
             { id: 'apiv1', container: 'freegle-apiv1' },
             { id: 'apiv2', container: 'freegle-apiv2' },
             { id: 'phpmyadmin', container: 'freegle-phpmyadmin' },
@@ -314,14 +325,16 @@
 
         function addActionButtons(service, element) {
             // Add visit button for web services
-            if (service.id === 'freegle-dev' || service.id === 'freegle-prod' || service.id === 'modtools') {
-                const serviceUrl = service.id === 'freegle-dev' ? 'http://freegle-dev.localhost' : 
-                                 service.id === 'freegle-prod' ? 'http://freegle-prod.localhost' : 
-                                 'http://modtools.localhost';
-                const serviceName = service.id === 'freegle-dev' ? 'Freegle Dev' : 
-                                  service.id === 'freegle-prod' ? 'Freegle Prod' : 
-                                  'ModTools';
-                
+            if (service.id === 'freegle-dev' || service.id === 'freegle-prod' || service.id === 'modtools-dev' || service.id === 'modtools-prod') {
+                const serviceUrl = service.id === 'freegle-dev' ? 'http://freegle-dev.localhost' :
+                                 service.id === 'freegle-prod' ? 'http://freegle-prod.localhost' :
+                                 service.id === 'modtools-dev' ? 'http://modtools-dev.localhost' :
+                                 'http://modtools-prod.localhost';
+                const serviceName = service.id === 'freegle-dev' ? 'Freegle Dev' :
+                                  service.id === 'freegle-prod' ? 'Freegle Prod' :
+                                  service.id === 'modtools-dev' ? 'ModTools Dev' :
+                                  'ModTools Prod';
+
                 if (!element.querySelector('.visit-button')) {
                     const visitButton = document.createElement('a');
                     visitButton.href = serviceUrl;
@@ -332,6 +345,10 @@
                     visitButton.style.right = '10px';
                     visitButton.style.bottom = '10px';
                     visitButton.style.zIndex = '1000';
+                    // Add top padding for ModTools buttons to account for CPU indicator
+                    if (service.id === 'modtools-dev' || service.id === 'modtools-prod') {
+                        visitButton.style.marginTop = '30px';
+                    }
                     element.appendChild(visitButton);
                 }
             } else if (service.id === 'phpmyadmin' || service.id === 'mailhog') {
@@ -382,7 +399,7 @@
             }
             
             // Rebuild button (for containers that can be rebuilt - those with build context)
-            if (['freegle-dev', 'freegle-prod', 'modtools', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
+            if (['freegle-dev', 'freegle-prod', 'modtools-dev', 'modtools-prod', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
                 if (!actionsDiv.querySelector('.rebuild-btn')) {
                     const rebuildBtn = document.createElement('button');
                     rebuildBtn.className = 'action-button danger rebuild-btn';
