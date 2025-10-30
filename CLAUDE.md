@@ -122,7 +122,6 @@ When all tests pass successfully in CircleCI, the system automatically:
 - **Playwright Tests**: `curl -X POST http://localhost:8081/api/tests/playwright`
 
 - When removing code, never leave comments about what used to be there, or "this is now" stuff - the code should reflect the current behaviour.
-- When making changes to iznik-nuxt3, don't make the corresponding changes to the modtools branch which contains the same code.  That will get handled later via merge.
 - When creating temporary scripts to run, put them in /tmp.  That way they won't clutter up git.
 - When making app changes, remember to update README-APP.md
 - When you make changes to Go code, you need to rebuild the v2 API container and check it starts successfully.
