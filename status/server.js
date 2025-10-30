@@ -220,7 +220,7 @@ async function checkServiceStatus(service) {
             testUrl = 'http://freegle-modtools-dev:3000/';
             testDescription = 'ModTools Dev site responding';
           } else if (service.id === 'modtools-prod') {
-            testUrl = 'http://freegle-modtools-prod:3003/';
+            testUrl = 'http://freegle-modtools-prod:3001/';
             testDescription = 'ModTools Prod site responding';
           }
           
@@ -383,7 +383,7 @@ async function runBackgroundChecks() {
               testUrl = 'http://freegle-modtools-dev:3000/';
               testDescription = 'ModTools Dev site responding';
             } else if (service.id === 'modtools-prod') {
-              testUrl = 'http://freegle-modtools-prod:3003/';
+              testUrl = 'http://freegle-modtools-prod:3001/';
               testDescription = 'ModTools Prod site responding';
             }
             

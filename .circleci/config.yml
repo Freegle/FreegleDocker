@@ -231,12 +231,12 @@ commands:
             done
 
   wait-for-prod-container:
-    description: "Wait for production container to be healthy"
+    description: "Wait for production containers to be healthy"
     steps:
       - run:
-          name: Wait for production container to be healthy
+          name: Wait for production containers to be healthy
           command: |
-            echo "⏳ Waiting for production container to be fully healthy before Playwright tests..."
+            echo "⏳ Waiting for production containers to be fully healthy before Playwright tests..."
 
             start_time=$(date +%s)
             timeout_duration=1200  # 20 minutes for prod build
@@ -246,25 +246,31 @@ commands:
               elapsed=$((current_time - start_time))
 
               if [ $elapsed -gt $timeout_duration ]; then
-                echo "❌ Timeout waiting for production container after 20 minutes"
+                echo "❌ Timeout waiting for production containers after 20 minutes"
                 exit 1
               fi
 
-              # Check prod container health specifically
+              # Check both prod containers health
               health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
-              prod_status=$(echo "$health_response" | jq -r '.["freegle-prod"].status // "unknown"')
+              freegle_prod_status=$(echo "$health_response" | jq -r '.["freegle-prod"].status // "unknown"')
+              modtools_prod_status=$(echo "$health_response" | jq -r '.["modtools-prod"].status // "unknown"')
 
-              if [ "$prod_status" = "success" ]; then
-                echo "✅ Production container is healthy and ready for Playwright tests!"
+              if [ "$freegle_prod_status" = "success" ] && [ "$modtools_prod_status" = "success" ]; then
+                echo "✅ Both production containers are healthy and ready for Playwright tests!"
                 break
               else
                 elapsed_min=$((elapsed / 60))
-                echo "[${elapsed_min}m] Production container status: $prod_status - waiting..."
+                echo "[${elapsed_min}m] Freegle Prod: $freegle_prod_status | ModTools Prod: $modtools_prod_status - waiting..."
 
-                # Show prod container logs if it's having issues
-                if [ "$prod_status" = "failed" ] || [ "$prod_status" = "error" ]; then
-                  echo "Production container logs (last 10 lines):"
+                # Show container logs if they're having issues
+                if [ "$freegle_prod_status" = "failed" ] || [ "$freegle_prod_status" = "error" ]; then
+                  echo "Freegle Production container logs (last 10 lines):"
                   docker logs freegle-freegle-prod --tail 10 2>&1 || true
+                fi
+
+                if [ "$modtools_prod_status" = "failed" ] || [ "$modtools_prod_status" = "error" ]; then
+                  echo "ModTools Production container logs (last 10 lines):"
+                  docker logs freegle-modtools-prod --tail 10 2>&1 || true
                 fi
 
                 sleep 15
