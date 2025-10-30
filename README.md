@@ -54,6 +54,39 @@ Add these to your hosts file:
 
 Feel free to write this.
 
+### Git Hooks Setup
+
+This repository uses git hooks to ensure submodule commits are pushed before the parent repository. This prevents CircleCI build failures.
+
+**For Linux/WSL users:**
+```bash
+bash setup-hooks.sh
+```
+
+**For Windows users (Command Prompt):**
+```cmd
+setup-hooks.cmd
+```
+
+**For PhpStorm users on Windows:**
+
+If you're using PhpStorm on Windows, the git hooks may not work correctly by default. See [PHPSTORM-GIT-SETUP.md](PHPSTORM-GIT-SETUP.md) for detailed configuration instructions including:
+- Configuring PhpStorm to use Git Bash
+- Setting up automatic submodule push before parent push
+- Troubleshooting common git hook issues on Windows
+
+**Quick Push Command:**
+
+To push submodules and parent repository in one command:
+```bash
+bash push-with-submodules.sh
+```
+
+Or use the git command directly:
+```bash
+git submodule foreach 'git push' && git push
+```
+
 ## Configuration
 
 The system can be customized through environment variables in a `.env` file. Copy `.env.example` to `.env` and modify as needed. The basic system will work without any configuration, but some features require API keys.

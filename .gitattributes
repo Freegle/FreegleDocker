@@ -1,0 +1,14 @@
+# Git attributes for FreegleDocker
+
+# Bash scripts must always use LF (Unix) line endings, even on Windows
+*.sh text eol=lf
+
+# Windows batch files should use CRLF line endings
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Markdown and documentation can use platform-native line endings
+*.md text
+
+# Git hooks should always use LF (they are bash scripts)
+.git/hooks/* text eol=lf
