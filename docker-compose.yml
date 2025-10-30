@@ -163,7 +163,8 @@ services:
       - tusd
       - freegle-dev
       - freegle-prod
-      - modtools
+      - modtools-dev
+      - modtools-prod
     extra_hosts:
       - "tusd.localhost:host-gateway"
     volumes:
@@ -497,16 +498,16 @@ services:
       - "traefik.http.routers.freegle-prod.entrypoints=web"
       - "traefik.http.services.freegle-prod.loadbalancer.server.port=3003"
 
-  modtools:
-    container_name: freegle-modtools
+  modtools-dev:
+    container_name: freegle-modtools-dev
     networks:
       default:
         aliases:
-          - modtools.localhost
+          - modtools-dev.localhost
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
-    build: 
+    build:
       context: .
       dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
       args:
@@ -537,7 +538,7 @@ services:
       # END
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools.localhost:3000
+      - USER_SITE=http://modtools-dev.localhost:3000
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=true
@@ -546,9 +547,63 @@ services:
       - NUXT_BUILD_MODE=development
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.modtools.rule=Host(`modtools.localhost`)"
-      - "traefik.http.routers.modtools.entrypoints=web"
-      - "traefik.http.services.modtools.loadbalancer.server.port=3000"
+      - "traefik.http.routers.modtools-dev.rule=Host(`modtools-dev.localhost`)"
+      - "traefik.http.routers.modtools-dev.entrypoints=web"
+      - "traefik.http.services.modtools-dev.loadbalancer.server.port=3000"
+
+  modtools-prod:
+    container_name: freegle-modtools-prod
+    networks:
+      default:
+        aliases:
+          - modtools-prod.localhost
+    extra_hosts:
+      - "apiv1.localhost:host-gateway"
+      - "apiv2.localhost:host-gateway"
+    build:
+      context: .
+      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile.prod
+      args:
+        IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
+    tmpfs:
+      - /tmp
+    depends_on:
+      phpmyadmin:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      apiv1:
+        condition: service_started
+      apiv2:
+        condition: service_started
+    restart: "no"
+    environment:
+      # LIVE SERVER MODE - pointing at production APIs
+      - IZNIK_API_V1=https://fdapidbg.ilovefreegle.org/api
+      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      - IMAGE_DELIVERY=https://images.ilovefreegle.org
+      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
+      # LOCAL SERVER MODE (comment out above, uncomment below)
+#      - IZNIK_API_V1=http://apiv1.localhost/api
+#      - IZNIK_API_V2=http://apiv2.localhost/api
+#      - IMAGE_DELIVERY=http://delivery.localhost
+#      - TUS_UPLOADER=http://tusd.localhost/tus/
+      # END
+      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
+      - TUSD_URL=http://freegle-tusd:8080
+      - USER_SITE=http://modtools-prod.localhost:3001
+      - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
+      - NITRO_PRESET=node-server
+      - NUXT_DEV_MODE=false
+      - NUXT_SSR_LOG=false
+      - NODE_ENV=production
+      - NUXT_BUILD_MODE=production
+      - TEST_BASE_URL=http://127.0.0.1:3001
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.modtools-prod.rule=Host(`modtools-prod.localhost`)"
+      - "traefik.http.routers.modtools-prod.entrypoints=web"
+      - "traefik.http.services.modtools-prod.loadbalancer.server.port=3001"
 
   playwright:
     container_name: freegle-playwright
