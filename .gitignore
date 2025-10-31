@@ -7,3 +7,5 @@
 /ssl/
 /.env
 /rebuild-monitor.log
+yesterday/.env
+yesterday/data/

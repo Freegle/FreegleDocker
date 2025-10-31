@@ -1,0 +1,89 @@
+version: '3.8'
+
+# Yesterday Environment - Phase 1 (Day 0 only)
+# Simple backup restoration environment with basic auth
+
+services:
+  # Traefik reverse proxy
+  yesterday-traefik:
+    image: traefik:v2.10
+    container_name: yesterday-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=geeks@ilovefreegle.org"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+    networks:
+      - default
+    restart: unless-stopped
+
+  # Database for Day 0
+  yesterday-0-db:
+    image: mariadb:10.6
+    container_name: yesterday-0-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=iznik
+    volumes:
+      - yesterday-0-db-data:/var/lib/mysql
+      - yesterday-0-db-backups:/backups
+    networks:
+      - default
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mailhog for Day 0 (captures all outbound email)
+  yesterday-0-mailhog:
+    image: mailhog/mailhog:latest
+    container_name: yesterday-0-mailhog
+    networks:
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailhog-0.rule=Host(`mail.yesterday-0.ilovefreegle.org`)"
+      - "traefik.http.routers.mailhog-0.entrypoints=websecure"
+      - "traefik.http.routers.mailhog-0.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mailhog-0.loadbalancer.server.port=8025"
+    restart: unless-stopped
+
+  # Index/status page
+  yesterday-index:
+    image: nginx:alpine
+    container_name: yesterday-index
+    volumes:
+      - ./index:/usr/share/nginx/html:ro
+    networks:
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.yesterday-index.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.yesterday-index.entrypoints=websecure"
+      - "traefik.http.routers.yesterday-index.tls.certresolver=letsencrypt"
+      - "traefik.http.services.yesterday-index.loadbalancer.server.port=80"
+    restart: unless-stopped
+
+volumes:
+  yesterday-0-db-data:
+    driver: local
+  yesterday-0-db-backups:
+    driver: local
+
+networks:
+  default:
+    name: yesterday-network

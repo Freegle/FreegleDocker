@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Freegle Yesterday - Historical Snapshots</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      max-width: 900px;
+      margin: 50px auto;
+      padding: 0 20px;
+      line-height: 1.6;
+      color: #333;
+    }
+    h1 {
+      color: #2e7d32;
+      border-bottom: 3px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .warning {
+      background: #fff3cd;
+      border: 2px solid #ffc107;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .warning h3 {
+      margin-top: 0;
+      color: #856404;
+    }
+    .warning ul {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    .day {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      background: white;
+    }
+    .day.active {
+      background: #e8f5e9;
+      border-color: #4CAF50;
+      border-width: 2px;
+    }
+    .day h2 {
+      margin: 0 0 10px 0;
+      color: #2e7d32;
+    }
+    .day .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+    .status.running {
+      background: #4CAF50;
+      color: white;
+    }
+    .status.stopped {
+      background: #999;
+      color: white;
+    }
+    .links {
+      margin-top: 15px;
+    }
+    .links a {
+      display: inline-block;
+      margin: 5px 10px 5px 0;
+      padding: 10px 20px;
+      background: #4CAF50;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    .links a:hover {
+      background: #45a049;
+    }
+    .info {
+      background: #f5f5f5;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #ddd;
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>🕐 Freegle Yesterday - Historical Snapshots</h1>
+
+  <p>Welcome to the Yesterday environment! This system provides access to historical production backups for data recovery, testing, and analysis.</p>
+
+  <div class="warning">
+    <h3>⚠️ Important Information</h3>
+    <ul>
+      <li><strong>Login:</strong> Only email/password logins work. OAuth providers (Yahoo, Google, Facebook) are disabled because they're configured for production domains only.</li>
+      <li><strong>Email:</strong> All outbound email is captured in Mailhog - no external mail is sent from this environment.</li>
+      <li><strong>Data:</strong> This is historical production data with the latest code from the repositories.</li>
+      <li><strong>Read-Only Intent:</strong> While technically writable, changes here don't affect production. Use for testing and data recovery only.</li>
+    </ul>
+  </div>
+
+  <h2>Available Snapshots</h2>
+
+  <!-- Day 0 - Most Recent -->
+  <div class="day active">
+    <h2>
+      Day 0 - Most Recent Backup
+      <span class="status running">● RUNNING</span>
+    </h2>
+    <p><strong>Backup Date:</strong> <em>Check database container logs for actual date</em></p>
+    <p>This is the most recent nightly backup, typically from early morning UTC.</p>
+    <div class="links">
+      <a href="https://mail.yesterday-0.ilovefreegle.org" target="_blank">📧 Open Mailhog</a>
+    </div>
+    <p style="font-size: 14px; color: #666; margin-top: 15px;">
+      <strong>Note:</strong> Freegle and ModTools containers need to be added to the docker-compose configuration to access the full application.
+    </p>
+  </div>
+
+  <div class="info">
+    <h3>📚 Technical Details</h3>
+    <ul>
+      <li><strong>Environment:</strong> Google Cloud Platform VM (freegle-yesterday project)</li>
+      <li><strong>Backup Source:</strong> gs://freegle_backup_uk</li>
+      <li><strong>Backup Format:</strong> Percona XtraBackup (xbstream)</li>
+      <li><strong>Restoration:</strong> Automated nightly at 2 AM UTC</li>
+      <li><strong>SSL:</strong> Let's Encrypt certificates via Traefik</li>
+    </ul>
+  </div>
+
+  <div class="info">
+    <h3>🔧 Quick Commands (On VM)</h3>
+    <pre style="background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto;">
+# View running containers
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday.yml ps
+
+# View logs
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday.yml logs -f
+
+# Manually restore Day 0
+cd /var/www/FreegleDocker/yesterday
+./scripts/restore-day.sh 0
+
+# Access database
+docker exec -it yesterday-0-db mysql -uroot -p</pre>
+  </div>
+
+  <footer>
+    <p><strong>Project:</strong> freegle-yesterday (GCP)</p>
+    <p><strong>Documentation:</strong> /var/www/FreegleDocker/yesterday/README.md</p>
+    <p><strong>Planning Document:</strong> /var/www/FreegleDocker/plans/Yesterday.md</p>
+  </footer>
+</body>
+</html>
