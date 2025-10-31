@@ -264,6 +264,8 @@ mv yesterday-0-data yesterday-1-data
 
 **Landing Page: `yesterday.ilovefreegle.org`**
 
+This is the page users see after passing 2FA authentication.
+
 Simple HTML page served via nginx showing:
 
 ```html
@@ -302,86 +304,159 @@ Simple HTML page served via nginx showing:
                      100% { transform: rotate(360deg); } }
   </style>
   <script>
-    function switchDay(day) {
-      // Show loading modal
-      document.getElementById('switching-modal').style.display = 'block';
-      document.getElementById('switching-day').textContent = day;
+    let progressInterval;
 
-      // Call API to switch day
-      fetch('/api/switch-day?day=' + day, { method: 'POST' })
+    function startDay(day) {
+      const button = event.target;
+      button.disabled = true;
+      button.textContent = 'Starting...';
+
+      // Show progress modal
+      document.getElementById('progress-modal').style.display = 'block';
+      document.getElementById('progress-day').textContent = day;
+
+      // Call API to start day
+      fetch('/api/start-day?day=' + day, { method: 'POST' })
         .then(response => response.json())
         .then(data => {
-          // Poll for completion
-          checkSwitchStatus(day);
+          if (data.status === 'starting' || data.status === 'running') {
+            // Poll for progress updates
+            progressInterval = setInterval(() => checkProgress(day), 2000);
+          }
         })
         .catch(error => {
-          alert('Error switching day: ' + error);
-          document.getElementById('switching-modal').style.display = 'none';
+          alert('Error starting day: ' + error);
+          button.disabled = false;
+          button.textContent = 'Start Day ' + day;
+          document.getElementById('progress-modal').style.display = 'none';
         });
     }
 
-    function checkSwitchStatus(day) {
-      fetch('/api/switch-status')
+    function checkProgress(day) {
+      fetch('/api/start-progress?day=' + day)
         .then(response => response.json())
         .then(data => {
-          if (data.switching) {
-            // Still switching, check again in 5 seconds
-            setTimeout(() => checkSwitchStatus(day), 5000);
-          } else {
-            // Done switching, reload page
-            window.location.reload();
+          updateProgress(data);
+
+          if (data.status === 'running') {
+            // Completed
+            clearInterval(progressInterval);
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
           }
         });
+    }
+
+    function updateProgress(data) {
+      const messages = {
+        'starting_db': 'Starting database container...',
+        'decompressing': 'Decompressing backup (~2 min)...',
+        'importing': 'Importing database (~3-5 min)...',
+        'starting_services': 'Starting application containers...',
+        'running': 'Ready!'
+      };
+
+      const estimates = {
+        'starting_db': '10 sec remaining',
+        'decompressing': '~2 min remaining',
+        'importing': '~3-5 min remaining',
+        'starting_services': '~30 sec remaining',
+        'running': 'Complete'
+      };
+
+      document.getElementById('progress-status').textContent =
+        messages[data.step] || 'Starting...';
+      document.getElementById('progress-estimate').textContent =
+        estimates[data.step] || '';
+
+      // Update progress bar (rough estimates)
+      const progress = {
+        'starting_db': 10,
+        'decompressing': 30,
+        'importing': 70,
+        'starting_services': 90,
+        'running': 100
+      };
+      document.getElementById('progress-bar').style.width =
+        (progress[data.step] || 0) + '%';
     }
   </script>
 </head>
 <body>
   <h1>Freegle Yesterday - Historical Snapshots</h1>
-  <p>Protected environment containing production backups with latest code.</p>
+  <p>Welcome! You've successfully authenticated. This environment provides access to historical production backups for data recovery and testing.</p>
 
   <div class="warning">
-    <h3>⚠️ Important Limitations</h3>
+    <h3>⚠️ Important Information</h3>
     <ul>
       <li><strong>Login:</strong> Only email/password logins work. OAuth providers (Yahoo, Google, Facebook) are disabled because they're configured for production domains.</li>
       <li><strong>Email:</strong> All email is captured in Mailhog - no external mail is sent.</li>
       <li><strong>Data:</strong> Historical production data with current/latest code.</li>
-      <li><strong>One Day Active:</strong> Only one day can run at a time. Click "Load" to switch days (takes 2-3 minutes).</li>
+      <li><strong>Multiple Days:</strong> Multiple days can run simultaneously. Each auto-shuts down after 1 hour of no traffic, or at midnight UTC.</li>
+      <li><strong>Access:</strong> Your IP is authorized for 24 hours. You'll need to re-authenticate tomorrow.</li>
     </ul>
   </div>
 
-  <!-- Active Day (currently running) -->
+  <!-- Running Day (active) -->
   <div class="day active">
-    <h2>Day 0 - Most Recent ({{ date-0 }}) <span style="color: #2e7d32;">● ACTIVE</span></h2>
+    <h2>Day 0 - Most Recent ({{ date-0 }}) <span style="color: #2e7d32;">● RUNNING</span></h2>
     <p>This environment is currently running and accessible.</p>
     <div class="links">
-      <a href="https://fd.yesterday.ilovefreegle.org" target="_blank">Open Freegle</a>
-      <a href="https://mt.yesterday.ilovefreegle.org" target="_blank">Open ModTools</a>
-      <a href="https://mail.yesterday.ilovefreegle.org" target="_blank">Open Mailhog</a>
+      <a href="https://fd.yesterday-0.ilovefreegle.org" target="_blank">Open Freegle</a>
+      <a href="https://mt.yesterday-0.ilovefreegle.org" target="_blank">Open ModTools</a>
+      <a href="https://mail.yesterday-0.ilovefreegle.org" target="_blank">Open Mailhog</a>
     </div>
+    <p style="color: #666; font-size: 14px; margin-top: 10px;">
+      Auto-shutdown: after 1 hour idle or at midnight UTC
+    </p>
   </div>
 
-  <!-- Inactive Days (data on disk, not running) -->
+  <!-- Stopped Day (data available) -->
   <div class="day">
-    <h2>Day 1 - Yesterday ({{ date-1 }})</h2>
-    <p>Data available on disk ({{ size-1 }} GB). Click "Load" to switch to this backup.</p>
+    <h2>Day 1 - Yesterday ({{ date-1 }}) <span style="color: #999;">● STOPPED</span></h2>
+    <p>Data available on disk ({{ size-1 }} GB). Click "Start" to launch this backup.</p>
     <div class="links">
-      <button class="load" onclick="switchDay(1)">Load Day 1</button>
-      <span class="status">Takes 2-3 minutes to switch</span>
+      <button class="load" onclick="startDay(1)">Start Day 1</button>
+      <span class="status">Takes ~30 seconds to start</span>
     </div>
   </div>
 
   <!-- Repeat for days 2-6 as data becomes available -->
-  <!-- Generated dynamically based on what's on disk -->
+  <!-- Generated dynamically: check docker ps to see which are running -->
 
-  <!-- Switching Modal -->
-  <div id="switching-modal">
-    <div id="switching-content">
-      <h2>Switching to Day <span id="switching-day"></span></h2>
+  <!-- Progress Modal -->
+  <div id="progress-modal" style="display: none; position: fixed; top: 0; left: 0;
+                                   width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+                                   z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: white; padding: 40px; border-radius: 8px; width: 500px;
+                text-align: center;">
+      <h2>Starting Day <span id="progress-day"></span></h2>
       <div class="spinner"></div>
-      <p>Stopping current environment...</p>
-      <p>Loading backup data...</p>
-      <p>Starting containers...</p>
-      <p><strong>This takes 2-3 minutes. Please wait...</strong></p>
+      <p id="progress-status" style="font-size: 18px; margin: 20px 0;">Starting...</p>
+      <p id="progress-estimate" style="color: #666; font-size: 14px;">Estimating time...</p>
+
+      <!-- Progress Bar -->
+      <div style="background: #f0f0f0; height: 30px; border-radius: 15px;
+                  margin: 20px 0; overflow: hidden;">
+        <div id="progress-bar" style="background: #4CAF50; height: 100%; width: 0%;
+                                      transition: width 0.5s ease;"></div>
+      </div>
+
+      <div style="text-align: left; background: #f9f9f9; padding: 15px;
+                  border-radius: 4px; margin-top: 20px;">
+        <strong>Steps:</strong>
+        <ol style="margin: 10px 0; padding-left: 20px;">
+          <li>Start database container (~10 sec)</li>
+          <li>Decompress backup file (~2 min)</li>
+          <li>Import to database (~3-5 min)</li>
+          <li>Start application containers (~30 sec)</li>
+        </ol>
+        <p style="color: #666; font-size: 14px; margin-top: 10px;">
+          <strong>Total time:</strong> ~5-8 minutes for large backups
+        </p>
+      </div>
     </div>
   </div>
 
@@ -390,9 +465,9 @@ Simple HTML page served via nginx showing:
   <ul>
     <li>Runs on GCP preemptible VM (may have brief downtime during restarts)</li>
     <li>Automated nightly restoration from production backups</li>
-    <li>Only one day runs at a time to minimize costs</li>
+    <li>Multiple days can run simultaneously (auto-shutdown after 1 hour idle or midnight)</li>
     <li>All days accessible via web interface (no CLI/SSH needed)</li>
-    <li>Protected by HTTP basic authentication</li>
+    <li>Protected by 2FA authentication</li>
   </ul>
 </body>
 </html>
@@ -960,16 +1035,502 @@ if __name__ == '__main__':
 - **Restoration Time**: Expected 30-90 minutes depending on data size
 - **Container Resources**: n2-standard-4 provides 4 vCPUs, 16GB RAM
 
-### Security Considerations
+### Security - 2FA IP Gating
 
-- **Production Data**: Contains real user data - handle with care
-- **Basic Auth**: Protects against crawlers and casual access
-- **Firewall**: Restrict to HTTPS only (ports 80/443)
-- **Credentials**: Separate from production, stored in environment variables
-- **Mail Isolation**: Mailhog captures all email, SMTP ports blocked
-- **Access Logging**: Monitor access to yesterday environment
-- **Data Retention**: Backup deleted after 7 days, VM disk wiped on rebuild
-- **GDPR Compliance**: Same as production - yesterday data is production data
+**Goal:** Only IPs that successfully pass 2FA can access the system at all.
+
+#### How It Works
+
+1. User visits `yesterday.ilovefreegle.org`
+2. Presented with 2FA page (TOTP from Google Authenticator)
+3. Enter 6-digit code from authenticator app
+4. If valid → IP is whitelisted for 24 hours
+5. That IP can now access all yesterday domains normally
+6. After 24 hours, must re-authenticate with 2FA
+
+**Without passing 2FA, the IP cannot access anything.**
+
+#### Implementation
+
+**2FA Gateway Service with Multiple Named, Revokable Users:**
+
+```python
+from flask import Flask, request, render_template, redirect, jsonify
+import pyotp
+import redis
+import json
+from datetime import datetime, timedelta
+
+app = Flask(__name__)
+redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Store users in Redis:
+# user:{name} = {"secret": "...", "created": "...", "enabled": true}
+# authorized:{ip} = {"user": "name", "expires": "..."}
+
+@app.route('/2fa-login', methods=['GET', 'POST'])
+def login_2fa():
+    """2FA login page"""
+    ip = request.headers.get('X-Real-IP') or request.remote_addr
+
+    # Check if IP is already authorized
+    auth_data = redis_client.get(f'authorized:{ip}')
+    if auth_data:
+        auth = json.loads(auth_data)
+        return redirect('https://yesterday.ilovefreegle.org/')
+
+    if request.method == 'POST':
+        code = request.form.get('totp_code')
+
+        # Try to verify against all enabled users
+        verified_user = None
+        for key in redis_client.scan_iter('user:*'):
+            user_data = json.loads(redis_client.get(key))
+            if not user_data.get('enabled', True):
+                continue  # Skip disabled users
+
+            totp = pyotp.TOTP(user_data['secret'])
+            if totp.verify(code, valid_window=1):  # Allow 30s drift
+                verified_user = key.split(':')[1]  # Extract name from "user:name"
+                break
+
+        if verified_user:
+            # Authorize IP for 24 hours
+            auth_data = {
+                'user': verified_user,
+                'expires': (datetime.utcnow() + timedelta(hours=24)).isoformat(),
+                'ip': ip
+            }
+            redis_client.setex(f'authorized:{ip}', 86400, json.dumps(auth_data))
+
+            # Log successful auth
+            log_auth(ip, 'success', verified_user)
+
+            # Redirect to index page
+            return redirect('https://yesterday.ilovefreegle.org/')
+        else:
+            log_auth(ip, 'failed', None)
+            return render_template('2fa.html', error='Invalid code')
+
+    return render_template('2fa.html')
+
+@app.route('/2fa-verify')
+def verify():
+    """Called by Traefik forward auth to check if IP is authorized"""
+    ip = request.headers.get('X-Real-IP') or request.remote_addr
+
+    auth_data = redis_client.get(f'authorized:{ip}')
+    if auth_data:
+        # IP is authorized
+        auth = json.loads(auth_data)
+        # Could check if user is still enabled here
+        user_key = f'user:{auth["user"]}'
+        if redis_client.exists(user_key):
+            user_data = json.loads(redis_client.get(user_key))
+            if user_data.get('enabled', True):
+                return '', 200
+
+    # Not authorized or user disabled
+    return '', 401
+
+def log_auth(ip, status, user):
+    """Log authentication attempts"""
+    log_entry = {
+        'timestamp': datetime.utcnow().isoformat(),
+        'ip': ip,
+        'status': status,
+        'user': user
+    }
+    redis_client.lpush('auth_log', json.dumps(log_entry))
+    print(f"2FA {status}: {ip} (user: {user})")
+
+# Admin API endpoints
+@app.route('/admin/users', methods=['GET'])
+def list_users():
+    """List all 2FA users (admin only)"""
+    admin_key = request.headers.get('X-Admin-Key')
+    if admin_key != os.getenv('ADMIN_KEY'):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    users = []
+    for key in redis_client.scan_iter('user:*'):
+        name = key.split(':')[1]
+        user_data = json.loads(redis_client.get(key))
+        users.append({
+            'name': name,
+            'created': user_data['created'],
+            'enabled': user_data.get('enabled', True),
+            'last_used': user_data.get('last_used', 'never')
+        })
+
+    return jsonify({'users': users})
+
+@app.route('/admin/users/<name>', methods=['POST'])
+def create_user(name):
+    """Create new 2FA user with unique TOTP secret (admin only)"""
+    admin_key = request.headers.get('X-Admin-Key')
+    if admin_key != os.getenv('ADMIN_KEY'):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    # Check if user already exists
+    if redis_client.exists(f'user:{name}'):
+        return jsonify({'error': 'User already exists'}), 400
+
+    # Generate new TOTP secret for this user
+    secret = pyotp.random_base32()
+    user_data = {
+        'secret': secret,
+        'created': datetime.utcnow().isoformat(),
+        'enabled': True
+    }
+    redis_client.set(f'user:{name}', json.dumps(user_data))
+
+    # Generate QR code URI for authenticator app
+    totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+        name=f"Yesterday-{name}",
+        issuer_name="Freegle Yesterday"
+    )
+
+    # Generate QR code image
+    import qrcode
+    import io
+    import base64
+
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(totp_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    # Convert to base64 for embedding in response
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    qr_base64 = base64.b64encode(buf.getvalue()).decode()
+
+    return jsonify({
+        'name': name,
+        'secret': secret,
+        'qr_uri': totp_uri,
+        'qr_code': f'data:image/png;base64,{qr_base64}',
+        'instructions': f'User "{name}" created. Scan QR code with Google Authenticator.'
+    })
+
+@app.route('/admin/users/<name>', methods=['DELETE'])
+def delete_user(name):
+    """Delete/revoke 2FA user (admin only)"""
+    admin_key = request.headers.get('X-Admin-Key')
+    if admin_key != os.getenv('ADMIN_KEY'):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    if not redis_client.exists(f'user:{name}'):
+        return jsonify({'error': 'User not found'}), 404
+
+    # Delete user
+    redis_client.delete(f'user:{name}')
+
+    # Revoke any active sessions for this user
+    for key in redis_client.scan_iter('authorized:*'):
+        auth_data = json.loads(redis_client.get(key))
+        if auth_data['user'] == name:
+            redis_client.delete(key)
+
+    return jsonify({'message': f'User "{name}" deleted and all sessions revoked'})
+
+@app.route('/admin/users/<name>/disable', methods=['POST'])
+def disable_user(name):
+    """Disable user without deleting (admin only)"""
+    admin_key = request.headers.get('X-Admin-Key')
+    if admin_key != os.getenv('ADMIN_KEY'):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    if not redis_client.exists(f'user:{name}'):
+        return jsonify({'error': 'User not found'}), 404
+
+    user_data = json.loads(redis_client.get(f'user:{name}'))
+    user_data['enabled'] = False
+    redis_client.set(f'user:{name}', json.dumps(user_data))
+
+    # Revoke active sessions
+    for key in redis_client.scan_iter('authorized:*'):
+        auth_data = json.loads(redis_client.get(key))
+        if auth_data['user'] == name:
+            redis_client.delete(key)
+
+    return jsonify({'message': f'User "{name}" disabled and sessions revoked'})
+
+@app.route('/admin/users/<name>/enable', methods=['POST'])
+def enable_user(name):
+    """Re-enable disabled user (admin only)"""
+    admin_key = request.headers.get('X-Admin-Key')
+    if admin_key != os.getenv('ADMIN_KEY'):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    if not redis_client.exists(f'user:{name}'):
+        return jsonify({'error': 'User not found'}), 404
+
+    user_data = json.loads(redis_client.get(f'user:{name}'))
+    user_data['enabled'] = True
+    redis_client.set(f'user:{name}', json.dumps(user_data))
+
+    return jsonify({'message': f'User "{name}" enabled'})
+
+@app.route('/admin/sessions', methods=['GET'])
+def list_sessions():
+    """List all active authorized sessions (admin only)"""
+    admin_key = request.headers.get('X-Admin-Key')
+    if admin_key != os.getenv('ADMIN_KEY'):
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    sessions = []
+    for key in redis_client.scan_iter('authorized:*'):
+        ip = key.split(':')[1]
+        auth_data = json.loads(redis_client.get(key))
+        sessions.append({
+            'ip': ip,
+            'user': auth_data['user'],
+            'expires': auth_data['expires']
+        })
+
+    return jsonify({'sessions': sessions})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8081)
+```
+
+**Admin CLI Tool:**
+
+```bash
+#!/bin/bash
+# scripts/2fa-admin.sh
+# Manage 2FA users
+
+ADMIN_KEY="${YESTERDAY_ADMIN_KEY}"
+API_URL="http://localhost:8081"
+
+case "$1" in
+  list)
+    # List all users
+    curl -s -H "X-Admin-Key: $ADMIN_KEY" "$API_URL/admin/users" | jq
+    ;;
+
+  create)
+    # Create new user
+    if [ -z "$2" ]; then
+      echo "Usage: $0 create <username>"
+      exit 1
+    fi
+    curl -s -H "X-Admin-Key: $ADMIN_KEY" -X POST "$API_URL/admin/users/$2" | jq
+    echo "Save the QR code and share with the user"
+    ;;
+
+  delete)
+    # Delete user (revoke access)
+    if [ -z "$2" ]; then
+      echo "Usage: $0 delete <username>"
+      exit 1
+    fi
+    curl -s -H "X-Admin-Key: $ADMIN_KEY" -X DELETE "$API_URL/admin/users/$2" | jq
+    ;;
+
+  disable)
+    # Temporarily disable user
+    if [ -z "$2" ]; then
+      echo "Usage: $0 disable <username>"
+      exit 1
+    fi
+    curl -s -H "X-Admin-Key: $ADMIN_KEY" -X POST "$API_URL/admin/users/$2/disable" | jq
+    ;;
+
+  enable)
+    # Re-enable user
+    if [ -z "$2" ]; then
+      echo "Usage: $0 enable <username>"
+      exit 1
+    fi
+    curl -s -H "X-Admin-Key: $ADMIN_KEY" -X POST "$API_URL/admin/users/$2/enable" | jq
+    ;;
+
+  sessions)
+    # List active sessions
+    curl -s -H "X-Admin-Key: $ADMIN_KEY" "$API_URL/admin/sessions" | jq
+    ;;
+
+  *)
+    echo "Usage: $0 {list|create|delete|disable|enable|sessions} [username]"
+    exit 1
+    ;;
+esac
+```
+
+**2FA Login Page Template (2fa.html):**
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Yesterday - 2FA Required</title>
+  <style>
+    body { font-family: sans-serif; max-width: 400px; margin: 100px auto;
+           text-align: center; }
+    input[type="text"] { font-size: 24px; letter-spacing: 10px; width: 200px;
+                         padding: 10px; text-align: center; }
+    button { font-size: 18px; padding: 15px 30px; background: #4CAF50;
+             color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #45a049; }
+    .error { color: red; margin: 10px 0; }
+    .instructions { background: #f0f0f0; padding: 20px; margin: 20px 0;
+                    border-radius: 4px; text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>🔐 2FA Authentication Required</h1>
+  <p>Enter the 6-digit code from your authenticator app</p>
+
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST">
+    <input type="text" name="totp_code" placeholder="000000"
+           maxlength="6" pattern="[0-9]{6}" required autofocus>
+    <br><br>
+    <button type="submit">Verify & Access</button>
+  </form>
+
+  <div class="instructions">
+    <h3>First time setup:</h3>
+    <ol>
+      <li>Install Google Authenticator on your phone</li>
+      <li>Scan this QR code: <img src="/qr-code" alt="QR Code"></li>
+      <li>Enter the 6-digit code shown in the app</li>
+      <li>Your IP will be authorized for 24 hours</li>
+    </ol>
+  </div>
+
+  <p><small>This protects production data. Only authorized users can access.</small></p>
+</body>
+</html>
+```
+
+**Traefik Configuration:**
+
+```yaml
+# In docker-compose.yml
+traefik:
+  labels:
+    # 2FA gateway middleware
+    - "traefik.http.middlewares.yesterday-2fa.forwardauth.address=http://2fa-gateway:8081/2fa-verify"
+    - "traefik.http.middlewares.yesterday-2fa.forwardauth.authResponseHeaders=X-Auth-User"
+    # Redirect unauthorized to login page
+    - "traefik.http.middlewares.yesterday-2fa.forwardauth.authRequestHeaders=X-Real-IP"
+
+# Apply to all yesterday services
+freegle:
+  labels:
+    - "traefik.http.routers.fd-yesterday.middlewares=yesterday-2fa"
+
+modtools:
+  labels:
+    - "traefik.http.routers.mt-yesterday.middlewares=yesterday-2fa"
+
+# 2FA gateway itself doesn't require 2FA (infinite loop!)
+2fa-gateway:
+  image: python:3.11-slim
+  volumes:
+    - ./2fa-gateway:/app
+  command: python /app/server.py
+  # No middleware - this is the auth service
+```
+
+**GCP Firewall:**
+
+```bash
+# Initial setup: Allow all IPs to reach 2FA page
+gcloud compute firewall-rules create allow-yesterday-https \
+  --project=freegle-yesterday \
+  --allow tcp:443,tcp:80 \
+  --target-tags=https-server \
+  --description="Allow access for 2FA authentication"
+
+# The 2FA service handles IP authorization at application level
+# GCP firewall remains open, but Traefik blocks unauthorized IPs
+```
+
+#### User Experience
+
+**First Time:**
+1. Visit `yesterday.ilovefreegle.org` (any yesterday domain)
+2. See 2FA page with QR code
+3. Scan QR code with Google Authenticator (one-time setup)
+4. Enter 6-digit code from app
+5. **Redirected to index page** (`yesterday.ilovefreegle.org`)
+6. See explanation of what Yesterday is and available backup days
+7. Click "Open Freegle" or "Load Day X" buttons to access systems
+
+**Subsequent Visits (within 24 hours):**
+1. Visit `yesterday.ilovefreegle.org`
+2. **See index page immediately** (IP already authorized)
+3. Read instructions, click to access systems
+
+**After 24 hours:**
+1. Visit `yesterday.ilovefreegle.org`
+2. See 2FA page again
+3. Enter current 6-digit code from app
+4. **Back to index page** with system access
+
+**Direct URLs also work (after 2FA):**
+- Try to visit `fd.yesterday.ilovefreegle.org` without 2FA → Redirected to 2FA page
+- After 2FA passes → Can access directly or via index page
+
+#### Security Features
+
+**What this prevents:**
+- ✅ Unauthorized IP access (must pass 2FA first)
+- ✅ Shared password problem (each person needs authenticator app)
+- ✅ Password guessing (2FA codes rotate every 30 seconds)
+- ✅ Stolen credentials (need both password knowledge + phone with app)
+
+**Multi-User Management:**
+- Each authorized user gets unique TOTP secret (different QR code)
+- Named users (e.g., "alice", "bob", "contractor-john")
+- Individual revocation without affecting other users
+- Temporary disable/enable without deleting
+- Admin can see who accessed when
+- 24-hour authorization window (re-auth daily)
+
+**Admin Commands:**
+```bash
+# Create new user
+./scripts/2fa-admin.sh create alice
+# Returns QR code to share with Alice
+
+# List all users
+./scripts/2fa-admin.sh list
+
+# Disable user (temporary, can re-enable)
+./scripts/2fa-admin.sh disable contractor-john
+
+# Delete user permanently (revokes all access)
+./scripts/2fa-admin.sh delete contractor-john
+
+# View active sessions
+./scripts/2fa-admin.sh sessions
+```
+
+**Example User Lifecycle:**
+1. Admin runs: `./scripts/2fa-admin.sh create alice`
+2. Admin sends Alice the QR code
+3. Alice scans with Google Authenticator
+4. Entry appears as "Yesterday-alice"
+5. Alice can now access system with her codes
+6. When Alice leaves: `./scripts/2fa-admin.sh delete alice`
+7. All Alice's sessions immediately revoked
+
+**Optional enhancements:**
+- Shorter authorization window (e.g., 1 hour)
+- GCP Cloud Armor for DDoS protection
+- Rate limiting on 2FA attempts
+- Email alerts on new IP authorizations
+- Admin dashboard showing authorized IPs
 
 ### Login Limitations
 
@@ -1239,58 +1800,103 @@ Need larger VM to run 7 complete environments:
 - Higher compute costs (larger VM needed)
 - More resource intensive (28+ containers running)
 
-**Option B: On-Demand Day Selection (Recommended)**
+**Option B: Multiple Days with Auto-Shutdown (Recommended)**
 
-Keep same small VM, only run one day at a time:
+Allow multiple days to run simultaneously, with automatic shutdown based on inactivity:
 
-- **Machine Type**: n2-standard-2 (2 vCPU, 8GB RAM) - NO CHANGE
-- **Compute**: ~$18/month (same as Phase 1)
+- **Machine Type**: n2-standard-2 (2 vCPU, 8GB RAM) - for 1-2 days active simultaneously
+- **Compute**: ~$18/month
 - **Storage**: ~$20/month (500GB for 7 days of data)
 - **Network**: ~$0.12/month
 - **Total: ~$40/month**
 
 **Benefits:**
-- ✅ 30% cheaper than running all days
-- ✅ Same VM size as Phase 1
-- ✅ All 7 days of data available
-- ✅ Switch days in ~2-3 minutes
+- ✅ Multiple days can run simultaneously (no waiting)
+- ✅ Auto-shutdown saves resources (inactive days stop automatically)
+- ✅ Start any day with one click (~30 seconds)
+- ✅ Same VM size handles 1-2 active days
 
-**Drawbacks:**
-- Can only view one day at a time
-- Need to stop/start containers to switch days
-- Brief wait when switching
-
-**How On-Demand Works:**
+**How Auto-Shutdown Works:**
 
 ```bash
-# Index page shows all 7 days available
-# Click "Day 3" → triggers:
-docker-compose down                     # Stop current day
-./scripts/load-day.sh 3                # Load day-3 data
-docker-compose up -d                    # Start containers
+# Monitor service checks traffic to each day's containers
+# Traefik provides access logs per day
 
-# 2-3 minutes later, day-3 is accessible
+# Shutdown triggers:
+1. No traffic to fd.yesterday-X or mt.yesterday-X for 1 hour → shutdown day-X
+2. Midnight UTC → shutdown ALL days (daily cleanup)
+
+# When user clicks "Start Day 3":
+- docker-compose up -d yesterday-3-*
+- Containers start in ~30 seconds
+- User can access immediately
+- Auto-shutdown timer begins
 ```
 
-**Switching interface:**
-- **Web UI only** - Click "Load Day X" button on index page
-- Backend API handles the switching automatically
-- Progress indicator shows switching status
-- Refreshes to show active day when complete
+**Traffic Monitoring Service:**
+
+```python
+# Monitor Traefik access logs and shutdown inactive days
+from datetime import datetime, timedelta
+import subprocess
+import time
+
+last_access = {}  # day_number -> last_access_time
+
+def check_traefik_logs():
+    """Parse Traefik logs to find last access per day"""
+    # Check logs for fd.yesterday-X and mt.yesterday-X access
+    # Update last_access dictionary
+    pass
+
+def shutdown_inactive_days():
+    """Shutdown days with no traffic for 1 hour"""
+    now = datetime.utcnow()
+    for day in range(7):
+        if day in last_access:
+            idle_time = now - last_access[day]
+            if idle_time > timedelta(hours=1):
+                print(f"Shutting down day-{day} after 1 hour idle")
+                subprocess.run(['docker-compose', 'stop', f'yesterday-{day}-*'])
+                del last_access[day]
+
+def midnight_shutdown():
+    """Shutdown all days at midnight"""
+    if datetime.utcnow().hour == 0:
+        print("Midnight: Shutting down all days")
+        for day in range(7):
+            subprocess.run(['docker-compose', 'stop', f'yesterday-{day}-*'])
+        last_access.clear()
+
+# Run continuously
+while True:
+    check_traefik_logs()
+    shutdown_inactive_days()
+    midnight_shutdown()
+    time.sleep(60)  # Check every minute
+```
+
+**User Interface:**
+- **Web UI** - Click "Start Day X" button on index page
+- Backend starts containers for that day
+- ~30 seconds to start, then accessible
+- Day automatically shuts down after 1 hour of no traffic
+- Or at midnight (whichever comes first)
 
 ### Cost Comparison
 
 | Configuration | VM Size | Days Running | Monthly Cost | Notes |
 |--------------|---------|--------------|--------------|-------|
-| **Phase 1 - Both days** | n2-standard-2 | 2 simultaneous | **$26** | Small scale |
-| **Phase 2A - All 7 running** | n2-standard-4 | 7 simultaneous | **$56** | Instant access |
-| **Phase 2B - On-demand** | n2-standard-2 | 1 at a time | **$40** | Switch as needed |
+| **Phase 1 - Both days** | n2-standard-2 | 1-2 active | **$26** | Auto-shutdown |
+| **Phase 2A - All 7 always running** | n2-standard-4 | 7 simultaneous | **$56** | Instant access, no shutdown |
+| **Phase 2B - Auto-shutdown (Recommended)** | n2-standard-2 | 1-2 active at once | **$40** | Start on demand, auto-stop |
 
-**Recommendation: Phase 2B (On-Demand)**
-- Saves $16/month vs running all days
-- Same small VM (no upgrade needed)
-- All 7 days of data still available
-- 2-3 minute switch time is acceptable for this use case
+**Recommendation: Phase 2B (Auto-Shutdown)**
+- Saves $16/month vs running all days 24/7
+- Same small VM (handles 1-2 days at once)
+- All 7 days of data available
+- Start any day in ~30 seconds
+- Automatic cleanup (1 hour idle or midnight)
 
 ### Trade-offs of Optimized Configuration
 
