@@ -15,7 +15,7 @@ get_container_info() {
     local relative_path="${file_path#$PROJECT_DIR/}"
     
     if [[ "$relative_path" == iznik-nuxt3-modtools/* ]]; then
-        echo "freegle-modtools /app/${relative_path#iznik-nuxt3-modtools/} ModTools"
+        echo "freegle-modtools-dev /app/${relative_path#iznik-nuxt3-modtools/} ModTools-Dev"
     elif [[ "$relative_path" == iznik-nuxt3/* ]]; then
         # Sync to both Freegle and Playwright containers for test files
         if [[ "$relative_path" == iznik-nuxt3/tests/* || "$relative_path" == iznik-nuxt3/playwright.config.js ]]; then

@@ -1090,6 +1090,17 @@ const httpServer = http.createServer(async (req, res) => {
     try {
       const results = [];
 
+      // Delete existing test users first to ensure clean recreate
+      try {
+        execSync(
+          'docker exec freegle-percona mysql -u root -piznik iznik -e "DELETE FROM users WHERE id IN (SELECT userid FROM (SELECT userid FROM users_emails WHERE email IN (\'test@test.com\', \'testmod@test.com\')) AS subquery)"',
+          { encoding: 'utf8', timeout: 10000 }
+        );
+        results.push('Deleted existing test users');
+      } catch (error) {
+        results.push(`Warning: Failed to delete existing users - ${error.message}`);
+      }
+
       // Recreate test@test.com
       try {
         const testUserResult = execSync(
@@ -1098,17 +1109,7 @@ const httpServer = http.createServer(async (req, res) => {
         );
         results.push(`test@test.com: ${testUserResult.trim()}`);
       } catch (error) {
-        // User might already exist, try to get their ID
-        const existingUser = execSync(
-          'docker exec freegle-percona mysql -u root -piznik iznik -sN -e "SELECT u.id FROM users u LEFT JOIN users_emails ue ON u.id = ue.userid WHERE ue.email = \'test@test.com\'"',
-          { encoding: 'utf8', timeout: 10000 }
-        ).trim();
-
-        if (existingUser) {
-          results.push(`test@test.com: Already exists (ID: ${existingUser})`);
-        } else {
-          results.push(`test@test.com: Failed - ${error.message}`);
-        }
+        results.push(`test@test.com: Failed - ${error.message}`);
       }
 
       // Recreate testmod@test.com
@@ -1119,17 +1120,7 @@ const httpServer = http.createServer(async (req, res) => {
         );
         results.push(`testmod@test.com: ${modUserResult.trim()}`);
       } catch (error) {
-        // User might already exist, try to get their ID
-        const existingUser = execSync(
-          'docker exec freegle-percona mysql -u root -piznik iznik -sN -e "SELECT u.id FROM users u LEFT JOIN users_emails ue ON u.id = ue.userid WHERE ue.email = \'testmod@test.com\'"',
-          { encoding: 'utf8', timeout: 10000 }
-        ).trim();
-
-        if (existingUser) {
-          results.push(`testmod@test.com: Already exists (ID: ${existingUser})`);
-        } else {
-          results.push(`testmod@test.com: Failed - ${error.message}`);
-        }
+        results.push(`testmod@test.com: Failed - ${error.message}`);
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
