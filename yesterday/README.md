@@ -2,29 +2,31 @@
 
 This directory contains the configuration for the "Yesterday" system - a GCP-hosted environment that provides access to historical production backups for data recovery and testing.
 
+**Note:** This system was rapidly prototyped and vibe-coded. It works, but may need refinement for production use.
+
 ## Overview
 
 The Yesterday environment:
 - Runs on a dedicated GCP VM in `freegle-yesterday` project
 - Restores nightly backups from `gs://freegle_backup_uk`
-- Provides access to 2-7 days of historical snapshots
-- Rebuilds containers daily with latest code
+- Provides access to any historical backup by date
+- Uses existing docker-compose.yml infrastructure (single database model)
 - Isolates all email to Mailhog (no external sending)
-- Protected by 2FA authentication
+- Backup browser UI with progress tracking
 
 ## Architecture
 
-- **Phase 1**: 2 days of backups (Day 0 and Day 1)
-- **Phase 2**: 7 days of backups (Day 0 through Day 6)
-- Multiple days can run simultaneously with auto-shutdown after 1 hour idle or at midnight UTC
+**Single Database Model:**
+- Uses existing FreegleDocker docker-compose.yml infrastructure
+- One backup loaded at a time
+- Import different backups by date as needed
+- Reuses all existing containers (Freegle, ModTools, API v1/v2, Mailhog)
+- Backup selection via web UI with progress tracking
 
 ## Domain Structure
 
-- `yesterday.ilovefreegle.org` - Index page with 2FA login
-- `fd.yesterday-0.ilovefreegle.org` - Freegle (most recent backup)
-- `mt.yesterday-0.ilovefreegle.org` - ModTools (most recent backup)
-- `mail.yesterday-0.ilovefreegle.org` - Mailhog (most recent backup)
-- Pattern repeats for days 1-6
+- `yesterday.ilovefreegle.org` - Backup browser and index page
+- Application accessible via localhost or yesterday domain after restoration
 
 ## Important Limitations
 
@@ -59,60 +61,57 @@ REDIS_PASSWORD=generate_random_redis_password_here
 
 **IMPORTANT**: Never commit the `.env` file to git (it's in `.gitignore`)
 
-### 3. DNS Configuration
+### 3. DNS Configuration (Optional)
 
-Set up DNS records pointing to the VM's external IP:
+Set up DNS records pointing to the VM's external IP if using custom domains:
 
 ```
 yesterday.ilovefreegle.org              A    <VM_EXTERNAL_IP>
-*.yesterday-0.ilovefreegle.org          A    <VM_EXTERNAL_IP>
-*.yesterday-1.ilovefreegle.org          A    <VM_EXTERNAL_IP>
-... (through yesterday-6 for Phase 2)
 ```
 
-### 4. Initial Backup Restoration
+Or access via localhost URLs after restoration.
 
-Run the restoration script to import the first backup:
+### 4. Start the Backup API
+
+Install dependencies and start the API server:
 
 ```bash
+cd /var/www/FreegleDocker/yesterday/api
+npm install
+npm start
+# API runs on port 8082
+```
+
+### 5. Load a Backup
+
+**Via Web UI:**
+1. Visit `http://localhost:8082` or `https://yesterday.ilovefreegle.org`
+2. Browse available backups from GCS
+3. Click "Load This Backup" for the desired date
+4. Monitor progress (15-25 min for large backups)
+
+**Via Command Line:**
+```bash
 cd /var/www/FreegleDocker/yesterday
-./scripts/restore-day.sh 0
+./scripts/restore-backup-simple.sh 20251031  # YYYYMMDD format
 ```
 
 This will:
-- Download the latest backup from GCS
-- Extract the xbstream backup
-- Import to the database container
-- Start all services
+- Download the backup from GCS (cached locally)
+- Extract and prepare the xbstream backup
+- Import into existing database volume
+- Restart all containers
 
-### 5. Create 2FA Users
+### 6. Access the Restored System
 
-Create your first 2FA user:
+Once restoration completes, access the system:
+- **Freegle**: http://localhost:3000 (freegle-prod container)
+- **ModTools**: http://localhost:3001 (modtools-prod container)
+- **Mailhog**: http://localhost:8025
+- **API v1**: http://localhost:80
+- **API v2**: http://localhost:8192
 
-```bash
-cd /var/www/FreegleDocker/yesterday
-./scripts/2fa-admin.sh create your-name
-```
-
-This will generate a QR code - scan it with Google Authenticator.
-
-### 6. Access the System
-
-1. Visit `https://yesterday.ilovefreegle.org`
-2. Enter your 6-digit 2FA code
-3. Your IP will be whitelisted for 24 hours
-4. Click "Start Day 0" to launch the environment
-5. Access Freegle, ModTools, and Mailhog
-
-## Cost Estimate
-
-**Phase 1 (2 days)**: ~$26/month
-- Compute: $18/month (preemptible n2-standard-2)
-- Storage: $8/month (200GB standard disk)
-
-**Phase 2 (7 days)**: ~$40/month
-- Compute: $18/month (same VM)
-- Storage: $20/month (500GB standard disk)
+**Note**: Only email/password logins work. OAuth providers won't work on the Yesterday environment.
 
 ## Security
 
