@@ -22,7 +22,7 @@ mkdir -p "$BACKUP_DIR"
 # Find the backup to restore
 # Day 0 = most recent, Day 1 = 1 day ago, etc.
 echo "Finding backup for Day ${DAY}..."
-BACKUP_FILE=$(gsutil ls -l "$BACKUP_BUCKET/iznik-*.xbstream" | sort -k2 -r | sed -n "$((DAY + 1))p" | awk '{print $3}')
+BACKUP_FILE=$(gsutil ls -l "$BACKUP_BUCKET/iznik-*.xbstream" | grep -v "TOTAL:" | sort -k2 -r | sed -n "$((DAY + 1))p" | awk '{print $3}')
 
 if [ -z "$BACKUP_FILE" ]; then
     echo "❌ Could not find backup for Day ${DAY}"
