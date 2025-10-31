@@ -69,8 +69,8 @@ mkdir -p "$TEMP_DIR"
 echo ""
 echo "=========================================="
 echo "Extracting xbstream backup..."
-echo "This will take 5-10 minutes for ${BACKUP_SIZE_GB}GB"
-echo "Watching for extracted files..."
+echo "Total backup size: ${BACKUP_SIZE_GB}GB (compressed)"
+echo "This will take 5-10 minutes..."
 echo "=========================================="
 echo ""
 
@@ -80,7 +80,7 @@ echo ""
     while [ -d "$TEMP_DIR" ] && [ ! -f "$TEMP_DIR/.extraction_done" ]; do
         FILE_COUNT=$(find "$TEMP_DIR" -type f 2>/dev/null | wc -l)
         DIR_SIZE=$(du -sh "$TEMP_DIR" 2>/dev/null | awk '{print $1}')
-        echo "[$(date +%H:%M:%S)] Extracted: $FILE_COUNT files, ${DIR_SIZE} so far..."
+        echo "[$(date +%H:%M:%S)] Extracted: $FILE_COUNT files, ${DIR_SIZE} / ${BACKUP_SIZE_GB}GB (compressed)"
         sleep 10
     done
 ) &
