@@ -41,7 +41,7 @@ The Yesterday environment:
 The VM has been provisioned with:
 - Ubuntu 22.04 LTS
 - Docker and Docker Compose
-- Percona XtraBackup tools
+- Percona XtraBackup tools and zstd compression
 - Cross-project IAM permissions to read from `gs://freegle_backup_uk`
 
 ### 2. Environment Configuration
@@ -253,9 +253,9 @@ tail -f /var/log/yesterday-restore-YYYYMMDD.log
 
 **Common issues:**
 
-1. **Missing qpress** - Backups are qpress-compressed:
+1. **Missing zstd** - Backups are zstd-compressed:
    ```bash
-   apt-get install -y qpress
+   apt-get install -y zstd
    ```
 
 2. **Extraction fails** - Check disk space:
@@ -335,7 +335,7 @@ docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" -e "SHOW DATABASES;
 
 **Restoration takes 20-30 minutes** due to:
 1. xbstream extraction (~5-10 min)
-2. qpress decompression (~5-10 min)
+2. zstd decompression (~5-10 min)
 3. xtrabackup prepare (~5-10 min)
 4. Copy to volume (~2-3 min)
 
@@ -344,8 +344,8 @@ docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" -e "SHOW DATABASES;
 # Watch extraction
 watch -n 5 'du -sh /var/www/FreegleDocker/yesterday/data/backups/temp-*'
 
-# Watch qpress decompression
-watch -n 5 'find /var/www/FreegleDocker/yesterday/data/backups/temp-* -name "*.qp" | wc -l'
+# Watch zstd decompression
+watch -n 5 'find /var/www/FreegleDocker/yesterday/data/backups/temp-* -name "*.zst" | wc -l'
 
 # Watch xtrabackup
 ps aux | grep xtrabackup

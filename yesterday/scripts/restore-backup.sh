@@ -101,34 +101,33 @@ echo "Total extracted: $FINAL_COUNT files, ${FINAL_SIZE}"
 echo ""
 
 echo "=========================================="
-echo "Decompressing qpress files..."
+echo "Decompressing zstd files..."
 echo "This will take 5-10 minutes..."
 echo "=========================================="
 echo ""
 
-# Decompress all .qp files (qpress compression)
+# Decompress all .zst files (zstd compression)
 (
-    QP_COUNT=0
+    ZST_COUNT=0
     while true; do
-        CURRENT_QP=$(find "$TEMP_DIR" -type f -name "*.qp" 2>/dev/null | wc -l)
-        if [ $CURRENT_QP -eq 0 ]; then
+        CURRENT_ZST=$(find "$TEMP_DIR" -type f -name "*.zst" 2>/dev/null | wc -l)
+        if [ $CURRENT_ZST -eq 0 ]; then
             break
         fi
-        if [ $QP_COUNT -ne $CURRENT_QP ]; then
-            echo "[$(date +%H:%M:%S)] Decompressing... $CURRENT_QP .qp files remaining"
-            QP_COUNT=$CURRENT_QP
+        if [ $ZST_COUNT -ne $CURRENT_ZST ]; then
+            echo "[$(date +%H:%M:%S)] Decompressing... $CURRENT_ZST .zst files remaining"
+            ZST_COUNT=$CURRENT_ZST
         fi
         sleep 10
     done
 ) &
-QPRESS_PID=$!
+ZSTD_PID=$!
 
-for bf in $(find "$TEMP_DIR" -type f -name "*.qp"); do
-    qpress -d "$bf" $(dirname "$bf")
-    rm "$bf"
+for bf in $(find "$TEMP_DIR" -type f -name "*.zst"); do
+    zstd -d --rm "$bf"
 done
 
-kill $QPRESS_PID 2>/dev/null || true
+kill $ZSTD_PID 2>/dev/null || true
 
 echo ""
 echo "✅ Decompression complete!"
