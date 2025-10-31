@@ -173,7 +173,7 @@ app.post('/api/backups/:backupDate/load', async (req, res) => {
 
 // Run restoration script with progress tracking
 function runRestoration(backupDate) {
-  const scriptPath = '/var/www/FreegleDocker/yesterday/scripts/restore-backup-with-progress.sh';
+  const scriptPath = '/var/www/FreegleDocker/yesterday/scripts/restore-backup.sh';
 
   const process = spawn(scriptPath, [backupDate]);
 

@@ -1,142 +1,161 @@
 #!/bin/bash
-# Restore a specific backup by date from GCS
-# Usage: ./restore-backup.sh <YYYYMMDD>
-# Example: ./restore-backup.sh 20251031
+# Restore a backup with visible progress indicators
+# Usage: ./restore-backup-with-progress.sh <YYYYMMDD>
 
-set -e  # Exit on error
+set -e
 
 BACKUP_DATE=$1
 BACKUP_BUCKET="gs://freegle_backup_uk"
 BACKUP_DIR="/var/www/FreegleDocker/yesterday/data/backups"
 LOG_FILE="/var/log/yesterday-restore-${BACKUP_DATE}.log"
+COMPOSE_FILE="/var/www/FreegleDocker/docker-compose.yml"
 
 if [ -z "$BACKUP_DATE" ]; then
     echo "Usage: $0 <YYYYMMDD>"
-    echo "Example: $0 20251031"
     exit 1
 fi
 
-# Validate date format
 if ! [[ "$BACKUP_DATE" =~ ^[0-9]{8}$ ]]; then
-    echo "Error: Invalid date format. Use YYYYMMDD (e.g., 20251031)"
+    echo "Error: Invalid date format. Use YYYYMMDD"
     exit 1
 fi
 
-# Setup logging
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=== Yesterday Restoration Started: $(date) ==="
 echo "Restoring backup from date: ${BACKUP_DATE}..."
 
-# Create backup directory if it doesn't exist
 mkdir -p "$BACKUP_DIR"
 
-# Convert YYYYMMDD to YYYY-MM-DD for filename matching
 FORMATTED_DATE="${BACKUP_DATE:0:4}-${BACKUP_DATE:4:2}-${BACKUP_DATE:6:2}"
 
-# Find the backup file for this date
 echo "Finding backup for date ${FORMATTED_DATE}..."
 BACKUP_FILE=$(gsutil ls "$BACKUP_BUCKET/iznik-${FORMATTED_DATE}-*.xbstream" 2>/dev/null | head -1)
 
 if [ -z "$BACKUP_FILE" ]; then
     echo "❌ Could not find backup for date ${FORMATTED_DATE}"
-    echo "Searched for: ${BACKUP_BUCKET}/iznik-${FORMATTED_DATE}-*.xbstream"
     exit 1
 fi
 
 echo "Selected backup: $BACKUP_FILE"
 
-# Download backup if not already present
+BACKUP_SIZE=$(gsutil ls -l "$BACKUP_FILE" | grep -v TOTAL | awk '{print $1}')
+BACKUP_SIZE_GB=$((BACKUP_SIZE / 1024 / 1024 / 1024))
+echo "Backup size: ${BACKUP_SIZE_GB}GB"
+
 LOCAL_BACKUP="$BACKUP_DIR/$(basename $BACKUP_FILE)"
 if [ ! -f "$LOCAL_BACKUP" ]; then
     echo "Downloading backup from GCS..."
-    echo "Size: $(gsutil ls -l "$BACKUP_FILE" | grep -v TOTAL | awk '{print $1}') bytes"
     gsutil cp "$BACKUP_FILE" "$LOCAL_BACKUP"
     echo "✅ Download complete"
 else
-    echo "Using existing local backup: $LOCAL_BACKUP"
+    echo "Using cached local backup: $LOCAL_BACKUP"
 fi
 
-# Stop the database container if running
-echo "Stopping database container yesterday-${BACKUP_DATE}-db..."
-docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday.yml stop yesterday-${BACKUP_DATE}-db 2>/dev/null || true
+echo "Stopping all Docker containers..."
+cd /var/www/FreegleDocker
+docker compose down
 
-# Remove old database data
 echo "Removing old database data..."
-docker volume rm yesterday-${BACKUP_DATE}-db-data 2>/dev/null || true
+docker volume rm freegle_db 2>/dev/null || true
 
-# Create fresh database volume
 echo "Creating fresh database volume..."
-docker volume create yesterday-${BACKUP_DATE}-db-data
+docker volume create freegle_db
 
-# Start database container
-echo "Starting database container..."
-# Update docker-compose to use date-based naming
-export YESTERDAY_BACKUP_DATE=$BACKUP_DATE
-docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday.yml up -d yesterday-${BACKUP_DATE}-db
-
-# Wait for database to be ready
-echo "Waiting for database to initialize..."
-sleep 30
-
-# Extract and restore xbstream backup
-echo "Extracting and restoring xbstream backup..."
-
-# Create temporary directory for extraction
 TEMP_DIR="$BACKUP_DIR/temp-${BACKUP_DATE}"
 rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR"
 
-# Extract xbstream
-echo "Extracting xbstream..."
-xbstream -x < "$LOCAL_BACKUP" -C "$TEMP_DIR"
+echo ""
+echo "=========================================="
+echo "Extracting xbstream backup..."
+echo "This will take 5-10 minutes for ${BACKUP_SIZE_GB}GB"
+echo "Watching for extracted files..."
+echo "=========================================="
+echo ""
 
-# Prepare the backup (applies logs)
-echo "Preparing backup (this may take several minutes)..."
+# Show progress by monitoring extracted files in background
+(
+    sleep 5
+    while [ -d "$TEMP_DIR" ] && [ ! -f "$TEMP_DIR/.extraction_done" ]; do
+        FILE_COUNT=$(find "$TEMP_DIR" -type f 2>/dev/null | wc -l)
+        DIR_SIZE=$(du -sh "$TEMP_DIR" 2>/dev/null | awk '{print $1}')
+        echo "[$(date +%H:%M:%S)] Extracted: $FILE_COUNT files, ${DIR_SIZE} so far..."
+        sleep 10
+    done
+) &
+PROGRESS_PID=$!
+
+# Extract xbstream with verbose output
+xbstream -x -v < "$LOCAL_BACKUP" -C "$TEMP_DIR"
+
+# Signal extraction is done
+touch "$TEMP_DIR/.extraction_done"
+kill $PROGRESS_PID 2>/dev/null || true
+
+echo ""
+echo "✅ Extraction complete!"
+FINAL_COUNT=$(find "$TEMP_DIR" -type f 2>/dev/null | wc -l)
+FINAL_SIZE=$(du -sh "$TEMP_DIR" 2>/dev/null | awk '{print $1}')
+echo "Total extracted: $FINAL_COUNT files, ${FINAL_SIZE}"
+echo ""
+
+echo "=========================================="
+echo "Preparing backup (applying transaction logs)..."
+echo "This will take 5-10 minutes..."
+echo "=========================================="
+echo ""
+
+# Show that preparation is running
+(
+    while ps aux | grep -q "[x]trabackup --prepare"; do
+        echo "[$(date +%H:%M:%S)] Still preparing backup..."
+        sleep 15
+    done
+) &
+PREPARE_PID=$!
+
 xtrabackup --prepare --target-dir="$TEMP_DIR"
 
-# Stop database to copy files
-echo "Stopping database for file copy..."
-docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday.yml stop yesterday-${BACKUP_DATE}-db
+kill $PREPARE_PID 2>/dev/null || true
+echo ""
+echo "✅ Preparation complete!"
+echo ""
 
-# Copy restored data to database volume
 echo "Copying restored data to database volume..."
-# Get the volume mount point
-VOLUME_PATH=$(docker volume inspect yesterday-${BACKUP_DATE}-db-data -f '{{.Mountpoint}}')
-
-# Remove MySQL's default data
-rm -rf "${VOLUME_PATH}"/*
-
-# Copy prepared backup to volume
+VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}')
 cp -r "$TEMP_DIR"/* "${VOLUME_PATH}/"
-
-# Fix permissions
 chown -R 999:999 "${VOLUME_PATH}"
 
-# Clean up temp directory
 rm -rf "$TEMP_DIR"
+echo "✅ Data copied to database volume"
 
-# Start database with restored data
-echo "Starting database with restored data..."
-docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday.yml up -d yesterday-${BACKUP_DATE}-db
+echo ""
+echo "Starting all Docker containers..."
+docker compose up -d
 
-# Wait for database to be ready
-echo "Waiting for database to be ready..."
+echo "Waiting for database to start (30 seconds)..."
 sleep 30
 
-# Verify restoration
 echo "Verifying database..."
-DB_PASSWORD=$(grep DB_ROOT_PASSWORD /var/www/FreegleDocker/yesterday/.env | cut -d'=' -f2)
-if docker exec yesterday-${BACKUP_DATE}-db mysql -uroot -p"${DB_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
+if docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
     echo "✅ Database verification successful!"
+
+    TABLE_COUNT=$(docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
+    echo "Database contains ${TABLE_COUNT} tables"
 else
     echo "❌ Database verification failed!"
     exit 1
 fi
 
-echo "=== Yesterday Restoration Completed: $(date) ==="
-echo "✅ Backup ${BACKUP_DATE} restored successfully"
+# Update current backup tracker
+/var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
+
 echo ""
-echo "You can now access the restored environment at:"
-echo "  - Database: yesterday-${BACKUP_DATE}-db (container)"
-echo "  - Mailhog: https://mail.yesterday-${BACKUP_DATE}.ilovefreegle.org"
+echo "=== Yesterday Restoration Completed: $(date) ==="
+echo "✅ Backup from ${FORMATTED_DATE} restored successfully"
+echo ""
+echo "Access the system at:"
+echo "  - Freegle: http://localhost:3000"
+echo "  - ModTools: http://localhost:3001"
+echo "  - Mailhog: http://localhost:8025"

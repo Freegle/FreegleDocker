@@ -128,7 +128,7 @@ pm2 save
 **Via Command Line:**
 ```bash
 cd /var/www/FreegleDocker/yesterday
-./scripts/restore-backup-simple.sh 20251031  # YYYYMMDD format
+./scripts/restore-backup.sh 20251031  # YYYYMMDD format
 ```
 
 This will:
