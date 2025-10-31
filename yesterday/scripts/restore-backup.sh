@@ -86,8 +86,8 @@ echo ""
 ) &
 PROGRESS_PID=$!
 
-# Extract xbstream with verbose output
-xbstream -x -v < "$LOCAL_BACKUP" -C "$TEMP_DIR"
+# Extract xbstream
+xbstream -x < "$LOCAL_BACKUP" -C "$TEMP_DIR"
 
 # Signal extraction is done
 touch "$TEMP_DIR/.extraction_done"
@@ -98,6 +98,40 @@ echo "✅ Extraction complete!"
 FINAL_COUNT=$(find "$TEMP_DIR" -type f 2>/dev/null | wc -l)
 FINAL_SIZE=$(du -sh "$TEMP_DIR" 2>/dev/null | awk '{print $1}')
 echo "Total extracted: $FINAL_COUNT files, ${FINAL_SIZE}"
+echo ""
+
+echo "=========================================="
+echo "Decompressing qpress files..."
+echo "This will take 5-10 minutes..."
+echo "=========================================="
+echo ""
+
+# Decompress all .qp files (qpress compression)
+(
+    QP_COUNT=0
+    while true; do
+        CURRENT_QP=$(find "$TEMP_DIR" -type f -name "*.qp" 2>/dev/null | wc -l)
+        if [ $CURRENT_QP -eq 0 ]; then
+            break
+        fi
+        if [ $QP_COUNT -ne $CURRENT_QP ]; then
+            echo "[$(date +%H:%M:%S)] Decompressing... $CURRENT_QP .qp files remaining"
+            QP_COUNT=$CURRENT_QP
+        fi
+        sleep 10
+    done
+) &
+QPRESS_PID=$!
+
+for bf in $(find "$TEMP_DIR" -type f -name "*.qp"); do
+    qpress -d "$bf" $(dirname "$bf")
+    rm "$bf"
+done
+
+kill $QPRESS_PID 2>/dev/null || true
+
+echo ""
+echo "✅ Decompression complete!"
 echo ""
 
 echo "=========================================="
@@ -115,7 +149,7 @@ echo ""
 ) &
 PREPARE_PID=$!
 
-xtrabackup --prepare --target-dir="$TEMP_DIR"
+xtrabackup --prepare --apply-log-only --target-dir="$TEMP_DIR"
 
 kill $PREPARE_PID 2>/dev/null || true
 echo ""
