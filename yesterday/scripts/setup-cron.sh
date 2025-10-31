@@ -2,7 +2,7 @@
 # Setup cron job to automatically restore latest backup
 # Run this once to install the cron job
 
-CRON_SCHEDULE="0 8 * * *"  # Run at 8 AM UTC daily (3 hours after 4-5 AM backup time)
+CRON_SCHEDULE="0 6 * * *"  # Run at 6 AM UTC daily (1.5 hours after 4:30 AM backup completion)
 SCRIPT_PATH="/var/www/FreegleDocker/yesterday/scripts/auto-restore-latest.sh"
 
 echo "Setting up cron job for automatic backup restoration"

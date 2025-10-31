@@ -68,22 +68,48 @@ fi
 
 echo ""
 echo "🔄 New backup available: $LATEST_DATE (current: ${CURRENT_DATE:-none})"
-echo "Starting automatic restoration..."
+echo "Starting automatic restoration via API..."
 echo ""
 
-# Trigger restoration using the progress script
-/var/www/FreegleDocker/yesterday/scripts/restore-backup-with-progress.sh "$LATEST_DATE"
+# Trigger restoration via API so progress is tracked
+API_RESPONSE=$(curl -s -X POST http://localhost:8082/api/backups/${LATEST_DATE}/load)
+echo "API Response: $API_RESPONSE"
 
-if [ $? -eq 0 ]; then
+# Check if API accepted the request
+if echo "$API_RESPONSE" | grep -q "Started loading"; then
+    echo "✅ Restoration started successfully via API"
+    echo "Monitoring progress..."
     echo ""
-    echo "✅ Auto-restore completed successfully"
-    echo "Yesterday environment now running backup from $LATEST_DATE"
+
+    # Poll for completion
+    while true; do
+        PROGRESS=$(curl -s http://localhost:8082/api/backups/${LATEST_DATE}/progress)
+        STATUS=$(echo "$PROGRESS" | jq -r '.status')
+        PERCENT=$(echo "$PROGRESS" | jq -r '.progress')
+        MESSAGE=$(echo "$PROGRESS" | jq -r '.message')
+
+        echo "[$(date +%H:%M:%S)] Status: $STATUS ($PERCENT%) - $MESSAGE"
+
+        if [ "$STATUS" = "completed" ]; then
+            echo ""
+            echo "✅ Auto-restore completed successfully"
+            echo "Yesterday environment now running backup from $LATEST_DATE"
+            break
+        elif [ "$STATUS" = "failed" ]; then
+            echo ""
+            echo "❌ Auto-restore failed"
+            ERROR=$(echo "$PROGRESS" | jq -r '.error')
+            echo "Error: $ERROR"
+            exit 1
+        fi
+
+        sleep 30  # Check every 30 seconds
+    done
 
     # Optional: Send notification (email, Slack, etc.)
     # curl -X POST https://slack.webhook.url -d "{\"text\": \"Yesterday restored backup $LATEST_DATE\"}"
 else
-    echo ""
-    echo "❌ Auto-restore failed"
-    echo "Check logs: $LOG_FILE"
+    echo "❌ Failed to start restoration via API"
+    echo "Response: $API_RESPONSE"
     exit 1
 fi
