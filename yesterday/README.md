@@ -71,7 +71,25 @@ yesterday.ilovefreegle.org              A    <VM_EXTERNAL_IP>
 
 Or access via localhost URLs after restoration.
 
-### 4. Start the Backup API
+### 4. Install Node.js (if needed)
+
+The API requires Node.js 22 LTS or later:
+
+```bash
+# Check current version
+node -v
+
+# If older than v22, update:
+apt-get remove -y nodejs
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt-get install -y nodejs
+
+# Verify
+node -v  # Should show v22.x.x
+npm -v   # Should show npm 10.x.x or higher
+```
+
+### 5. Start the Backup API
 
 Install dependencies and start the API server:
 
@@ -82,7 +100,24 @@ npm start
 # API runs on port 8082
 ```
 
-### 5. Load a Backup
+**Running as a background service:**
+```bash
+# Install pm2 globally
+npm install -g pm2
+
+# Start API with pm2
+cd /var/www/FreegleDocker/yesterday/api
+pm2 start server.js --name yesterday-api
+
+# View logs
+pm2 logs yesterday-api
+
+# Configure pm2 to start on boot
+pm2 startup
+pm2 save
+```
+
+### 6. Load a Backup
 
 **Via Web UI:**
 1. Visit `http://localhost:8082` or `https://yesterday.ilovefreegle.org`
@@ -102,7 +137,7 @@ This will:
 - Import into existing database volume
 - Restart all containers
 
-### 6. Access the Restored System
+### 7. Access the Restored System
 
 Once restoration completes, access the system:
 - **Freegle**: http://localhost:3000 (freegle-prod container)
