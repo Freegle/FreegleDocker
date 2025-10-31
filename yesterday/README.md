@@ -148,6 +148,70 @@ Once restoration completes, access the system:
 
 **Note**: Only email/password logins work. OAuth providers won't work on the Yesterday environment.
 
+## Deployment Options
+
+You can run the Yesterday API in three ways:
+
+### Option 1: Docker Compose (Recommended)
+
+Run as part of the main docker-compose stack:
+
+```bash
+cd /var/www/FreegleDocker
+docker compose -f docker-compose.yml -f yesterday/docker-compose.yesterday-services.yml up -d
+```
+
+This starts:
+- `yesterday-api` on port 8082
+- `yesterday-index` on port 8083 (nginx serving the UI with API proxy)
+
+Access: `http://localhost:8083` or `http://yesterday.ilovefreegle.org:8083`
+
+### Option 2: Systemd Service
+
+Run the API as a systemd service on the host:
+
+```bash
+cd /var/www/FreegleDocker/yesterday
+./scripts/setup-systemd.sh
+```
+
+Commands:
+```bash
+systemctl status yesterday-api   # Check status
+systemctl restart yesterday-api  # Restart
+journalctl -u yesterday-api -f   # View logs
+```
+
+### Option 3: Manual (Development)
+
+Run directly with Node.js:
+
+```bash
+cd /var/www/FreegleDocker/yesterday/api
+npm start
+```
+
+## Automatic Nightly Restoration
+
+To enable automatic restoration of the latest backup at 6 AM UTC:
+
+```bash
+cd /var/www/FreegleDocker/yesterday
+./scripts/setup-cron.sh
+```
+
+This installs a cron job that:
+- Runs daily at 6 AM UTC (1.5 hours after backup completion at 4:30 AM)
+- Only restores backups that are 2+ hours old (safety check)
+- Only restores if a newer backup is available
+- Logs to `/var/log/yesterday-auto-restore.log`
+
+To manually trigger auto-restore:
+```bash
+./scripts/auto-restore-latest.sh
+```
+
 ## Security
 
 - 2FA authentication with TOTP (Google Authenticator)
@@ -182,17 +246,124 @@ docker compose -f docker-compose.yesterday.yml logs -f
 
 ### Backup restoration fails
 
-Check the logs:
+**Check restoration logs:**
 ```bash
-tail -f /var/log/yesterday-restore.log
+tail -f /var/log/yesterday-restore-YYYYMMDD.log
+```
+
+**Common issues:**
+
+1. **Missing qpress** - Backups are qpress-compressed:
+   ```bash
+   apt-get install -y qpress
+   ```
+
+2. **Extraction fails** - Check disk space:
+   ```bash
+   df -h /var/www/FreegleDocker/yesterday/data
+   ```
+   Need ~150GB free for extraction (47GB compressed → ~100GB uncompressed)
+
+3. **xtrabackup prepare fails** - Check if backup file is corrupt:
+   ```bash
+   xbstream -x < backup.xbstream -C /tmp/test
+   # Should extract without errors
+   ```
+
+4. **Partial upload** - Auto-restore skips backups less than 2 hours old:
+   ```bash
+   # Check backup timestamp
+   gsutil ls -l gs://freegle_backup_uk/iznik-*.xbstream | tail -5
+   ```
+
+### API won't start
+
+**Check if port 8082 is in use:**
+```bash
+netstat -tlnp | grep 8082
+```
+
+**View API logs:**
+```bash
+# Docker compose
+docker logs yesterday-api
+
+# Systemd
+journalctl -u yesterday-api -f
+
+# Manual
+tail -f /var/log/yesterday-api.log
+```
+
+**Common fixes:**
+```bash
+# Restart API
+docker restart yesterday-api
+
+# Or systemd
+systemctl restart yesterday-api
+```
+
+### Can't access web UI
+
+**Check nginx is running:**
+```bash
+docker ps | grep yesterday-index
+curl http://localhost:8083
+```
+
+**Check API connectivity:**
+```bash
+curl http://localhost:8082/health
+curl http://localhost:8082/api/backups
 ```
 
 ### Services won't start
 
-Check Docker status:
+**Check Docker status:**
 ```bash
-docker compose -f docker-compose.yesterday.yml ps
-docker compose -f docker-compose.yesterday.yml logs
+docker compose ps
+docker compose logs db
+```
+
+**Check database is running:**
+```bash
+docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" -e "SHOW DATABASES;"
+```
+
+### Slow restoration
+
+**Restoration takes 20-30 minutes** due to:
+1. xbstream extraction (~5-10 min)
+2. qpress decompression (~5-10 min)
+3. xtrabackup prepare (~5-10 min)
+4. Copy to volume (~2-3 min)
+
+**Monitor progress:**
+```bash
+# Watch extraction
+watch -n 5 'du -sh /var/www/FreegleDocker/yesterday/data/backups/temp-*'
+
+# Watch qpress decompression
+watch -n 5 'find /var/www/FreegleDocker/yesterday/data/backups/temp-* -name "*.qp" | wc -l'
+
+# Watch xtrabackup
+ps aux | grep xtrabackup
+```
+
+### Out of disk space
+
+**Check usage:**
+```bash
+df -h
+du -sh /var/www/FreegleDocker/yesterday/data/*
+```
+
+**Clean up old backups:**
+```bash
+cd /var/www/FreegleDocker/yesterday/data/backups
+ls -lh  # See what's there
+rm iznik-2025-10-*.xbstream  # Delete old cached backups
 ```
 
 ### Can't access via domain
