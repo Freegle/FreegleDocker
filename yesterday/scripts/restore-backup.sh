@@ -70,7 +70,7 @@ echo ""
 echo "=========================================="
 echo "Extracting xbstream backup..."
 echo "Total backup size: ${BACKUP_SIZE_GB}GB (compressed)"
-echo "This will take 5-10 minutes..."
+echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
 
@@ -102,7 +102,7 @@ echo ""
 
 echo "=========================================="
 echo "Decompressing zstd files..."
-echo "This will take 5-10 minutes..."
+echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
 
@@ -135,7 +135,7 @@ echo ""
 
 echo "=========================================="
 echo "Preparing backup (applying transaction logs)..."
-echo "This will take 5-10 minutes..."
+echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
 

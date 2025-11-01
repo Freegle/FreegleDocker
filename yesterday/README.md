@@ -123,7 +123,7 @@ pm2 save
 1. Visit `http://localhost:8082` or `https://yesterday.ilovefreegle.org`
 2. Browse available backups from GCS
 3. Click "Load This Backup" for the desired date
-4. Monitor progress (15-25 min for large backups)
+4. Monitor progress (30-45 min for large backups)
 
 **Via Command Line:**
 ```bash
@@ -333,10 +333,10 @@ docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" -e "SHOW DATABASES;
 
 ### Slow restoration
 
-**Restoration takes 20-30 minutes** due to:
-1. xbstream extraction (~5-10 min)
-2. zstd decompression (~5-10 min)
-3. xtrabackup prepare (~5-10 min)
+**Restoration takes 30-45 minutes** due to:
+1. xbstream extraction (~10-15 min)
+2. zstd decompression (~10-15 min)
+3. xtrabackup prepare (~10-15 min)
 4. Copy to volume (~2-3 min)
 
 **Monitor progress:**
