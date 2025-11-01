@@ -1,8 +1,27 @@
-# Yesterday Services - API, Index Page, and 2FA Gateway
+# Yesterday Services - API, Index Page, and 2FA Gateway with HTTPS
 # Standalone compose file for Yesterday backup management UI
 # Usage: docker compose -f yesterday/docker-compose.yesterday-services.yml up -d
 
 services:
+  # Traefik reverse proxy with Let's Encrypt
+  yesterday-traefik:
+    image: traefik:v2.10
+    container_name: yesterday-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./data/letsencrypt:/letsencrypt
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
   # 2FA Authentication Gateway (front door)
   yesterday-2fa:
     build:
@@ -10,8 +29,8 @@ services:
       dockerfile: Dockerfile
     container_name: yesterday-2fa
     restart: unless-stopped
-    ports:
-      - "8084:8084"
+    expose:
+      - "8084"
     volumes:
       - ./data/2fa:/data
     environment:
@@ -19,12 +38,19 @@ services:
       - YESTERDAY_ADMIN_KEY=${YESTERDAY_ADMIN_KEY}
       - USERS_FILE=/data/2fa-users.json
       - WHITELIST_FILE=/data/ip-whitelist.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.yesterday.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.yesterday.entrypoints=websecure"
+      - "traefik.http.routers.yesterday.tls.certresolver=letsencrypt"
+      - "traefik.http.services.yesterday.loadbalancer.server.port=8084"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:8084/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
       timeout: 10s
       retries: 3
     depends_on:
+      - yesterday-traefik
       - yesterday-api
       - yesterday-index
 

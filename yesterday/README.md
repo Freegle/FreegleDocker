@@ -61,23 +61,33 @@ REDIS_PASSWORD=generate_random_redis_password_here
 
 **IMPORTANT**: Never commit the `.env` file to git (it's in `.gitignore`)
 
-### 3. DNS Configuration (For Public Access)
+### 3. DNS Configuration (Required for HTTPS)
 
-To access Yesterday via domain name instead of IP:
+To access Yesterday via HTTPS with automatic Let's Encrypt certificates:
 
-1. **Get the VM's external IP:**
+1. **Reserve a static IP (if not already done):**
 ```bash
-gcloud compute instances describe yesterday-freegle --project=freegle-yesterday --zone=europe-west2-a --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+gcloud compute addresses create yesterday-static-ip --project=freegle-yesterday --region=europe-west2
+gcloud compute addresses describe yesterday-static-ip --project=freegle-yesterday --region=europe-west2 --format="get(address)"
 ```
 
-2. **Set up DNS record:**
-```
-yesterday.ilovefreegle.org              A    <VM_EXTERNAL_IP>
+2. **Assign static IP to VM:**
+```bash
+gcloud compute instances delete-access-config yesterday-freegle --project=freegle-yesterday --zone=europe-west2-a --access-config-name="external-nat"
+gcloud compute instances add-access-config yesterday-freegle --project=freegle-yesterday --zone=europe-west2-a --access-config-name="external-nat" --address=<STATIC_IP>
 ```
 
-3. **Access via:**
-- `http://<VM_EXTERNAL_IP>:8084` (IP address)
-- `http://yesterday.ilovefreegle.org:8084` (domain name)
+3. **Set up DNS A record:**
+```
+yesterday.ilovefreegle.org              A    <STATIC_IP>
+```
+
+4. **Wait for DNS propagation** (usually 5-10 minutes):
+```bash
+nslookup yesterday.ilovefreegle.org
+```
+
+Once DNS is configured, Traefik will automatically obtain a Let's Encrypt certificate when you start the services.
 
 ### 4. Install Node.js (if needed)
 
@@ -174,10 +184,16 @@ export YESTERDAY_ADMIN_KEY=your_admin_key_from_env_file
 This will display a QR code. Scan it with Google Authenticator or any TOTP app.
 
 **Access the system:**
-- Public (2FA-protected): `http://VM_IP:8084` or `https://yesterday.ilovefreegle.org`
-- Direct (localhost only): `http://localhost:8083`
+- Public (2FA-protected): `https://yesterday.ilovefreegle.org`
+- HTTP automatically redirects to HTTPS
+- Let's Encrypt certificate automatically obtained and renewed
 
 After successful 2FA login, your IP is whitelisted for 24 hours.
+
+**Note**: On first startup after DNS configuration, Traefik will automatically request a Let's Encrypt certificate. This takes 30-60 seconds. Check logs:
+```bash
+docker logs yesterday-traefik
+```
 
 **Manage users:**
 ```bash
