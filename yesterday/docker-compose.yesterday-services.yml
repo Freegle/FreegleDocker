@@ -61,8 +61,8 @@ services:
       dockerfile: Dockerfile
     container_name: yesterday-api
     restart: unless-stopped
-    ports:
-      - "8082:8082"
+    expose:
+      - "8082"
     volumes:
       - ./api:/app
       - ./data:/data
@@ -83,8 +83,8 @@ services:
     image: nginx:alpine
     container_name: yesterday-index
     restart: unless-stopped
-    ports:
-      - "8083:80"
+    expose:
+      - "80"
     volumes:
       - ./index:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
