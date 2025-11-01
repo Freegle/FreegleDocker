@@ -122,6 +122,7 @@ const loginPageHTML = `
 <html>
 <head>
     <title>Freegle Backup Management System - Authentication</title>
+    <link rel="icon" type="image/png" href="https://www.ilovefreegle.org/icon.png">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
