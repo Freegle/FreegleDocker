@@ -46,7 +46,16 @@ The VM has been provisioned with:
 
 ### 2. Environment Configuration
 
-Create a `.env` file in this directory with the following variables:
+**On the Yesterday VM**, copy the docker-compose override file:
+
+```bash
+cd /var/www/FreegleDocker
+cp yesterday/docker-compose.override.yml docker-compose.override.yml
+```
+
+This configures containers to use production image services (images.ilovefreegle.org, tus.ilovefreegle.org) so the restored backup displays the correct images from production.
+
+Then create a `.env` file in `/var/www/FreegleDocker` with the following variables:
 
 ```bash
 # Database credentials
