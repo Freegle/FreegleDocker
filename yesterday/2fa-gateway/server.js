@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8084;
 const ADMIN_KEY = process.env.YESTERDAY_ADMIN_KEY || 'changeme';
 const USERS_FILE = process.env.USERS_FILE || '/data/2fa-users.json';
 const WHITELIST_FILE = process.env.WHITELIST_FILE || '/data/ip-whitelist.json';
-const WHITELIST_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const WHITELIST_DURATION = 1 * 60 * 60 * 1000; // 1 hour
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));

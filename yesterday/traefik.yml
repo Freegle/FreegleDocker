@@ -31,8 +31,7 @@ certificatesResolvers:
     acme:
       email: geeks@ilovefreegle.org
       storage: /letsencrypt/acme.json
-      httpChallenge:
-        entryPoint: web
+      tlsChallenge: {}
 
 log:
   level: INFO
