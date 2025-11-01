@@ -53,13 +53,13 @@ docker volume rm freegle_db 2>/dev/null || true
 echo "Creating fresh database volume..."
 docker volume create freegle_db
 
-TEMP_DIR="$BACKUP_DIR/temp-${BACKUP_DATE}"
-rm -rf "$TEMP_DIR"
-mkdir -p "$TEMP_DIR"
+echo "Getting volume path..."
+VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}')
+echo "Volume path: ${VOLUME_PATH}"
 
 echo ""
 echo "=========================================="
-echo "Streaming and extracting backup from GCS..."
+echo "Streaming and extracting backup directly to volume..."
 echo "Total backup size: ${BACKUP_SIZE_GB}GB (compressed)"
 echo "This will take 10-15 minutes..."
 echo "=========================================="
@@ -68,26 +68,26 @@ echo ""
 # Show progress by monitoring extracted files in background
 (
     sleep 5
-    while [ -d "$TEMP_DIR" ] && [ ! -f "$TEMP_DIR/.extraction_done" ]; do
-        FILE_COUNT=$(find "$TEMP_DIR" -type f 2>/dev/null | wc -l)
-        DIR_SIZE=$(du -sh "$TEMP_DIR" 2>/dev/null | awk '{print $1}')
+    while [ ! -f "${VOLUME_PATH}/.extraction_done" ]; do
+        FILE_COUNT=$(find "$VOLUME_PATH" -type f 2>/dev/null | wc -l)
+        DIR_SIZE=$(du -sh "$VOLUME_PATH" 2>/dev/null | awk '{print $1}')
         echo "[$(date +%H:%M:%S)] Extracting: $FILE_COUNT files, ${DIR_SIZE}"
         sleep 10
     done
 ) &
 PROGRESS_PID=$!
 
-# Stream directly from GCS and extract - no local file stored
-gsutil cat "$BACKUP_FILE" | xbstream -x -C "$TEMP_DIR"
+# Stream directly from GCS and extract to volume - no temp directory
+gsutil cat "$BACKUP_FILE" | xbstream -x -C "$VOLUME_PATH"
 
 # Signal extraction is done
-touch "$TEMP_DIR/.extraction_done"
+touch "${VOLUME_PATH}/.extraction_done"
 kill $PROGRESS_PID 2>/dev/null || true
 
 echo ""
 echo "✅ Extraction complete!"
-FINAL_COUNT=$(find "$TEMP_DIR" -type f 2>/dev/null | wc -l)
-FINAL_SIZE=$(du -sh "$TEMP_DIR" 2>/dev/null | awk '{print $1}')
+FINAL_COUNT=$(find "$VOLUME_PATH" -type f 2>/dev/null | wc -l)
+FINAL_SIZE=$(du -sh "$VOLUME_PATH" 2>/dev/null | awk '{print $1}')
 echo "Total extracted: $FINAL_COUNT files, ${FINAL_SIZE}"
 echo ""
 
@@ -101,7 +101,7 @@ echo ""
 (
     ZST_COUNT=0
     while true; do
-        CURRENT_ZST=$(find "$TEMP_DIR" -type f -name "*.zst" 2>/dev/null | wc -l)
+        CURRENT_ZST=$(find "$VOLUME_PATH" -type f -name "*.zst" 2>/dev/null | wc -l)
         if [ $CURRENT_ZST -eq 0 ]; then
             break
         fi
@@ -114,7 +114,7 @@ echo ""
 ) &
 ZSTD_PID=$!
 
-for bf in $(find "$TEMP_DIR" -type f -name "*.zst"); do
+for bf in $(find "$VOLUME_PATH" -type f -name "*.zst"); do
     zstd -d --rm "$bf"
 done
 
@@ -139,20 +139,17 @@ echo ""
 ) &
 PREPARE_PID=$!
 
-xtrabackup --prepare --apply-log-only --target-dir="$TEMP_DIR"
+xtrabackup --prepare --apply-log-only --target-dir="$VOLUME_PATH"
 
 kill $PREPARE_PID 2>/dev/null || true
 echo ""
 echo "✅ Preparation complete!"
 echo ""
 
-echo "Copying restored data to database volume..."
-VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}')
-cp -r "$TEMP_DIR"/* "${VOLUME_PATH}/"
+echo "Setting ownership..."
 chown -R 999:999 "${VOLUME_PATH}"
-
-rm -rf "$TEMP_DIR"
-echo "✅ Data copied to database volume"
+rm -f "${VOLUME_PATH}/.extraction_done"
+echo "✅ Volume ready"
 
 echo ""
 echo "Starting all Docker containers..."

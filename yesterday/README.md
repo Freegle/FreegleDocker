@@ -132,11 +132,12 @@ cd /var/www/FreegleDocker/yesterday
 ```
 
 This will:
-- Stream the backup directly from GCS (no local caching for space efficiency)
-- Extract and decompress the xbstream backup
-- Prepare the backup with xtrabackup
-- Import into existing database volume
+- Stream the backup directly from GCS (no local caching)
+- Extract and decompress directly to Docker volume (no temp directory)
+- Prepare the backup in place with xtrabackup
 - Restart all containers
+
+Peak disk usage: ~100GB (only the final volume, no temp copies)
 
 ### 7. Access the Restored System
 
@@ -261,9 +262,9 @@ tail -f /var/log/yesterday-restore-YYYYMMDD.log
 
 2. **Extraction fails** - Check disk space:
    ```bash
-   df -h /var/www/FreegleDocker/yesterday/data
+   df -h
    ```
-   Need ~150GB free for extraction (47GB compressed → ~100GB uncompressed)
+   Need ~100GB free (extracts directly to volume, no temp directory)
 
 3. **xtrabackup prepare fails** - Check if backup file is corrupt:
    ```bash
@@ -335,18 +336,18 @@ docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" -e "SHOW DATABASES;
 ### Slow restoration
 
 **Restoration takes 30-45 minutes** due to:
-1. xbstream extraction (~10-15 min)
+1. Streaming and extracting from GCS (~10-15 min)
 2. zstd decompression (~10-15 min)
 3. xtrabackup prepare (~10-15 min)
-4. Copy to volume (~2-3 min)
 
 **Monitor progress:**
 ```bash
-# Watch extraction
-watch -n 5 'du -sh /var/www/FreegleDocker/yesterday/data/backups/temp-*'
+# Watch volume size
+VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}')
+watch -n 5 "du -sh $VOLUME_PATH"
 
 # Watch zstd decompression
-watch -n 5 'find /var/www/FreegleDocker/yesterday/data/backups/temp-* -name "*.zst" | wc -l'
+watch -n 5 "find $VOLUME_PATH -name '*.zst' | wc -l"
 
 # Watch xtrabackup
 ps aux | grep xtrabackup
@@ -357,17 +358,19 @@ ps aux | grep xtrabackup
 **Check usage:**
 ```bash
 df -h
-du -sh /var/www/FreegleDocker/yesterday/data/*
+docker system df
 ```
 
-**Clean up temp directories:**
+**Clean up Docker resources:**
 ```bash
-cd /var/www/FreegleDocker/yesterday/data/backups
-ls -lh  # See what's there
-rm -rf temp-*  # Delete old temp extraction directories
+# Remove unused volumes
+docker volume prune
+
+# Remove old images
+docker image prune -a
 ```
 
-Note: The restoration script now streams backups directly from GCS without local caching, saving ~47GB per backup. Any cached .xbstream files older than 7 days are automatically cleaned up.
+Note: The restoration script extracts directly to the Docker volume without temp directories, using only ~100GB at peak. Any cached .xbstream files older than 7 days are automatically cleaned up.
 
 ### Can't access via domain
 
