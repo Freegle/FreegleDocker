@@ -215,6 +215,9 @@ const loginPageHTML = `
             <button type="submit">Authenticate</button>
         </form>
         <div class="info">Use Google Authenticator or similar TOTP app</div>
+        <div class="info" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0; font-size: 13px;">
+            ℹ️ After successful authentication, your IP address will be whitelisted for 24 hours. You won't need to enter codes again during this time.
+        </div>
         {{ERROR}}
     </div>
 </body>
