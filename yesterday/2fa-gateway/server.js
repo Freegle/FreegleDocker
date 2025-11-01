@@ -121,11 +121,11 @@ const loginPageHTML = `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Yesterday - Authentication</title>
+    <title>Freegle Backup Management System - Authentication</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #5AB12E 0%, #4A9025 100%);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -140,15 +140,25 @@ const loginPageHTML = `
             width: 100%;
             max-width: 400px;
         }
+        .logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo img {
+            width: 120px;
+            height: auto;
+        }
         h1 {
-            margin: 0 0 30px 0;
+            margin: 0 0 10px 0;
             color: #333;
             text-align: center;
+            font-size: 24px;
         }
         .subtitle {
             text-align: center;
             color: #666;
             margin-bottom: 30px;
+            font-size: 14px;
         }
         input {
             width: 100%;
@@ -161,12 +171,12 @@ const loginPageHTML = `
         }
         input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: #5AB12E;
         }
         button {
             width: 100%;
             padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #5AB12E 0%, #4A9025 100%);
             color: white;
             border: none;
             border-radius: 5px;
@@ -193,8 +203,11 @@ const loginPageHTML = `
 </head>
 <body>
     <div class="login-container">
-        <h1>🕐 Yesterday</h1>
-        <div class="subtitle">Backup Management System</div>
+        <div class="logo">
+            <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle Logo">
+        </div>
+        <h1>Freegle Backup Management System</h1>
+        <div class="subtitle">Yesterday - Historical Data Access</div>
         <form method="POST" action="/auth/login">
             <input type="text" name="username" placeholder="Username" required autofocus>
             <input type="text" name="token" placeholder="6-digit code" pattern="[0-9]{6}" required>
