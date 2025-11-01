@@ -6,7 +6,7 @@ CRON_SCHEDULE="0 6 * * *"  # Run at 6 AM UTC daily (1.5 hours after 4:30 AM back
 SCRIPT_PATH="/var/www/FreegleDocker/yesterday/scripts/auto-restore-latest.sh"
 
 echo "Setting up cron job for automatic backup restoration"
-echo "Schedule: $CRON_SCHEDULE (8 AM UTC daily)"
+echo "Schedule: $CRON_SCHEDULE (6 AM UTC daily)"
 echo "Script: $SCRIPT_PATH"
 echo ""
 
@@ -22,8 +22,8 @@ fi
 
 echo "✅ Cron job installed successfully"
 echo ""
-echo "The Yesterday environment will automatically restore the latest backup daily at 8 AM UTC"
-echo "This gives 3+ hours for the nightly backup (4-5 AM) to complete and stabilize"
+echo "The Yesterday environment will automatically restore the latest backup daily at 6 AM UTC"
+echo "This gives 1.5 hours for the nightly backup (completes at 4:30 AM) to complete and stabilize"
 echo ""
 echo "View cron jobs:"
 echo "  crontab -l"
