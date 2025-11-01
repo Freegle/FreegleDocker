@@ -112,8 +112,8 @@ async function fetch(targetUrl) {
 async function getAllContainerStats() {
   try {
     // Get all container info in one command with start time
-    const output = execSync(`docker ps -a --format "{{.Names}}\t{{.Status}}\t{{.State}}\t{{.CreatedAt}}"`, { 
-      encoding: 'utf8', timeout: 1000 
+    const output = execSync(`docker ps -a --format "{{.Names}}\t{{.Status}}\t{{.State}}\t{{.CreatedAt}}"`, {
+      encoding: 'utf8', timeout: 5000
     });
     
     const containers = {};
@@ -132,8 +132,8 @@ async function getAllContainerStats() {
             // Get more detailed start time using docker inspect
             let startTime = null;
             try {
-              const startTimeOutput = execSync(`docker inspect --format='{{.State.StartedAt}}' ${name}`, { 
-                encoding: 'utf8', timeout: 500 
+              const startTimeOutput = execSync(`docker inspect --format='{{.State.StartedAt}}' ${name}`, {
+                encoding: 'utf8', timeout: 2000
               }).trim();
               if (startTimeOutput && startTimeOutput !== '<no value>' && !startTimeOutput.includes('Error')) {
                 startTime = new Date(startTimeOutput);
@@ -408,7 +408,7 @@ async function runBackgroundChecks() {
                     // Get full logs for production container to save to artifact
                     const tailLines = service.id === 'freegle-prod' ? 1000 : 10;
                     const logs = execSync(`docker logs ${service.container} --tail=${tailLines}`, {
-                      encoding: 'utf8', timeout: 3000, maxBuffer: 10 * 1024 * 1024
+                      encoding: 'utf8', timeout: 5000, maxBuffer: 10 * 1024 * 1024
                     });
 
                     // Save production container logs to artifact file
@@ -516,8 +516,8 @@ async function runBackgroundChecks() {
 // Get CPU usage for all containers in one call
 async function getAllCpuUsage() {
   try {
-    const output = execSync(`docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}"`, { 
-      encoding: 'utf8', timeout: 3000 
+    const output = execSync(`docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}"`, {
+      encoding: 'utf8', timeout: 10000
     });
     
     const cpuData = {};
@@ -1801,8 +1801,8 @@ const httpServer = http.createServer(async (req, res) => {
           else if (service === 'apiv2') containerName = 'freegle-apiv2';
           
           if (containerName) {
-            const lastLog = execSync(`docker logs ${containerName} --tail=1`, { 
-              encoding: 'utf8', timeout: 3000 
+            const lastLog = execSync(`docker logs ${containerName} --tail=1`, {
+              encoding: 'utf8', timeout: 5000
             }).trim();
             const shortLog = lastLog.length > 80 ? lastLog.substring(0, 80) + '...' : lastLog;
             res.writeHead(202, { 'Content-Type': 'text/plain' });
