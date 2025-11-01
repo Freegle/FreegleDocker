@@ -89,7 +89,52 @@ nslookup yesterday.ilovefreegle.org
 
 Once DNS is configured, Traefik will automatically obtain a Let's Encrypt certificate when you start the services.
 
-### 4. Install Node.js (if needed)
+### 4. GCP Firewall Configuration
+
+The Yesterday services require specific firewall rules to allow external access:
+
+**Required firewall rules:**
+```bash
+# Allow HTTP/HTTPS for the web interface
+gcloud compute firewall-rules create allow-yesterday-https \
+  --allow tcp:443,tcp:80 \
+  --target-tags=https-server \
+  --description="Allow HTTPS for Yesterday web interface" \
+  --direction=INGRESS \
+  --priority=1000
+
+# Allow Yesterday service ports (API, Index, 2FA)
+gcloud compute firewall-rules create allow-yesterday-services \
+  --allow tcp:8082,tcp:8083,tcp:8084 \
+  --target-tags=https-server \
+  --description="Allow Yesterday backup management services" \
+  --direction=INGRESS \
+  --priority=1000
+
+# Allow SSH access
+gcloud compute firewall-rules create allow-yesterday-ssh \
+  --allow tcp:22 \
+  --target-tags=https-server \
+  --description="Allow SSH access" \
+  --direction=INGRESS \
+  --priority=1000
+```
+
+**Port mappings:**
+- `80/443` - HTTP/HTTPS for web interface (Traefik)
+- `8082` - Yesterday API (backup management)
+- `8083` - Yesterday Index (web UI)
+- `8084` - Yesterday 2FA Gateway (authentication)
+- `22` - SSH access
+
+**Verify firewall rules:**
+```bash
+gcloud compute firewall-rules list --format="table(name,allowed[].map().firewall_rule().list():label=ALLOW,targetTags.list())"
+```
+
+**Note:** Without these firewall rules, connections to the Yesterday services will timeout or hang. The rules must be created before you can access the services from outside the VM.
+
+### 5. Install Node.js (if needed)
 
 The API requires Node.js 22 LTS or later:
 
@@ -107,7 +152,7 @@ node -v  # Should show v22.x.x
 npm -v   # Should show npm 10.x.x or higher
 ```
 
-### 5. Start the Backup API
+### 6. Start the Backup API
 
 Install dependencies and start the API server:
 
@@ -135,7 +180,7 @@ pm2 startup
 pm2 save
 ```
 
-### 6. Load a Backup
+### 7. Load a Backup
 
 **Via Web UI:**
 1. Visit `http://localhost:8082` or `https://yesterday.ilovefreegle.org`
@@ -160,7 +205,7 @@ Peak disk usage: ~100GB (only the final volume, no temp copies)
 
 Note: The script automatically copies `yesterday/docker-compose.override.yml` to configure all containers to use production image delivery and TUS uploader services, so restored backups display the correct images.
 
-### 7. Set Up 2FA Gateway (Optional but Recommended)
+### 8. Set Up 2FA Gateway (Optional but Recommended)
 
 The Yesterday backup UI is protected by 2FA (TOTP) authentication:
 
@@ -203,7 +248,7 @@ docker logs yesterday-traefik
 ./yesterday/scripts/2fa-admin.sh status        # Check gateway status
 ```
 
-### 8. Access the Restored System
+### 9. Access the Restored System
 
 Once restoration completes, access the system:
 - **Freegle**: http://localhost:3000 (freegle-prod container)
@@ -293,7 +338,8 @@ The Yesterday system is secured with multiple layers:
 - Read-only access to production backups via GCP IAM
 - All services isolated in dedicated `freegle-yesterday` GCP project
 - Preemptible VM to minimize costs
-- Firewall rules restrict access to HTTP/HTTPS ports only
+- Firewall rules allow only required ports (22, 80, 443, 8082-8084)
+- 2FA gateway protects access to backup management UI
 - All outbound email captured in Mailhog (no external sending)
 
 **Data Access:**
@@ -454,10 +500,42 @@ Note: The restoration script streams from GCS and extracts directly to the Docke
 
 ### Can't access via domain
 
-1. Verify DNS is configured correctly
-2. Check firewall rules allow HTTPS (ports 80/443)
-3. Verify Traefik is running: `docker ps | grep traefik`
-4. Check Let's Encrypt certificates: `docker logs yesterday-traefik`
+**Check each layer:**
+
+1. **Verify DNS is configured correctly:**
+   ```bash
+   nslookup yesterday.ilovefreegle.org
+   ```
+
+2. **Check GCP firewall rules:**
+   ```bash
+   gcloud compute firewall-rules list --filter="name~'yesterday'" --format="table(name,allowed)"
+   ```
+
+   Required rules:
+   - `allow-yesterday-https` (tcp:80,tcp:443)
+   - `allow-yesterday-services` (tcp:8082,tcp:8083,tcp:8084)
+   - `allow-yesterday-ssh` (tcp:22)
+
+3. **Test connectivity from outside:**
+   ```bash
+   curl -I http://yesterday.ilovefreegle.org:8084
+   # Should return 401 (authentication required) or redirect
+   ```
+
+4. **Verify services are running:**
+   ```bash
+   docker ps | grep yesterday
+   docker logs yesterday-2fa
+   docker logs yesterday-api
+   docker logs yesterday-index
+   ```
+
+5. **Check Traefik (if using HTTPS):**
+   ```bash
+   docker ps | grep traefik
+   docker logs yesterday-traefik
+   ```
 
 ## Complete Removal
 

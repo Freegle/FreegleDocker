@@ -299,10 +299,11 @@
   <div class="warning">
     <h3>⚠️ Important Information</h3>
     <ul>
-      <li><strong>Single Backup Model:</strong> Only one backup can be loaded at a time. Loading a new backup will stop all containers and replace the database.</li>
-      <li><strong>Login:</strong> Only email/password authentication works. OAuth providers (Yahoo, Google, Facebook) are disabled.</li>
-      <li><strong>Email:</strong> All outbound email is captured in Mailhog - no external mail is sent.</li>
-      <li><strong>Latest Code:</strong> All containers run the latest code from repositories with historical data.</li>
+      <li><strong>IP Security:</strong> This system is protected by 2FA (TOTP). After successful authentication, your IP is whitelisted for 24 hours - no need to re-enter codes during that time.</li>
+      <li><strong>Single Backup Model:</strong> Only one backup can be loaded at a time. Loading a new backup will restart the isolated test environment and replace the database (takes 1-2 hours).</li>
+      <li><strong>Isolated Environment:</strong> Runs latest code but with real data from backups. Uses Docker technology to create a completely isolated copy of the system - changes here don't affect live Freegle.</li>
+      <li><strong>Login:</strong> Only email/password authentication works. OAuth providers (Google, Facebook) are disabled since they're configured for production domains only.</li>
+      <li><strong>Email Testing:</strong> All outbound email is captured in <a href="http://yesterday.ilovefreegle.org:8025" target="_blank" style="color: #856404; text-decoration: underline;">Mailhog</a> (a local email testing tool) - nothing is sent externally, so it's safe to test email functionality.</li>
     </ul>
   </div>
 
@@ -352,14 +353,14 @@
       <div class="progress-steps">
         <strong>Restoration Steps:</strong>
         <ol>
-          <li>Download backup from GCS (~5-10 min for 47GB)</li>
-          <li>Extract xbstream archive (~2-3 min)</li>
-          <li>Prepare backup (apply transaction logs) (~5-10 min)</li>
-          <li>Copy data to database volume (~2-3 min)</li>
-          <li>Start all containers (~30 sec)</li>
+          <li>Download backup from cloud storage (~30-45 min for 47GB)</li>
+          <li>Extract backup archive (~10-15 min)</li>
+          <li>Prepare database (apply transaction logs) (~20-30 min)</li>
+          <li>Copy data to database (~10-15 min)</li>
+          <li>Start the isolated test environment (~30 sec)</li>
         </ol>
         <p style="color: #666; font-size: 14px; margin-top: 10px;">
-          <strong>Total time:</strong> 15-25 minutes for large backups (cached backups load much faster)
+          <strong>Total time:</strong> 1-2 hours for large backups (cached backups load much faster)
         </p>
       </div>
     </div>
@@ -477,7 +478,7 @@
 
     // Load a backup
     async function loadBackup(backupDate) {
-      if (confirm(`Load backup from ${formatDate(backupDate)}?\n\nThis will stop all containers and replace the database. This may take 15-25 minutes.`)) {
+      if (confirm(`Load backup from ${formatDate(backupDate)}?\n\nThis will restart the isolated test environment and replace the database. This may take 1-2 hours.`)) {
         // Show progress modal
         document.getElementById('progress-modal').classList.add('show');
         document.getElementById('progress-date').textContent = formatDate(backupDate);

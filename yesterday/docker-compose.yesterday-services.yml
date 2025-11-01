@@ -61,8 +61,7 @@ services:
       dockerfile: Dockerfile
     container_name: yesterday-api
     restart: unless-stopped
-    expose:
-      - "8082"
+    network_mode: host
     volumes:
       - ./api:/app
       - ./data:/data
