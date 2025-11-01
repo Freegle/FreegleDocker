@@ -3,14 +3,14 @@
 # Usage: docker compose -f yesterday/docker-compose.yesterday-services.yml up -d
 
 services:
-  # Traefik reverse proxy with Let's Encrypt
+  # Traefik reverse proxy with Let's Encrypt on alternate ports
   yesterday-traefik:
     image: traefik:v2.10
     container_name: yesterday-traefik
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "8090:80"
+      - "8444:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
@@ -61,7 +61,10 @@ services:
       dockerfile: Dockerfile
     container_name: yesterday-api
     restart: unless-stopped
-    network_mode: host
+    expose:
+      - "8082"
+    extra_hosts:
+      - "metadata.google.internal:169.254.169.254"
     volumes:
       - ./api:/app
       - ./data:/data

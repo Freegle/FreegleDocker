@@ -95,19 +95,11 @@ The Yesterday services require specific firewall rules to allow external access:
 
 **Required firewall rules:**
 ```bash
-# Allow HTTP/HTTPS for the web interface
-gcloud compute firewall-rules create allow-yesterday-https \
-  --allow tcp:443,tcp:80 \
-  --target-tags=https-server \
-  --description="Allow HTTPS for Yesterday web interface" \
-  --direction=INGRESS \
-  --priority=1000
-
-# Allow Yesterday service ports (API, Index, 2FA)
+# Allow Yesterday Traefik (HTTP/HTTPS on alternate ports to avoid conflict with main Traefik)
 gcloud compute firewall-rules create allow-yesterday-services \
-  --allow tcp:8082,tcp:8083,tcp:8084 \
+  --allow tcp:8090,tcp:8444 \
   --target-tags=https-server \
-  --description="Allow Yesterday backup management services" \
+  --description="Allow Yesterday Traefik (HTTP/HTTPS on ports 8090/8444)" \
   --direction=INGRESS \
   --priority=1000
 
@@ -121,11 +113,17 @@ gcloud compute firewall-rules create allow-yesterday-ssh \
 ```
 
 **Port mappings:**
-- `80/443` - HTTP/HTTPS for web interface (Traefik)
-- `8082` - Yesterday API (backup management)
-- `8083` - Yesterday Index (web UI)
-- `8084` - Yesterday 2FA Gateway (authentication)
+- `8090` - HTTP (auto-redirects to HTTPS)
+- `8444` - HTTPS for web interface (Traefik with Let's Encrypt)
 - `22` - SSH access
+
+**Access URL:**
+- **`https://yesterday.ilovefreegle.org:8444`** - Main access point (2FA protected)
+
+**Internal services (not exposed):**
+- `8082` - Yesterday API (backup management) - internal only
+- `8083` - Yesterday Index (web UI) - internal only
+- `8084` - Yesterday 2FA Gateway - internal only, routed through Traefik
 
 **Verify firewall rules:**
 ```bash
@@ -183,10 +181,11 @@ pm2 save
 ### 7. Load a Backup
 
 **Via Web UI:**
-1. Visit `http://localhost:8082` or `https://yesterday.ilovefreegle.org`
-2. Browse available backups from GCS
-3. Click "Load This Backup" for the desired date
-4. Monitor progress (30-45 min for large backups)
+1. Visit `https://yesterday.ilovefreegle.org:8444` (or `http://localhost:8090` locally)
+2. Authenticate with 2FA (TOTP code)
+3. Browse available backups from GCS
+4. Click "Load This Backup" for the desired date
+5. Monitor progress (1-2 hours for large backups)
 
 **Via Command Line:**
 ```bash
@@ -229,11 +228,12 @@ export YESTERDAY_ADMIN_KEY=your_admin_key_from_env_file
 This will display a QR code. Scan it with Google Authenticator or any TOTP app.
 
 **Access the system:**
-- Public (2FA-protected): `https://yesterday.ilovefreegle.org`
-- HTTP automatically redirects to HTTPS
+- Public (2FA-protected): `https://yesterday.ilovefreegle.org:8444`
+- HTTP: `http://yesterday.ilovefreegle.org:8090` (automatically redirects to HTTPS)
 - Let's Encrypt certificate automatically obtained and renewed
+- Uses alternate ports to avoid conflict with main Freegle Traefik
 
-After successful 2FA login, your IP is whitelisted for 24 hours.
+After successful 2FA login, your IP is whitelisted for 1 hour.
 
 **Note**: On first startup after DNS configuration, Traefik will automatically request a Let's Encrypt certificate. This takes 30-60 seconds. Check logs:
 ```bash
@@ -273,10 +273,12 @@ docker compose -f docker-compose.yml -f yesterday/docker-compose.yesterday-servi
 ```
 
 This starts:
-- `yesterday-api` on port 8082
-- `yesterday-index` on port 8083 (nginx serving the UI with API proxy)
+- `yesterday-traefik` on ports 8090/8444 (reverse proxy with HTTPS)
+- `yesterday-2fa` (2FA authentication gateway)
+- `yesterday-api` (backup management API)
+- `yesterday-index` (static web UI)
 
-Access: `http://localhost:8083` or `http://yesterday.ilovefreegle.org:8083`
+Access: `https://yesterday.ilovefreegle.org:8444`
 
 ### Option 2: Systemd Service
 
@@ -329,7 +331,7 @@ The Yesterday system is secured with multiple layers:
 
 **2FA Authentication Gateway:**
 - TOTP-based authentication (Google Authenticator compatible)
-- IP-based whitelisting for 24 hours after successful authentication
+- IP-based whitelisting for 1 hour after successful authentication
 - Multiple named users with individual TOTP secrets
 - Users can be added/removed instantly via admin CLI
 - Failed login attempts are logged
@@ -341,6 +343,9 @@ The Yesterday system is secured with multiple layers:
 - Firewall rules allow only required ports (22, 80, 443, 8082-8084)
 - 2FA gateway protects access to backup management UI
 - All outbound email captured in Mailhog (no external sending)
+
+**Known Security Consideration:**
+- **IP Whitelisting Limitation**: Current implementation whitelists by IP address for 1 hour after successful 2FA. If a user's IP address changes (e.g., mobile network), another user could temporarily gain access if they receive that IP within the whitelist window. Future enhancement: implement secure cookie-based session authentication instead of IP-based whitelisting.
 
 **Data Access:**
 - Restored databases are snapshots from production
@@ -513,14 +518,13 @@ Note: The restoration script streams from GCS and extracts directly to the Docke
    ```
 
    Required rules:
-   - `allow-yesterday-https` (tcp:80,tcp:443)
-   - `allow-yesterday-services` (tcp:8082,tcp:8083,tcp:8084)
+   - `allow-yesterday-services` (tcp:8090,tcp:8444)
    - `allow-yesterday-ssh` (tcp:22)
 
 3. **Test connectivity from outside:**
    ```bash
-   curl -I http://yesterday.ilovefreegle.org:8084
-   # Should return 401 (authentication required) or redirect
+   curl -I https://yesterday.ilovefreegle.org:8444
+   # Should return 401 (authentication required) or login page
    ```
 
 4. **Verify services are running:**

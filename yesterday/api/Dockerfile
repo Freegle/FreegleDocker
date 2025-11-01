@@ -1,5 +1,15 @@
 FROM node:22-alpine
 
+# Install Google Cloud SDK for gsutil (in /opt to avoid volume mount conflicts)
+RUN apk add --no-cache python3 py3-pip curl bash && \
+    curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz && \
+    tar -xf google-cloud-cli-linux-x86_64.tar.gz && \
+    mv google-cloud-sdk /opt/ && \
+    /opt/google-cloud-sdk/install.sh --quiet --usage-reporting=false --path-update=false && \
+    rm google-cloud-cli-linux-x86_64.tar.gz
+
+ENV PATH="/opt/google-cloud-sdk/bin:${PATH}"
+
 WORKDIR /app
 
 # Install dependencies

@@ -49,10 +49,33 @@
     .warning h3 {
       margin: 0 0 10px 0;
       color: #856404;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .warning h3:hover {
+      opacity: 0.8;
+    }
+    .warning h3 .toggle-icon {
+      font-size: 14px;
+      transition: transform 0.3s;
+    }
+    .warning h3.collapsed .toggle-icon {
+      transform: rotate(-90deg);
     }
     .warning ul {
       margin: 5px 0;
       padding-left: 20px;
+    }
+    .warning-content {
+      max-height: 1000px;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    .warning-content.collapsed {
+      max-height: 0;
     }
     .current-backup {
       background: #e8f5e9;
@@ -74,7 +97,8 @@
       margin-top: 15px;
     }
     .current-backup .links a {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
       margin: 5px 10px 5px 0;
       padding: 10px 20px;
       background: #4CAF50;
@@ -82,9 +106,15 @@
       text-decoration: none;
       border-radius: 4px;
       font-weight: 500;
+      gap: 8px;
     }
     .current-backup .links a:hover {
       background: #45a049;
+    }
+    .current-backup .links a img {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
     }
     .backup-list {
       background: white;
@@ -238,12 +268,12 @@
     }
     .status-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
       margin-top: 15px;
     }
     .status-item {
-      padding: 15px;
+      padding: 10px;
       border-radius: 6px;
       border: 2px solid #e0e0e0;
       background: #fafafa;
@@ -292,23 +322,28 @@
     <div class="logo">
       <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle Logo">
     </div>
-    <h1>Freegle Yesterday</h1>
-    <p class="subtitle">Historical Backup Browser - Select and load any production backup</p>
+    <h1 id="page-title">Freegle Yesterday</h1>
+    <p class="subtitle">Access the system using data from backups</p>
   </header>
 
   <div class="warning">
-    <h3>⚠️ Important Information</h3>
-    <ul>
-      <li><strong>Automatic Loading:</strong> The most recent backup is loaded automatically each night at 6 AM UTC. You can manually load different backups below.</li>
-      <li><strong>Single Backup Model:</strong> Only one backup can be loaded at a time. Loading a new backup will restart the isolated test environment and replace the database (takes 1-2 hours).</li>
-      <li><strong>Isolated Environment:</strong> Runs latest code but with real data from backups. Uses Docker technology to create a completely isolated copy of the system - changes here don't affect live Freegle.</li>
-      <li><strong>Login:</strong> Only email/password authentication works. OAuth providers (Google, Facebook) are disabled since they're configured for production domains only.</li>
-      <li><strong>Email Testing:</strong> All outbound email is captured in <a href="http://yesterday.ilovefreegle.org:8025" target="_blank" style="color: #856404; text-decoration: underline;">Mailhog</a> (a local email testing tool) - nothing is sent externally, so it's safe to test email functionality.</li>
-    </ul>
+    <h3 onclick="toggleWarning()">
+      <span>⚠️ Important Information</span>
+      <span class="toggle-icon">▼</span>
+    </h3>
+    <div class="warning-content" id="warning-content">
+      <ul>
+        <li><strong>Automatic Loading:</strong> The most recent backup is loaded automatically each night at 6 AM UTC. You can manually load different backups below.</li>
+        <li><strong>Single Backup Model:</strong> Only one backup can be loaded at a time. Loading a new backup will restart the isolated test environment and replace the database (takes 1-2 hours).</li>
+        <li><strong>Isolated Environment:</strong> Runs latest code but with real data from backups. Uses <a href="https://en.wikipedia.org/wiki/Docker_(software)" target="_blank" style="color: #856404; text-decoration: underline;">Docker technology</a> to create a completely isolated copy of the system - changes here don't affect live Freegle.</li>
+        <li><strong>Login:</strong> Use your email/password from the live Freegle system. Social logins (Google, Facebook) don't work here since they're configured for production domains only. If you normally use social login, you can reset your password on the live site first.</li>
+        <li><strong>Email Testing:</strong> All outbound email is captured in Mailhog (a local email testing tool) - nothing is sent externally, so it's safe to test email functionality. Access Mailhog via the link in the "Currently Loaded Backup" section below.</li>
+      </ul>
+    </div>
   </div>
 
   <div class="current-backup">
-    <h2>Currently Loaded Backup</h2>
+    <h2 id="current-backup-title">Currently Loaded Backup</h2>
     <div id="current-backup-info">
       <div class="loading">
         <div class="spinner"></div>
@@ -323,6 +358,16 @@
       <div class="loading">
         <div class="spinner"></div>
         <p>Checking system status...</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="backup-list" style="margin-bottom: 20px;">
+    <h2>Whitelisted IP Addresses (24-hour access)</h2>
+    <div id="ip-whitelist">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>Loading whitelisted IPs...</p>
       </div>
     </div>
   </div>
@@ -374,6 +419,28 @@
     let currentBackupDate = null;
     let progressInterval = null;
 
+    // Toggle warning section
+    function toggleWarning() {
+      const content = document.getElementById('warning-content');
+      const header = document.querySelector('.warning h3');
+      const isCollapsed = content.classList.toggle('collapsed');
+      header.classList.toggle('collapsed');
+
+      // Save state to localStorage
+      localStorage.setItem('warningCollapsed', isCollapsed ? 'true' : 'false');
+    }
+
+    // Restore warning section state from localStorage
+    function restoreWarningState() {
+      const isCollapsed = localStorage.getItem('warningCollapsed') === 'true';
+      if (isCollapsed) {
+        const content = document.getElementById('warning-content');
+        const header = document.querySelector('.warning h3');
+        content.classList.add('collapsed');
+        header.classList.add('collapsed');
+      }
+    }
+
     // Load current backup info
     async function loadCurrentBackup() {
       // For now, we'll read this from a file or API
@@ -384,13 +451,31 @@
 
         if (data.date) {
           currentBackupDate = data.date;
+          // Update page title and section title with backup date
+          const formattedDate = formatDate(data.date);
+          document.getElementById('page-title').textContent = `Freegle Yesterday - ${formattedDate}`;
+          document.getElementById('current-backup-title').textContent = `Currently Loaded Backup: ${formattedDate}`;
+
+          const loadedTime = data.loaded_at ? new Date(data.loaded_at) : null;
+          const loadedTimeStr = loadedTime ?
+            `${loadedTime.toLocaleString()} (${timeAgo(loadedTime)})` :
+            'Unknown';
           document.getElementById('current-backup-info').innerHTML = `
-            <p class="date">${formatDate(data.date)}</p>
-            <p>Loaded at: ${data.loaded_at || 'Unknown'}</p>
+            <p>Loaded at: ${loadedTimeStr}</p>
             <div class="links">
-              <a href="http://localhost:3000" target="_blank">🌐 Freegle (User Site)</a>
-              <a href="http://localhost:3001" target="_blank">🛠️ ModTools</a>
-              <a href="http://localhost:8025" target="_blank">📧 Mailhog</a>
+              <a href="http://${window.location.hostname}:3002" target="_blank">
+                <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle">
+                Freegle
+              </a>
+              <a href="http://${window.location.hostname}:3003" target="_blank">
+                <img src="https://modtools.org/icon_modtools.png" alt="ModTools">
+                ModTools
+              </a>
+            </div>
+            <p style="margin-top: 15px; font-size: 14px; color: #666;"><strong>Geek Tools:</strong></p>
+            <div class="links">
+              <a href="http://${window.location.hostname}:8025" target="_blank">📧 Mailhog</a>
+              <a href="http://${window.location.hostname}:8086" target="_blank">🗄️ phpMyAdmin</a>
             </div>
           `;
         } else {
@@ -474,6 +559,31 @@
       const day = dateStr.substr(6, 2);
       const date = new Date(year, month - 1, day);
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    // Time ago helper
+    function timeAgo(date) {
+      const seconds = Math.floor((new Date() - date) / 1000);
+
+      if (seconds < 60) return 'just now';
+
+      const intervals = {
+        year: 31536000,
+        month: 2592000,
+        week: 604800,
+        day: 86400,
+        hour: 3600,
+        minute: 60
+      };
+
+      for (const [name, secondsInInterval] of Object.entries(intervals)) {
+        const interval = Math.floor(seconds / secondsInInterval);
+        if (interval >= 1) {
+          return `${interval} ${name}${interval !== 1 ? 's' : ''} ago`;
+        }
+      }
+
+      return 'just now';
     }
 
     // Load a backup
@@ -571,7 +681,7 @@
         if (data.containers && data.containers.length > 0) {
           let html = '<div class="status-grid">';
 
-          const keyServices = ['percona', 'redis', 'apiv2', 'freegle-prod', 'modtools-prod'];
+          const keyServices = ['freegle-prod', 'modtools-prod', 'apiv1', 'apiv2', 'percona', 'redis', 'beanstalkd', 'spamassassin'];
 
           keyServices.forEach(serviceName => {
             const container = data.containers.find(c => c.name.includes(serviceName));
@@ -579,9 +689,11 @@
               const statusClass = container.state === 'running' && container.health === 'healthy' ? 'healthy' :
                                  container.state === 'running' ? 'starting' : 'unhealthy';
               const displayName = serviceName.replace('freegle-prod', 'Freegle').replace('modtools-prod', 'ModTools')
-                                            .replace('percona', 'Database').replace('apiv2', 'API v2');
+                                            .replace('percona', 'Database').replace('apiv1', 'API v1').replace('apiv2', 'API v2')
+                                            .replace('beanstalkd', 'Queue').replace('spamassassin', 'Spam');
               const stateText = container.state === 'running' && container.health === 'healthy' ? 'Running' :
-                               container.state === 'running' ? container.health || 'Starting' : container.state;
+                               container.state === 'running' && (container.health === 'starting' || container.health === 'unknown') ? 'Starting' :
+                               container.state === 'running' ? container.health : container.state;
 
               html += `
                 <div class="status-item ${statusClass}">
@@ -597,7 +709,8 @@
           html += '</div>';
           html += `<p style="margin-top: 15px; color: #666; font-size: 14px;">
             Last updated: ${new Date().toLocaleTimeString()} |
-            <a href="#" onclick="loadSystemStatus(); return false;" style="color: #4CAF50;">Refresh</a>
+            <a href="#" onclick="loadSystemStatus(); resetStatusCountdown(); return false;" style="color: #4CAF50;">Refresh</a> |
+            <span id="status-countdown">Next update in 30s</span>
           </p>`;
 
           document.getElementById('system-status').innerHTML = html;
@@ -613,13 +726,96 @@
       }
     }
 
+    // Load whitelisted IPs
+    async function loadWhitelistedIps() {
+      try {
+        const response = await fetch('/api/whitelisted-ips');
+        const data = await response.json();
+
+        if (data.ips && data.ips.length > 0) {
+          let html = `
+            <table>
+              <thead>
+                <tr>
+                  <th>IP Address</th>
+                  <th>Username</th>
+                  <th>Expires In</th>
+                  <th>Expires At</th>
+                </tr>
+              </thead>
+              <tbody>
+          `;
+
+          data.ips.forEach(item => {
+            html += `
+              <tr>
+                <td><strong>${item.ip}</strong></td>
+                <td>${item.username}</td>
+                <td>${item.expiresIn}</td>
+                <td>${new Date(item.expires).toLocaleString()}</td>
+              </tr>
+            `;
+          });
+
+          html += `
+              </tbody>
+            </table>
+            <p style="margin-top: 15px; color: #666; font-size: 14px;">
+              ${data.total} active IP${data.total === 1 ? '' : 's'} whitelisted
+            </p>
+          `;
+
+          document.getElementById('ip-whitelist').innerHTML = html;
+        } else {
+          document.getElementById('ip-whitelist').innerHTML = `
+            <p style="color: #666;">No IPs currently whitelisted. Authenticate with 2FA to get 1-hour access.</p>
+          `;
+        }
+      } catch (e) {
+        document.getElementById('ip-whitelist').innerHTML = `
+          <p style="color: #999;">Unable to load whitelisted IPs.</p>
+        `;
+      }
+    }
+
+    // Status countdown timer
+    let statusCountdown = 30;
+    let statusCountdownInterval = null;
+
+    function updateStatusCountdown() {
+      const el = document.getElementById('status-countdown');
+      if (el) {
+        statusCountdown--;
+        if (statusCountdown <= 0) {
+          el.textContent = 'Updating...';
+        } else {
+          el.textContent = `Next update in ${statusCountdown}s`;
+        }
+      }
+    }
+
+    function resetStatusCountdown() {
+      statusCountdown = 30;
+      updateStatusCountdown();
+    }
+
     // Initialize
+    restoreWarningState();
     loadCurrentBackup();
     loadBackupList();
     loadSystemStatus();
+    loadWhitelistedIps();
+
+    // Start countdown
+    statusCountdownInterval = setInterval(updateStatusCountdown, 1000);
 
     // Refresh system status every 30 seconds
-    setInterval(loadSystemStatus, 30000);
+    setInterval(() => {
+      loadSystemStatus();
+      resetStatusCountdown();
+    }, 30000);
+
+    setInterval(loadWhitelistedIps, 60000); // Refresh IPs every minute
   </script>
 </body>
 </html>

@@ -261,7 +261,7 @@ app.get('/api/backups/:backupDate/progress', (req, res) => {
 
 // GET /api/current-backup - Get currently loaded backup info
 app.get('/api/current-backup', async (req, res) => {
-  const stateFile = '/var/www/FreegleDocker/yesterday/data/current-backup.json';
+  const stateFile = '/data/current-backup.json';
 
   try {
     const data = await fs.readFile(stateFile, 'utf8');
@@ -282,7 +282,7 @@ app.get('/api/current-backup', async (req, res) => {
 // GET /api/system-status - Get Docker container status
 app.get('/api/system-status', async (req, res) => {
   try {
-    const { stdout } = await execAsync('docker ps -a --format "{{.Names}}|{{.State}}|{{.Status}}" --filter "label=com.docker.compose.project=freegle"');
+    const { stdout } = await execAsync('docker ps -a --format "{{.Names}}|{{.State}}|{{.Status}}" --filter "label=com.docker.compose.project=freegledocker"');
 
     const containers = stdout.trim().split('\n')
       .filter(line => line)
@@ -300,6 +300,35 @@ app.get('/api/system-status', async (req, res) => {
   } catch (err) {
     console.error('Error getting container status:', err);
     res.status(500).json({ error: 'Failed to get container status', containers: [] });
+  }
+});
+
+// GET /api/whitelisted-ips - Get list of whitelisted IPs
+app.get('/api/whitelisted-ips', async (req, res) => {
+  const whitelistFile = '/data/2fa/ip-whitelist.json';
+
+  try {
+    const data = await fs.readFile(whitelistFile, 'utf8');
+    const whitelist = JSON.parse(data);
+    const now = Date.now();
+
+    // Filter out expired entries and format for display
+    const activeIps = Object.entries(whitelist)
+      .filter(([ip, data]) => data.expires > now)
+      .map(([ip, data]) => ({
+        ip,
+        expires: new Date(data.expires).toISOString(),
+        expiresIn: Math.floor((data.expires - now) / 1000 / 60 / 60) + ' hours',
+        username: data.username || 'unknown'
+      }));
+
+    res.json({ ips: activeIps, total: activeIps.length });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      res.json({ ips: [], total: 0 });
+    } else {
+      res.status(500).json({ error: error.message, ips: [], total: 0 });
+    }
   }
 });
 
