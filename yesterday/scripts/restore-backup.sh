@@ -172,10 +172,6 @@ fi
 # Update current backup tracker
 /var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
 
-# Clean up any old cached backup files to save disk space
-echo "Cleaning up old cached backups..."
-find "$BACKUP_DIR" -name "iznik-*.xbstream" -mtime +7 -delete 2>/dev/null || true
-
 echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="
 echo "✅ Backup from ${FORMATTED_DATE} restored successfully"

@@ -370,7 +370,7 @@ docker volume prune
 docker image prune -a
 ```
 
-Note: The restoration script extracts directly to the Docker volume without temp directories, using only ~100GB at peak. Any cached .xbstream files older than 7 days are automatically cleaned up.
+Note: The restoration script streams from GCS and extracts directly to the Docker volume without caching or temp directories, using only ~100GB at peak.
 
 ### Can't access via domain
 
