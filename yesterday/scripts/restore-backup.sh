@@ -71,7 +71,7 @@ echo ""
     while [ ! -f "${VOLUME_PATH}/.extraction_done" ]; do
         FILE_COUNT=$(find "$VOLUME_PATH" -type f 2>/dev/null | wc -l)
         DIR_SIZE=$(du -sh "$VOLUME_PATH" 2>/dev/null | awk '{print $1}')
-        echo "[$(date +%H:%M:%S)] Extracting: $FILE_COUNT files, ${DIR_SIZE}"
+        echo "[$(date +%H:%M:%S)] Extracting: $FILE_COUNT files, ${DIR_SIZE} (streaming from ${BACKUP_SIZE_GB}GB compressed backup)"
         sleep 10
     done
 ) &
