@@ -43,8 +43,12 @@ BACKUP_SIZE=$(gsutil ls -l "$BACKUP_FILE" | grep -v TOTAL | awk '{print $1}')
 BACKUP_SIZE_GB=$((BACKUP_SIZE / 1024 / 1024 / 1024))
 echo "Backup size: ${BACKUP_SIZE_GB}GB (compressed)"
 
-echo "Configuring Yesterday environment..."
+echo "Updating Yesterday code..."
 cd /var/www/FreegleDocker
+git pull
+echo "✅ Code updated"
+
+echo "Configuring Yesterday environment..."
 if [ -f yesterday/docker-compose.override.yml ]; then
     cp yesterday/docker-compose.override.yml docker-compose.override.yml
     echo "✅ Copied docker-compose.override.yml (configured for production images)"
