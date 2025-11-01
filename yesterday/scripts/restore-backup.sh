@@ -155,18 +155,134 @@ chown -R 999:999 "${VOLUME_PATH}"
 rm -f "${VOLUME_PATH}/.extraction_done"
 echo "✅ Volume ready"
 
+# Function to wait for container to be healthy
+wait_for_container_health() {
+    local container=$1
+    local max_wait=${2:-180}  # Default 3 minutes
+    local waited=0
+
+    echo "Waiting for $container to become healthy..."
+    while [ $waited -lt $max_wait ]; do
+        if docker compose ps "$container" 2>/dev/null | grep -q "healthy"; then
+            echo "✅ $container is healthy"
+            return 0
+        fi
+
+        if docker compose ps "$container" 2>/dev/null | grep -q "Up"; then
+            # Container is up but may not have health check or not healthy yet
+            sleep 5
+            waited=$((waited + 5))
+        else
+            echo "⚠️  $container not running yet, waiting..."
+            sleep 5
+            waited=$((waited + 5))
+        fi
+    done
+
+    echo "❌ Timeout waiting for $container to become healthy"
+    return 1
+}
+
+# Function to check if all expected containers are running
+verify_all_containers() {
+    echo ""
+    echo "Verifying all containers are running..."
+
+    local failed_containers=()
+    local created_containers=()
+
+    # Get list of containers in Created state (not started)
+    while IFS= read -r container; do
+        if [ -n "$container" ]; then
+            created_containers+=("$container")
+        fi
+    done < <(docker compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed 's/freegle-//')
+
+    # Get list of exited/unhealthy containers
+    while IFS= read -r container; do
+        if [ -n "$container" ]; then
+            failed_containers+=("$container")
+        fi
+    done < <(docker compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed 's/freegle-//')
+
+    if [ ${#created_containers[@]} -gt 0 ]; then
+        echo "⚠️  Found containers in Created state (not started): ${created_containers[*]}"
+        echo "Attempting to start them..."
+        docker compose up -d
+        sleep 10
+    fi
+
+    if [ ${#failed_containers[@]} -gt 0 ]; then
+        echo "⚠️  Found failed containers: ${failed_containers[*]}"
+        return 1
+    fi
+
+    echo "✅ All containers are running"
+    return 0
+}
+
 echo ""
 echo "Starting all Docker containers..."
 docker compose up -d
 
-echo "Waiting for database to start (30 seconds)..."
-sleep 30
+echo ""
+echo "Waiting for critical infrastructure containers..."
 
+# Wait for critical containers with health checks
+wait_for_container_health "percona" 240 || {
+    echo "❌ Percona failed to start. Checking logs..."
+    docker logs freegle-percona --tail 20
+    exit 1
+}
+
+wait_for_container_health "reverse-proxy" 120 || {
+    echo "❌ Traefik failed to start. Checking logs..."
+    docker logs freegle-traefik --tail 20
+    exit 1
+}
+
+wait_for_container_health "redis" 60
+wait_for_container_health "postgres" 120
+wait_for_container_health "beanstalkd" 60
+
+echo ""
+echo "Infrastructure containers ready. Waiting for application containers..."
+sleep 10
+
+# Verify all containers are running, retry if needed
+MAX_RETRIES=3
+RETRY=0
+while [ $RETRY -lt $MAX_RETRIES ]; do
+    if verify_all_containers; then
+        break
+    fi
+
+    RETRY=$((RETRY + 1))
+    if [ $RETRY -lt $MAX_RETRIES ]; then
+        echo "Retry $RETRY/$MAX_RETRIES: Restarting failed containers..."
+        docker compose up -d
+        sleep 15
+    fi
+done
+
+if [ $RETRY -eq $MAX_RETRIES ]; then
+    echo "❌ Failed to start all containers after $MAX_RETRIES attempts"
+    echo "Current container status:"
+    docker compose ps
+    exit 1
+fi
+
+# Wait for apiv2 to be healthy (it takes time to compile)
+echo ""
+echo "Waiting for API v2 to compile and start (this may take 60-90 seconds)..."
+wait_for_container_health "apiv2" 180
+
+echo ""
 echo "Verifying database..."
-if docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
+if docker exec freegle-percona mysql -uroot -piznik -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
     echo "✅ Database verification successful!"
 
-    TABLE_COUNT=$(docker exec freegle-db mysql -uroot -p"${IZNIK_DB_PASSWORD}" iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
+    TABLE_COUNT=$(docker exec freegle-percona mysql -uroot -piznik iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
     echo "Database contains ${TABLE_COUNT} tables"
 else
     echo "❌ Database verification failed!"
