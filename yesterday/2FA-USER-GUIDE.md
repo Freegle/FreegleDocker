@@ -58,7 +58,7 @@ If you can't scan the QR code:
 
 5. **Click "Authenticate"**
 
-**Success!** Your IP address is now whitelisted for 24 hours. You won't need to enter the code again for 24 hours (unless you change location/IP).
+**Success!** Your IP address is now whitelisted for 1 hour. You won't need to enter the code again for 1 hour (unless you change location/IP).
 
 ## Important Notes
 
@@ -67,9 +67,9 @@ If you can't scan the QR code:
 - Each code only works once
 
 ### IP Whitelisting
-- After successful login, your IP address is remembered for 24 hours
+- After successful login, your IP address is remembered for 1 hour
 - You can use the system freely during this time without entering codes
-- After 24 hours, you'll need to authenticate again
+- After 1 hour, you'll need to authenticate again
 
 ### Keep Your Phone Safe
 - Your authenticator app is your key to access

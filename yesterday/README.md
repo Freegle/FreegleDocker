@@ -233,7 +233,7 @@ This will display a QR code. Scan it with Google Authenticator or any TOTP app.
 - Let's Encrypt certificate automatically obtained and renewed
 - Uses alternate ports to avoid conflict with main Freegle Traefik
 
-After successful 2FA login, your IP is whitelisted for 24 hours.
+After successful 2FA login, your IP is whitelisted for 1 hour.
 
 **Note**: On first startup after DNS configuration, Traefik will automatically request a Let's Encrypt certificate. This takes 30-60 seconds. Check logs:
 ```bash
@@ -331,7 +331,7 @@ The Yesterday system is secured with multiple layers:
 
 **2FA Authentication Gateway:**
 - TOTP-based authentication (Google Authenticator compatible)
-- IP-based whitelisting for 24 hours after successful authentication
+- IP-based whitelisting for 1 hour after successful authentication
 - Multiple named users with individual TOTP secrets
 - Users can be added/removed instantly via admin CLI
 - Failed login attempts are logged
@@ -343,6 +343,9 @@ The Yesterday system is secured with multiple layers:
 - Firewall rules allow only required ports (22, 80, 443, 8082-8084)
 - 2FA gateway protects access to backup management UI
 - All outbound email captured in Mailhog (no external sending)
+
+**Known Security Consideration:**
+- **IP Whitelisting Limitation**: Current implementation whitelists by IP address for 1 hour after successful 2FA. If a user's IP address changes (e.g., mobile network), another user could temporarily gain access if they receive that IP within the whitelist window. Future enhancement: implement secure cookie-based session authentication instead of IP-based whitelisting.
 
 **Data Access:**
 - Restored databases are snapshots from production
