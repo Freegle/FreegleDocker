@@ -279,6 +279,30 @@ app.get('/api/current-backup', async (req, res) => {
   }
 });
 
+// GET /api/system-status - Get Docker container status
+app.get('/api/system-status', async (req, res) => {
+  try {
+    const { stdout } = await execAsync('docker ps -a --format "{{.Names}}|{{.State}}|{{.Status}}" --filter "label=com.docker.compose.project=freegle"');
+
+    const containers = stdout.trim().split('\n')
+      .filter(line => line)
+      .map(line => {
+        const [name, state, status] = line.split('|');
+        let health = 'unknown';
+        if (status.includes('healthy')) health = 'healthy';
+        else if (status.includes('unhealthy')) health = 'unhealthy';
+        else if (status.includes('starting')) health = 'starting';
+
+        return { name, state, health, status };
+      });
+
+    res.json({ containers });
+  } catch (err) {
+    console.error('Error getting container status:', err);
+    res.status(500).json({ error: 'Failed to get container status', containers: [] });
+  }
+});
+
 // GET /health - Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
@@ -292,5 +316,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  POST /api/backups/:date/load - Load a backup`);
   console.log(`  GET  /api/backups/:date/progress - Check progress`);
   console.log(`  GET  /api/current-backup - Get current backup info`);
+  console.log(`  GET  /api/system-status - Get Docker container status`);
   console.log(`  GET  /health - Health check`);
 });

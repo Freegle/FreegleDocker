@@ -21,13 +21,18 @@
       border-radius: 8px;
       margin-bottom: 20px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .logo {
+      margin-bottom: 15px;
+    }
+    .logo img {
+      width: 80px;
+      height: auto;
     }
     h1 {
       color: #2e7d32;
       margin: 0 0 10px 0;
-      display: flex;
-      align-items: center;
-      gap: 10px;
     }
     .subtitle {
       color: #666;
@@ -230,11 +235,63 @@
       color: #666;
       font-size: 14px;
     }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .status-item {
+      padding: 15px;
+      border-radius: 6px;
+      border: 2px solid #e0e0e0;
+      background: #fafafa;
+    }
+    .status-item.healthy {
+      border-color: #4CAF50;
+      background: #e8f5e9;
+    }
+    .status-item.unhealthy {
+      border-color: #f44336;
+      background: #ffebee;
+    }
+    .status-item.starting {
+      border-color: #ff9800;
+      background: #fff3e0;
+    }
+    .status-item .name {
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    .status-item .state {
+      font-size: 13px;
+      color: #666;
+    }
+    .status-item .indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .status-item.healthy .indicator {
+      background: #4CAF50;
+    }
+    .status-item.unhealthy .indicator {
+      background: #f44336;
+    }
+    .status-item.starting .indicator {
+      background: #ff9800;
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>🕐 Freegle Yesterday</h1>
+    <div class="logo">
+      <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle Logo">
+    </div>
+    <h1>Freegle Yesterday</h1>
     <p class="subtitle">Historical Backup Browser - Select and load any production backup</p>
   </header>
 
@@ -254,6 +311,16 @@
       <div class="loading">
         <div class="spinner"></div>
         <p>Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="backup-list" style="margin-bottom: 20px;">
+    <h2>System Status</h2>
+    <div id="system-status">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>Checking system status...</p>
       </div>
     </div>
   </div>
@@ -319,9 +386,9 @@
             <p class="date">${formatDate(data.date)}</p>
             <p>Loaded at: ${data.loaded_at || 'Unknown'}</p>
             <div class="links">
-              <a href="https://yesterday.ilovefreegle.org:3000" target="_blank">🌐 Open Freegle</a>
-              <a href="https://yesterday.ilovefreegle.org:3001" target="_blank">🛠️ Open ModTools</a>
-              <a href="http://yesterday.ilovefreegle.org:8025" target="_blank">📧 Open Mailhog</a>
+              <a href="http://localhost:3000" target="_blank">🌐 Freegle (User Site)</a>
+              <a href="http://localhost:3001" target="_blank">🛠️ ModTools</a>
+              <a href="http://localhost:8025" target="_blank">📧 Mailhog</a>
             </div>
           `;
         } else {
@@ -493,9 +560,64 @@
       document.getElementById('progress-bar').textContent = progress + '%';
     }
 
+    // Load system status
+    async function loadSystemStatus() {
+      try {
+        const response = await fetch('/api/system-status');
+        const data = await response.json();
+
+        if (data.containers && data.containers.length > 0) {
+          let html = '<div class="status-grid">';
+
+          const keyServices = ['percona', 'redis', 'apiv2', 'freegle-prod', 'modtools-prod'];
+
+          keyServices.forEach(serviceName => {
+            const container = data.containers.find(c => c.name.includes(serviceName));
+            if (container) {
+              const statusClass = container.state === 'running' && container.health === 'healthy' ? 'healthy' :
+                                 container.state === 'running' ? 'starting' : 'unhealthy';
+              const displayName = serviceName.replace('freegle-prod', 'Freegle').replace('modtools-prod', 'ModTools')
+                                            .replace('percona', 'Database').replace('apiv2', 'API v2');
+              const stateText = container.state === 'running' && container.health === 'healthy' ? 'Running' :
+                               container.state === 'running' ? container.health || 'Starting' : container.state;
+
+              html += `
+                <div class="status-item ${statusClass}">
+                  <div class="name">
+                    <span class="indicator"></span>${displayName}
+                  </div>
+                  <div class="state">${stateText}</div>
+                </div>
+              `;
+            }
+          });
+
+          html += '</div>';
+          html += `<p style="margin-top: 15px; color: #666; font-size: 14px;">
+            Last updated: ${new Date().toLocaleTimeString()} |
+            <a href="#" onclick="loadSystemStatus(); return false;" style="color: #4CAF50;">Refresh</a>
+          </p>`;
+
+          document.getElementById('system-status').innerHTML = html;
+        } else {
+          document.getElementById('system-status').innerHTML = `
+            <p style="color: #666;">No containers running. Load a backup to start the system.</p>
+          `;
+        }
+      } catch (e) {
+        document.getElementById('system-status').innerHTML = `
+          <p style="color: #999;">Unable to load system status. Services may be offline.</p>
+        `;
+      }
+    }
+
     // Initialize
     loadCurrentBackup();
     loadBackupList();
+    loadSystemStatus();
+
+    // Refresh system status every 30 seconds
+    setInterval(loadSystemStatus, 30000);
   </script>
 </body>
 </html>
