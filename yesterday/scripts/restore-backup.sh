@@ -43,8 +43,16 @@ BACKUP_SIZE=$(gsutil ls -l "$BACKUP_FILE" | grep -v TOTAL | awk '{print $1}')
 BACKUP_SIZE_GB=$((BACKUP_SIZE / 1024 / 1024 / 1024))
 echo "Backup size: ${BACKUP_SIZE_GB}GB (compressed)"
 
-echo "Stopping all Docker containers..."
+echo "Configuring Yesterday environment..."
 cd /var/www/FreegleDocker
+if [ -f yesterday/docker-compose.override.yml ]; then
+    cp yesterday/docker-compose.override.yml docker-compose.override.yml
+    echo "✅ Copied docker-compose.override.yml (configured for production images)"
+else
+    echo "⚠️  Warning: yesterday/docker-compose.override.yml not found"
+fi
+
+echo "Stopping all Docker containers..."
 docker compose down
 
 echo "Removing old database data..."

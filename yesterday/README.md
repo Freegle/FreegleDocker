@@ -46,16 +46,7 @@ The VM has been provisioned with:
 
 ### 2. Environment Configuration
 
-**On the Yesterday VM**, copy the docker-compose override file:
-
-```bash
-cd /var/www/FreegleDocker
-cp yesterday/docker-compose.override.yml docker-compose.override.yml
-```
-
-This configures containers to use production image services (images.ilovefreegle.org, tus.ilovefreegle.org) so the restored backup displays the correct images from production.
-
-Then create a `.env` file in `/var/www/FreegleDocker` with the following variables:
+Create a `.env` file in `/var/www/FreegleDocker` with the following variables:
 
 ```bash
 # Database credentials
@@ -141,12 +132,15 @@ cd /var/www/FreegleDocker/yesterday
 ```
 
 This will:
+- Automatically configure containers to use production image services
 - Stream the backup directly from GCS (no local caching)
 - Extract and decompress directly to Docker volume (no temp directory)
 - Prepare the backup in place with xtrabackup
 - Restart all containers
 
 Peak disk usage: ~100GB (only the final volume, no temp copies)
+
+Note: The script automatically copies `yesterday/docker-compose.override.yml` to configure all containers to use production image delivery and TUS uploader services, so restored backups display the correct images.
 
 ### 7. Access the Restored System
 
