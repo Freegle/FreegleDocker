@@ -57,10 +57,12 @@ echo "Getting volume path..."
 VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}')
 echo "Volume path: ${VOLUME_PATH}"
 
+ESTIMATED_FINAL_GB=$((BACKUP_SIZE_GB * 21 / 10))
+
 echo ""
 echo "=========================================="
 echo "Streaming and extracting backup directly to volume..."
-echo "Total backup size: ${BACKUP_SIZE_GB}GB (compressed)"
+echo "Compressed: ${BACKUP_SIZE_GB}GB → Estimated final: ~${ESTIMATED_FINAL_GB}GB"
 echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
@@ -70,8 +72,10 @@ echo ""
     sleep 5
     while [ ! -f "${VOLUME_PATH}/.extraction_done" ]; do
         FILE_COUNT=$(find "$VOLUME_PATH" -type f 2>/dev/null | wc -l)
+        DIR_SIZE_RAW=$(du -sb "$VOLUME_PATH" 2>/dev/null | awk '{print $1}')
         DIR_SIZE=$(du -sh "$VOLUME_PATH" 2>/dev/null | awk '{print $1}')
-        echo "[$(date +%H:%M:%S)] Extracting: $FILE_COUNT files, ${DIR_SIZE} (streaming from ${BACKUP_SIZE_GB}GB compressed backup)"
+        PERCENT=$((DIR_SIZE_RAW * 100 / (BACKUP_SIZE_GB * 1024 * 1024 * 1024)))
+        echo "[$(date +%H:%M:%S)] Extracting: ${DIR_SIZE} / ~${ESTIMATED_FINAL_GB}GB (${PERCENT}% of compressed backup extracted)"
         sleep 10
     done
 ) &
