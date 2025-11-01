@@ -61,15 +61,23 @@ REDIS_PASSWORD=generate_random_redis_password_here
 
 **IMPORTANT**: Never commit the `.env` file to git (it's in `.gitignore`)
 
-### 3. DNS Configuration (Optional)
+### 3. DNS Configuration (For Public Access)
 
-Set up DNS records pointing to the VM's external IP if using custom domains:
+To access Yesterday via domain name instead of IP:
 
+1. **Get the VM's external IP:**
+```bash
+gcloud compute instances describe yesterday-freegle --project=freegle-yesterday --zone=europe-west2-a --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+```
+
+2. **Set up DNS record:**
 ```
 yesterday.ilovefreegle.org              A    <VM_EXTERNAL_IP>
 ```
 
-Or access via localhost URLs after restoration.
+3. **Access via:**
+- `http://<VM_EXTERNAL_IP>:8084` (IP address)
+- `http://yesterday.ilovefreegle.org:8084` (domain name)
 
 ### 4. Install Node.js (if needed)
 
@@ -142,7 +150,44 @@ Peak disk usage: ~100GB (only the final volume, no temp copies)
 
 Note: The script automatically copies `yesterday/docker-compose.override.yml` to configure all containers to use production image delivery and TUS uploader services, so restored backups display the correct images.
 
-### 7. Access the Restored System
+### 7. Set Up 2FA Gateway (Optional but Recommended)
+
+The Yesterday backup UI is protected by 2FA (TOTP) authentication:
+
+**Start the 2FA-protected services:**
+```bash
+cd /var/www/FreegleDocker
+docker compose -f yesterday/docker-compose.yesterday-services.yml up -d
+```
+
+This starts:
+- `yesterday-2fa` on port 8084 (2FA gateway - use this for public access)
+- `yesterday-api` on port 8082 (backup API - internal)
+- `yesterday-index` on port 8083 (web UI - internal)
+
+**Add your first user:**
+```bash
+export YESTERDAY_ADMIN_KEY=your_admin_key_from_env_file
+./yesterday/scripts/2fa-admin.sh add your_username
+```
+
+This will display a QR code. Scan it with Google Authenticator or any TOTP app.
+
+**Access the system:**
+- Public (2FA-protected): `http://VM_IP:8084` or `https://yesterday.ilovefreegle.org`
+- Direct (localhost only): `http://localhost:8083`
+
+After successful 2FA login, your IP is whitelisted for 24 hours.
+
+**Manage users:**
+```bash
+./yesterday/scripts/2fa-admin.sh list          # List users
+./yesterday/scripts/2fa-admin.sh add alice     # Add user
+./yesterday/scripts/2fa-admin.sh delete bob    # Remove user
+./yesterday/scripts/2fa-admin.sh status        # Check gateway status
+```
+
+### 8. Access the Restored System
 
 Once restoration completes, access the system:
 - **Freegle**: http://localhost:3000 (freegle-prod container)
@@ -219,11 +264,27 @@ To manually trigger auto-restore:
 
 ## Security
 
-- 2FA authentication with TOTP (Google Authenticator)
-- IP-based whitelisting for 24 hours after 2FA
-- Multiple named, revokable users
-- Read-only access to production backups
-- All services isolated in dedicated GCP project
+The Yesterday system is secured with multiple layers:
+
+**2FA Authentication Gateway:**
+- TOTP-based authentication (Google Authenticator compatible)
+- IP-based whitelisting for 24 hours after successful authentication
+- Multiple named users with individual TOTP secrets
+- Users can be added/removed instantly via admin CLI
+- Failed login attempts are logged
+
+**Infrastructure Security:**
+- Read-only access to production backups via GCP IAM
+- All services isolated in dedicated `freegle-yesterday` GCP project
+- Preemptible VM to minimize costs
+- Firewall rules restrict access to HTTP/HTTPS ports only
+- All outbound email captured in Mailhog (no external sending)
+
+**Data Access:**
+- Restored databases are snapshots from production
+- OAuth logins don't work (production-only configuration)
+- Email/password authentication works for testing
+- Images/uploads served from production storage (read-only)
 
 ## Daily Operations
 

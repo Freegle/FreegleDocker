@@ -1,8 +1,33 @@
-# Yesterday Services - API and Index Page
+# Yesterday Services - API, Index Page, and 2FA Gateway
 # Standalone compose file for Yesterday backup management UI
 # Usage: docker compose -f yesterday/docker-compose.yesterday-services.yml up -d
 
 services:
+  # 2FA Authentication Gateway (front door)
+  yesterday-2fa:
+    build:
+      context: ./2fa-gateway
+      dockerfile: Dockerfile
+    container_name: yesterday-2fa
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    volumes:
+      - ./data/2fa:/data
+    environment:
+      - PORT=8084
+      - YESTERDAY_ADMIN_KEY=${YESTERDAY_ADMIN_KEY}
+      - USERS_FILE=/data/2fa-users.json
+      - WHITELIST_FILE=/data/ip-whitelist.json
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8084/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - yesterday-api
+      - yesterday-index
+
   # Yesterday Backup Management API
   yesterday-api:
     build:
