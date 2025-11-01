@@ -41,16 +41,7 @@ echo "Selected backup: $BACKUP_FILE"
 
 BACKUP_SIZE=$(gsutil ls -l "$BACKUP_FILE" | grep -v TOTAL | awk '{print $1}')
 BACKUP_SIZE_GB=$((BACKUP_SIZE / 1024 / 1024 / 1024))
-echo "Backup size: ${BACKUP_SIZE_GB}GB"
-
-LOCAL_BACKUP="$BACKUP_DIR/$(basename $BACKUP_FILE)"
-if [ ! -f "$LOCAL_BACKUP" ]; then
-    echo "Downloading backup from GCS..."
-    gsutil cp "$BACKUP_FILE" "$LOCAL_BACKUP"
-    echo "✅ Download complete"
-else
-    echo "Using cached local backup: $LOCAL_BACKUP"
-fi
+echo "Backup size: ${BACKUP_SIZE_GB}GB (compressed)"
 
 echo "Stopping all Docker containers..."
 cd /var/www/FreegleDocker
@@ -68,7 +59,7 @@ mkdir -p "$TEMP_DIR"
 
 echo ""
 echo "=========================================="
-echo "Extracting xbstream backup..."
+echo "Streaming and extracting backup from GCS..."
 echo "Total backup size: ${BACKUP_SIZE_GB}GB (compressed)"
 echo "This will take 10-15 minutes..."
 echo "=========================================="
@@ -80,14 +71,14 @@ echo ""
     while [ -d "$TEMP_DIR" ] && [ ! -f "$TEMP_DIR/.extraction_done" ]; do
         FILE_COUNT=$(find "$TEMP_DIR" -type f 2>/dev/null | wc -l)
         DIR_SIZE=$(du -sh "$TEMP_DIR" 2>/dev/null | awk '{print $1}')
-        echo "[$(date +%H:%M:%S)] Extracted: $FILE_COUNT files, ${DIR_SIZE} / ${BACKUP_SIZE_GB}GB (compressed)"
+        echo "[$(date +%H:%M:%S)] Extracting: $FILE_COUNT files, ${DIR_SIZE}"
         sleep 10
     done
 ) &
 PROGRESS_PID=$!
 
-# Extract xbstream
-xbstream -x < "$LOCAL_BACKUP" -C "$TEMP_DIR"
+# Stream directly from GCS and extract - no local file stored
+gsutil cat "$BACKUP_FILE" | xbstream -x -C "$TEMP_DIR"
 
 # Signal extraction is done
 touch "$TEMP_DIR/.extraction_done"
@@ -183,6 +174,10 @@ fi
 
 # Update current backup tracker
 /var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
+
+# Clean up any old cached backup files to save disk space
+echo "Cleaning up old cached backups..."
+find "$BACKUP_DIR" -name "iznik-*.xbstream" -mtime +7 -delete 2>/dev/null || true
 
 echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="

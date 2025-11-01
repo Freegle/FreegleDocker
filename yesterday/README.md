@@ -132,8 +132,9 @@ cd /var/www/FreegleDocker/yesterday
 ```
 
 This will:
-- Download the backup from GCS (cached locally)
-- Extract and prepare the xbstream backup
+- Stream the backup directly from GCS (no local caching for space efficiency)
+- Extract and decompress the xbstream backup
+- Prepare the backup with xtrabackup
 - Import into existing database volume
 - Restart all containers
 
@@ -359,12 +360,14 @@ df -h
 du -sh /var/www/FreegleDocker/yesterday/data/*
 ```
 
-**Clean up old backups:**
+**Clean up temp directories:**
 ```bash
 cd /var/www/FreegleDocker/yesterday/data/backups
 ls -lh  # See what's there
-rm iznik-2025-10-*.xbstream  # Delete old cached backups
+rm -rf temp-*  # Delete old temp extraction directories
 ```
+
+Note: The restoration script now streams backups directly from GCS without local caching, saving ~47GB per backup. Any cached .xbstream files older than 7 days are automatically cleaned up.
 
 ### Can't access via domain
 
