@@ -31,9 +31,9 @@ services:
     container_name: freegle-percona
     networks:
       - default
-    image: percona:8.0.33-25-centos
+    image: percona:8.0.42-33
     restart: always
-    command: --skip-log-bin --skip-log-slave-updates
+    command: --skip-log-bin --skip-log-slave-updates --innodb_data_file_path=ibdata1:2000M;ibdata2:10M:autoextend
     volumes:
       - freegle_db:/var/lib/mysql
     environment:
@@ -80,11 +80,14 @@ services:
       - PMA_HOST=percona
       - PMA_USER=root
       - PMA_PASSWORD=iznik
+      - ADMIN_TOOLS_BASIC_AUTH=${ADMIN_TOOLS_BASIC_AUTH}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.phpmyadmin.rule=Host(`phpmyadmin.localhost`)"
       - "traefik.http.routers.phpmyadmin.entrypoints=web"
+      - "traefik.http.routers.phpmyadmin.middlewares=admin-auth"
       - "traefik.http.services.phpmyadmin.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.admin-auth.basicauth.users=${ADMIN_TOOLS_BASIC_AUTH}"
 
   mailhog:
     image: mailhog/mailhog
@@ -106,10 +109,13 @@ services:
         condition: service_healthy
       reverse-proxy:
         condition: service_healthy
+    environment:
+      - ADMIN_TOOLS_BASIC_AUTH=${ADMIN_TOOLS_BASIC_AUTH}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
       - "traefik.http.routers.mailhog.entrypoints=web"
+      - "traefik.http.routers.mailhog.middlewares=admin-auth"
       - "traefik.http.services.mailhog.loadbalancer.server.port=8025"
 
   beanstalkd:
@@ -297,13 +303,13 @@ services:
     container_name: freegle-apiv1
     networks:
       - default
-    build: 
+    build:
       context: ./iznik-server
       args:
         IZNIK_SERVER_BRANCH: ${IZNIK_SERVER_BRANCH:-master}
     depends_on:
       percona:
-        condition: service_started
+        condition: service_healthy
       beanstalkd:
         condition: service_started
       mailhog:
@@ -421,7 +427,7 @@ services:
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
-    build: 
+    build:
       context: ./iznik-nuxt3
       args:
         IZNIK_NUXT3_BRANCH: ${IZNIK_NUXT3_BRANCH:-master}
@@ -433,7 +439,7 @@ services:
       mailhog:
         condition: service_started
       apiv1:
-        condition: service_started
+        condition: service_healthy
       apiv2:
         condition: service_started
     restart: "no"
@@ -469,7 +475,7 @@ services:
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
-    build: 
+    build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.prod
       args:
@@ -482,7 +488,7 @@ services:
       mailhog:
         condition: service_started
       apiv1:
-        condition: service_started
+        condition: service_healthy
       apiv2:
         condition: service_started
     restart: "no"
@@ -529,7 +535,7 @@ services:
       mailhog:
         condition: service_started
       apiv1:
-        condition: service_started
+        condition: service_healthy
       apiv2:
         condition: service_started
     restart: "no"
@@ -584,7 +590,7 @@ services:
       mailhog:
         condition: service_started
       apiv1:
-        condition: service_started
+        condition: service_healthy
       apiv2:
         condition: service_started
     restart: "no"
@@ -661,8 +667,7 @@ services:
 volumes:
   rebuild-requests:
     driver: local
-  freegle_db:
-    external: true
+  freegle_db: {}
 
 networks:
   default:

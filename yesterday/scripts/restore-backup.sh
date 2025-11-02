@@ -140,6 +140,23 @@ echo ""
 echo "✅ Decompression complete!"
 echo ""
 
+# Extract Percona version from backup and update docker-compose.yml
+echo "=========================================="
+echo "Detecting and configuring Percona version..."
+echo "=========================================="
+
+BACKUP_SERVER_VERSION=$(grep "^server_version" "$VOLUME_PATH/xtrabackup_info" | awk '{print $3}')
+echo "Backup was created with Percona version: $BACKUP_SERVER_VERSION"
+
+# Extract major.minor.patch-build format (e.g., 8.0.42-33)
+PERCONA_VERSION=$(echo "$BACKUP_SERVER_VERSION" | sed 's/\([0-9]\+\.[0-9]\+\.[0-9]\+-[0-9]\+\).*/\1/')
+echo "Using Percona Docker image: percona:$PERCONA_VERSION"
+
+# Update docker-compose.yml with the correct version
+sed -i "s|image: percona:.*|image: percona:$PERCONA_VERSION|g" "$COMPOSE_FILE"
+echo "✅ Updated docker-compose.yml with correct Percona version"
+echo ""
+
 echo "=========================================="
 echo "Preparing backup (applying transaction logs)..."
 echo "This will take 10-15 minutes..."
@@ -162,8 +179,13 @@ echo ""
 echo "✅ Preparation complete!"
 echo ""
 
+echo "Detecting MySQL user ID from Percona image..."
+MYSQL_UID=$(docker run --rm percona:$PERCONA_VERSION id -u mysql)
+MYSQL_GID=$(docker run --rm percona:$PERCONA_VERSION id -g mysql)
+echo "MySQL runs as UID:GID ${MYSQL_UID}:${MYSQL_GID} in this Percona version"
+
 echo "Setting ownership..."
-chown -R 999:999 "${VOLUME_PATH}"
+chown -R ${MYSQL_UID}:${MYSQL_GID} "${VOLUME_PATH}"
 rm -f "${VOLUME_PATH}/.extraction_done"
 echo "✅ Volume ready"
 
