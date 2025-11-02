@@ -1,10 +1,99 @@
 # Donation Appeals: Evidence-Based Research Review & Implementation
 
-**Date**: October 31, 2025
-**Page Location**: `/iznik-nuxt3/pages/donation-appeals.vue`
-**Status**: Research Complete, Ready for A/B Testing
+**Date**: October 31, 2025 (Research) | November 2, 2025 (Implementation)
+**Page Location**: `/iznik-nuxt3/pages/donation-appeals.vue` (Research) | `/iznik-nuxt3/components/MyPostsDonationAsk.vue` (Live Test)
+**Status**: **LIVE A/B TESTING** - My Posts Donation Appeal
 
-## Overview
+## 🚀 Current Live Implementation (November 2, 2025)
+
+### What We're Testing: My Posts Donation Appeal
+
+**Component**: `MyPostsDonationAsk.vue`
+**Location**: Shown on `/myposts` page after user posts an Offer (and hasn't donated yet)
+**A/B Test ID**: `mypostsdonation`
+
+### Test Configuration
+
+**Two Message Variations**:
+1. **Solution Framing** (Variation #5)
+   - Message: "Help us continue the solution! Our 4.6M volunteer-run members have kept 47,000 tonnes out of landfill. Donate to keep Freegle growing?"
+   - Research basis: Yale 2024 study showing solution framing increases donation intent
+
+2. **Minimal Friction** (Variation #10)
+   - Message: "Freegle is volunteer-run and free to use. Donate to help us continue?"
+   - Research basis: NextAfter 2024 research on friction reduction
+
+**Eight Donation Amounts**: £0.50, £1, £1.50, £2, £2.50, £3, £4, £5
+
+**Total Variants**: 16 (2 messages × 8 amounts)
+
+### Multi-Armed Bandit Algorithm
+
+The system uses intelligent A/B testing via the `abtest` table:
+- **90% exploitation**: Shows best-performing variant based on conversion rate
+- **10% exploration**: Randomly tries other variants to find hidden winners
+- **Auto-optimization**: Automatically shifts traffic to better performers
+- **Metrics tracked**: `shown` (impressions), `action` (conversions), `rate` (%)
+
+### Technical Implementation
+
+**User Experience**:
+- Slider control for amount selection (£0.50-£10 range)
+- Default amount set by bandit algorithm
+- Stripe payment (with PayPal fallback)
+- Rainbow animated border for visual prominence
+- Mobile-optimized with larger touch targets
+
+**Tracking**:
+- `api.bandit.choose()` - Selects variant on mount
+- `api.bandit.shown()` - Records impression when displayed
+- `api.bandit.chosen()` - Records conversion on successful donation
+
+**Display Logic**:
+- Only shows after user posts an **Offer** (`type === 'Offer'`)
+- Only shows if user hasn't donated this session (`!donated`)
+- Post-transaction timing optimizes for positive user sentiment
+
+### Why This Timing?
+
+Post-offer donation asks capitalize on:
+1. **Peak engagement** - User just successfully completed their goal
+2. **Positive sentiment** - Feeling good about giving away items
+3. **Platform value demonstration** - Just experienced Freegle's benefit firsthand
+4. **UK affordability barrier** - User just saved money, reducing "can't afford" concern
+
+### Database Setup
+
+All 16 variants configured in `abtest` table with `suggest=1`:
+```sql
+SELECT variant, shown, action, rate FROM abtest
+WHERE uid = 'mypostsdonation'
+ORDER BY variant;
+```
+
+### Success Metrics to Monitor
+
+**Primary**:
+- Conversion rate (target: 15-20%)
+- Average donation amount (target: £1.50-£3.00)
+- Total revenue per 1000 impressions
+
+**Secondary**:
+- Message variation performance (solution vs minimal friction)
+- Optimal amount (which defaults convert best)
+- Mobile vs desktop conversion difference
+- Time to donate (friction metric)
+
+### Next Steps
+
+1. **Week 1-2**: Gather baseline data, ensure tracking working
+2. **Week 3-4**: Identify clear winners in message type and amount
+3. **Month 2**: Optimize based on winners, test additional variations
+4. **Month 3**: Consider expanding to other post-transaction moments
+
+---
+
+## Overview (Research Phase)
 
 Conducted comprehensive evidence-based research review of Freegle's donation appeal variations, comparing proposed approaches against peer-reviewed studies, field experiments, and UK charity sector data. Updated donation-appeals.vue page with proper citations, research-backed rationale, and implementation warnings.
 
