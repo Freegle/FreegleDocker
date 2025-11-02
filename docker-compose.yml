@@ -306,8 +306,6 @@ services:
       context: ./iznik-server
       args:
         IZNIK_SERVER_BRANCH: ${IZNIK_SERVER_BRANCH:-master}
-    volumes:
-      - ./iznik-server-my.cnf:/root/.my.cnf:ro
     # Simplified startup command for Yesterday - skips DB initialization (schema.sql, testenv.php, etc)
     # to preserve restored production data
     command: >

@@ -8,6 +8,8 @@ services:
       - /tmp/percona-my.cnf:/etc/my.cnf:ro
 
   apiv1:
+    volumes:
+      - ./iznik-server-my.cnf:/root/.my.cnf:ro
     environment:
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
       - IMAGE_DELIVERY=https://images.ilovefreegle.org
