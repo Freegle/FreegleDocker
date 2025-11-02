@@ -31,7 +31,7 @@ commands:
             echo "<< parameters.reason >>"
 
             # Clean up any existing containers first
-            docker-compose down --remove-orphans || true
+            docker-compose -f docker-compose.yml down --remove-orphans || true
             docker system prune -f || true
 
             # Fix memory overcommit for Redis
@@ -49,14 +49,14 @@ commands:
             echo "Current working directory: $(pwd)"
             ls -la secrets/
 
-            # Start services in detached mode
-            docker-compose up -d
+            # Start services in detached mode (use base file only, not override)
+            docker-compose -f docker-compose.yml up -d
 
             echo "Waiting for basic services to start..."
             sleep 30
 
             echo "Service status:"
-            docker-compose ps
+            docker-compose -f docker-compose.yml ps
 
   wait-for-basic-services:
     description: "Wait for API v1 and v2 services to be healthy"
@@ -120,7 +120,7 @@ commands:
 
             # Set up test environment first
             echo "Setting up test environment..."
-            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
             echo "Setting up Go-specific test data..."
             # Copy Go test environment file from container to temp location
@@ -130,10 +130,10 @@ commands:
             # Copy back to apiv1 container
             docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
             # Run Go test environment setup
-            docker-compose exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
+            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
 
             echo "Running Go tests..."
-            docker-compose exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
+            docker-compose -f docker-compose.yml exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
 
             echo "✅ Go tests passed!"
             echo "GO_TESTS_PASSED=true" >> $BASH_ENV
@@ -443,10 +443,10 @@ commands:
             mkdir -p ~/artifacts
 
             # Collect Docker logs
-            if docker-compose ps > /dev/null 2>&1; then
+            if docker-compose -f docker-compose.yml ps > /dev/null 2>&1; then
               echo "Collecting Docker logs..."
-              docker-compose logs > ~/artifacts/docker-logs.txt 2>&1 || true
-              docker-compose ps > ~/artifacts/docker-status.txt 2>&1 || true
+              docker-compose -f docker-compose.yml logs > ~/artifacts/docker-logs.txt 2>&1 || true
+              docker-compose -f docker-compose.yml ps > ~/artifacts/docker-status.txt 2>&1 || true
             fi
 
             # Collect production container build logs artifact from status container
