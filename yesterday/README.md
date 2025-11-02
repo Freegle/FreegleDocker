@@ -361,6 +361,26 @@ The system runs automatically:
 - Midnight shutdown of all days
 - Automatic container restarts after VM preemption
 
+### VM Management
+
+Start the Yesterday VM:
+
+```bash
+gcloud compute instances start yesterday-freegle --project=freegle-yesterday --zone=europe-west2-a
+```
+
+Stop the Yesterday VM:
+
+```bash
+gcloud compute instances stop yesterday-freegle --project=freegle-yesterday --zone=europe-west2-a
+```
+
+SSH into the VM:
+
+```bash
+gcloud compute ssh yesterday-freegle --project=freegle-yesterday --zone=europe-west2-a
+```
+
 ## Monitoring
 
 Check the status:
