@@ -59,15 +59,20 @@ fi
 echo "Stopping all Docker containers..."
 docker compose down
 
-echo "Removing old database data..."
-docker volume rm freegle_db 2>/dev/null || true
-
-echo "Creating fresh database volume..."
-docker volume create freegle_db
-
 echo "Getting volume path..."
-VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}')
+VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}' 2>/dev/null || echo "")
+
+if [ -z "$VOLUME_PATH" ]; then
+    echo "Creating fresh database volume..."
+    docker volume create freegle_db
+    VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}')
+fi
+
 echo "Volume path: ${VOLUME_PATH}"
+
+echo "Clearing old database data from volume..."
+rm -rf "${VOLUME_PATH}"/*
+echo "✅ Volume cleared"
 
 ESTIMATED_FINAL_GB=$((BACKUP_SIZE_GB * 21 / 10))
 
@@ -113,7 +118,11 @@ echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
 
-# Decompress all .zst files (zstd compression)
+# Get number of CPU cores for parallel decompression
+CORES=$(nproc)
+echo "Using $CORES parallel processes for decompression"
+
+# Decompress all .zst files in parallel using xargs
 (
     ZST_COUNT=0
     while true; do
@@ -130,9 +139,7 @@ echo ""
 ) &
 ZSTD_PID=$!
 
-for bf in $(find "$VOLUME_PATH" -type f -name "*.zst"); do
-    zstd -d --rm "$bf"
-done
+find "$VOLUME_PATH" -type f -name "*.zst" -print0 | xargs -0 -P $CORES -I {} zstd -d --rm {}
 
 kill $ZSTD_PID 2>/dev/null || true
 
@@ -152,9 +159,40 @@ echo "Backup was created with Percona version: $BACKUP_SERVER_VERSION"
 PERCONA_VERSION=$(echo "$BACKUP_SERVER_VERSION" | sed 's/\([0-9]\+\.[0-9]\+\.[0-9]\+-[0-9]\+\).*/\1/')
 echo "Using Percona Docker image: percona:$PERCONA_VERSION"
 
-# Update docker-compose.yml with the correct version
+# Create my.cnf with InnoDB parameters from backup
+MYCNF_FILE="/tmp/percona-my.cnf"
+cat > "$MYCNF_FILE" << EOF
+[mysqld]
+innodb_data_file_path=$(grep "^innodb_data_file_path" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
+innodb_page_size=$(grep "^innodb_page_size" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
+innodb_undo_tablespaces=$(grep "^innodb_undo_tablespaces" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
+skip-log-bin
+skip-log-slave-updates
+EOF
+
+echo "Created MySQL config file: $MYCNF_FILE"
+
+# Generate MySQL client configs for containers
+echo "Generating MySQL client configs..."
+/var/www/FreegleDocker/scripts/generate-mysql-configs.sh
+
+# Update docker-compose.yml with the correct version and config file mount
 sed -i "s|image: percona:.*|image: percona:$PERCONA_VERSION|g" "$COMPOSE_FILE"
-echo "✅ Updated docker-compose.yml with correct Percona version"
+
+# Remove old command-line parameters and add config file mount
+sed -i '/^    image: percona:/,/^    volumes:/ {
+  /command:/d
+}' "$COMPOSE_FILE"
+
+# Add config file mount if not already present
+if ! grep -q "/tmp/percona-my.cnf:/etc/my.cnf" "$COMPOSE_FILE"; then
+  sed -i '/freegle_db:\/var\/lib\/mysql/a\      - /tmp/percona-my.cnf:/etc/my.cnf:ro' "$COMPOSE_FILE"
+fi
+
+# Update health check to work with restored databases
+sed -i 's|mysql -h localhost -u root -piznik -e .SELECT 1.|mysqladmin ping -h localhost|g' "$COMPOSE_FILE"
+
+echo "✅ Updated docker-compose.yml with correct Percona version, config file, and health check"
 echo ""
 
 echo "=========================================="
@@ -172,7 +210,17 @@ echo ""
 ) &
 PREPARE_PID=$!
 
+# First prepare with --apply-log-only to apply redo logs
 xtrabackup --prepare --apply-log-only --target-dir="$VOLUME_PATH"
+
+# Final prepare without --apply-log-only to complete the restore and roll back uncommitted transactions
+echo ""
+echo "=========================================="
+echo "Final prepare (rolling back uncommitted transactions)..."
+echo "This will take a few minutes..."
+echo "=========================================="
+echo ""
+xtrabackup --prepare --target-dir="$VOLUME_PATH"
 
 kill $PREPARE_PID 2>/dev/null || true
 echo ""
@@ -185,9 +233,19 @@ MYSQL_GID=$(docker run --rm percona:$PERCONA_VERSION id -g mysql)
 echo "MySQL runs as UID:GID ${MYSQL_UID}:${MYSQL_GID} in this Percona version"
 
 echo "Setting ownership..."
-chown -R ${MYSQL_UID}:${MYSQL_GID} "${VOLUME_PATH}"
+sudo chown -R ${MYSQL_UID}:${MYSQL_GID} "${VOLUME_PATH}"
 rm -f "${VOLUME_PATH}/.extraction_done"
 echo "✅ Volume ready"
+
+echo "Verifying ownership..."
+ACTUAL_UID=$(sudo stat -c '%u' "${VOLUME_PATH}/ibdata1")
+ACTUAL_GID=$(sudo stat -c '%g' "${VOLUME_PATH}/ibdata1")
+if [ "$ACTUAL_UID" = "$MYSQL_UID" ] && [ "$ACTUAL_GID" = "$MYSQL_GID" ]; then
+    echo "✅ Ownership verified: ${ACTUAL_UID}:${ACTUAL_GID}"
+else
+    echo "❌ Ownership mismatch: expected ${MYSQL_UID}:${MYSQL_GID}, got ${ACTUAL_UID}:${ACTUAL_GID}"
+    exit 1
+fi
 
 # Function to wait for container to be healthy
 wait_for_container_health() {

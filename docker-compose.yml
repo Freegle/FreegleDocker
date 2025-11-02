@@ -33,14 +33,14 @@ services:
       - default
     image: percona:8.0.42-33
     restart: always
-    command: --skip-log-bin --skip-log-slave-updates --innodb_data_file_path=ibdata1:2000M;ibdata2:10M:autoextend
     volumes:
       - freegle_db:/var/lib/mysql
+      - /tmp/percona-my.cnf:/etc/my.cnf:ro
     environment:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik
     healthcheck:
-      test: ["CMD-SHELL", "mysql -h localhost -u root -piznik -e 'SELECT 1' || exit 1"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -79,7 +79,7 @@ services:
     environment:
       - PMA_HOST=percona
       - PMA_USER=root
-      - PMA_PASSWORD=iznik
+      - PMA_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
       - ADMIN_TOOLS_BASIC_AUTH=${ADMIN_TOOLS_BASIC_AUTH}
     labels:
       - "traefik.enable=true"
@@ -307,6 +307,20 @@ services:
       context: ./iznik-server
       args:
         IZNIK_SERVER_BRANCH: ${IZNIK_SERVER_BRANCH:-master}
+    volumes:
+      - ./iznik-server-my.cnf:/root/.my.cnf:ro
+    # Simplified startup command for Yesterday - skips DB initialization (schema.sql, testenv.php, etc)
+    # to preserve restored production data
+    command: >
+      /bin/sh -c "sed -i \"s/define('SQLPASSWORD', '.*')/define('SQLPASSWORD', '\$$MYSQL_PASSWORD')/\" /etc/iznik.conf &&
+      /etc/init.d/ssh start &&
+      cp install/nginx.conf /etc/nginx/sites-available/default &&
+      /etc/init.d/nginx start &&
+      /etc/init.d/cron start &&
+      /etc/init.d/php8.1-fpm start &&
+      /etc/init.d/postfix start &&
+      cd /var/www/iznik &&
+      sh -c 'nohup sh -c \"while true; do cd /var/www/iznik/scripts/cron && php ./message_spatial.php >> /tmp/iznik.message_spatial.out 2>&1; sleep 10; done\" </dev/null >/dev/null 2>&1 & exec sleep infinity'"
     depends_on:
       percona:
         condition: service_healthy
@@ -322,7 +336,8 @@ services:
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
-      - MYSQL_PASSWORD=iznik
+      - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
+      - SKIP_DB_INIT=${SKIP_DB_INIT:-false}
       - PHEANSTALK_SERVER=beanstalkd
       - REDIS_CONNECT=redis
       - IMAGE_DOMAIN=apiv1
@@ -396,6 +411,8 @@ services:
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
