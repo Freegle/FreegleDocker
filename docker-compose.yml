@@ -35,7 +35,6 @@ services:
     restart: always
     volumes:
       - freegle_db:/var/lib/mysql
-      - /tmp/percona-my.cnf:/etc/my.cnf:ro
     environment:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik

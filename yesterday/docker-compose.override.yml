@@ -3,6 +3,10 @@
 # so restored backups show the correct images from production
 
 services:
+  percona:
+    volumes:
+      - /tmp/percona-my.cnf:/etc/my.cnf:ro
+
   apiv1:
     environment:
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
