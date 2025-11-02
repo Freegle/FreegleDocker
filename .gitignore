@@ -10,3 +10,4 @@
 yesterday/.env
 yesterday/data/
 iznik-server-my.cnf
+docker-compose.override.yml
