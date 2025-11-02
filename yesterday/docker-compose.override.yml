@@ -31,6 +31,18 @@ services:
     # File: ./iznik-server-my.cnf (created by scripts/generate-mysql-configs.sh)
     volumes:
       - ./iznik-server-my.cnf:/root/.my.cnf:ro
+    # Simplified startup command for Yesterday - skips DB initialization (schema.sql, testenv.php, etc)
+    # to preserve restored production data
+    command: >
+      /bin/sh -c "sed -i \"s/define('SQLPASSWORD', '.*')/define('SQLPASSWORD', '\$$MYSQL_PASSWORD')/\" /etc/iznik.conf &&
+      /etc/init.d/ssh start &&
+      cp install/nginx.conf /etc/nginx/sites-available/default &&
+      /etc/init.d/nginx start &&
+      /etc/init.d/cron start &&
+      /etc/init.d/php8.1-fpm start &&
+      /etc/init.d/postfix start &&
+      cd /var/www/iznik &&
+      sh -c 'nohup sh -c \"while true; do cd /var/www/iznik/scripts/cron && php ./message_spatial.php >> /tmp/iznik.message_spatial.out 2>&1; sleep 10; done\" </dev/null >/dev/null 2>&1 & exec sleep infinity'"
     environment:
       # Use production image services so restored data displays correctly
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
