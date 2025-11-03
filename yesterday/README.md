@@ -93,30 +93,39 @@ Once DNS is configured, Traefik will automatically obtain a Let's Encrypt certif
 
 The Yesterday Traefik instance is configured to automatically obtain and renew SSL certificates using Let's Encrypt with DNS-01 challenge (no need for ports 80/443 to be publicly accessible).
 
+**Cross-Project Configuration:**
+- Service account: Created in `freegle-yesterday` project
+- DNS zone: Located in `freegle-1139` project (where ilovefreegle.org is managed)
+- Requires cross-project IAM permissions for the service account to manage DNS records
+
 **Prerequisites:**
-1. Cloud DNS API must be enabled in your GCP project:
+1. Cloud DNS API must be enabled in both projects:
 ```bash
 gcloud services enable dns.googleapis.com --project=freegle-yesterday
+gcloud services enable dns.googleapis.com --project=freegle-1139
 ```
 
-2. Create a service account with DNS admin permissions:
+2. Create a service account in freegle-yesterday project:
 ```bash
 # Create service account
 gcloud iam service-accounts create traefik-dns \
   --display-name="Traefik DNS Challenge" \
   --project=freegle-yesterday
 
-# Grant DNS admin role
-gcloud projects add-iam-policy-binding freegle-yesterday \
-  --member="serviceAccount:traefik-dns@freegle-yesterday.iam.gserviceaccount.com" \
-  --role="roles/dns.admin"
-
 # Create and download key
 gcloud iam service-accounts keys create /tmp/traefik-dns-key.json \
   --iam-account=traefik-dns@freegle-yesterday.iam.gserviceaccount.com
 ```
 
-3. Install the DNS key on the server (outside repository):
+3. Grant DNS admin permissions in the freegle-1139 project (where the DNS zone is):
+```bash
+# Grant DNS admin role in the project that hosts the DNS zone
+gcloud projects add-iam-policy-binding freegle-1139 \
+  --member="serviceAccount:traefik-dns@freegle-yesterday.iam.gserviceaccount.com" \
+  --role="roles/dns.admin"
+```
+
+4. Install the DNS key on the server (outside repository):
 ```bash
 # Create secrets directory
 sudo mkdir -p /etc/traefik/secrets
@@ -132,7 +141,7 @@ sudo chown root:root /etc/traefik/secrets/gcloud-dns-key.json
 rm /tmp/traefik-dns-key.json
 ```
 
-4. Certificate storage directory (for manual certificates if needed):
+5. Certificate storage directory (for manual certificates if needed):
 ```bash
 sudo mkdir -p /etc/traefik/certs
 sudo chmod 755 /etc/traefik/certs
@@ -140,8 +149,9 @@ sudo chmod 755 /etc/traefik/certs
 
 **How it works:**
 - Traefik mounts `/etc/traefik/secrets/gcloud-dns-key.json` from the host
+- Environment variable `GCE_PROJECT=freegle-1139` tells Traefik which project contains the DNS zone
 - When a certificate is needed, Traefik uses the DNS-01 challenge
-- Creates a TXT record in Cloud DNS to prove domain ownership
+- Creates a TXT record in Cloud DNS (in freegle-1139 project) to prove domain ownership
 - Let's Encrypt verifies the TXT record and issues the certificate
 - Certificate is stored in `./data/letsencrypt/acme.json` (managed by Traefik)
 - Automatic renewal happens 30 days before expiry
@@ -184,6 +194,14 @@ certificatesResolvers:
     ├── yesterday.ilovefreegle.org.crt
     └── yesterday.ilovefreegle.org.key
 ```
+
+**Current Status:**
+✅ SSL certificate is configured and working
+- Valid Let's Encrypt certificate issued via DNS-01 challenge
+- Certificate subject: yesterday.ilovefreegle.org
+- Issuer: Let's Encrypt R12
+- Automatic renewal enabled
+- Accessible at: https://yesterday.ilovefreegle.org:8444
 
 ### 5. GCP Firewall Configuration
 
