@@ -20,6 +20,44 @@
 # This file (yesterday/docker-compose.override.yml) is the single source of truth.
 
 services:
+  reverse-proxy:
+    # Add HTTPS entrypoints for dev/prod containers with Let's Encrypt
+    command:
+      - "--api.insecure=true"
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.api.address=:8192"
+      - "--entrypoints.traefik.address=:8080"
+      - "--entrypoints.freegle-dev.address=:3002"
+      - "--entrypoints.modtools-dev.address=:3003"
+      - "--entrypoints.freegle-prod.address=:3012"
+      - "--entrypoints.modtools-prod.address=:3013"
+      - "--accesslog=true"
+      - "--entrypoints.web.forwardedHeaders.insecure=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=geeks@ilovefreegle.org"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=gcloud"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.delaybeforecheck=30"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "8192:8192"
+      - "8080:8080"
+      - "0.0.0.0:3002:3002"
+      - "0.0.0.0:3003:3003"
+      - "0.0.0.0:3012:3012"
+      - "0.0.0.0:3013:3013"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/traefik/secrets/gcloud-dns-key.json:/secrets/gcloud-dns-key.json:ro
+      - ./data/main-letsencrypt:/letsencrypt
+    environment:
+      - GCE_PROJECT=freegle-1139
+      - GCE_SERVICE_ACCOUNT_FILE=/secrets/gcloud-dns-key.json
+
   delivery:
     # Expose delivery container externally for image processing
     ports:
@@ -60,38 +98,72 @@ services:
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
 
   freegle-dev:
-    # Use local delivery container for http:// URLs, production for user uploads
-    # Use externally-accessible API URLs since this container is accessed from outside (now on port 3002)
+    # Routed through Traefik for SSL termination on port 3002
+    # No direct port binding - Traefik handles HTTPS and proxies to container
+    ports: !reset []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.freegle-dev.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.freegle-dev.entrypoints=freegle-dev"
+      - "traefik.http.routers.freegle-dev.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.freegle-dev.tls.domains[0].main=yesterday.ilovefreegle.org"
+      - "traefik.http.services.freegle-dev.loadbalancer.server.port=3002"
     environment:
       - IZNIK_API_V1=http://yesterday.ilovefreegle.org:8181/api
       - IZNIK_API_V2=http://yesterday.ilovefreegle.org:8193/api
       - IMAGE_DELIVERY=http://yesterday.ilovefreegle.org:8095
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
       - IMAGE_BASE_URL=https://tus.ilovefreegle.org/tus
-      - USER_SITE=http://yesterday.ilovefreegle.org:3002
+      - USER_SITE=https://yesterday.ilovefreegle.org:3002
 
   freegle-prod:
     # DISABLED: We only use dev containers on Yesterday
     # Reason: Dev containers start in seconds, prod containers take 10+ minutes to build
     # Production containers are disabled to save resources and startup time
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.freegle-prod.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.freegle-prod.entrypoints=freegle-prod"
+      - "traefik.http.routers.freegle-prod.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.freegle-prod.tls.domains[0].main=yesterday.ilovefreegle.org"
+      - "traefik.http.services.freegle-prod.loadbalancer.server.port=3000"
+    environment:
+      - USER_SITE=https://yesterday.ilovefreegle.org:3012
     deploy:
       replicas: 0
 
   modtools-dev:
-    # Use local delivery container for http:// URLs, production for user uploads
-    # Use externally-accessible API URLs since this container is accessed from outside (now on port 3003)
+    # Routed through Traefik for SSL termination on port 3003
+    # No direct port binding - Traefik handles HTTPS and proxies to container
+    ports: !reset []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.modtools-dev.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.modtools-dev.entrypoints=modtools-dev"
+      - "traefik.http.routers.modtools-dev.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.modtools-dev.tls.domains[0].main=yesterday.ilovefreegle.org"
+      - "traefik.http.services.modtools-dev.loadbalancer.server.port=3000"
     environment:
       - IZNIK_API_V1=http://yesterday.ilovefreegle.org:8181/api
       - IZNIK_API_V2=http://yesterday.ilovefreegle.org:8193/api
       - IMAGE_DELIVERY=http://yesterday.ilovefreegle.org:8095
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
       - IMAGE_BASE_URL=https://tus.ilovefreegle.org/tus
-      - USER_SITE=http://yesterday.ilovefreegle.org:3003
+      - USER_SITE=https://yesterday.ilovefreegle.org:3003
 
   modtools-prod:
     # DISABLED: We only use dev containers on Yesterday
     # Reason: Dev containers start in seconds, prod containers take 10+ minutes to build
     # Production containers are disabled to save resources and startup time
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.modtools-prod.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.modtools-prod.entrypoints=modtools-prod"
+      - "traefik.http.routers.modtools-prod.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.modtools-prod.tls.domains[0].main=yesterday.ilovefreegle.org"
+      - "traefik.http.services.modtools-prod.loadbalancer.server.port=3000"
+    environment:
+      - USER_SITE=https://yesterday.ilovefreegle.org:3013
     deploy:
       replicas: 0
 
