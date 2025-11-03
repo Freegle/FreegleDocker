@@ -63,10 +63,14 @@ services:
 
   freegle-prod:
     # Use production image services for restored user-uploaded images
+    # Use externally-accessible API URLs since this container is accessed from outside
     environment:
+      - IZNIK_API_V1=http://yesterday.ilovefreegle.org:8181/api
+      - IZNIK_API_V2=http://yesterday.ilovefreegle.org:8193/api
       - IMAGE_DELIVERY=https://images.ilovefreegle.org
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
       - IMAGE_BASE_URL=https://tus.ilovefreegle.org/tus
+      - USER_SITE=http://yesterday.ilovefreegle.org:3002
 
   modtools-dev:
     # Use production image services for restored user-uploaded images
@@ -77,10 +81,14 @@ services:
 
   modtools-prod:
     # Use production image services for restored user-uploaded images
+    # Use externally-accessible API URLs since this container is accessed from outside
     environment:
+      - IZNIK_API_V1=http://yesterday.ilovefreegle.org:8181/api
+      - IZNIK_API_V2=http://yesterday.ilovefreegle.org:8193/api
       - IMAGE_DELIVERY=https://images.ilovefreegle.org
       - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
       - IMAGE_BASE_URL=https://tus.ilovefreegle.org/tus
+      - USER_SITE=http://yesterday.ilovefreegle.org:3003
 
 volumes:
   freegle_db:
