@@ -39,4 +39,4 @@ certificatesResolvers:
         delayBeforeCheck: 30
 
 log:
-  level: INFO
+  level: DEBUG

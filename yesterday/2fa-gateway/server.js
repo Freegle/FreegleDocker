@@ -16,6 +16,11 @@ const WHITELIST_DURATION = 1 * 60 * 60 * 1000; // 1 hour
 
 // Basic HTTP Authentication (first layer of security before 2FA)
 app.use((req, res, next) => {
+    // Skip basic auth for health endpoint
+    if (req.path === '/health') {
+        return next();
+    }
+
     if (!BACKUP_BASIC_AUTH) {
         return next(); // No basic auth configured, skip
     }

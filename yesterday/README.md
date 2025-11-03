@@ -46,7 +46,7 @@ The VM has been provisioned with:
 
 ### 2. Environment Configuration
 
-Create a `.env` file in `/var/www/FreegleDocker` with the following variables:
+Create a `.env` file in **both** `/var/www/FreegleDocker/` and `/var/www/FreegleDocker/yesterday/` with the following variables:
 
 ```bash
 # Database credentials
@@ -57,9 +57,18 @@ YESTERDAY_ADMIN_KEY=generate_random_admin_key_here
 
 # Redis password
 REDIS_PASSWORD=generate_random_redis_password_here
+
+# Optional: HTTP Basic Auth (first layer before 2FA)
+# Format: username:password (plain text)
+# If set, users must provide these credentials before seeing the 2FA login page
+BACKUP_BASIC_AUTH=backup:your_secure_password_here
 ```
 
-**IMPORTANT**: Never commit the `.env` file to git (it's in `.gitignore`)
+**IMPORTANT**:
+- Never commit the `.env` file to git (it's in `.gitignore`)
+- The `yesterday/.env` file is needed for the yesterday-services compose file
+- Keep both `.env` files in sync for shared variables
+- `BACKUP_BASIC_AUTH` uses plain text credentials, not htpasswd hashes
 
 ### 3. DNS Configuration (Required for HTTPS)
 
