@@ -42,6 +42,7 @@ services:
     environment:
       - PORT=8084
       - YESTERDAY_ADMIN_KEY=${YESTERDAY_ADMIN_KEY}
+      - BACKUP_BASIC_AUTH=${BACKUP_BASIC_AUTH}
       - USERS_FILE=/data/2fa-users.json
       - WHITELIST_FILE=/data/ip-whitelist.json
     labels:

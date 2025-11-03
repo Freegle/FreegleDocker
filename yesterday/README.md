@@ -343,7 +343,7 @@ This will display a QR code. Scan it with Google Authenticator or any TOTP app.
 
 **Access the system:**
 - Public (2FA-protected): `https://yesterday.ilovefreegle.org:8444`
-- HTTP: `http://yesterday.ilovefreegle.org:8090` (automatically redirects to HTTPS)
+- HTTPS: `https://yesterday.ilovefreegle.org` (port 443)
 - Let's Encrypt certificate automatically obtained and renewed
 - Uses alternate ports to avoid conflict with main Freegle Traefik
 
@@ -456,10 +456,8 @@ The Yesterday system is secured with multiple layers:
 - Preemptible VM to minimize costs
 - Firewall rules allow only required ports (22, 80, 443, 8082-8084)
 - 2FA gateway protects access to backup management UI
+- Optional HTTP Basic Auth adds defense-in-depth (configured via `BACKUP_BASIC_AUTH`)
 - All outbound email captured in Mailhog (no external sending)
-
-**Known Security Consideration:**
-- **IP Whitelisting Limitation**: Current implementation whitelists by IP address for 1 hour after successful 2FA. If a user's IP address changes (e.g., mobile network), another user could temporarily gain access if they receive that IP within the whitelist window. Future enhancement: implement secure cookie-based session authentication instead of IP-based whitelisting.
 
 **Data Access:**
 - Restored databases are snapshots from production

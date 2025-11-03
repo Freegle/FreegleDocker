@@ -33,21 +33,21 @@ LATEST_DATE=$(echo "$LATEST_FILENAME" | grep -oP 'iznik-\K\d{4}-\d{2}-\d{2}' | t
 echo "Latest backup found: $LATEST_FILENAME (Date: $LATEST_DATE)"
 echo "Backup timestamp: $LATEST_TIMESTAMP"
 
-# Safety check: Only restore backups that are at least 2 hours old
+# Safety check: Only restore backups that are at least 30 minutes old
 # This ensures upload is complete and file is stable
 BACKUP_AGE_SECONDS=$(( $(date +%s) - $(date -d "$LATEST_TIMESTAMP" +%s) ))
-BACKUP_AGE_HOURS=$(( BACKUP_AGE_SECONDS / 3600 ))
+BACKUP_AGE_MINUTES=$(( BACKUP_AGE_SECONDS / 60 ))
 
-echo "Backup age: ${BACKUP_AGE_HOURS} hours"
+echo "Backup age: ${BACKUP_AGE_MINUTES} minutes"
 
-if [ $BACKUP_AGE_HOURS -lt 2 ]; then
-    echo "⚠️  Backup is too recent (less than 2 hours old)"
+if [ $BACKUP_AGE_MINUTES -lt 30 ]; then
+    echo "⚠️  Backup is too recent (less than 30 minutes old)"
     echo "Waiting for upload to complete and file to stabilize"
     echo "Will retry on next run"
     exit 0
 fi
 
-echo "✅ Backup is stable (${BACKUP_AGE_HOURS} hours old)"
+echo "✅ Backup is stable (${BACKUP_AGE_MINUTES} minutes old)"
 
 # Check what's currently loaded
 if [ -f "$STATE_FILE" ]; then
