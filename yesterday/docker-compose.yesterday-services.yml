@@ -19,7 +19,7 @@ services:
       - /etc/traefik/secrets/gcloud-dns-key.json:/secrets/gcloud-dns-key.json:ro
       - ./data/letsencrypt:/letsencrypt
     environment:
-      - GCE_PROJECT=freegle-yesterday
+      - GCE_PROJECT=freegle-1139
       - GCE_SERVICE_ACCOUNT_FILE=/secrets/gcloud-dns-key.json
     networks:
       - default
