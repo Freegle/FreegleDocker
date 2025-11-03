@@ -33,7 +33,7 @@ The Yesterday environment:
 - **OAuth logins don't work** - Only email/password authentication is functional
 - OAuth providers (Yahoo, Google, Facebook) are configured for production domains only
 - All outbound email is captured in Mailhog - no external mail is sent
-- **Images use production delivery service** - The containers use `https://images.ilovefreegle.org` and `https://tus.ilovefreegle.org` for image delivery and uploads. This means:
+- **Images use production delivery service** - The containers use `https://delivery.ilovefreegle.org` and `https://uploads.ilovefreegle.org` for image delivery and uploads. This means:
   - Image viewing works correctly (images stored in production)
   - Image uploads go to production storage (use with caution during testing)
   - Local delivery container is disabled to avoid SSL complexity
