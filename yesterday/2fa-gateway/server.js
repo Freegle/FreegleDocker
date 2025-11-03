@@ -9,9 +9,38 @@ const http = require('http');
 const app = express();
 const PORT = process.env.PORT || 8084;
 const ADMIN_KEY = process.env.YESTERDAY_ADMIN_KEY || 'changeme';
+const BACKUP_BASIC_AUTH = process.env.BACKUP_BASIC_AUTH;
 const USERS_FILE = process.env.USERS_FILE || '/data/2fa-users.json';
 const WHITELIST_FILE = process.env.WHITELIST_FILE || '/data/ip-whitelist.json';
 const WHITELIST_DURATION = 1 * 60 * 60 * 1000; // 1 hour
+
+// Basic HTTP Authentication (first layer of security before 2FA)
+app.use((req, res, next) => {
+    if (!BACKUP_BASIC_AUTH) {
+        return next(); // No basic auth configured, skip
+    }
+
+    const auth = req.headers.authorization;
+
+    if (!auth || !auth.startsWith('Basic ')) {
+        res.writeHead(401, {
+            'WWW-Authenticate': 'Basic realm="Freegle Yesterday"',
+            'Content-Type': 'text/plain'
+        });
+        return res.end('Authentication required');
+    }
+
+    const credentials = Buffer.from(auth.slice(6), 'base64').toString();
+    if (credentials !== BACKUP_BASIC_AUTH) {
+        res.writeHead(401, {
+            'WWW-Authenticate': 'Basic realm="Freegle Yesterday"',
+            'Content-Type': 'text/plain'
+        });
+        return res.end('Invalid credentials');
+    }
+
+    next(); // Basic auth passed, continue to 2FA check
+});
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));

@@ -50,15 +50,21 @@ If you can't scan the QR code:
 
 1. **Go to:** https://yesterday.ilovefreegle.org
 
-2. **Enter your username**
+2. **If prompted, enter HTTP Basic Auth credentials** (username/password provided by admin)
+   - Your browser will show a login dialog
+   - This is the first security layer (if enabled)
 
-3. **Open your authenticator app** and look at the 6-digit code for "Freegle Yesterday"
+3. **Enter your username** on the 2FA page
 
-4. **Enter the 6-digit code** (you have about 30 seconds before it changes)
+4. **Open your authenticator app** and look at the 6-digit code for "Freegle Yesterday"
 
-5. **Click "Authenticate"**
+5. **Enter the 6-digit code** (you have about 30 seconds before it changes)
+
+6. **Click "Authenticate"**
 
 **Success!** Your IP address is now whitelisted for 1 hour. You won't need to enter the code again for 1 hour (unless you change location/IP).
+
+**Note:** If basic auth is enabled, your browser may remember those credentials, so you'll typically only need to enter your 2FA code.
 
 ## Important Notes
 

@@ -23,7 +23,37 @@ The Yesterday system provides access to historical Freegle production backups fo
 
 ## Security Layers
 
-### 1. Two-Factor Authentication (2FA)
+### 1. HTTP Basic Authentication (Optional First Layer)
+
+**Implementation:** Standard HTTP Basic Auth (RFC 7617)
+- Optional additional security layer before 2FA
+- Configured via `BACKUP_BASIC_AUTH` environment variable
+- Format: `username:password`
+
+**Location:** `yesterday/2fa-gateway/server.js` (lines 17-43)
+
+**How it works:**
+1. If `BACKUP_BASIC_AUTH` is set, user must provide valid credentials
+2. Browser prompts for username/password before any page loads
+3. Credentials are checked before 2FA authentication
+4. Browser typically remembers credentials for convenience
+
+**Benefits:**
+- Adds defense-in-depth (two independent auth layers)
+- Reduces exposure to automated attacks scanning for vulnerabilities
+- Simple to share with team (one set of credentials for basic auth, individual 2FA per user)
+- Can be disabled for development by leaving environment variable blank
+
+**Admin Configuration:**
+```bash
+# In .env file
+BACKUP_BASIC_AUTH=admin:secretpassword
+
+# Share credentials securely with authorized team members
+# They will need BOTH basic auth credentials AND their individual 2FA setup
+```
+
+### 2. Two-Factor Authentication (2FA)
 
 **Implementation:** TOTP-based authentication using industry-standard algorithms
 - Compatible with Google Authenticator, Microsoft Authenticator, Authy
@@ -47,13 +77,17 @@ The Yesterday system provides access to historical Freegle production backups fo
 
 **User secrets stored:** `/var/www/FreegleDocker/yesterday/data/2fa/2fa-users.json`
 
-### 2. Network Isolation
+### 3. Network Isolation
 
 **Architecture:**
 ```
 Internet → Traefik (443) → 2FA Gateway (8084) → Backend Services
                               ↓
-                         [Authentication Required]
+                         [HTTP Basic Auth] (optional)
+                              ↓
+                         [2FA Required]
+                              ↓
+                         [IP Whitelist Check]
                               ↓
                     ┌─────────┴──────────┐
                     ↓                    ↓
@@ -86,7 +120,7 @@ yesterday-api:
     - "8082:8082"  # Would expose API directly to internet!
 ```
 
-### 3. HTTPS with Automatic Certificate Management
+### 4. HTTPS with Automatic Certificate Management
 
 **Implementation:** Traefik reverse proxy with Let's Encrypt
 
@@ -102,7 +136,7 @@ yesterday-api:
 
 **Certificate storage:** `/var/www/FreegleDocker/yesterday/data/letsencrypt/acme.json`
 
-### 4. IP-Based Session Management
+### 5. IP-Based Session Management
 
 **After successful 2FA authentication:**
 - User's IP address is whitelisted for 24 hours
@@ -125,7 +159,7 @@ function getClientIP(req) {
 
 Traefik sets `X-Forwarded-For` header with real client IP.
 
-### 5. Read-Only Production Data Access
+### 6. Read-Only Production Data Access
 
 **Database backups are read-only:**
 - Restored from `gs://freegle_backup_uk` (cross-project read-only IAM permissions)
@@ -138,7 +172,7 @@ Traefik sets `X-Forwarded-For` header with real client IP.
 - Images served from: `https://images.ilovefreegle.org`
 - Uploads served from: `https://tus.ilovefreegle.org`
 
-### 6. Email Isolation
+### 7. Email Isolation
 
 **All outbound email captured:**
 - Mailhog intercepts all SMTP traffic
@@ -147,7 +181,7 @@ Traefik sets `X-Forwarded-For` header with real client IP.
 
 **Access:** `http://localhost:8025` (when SSH'd into server)
 
-### 7. Infrastructure Isolation
+### 8. Infrastructure Isolation
 
 **Separate GCP Project:**
 - Project: `freegle-yesterday`
@@ -187,15 +221,17 @@ curl -H "X-Admin-Key: $YESTERDAY_ADMIN_KEY" \
 
 ### For Users
 
-**Protect your TOTP secret:**
+**Protect your credentials:**
 - Keep your phone secure (PIN/biometric lock)
 - Back up authenticator app (Authy/Microsoft Authenticator support cloud backup)
 - If phone lost/stolen, contact admin immediately
+- **Basic Auth credentials** (if enabled): Store securely in password manager, never share publicly
 
 **Access patterns:**
 - Log out when using shared computers
-- Don't share your authenticator codes
+- Don't share your authenticator codes or basic auth credentials
 - Don't screenshot authenticator codes and send via messaging
+- If basic auth is enabled, your browser may remember those credentials
 
 **See also:** `yesterday/2FA-USER-GUIDE.md` for detailed user instructions
 
@@ -322,6 +358,13 @@ npm audit fix
 - Monitor Traefik security announcements
 
 ## Architecture Decisions
+
+**Why optional basic auth before 2FA?**
+- Defense-in-depth: Two independent authentication layers
+- Reduces attack surface from automated scanners
+- Simple credential sharing (basic auth) + individual accountability (unique 2FA per user)
+- Optional: Can be disabled for development/testing environments
+- Doesn't replace 2FA, adds an additional layer
 
 **Why 2FA instead of just passwords?**
 - Passwords can be phished, leaked in breaches, or guessed
