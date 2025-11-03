@@ -134,3 +134,4 @@ When all tests pass successfully in CircleCI, the system automatically:
 - When you make changes to Go code, you need to rebuild the v2 API container and check it starts successfully.
 - Never add Claude Code to commit messages
 - Don't commit unless you've been told to - you're committing code with bugs in before testing.
+- Remember that when working on the yesterday system you need to make sure you don't break local dev and CircleCI.  We have a docker override file to help with this.
