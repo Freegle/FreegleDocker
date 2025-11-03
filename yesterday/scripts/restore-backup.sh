@@ -168,6 +168,7 @@ innodb_page_size=$(grep "^innodb_page_size" "$VOLUME_PATH/backup-my.cnf" | cut -
 innodb_undo_tablespaces=$(grep "^innodb_undo_tablespaces" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
 skip-log-bin
 skip-log-slave-updates
+sql_mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
 EOF
 
 echo "Created MySQL config file: $MYCNF_FILE"

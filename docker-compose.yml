@@ -426,6 +426,8 @@ services:
       default:
         aliases:
           - freegle-dev.localhost
+    ports:
+      - "0.0.0.0:3002:3002"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
@@ -473,7 +475,7 @@ services:
         aliases:
           - freegle-prod.localhost
     ports:
-      - "0.0.0.0:3002:3003"
+      - "0.0.0.0:3012:3003"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
@@ -521,6 +523,8 @@ services:
       default:
         aliases:
           - modtools-dev.localhost
+    ports:
+      - "0.0.0.0:3003:3000"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
@@ -575,7 +579,7 @@ services:
         aliases:
           - modtools-prod.localhost
     ports:
-      - "0.0.0.0:3003:3001"
+      - "0.0.0.0:3013:3001"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"

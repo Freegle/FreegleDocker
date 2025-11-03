@@ -89,7 +89,103 @@ nslookup yesterday.ilovefreegle.org
 
 Once DNS is configured, Traefik will automatically obtain a Let's Encrypt certificate when you start the services.
 
-### 4. GCP Firewall Configuration
+### 4. SSL Certificate Setup (Let's Encrypt with DNS-01 Challenge)
+
+The Yesterday Traefik instance is configured to automatically obtain and renew SSL certificates using Let's Encrypt with DNS-01 challenge (no need for ports 80/443 to be publicly accessible).
+
+**Prerequisites:**
+1. Cloud DNS API must be enabled in your GCP project:
+```bash
+gcloud services enable dns.googleapis.com --project=freegle-yesterday
+```
+
+2. Create a service account with DNS admin permissions:
+```bash
+# Create service account
+gcloud iam service-accounts create traefik-dns \
+  --display-name="Traefik DNS Challenge" \
+  --project=freegle-yesterday
+
+# Grant DNS admin role
+gcloud projects add-iam-policy-binding freegle-yesterday \
+  --member="serviceAccount:traefik-dns@freegle-yesterday.iam.gserviceaccount.com" \
+  --role="roles/dns.admin"
+
+# Create and download key
+gcloud iam service-accounts keys create /tmp/traefik-dns-key.json \
+  --iam-account=traefik-dns@freegle-yesterday.iam.gserviceaccount.com
+```
+
+3. Install the DNS key on the server (outside repository):
+```bash
+# Create secrets directory
+sudo mkdir -p /etc/traefik/secrets
+
+# Copy the key file
+sudo cp /tmp/traefik-dns-key.json /etc/traefik/secrets/gcloud-dns-key.json
+
+# Set proper permissions
+sudo chmod 600 /etc/traefik/secrets/gcloud-dns-key.json
+sudo chown root:root /etc/traefik/secrets/gcloud-dns-key.json
+
+# Clean up temp file
+rm /tmp/traefik-dns-key.json
+```
+
+4. Certificate storage directory (for manual certificates if needed):
+```bash
+sudo mkdir -p /etc/traefik/certs
+sudo chmod 755 /etc/traefik/certs
+```
+
+**How it works:**
+- Traefik mounts `/etc/traefik/secrets/gcloud-dns-key.json` from the host
+- When a certificate is needed, Traefik uses the DNS-01 challenge
+- Creates a TXT record in Cloud DNS to prove domain ownership
+- Let's Encrypt verifies the TXT record and issues the certificate
+- Certificate is stored in `./data/letsencrypt/acme.json` (managed by Traefik)
+- Automatic renewal happens 30 days before expiry
+
+**Verify certificate after startup:**
+```bash
+# Check Traefik logs for certificate issuance
+docker logs yesterday-traefik
+
+# Test HTTPS connection
+curl -v https://yesterday.ilovefreegle.org:8444/
+
+# View certificate details
+echo | openssl s_client -connect yesterday.ilovefreegle.org:8444 2>/dev/null | openssl x509 -noout -text
+```
+
+**Troubleshooting:**
+
+If certificate issuance fails:
+1. Check Cloud DNS API is enabled: `gcloud services list --enabled | grep dns`
+2. Verify service account has correct permissions
+3. Check Traefik logs: `docker logs yesterday-traefik 2>&1 | grep -i acme`
+4. If you hit rate limits (5 failures per hour), wait or use staging server temporarily
+
+**Using Let's Encrypt staging (for testing):**
+Edit `traefik.yml` and change:
+```yaml
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      # caServer: "https://acme-staging-v02.api.letsencrypt.org/directory"  # Uncomment for staging
+```
+
+**File locations (all outside repository):**
+```
+/etc/traefik/
+├── secrets/
+│   └── gcloud-dns-key.json        # GCP service account key (read-only)
+└── certs/                         # Optional: manual certificates
+    ├── yesterday.ilovefreegle.org.crt
+    └── yesterday.ilovefreegle.org.key
+```
+
+### 5. GCP Firewall Configuration
 
 The Yesterday services require specific firewall rules to allow external access:
 

@@ -25,13 +25,18 @@ providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
+  file:
+    filename: /etc/traefik/dynamic-certs.yml
+    watch: true
 
 certificatesResolvers:
   letsencrypt:
     acme:
       email: geeks@ilovefreegle.org
       storage: /letsencrypt/acme.json
-      tlsChallenge: {}
+      dnsChallenge:
+        provider: gcloud
+        delayBeforeCheck: 30
 
 log:
   level: INFO

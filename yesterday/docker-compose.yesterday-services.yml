@@ -14,7 +14,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic-certs.yml:/etc/traefik/dynamic-certs.yml:ro
+      - /etc/traefik/certs:/certs:ro
+      - /etc/traefik/secrets/gcloud-dns-key.json:/secrets/gcloud-dns-key.json:ro
       - ./data/letsencrypt:/letsencrypt
+    environment:
+      - GCE_PROJECT=freegle-yesterday
+      - GCE_SERVICE_ACCOUNT_FILE=/secrets/gcloud-dns-key.json
     networks:
       - default
     healthcheck:

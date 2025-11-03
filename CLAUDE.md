@@ -6,6 +6,34 @@
 - After making changes to the status code, remember to restart the container
 - When running in a docker compose environment and making changes, be careful to copy them to the container.
 
+## Yesterday Environment Configuration
+
+The Yesterday server (yesterday.ilovefreegle.org) runs with specific configuration:
+
+### Active Containers
+- **Only dev containers run** - Production containers (freegle-prod, modtools-prod) are disabled in docker-compose.override.yml
+- Dev containers exposed on external ports: 3002 (Freegle), 3003 (ModTools)
+- **Why dev containers?** They start up much faster (seconds vs 10+ minutes for production builds)
+  - Dev mode uses `npm run dev` which starts immediately
+  - Production mode requires full `npm run build` which is very slow
+  - For Yesterday's use case (testing, data recovery), dev containers are sufficient and much more practical
+
+### Database Configuration
+- Database runs **without** innodb_force_recovery mode
+- Config file: /tmp/percona-my.cnf contains InnoDB settings from backup
+- SQL_MODE is set without ONLY_FULL_GROUP_BY to allow flexible GROUP BY queries
+- If database has corruption issues, temporarily add `innodb_force_recovery=1` to the config
+- Note: force_recovery mode prevents all database modifications (INSERT/UPDATE/DELETE)
+
+### Port Mappings (Yesterday)
+- 3002: Freegle Dev (externally accessible)
+- 3003: ModTools Dev (externally accessible)
+- 3012: Freegle Prod (if enabled, not accessible externally)
+- 3013: ModTools Prod (if enabled, not accessible externally)
+- 8095: Image Delivery (externally accessible - weserv/images for resizing/converting)
+- 8181: API v1 (not accessible externally via firewall)
+- 8193: API v2 (not accessible externally via firewall)
+
 ## Container Architecture
 
 ### Freegle Development vs Production

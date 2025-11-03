@@ -333,7 +333,7 @@
     </h3>
     <div class="warning-content" id="warning-content">
       <ul>
-        <li><strong>Automatic Loading:</strong> The most recent backup is loaded automatically each night at 6 AM UTC. You can manually load different backups below.</li>
+        <li><strong>Backup Timing:</strong> Backups are created at 4 AM UTC each day, so they include all data from the previous day. The most recent backup is loaded automatically each night at 6 AM UTC.</li>
         <li><strong>Single Backup Model:</strong> Only one backup can be loaded at a time. Loading a new backup will restart the isolated test environment and replace the database (takes 1-2 hours).</li>
         <li><strong>Isolated Environment:</strong> Runs latest code but with real data from backups. Uses <a href="https://en.wikipedia.org/wiki/Docker_(software)" target="_blank" style="color: #856404; text-decoration: underline;">Docker technology</a> to create a completely isolated copy of the system - changes here don't affect live Freegle.</li>
         <li><strong>Login:</strong> Use your email/password from the live Freegle system. Social logins (Google, Facebook) don't work here since they're configured for production domains only. If you normally use social login, you can reset your password on the live site first.</li>
@@ -363,7 +363,7 @@
   </div>
 
   <div class="backup-list" style="margin-bottom: 20px;">
-    <h2>Whitelisted IP Addresses (24-hour access)</h2>
+    <h2>Whitelisted IP Addresses (1-hour access)</h2>
     <div id="ip-whitelist">
       <div class="loading">
         <div class="spinner"></div>
@@ -681,14 +681,14 @@
         if (data.containers && data.containers.length > 0) {
           let html = '<div class="status-grid">';
 
-          const keyServices = ['freegle-prod', 'modtools-prod', 'apiv1', 'apiv2', 'percona', 'redis', 'beanstalkd', 'spamassassin'];
+          const keyServices = ['freegle-dev', 'modtools-dev', 'apiv1', 'apiv2', 'percona', 'redis', 'beanstalkd', 'spamassassin'];
 
           keyServices.forEach(serviceName => {
             const container = data.containers.find(c => c.name.includes(serviceName));
             if (container) {
               const statusClass = container.state === 'running' && container.health === 'healthy' ? 'healthy' :
                                  container.state === 'running' ? 'starting' : 'unhealthy';
-              const displayName = serviceName.replace('freegle-prod', 'Freegle').replace('modtools-prod', 'ModTools')
+              const displayName = serviceName.replace('freegle-dev', 'Freegle').replace('modtools-dev', 'ModTools')
                                             .replace('percona', 'Database').replace('apiv1', 'API v1').replace('apiv2', 'API v2')
                                             .replace('beanstalkd', 'Queue').replace('spamassassin', 'Spam');
               const stateText = container.state === 'running' && container.health === 'healthy' ? 'Running' :
