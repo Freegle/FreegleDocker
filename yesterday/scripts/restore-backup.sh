@@ -371,10 +371,18 @@ wait_for_container_health "apiv2" 180
 
 echo ""
 echo "Verifying database..."
-if docker exec freegle-percona mysql -uroot -piznik -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
+
+# Load MySQL password from .env
+MYSQL_PASSWORD=$(grep "^MYSQL_PRODUCTION_ROOT_PASSWORD=" /var/www/FreegleDocker/.env | cut -d= -f2)
+if [ -z "$MYSQL_PASSWORD" ]; then
+    echo "⚠️ MYSQL_PRODUCTION_ROOT_PASSWORD not found in .env, trying default password"
+    MYSQL_PASSWORD="iznik"
+fi
+
+if docker exec freegle-percona mysql -uroot -p"${MYSQL_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
     echo "✅ Database verification successful!"
 
-    TABLE_COUNT=$(docker exec freegle-percona mysql -uroot -piznik iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
+    TABLE_COUNT=$(docker exec freegle-percona mysql -uroot -p"${MYSQL_PASSWORD}" iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
     echo "Database contains ${TABLE_COUNT} tables"
 else
     echo "❌ Database verification failed!"
