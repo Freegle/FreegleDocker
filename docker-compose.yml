@@ -35,6 +35,7 @@ services:
     restart: always
     volumes:
       - freegle_db:/var/lib/mysql
+      - /tmp/percona-my.cnf:/etc/my.cnf:ro
     environment:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik
@@ -495,11 +496,11 @@ services:
         condition: service_started
     restart: "no"
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
-      - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost/tus/
-      - USER_SITE=http://freegle-prod.localhost:3003
+      - IZNIK_API_V1=http://yesterday.ilovefreegle.org:8181/api
+      - IZNIK_API_V2=http://yesterday.ilovefreegle.org:8193/api
+      - IMAGE_DELIVERY=https://images.ilovefreegle.org
+      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
+      - USER_SITE=http://yesterday.ilovefreegle.org:3002
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
@@ -597,20 +598,15 @@ services:
         condition: service_started
     restart: "no"
     environment:
-      # LIVE SERVER MODE - pointing at production APIs
-#      - IZNIK_API_V1=https://fdapidbg.ilovefreegle.org/api
-#      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
-#      - IMAGE_DELIVERY=https://images.ilovefreegle.org
-#      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
-      # LOCAL SERVER MODE (comment out above, uncomment below)
-      - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
-      - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost/tus/
+      # YESTERDAY SERVER MODE - pointing at Yesterday's exposed APIs
+      - IZNIK_API_V1=http://yesterday.ilovefreegle.org:8181/api
+      - IZNIK_API_V2=http://yesterday.ilovefreegle.org:8193/api
+      - IMAGE_DELIVERY=https://images.ilovefreegle.org
+      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
       # END
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools-prod.localhost:3001
+      - USER_SITE=http://yesterday.ilovefreegle.org:3003
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=false
