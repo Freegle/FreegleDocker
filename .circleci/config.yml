@@ -351,6 +351,7 @@ commands:
                 exit 1
               fi
             done
+          no_output_timeout: 50m
 
   upload-coverage:
     description: "Upload coverage reports to Coveralls"
