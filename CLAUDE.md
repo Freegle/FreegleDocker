@@ -20,7 +20,7 @@ The Yesterday server (yesterday.ilovefreegle.org) runs with specific configurati
 
 ### Database Configuration
 - Database runs **without** innodb_force_recovery mode
-- Config file: /tmp/percona-my.cnf contains InnoDB settings from backup
+- Config file: ./conf/percona-my.cnf contains InnoDB settings from backup (persists across reboots)
 - SQL_MODE is set without ONLY_FULL_GROUP_BY to allow flexible GROUP BY queries
 - If database has corruption issues, temporarily add `innodb_force_recovery=1` to the config
 - Note: force_recovery mode prevents all database modifications (INSERT/UPDATE/DELETE)

@@ -160,9 +160,10 @@ PERCONA_VERSION=$(echo "$BACKUP_SERVER_VERSION" | sed 's/\([0-9]\+\.[0-9]\+\.[0-
 echo "Using Percona Docker image: percona:$PERCONA_VERSION"
 
 # Create my.cnf with InnoDB parameters from backup
-MYCNF_FILE="/tmp/percona-my.cnf"
+MYCNF_FILE="/var/www/FreegleDocker/conf/percona-my.cnf"
 cat > "$MYCNF_FILE" << EOF
 [mysqld]
+max_connections = 500
 innodb_data_file_path=$(grep "^innodb_data_file_path" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
 innodb_page_size=$(grep "^innodb_page_size" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
 innodb_undo_tablespaces=$(grep "^innodb_undo_tablespaces" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
@@ -186,8 +187,8 @@ sed -i '/^    image: percona:/,/^    volumes:/ {
 }' "$COMPOSE_FILE"
 
 # Add config file mount if not already present
-if ! grep -q "/tmp/percona-my.cnf:/etc/my.cnf" "$COMPOSE_FILE"; then
-  sed -i '/freegle_db:\/var\/lib\/mysql/a\      - /tmp/percona-my.cnf:/etc/my.cnf:ro' "$COMPOSE_FILE"
+if ! grep -q "percona-my.cnf:/etc/my.cnf" "$COMPOSE_FILE"; then
+  sed -i '/freegle_db:\/var\/lib\/mysql/a\      - ./conf/percona-my.cnf:/etc/my.cnf:ro' "$COMPOSE_FILE"
 fi
 
 # Update health check to work with restored databases
@@ -317,6 +318,16 @@ verify_all_containers() {
 echo ""
 echo "Starting all Docker containers..."
 docker compose up -d
+
+echo "Configuring PHP-FPM for production load..."
+# Wait for API v1 container to be running
+sleep 5
+docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
+echo "✅ PHP-FPM configured with increased worker pool"
 
 echo ""
 echo "Waiting for critical infrastructure containers..."
