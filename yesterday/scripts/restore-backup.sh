@@ -430,10 +430,14 @@ fi
 /var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
 
 echo ""
-echo "Restarting main Docker stack..."
-systemctl restart docker-compose@freegle
-sleep 10
-echo "✅ Main stack restarted"
+if systemctl list-units --full --all | grep -q "docker-compose@freegle.service"; then
+    echo "Restarting main Docker stack systemd service..."
+    systemctl restart docker-compose@freegle
+    sleep 10
+    echo "✅ Main stack restarted"
+else
+    echo "ℹ️  No systemd service found (Yesterday deployment) - skipping systemctl restart"
+fi
 
 echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="

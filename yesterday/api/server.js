@@ -203,7 +203,7 @@ app.get('/api/current-backup', async (req, res) => {
   const stateFile = '/data/current-backup.json';
 
   try {
-    const data = await fs.readFile(stateFile, 'utf8');
+    const data = await fsPromises.readFile(stateFile, 'utf8');
     const state = JSON.parse(data);
     res.json(state);
   } catch (error) {

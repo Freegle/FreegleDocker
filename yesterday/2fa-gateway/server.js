@@ -266,7 +266,7 @@ function requireAuth(req, res, next) {
         return next();
     }
 
-    res.status(401).send(loginPageHTML.replace('{{ERROR}}', ''));
+    res.status(200).send(loginPageHTML.replace('{{ERROR}}', ''));
 }
 
 // Login page

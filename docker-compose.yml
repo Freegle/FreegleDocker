@@ -31,10 +31,11 @@ services:
     container_name: freegle-percona
     networks:
       - default
-    image: percona:8.0.42-33
+    image: percona:8.0.43-34
     restart: always
     volumes:
       - freegle_db:/var/lib/mysql
+      - ./conf/percona-my.cnf:/etc/my.cnf:ro
     environment:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik
