@@ -746,7 +746,7 @@ async function runPlaywrightTests(testFile = null) {
     try {
       const { execSync } = require("child_process");
       execSync(
-        'docker exec freegle-playwright sh -c "rm -f /app/test-progress.json /app/playwright-results.json"',
+        'docker exec freegle-playwright sh -c "rm -f /app/tests/e2e/test-progress.json /app/playwright-results.json"',
         { timeout: 5000 }
       );
       console.log("Cleared stale progress files");
@@ -1049,7 +1049,7 @@ async function runPlaywrightTests(testFile = null) {
         try {
           const { execSync } = require("child_process");
           const progressOutput = execSync(
-            'docker exec freegle-playwright cat /app/test-progress.json 2>/dev/null || echo "{}"',
+            'docker exec freegle-playwright cat /app/tests/e2e/test-progress.json 2>/dev/null || echo "{}"',
             { encoding: "utf8", timeout: 5000 }
           );
           const progress = JSON.parse(progressOutput.trim() || "{}");
