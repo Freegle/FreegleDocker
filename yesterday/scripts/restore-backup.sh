@@ -9,6 +9,24 @@ BACKUP_BUCKET="gs://freegle_backup_uk"
 BACKUP_DIR="/var/www/FreegleDocker/yesterday/data/backups"
 LOG_FILE="/var/log/yesterday-restore-${BACKUP_DATE}.log"
 COMPOSE_FILE="/var/www/FreegleDocker/docker-compose.yml"
+STATUS_FILE="/var/www/FreegleDocker/yesterday/data/restore-status.json"
+
+# Helper function to update restore status
+update_status() {
+    local status=$1
+    local message=$2
+    local files_remaining=${3:-0}
+
+    cat > "$STATUS_FILE" <<EOF
+{
+  "status": "$status",
+  "message": "$message",
+  "backupDate": "$BACKUP_DATE",
+  "filesRemaining": $files_remaining,
+  "timestamp": "$(date -Iseconds)"
+}
+EOF
+}
 
 if [ -z "$BACKUP_DATE" ]; then
     echo "Usage: $0 <YYYYMMDD>"
@@ -22,8 +40,12 @@ fi
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+# Trap errors and update status
+trap 'update_status "failed" "Restore failed - check logs"' ERR
+
 echo "=== Yesterday Restoration Started: $(date) ==="
 echo "Restoring backup from date: ${BACKUP_DATE}..."
+update_status "starting" "Finding backup..."
 
 mkdir -p "$BACKUP_DIR"
 
@@ -57,6 +79,7 @@ else
 fi
 
 echo "Stopping all Docker containers..."
+update_status "stopping" "Stopping containers..."
 docker compose down
 
 echo "Getting volume path..."
@@ -80,9 +103,9 @@ echo ""
 echo "=========================================="
 echo "Streaming and extracting backup directly to volume..."
 echo "Compressed: ${BACKUP_SIZE_GB}GB → Estimated final: ~${ESTIMATED_FINAL_GB}GB"
-echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
+update_status "extracting" "Downloading and extracting backup..."
 
 # Show progress by monitoring extracted files in background
 (
@@ -114,9 +137,9 @@ echo ""
 
 echo "=========================================="
 echo "Decompressing zstd files..."
-echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
+update_status "decompressing" "Decompressing database files..."
 
 # Get number of CPU cores for parallel decompression
 CORES=$(nproc)
@@ -132,6 +155,7 @@ echo "Using $CORES parallel processes for decompression"
         fi
         if [ $ZST_COUNT -ne $CURRENT_ZST ]; then
             echo "[$(date +%H:%M:%S)] Decompressing... $CURRENT_ZST .zst files remaining"
+            update_status "decompressing" "Decompressing database files ($CURRENT_ZST files remaining)" "$CURRENT_ZST"
             ZST_COUNT=$CURRENT_ZST
         fi
         sleep 10
@@ -199,9 +223,9 @@ echo ""
 
 echo "=========================================="
 echo "Preparing backup (applying transaction logs)..."
-echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
+update_status "preparing" "Preparing database..."
 
 # Show that preparation is running
 (
@@ -290,14 +314,14 @@ verify_all_containers() {
         if [ -n "$container" ]; then
             created_containers+=("$container")
         fi
-    done < <(docker compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed 's/freegle-//')
 
     # Get list of exited/unhealthy containers
     while IFS= read -r container; do
         if [ -n "$container" ]; then
             failed_containers+=("$container")
         fi
-    done < <(docker compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed 's/freegle-//')
 
     if [ ${#created_containers[@]} -gt 0 ]; then
         echo "⚠️  Found containers in Created state (not started): ${created_containers[*]}"
@@ -317,6 +341,7 @@ verify_all_containers() {
 
 echo ""
 echo "Starting all Docker containers..."
+update_status "starting" "Starting containers..."
 docker compose up -d
 
 echo "Configuring PHP-FPM for production load..."
@@ -405,8 +430,15 @@ fi
 /var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
 
 echo ""
+echo "Restarting main Docker stack..."
+systemctl restart docker-compose@freegle
+sleep 10
+echo "✅ Main stack restarted"
+
+echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="
 echo "✅ Backup from ${FORMATTED_DATE} restored successfully"
+update_status "completed" "Restore completed successfully"
 echo ""
 echo "Access the system at:"
 echo "  - Freegle: http://localhost:3000"

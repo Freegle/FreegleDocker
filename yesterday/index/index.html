@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Freegle Yesterday - Historical Snapshots</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -95,6 +96,41 @@
       font-size: 14px;
       color: #666;
     }
+    .restore-banner {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      display: none;
+      text-align: center;
+    }
+    .restore-banner.active {
+      display: block;
+    }
+    .restore-banner h3 {
+      margin: 0 0 10px 0;
+      font-size: 20px;
+    }
+    .restore-banner .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .restore-banner .message {
+      font-size: 16px;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -164,5 +200,9 @@ docker exec -it yesterday-0-db mysql -uroot -p</pre>
     <p><strong>Documentation:</strong> /var/www/FreegleDocker/yesterday/README.md</p>
     <p><strong>Planning Document:</strong> /var/www/FreegleDocker/plans/Yesterday.md</p>
   </footer>
+
+  <script>
+    // No JavaScript needed for this simple page
+  </script>
 </body>
 </html>

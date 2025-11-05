@@ -16,8 +16,8 @@ const WHITELIST_DURATION = 1 * 60 * 60 * 1000; // 1 hour
 
 // Basic HTTP Authentication (first layer of security before 2FA)
 app.use((req, res, next) => {
-    // Skip basic auth for health endpoint
-    if (req.path === '/health') {
+    // Skip basic auth for health endpoint and public API endpoints
+    if (req.path === '/health' || req.path === '/api/restore-status') {
         return next();
     }
 
@@ -373,6 +373,29 @@ app.delete('/admin/users/:username', requireAdminKey, async (req, res) => {
     await saveUsers();
 
     res.json({ message: 'User deleted', username });
+});
+
+// Public API endpoint - no auth required (for index page status banner)
+app.get('/api/restore-status', (req, res) => {
+    const options = {
+        hostname: 'yesterday-api',
+        port: 8082,
+        path: '/api/restore-status',
+        method: 'GET',
+        headers: req.headers
+    };
+
+    const proxy = http.request(options, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
+    });
+
+    proxy.on('error', (err) => {
+        console.error('Proxy error:', err);
+        res.status(502).send('Bad Gateway');
+    });
+
+    proxy.end();
 });
 
 // Proxy to backend (Yesterday API and UI)

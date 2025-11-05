@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Freegle Yesterday - Backup Browser</title>
-  <link rel="icon" type="image/png" href="https://www.ilovefreegle.org/icon.png">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <style>
     * { box-sizing: border-box; }
     body {
@@ -314,6 +314,41 @@
     }
     .status-item.starting .indicator {
       background: #ff9800;
+    }
+    .restore-banner {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      display: none;
+      text-align: center;
+    }
+    .restore-banner.active {
+      display: block;
+    }
+    .restore-banner h3 {
+      margin: 0 0 10px 0;
+      font-size: 20px;
+    }
+    .restore-banner .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .restore-banner .message {
+      font-size: 16px;
+      margin-top: 8px;
     }
   </style>
 </head>
@@ -675,6 +710,10 @@
     // Load system status
     async function loadSystemStatus() {
       try {
+        // First check if a restore is in progress
+        const restoreResponse = await fetch('/api/restore-status');
+        const restoreData = await restoreResponse.json();
+
         const response = await fetch('/api/system-status');
         const data = await response.json();
 
@@ -727,9 +766,23 @@
 
           document.getElementById('system-status').innerHTML = html;
         } else {
-          document.getElementById('system-status').innerHTML = `
-            <p style="color: #666;">No containers running. Load a backup to start the system.</p>
-          `;
+          // Check if a restore is in progress
+          if (restoreData.inProgress) {
+            document.getElementById('system-status').innerHTML = `
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+                  <div style="width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 10px;"></div>
+                  <h3 style="margin: 0; font-size: 18px;">Restore In Progress</h3>
+                </div>
+                <p style="margin: 0; font-size: 16px;">${restoreData.message}</p>
+                <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Containers will start automatically when restore completes</p>
+              </div>
+            `;
+          } else {
+            document.getElementById('system-status').innerHTML = `
+              <p style="color: #666;">No containers running. Load a backup to start the system.</p>
+            `;
+          }
         }
       } catch (e) {
         document.getElementById('system-status').innerHTML = `
@@ -811,12 +864,54 @@
       updateStatusCountdown();
     }
 
+    // Check restore status and disable buttons during restore
+    let isRestoreInProgress = false;
+    async function checkRestoreStatus() {
+      try {
+        const response = await fetch('/api/restore-status');
+        const data = await response.json();
+
+        const currentBackupSection = document.querySelector('.current-backup');
+
+        if (data.inProgress) {
+          isRestoreInProgress = true;
+
+          // Hide "Currently Loaded Backup" section during restore
+          if (currentBackupSection) {
+            currentBackupSection.style.display = 'none';
+          }
+
+          // Disable all load buttons
+          document.querySelectorAll('button.load').forEach(btn => {
+            btn.disabled = true;
+            btn.textContent = 'Restore In Progress';
+          });
+        } else {
+          isRestoreInProgress = false;
+
+          // Show "Currently Loaded Backup" section
+          if (currentBackupSection) {
+            currentBackupSection.style.display = 'block';
+          }
+
+          // Re-enable load buttons
+          document.querySelectorAll('button.load').forEach(btn => {
+            btn.disabled = false;
+            btn.textContent = 'Load This Backup';
+          });
+        }
+      } catch (error) {
+        console.error('Failed to check restore status:', error);
+      }
+    }
+
     // Initialize
     restoreWarningState();
     loadCurrentBackup();
     loadBackupList();
     loadSystemStatus();
     loadWhitelistedIps();
+    checkRestoreStatus();
 
     // Start countdown
     statusCountdownInterval = setInterval(updateStatusCountdown, 1000);
@@ -828,6 +923,9 @@
     }, 30000);
 
     setInterval(loadWhitelistedIps, 60000); // Refresh IPs every minute
+
+    // Check restore status every 10 seconds
+    setInterval(checkRestoreStatus, 10000);
   </script>
 </body>
 </html>

@@ -10,7 +10,8 @@
 
 const express = require('express');
 const { exec, spawn } = require('child_process');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const { promisify } = require('util');
 
@@ -67,7 +68,7 @@ async function isBackupLoaded(backupDate) {
     // For single-db model, we check the current-backup.json file instead
     const stateFile = '/var/www/FreegleDocker/yesterday/data/current-backup.json';
     try {
-      const data = await fs.readFile(stateFile, 'utf8');
+      const data = await fsPromises.readFile(stateFile, 'utf8');
       const state = JSON.parse(data);
       return state.date === backupDate;
     } catch {
@@ -171,79 +172,17 @@ app.post('/api/backups/:backupDate/load', async (req, res) => {
   });
 });
 
-// Run restoration script with progress tracking
+// Trigger restoration via host-side monitor (writes trigger file)
 function runRestoration(backupDate) {
-  const scriptPath = '/var/www/FreegleDocker/yesterday/scripts/restore-backup.sh';
+  const triggerFile = '/data/restore-trigger';
 
-  const process = spawn(scriptPath, [backupDate]);
+  // Write backup date to trigger file
+  // The host-side systemd service monitors this file and runs the restore
+  require('fs').writeFileSync(triggerFile, backupDate);
 
-  // Monitor output for progress updates
-  process.stdout.on('data', (data) => {
-    const output = data.toString();
-    console.log(output);
-
-    // Update progress based on log messages
-    if (output.includes('Downloading backup')) {
-      restorationJobs[backupDate] = {
-        ...restorationJobs[backupDate],
-        status: 'downloading',
-        progress: 10,
-        message: 'Downloading backup from GCS...'
-      };
-    } else if (output.includes('Extracting xbstream')) {
-      restorationJobs[backupDate] = {
-        ...restorationJobs[backupDate],
-        status: 'extracting',
-        progress: 30,
-        message: 'Extracting backup files...'
-      };
-    } else if (output.includes('Preparing backup')) {
-      restorationJobs[backupDate] = {
-        ...restorationJobs[backupDate],
-        status: 'preparing',
-        progress: 50,
-        message: 'Preparing backup (applying logs)...'
-      };
-    } else if (output.includes('Copying restored data')) {
-      restorationJobs[backupDate] = {
-        ...restorationJobs[backupDate],
-        status: 'importing',
-        progress: 70,
-        message: 'Importing database...'
-      };
-    } else if (output.includes('Starting all Docker containers')) {
-      restorationJobs[backupDate] = {
-        ...restorationJobs[backupDate],
-        status: 'starting_services',
-        progress: 90,
-        message: 'Starting all containers...'
-      };
-    }
-  });
-
-  process.stderr.on('data', (data) => {
-    console.error(data.toString());
-  });
-
-  process.on('close', (code) => {
-    if (code === 0) {
-      restorationJobs[backupDate] = {
-        ...restorationJobs[backupDate],
-        status: 'completed',
-        progress: 100,
-        message: 'Restoration completed successfully!',
-        completed: new Date().toISOString()
-      };
-    } else {
-      restorationJobs[backupDate] = {
-        ...restorationJobs[backupDate],
-        status: 'failed',
-        message: 'Restoration failed',
-        error: `Script exited with code ${code}`,
-        completed: new Date().toISOString()
-      };
-    }
-  });
+  console.log(`Restore trigger written for backup ${backupDate}`);
+  console.log('Note: This container will shut down during the restore process');
+  console.log('The host-side restore-monitor service will handle the actual restoration');
 }
 
 // GET /api/backups/:backupDate/progress - Get restoration progress
@@ -308,7 +247,7 @@ app.get('/api/whitelisted-ips', async (req, res) => {
   const whitelistFile = '/data/2fa/ip-whitelist.json';
 
   try {
-    const data = await fs.readFile(whitelistFile, 'utf8');
+    const data = await fsPromises.readFile(whitelistFile, 'utf8');
     const whitelist = JSON.parse(data);
     const now = Date.now();
 
@@ -329,6 +268,106 @@ app.get('/api/whitelisted-ips', async (req, res) => {
     } else {
       res.status(500).json({ error: error.message, ips: [], total: 0 });
     }
+  }
+});
+
+// GET /api/restore-status - Check if a restore is currently running
+app.get('/api/restore-status', async (req, res) => {
+  try {
+    const statusFile = '/data/restore-status.json';
+    const triggerFile = '/data/restore-trigger';
+
+    // Check if trigger file exists (restore queued but not yet started)
+    let triggerExists = false;
+    let queuedBackupDate = null;
+    try {
+      queuedBackupDate = (await fsPromises.readFile(triggerFile, 'utf8')).trim();
+      triggerExists = true;
+    } catch (e) {
+      // File doesn't exist - no queued restore
+    }
+
+    // Try to read the status file
+    try {
+      const statusData = await fsPromises.readFile(statusFile, 'utf8');
+      const status = JSON.parse(statusData);
+
+      // Check if status is recent (within last 10 minutes)
+      const statusAge = Date.now() - new Date(status.timestamp).getTime();
+      const isRecent = statusAge < 10 * 60 * 1000;
+
+      if (isRecent && (status.status !== 'completed' && status.status !== 'failed')) {
+        return res.json({
+          inProgress: true,
+          status: status.status,
+          message: status.message,
+          backupDate: status.backupDate,
+          filesRemaining: status.filesRemaining || 0,
+          queued: triggerExists
+        });
+      }
+
+      // Status file exists but restore is completed or old
+      if (status.status === 'completed') {
+        return res.json({
+          inProgress: false,
+          status: 'completed',
+          message: 'Last restore completed successfully',
+          backupDate: status.backupDate
+        });
+      }
+
+      if (status.status === 'failed') {
+        return res.json({
+          inProgress: false,
+          status: 'failed',
+          message: 'Last restore failed - check logs',
+          backupDate: status.backupDate
+        });
+      }
+
+      // Status is old, check if we have a queued restore
+      if (triggerExists) {
+        return res.json({
+          inProgress: false,
+          status: 'queued',
+          message: 'Restore queued, waiting to start',
+          backupDate: queuedBackupDate,
+          queued: true
+        });
+      }
+
+      return res.json({
+        inProgress: false,
+        status: 'idle',
+        message: 'No active restore'
+      });
+
+    } catch (error) {
+      // Status file doesn't exist
+      if (error.code === 'ENOENT') {
+        // Check if we have a queued restore
+        if (triggerExists) {
+          return res.json({
+            inProgress: false,
+            status: 'queued',
+            message: 'Restore queued, waiting to start',
+            backupDate: queuedBackupDate,
+            queued: true
+          });
+        }
+
+        return res.json({
+          inProgress: false,
+          status: 'idle',
+          message: 'No restore in progress'
+        });
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error checking restore status:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

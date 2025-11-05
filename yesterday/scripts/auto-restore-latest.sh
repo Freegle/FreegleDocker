@@ -11,6 +11,23 @@ LOG_FILE="/var/log/yesterday-auto-restore.log"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+# Ensure restore monitor systemd service is installed
+SERVICE_FILE="/etc/systemd/system/yesterday-restore-monitor.service"
+SERVICE_TEMPLATE="/var/www/FreegleDocker/yesterday/scripts/yesterday-restore-monitor.service"
+
+if [ ! -f "$SERVICE_FILE" ]; then
+    echo "Installing yesterday-restore-monitor systemd service..."
+    cp "$SERVICE_TEMPLATE" "$SERVICE_FILE"
+    systemctl daemon-reload
+    systemctl enable yesterday-restore-monitor
+    systemctl start yesterday-restore-monitor
+    echo "✅ Restore monitor service installed and started"
+elif ! systemctl is-active --quiet yesterday-restore-monitor; then
+    echo "Starting yesterday-restore-monitor service..."
+    systemctl start yesterday-restore-monitor
+    echo "✅ Restore monitor service started"
+fi
+
 echo ""
 echo "=== Auto-Restore Check: $(date) ==="
 
