@@ -11,3 +11,21 @@ yesterday/.env
 yesterday/data/
 iznik-server-my.cnf
 docker-compose.override.yml
+
+# Vim swap files
+*.swp
+*.swo
+*.swn
+
+# Nohup output
+nohup.out
+
+# Downloaded packages
+*.deb
+
+# Temporary scripts
+apiv1-entrypoint.sh
+
+# Node modules
+yesterday/2fa-gateway/node_modules/
+yesterday/api/node_modules/

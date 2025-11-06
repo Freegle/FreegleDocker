@@ -48,23 +48,32 @@ If you can't scan the QR code:
 
 ## Logging In
 
-1. **Go to:** https://yesterday.ilovefreegle.org
+1. **Go to:** https://yesterday.ilovefreegle.org:8444
 
-2. **If prompted, enter HTTP Basic Auth credentials** (username/password provided by admin)
-   - Your browser will show a login dialog
-   - This is the first security layer (if enabled)
+2. **You'll see the authentication page asking for three things:**
+   - **Username** (provided by admin)
+   - **Password** (provided by admin - keep this secure!)
+   - **6-digit code** from your authenticator app
 
-3. **Enter your username** on the 2FA page
+3. **Open your authenticator app** and look at the 6-digit code for "Freegle Yesterday"
 
-4. **Open your authenticator app** and look at the 6-digit code for "Freegle Yesterday"
+4. **Enter all three:**
+   - Your username
+   - Your password
+   - The current 6-digit code (you have about 30 seconds before it changes)
 
-5. **Enter the 6-digit code** (you have about 30 seconds before it changes)
+5. **Click "Authenticate"**
 
-6. **Click "Authenticate"**
+**Success!** Your IP address is now whitelisted for 1 hour. You won't need to enter your credentials again for 1 hour (unless you change location/IP).
 
-**Success!** Your IP address is now whitelisted for 1 hour. You won't need to enter the code again for 1 hour (unless you change location/IP).
+## Permission Levels
 
-**Note:** If basic auth is enabled, your browser may remember those credentials, so you'll typically only need to enter your 2FA code.
+Your account has one of two permission levels:
+
+- **Support** (default): Access to the backup management system and main UI
+- **Admin**: Full access including PHPMyAdmin (database admin) and Mailhog (email testing)
+
+If you need Admin access to PHPMyAdmin or Mailhog, contact a system administrator.
 
 ## Important Notes
 
@@ -96,10 +105,10 @@ You can add the same account to multiple devices:
 - Try the next code if you're near the 30-second boundary
 
 ### Lost your phone or authenticator app?
-Contact an administrator to reset your account. They will need to:
-1. Remove your old account
-2. Create a new account with a new QR code/secret
-3. Send you new setup details
+Contact an administrator to reset your 2FA. They can reset your account without losing your password.
+
+### Forgot your password?
+There is no self-service password reset. Contact a system administrator who can reset your password via the CLI tool on the server. This is intentional for security.
 
 ### QR code doesn't scan
 - Make sure your camera can focus clearly on the code
@@ -117,9 +126,17 @@ Check your spam/junk folder, or contact the administrator who set up your accoun
 - Contact admins immediately if you suspect unauthorized access
 
 ❌ **DON'T:**
-- Share your username or authenticator codes with anyone
+- Share your username, password, or authenticator codes with anyone
 - Screenshot your authenticator codes and send them via messaging apps
-- Use the same simple password everywhere
+- Use a weak or easily guessable password
+- Reuse this password on other websites
+
+## Account Security Features
+
+- **Brute force protection**: After 5 failed login attempts, your account is locked for 15 minutes
+- **Multi-factor authentication**: Both password and 2FA code required
+- **IP whitelisting**: Reduces authentication frequency for trusted IPs
+- **No self-service password reset**: Prevents unauthorized password changes
 
 ## Getting Help
 
