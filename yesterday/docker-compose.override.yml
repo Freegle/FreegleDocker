@@ -34,8 +34,8 @@ services:
       - "--entrypoints.modtools-dev.address=:3003"
       - "--entrypoints.freegle-prod.address=:3012"
       - "--entrypoints.modtools-prod.address=:3013"
-      - "--entrypoints.apiv1-ssl.address=:8181"
-      - "--entrypoints.apiv2-ssl.address=:8193"
+      # API entrypoints removed - access via Yesterday 2FA gateway on ports 8181/8193 only
+      # PHPMyAdmin and Mailhog entrypoints removed - access via 2FA gateway only
       - "--accesslog=true"
       - "--entrypoints.web.forwardedHeaders.insecure=true"
       - "--certificatesresolvers.letsencrypt.acme.email=geeks@ilovefreegle.org"
@@ -52,8 +52,7 @@ services:
       - "0.0.0.0:3003:3003"
       - "0.0.0.0:3012:3012"
       - "0.0.0.0:3013:3013"
-      - "0.0.0.0:8181:8181"
-      - "0.0.0.0:8193:8193"
+      # Ports 8181/8193 (APIs), 8086 (phpmyadmin) and 8025 (mailhog) removed - access via 2FA gateway only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/traefik/secrets/gcloud-dns-key.json:/secrets/gcloud-dns-key.json:ro
@@ -74,21 +73,38 @@ services:
     volumes:
       - ./conf/percona-my.cnf:/etc/my.cnf:ro
 
+  phpmyadmin:
+    # Accessed via 2FA gateway at /phpmyadmin (Admin only)
+    # No direct external access - only through yesterday-2fa gateway
+    # Basic auth disabled - authentication handled by 2FA gateway
+    ports: !reset []
+    environment:
+      - PMA_HOST=percona
+      - PMA_USER=root
+      - PMA_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
+      - ADMIN_TOOLS_BASIC_AUTH=
+    labels:
+      - "traefik.enable=false"
+
+  mailhog:
+    # Accessed via 2FA gateway at /mailhog (Admin only)
+    # No direct external access - only through yesterday-2fa gateway
+    # Basic auth disabled - authentication handled by 2FA gateway
+    ports: !reset []
+    environment:
+      - ADMIN_TOOLS_BASIC_AUTH=
+    labels:
+      - "traefik.enable=false"
+
   apiv1:
-    # Routed through Traefik for SSL termination on port 8181
+    # Accessible only through Yesterday 2FA gateway on port 8181
     # Mount MySQL client config with production database password
     # File: ./iznik-server-my.cnf (created by scripts/generate-mysql-configs.sh)
     ports: !reset []
     volumes:
       - ./iznik-server-my.cnf:/root/.my.cnf:ro
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.apiv1-ssl.rule=Host(`yesterday.ilovefreegle.org`)"
-      - "traefik.http.routers.apiv1-ssl.entrypoints=apiv1-ssl"
-      - "traefik.http.routers.apiv1-ssl.service=apiv1-ssl"
-      - "traefik.http.routers.apiv1-ssl.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.apiv1-ssl.tls.domains[0].main=yesterday.ilovefreegle.org"
-      - "traefik.http.services.apiv1-ssl.loadbalancer.server.port=80"
+      - "traefik.enable=false"
     # Simplified startup command for Yesterday - skips DB initialization (schema.sql, testenv.php, etc)
     # to preserve restored production data
     command: >
@@ -107,16 +123,10 @@ services:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
 
   apiv2:
-    # Routed through Traefik for SSL termination on port 8193
+    # Accessible only through Yesterday 2FA gateway on port 8193
     ports: !reset []
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.apiv2-ssl.rule=Host(`yesterday.ilovefreegle.org`)"
-      - "traefik.http.routers.apiv2-ssl.entrypoints=apiv2-ssl"
-      - "traefik.http.routers.apiv2-ssl.service=apiv2-ssl"
-      - "traefik.http.routers.apiv2-ssl.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.apiv2-ssl.tls.domains[0].main=yesterday.ilovefreegle.org"
-      - "traefik.http.services.apiv2-ssl.loadbalancer.server.port=8192"
+      - "traefik.enable=false"
     # Use production image services
     environment:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
@@ -139,7 +149,7 @@ services:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
       - TUS_UPLOADER=https://uploads.ilovefreegle.org/
       - IMAGE_BASE_URL=https://uploads.ilovefreegle.org
-      - USER_SITE=https://yesterday.ilovefreegle.org:3002
+      - USER_SITE=https://yesterday.ilovefreegle.org:8445
 
   freegle-prod:
     # DISABLED: We only use dev containers on Yesterday
@@ -174,7 +184,7 @@ services:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
       - IMAGE_BASE_URL=http://freegle-freegle-dev:3002
       - TUS_UPLOADER=https://uploads.ilovefreegle.org/
-      - USER_SITE=https://yesterday.ilovefreegle.org:3003
+      - USER_SITE=https://yesterday.ilovefreegle.org:8446
 
   modtools-prod:
     # DISABLED: We only use dev containers on Yesterday

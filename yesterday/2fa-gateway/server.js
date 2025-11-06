@@ -1,7 +1,10 @@
 const express = require('express');
 const speakeasy = require('speakeasy');
+const bcrypt = require('bcrypt');
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const fs = require('fs').promises;
 const path = require('path');
 const http = require('http');
@@ -9,42 +12,19 @@ const http = require('http');
 const app = express();
 const PORT = process.env.PORT || 8084;
 const ADMIN_KEY = process.env.YESTERDAY_ADMIN_KEY || 'changeme';
-const BACKUP_BASIC_AUTH = process.env.BACKUP_BASIC_AUTH;
 const USERS_FILE = process.env.USERS_FILE || '/data/2fa-users.json';
 const WHITELIST_FILE = process.env.WHITELIST_FILE || '/data/ip-whitelist.json';
 const WHITELIST_DURATION = 1 * 60 * 60 * 1000; // 1 hour
+const ACCOUNT_LOCK_DURATION = 15 * 60 * 1000; // 15 minutes
+const MAX_FAILED_ATTEMPTS = 5;
 
-// Basic HTTP Authentication (first layer of security before 2FA)
-app.use((req, res, next) => {
-    // Skip basic auth for health endpoint and public API endpoints
-    if (req.path === '/health' || req.path === '/api/restore-status') {
-        return next();
-    }
-
-    if (!BACKUP_BASIC_AUTH) {
-        return next(); // No basic auth configured, skip
-    }
-
-    const auth = req.headers.authorization;
-
-    if (!auth || !auth.startsWith('Basic ')) {
-        res.writeHead(401, {
-            'WWW-Authenticate': 'Basic realm="Freegle Yesterday"',
-            'Content-Type': 'text/plain'
-        });
-        return res.end('Authentication required');
-    }
-
-    const credentials = Buffer.from(auth.slice(6), 'base64').toString();
-    if (credentials !== BACKUP_BASIC_AUTH) {
-        res.writeHead(401, {
-            'WWW-Authenticate': 'Basic realm="Freegle Yesterday"',
-            'Content-Type': 'text/plain'
-        });
-        return res.end('Invalid credentials');
-    }
-
-    next(); // Basic auth passed, continue to 2FA check
+// Rate limiting for login attempts
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // Limit each IP to 20 requests per windowMs
+    message: 'Too many login attempts from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
 app.use(bodyParser.json());
@@ -133,14 +113,15 @@ function isWhitelisted(ip) {
 }
 
 // Add IP to whitelist
-async function whitelistIP(ip, username) {
+async function whitelistIP(ip, username, permission) {
     ipWhitelist[ip] = {
         username,
+        permission,
         expires: Date.now() + WHITELIST_DURATION,
         added: new Date().toISOString()
     };
     await saveWhitelist();
-    console.log(`Whitelisted IP ${ip} for user ${username}`);
+    console.log(`Whitelisted IP ${ip} for user ${username} (${permission})`);
 }
 
 // Get client IP
@@ -148,6 +129,39 @@ function getClientIP(req) {
     return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
            req.headers['x-real-ip'] ||
            req.connection.remoteAddress;
+}
+
+// Check if user account is locked
+function isAccountLocked(user) {
+    if (user.lockedUntil && user.lockedUntil > Date.now()) {
+        return true;
+    }
+    if (user.lockedUntil && user.lockedUntil <= Date.now()) {
+        // Lock has expired, reset
+        user.lockedUntil = null;
+        user.failedAttempts = 0;
+    }
+    return false;
+}
+
+// Handle failed login attempt
+async function handleFailedLogin(user) {
+    user.failedAttempts = (user.failedAttempts || 0) + 1;
+
+    if (user.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        user.lockedUntil = Date.now() + ACCOUNT_LOCK_DURATION;
+        console.log(`Account ${user.username} locked until ${new Date(user.lockedUntil).toISOString()}`);
+    }
+
+    await saveUsers();
+}
+
+// Handle successful login
+async function handleSuccessfulLogin(user) {
+    user.failedAttempts = 0;
+    user.lockedUntil = null;
+    user.lastLogin = new Date().toISOString();
+    await saveUsers();
 }
 
 // Login page HTML
@@ -164,8 +178,9 @@ const loginPageHTML = `
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            padding: 20px;
         }
         .login-container {
             background: white;
@@ -227,6 +242,9 @@ const loginPageHTML = `
             color: #d32f2f;
             text-align: center;
             margin-top: 20px;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 5px;
         }
         .info {
             color: #666;
@@ -245,14 +263,70 @@ const loginPageHTML = `
         <div class="subtitle">Yesterday - Historical Data Access</div>
         <form method="POST" action="/auth/login">
             <input type="text" name="username" placeholder="Username" required autofocus>
+            <input type="password" name="password" placeholder="Password" required>
             <input type="text" name="token" placeholder="6-digit code" pattern="[0-9]{6}" required>
             <button type="submit">Authenticate</button>
         </form>
-        <div class="info">Use Google Authenticator or similar TOTP app</div>
+        <div class="info">Use your password and Google Authenticator code</div>
         <div class="info" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0; font-size: 13px;">
-            ℹ️ After successful authentication, your IP address will be whitelisted for 1 hour. You won't need to enter codes again during this time.
+            ℹ️ After successful authentication, your IP address will be whitelisted for 1 hour. You won't need to enter credentials again during this time.
         </div>
         {{ERROR}}
+    </div>
+</body>
+</html>
+`;
+
+// Access denied page for non-admin users accessing restricted resources
+const accessDeniedHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Access Denied</title>
+    <link rel="icon" type="image/png" href="https://www.ilovefreegle.org/icon.png">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #5AB12E 0%, #4A9025 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #d32f2f;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        a {
+            color: #5AB12E;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Access Denied</h1>
+        <p>This resource requires Administrator permissions. You are currently logged in with Support permissions.</p>
+        <p>If you need access to this resource, please contact a system administrator.</p>
+        <a href="/">← Back to Home</a>
     </div>
 </body>
 </html>
@@ -263,10 +337,20 @@ function requireAuth(req, res, next) {
     const clientIP = getClientIP(req);
 
     if (isWhitelisted(clientIP)) {
+        req.userPermission = ipWhitelist[clientIP].permission;
+        req.username = ipWhitelist[clientIP].username;
         return next();
     }
 
     res.status(200).send(loginPageHTML.replace('{{ERROR}}', ''));
+}
+
+// Middleware to require Admin permission
+function requireAdmin(req, res, next) {
+    if (req.userPermission !== 'Admin') {
+        return res.status(403).send(accessDeniedHTML);
+    }
+    next();
 }
 
 // Login page
@@ -274,21 +358,60 @@ app.get('/auth/login', (req, res) => {
     res.send(loginPageHTML.replace('{{ERROR}}', ''));
 });
 
-// Handle login
-app.post('/auth/login', async (req, res) => {
-    const { username, token } = req.body;
+// Logout endpoint
+app.get('/auth/logout', (req, res) => {
     const clientIP = getClientIP(req);
 
-    if (!username || !token) {
-        return res.send(loginPageHTML.replace('{{ERROR}}', '<div class="error">Username and token required</div>'));
+    // Remove from whitelist
+    if (ipWhitelist[clientIP]) {
+        delete ipWhitelist[clientIP];
+        saveWhitelist();
+        console.log(`User logged out from IP: ${clientIP}`);
+    }
+
+    // Redirect to login page
+    res.redirect('/auth/login');
+});
+
+// Check current user endpoint
+app.get('/auth/me', requireAuth, (req, res) => {
+    res.json({
+        username: req.username,
+        permission: req.userPermission
+    });
+});
+
+// Handle login
+app.post('/auth/login', loginLimiter, async (req, res) => {
+    const { username, password, token } = req.body;
+    const clientIP = getClientIP(req);
+
+    if (!username || !password || !token) {
+        return res.send(loginPageHTML.replace('{{ERROR}}', '<div class="error">Username, password, and token required</div>'));
     }
 
     const user = users[username];
     if (!user) {
         console.log(`Login attempt for unknown user: ${username} from ${clientIP}`);
-        return res.send(loginPageHTML.replace('{{ERROR}}', '<div class="error">Invalid username or token</div>'));
+        return res.send(loginPageHTML.replace('{{ERROR}}', '<div class="error">Invalid credentials</div>'));
     }
 
+    // Check if account is locked
+    if (isAccountLocked(user)) {
+        const unlockTime = new Date(user.lockedUntil).toLocaleTimeString();
+        console.log(`Login attempt for locked account: ${username} from ${clientIP}`);
+        return res.send(loginPageHTML.replace('{{ERROR}}', `<div class="error">Account temporarily locked due to multiple failed attempts. Try again after ${unlockTime}</div>`));
+    }
+
+    // Verify password
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+        console.log(`Failed password for user: ${username} from ${clientIP}`);
+        await handleFailedLogin(user);
+        return res.send(loginPageHTML.replace('{{ERROR}}', '<div class="error">Invalid credentials</div>'));
+    }
+
+    // Verify TOTP token
     const verified = speakeasy.totp.verify({
         secret: user.secret,
         encoding: 'base32',
@@ -297,18 +420,24 @@ app.post('/auth/login', async (req, res) => {
     });
 
     if (verified) {
-        await whitelistIP(clientIP, username);
-        console.log(`Successful login: ${username} from ${clientIP}`);
+        await handleSuccessfulLogin(user);
+        await whitelistIP(clientIP, username, user.permission || 'Support');
+        console.log(`Successful login: ${username} from ${clientIP} (${user.permission || 'Support'})`);
         res.redirect('/');
     } else {
-        console.log(`Failed login attempt: ${username} from ${clientIP}`);
-        res.send(loginPageHTML.replace('{{ERROR}}', '<div class="error">Invalid token</div>'));
+        console.log(`Failed 2FA for user: ${username} from ${clientIP}`);
+        await handleFailedLogin(user);
+        return res.send(loginPageHTML.replace('{{ERROR}}', '<div class="error">Invalid token</div>'));
     }
 });
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', users: Object.keys(users).length, whitelisted_ips: Object.keys(ipWhitelist).length });
+    res.json({
+        status: 'ok',
+        users: Object.keys(users).length,
+        whitelisted_ips: Object.keys(ipWhitelist).length
+    });
 });
 
 // Admin endpoints (require ADMIN_KEY)
@@ -324,23 +453,34 @@ function requireAdminKey(req, res, next) {
 app.get('/admin/users', requireAdminKey, (req, res) => {
     const userList = Object.keys(users).map(username => ({
         username,
-        created: users[username].created
+        permission: users[username].permission || 'Support',
+        created: users[username].created,
+        lastLogin: users[username].lastLogin || null,
+        failedAttempts: users[username].failedAttempts || 0,
+        locked: isAccountLocked(users[username])
     }));
     res.json({ users: userList });
 });
 
 // Add user
 app.post('/admin/users', requireAdminKey, async (req, res) => {
-    const { username } = req.body;
+    const { username, password, permission } = req.body;
 
-    if (!username) {
-        return res.status(400).json({ error: 'Username required' });
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password required' });
     }
 
     if (users[username]) {
         return res.status(409).json({ error: 'User already exists' });
     }
 
+    const validPermissions = ['Support', 'Admin'];
+    const userPermission = permission && validPermissions.includes(permission) ? permission : 'Support';
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Generate TOTP secret
     const secret = speakeasy.generateSecret({
         name: `Yesterday (${username})`,
         issuer: 'Freegle Yesterday'
@@ -348,16 +488,51 @@ app.post('/admin/users', requireAdminKey, async (req, res) => {
 
     users[username] = {
         secret: secret.base32,
-        created: new Date().toISOString()
+        password: hashedPassword,
+        permission: userPermission,
+        created: new Date().toISOString(),
+        failedAttempts: 0,
+        lockedUntil: null
     };
 
     await saveUsers();
 
     res.json({
         username,
+        permission: userPermission,
         secret: secret.base32,
         qr_code_url: secret.otpauth_url,
         message: 'User created. Scan QR code with Google Authenticator'
+    });
+});
+
+// Update user (change password or permission)
+app.patch('/admin/users/:username', requireAdminKey, async (req, res) => {
+    const { username } = req.params;
+    const { password, permission } = req.body;
+
+    if (!users[username]) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (password) {
+        users[username].password = await bcrypt.hash(password, 10);
+    }
+
+    if (permission) {
+        const validPermissions = ['Support', 'Admin'];
+        if (!validPermissions.includes(permission)) {
+            return res.status(400).json({ error: 'Invalid permission. Must be Support or Admin' });
+        }
+        users[username].permission = permission;
+    }
+
+    await saveUsers();
+
+    res.json({
+        message: 'User updated',
+        username,
+        permission: users[username].permission
     });
 });
 
@@ -375,53 +550,73 @@ app.delete('/admin/users/:username', requireAdminKey, async (req, res) => {
     res.json({ message: 'User deleted', username });
 });
 
-// Public API endpoint - no auth required (for index page status banner)
-app.get('/api/restore-status', (req, res) => {
-    const options = {
-        hostname: 'yesterday-api',
-        port: 8082,
-        path: '/api/restore-status',
-        method: 'GET',
-        headers: req.headers
-    };
+// Middleware to check admin permissions for admin-only ports
+function checkAdminPorts(req, res, next) {
+    const port = req.headers['x-forwarded-port'];
+    const adminOnlyPorts = ['8447', '8448']; // PHPMyAdmin, Mailhog
 
-    const proxy = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res);
-    });
+    if (adminOnlyPorts.includes(port) && req.userPermission !== 'Admin') {
+        console.log(`Non-admin user ${req.username} attempted to access admin port ${port}`);
+        return res.status(403).send(accessDeniedHTML);
+    }
 
-    proxy.on('error', (err) => {
+    next();
+}
+
+// Port-based routing - all traffic goes through this with requireAuth
+app.use(requireAuth, checkAdminPorts, createProxyMiddleware({
+    target: 'http://yesterday-index:80',
+    changeOrigin: true,
+    ws: true,  // Enable WebSocket support for hot reload
+    router: (req) => {
+        const port = req.headers['x-forwarded-port'];
+        console.log(`[PORT ROUTING] Received X-Forwarded-Port: ${port}, Path: ${req.path}, User: ${req.username}`);
+
+        // Route based on which port the request came in on
+        switch(port) {
+            case '8445':
+                // Freegle Dev
+                console.log(`→ Routing to Freegle Dev for user ${req.username}`);
+                return 'http://freegle-freegle-dev:3002';
+            case '8446':
+                // ModTools Dev
+                console.log(`→ Routing to ModTools Dev for user ${req.username}`);
+                return 'http://freegle-modtools-dev:3000';
+            case '8447':
+                // PHPMyAdmin (Admin only - checked in middleware)
+                console.log(`→ Routing to PHPMyAdmin for admin user ${req.username}`);
+                return 'http://freegle-phpmyadmin:80';
+            case '8448':
+                // Mailhog (Admin only - checked in middleware)
+                console.log(`→ Routing to Mailhog for admin user ${req.username}`);
+                return 'http://freegle-mailhog:8025';
+            case '8181':
+                // Iznik API v1
+                console.log(`→ Routing to Iznik API v1 for user ${req.username}`);
+                return 'http://freegle-apiv1:80';
+            case '8193':
+                // Iznik API v2
+                console.log(`→ Routing to Iznik API v2 for user ${req.username}`);
+                return 'http://freegle-apiv2:8192';
+            case '8444':
+            case '443':
+            default:
+                // Yesterday UI or Yesterday backup API
+                if (req.path.startsWith('/api/')) {
+                    // All /api/ requests on port 8444 go to Yesterday backup API
+                    console.log(`→ Routing to Yesterday API (backup management)`);
+                    return 'http://yesterday-api:8082';
+                } else {
+                    console.log(`→ Routing to Yesterday UI`);
+                    return 'http://yesterday-index:80';
+                }
+        }
+    },
+    onError: (err, req, res) => {
         console.error('Proxy error:', err);
         res.status(502).send('Bad Gateway');
-    });
-
-    proxy.end();
-});
-
-// Proxy to backend (Yesterday API and UI)
-app.use(requireAuth, (req, res) => {
-    const target = req.path.startsWith('/api/') ? 'http://yesterday-api:8082' : 'http://yesterday-index:80';
-
-    const options = {
-        hostname: target.includes('8082') ? 'yesterday-api' : 'yesterday-index',
-        port: target.includes('8082') ? 8082 : 80,
-        path: req.url,
-        method: req.method,
-        headers: req.headers
-    };
-
-    const proxy = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res);
-    });
-
-    proxy.on('error', (err) => {
-        console.error('Proxy error:', err);
-        res.status(502).send('Bad Gateway');
-    });
-
-    req.pipe(proxy);
-});
+    }
+}));
 
 // Start server
 async function start() {
@@ -434,6 +629,9 @@ async function start() {
     app.listen(PORT, () => {
         console.log(`2FA Gateway listening on port ${PORT}`);
         console.log(`Admin key: ${ADMIN_KEY}`);
+        console.log(`Authentication: Password + TOTP`);
+        console.log(`Permission levels: Support (default), Admin`);
+        console.log(`Brute force protection: Enabled (${MAX_FAILED_ATTEMPTS} attempts, ${ACCOUNT_LOCK_DURATION/60000} min lock)`);
     });
 }
 

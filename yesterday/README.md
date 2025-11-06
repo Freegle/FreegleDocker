@@ -56,23 +56,17 @@ Create a `.env` file in **both** `/var/www/FreegleDocker/` and `/var/www/Freegle
 # Database credentials
 DB_ROOT_PASSWORD=generate_random_password_here
 
-# 2FA Admin API key
+# 2FA Admin API key (for user management API)
 YESTERDAY_ADMIN_KEY=generate_random_admin_key_here
 
 # Redis password
 REDIS_PASSWORD=generate_random_redis_password_here
-
-# Optional: HTTP Basic Auth (first layer before 2FA)
-# Format: username:password (plain text)
-# If set, users must provide these credentials before seeing the 2FA login page
-BACKUP_BASIC_AUTH=backup:your_secure_password_here
 ```
 
 **IMPORTANT**:
 - Never commit the `.env` file to git (it's in `.gitignore`)
 - The `yesterday/.env` file is needed for the yesterday-services compose file
 - Keep both `.env` files in sync for shared variables
-- `BACKUP_BASIC_AUTH` uses plain text credentials, not htpasswd hashes
 
 ### 3. DNS Configuration (Required for HTTPS)
 
@@ -222,11 +216,11 @@ The Yesterday services require specific firewall rules to allow external access:
 
 **Required firewall rules:**
 ```bash
-# Allow Yesterday Traefik (HTTP/HTTPS on alternate ports to avoid conflict with main Traefik)
+# Allow Yesterday services with 2FA protection
 gcloud compute firewall-rules create allow-yesterday-services \
-  --allow tcp:8090,tcp:8444 \
+  --allow tcp:8444,tcp:8445,tcp:8446,tcp:8447,tcp:8448,tcp:8095,tcp:8181,tcp:8193 \
   --target-tags=https-server \
-  --description="Allow Yesterday Traefik (HTTP/HTTPS on ports 8090/8444)" \
+  --description="Allow Yesterday services (all 2FA-protected except 8095)" \
   --direction=INGRESS \
   --priority=1000
 
@@ -239,18 +233,33 @@ gcloud compute firewall-rules create allow-yesterday-ssh \
   --priority=1000
 ```
 
-**Port mappings:**
-- `8090` - HTTP (auto-redirects to HTTPS)
-- `8444` - HTTPS for web interface (Traefik with Let's Encrypt)
-- `22` - SSH access
+**Port-based routing architecture:**
 
-**Access URL:**
-- **`https://yesterday.ilovefreegle.org:8444`** - Main access point (2FA protected)
+All services use **pure port-based routing** through a single 2FA gateway. Each service has its own dedicated port with no path-based routing required. All traffic (except public image delivery) is protected by password + TOTP authentication:
+
+| Port | Service | Permission | Backend Target | Description |
+|------|---------|------------|----------------|-------------|
+| **8444** | Yesterday UI | Any authenticated | yesterday-index:80 | Backup browser and management |
+| **8445** | Freegle Dev | Any authenticated | freegle-freegle-dev:3002 | Freegle application (dev mode) |
+| **8446** | ModTools Dev | Any authenticated | freegle-modtools-dev:3000 | ModTools application (dev mode) |
+| **8447** | PHPMyAdmin | Admin only | freegle-phpmyadmin:80 | Database management |
+| **8448** | Mailhog | Admin only | freegle-mailhog:8025 | Email testing interface |
+| **8181** | Iznik API v1 | Any authenticated | freegle-apiv1:80 | PHP/MySQL API endpoints |
+| **8193** | Iznik API v2 | Any authenticated | freegle-apiv2:8192 | Go API endpoints |
+| **8095** | Image Delivery | Public (no auth) | freegle-delivery:80 | Image resizing service |
+
+**Access URLs:**
+- **`https://yesterday.ilovefreegle.org:8444`** - Yesterday UI (backup browser)
+- **`https://yesterday.ilovefreegle.org:8445`** - Freegle Dev
+- **`https://yesterday.ilovefreegle.org:8446`** - ModTools Dev
+- **`https://yesterday.ilovefreegle.org:8447`** - PHPMyAdmin (Admin only)
+- **`https://yesterday.ilovefreegle.org:8448`** - Mailhog (Admin only)
+- **`https://yesterday.ilovefreegle.org:8181/api`** - Iznik API v1
+- **`https://yesterday.ilovefreegle.org:8193/api`** - Iznik API v2
 
 **Internal services (not exposed):**
 - `8082` - Yesterday API (backup management) - internal only
-- `8083` - Yesterday Index (web UI) - internal only
-- `8084` - Yesterday 2FA Gateway - internal only, routed through Traefik
+- `8084` - Yesterday 2FA Gateway - internal only, routes all external traffic
 
 **Verify firewall rules:**
 ```bash
@@ -331,48 +340,111 @@ Peak disk usage: ~100GB (only the final volume, no temp copies)
 
 Note: The script automatically copies `yesterday/docker-compose.override.yml` to configure all containers to use production image delivery and TUS uploader services, so restored backups display the correct images.
 
-### 8. Set Up 2FA Gateway (Optional but Recommended)
+### 8. Authentication Setup
 
-The Yesterday backup UI is protected by 2FA (TOTP) authentication:
+The Yesterday backup UI is protected by password + 2FA (TOTP) authentication with permission-based access control.
 
-**Start the 2FA-protected services:**
+#### Authentication System
+
+- **Multi-factor authentication**: Password + TOTP (Google Authenticator)
+- **Permission levels**:
+  - **Support** (default) - Access to backup system and main UI
+  - **Admin** - Full access including PHPMyAdmin and Mailhog
+- **Brute force protection**: Accounts locked for 15 minutes after 5 failed attempts
+- **IP whitelisting**: After successful login, your IP is whitelisted for 1 hour
+- **No password reset via UI**: Passwords must be reset via CLI by system administrators
+
+#### Start the Services
+
 ```bash
 cd /var/www/FreegleDocker
 docker compose -f yesterday/docker-compose.yesterday-services.yml up -d
 ```
 
 This starts:
-- `yesterday-2fa` on port 8084 (2FA gateway - use this for public access)
-- `yesterday-api` on port 8082 (backup API - internal)
-- `yesterday-index` on port 8083 (web UI - internal)
+- `yesterday-traefik` on ports 8444-8448 (reverse proxy with HTTPS and Let's Encrypt)
+- `yesterday-2fa` on port 8084 (authentication gateway - routes all external traffic)
+- `yesterday-api` on port 8082 (backup API - internal only)
+- `yesterday-index` (web UI - internal only)
 
-**Add your first user:**
+#### User Management
+
+All user management is done via the CLI tool on the server:
+
 ```bash
-export YESTERDAY_ADMIN_KEY=your_admin_key_from_env_file
-./yesterday/scripts/2fa-admin.sh add your_username
+cd /var/www/FreegleDocker/yesterday/2fa-gateway
+
+# List all users
+node user-manager.js list
+
+# Add a new user (default Support permission)
+node user-manager.js add alice SecurePassword123
+
+# Add an admin user
+node user-manager.js add bob AdminPass456 Admin
+
+# Reset a user's password
+node user-manager.js reset alice NewPassword789
+
+# Change user permission level
+node user-manager.js permission alice Admin
+
+# Unlock a locked account
+node user-manager.js unlock alice
+
+# Delete a user
+node user-manager.js delete bob
+
+# Show help
+node user-manager.js help
 ```
 
-This will display a QR code. Scan it with Google Authenticator or any TOTP app.
+When adding a user, the tool will:
+1. Generate a TOTP secret
+2. Display a QR code in the terminal
+3. Show the manual entry key for authenticator apps
 
-**Access the system:**
-- Public (2FA-protected): `https://yesterday.ilovefreegle.org:8444`
-- HTTPS: `https://yesterday.ilovefreegle.org` (port 443)
-- Let's Encrypt certificate automatically obtained and renewed
-- Uses alternate ports to avoid conflict with main Freegle Traefik
+**Setting up your authenticator:**
+1. Scan the QR code with Google Authenticator, Authy, or similar TOTP app
+2. Or manually enter the secret key shown
+3. The app will generate 6-digit codes that change every 30 seconds
 
-After successful 2FA login, your IP is whitelisted for 1 hour.
+#### Access URLs
+
+All services require 2FA authentication (password + TOTP). Each service has its own dedicated port with pure port-based routing:
+
+- **Yesterday UI**: `https://yesterday.ilovefreegle.org:8444` (backup browser)
+- **Freegle Dev**: `https://yesterday.ilovefreegle.org:8445` (restored Freegle app)
+- **ModTools Dev**: `https://yesterday.ilovefreegle.org:8446` (restored ModTools app)
+- **PHPMyAdmin**: `https://yesterday.ilovefreegle.org:8447` (Admin permission required)
+- **Mailhog**: `https://yesterday.ilovefreegle.org:8448` (Admin permission required)
+- **Iznik API v1**: `https://yesterday.ilovefreegle.org:8181/api` (PHP/MySQL API)
+- **Iznik API v2**: `https://yesterday.ilovefreegle.org:8193/api` (Go API)
+
+**How it works:**
+1. Visit any port - you'll be redirected to login page if not authenticated
+2. Enter username, password, and 6-digit TOTP code
+3. After successful authentication, your IP is whitelisted for 1 hour
+4. Access any service during that hour without re-authenticating
+5. Admin-only services (PHPMyAdmin, Mailhog) require Admin permission level
+
+Let's Encrypt certificates are automatically obtained and renewed for all ports.
 
 **Note**: On first startup after DNS configuration, Traefik will automatically request a Let's Encrypt certificate. This takes 30-60 seconds. Check logs:
 ```bash
 docker logs yesterday-traefik
 ```
 
-**Manage users:**
+#### Migration for Existing Users
+
+If you have existing users without passwords (from the old system), you'll need to add passwords for them:
+
 ```bash
-./yesterday/scripts/2fa-admin.sh list          # List users
-./yesterday/scripts/2fa-admin.sh add alice     # Add user
-./yesterday/scripts/2fa-admin.sh delete bob    # Remove user
-./yesterday/scripts/2fa-admin.sh status        # Check gateway status
+cd /var/www/FreegleDocker/yesterday/2fa-gateway
+node user-manager.js reset geeks <new-password>
+node user-manager.js permission geeks Admin
+node user-manager.js reset chair <new-password>
+node user-manager.js permission chair Admin
 ```
 
 ### 9. Access the Restored System
