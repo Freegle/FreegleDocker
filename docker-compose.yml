@@ -669,6 +669,8 @@ volumes:
   rebuild-requests:
     driver: local
   freegle_db: {}
+  phpmyadmin-sessions:
+    driver: local
 
 networks:
   default:

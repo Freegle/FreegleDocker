@@ -25,21 +25,33 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.freegle.address=:8445"
+      - "--entrypoints.freegle.transport.respondingtimeouts.readtimeout=300s"
+      - "--entrypoints.freegle.transport.respondingtimeouts.writetimeout=300s"
+      - "--entrypoints.freegle.transport.respondingtimeouts.idletimeout=300s"
       - "--entrypoints.modtools.address=:8446"
+      - "--entrypoints.modtools.transport.respondingtimeouts.readtimeout=300s"
+      - "--entrypoints.modtools.transport.respondingtimeouts.writetimeout=300s"
+      - "--entrypoints.modtools.transport.respondingtimeouts.idletimeout=300s"
       - "--entrypoints.phpmyadmin.address=:8447"
       - "--entrypoints.mailhog.address=:8448"
       - "--entrypoints.apiv1.address=:8181"
       - "--entrypoints.apiv2.address=:8193"
+      - "--serversTransport.forwardingTimeouts.dialTimeout=300s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=300s"
+      - "--serversTransport.forwardingTimeouts.idleConnTimeout=300s"
       - "--certificatesresolvers.letsencrypt.acme.email=geeks@ilovefreegle.org"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=gcloud"
       - "--certificatesresolvers.letsencrypt.acme.dnschallenge.delaybeforecheck=30"
-      - "--log.level=INFO"
+      - "--log.level=DEBUG"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/traefik/secrets/gcloud-dns-key.json:/secrets/gcloud-dns-key.json:ro
       - ./data/letsencrypt:/letsencrypt
+      - ./data/traefik-logs:/var/log/traefik
     environment:
       - GCE_PROJECT=freegle-1139
       - GCE_SERVICE_ACCOUNT_FILE=/secrets/gcloud-dns-key.json
@@ -74,42 +86,42 @@ services:
       - "traefik.yesterday=true"
       - "traefik.docker.network=yesterday_default"
       # Yesterday UI (port 8444)
-      - "traefik.http.routers.yesterday.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.yesterday.rule=Host(`${YESTERDAY_HOSTNAME}`)"
       - "traefik.http.routers.yesterday.entrypoints=websecure"
       - "traefik.http.routers.yesterday.tls.certresolver=letsencrypt"
       - "traefik.http.routers.yesterday.service=yesterday-svc"
       # Freegle Dev (port 8445)
-      - "traefik.http.routers.freegle.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.freegle.rule=Host(`${YESTERDAY_HOSTNAME}`)"
       - "traefik.http.routers.freegle.entrypoints=freegle"
       - "traefik.http.routers.freegle.tls.certresolver=letsencrypt"
       - "traefik.http.routers.freegle.service=yesterday-svc"
       - "traefik.http.routers.freegle.middlewares=add-port-8445"
       # ModTools Dev (port 8446)
-      - "traefik.http.routers.modtools.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.modtools.rule=Host(`${YESTERDAY_HOSTNAME}`)"
       - "traefik.http.routers.modtools.entrypoints=modtools"
       - "traefik.http.routers.modtools.tls.certresolver=letsencrypt"
       - "traefik.http.routers.modtools.service=yesterday-svc"
       - "traefik.http.routers.modtools.middlewares=add-port-8446"
       # PHPMyAdmin (port 8447)
-      - "traefik.http.routers.phpmyadmin.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.phpmyadmin.rule=Host(`${YESTERDAY_HOSTNAME}`)"
       - "traefik.http.routers.phpmyadmin.entrypoints=phpmyadmin"
       - "traefik.http.routers.phpmyadmin.tls.certresolver=letsencrypt"
       - "traefik.http.routers.phpmyadmin.service=yesterday-svc"
       - "traefik.http.routers.phpmyadmin.middlewares=add-port-8447"
       # Mailhog (port 8448)
-      - "traefik.http.routers.mailhog-route.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.mailhog-route.rule=Host(`${YESTERDAY_HOSTNAME}`)"
       - "traefik.http.routers.mailhog-route.entrypoints=mailhog"
       - "traefik.http.routers.mailhog-route.tls.certresolver=letsencrypt"
       - "traefik.http.routers.mailhog-route.service=yesterday-svc"
       - "traefik.http.routers.mailhog-route.middlewares=add-port-8448"
       # Iznik API v1 (port 8181)
-      - "traefik.http.routers.yesterday-apiv1.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.yesterday-apiv1.rule=Host(`${YESTERDAY_HOSTNAME}`)"
       - "traefik.http.routers.yesterday-apiv1.entrypoints=apiv1"
       - "traefik.http.routers.yesterday-apiv1.tls.certresolver=letsencrypt"
       - "traefik.http.routers.yesterday-apiv1.service=yesterday-svc"
       - "traefik.http.routers.yesterday-apiv1.middlewares=add-port-8181"
       # Iznik API v2 (port 8193)
-      - "traefik.http.routers.yesterday-apiv2.rule=Host(`yesterday.ilovefreegle.org`)"
+      - "traefik.http.routers.yesterday-apiv2.rule=Host(`${YESTERDAY_HOSTNAME}`)"
       - "traefik.http.routers.yesterday-apiv2.entrypoints=apiv2"
       - "traefik.http.routers.yesterday-apiv2.tls.certresolver=letsencrypt"
       - "traefik.http.routers.yesterday-apiv2.service=yesterday-svc"

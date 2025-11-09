@@ -8,6 +8,7 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const fs = require('fs').promises;
 const path = require('path');
 const http = require('http');
+const os = require('os');
 
 const app = express();
 const PORT = process.env.PORT || 8084;
@@ -27,8 +28,9 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// IMPORTANT: Do NOT use body parsers globally - they break proxying
+// Body parsers consume the request stream, preventing the proxy from forwarding it
+// Instead, apply them only to specific routes that need them
 app.use(cookieParser());
 
 // In-memory cache
@@ -332,9 +334,74 @@ const accessDeniedHTML = `
 </html>
 `;
 
+// Detect Docker network subnets at runtime
+let containerSubnets = [];
+function detectContainerNetworks() {
+    const interfaces = os.networkInterfaces();
+    const subnets = [];
+
+    for (const [name, addrs] of Object.entries(interfaces)) {
+        for (const addr of addrs) {
+            // Only process IPv4 addresses
+            if (addr.family === 'IPv4' && !addr.internal) {
+                // Extract network address from IP and netmask
+                const ip = addr.address.split('.').map(Number);
+                const netmask = addr.netmask.split('.').map(Number);
+                const network = ip.map((octet, i) => octet & netmask[i]).join('.');
+                const cidr = netmask.reduce((sum, octet) =>
+                    sum + octet.toString(2).split('1').length - 1, 0);
+
+                subnets.push({ network, cidr, netmask: addr.netmask });
+                console.log(`Detected container network: ${network}/${cidr} (${name})`);
+            }
+        }
+    }
+
+    return subnets;
+}
+
+// Check if IP is within container's Docker networks
+function isInternalDockerIP(ip) {
+    // Always allow localhost
+    if (ip.startsWith('127.') || ip.startsWith('::1') || ip === '::ffff:127.0.0.1') {
+        return true;
+    }
+
+    // Remove IPv6 prefix if present
+    const cleanIP = ip.replace(/^::ffff:/, '');
+
+    // Check if IP is in any of our container's subnets
+    const ipParts = cleanIP.split('.').map(Number);
+
+    for (const subnet of containerSubnets) {
+        const netmaskParts = subnet.netmask.split('.').map(Number);
+        const networkParts = subnet.network.split('.').map(Number);
+
+        // Check if IP is in this subnet
+        const inSubnet = ipParts.every((octet, i) =>
+            (octet & netmaskParts[i]) === networkParts[i]
+        );
+
+        if (inSubnet) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // Middleware to check authentication
 function requireAuth(req, res, next) {
     const clientIP = getClientIP(req);
+    console.log(`[AUTH CHECK] Client IP: ${clientIP}, x-forwarded-for: ${req.headers['x-forwarded-for']}, x-real-ip: ${req.headers['x-real-ip']}, remoteAddress: ${req.connection.remoteAddress}`);
+
+    // Bypass authentication for internal Docker network
+    if (isInternalDockerIP(clientIP)) {
+        req.userPermission = 'Admin';
+        req.username = 'internal-docker';
+        console.log(`[INTERNAL] Allowing internal Docker request from ${clientIP}`);
+        return next();
+    }
 
     if (isWhitelisted(clientIP)) {
         req.userPermission = ipWhitelist[clientIP].permission;
@@ -382,7 +449,7 @@ app.get('/auth/me', requireAuth, (req, res) => {
 });
 
 // Handle login
-app.post('/auth/login', loginLimiter, async (req, res) => {
+app.post('/auth/login', loginLimiter, bodyParser.json(), bodyParser.urlencoded({ extended: true }), async (req, res) => {
     const { username, password, token } = req.body;
     const clientIP = getClientIP(req);
 
@@ -463,7 +530,7 @@ app.get('/admin/users', requireAdminKey, (req, res) => {
 });
 
 // Add user
-app.post('/admin/users', requireAdminKey, async (req, res) => {
+app.post('/admin/users', requireAdminKey, bodyParser.json(), bodyParser.urlencoded({ extended: true }), async (req, res) => {
     const { username, password, permission } = req.body;
 
     if (!username || !password) {
@@ -568,6 +635,12 @@ app.use(requireAuth, checkAdminPorts, createProxyMiddleware({
     target: 'http://yesterday-index:80',
     changeOrigin: true,
     ws: true,  // Enable WebSocket support for hot reload
+    timeout: 30000,  // 30 second timeout
+    proxyTimeout: 30000,
+    cookieDomainRewrite: {
+        '*': 'yesterday.ilovefreegle.org'  // Rewrite cookie domain to external domain
+    },
+    cookiePathRewrite: false,  // Don't rewrite cookie paths
     router: (req) => {
         const port = req.headers['x-forwarded-port'];
         console.log(`[PORT ROUTING] Received X-Forwarded-Port: ${port}, Path: ${req.path}, User: ${req.username}`);
@@ -612,8 +685,25 @@ app.use(requireAuth, checkAdminPorts, createProxyMiddleware({
                 }
         }
     },
+    onProxyReq: (proxyReq, req, res) => {
+        // Log when proxy request starts
+        req.proxyStartTime = Date.now();
+
+        // Disable compression for phpMyAdmin to avoid JSON parsing issues
+        if (req.headers['x-forwarded-port'] === '8447') {
+            proxyReq.removeHeader('accept-encoding');
+        }
+    },
+    onProxyRes: (proxyRes, req, res) => {
+        // Log proxy response time
+        const duration = Date.now() - (req.proxyStartTime || Date.now());
+        if (duration > 5000) {
+            console.log(`[SLOW PROXY] ${req.path} took ${duration}ms`);
+        }
+    },
     onError: (err, req, res) => {
-        console.error('Proxy error:', err);
+        const duration = Date.now() - (req.proxyStartTime || Date.now());
+        console.error(`Proxy error after ${duration}ms:`, err.message, 'Path:', req.path);
         res.status(502).send('Bad Gateway');
     }
 }));
@@ -622,6 +712,10 @@ app.use(requireAuth, checkAdminPorts, createProxyMiddleware({
 async function start() {
     await loadUsers();
     await loadWhitelist();
+
+    // Detect container networks for internal access bypass
+    containerSubnets = detectContainerNetworks();
+    console.log(`Internal Docker bypass enabled for ${containerSubnets.length} network(s)`);
 
     // Clean up whitelist every hour
     setInterval(cleanupWhitelist, 60 * 60 * 1000);
