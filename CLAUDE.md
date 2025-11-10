@@ -163,3 +163,4 @@ When all tests pass successfully in CircleCI, the system automatically:
 - Never add Claude Code to commit messages
 - Don't commit unless you've been told to - you're committing code with bugs in before testing.
 - Remember that when working on the yesterday system you need to make sure you don't break local dev and CircleCI.  We have a docker override file to help with this.
+- Never merge the whole of the app-ci-fd branch into master.
