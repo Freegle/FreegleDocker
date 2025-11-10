@@ -101,6 +101,7 @@ case "$command" in
         echo ""
         echo "Environment variables:"
         echo "  YESTERDAY_ADMIN_KEY     Admin API key (required)"
+        echo "  BACKUP_BASIC_AUTH       Basic auth credentials username:password (required)"
         echo "  GATEWAY_URL             Gateway URL (default: http://localhost:8084)"
         exit 1
         ;;
