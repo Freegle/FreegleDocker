@@ -171,7 +171,7 @@ const loginPageHTML = `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Freegle Backup Management System - Authentication</title>
+    <title>Freegle Yesterday - Authentication</title>
     <link rel="icon" type="image/png" href="https://www.ilovefreegle.org/icon.png">
     <style>
         body {
@@ -261,8 +261,7 @@ const loginPageHTML = `
         <div class="logo">
             <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle Logo">
         </div>
-        <h1>Freegle Backup Management System</h1>
-        <div class="subtitle">Yesterday - Historical Data Access</div>
+        <h1>Freegle Yesterday</h1>
         <form method="POST" action="/auth/login">
             <input type="text" name="username" placeholder="Username" required autofocus>
             <input type="password" name="password" placeholder="Password" required>
