@@ -1,7 +1,7 @@
 FROM node:22-alpine
 
-# Install Google Cloud SDK for gsutil (in /opt to avoid volume mount conflicts) and Docker CLI
-RUN apk add --no-cache python3 py3-pip curl bash docker-cli && \
+# Install Google Cloud SDK for gsutil (in /opt to avoid volume mount conflicts), Docker CLI, docker-compose, and git
+RUN apk add --no-cache python3 py3-pip curl bash docker-cli docker-cli-compose git && \
     curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz && \
     tar -xf google-cloud-cli-linux-x86_64.tar.gz && \
     mv google-cloud-sdk /opt/ && \

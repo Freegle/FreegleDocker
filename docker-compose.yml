@@ -31,10 +31,11 @@ services:
     container_name: freegle-percona
     networks:
       - default
-    image: percona:8.0.42-33
+    image: percona:8.0.43-34
     restart: always
     volumes:
       - freegle_db:/var/lib/mysql
+      - ./conf/percona-my.cnf:/etc/my.cnf:ro
     environment:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik
@@ -79,14 +80,11 @@ services:
       - PMA_HOST=percona
       - PMA_USER=root
       - PMA_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
-      - ADMIN_TOOLS_BASIC_AUTH=${ADMIN_TOOLS_BASIC_AUTH}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.phpmyadmin.rule=Host(`phpmyadmin.localhost`)"
       - "traefik.http.routers.phpmyadmin.entrypoints=web"
-      - "traefik.http.routers.phpmyadmin.middlewares=admin-auth"
       - "traefik.http.services.phpmyadmin.loadbalancer.server.port=80"
-      - "traefik.http.middlewares.admin-auth.basicauth.users=${ADMIN_TOOLS_BASIC_AUTH}"
 
   mailhog:
     image: mailhog/mailhog
@@ -108,13 +106,10 @@ services:
         condition: service_healthy
       reverse-proxy:
         condition: service_healthy
-    environment:
-      - ADMIN_TOOLS_BASIC_AUTH=${ADMIN_TOOLS_BASIC_AUTH}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
       - "traefik.http.routers.mailhog.entrypoints=web"
-      - "traefik.http.routers.mailhog.middlewares=admin-auth"
       - "traefik.http.services.mailhog.loadbalancer.server.port=8025"
 
   beanstalkd:
@@ -674,6 +669,8 @@ volumes:
   rebuild-requests:
     driver: local
   freegle_db: {}
+  phpmyadmin-sessions:
+    driver: local
 
 networks:
   default:

@@ -9,6 +9,24 @@ BACKUP_BUCKET="gs://freegle_backup_uk"
 BACKUP_DIR="/var/www/FreegleDocker/yesterday/data/backups"
 LOG_FILE="/var/log/yesterday-restore-${BACKUP_DATE}.log"
 COMPOSE_FILE="/var/www/FreegleDocker/docker-compose.yml"
+STATUS_FILE="/var/www/FreegleDocker/yesterday/data/restore-status.json"
+
+# Helper function to update restore status
+update_status() {
+    local status=$1
+    local message=$2
+    local files_remaining=${3:-0}
+
+    cat > "$STATUS_FILE" <<EOF
+{
+  "status": "$status",
+  "message": "$message",
+  "backupDate": "$BACKUP_DATE",
+  "filesRemaining": $files_remaining,
+  "timestamp": "$(date -Iseconds)"
+}
+EOF
+}
 
 if [ -z "$BACKUP_DATE" ]; then
     echo "Usage: $0 <YYYYMMDD>"
@@ -22,8 +40,12 @@ fi
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+# Trap errors and update status
+trap 'update_status "failed" "Restore failed - check logs"' ERR
+
 echo "=== Yesterday Restoration Started: $(date) ==="
 echo "Restoring backup from date: ${BACKUP_DATE}..."
+update_status "starting" "Finding backup..."
 
 mkdir -p "$BACKUP_DIR"
 
@@ -57,6 +79,7 @@ else
 fi
 
 echo "Stopping all Docker containers..."
+update_status "stopping" "Stopping containers..."
 docker compose down
 
 echo "Getting volume path..."
@@ -80,9 +103,9 @@ echo ""
 echo "=========================================="
 echo "Streaming and extracting backup directly to volume..."
 echo "Compressed: ${BACKUP_SIZE_GB}GB → Estimated final: ~${ESTIMATED_FINAL_GB}GB"
-echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
+update_status "extracting" "Downloading and extracting backup..."
 
 # Show progress by monitoring extracted files in background
 (
@@ -114,9 +137,9 @@ echo ""
 
 echo "=========================================="
 echo "Decompressing zstd files..."
-echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
+update_status "decompressing" "Decompressing database files..."
 
 # Get number of CPU cores for parallel decompression
 CORES=$(nproc)
@@ -132,6 +155,7 @@ echo "Using $CORES parallel processes for decompression"
         fi
         if [ $ZST_COUNT -ne $CURRENT_ZST ]; then
             echo "[$(date +%H:%M:%S)] Decompressing... $CURRENT_ZST .zst files remaining"
+            update_status "decompressing" "Decompressing database files ($CURRENT_ZST files remaining)" "$CURRENT_ZST"
             ZST_COUNT=$CURRENT_ZST
         fi
         sleep 10
@@ -160,9 +184,10 @@ PERCONA_VERSION=$(echo "$BACKUP_SERVER_VERSION" | sed 's/\([0-9]\+\.[0-9]\+\.[0-
 echo "Using Percona Docker image: percona:$PERCONA_VERSION"
 
 # Create my.cnf with InnoDB parameters from backup
-MYCNF_FILE="/tmp/percona-my.cnf"
+MYCNF_FILE="/var/www/FreegleDocker/conf/percona-my.cnf"
 cat > "$MYCNF_FILE" << EOF
 [mysqld]
+max_connections = 500
 innodb_data_file_path=$(grep "^innodb_data_file_path" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
 innodb_page_size=$(grep "^innodb_page_size" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
 innodb_undo_tablespaces=$(grep "^innodb_undo_tablespaces" "$VOLUME_PATH/backup-my.cnf" | cut -d= -f2)
@@ -186,8 +211,8 @@ sed -i '/^    image: percona:/,/^    volumes:/ {
 }' "$COMPOSE_FILE"
 
 # Add config file mount if not already present
-if ! grep -q "/tmp/percona-my.cnf:/etc/my.cnf" "$COMPOSE_FILE"; then
-  sed -i '/freegle_db:\/var\/lib\/mysql/a\      - /tmp/percona-my.cnf:/etc/my.cnf:ro' "$COMPOSE_FILE"
+if ! grep -q "percona-my.cnf:/etc/my.cnf" "$COMPOSE_FILE"; then
+  sed -i '/freegle_db:\/var\/lib\/mysql/a\      - ./conf/percona-my.cnf:/etc/my.cnf:ro' "$COMPOSE_FILE"
 fi
 
 # Update health check to work with restored databases
@@ -198,9 +223,9 @@ echo ""
 
 echo "=========================================="
 echo "Preparing backup (applying transaction logs)..."
-echo "This will take 10-15 minutes..."
 echo "=========================================="
 echo ""
+update_status "preparing" "Preparing database..."
 
 # Show that preparation is running
 (
@@ -289,14 +314,14 @@ verify_all_containers() {
         if [ -n "$container" ]; then
             created_containers+=("$container")
         fi
-    done < <(docker compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed 's/freegle-//')
 
     # Get list of exited/unhealthy containers
     while IFS= read -r container; do
         if [ -n "$container" ]; then
             failed_containers+=("$container")
         fi
-    done < <(docker compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed 's/freegle-//')
 
     if [ ${#created_containers[@]} -gt 0 ]; then
         echo "⚠️  Found containers in Created state (not started): ${created_containers[*]}"
@@ -316,7 +341,18 @@ verify_all_containers() {
 
 echo ""
 echo "Starting all Docker containers..."
+update_status "starting" "Starting containers..."
 docker compose up -d
+
+echo "Configuring PHP-FPM for production load..."
+# Wait for API v1 container to be running
+sleep 5
+docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
+echo "✅ PHP-FPM configured with increased worker pool"
 
 echo ""
 echo "Waiting for critical infrastructure containers..."
@@ -394,8 +430,19 @@ fi
 /var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
 
 echo ""
+if systemctl list-units --full --all | grep -q "docker-compose@freegle.service"; then
+    echo "Restarting main Docker stack systemd service..."
+    systemctl restart docker-compose@freegle
+    sleep 10
+    echo "✅ Main stack restarted"
+else
+    echo "ℹ️  No systemd service found (Yesterday deployment) - skipping systemctl restart"
+fi
+
+echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="
 echo "✅ Backup from ${FORMATTED_DATE} restored successfully"
+update_status "completed" "Restore completed successfully"
 echo ""
 echo "Access the system at:"
 echo "  - Freegle: http://localhost:3000"
