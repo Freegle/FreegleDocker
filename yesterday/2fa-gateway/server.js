@@ -262,6 +262,7 @@ const loginPageHTML = `
             <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle Logo">
         </div>
         <h1>Freegle Yesterday</h1>
+        <div class="info" id="backup-status" style="margin-bottom: 20px;">Loading backup status...</div>
         <form method="POST" action="/auth/login">
             <input type="text" name="username" placeholder="Username" required autofocus>
             <input type="password" name="password" placeholder="Password" required>
@@ -274,6 +275,26 @@ const loginPageHTML = `
         </div>
         {{ERROR}}
     </div>
+    <script>
+        fetch('/apiv2/latestmessage')
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById('backup-status');
+                if (data.ret === 0 && data.latestmessage) {
+                    const date = new Date(data.latestmessage);
+                    statusEl.textContent = 'Latest message: ' + date.toLocaleString();
+                    statusEl.style.color = '#4A9025';
+                } else {
+                    statusEl.textContent = 'Restoring...';
+                    statusEl.style.color = '#666';
+                }
+            })
+            .catch(err => {
+                const statusEl = document.getElementById('backup-status');
+                statusEl.textContent = 'Restoring...';
+                statusEl.style.color = '#666';
+            });
+    </script>
 </body>
 </html>
 `;
