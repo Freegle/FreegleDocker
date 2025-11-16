@@ -170,7 +170,7 @@ When all tests pass successfully in CircleCI, the system automatically:
 The status container includes automated Sentry error analysis and fixing:
 
 - **Uses Claude Code CLI** - no separate API costs, uses your existing subscription
-- **Polls Sentry** every 15 minutes for high-priority/frequent errors
+- **Manual trigger only** by default (click button on status page)
 - **SQLite tracking** at `/project/sentry-issues.db` prevents reprocessing (gitignored)
 - **Automatic retries** up to 3 times for failed fixes
 - **Creates PRs** automatically with test cases and fixes

@@ -101,29 +101,33 @@ Starting Sentry integration with 900000ms poll interval
 
 ## Usage
 
-### Automatic Mode
+### Manual Trigger (Default Mode)
 
-Once configured, the system runs automatically:
-
-- Polls every 15 minutes for new high-priority issues
-- Processes each issue asynchronously
-- Creates PRs without human intervention
-- You review PRs on GitHub as normal
-
-### Manual Trigger
-
-To manually trigger Sentry analysis:
+By default, the integration runs **only when manually triggered**:
 
 1. Open the status page: `http://status.localhost` or `http://localhost:8081`
 2. Look for the "Sentry Integration" section
 3. Click **"Analyze Sentry Issues Now"** button
-4. System will immediately poll Sentry and process any matching issues
+4. System will poll Sentry and process any matching issues
 
 Or via API:
 
 ```bash
 curl -X POST http://localhost:8081/api/sentry/poll
 ```
+
+### Automatic Mode (Optional)
+
+To enable automatic polling every 15 minutes, uncomment these lines in `status/server.js`:
+
+```javascript
+// Uncomment to enable automatic polling:
+setTimeout(() => {
+  sentryIntegration.start();
+}, 60000);
+```
+
+Then restart the status container.
 
 ### Check Status
 

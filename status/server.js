@@ -1267,12 +1267,13 @@ if (process.env.SENTRY_AUTH_TOKEN) {
       pollIntervalMs: parseInt(process.env.SENTRY_POLL_INTERVAL_MS || "900000"), // 15 minutes
     });
 
-    // Start Sentry integration after a delay
-    setTimeout(() => {
-      sentryIntegration.start();
-    }, 60000); // Wait 1 minute after startup
+    // NOTE: Automatic polling is disabled - use manual trigger button on status page
+    // To enable automatic polling, uncomment the lines below:
+    // setTimeout(() => {
+    //   sentryIntegration.start();
+    // }, 60000); // Wait 1 minute after startup
 
-    console.log("✅ Sentry Integration enabled (using Claude Code CLI)");
+    console.log("✅ Sentry Integration enabled (manual trigger only - using Claude Code CLI)");
   } catch (error) {
     console.error("❌ Failed to initialize Sentry Integration:", error);
   }
