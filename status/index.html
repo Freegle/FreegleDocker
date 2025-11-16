@@ -305,7 +305,12 @@
                 <div id="sentryDetails" style="margin-top: 12px; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px; display: none;">
                     <div style="margin-bottom: 6px;"><strong>Status:</strong> <span id="sentryEnabled">Unknown</span></div>
                     <div style="margin-bottom: 6px;"><strong>Processed Issues:</strong> <span id="sentryProcessed">0</span></div>
+                    <div id="sentryBreakdown" style="margin-bottom: 6px; margin-left: 20px; font-size: 11px; display: none;"></div>
                     <div style="margin-bottom: 6px;"><strong>Currently Processing:</strong> <span id="sentryActive">None</span></div>
+                    <div id="sentryRecentErrors" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6; display: none;">
+                        <strong style="color: #dc3545;">Recent Errors:</strong>
+                        <div id="sentryErrorList" style="margin-top: 6px; max-height: 150px; overflow-y: auto;"></div>
+                    </div>
                     <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6;">
                         <small style="color: #666;">
                             Polls every 15 min for high-priority/frequent errors.<br>
@@ -592,9 +597,14 @@
                 const response = await fetch('/api/sentry/status');
                 if (response.ok) {
                     const data = await response.json();
+
+                    // Also fetch recent errors
+                    fetchSentryErrors();
                     const element = document.getElementById('sentry-integration');
                     const statusEl = document.getElementById('sentryStatus');
                     const detailsEl = document.getElementById('sentryDetails');
+
+                    const analyzeBtn = document.getElementById('analyzeSentryBtn');
 
                     if (data.enabled) {
                         element.className = 'service online';
@@ -604,6 +614,34 @@
                         document.getElementById('sentryEnabled').textContent = 'Enabled';
                         document.getElementById('sentryEnabled').style.color = '#28a745';
                         document.getElementById('sentryProcessed').textContent = data.processed || 0;
+
+                        // Show breakdown by status
+                        const breakdownEl = document.getElementById('sentryBreakdown');
+                        if (data.processedByStatus && Object.keys(data.processedByStatus).length > 0) {
+                            const statusColors = {
+                                success: '#28a745',
+                                failed: '#ffc107',
+                                error: '#dc3545',
+                                skipped: '#6c757d'
+                            };
+                            const statusIcons = {
+                                success: '✅',
+                                failed: '⚠️',
+                                error: '❌',
+                                skipped: '⊘'
+                            };
+                            const breakdownHtml = Object.entries(data.processedByStatus)
+                                .map(([status, count]) => {
+                                    const color = statusColors[status] || '#666';
+                                    const icon = statusIcons[status] || '•';
+                                    return `<div style="color: ${color};">${icon} ${status}: ${count}</div>`;
+                                })
+                                .join('');
+                            breakdownEl.innerHTML = breakdownHtml;
+                            breakdownEl.style.display = 'block';
+                        } else {
+                            breakdownEl.style.display = 'none';
+                        }
 
                         if (data.activeProcessing && data.activeProcessing.length > 0) {
                             const activeText = data.activeProcessing.map(issue =>
@@ -615,12 +653,27 @@
                             document.getElementById('sentryActive').textContent = 'None';
                             document.getElementById('sentryActive').style.color = '#666';
                         }
+
+                        // Enable the analyze button
+                        if (analyzeBtn) {
+                            analyzeBtn.disabled = false;
+                            analyzeBtn.style.opacity = '1';
+                            analyzeBtn.style.cursor = 'pointer';
+                        }
                     } else {
                         element.className = 'service offline';
                         statusEl.textContent = 'Disabled - ' + (data.message || 'Not configured');
                         detailsEl.style.display = 'block';
                         document.getElementById('sentryEnabled').textContent = 'Disabled';
                         document.getElementById('sentryEnabled').style.color = '#dc3545';
+
+                        // Disable the analyze button
+                        if (analyzeBtn) {
+                            analyzeBtn.disabled = true;
+                            analyzeBtn.style.opacity = '0.5';
+                            analyzeBtn.style.cursor = 'not-allowed';
+                            analyzeBtn.title = 'Sentry integration not configured - add SENTRY_AUTH_TOKEN to .env';
+                        }
                     }
                 }
             } catch (error) {
@@ -628,6 +681,49 @@
                 const element = document.getElementById('sentry-integration');
                 element.className = 'service offline';
                 document.getElementById('sentryStatus').textContent = 'Error checking status';
+
+                // Disable the analyze button on error
+                const analyzeBtn = document.getElementById('analyzeSentryBtn');
+                if (analyzeBtn) {
+                    analyzeBtn.disabled = true;
+                    analyzeBtn.style.opacity = '0.5';
+                    analyzeBtn.style.cursor = 'not-allowed';
+                }
+            }
+        }
+
+        async function fetchSentryErrors() {
+            try {
+                const response = await fetch('/api/sentry/errors');
+                if (response.ok) {
+                    const data = await response.json();
+                    const errorsSection = document.getElementById('sentryRecentErrors');
+                    const errorsList = document.getElementById('sentryErrorList');
+
+                    if (data.enabled && data.errors && data.errors.length > 0) {
+                        const errorsHtml = data.errors.map(err => {
+                            const date = new Date(err.last_processed_at).toLocaleString();
+                            const truncatedTitle = err.title.length > 60 ? err.title.substring(0, 60) + '...' : err.title;
+                            const errorMsg = err.error_message || 'No error message';
+                            const truncatedError = errorMsg.length > 100 ? errorMsg.substring(0, 100) + '...' : errorMsg;
+
+                            return `
+                                <div style="margin-bottom: 8px; padding: 6px; background: #fff; border-left: 3px solid #dc3545; border-radius: 2px;">
+                                    <div style="font-weight: bold; font-size: 10px; color: #333;">${err.module} - ${truncatedTitle}</div>
+                                    <div style="font-size: 9px; color: #666; margin-top: 2px;">${truncatedError}</div>
+                                    <div style="font-size: 9px; color: #999; margin-top: 2px;">Attempts: ${err.attempts} | ${date}</div>
+                                </div>
+                            `;
+                        }).join('');
+
+                        errorsList.innerHTML = errorsHtml;
+                        errorsSection.style.display = 'block';
+                    } else {
+                        errorsSection.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching Sentry errors:', error);
             }
         }
 

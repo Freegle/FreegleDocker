@@ -24,16 +24,19 @@ The Sentry integration automatically:
 
 ### 1. Get Sentry Auth Token
 
-1. Go to [sentry.io/settings/account/api/auth-tokens/](https://sentry.io/settings/account/api/auth-tokens/)
+1. Go to your Sentry organization settings: `https://YOUR-ORG.sentry.io/settings/account/api/auth-tokens/`
 2. Click "Create New Token"
 3. Name: "FreegleDocker Auto-Fix"
-4. Scopes needed:
-   - `project:read`
-   - `project:write`
-   - `event:read`
-   - `issue:read`
-   - `issue:write`
-5. Copy the token
+4. **Required Scopes:**
+   - `org:read` - Read organization and project information
+   - `project:read` - Read project issues and events
+   - `project:write` - Update issue status and add comments
+   - `event:read` - Read detailed error event information
+5. **Optional Scopes** (recommended for full functionality):
+   - `project:releases` - Track which release fixed an issue
+6. Copy the token
+
+**Note:** Token must have access to all projects you want to monitor.
 
 ### 2. Install Claude Code CLI
 
@@ -54,11 +57,11 @@ Add to your `.env` file or docker-compose environment:
 ```bash
 # Required
 SENTRY_AUTH_TOKEN=your-sentry-token-here
+SENTRY_ORG_SLUG=your-org-slug  # Find in Sentry URL: https://YOUR-ORG-SLUG.sentry.io/
 
 # Optional
-SENTRY_ORG_SLUG=o118493  # Defaults to o118493 if not set
 SENTRY_POLL_INTERVAL_MS=900000  # 15 minutes (default)
-SENTRY_DB_PATH=/project/sentry-issues.db  # SQLite database path (default)
+SENTRY_DB_PATH=/app/data/sentry-issues.db  # SQLite database path (default)
 
 # Project Configuration (optional - defaults provided)
 # Format: key:projectId:projectSlug:repoPath,key:projectId:projectSlug:repoPath,...
@@ -74,12 +77,13 @@ services:
   status:
     environment:
       - SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
-      - SENTRY_ORG_SLUG=${SENTRY_ORG_SLUG:-o118493}
+      - SENTRY_ORG_SLUG=${SENTRY_ORG_SLUG}
       - SENTRY_POLL_INTERVAL_MS=${SENTRY_POLL_INTERVAL_MS:-900000}
-      - SENTRY_DB_PATH=${SENTRY_DB_PATH:-/project/sentry-issues.db}
+      - SENTRY_DB_PATH=/app/data/sentry-issues.db
       - SENTRY_PROJECTS=${SENTRY_PROJECTS}
     volumes:
-      - .:/project  # Ensure database persists
+      - .:/project:ro  # Read-only project mount
+      - ./status/data:/app/data:rw  # Writable database directory
 ```
 
 ### 5. Restart Status Container
@@ -250,15 +254,17 @@ but the proposed fix did not pass all tests. Please review.
 
 ### Default Projects
 
-If `SENTRY_PROJECTS` is not set, these defaults are used:
+If `SENTRY_PROJECTS` is not set, these defaults are used (for Freegle projects):
 
-| Module | Project ID | Sentry Project | Repository | Tests |
-|--------|-----------|----------------|------------|-------|
-| php | 6119406 | php-api | iznik-server | PHPUnit |
-| go | 4505568012730368 | go-api | iznik-server-go | Go tests |
-| nuxt3 | 4504083802226688 | iznik-nuxt3 | iznik-nuxt3 | Playwright |
-| capacitor | 4506643536609280 | iznik-nuxt3-capacitor | iznik-nuxt3 | Playwright |
-| modtools | 4506712427855872 | iznik-nuxt3-modtools | iznik-nuxt3-modtools | Playwright |
+| Module | Project ID | Sentry Project Slug | Repository | Tests |
+|--------|-----------|---------------------|------------|-------|
+| php | 6119406 | php | iznik-server | PHPUnit |
+| go | 4505568012730368 | go | iznik-server-go | Go tests |
+| nuxt3 | 4504083802226688 | nuxt3 | iznik-nuxt3 | Playwright |
+| capacitor | 4506643536609280 | capacitor | iznik-nuxt3 | Playwright |
+| modtools | 4506712427855872 | modtools | iznik-nuxt3-modtools | Playwright |
+
+**To find your project slugs:** Go to `https://YOUR-ORG.sentry.io/projects/` and look at the project URLs.
 
 ### Custom Project Configuration
 

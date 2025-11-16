@@ -9,6 +9,8 @@ class SentryIntegration {
     this.sentryAuthToken = config.sentryAuthToken;
     this.pollIntervalMs = config.pollIntervalMs || 15 * 60 * 1000; // 15 minutes default
     this.activeProcessing = new Map();
+    this.ignoreAlreadyProcessing = config.ignoreAlreadyProcessing || false; // Flag to skip duplicate check
+    this.maxIssuesPerPoll = config.maxIssuesPerPoll || null; // Limit number of issues to process
 
     // Load Sentry project configurations from environment variables
     this.projects = this.loadProjectsFromEnv();
@@ -18,13 +20,19 @@ class SentryIntegration {
 
     console.log("Sentry Integration initialized with projects:", Object.keys(this.projects));
     console.log("Using Claude Code CLI for analysis (no separate API costs)");
+    if (this.ignoreAlreadyProcessing) {
+      console.log("⚠️ Ignoring 'already processing' checks");
+    }
+    if (this.maxIssuesPerPoll) {
+      console.log(`⚠️ Limited to ${this.maxIssuesPerPoll} issue(s) per poll`);
+    }
   }
 
   /**
    * Initialize SQLite database for tracking processed issues
    */
   initDatabase() {
-    const dbPath = process.env.SENTRY_DB_PATH || '/project/sentry-issues.db';
+    const dbPath = process.env.SENTRY_DB_PATH || 'sentry-issues.db';
     this.db = new Database(dbPath);
 
     // Create table if it doesn't exist
@@ -142,31 +150,31 @@ class SentryIntegration {
       return {
         php: {
           projectId: "6119406",
-          projectSlug: "php-api",
+          projectSlug: "php",
           repoPath: "/project/iznik-server",
           testCommand: "curl -X POST http://localhost:8081/api/tests/php"
         },
         go: {
           projectId: "4505568012730368",
-          projectSlug: "go-api",
+          projectSlug: "go",
           repoPath: "/project/iznik-server-go",
           testCommand: "curl -X POST http://localhost:8081/api/tests/go"
         },
         nuxt3: {
           projectId: "4504083802226688",
-          projectSlug: "iznik-nuxt3",
+          projectSlug: "nuxt3",
           repoPath: "/project/iznik-nuxt3",
           testCommand: "curl -X POST http://localhost:8081/api/tests/playwright"
         },
         capacitor: {
           projectId: "4506643536609280",
-          projectSlug: "iznik-nuxt3-capacitor",
+          projectSlug: "capacitor",
           repoPath: "/project/iznik-nuxt3",
           testCommand: "curl -X POST http://localhost:8081/api/tests/playwright"
         },
         modtools: {
           projectId: "4506712427855872",
-          projectSlug: "iznik-nuxt3-modtools",
+          projectSlug: "modtools",
           repoPath: "/project/iznik-nuxt3-modtools",
           testCommand: "curl -X POST http://localhost:8081/api/tests/playwright"
         },
@@ -230,18 +238,31 @@ class SentryIntegration {
     try {
       console.log("Polling Sentry for high-priority issues...");
 
+      let totalProcessedCount = 0;
+
       for (const [moduleKey, project] of Object.entries(this.projects)) {
         try {
           const issues = await this.fetchSentryIssues(project.projectSlug);
           console.log(`Found ${issues.length} unresolved issues in ${project.projectSlug}`);
 
-          for (const issue of issues) {
-            // Check if already processed using database
-            const processedCheck = this.hasBeenProcessed(issue.id);
+          // Add delay between projects to avoid rate limits
+          await this.sleep(2000);
 
-            if (processedCheck.processed) {
-              console.log(`Skipping issue ${issue.id} - already processed (${processedCheck.status}, ${processedCheck.attempts} attempts)`);
-              continue;
+          for (const issue of issues) {
+            // Check if we've hit the max issues limit
+            if (this.maxIssuesPerPoll && totalProcessedCount >= this.maxIssuesPerPoll) {
+              console.log(`Reached max issues limit (${this.maxIssuesPerPoll}), stopping poll`);
+              return;
+            }
+
+            // Check if already processed using database (unless flag set to ignore)
+            if (!this.ignoreAlreadyProcessing) {
+              const processedCheck = this.hasBeenProcessed(issue.id);
+
+              if (processedCheck.processed) {
+                console.log(`Skipping issue ${issue.id} - already processed (${processedCheck.status}, ${processedCheck.attempts} attempts)`);
+                continue;
+              }
             }
 
             // Skip if currently processing
@@ -251,23 +272,31 @@ class SentryIntegration {
 
             // Check if issue meets criteria (high priority/frequent)
             if (this.shouldProcessIssue(issue)) {
-              if (processedCheck.shouldRetry) {
-                console.log(`Retrying issue ${issue.id} (attempt ${processedCheck.attempts + 1}/3): ${issue.title}`);
+              if (!this.ignoreAlreadyProcessing) {
+                const processedCheck = this.hasBeenProcessed(issue.id);
+                if (processedCheck.shouldRetry) {
+                  console.log(`Retrying issue ${issue.id} (attempt ${processedCheck.attempts + 1}/3): ${issue.title}`);
+                } else {
+                  console.log(`Processing issue ${issue.id}: ${issue.title}`);
+                }
               } else {
                 console.log(`Processing issue ${issue.id}: ${issue.title}`);
               }
 
               this.activeProcessing.set(issue.id, { module: moduleKey, startTime: Date.now() });
 
-              // Process asynchronously
-              this.processIssue(issue, moduleKey, project)
-                .then(() => {
-                  this.activeProcessing.delete(issue.id);
-                })
-                .catch((error) => {
-                  console.error(`Failed to process issue ${issue.id}:`, error);
-                  this.activeProcessing.delete(issue.id);
-                });
+              // Process sequentially (not in parallel)
+              try {
+                await this.processIssue(issue, moduleKey, project);
+                this.activeProcessing.delete(issue.id);
+                totalProcessedCount++;
+              } catch (error) {
+                console.error(`Failed to process issue ${issue.id}:`, error);
+                this.activeProcessing.delete(issue.id);
+              }
+
+              // Add delay between processing issues to avoid rate limits (3 seconds)
+              await this.sleep(3000);
             }
           }
         } catch (error) {
@@ -277,6 +306,13 @@ class SentryIntegration {
     } catch (error) {
       console.error("Error polling Sentry:", error);
     }
+  }
+
+  /**
+   * Sleep for specified milliseconds
+   */
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -336,11 +372,15 @@ class SentryIntegration {
     console.log(`Level: ${issue.level}`);
 
     try {
-      // Check if another instance is already processing this
-      const alreadyProcessing = await this.checkIfAlreadyProcessing(issue.id);
-      if (alreadyProcessing) {
-        console.log(`Issue ${issue.id} is already being processed by another instance (started ${alreadyProcessing.timeAgo})`);
-        return;
+      // Check if another instance is already processing this (unless flag set to ignore)
+      if (!this.ignoreAlreadyProcessing) {
+        const alreadyProcessing = await this.checkIfAlreadyProcessing(issue.id);
+        if (alreadyProcessing) {
+          console.log(`Issue ${issue.id} is already being processed by another instance (started ${alreadyProcessing.timeAgo})`);
+          return;
+        }
+      } else {
+        console.log(`Bypassing 'already processing' check (ignoreAlreadyProcessing=true)`);
       }
 
       // Mark as being processed (with timestamp)
@@ -513,6 +553,9 @@ class SentryIntegration {
 
     const details = await response.json();
 
+    // Add delay after Sentry API call
+    await this.sleep(500);
+
     // Also fetch latest event for more context
     const eventsUrl = `https://sentry.io/api/0/issues/${issue.id}/events/latest/`;
     const eventResponse = await fetch(eventsUrl, {
@@ -523,6 +566,8 @@ class SentryIntegration {
 
     if (eventResponse.ok) {
       details.latestEvent = await eventResponse.json();
+      // Add delay after Sentry API call
+      await this.sleep(500);
     }
 
     return details;
@@ -648,7 +693,14 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
       // Invoke Claude Code CLI with -p flag to enable Task agents
       console.log("Invoking Claude Code with Task agents (max 10 minutes)...");
 
-      const response = execSync(`claude -p "$(cat ${tempPromptFile})" --dangerously-skip-permissions`, {
+      // Only use --dangerously-skip-permissions if not running as root
+      const isRoot = process.getuid && process.getuid() === 0;
+      const skipPermissionsFlag = isRoot ? '' : '--dangerously-skip-permissions';
+      if (isRoot) {
+        console.log("Running as root - Claude will prompt for permissions");
+      }
+
+      const response = execSync(`claude -p "$(cat ${tempPromptFile})" ${skipPermissionsFlag}`, {
         encoding: 'utf8',
         maxBuffer: 20 * 1024 * 1024, // 20MB buffer for Task agent outputs
         timeout: 600000, // 10 minute timeout (Task agents need more time)
@@ -942,6 +994,9 @@ but the proposed fix did not pass all tests. Please review and adjust.
 
       const notes = await response.json();
 
+      // Add delay after Sentry API call
+      await this.sleep(500);
+
       // Look for recent automation markers
       const automationMarker = '🤖 **Automated fix in progress**';
       const staleThresholdMinutes = 30; // Consider stale after 30 minutes
@@ -998,7 +1053,12 @@ but the proposed fix did not pass all tests. Please review and adjust.
       throw new Error(`Failed to add Sentry comment: ${response.status}`);
     }
 
-    return await response.json();
+    const result = await response.json();
+
+    // Add delay after Sentry API call to avoid rate limits
+    await this.sleep(500);
+
+    return result;
   }
 
   /**
@@ -1018,6 +1078,27 @@ but the proposed fix did not pass all tests. Please review and adjust.
       processedByStatus: stats.byStatus,
       activeProcessing: active,
     };
+  }
+
+  /**
+   * Get recent errors (last 10) with details
+   */
+  getRecentErrors() {
+    const errors = this.db.prepare(`
+      SELECT
+        issue_id,
+        module,
+        title,
+        error_message,
+        attempts,
+        last_processed_at
+      FROM processed_issues
+      WHERE status = 'error' OR status = 'failed'
+      ORDER BY last_processed_at DESC
+      LIMIT 10
+    `).all();
+
+    return errors;
   }
 }
 
