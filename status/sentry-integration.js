@@ -381,17 +381,9 @@ class SentryIntegration {
       // Apply the fix
       const fixResult = await this.applyFix(analysis, project, moduleKey);
 
-      if (!fixResult.success) {
-        console.log("Fix validation failed. Creating draft PR anyway.");
-        await this.createDraftPR(analysis, project, moduleKey, fixResult);
-        await this.addSentryComment(issue.id, `🤖 **Status:** Tests failed ⚠️\n\nDraft PR created for review: ${fixResult.prUrl}\n\nThe reproducing test was created successfully, but the proposed fix did not pass all tests.`);
-        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', fixResult.prUrl, fixResult.error || fixResult.testOutput);
-        return;
-      }
-
-      // Tests passed - create PR
+      // Create PR (tests will run on CircleCI)
       await this.createPR(analysis, project, moduleKey, fixResult);
-      await this.addSentryComment(issue.id, `🤖 **Status:** Fixed ✅\n\nPR created and all tests passed: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}`);
+      await this.addSentryComment(issue.id, `🤖 **Status:** PR Created ✅\n\nPull request created: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}\n\n**Note:** Tests will run automatically on CircleCI. Check PR for test results.`);
       this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
 
       console.log(`✅ Successfully processed issue ${issue.id}`);
@@ -561,17 +553,53 @@ class SentryIntegration {
   }
 
   /**
+   * Retry wrapper for operations that might timeout
+   */
+  async retryWithTimeout(operation, operationName, maxRetries = 2) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`${operationName} (attempt ${attempt}/${maxRetries})...`);
+        return await operation();
+      } catch (error) {
+        const isTimeout = error.message && (error.message.includes('ETIMEDOUT') || error.message.includes('timeout'));
+        const isLastAttempt = attempt === maxRetries;
+
+        if (isTimeout && !isLastAttempt) {
+          console.warn(`${operationName} timed out, retrying in 10 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s before retry
+          continue;
+        }
+
+        throw error; // Re-throw on last attempt or non-timeout errors
+      }
+    }
+  }
+
+  /**
    * Analyze issue with Claude Code CLI
    */
   async analyzeWithClaude(issue, details, codeContext, moduleKey) {
     console.log("Analyzing issue with Claude Code CLI...");
 
-    const prompt = `You are an expert software engineer analyzing a production error from Sentry. Your goal is to:
-1. Understand the root cause
-2. Create a test case that reproduces the issue
-3. Propose a fix
+    return this.retryWithTimeout(async () => {
+      return await this.analyzeWithClaudeInternal(issue, details, codeContext, moduleKey);
+    }, 'Claude analysis', 2);
+  }
+
+  /**
+   * Internal Claude analysis (retryable) - uses Task agents
+   */
+  async analyzeWithClaudeInternal(issue, details, codeContext, moduleKey) {
+    const prompt = `IMPORTANT: Use Task agents to thoroughly analyze this Sentry production error. Use the Explore agent to find relevant code in the repository.
+
+**Your task:**
+1. Use Task tool with Explore agent to find code related to this error
+2. Analyze the root cause using all available context
+3. Create a reproducing test case
+4. Propose a fix with specific file changes
 
 **Module:** ${moduleKey}
+**Repository Path:** Based on module (php: iznik-server, go: iznik-server-go, nuxt3/capacitor/modtools: iznik-nuxt3*)
 **Issue:** ${issue.title}
 **Event Count (24h):** ${issue.count}
 **Level:** ${issue.level}
@@ -582,10 +610,16 @@ ${details.metadata?.value || issue.title}
 **Stack Trace:**
 ${JSON.stringify(details.latestEvent?.entries?.find(e => e.type === 'exception'), null, 2)}
 
-**Code Context:**
+**Initial Code Context:**
 ${JSON.stringify(codeContext, null, 2)}
 
-Please provide your analysis in the following JSON format:
+**Instructions:**
+- Use Task tool to launch Explore agent for finding relevant code
+- Search for files mentioned in stack trace
+- Examine related code comprehensively
+- Analyze the error deeply
+
+**Output Format (JSON only, no markdown):**
 {
   "rootCause": "Brief explanation of what's causing the error",
   "canReproduce": true/false,
@@ -594,21 +628,30 @@ Please provide your analysis in the following JSON format:
   "fix": "Complete code fix with file paths and changes",
   "fixFiles": [{"path": "relative/path/to/file", "changes": "description of changes"}],
   "reason": "Explanation if canReproduce=false"
-}`;
+}
 
-    // Escape the prompt for shell execution
-    const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanation).`;
+
+    // Write prompt to temp file to avoid shell escaping issues
+    const tempPromptFile = `/tmp/sentry-prompt-${Date.now()}.txt`;
+    fs.writeFileSync(tempPromptFile, prompt);
 
     try {
-      // Invoke Claude Code CLI with the prompt
-      // Using --dangerously-skip-permissions to avoid interactive prompts
-      const response = execSync(`claude "${escapedPrompt}" --dangerously-skip-permissions`, {
+      // Invoke Claude Code CLI with -p flag to enable Task agents
+      console.log("Invoking Claude Code with Task agents (max 10 minutes)...");
+
+      const response = execSync(`claude -p "$(cat ${tempPromptFile})" --dangerously-skip-permissions`, {
         encoding: 'utf8',
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer for long responses
-        timeout: 120000, // 2 minute timeout
+        maxBuffer: 20 * 1024 * 1024, // 20MB buffer for Task agent outputs
+        timeout: 600000, // 10 minute timeout (Task agents need more time)
+        killSignal: 'SIGTERM',
+        cwd: process.cwd(),
       });
 
-      console.log("Claude Code CLI response received");
+      // Clean up temp file
+      fs.unlinkSync(tempPromptFile);
+
+      console.log("Claude Code response received (with Task agent analysis)");
 
       // Extract JSON from response (handle markdown code blocks)
       const jsonMatch = response.match(/```json\n([\s\S]+?)\n```/) || response.match(/\{[\s\S]+\}/);
@@ -632,7 +675,7 @@ Please provide your analysis in the following JSON format:
    * Apply fix and validate with tests
    */
   async applyFix(analysis, project, moduleKey) {
-    console.log("Applying fix and running tests...");
+    console.log("Applying fix (skipping local test run - will run on CircleCI)...");
 
     const branchName = `sentry-auto-fix-${Date.now()}`;
 
@@ -671,16 +714,16 @@ Please provide your analysis in the following JSON format:
         }
       }
 
-      // Run appropriate test suite
-      console.log("Running tests to validate fix...");
-
-      // Trigger test via status API
-      const testResult = await this.runTests(project.testCommand);
+      // SKIP local test execution - let CircleCI handle it
+      // Full test suite will run automatically when PR is created
+      // This prevents long hangs from test execution
+      console.log("Skipping local test execution - tests will run on CircleCI after PR creation");
 
       return {
-        success: testResult.success,
+        success: true, // Assume success - CircleCI will validate
         branchName,
-        testOutput: testResult.output,
+        testOutput: "Tests skipped - will run on CircleCI",
+        testsSkipped: true,
       };
 
     } catch (error) {
@@ -731,7 +774,9 @@ Please provide your analysis in the following JSON format:
 **Changes:**
 ${analysis.fixFiles.map(f => `- ${f.path}: ${f.changes}`).join('\n')}
 
-**Test Results:** ✅ All tests passed
+**Test Case:** ${analysis.testFile || 'Included'}
+
+**Note:** This fix was generated automatically. Tests will run on CircleCI - please review results before merging.
 
 **Sentry Issue:** [View on Sentry](#)
 

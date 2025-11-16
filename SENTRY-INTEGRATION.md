@@ -4,19 +4,21 @@ Automated system that monitors Sentry for errors, analyzes them with Claude Code
 
 **✨ Uses your existing Claude Code subscription - no separate API costs!**
 
+**🤖 Powered by Task Agents** - uses Claude Code's native agent system for deep analysis
+
 ## Overview
 
 The Sentry integration automatically:
 
-1. **Polls Sentry** for high-priority/frequent unresolved issues (every 15 minutes)
+1. **Polls Sentry** for high-priority/frequent unresolved issues (manual trigger by default)
 2. **Filters issues** based on event count (≥10 in 24h) or error level (error/fatal)
-3. **Analyzes with Claude Code CLI** to understand root cause and create reproducing test
+3. **Analyzes with Task Agents** - uses Explore agent to find relevant code, analyzes deeply
 4. **Tracks processed issues** in SQLite database (no duplicate processing)
 5. **Checks for existing PRs** that might already fix the issue (open + recently closed)
 6. **Generates fix** and applies it to a new git branch
-7. **Runs tests** to validate the fix
-8. **Creates PR** (or draft PR if tests fail) with fix and test case
-9. **Updates Sentry** with comment linking to the PR
+7. **Skips local tests** - full test suite runs on CircleCI after PR creation
+8. **Creates PR** with test case and fix
+9. **Updates Sentry** with real-time status comments
 
 ## Setup
 
@@ -153,6 +155,26 @@ Response:
 ```
 
 ## How It Works
+
+### Task Agent Architecture
+
+The integration uses Claude Code's Task agents for deep analysis:
+
+1. **Invokes via CLI**: `claude -p "prompt" --dangerously-skip-permissions`
+2. **Claude uses Task tools internally**:
+   - **Explore agent**: Finds relevant code in repository
+   - **Deep analysis**: Examines stack traces, code context, patterns
+   - **Parallel processing**: Multiple agents work simultaneously if needed
+3. **Returns structured JSON**: Test case, fix, root cause analysis
+4. **No timeout issues**: Agents manage their own execution time
+5. **Better context**: Agents can explore codebase comprehensively
+
+**Benefits over direct CLI:**
+- ✅ Deeper code exploration
+- ✅ Better understanding of codebase structure
+- ✅ More accurate root cause identification
+- ✅ Parallel agent execution for complex issues
+- ✅ Native Claude Code integration
 
 ### Issue Filtering
 
