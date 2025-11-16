@@ -12,10 +12,11 @@ The Sentry integration automatically:
 2. **Filters issues** based on event count (≥10 in 24h) or error level (error/fatal)
 3. **Analyzes with Claude Code CLI** to understand root cause and create reproducing test
 4. **Tracks processed issues** in SQLite database (no duplicate processing)
-5. **Generates fix** and applies it to a new git branch
-6. **Runs tests** to validate the fix
-7. **Creates PR** (or draft PR if tests fail) with fix and test case
-8. **Updates Sentry** with comment linking to the PR
+5. **Checks for existing PRs** that might already fix the issue (open + recently closed)
+6. **Generates fix** and applies it to a new git branch
+7. **Runs tests** to validate the fix
+8. **Creates PR** (or draft PR if tests fail) with fix and test case
+9. **Updates Sentry** with comment linking to the PR
 
 ## Setup
 
@@ -308,6 +309,66 @@ curl -X POST http://localhost:8081/api/sentry/clear
 Or directly:
 ```bash
 rm /tmp/FreegleDocker/sentry-issues.db
+```
+
+## Status Tracking in Sentry
+
+### Real-time Progress Notes
+
+The integration adds notes to Sentry issues showing progress:
+
+1. **🤖 Investigating** - Started analysis with Claude Code CLI
+2. **🤖 Reproduced ✅** - Test case created successfully
+3. **🤖 Existing fix found** - Found PR that may already fix this
+4. **🤖 Applying fix and running tests** - Fix applied, validating
+5. **🤖 Fixed ✅** - PR created, all tests passed
+6. **🤖 Tests failed ⚠️** - Draft PR created, needs review
+7. **🤖 Unable to reproduce** - Could not create test case
+
+### Preventing Duplicate Processing
+
+When multiple instances run (e.g., multiple developers, CI/CD), notes prevent duplicates:
+
+- **Fresh markers** (<30 min old): Skip processing
+- **Stale markers** (>30 min old): Proceed (previous instance likely crashed)
+- Each note includes timestamp for staleness detection
+
+**Example:** If Developer A's machine starts processing an issue, Developer B's machine will see the "in progress" note and skip it.
+
+## PR Deduplication
+
+### Checking for Existing Fixes
+
+Before creating a new PR, the integration checks for existing PRs that might already fix the issue:
+
+- **Open PRs**: All currently open pull requests
+- **Recently closed**: PRs closed in the last 30 days (likely just merged)
+
+### Matching Algorithm
+
+The system extracts keywords from the Sentry issue and searches PR titles and descriptions:
+
+1. **Issue title keywords** (words longer than 4 characters)
+2. **Root cause keywords** from Claude's analysis
+3. **Error type** from Sentry metadata
+4. **Affected filenames** from the proposed fix
+
+If a match is found:
+- **Skips creating** a duplicate PR
+- **Adds comment to Sentry** with link to existing PR
+- **Records as skipped** in database with PR URL
+
+### Example
+
+```
+Sentry Issue: "TypeError: Cannot read property 'id' of undefined in UserProfile"
+
+Keywords extracted:
+- TypeError, Cannot, property, undefined, UserProfile
+- UserProfile.vue (from fix files)
+
+Finds existing PR #123: "Fix undefined user error in profile page"
+→ Skips creating new PR, links to #123 in Sentry
 ```
 
 ## Cost Considerations

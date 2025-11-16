@@ -336,6 +336,17 @@ class SentryIntegration {
     console.log(`Level: ${issue.level}`);
 
     try {
+      // Check if another instance is already processing this
+      const alreadyProcessing = await this.checkIfAlreadyProcessing(issue.id);
+      if (alreadyProcessing) {
+        console.log(`Issue ${issue.id} is already being processed by another instance (started ${alreadyProcessing.timeAgo})`);
+        return;
+      }
+
+      // Mark as being processed (with timestamp)
+      const timestamp = new Date().toISOString();
+      await this.addSentryComment(issue.id, `🤖 **Automated fix in progress**\n\n**Status:** Investigating with Claude Code CLI...\n**Module:** ${moduleKey}\n**Started:** ${timestamp}`);
+
       // Fetch detailed issue information
       const issueDetails = await this.fetchIssueDetails(issue);
 
@@ -346,11 +357,26 @@ class SentryIntegration {
       const analysis = await this.analyzeWithClaude(issue, issueDetails, codeContext, moduleKey);
 
       if (!analysis.canReproduce) {
-        console.log("Claude could not create a reproducing test. Adding comment to Sentry.");
-        await this.addSentryComment(issue.id, `Automated analysis: ${analysis.reason}`);
+        console.log("Claude could not create a reproducing test.");
+        await this.addSentryComment(issue.id, `🤖 **Status:** Unable to reproduce\n\n${analysis.reason}`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', null, analysis.reason);
         return;
       }
+
+      // Update status: Reproduced
+      await this.addSentryComment(issue.id, `🤖 **Status:** Reproduced ✅\n\nTest case created. Checking for existing PRs...`);
+
+      // Check for existing PRs that might already fix this
+      const existingPR = await this.checkForExistingPR(issue, project, analysis);
+      if (existingPR) {
+        console.log(`Found existing PR that may fix this issue: ${existingPR.url}`);
+        await this.addSentryComment(issue.id, `🤖 **Status:** Existing fix found\n\nPR [#${existingPR.number}](${existingPR.url}) may already fix this: "${existingPR.title}"`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', existingPR.url, 'Existing PR found');
+        return;
+      }
+
+      // Update status: Applying fix
+      await this.addSentryComment(issue.id, `🤖 **Status:** Applying fix and running tests...`);
 
       // Apply the fix
       const fixResult = await this.applyFix(analysis, project, moduleKey);
@@ -358,14 +384,14 @@ class SentryIntegration {
       if (!fixResult.success) {
         console.log("Fix validation failed. Creating draft PR anyway.");
         await this.createDraftPR(analysis, project, moduleKey, fixResult);
-        await this.addSentryComment(issue.id, `Automated fix attempted but tests failed. Draft PR created: ${fixResult.prUrl}`);
+        await this.addSentryComment(issue.id, `🤖 **Status:** Tests failed ⚠️\n\nDraft PR created for review: ${fixResult.prUrl}\n\nThe reproducing test was created successfully, but the proposed fix did not pass all tests.`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', fixResult.prUrl, fixResult.error || fixResult.testOutput);
         return;
       }
 
       // Tests passed - create PR
       await this.createPR(analysis, project, moduleKey, fixResult);
-      await this.addSentryComment(issue.id, `Automated fix created and tested successfully. PR: ${fixResult.prUrl}`);
+      await this.addSentryComment(issue.id, `🤖 **Status:** Fixed ✅\n\nPR created and all tests passed: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}`);
       this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
 
       console.log(`✅ Successfully processed issue ${issue.id}`);
@@ -375,6 +401,99 @@ class SentryIntegration {
       await this.addSentryComment(issue.id, `Automated fix failed: ${error.message}`).catch(() => {});
       this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'error', null, error.message);
     }
+  }
+
+  /**
+   * Check for existing PRs that might already fix this issue
+   */
+  async checkForExistingPR(issue, project, analysis) {
+    try {
+      console.log("Checking for existing PRs...");
+
+      // Get open PRs
+      const openPRs = execSync(`cd ${project.repoPath} && gh pr list --json number,title,url,body --limit 50`, {
+        encoding: 'utf8',
+        timeout: 30000,
+      });
+
+      // Get recently closed PRs (last 30 days)
+      const closedPRs = execSync(`cd ${project.repoPath} && gh pr list --state closed --json number,title,url,body,closedAt --limit 50`, {
+        encoding: 'utf8',
+        timeout: 30000,
+      });
+
+      const allPRs = [
+        ...JSON.parse(openPRs),
+        ...JSON.parse(closedPRs).filter(pr => {
+          // Only include PRs closed in last 30 days
+          const closedDate = new Date(pr.closedAt);
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          return closedDate > thirtyDaysAgo;
+        })
+      ];
+
+      // Extract keywords from Sentry issue for matching
+      const keywords = this.extractKeywords(issue, analysis);
+
+      // Search for PRs that might be related
+      for (const pr of allPRs) {
+        const prText = `${pr.title} ${pr.body || ''}`.toLowerCase();
+
+        // Check if PR mentions similar keywords or error messages
+        for (const keyword of keywords) {
+          if (prText.includes(keyword.toLowerCase())) {
+            console.log(`Found potential match: PR #${pr.number} - ${pr.title}`);
+            return {
+              number: pr.number,
+              title: pr.title,
+              url: pr.url,
+              matchedKeyword: keyword
+            };
+          }
+        }
+      }
+
+      return null;
+
+    } catch (error) {
+      console.error("Error checking for existing PRs:", error.message);
+      // Don't fail the whole process if PR check fails
+      return null;
+    }
+  }
+
+  /**
+   * Extract keywords from Sentry issue for PR matching
+   */
+  extractKeywords(issue, analysis) {
+    const keywords = [];
+
+    // Add issue title words (longer than 4 chars)
+    const titleWords = issue.title.split(/\s+/).filter(w => w.length > 4);
+    keywords.push(...titleWords);
+
+    // Add root cause keywords
+    if (analysis.rootCause) {
+      const causeWords = analysis.rootCause.split(/\s+/).filter(w => w.length > 4);
+      keywords.push(...causeWords.slice(0, 3)); // Top 3 words
+    }
+
+    // Add error type
+    if (issue.metadata?.type) {
+      keywords.push(issue.metadata.type);
+    }
+
+    // Add file paths from fix
+    if (analysis.fixFiles) {
+      analysis.fixFiles.forEach(f => {
+        const filename = f.path.split('/').pop();
+        if (filename) keywords.push(filename);
+      });
+    }
+
+    // Remove duplicates and common words
+    const commonWords = ['error', 'undefined', 'null', 'function', 'issue', 'fixed'];
+    return [...new Set(keywords)].filter(k => !commonWords.includes(k.toLowerCase()));
   }
 
   /**
@@ -676,6 +795,61 @@ but the proposed fix did not pass all tests. Please review and adjust.
     } catch (error) {
       console.error("Failed to create draft PR:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Check if issue is already being processed by another instance
+   */
+  async checkIfAlreadyProcessing(issueId) {
+    try {
+      // Fetch existing notes
+      const url = `https://sentry.io/api/0/issues/${issueId}/notes/`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.sentryAuthToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn(`Could not fetch notes for issue ${issueId}: ${response.status}`);
+        return false;
+      }
+
+      const notes = await response.json();
+
+      // Look for recent automation markers
+      const automationMarker = '🤖 **Automated fix in progress**';
+      const staleThresholdMinutes = 30; // Consider stale after 30 minutes
+
+      for (const note of notes) {
+        if (note.data && note.data.text && note.data.text.includes(automationMarker)) {
+          // Found an automation marker - check if it's stale
+          const noteDate = new Date(note.dateCreated);
+          const now = new Date();
+          const ageMinutes = (now - noteDate) / 1000 / 60;
+
+          if (ageMinutes < staleThresholdMinutes) {
+            // Fresh marker - another instance is processing
+            return {
+              fresh: true,
+              timeAgo: `${Math.floor(ageMinutes)} minutes ago`,
+              noteDate: note.dateCreated
+            };
+          } else {
+            // Stale marker - previous instance probably crashed
+            console.log(`Found stale automation marker (${Math.floor(ageMinutes)} minutes old) - proceeding`);
+            return false;
+          }
+        }
+      }
+
+      return false;
+
+    } catch (error) {
+      console.error(`Error checking for existing processing: ${error.message}`);
+      // If we can't check, proceed anyway to avoid blocking
+      return false;
     }
   }
 
