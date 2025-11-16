@@ -381,10 +381,18 @@ class SentryIntegration {
       // Apply the fix
       const fixResult = await this.applyFix(analysis, project, moduleKey);
 
-      // Create PR (tests will run on CircleCI)
-      await this.createPR(analysis, project, moduleKey, fixResult);
-      await this.addSentryComment(issue.id, `🤖 **Status:** PR Created ✅\n\nPull request created: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}\n\n**Note:** Tests will run automatically on CircleCI. Check PR for test results.`);
-      this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
+      // Create PR based on test results
+      if (!fixResult.success) {
+        console.log("Generated test failed to validate fix. Creating draft PR.");
+        await this.createDraftPR(analysis, project, moduleKey, fixResult);
+        await this.addSentryComment(issue.id, `🤖 **Status:** Test validation failed ⚠️\n\nDraft PR created: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}\n\n**Test result:** Generated test case ${fixResult.error ? 'did not reproduce issue' : 'still fails after fix'}.\n\n**Note:** Full test suite will run on CircleCI.`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', fixResult.prUrl, fixResult.error || fixResult.testOutput);
+      } else {
+        console.log("Generated test passed. Creating PR.");
+        await this.createPR(analysis, project, moduleKey, fixResult);
+        await this.addSentryComment(issue.id, `🤖 **Status:** Test passed ✅\n\nPR created: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}\n\n**Test validation:** Generated test case reproduced the issue and passed after fix.\n\n**Note:** Full test suite will run on CircleCI.`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
+      }
 
       console.log(`✅ Successfully processed issue ${issue.id}`);
 
@@ -672,10 +680,10 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
   }
 
   /**
-   * Apply fix and validate with tests
+   * Apply fix and validate with generated test case
    */
   async applyFix(analysis, project, moduleKey) {
-    console.log("Applying fix (skipping local test run - will run on CircleCI)...");
+    console.log("Applying fix and running generated test case locally...");
 
     const branchName = `sentry-auto-fix-${Date.now()}`;
 
@@ -698,6 +706,22 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
 
         fs.writeFileSync(testPath, analysis.testCase);
         console.log(`Created test file: ${analysis.testFile}`);
+
+        // Run just the generated test case to verify it reproduces the issue
+        console.log("Running generated test case to verify reproduction...");
+        const testResult = await this.runSingleTest(analysis.testFile, project, moduleKey);
+
+        if (!testResult.reproduced) {
+          console.warn("Generated test does not reproduce the issue");
+          return {
+            success: false,
+            branchName,
+            testOutput: testResult.output,
+            error: "Test case does not reproduce the issue",
+          };
+        }
+
+        console.log("✓ Test case successfully reproduces the issue");
       }
 
       // Apply the fix files
@@ -714,16 +738,23 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         }
       }
 
-      // SKIP local test execution - let CircleCI handle it
-      // Full test suite will run automatically when PR is created
-      // This prevents long hangs from test execution
-      console.log("Skipping local test execution - tests will run on CircleCI after PR creation");
+      // Run the test again to verify the fix works
+      if (analysis.testFile) {
+        console.log("Running test case again to verify fix...");
+        const fixTestResult = await this.runSingleTest(analysis.testFile, project, moduleKey);
+
+        return {
+          success: fixTestResult.passed,
+          branchName,
+          testOutput: fixTestResult.output,
+          testPassed: fixTestResult.passed,
+        };
+      }
 
       return {
-        success: true, // Assume success - CircleCI will validate
+        success: true,
         branchName,
-        testOutput: "Tests skipped - will run on CircleCI",
-        testsSkipped: true,
+        testOutput: "No test case to validate",
       };
 
     } catch (error) {
@@ -732,6 +763,54 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         success: false,
         branchName,
         error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Run a single test file in Docker
+   */
+  async runSingleTest(testFile, project, moduleKey) {
+    try {
+      let command;
+      let containerName;
+
+      // Determine test command based on module
+      if (moduleKey === 'php') {
+        containerName = 'freegle-apiv1';
+        command = `docker exec ${containerName} vendor/bin/phpunit ${testFile}`;
+      } else if (moduleKey === 'go') {
+        containerName = 'freegle-apiv2';
+        command = `docker exec ${containerName} go test -run ${path.basename(testFile, path.extname(testFile))}`;
+      } else {
+        // Playwright tests for nuxt3/modtools
+        containerName = 'freegle-playwright';
+        command = `docker exec ${containerName} npx playwright test ${testFile}`;
+      }
+
+      console.log(`Running: ${command}`);
+
+      const output = execSync(command, {
+        encoding: 'utf8',
+        timeout: 120000, // 2 minute timeout for single test
+      });
+
+      // Check if test passed or failed
+      const passed = !output.toLowerCase().includes('fail') && !output.toLowerCase().includes('error');
+      const reproduced = !passed; // If test fails, it reproduced the issue
+
+      return {
+        passed,
+        reproduced,
+        output,
+      };
+
+    } catch (error) {
+      // Test failed (which means it reproduced the issue before fix)
+      return {
+        passed: false,
+        reproduced: true,
+        output: error.stdout || error.message,
       };
     }
   }
