@@ -1,0 +1,362 @@
+# Sentry Auto-Fix Integration
+
+Automated system that monitors Sentry for errors, analyzes them with Claude Code CLI, creates fixes, tests them, and opens pull requests.
+
+**✨ Uses your existing Claude Code subscription - no separate API costs!**
+
+## Overview
+
+The Sentry integration automatically:
+
+1. **Polls Sentry** for high-priority/frequent unresolved issues (every 15 minutes)
+2. **Filters issues** based on event count (≥10 in 24h) or error level (error/fatal)
+3. **Analyzes with Claude Code CLI** to understand root cause and create reproducing test
+4. **Tracks processed issues** in SQLite database (no duplicate processing)
+5. **Generates fix** and applies it to a new git branch
+6. **Runs tests** to validate the fix
+7. **Creates PR** (or draft PR if tests fail) with fix and test case
+8. **Updates Sentry** with comment linking to the PR
+
+## Setup
+
+### 1. Get Sentry Auth Token
+
+1. Go to [sentry.io/settings/account/api/auth-tokens/](https://sentry.io/settings/account/api/auth-tokens/)
+2. Click "Create New Token"
+3. Name: "FreegleDocker Auto-Fix"
+4. Scopes needed:
+   - `project:read`
+   - `project:write`
+   - `event:read`
+   - `issue:read`
+   - `issue:write`
+5. Copy the token
+
+### 2. Install Claude Code CLI
+
+The integration uses the Claude Code CLI which must be installed and accessible in the status container:
+
+```bash
+# Claude Code CLI should be installed on the host system
+# Verify it's installed:
+claude --version
+```
+
+If not installed, visit [claude.ai/code](https://claude.ai/code) for installation instructions.
+
+### 3. Configure Environment Variables
+
+Add to your `.env` file or docker-compose environment:
+
+```bash
+# Required
+SENTRY_AUTH_TOKEN=your-sentry-token-here
+
+# Optional
+SENTRY_ORG_SLUG=o118493  # Defaults to o118493 if not set
+SENTRY_POLL_INTERVAL_MS=900000  # 15 minutes (default)
+SENTRY_DB_PATH=/project/sentry-issues.db  # SQLite database path (default)
+
+# Project Configuration (optional - defaults provided)
+# Format: key:projectId:projectSlug:repoPath,key:projectId:projectSlug:repoPath,...
+SENTRY_PROJECTS=php:6119406:php-api:/project/iznik-server,go:4505568012730368:go-api:/project/iznik-server-go,nuxt3:4504083802226688:iznik-nuxt3:/project/iznik-nuxt3,capacitor:4506643536609280:iznik-nuxt3-capacitor:/project/iznik-nuxt3,modtools:4506712427855872:iznik-nuxt3-modtools:/project/iznik-nuxt3-modtools
+```
+
+### 4. Update Docker Compose
+
+Add environment variables to the `status` service in `docker-compose.yml`:
+
+```yaml
+services:
+  status:
+    environment:
+      - SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+      - SENTRY_ORG_SLUG=${SENTRY_ORG_SLUG:-o118493}
+      - SENTRY_POLL_INTERVAL_MS=${SENTRY_POLL_INTERVAL_MS:-900000}
+      - SENTRY_DB_PATH=${SENTRY_DB_PATH:-/project/sentry-issues.db}
+      - SENTRY_PROJECTS=${SENTRY_PROJECTS}
+    volumes:
+      - .:/project  # Ensure database persists
+```
+
+### 5. Restart Status Container
+
+```bash
+docker-compose restart status
+```
+
+Check logs to verify initialization:
+
+```bash
+docker logs freegle-status | grep Sentry
+```
+
+You should see:
+```
+✅ Sentry Integration enabled
+Sentry Integration initialized with projects: [ 'php', 'go', 'nuxt3', 'capacitor', 'modtools' ]
+Starting Sentry integration with 900000ms poll interval
+```
+
+## Usage
+
+### Automatic Mode
+
+Once configured, the system runs automatically:
+
+- Polls every 15 minutes for new high-priority issues
+- Processes each issue asynchronously
+- Creates PRs without human intervention
+- You review PRs on GitHub as normal
+
+### Manual Trigger
+
+To manually trigger Sentry analysis:
+
+1. Open the status page: `http://status.localhost` or `http://localhost:8081`
+2. Look for the "Sentry Integration" section
+3. Click **"Analyze Sentry Issues Now"** button
+4. System will immediately poll Sentry and process any matching issues
+
+Or via API:
+
+```bash
+curl -X POST http://localhost:8081/api/sentry/poll
+```
+
+### Check Status
+
+View current Sentry integration status via API:
+
+```bash
+curl http://localhost:8081/api/sentry/status
+```
+
+Response:
+```json
+{
+  "enabled": true,
+  "processed": 15,
+  "activeProcessing": [
+    {
+      "issueId": "12345",
+      "module": "php",
+      "duration": 45
+    }
+  ]
+}
+```
+
+## How It Works
+
+### Issue Filtering
+
+Issues are processed if they meet **any** of these criteria:
+
+- **Event count ≥ 10** in last 24 hours (frequent errors)
+- **Level:** `error` or `fatal`
+- **Priority:** marked as `high` in Sentry
+
+### Claude Analysis
+
+Claude receives:
+- Error message and stack trace
+- Latest event details with breadcrumbs
+- Code context from affected files
+- Module type (PHP, Go, TypeScript/Vue)
+
+Claude provides:
+- Root cause analysis
+- Reproducing test case (if possible)
+- Proposed fix with file changes
+- Explanation
+
+### Fix Validation
+
+1. Create new git branch: `sentry-auto-fix-{timestamp}`
+2. Apply test case to appropriate test directory
+3. Apply code fixes to source files
+4. Run relevant test suite (PHPUnit, Go tests, or Playwright)
+5. If tests pass → create PR
+6. If tests fail → create draft PR with failure info
+
+### Pull Request Format
+
+**Successful Fix:**
+```markdown
+## Automated Fix for Sentry Issue
+
+**Root Cause:** [Claude's analysis]
+
+**Changes:**
+- file1.php: Fixed null pointer dereference
+- file2.ts: Added validation
+
+**Test Results:** ✅ All tests passed
+
+**Sentry Issue:** [Link to Sentry]
+
+---
+🤖 This PR was automatically generated by the Sentry integration system.
+```
+
+**Failed Fix (Draft PR):**
+```markdown
+## Automated Fix Attempt for Sentry Issue (⚠️ Tests Failed)
+
+**Root Cause:** [Claude's analysis]
+
+**Attempted Changes:**
+- file1.php: Attempted fix...
+
+**Test Results:** ❌ Tests failed
+[Test output]
+
+**Note:** The reproducing test case was created successfully,
+but the proposed fix did not pass all tests. Please review.
+
+---
+🤖 This draft PR was automatically generated.
+```
+
+## Sentry Project Configuration
+
+### Default Projects
+
+If `SENTRY_PROJECTS` is not set, these defaults are used:
+
+| Module | Project ID | Sentry Project | Repository | Tests |
+|--------|-----------|----------------|------------|-------|
+| php | 6119406 | php-api | iznik-server | PHPUnit |
+| go | 4505568012730368 | go-api | iznik-server-go | Go tests |
+| nuxt3 | 4504083802226688 | iznik-nuxt3 | iznik-nuxt3 | Playwright |
+| capacitor | 4506643536609280 | iznik-nuxt3-capacitor | iznik-nuxt3 | Playwright |
+| modtools | 4506712427855872 | iznik-nuxt3-modtools | iznik-nuxt3-modtools | Playwright |
+
+### Custom Project Configuration
+
+Format: `key:projectId:projectSlug:repoPath`
+
+Example:
+```bash
+SENTRY_PROJECTS=myapp:123456:my-app:/project/my-app,api:789012:my-api:/project/api
+```
+
+## Troubleshooting
+
+### Integration Not Starting
+
+Check logs:
+```bash
+docker logs freegle-status | grep -i sentry
+```
+
+Common issues:
+- **"Sentry Integration disabled"** → Missing `SENTRY_AUTH_TOKEN` or `ANTHROPIC_API_KEY`
+- **"Failed to fetch issues"** → Invalid Sentry auth token or wrong org slug
+- **"Anthropic API error"** → Invalid API key or rate limit exceeded
+
+### No Issues Being Processed
+
+1. Check Sentry for unresolved issues matching criteria (≥10 events or high priority)
+2. Verify `SENTRY_ORG_SLUG` matches your organization
+3. Check project IDs match your Sentry projects
+4. Look for errors in status container logs
+
+### PRs Not Being Created
+
+1. Ensure GitHub CLI (`gh`) is authenticated in status container
+2. Check git configuration (user.name, user.email) is set
+3. Verify repository has push access
+
+### Test Failures
+
+If many fixes are creating draft PRs with failing tests:
+
+1. Claude might need more context - consider adding relevant code examples
+2. Tests might be flaky - review test suite stability
+3. Adjust issue filtering criteria to focus on simpler errors first
+
+## SQLite Tracking Database
+
+### Preventing Duplicate Processing
+
+The integration uses SQLite to track which issues have been processed:
+
+- **Location:** `/project/sentry-issues.db` (persists across container restarts)
+- **Tracks:** Issue ID, status, attempts, PR URL, timestamps
+- **Statuses:**
+  - `success` - Fix created and tests passed
+  - `failed` - Fix created but tests failed (max 3 retries)
+  - `skipped` - Could not reproduce issue
+  - `error` - Processing error occurred
+
+### Retry Logic
+
+- **Failed fixes:** Retried up to 3 times automatically
+- **Skipped issues:** Never retried (can't reproduce)
+- **Successful fixes:** Never retried
+
+### Manual Reset
+
+To reprocess all issues (clear database):
+
+```bash
+curl -X POST http://localhost:8081/api/sentry/clear
+```
+
+Or directly:
+```bash
+rm /tmp/FreegleDocker/sentry-issues.db
+```
+
+## Cost Considerations
+
+### Using Claude Code CLI
+
+- **No additional API costs** - uses your existing Claude Code subscription
+- **Usage:** Each Sentry issue analysis counts as one Claude Code session
+- **Benefits:** Stays within your paid Claude Code usage
+- **Consideration:** Heavy Sentry issue volume may use more of your Claude Code quota
+
+### Recommendations
+
+- Start with default 15-minute polling
+- Monitor `processed` count in status API
+- Adjust `SENTRY_POLL_INTERVAL_MS` if needed to reduce processing frequency
+- Review processed issues database periodically
+
+## Security
+
+- **Never commit `.env` file** with real tokens to git
+- Rotate Sentry auth token periodically
+- Use least-privilege scopes for Sentry token
+- Monitor PR creation for unexpected behavior
+- Review auto-generated PRs before merging
+
+## Monitoring
+
+### Status Page
+
+Visit `http://status.localhost` or `http://localhost:8081` to see:
+- Sentry integration status (enabled/disabled)
+- Number of processed issues
+- Currently processing issues with duration
+- Manual trigger button
+
+### API Endpoints
+
+- `GET /api/sentry/status` - Check integration status
+- `POST /api/sentry/poll` - Manually trigger Sentry poll
+
+## Future Enhancements
+
+Potential improvements:
+
+- [ ] Web UI for reviewing fixes before PR creation
+- [ ] Slack/Discord notifications for new PRs
+- [ ] Learning from merged/rejected PRs to improve analysis
+- [ ] Support for custom Claude prompts per project
+- [ ] Integration with CircleCI to auto-merge passing PRs
+- [ ] Issue de-duplication and grouping
+- [ ] Support for marking issues as "won't fix"

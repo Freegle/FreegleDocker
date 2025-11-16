@@ -29,3 +29,8 @@ apiv1-entrypoint.sh
 # Node modules
 yesterday/2fa-gateway/node_modules/
 yesterday/api/node_modules/
+
+# Sentry integration database (SQLite)
+sentry-issues.db
+sentry-issues.db-shm
+sentry-issues.db-wal

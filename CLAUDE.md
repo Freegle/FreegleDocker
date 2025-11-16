@@ -164,3 +164,25 @@ When all tests pass successfully in CircleCI, the system automatically:
 - Don't commit unless you've been told to - you're committing code with bugs in before testing.
 - Remember that when working on the yesterday system you need to make sure you don't break local dev and CircleCI.  We have a docker override file to help with this.
 - Never merge the whole of the app-ci-fd branch into master.
+
+## Sentry Auto-Fix Integration
+
+The status container includes automated Sentry error analysis and fixing:
+
+- **Uses Claude Code CLI** - no separate API costs, uses your existing subscription
+- **Polls Sentry** every 15 minutes for high-priority/frequent errors
+- **SQLite tracking** at `/project/sentry-issues.db` prevents reprocessing (gitignored)
+- **Automatic retries** up to 3 times for failed fixes
+- **Creates PRs** automatically with test cases and fixes
+
+### Configuration
+
+Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for full setup).
+
+### Important Notes
+
+- Database at `/project/sentry-issues.db` tracks processed issues (persists across container restarts)
+- Status page has "Analyze Sentry Issues Now" button for manual triggering
+- API endpoints: `/api/sentry/status`, `/api/sentry/poll`, `/api/sentry/clear`
+- Integration invokes `claude` CLI with `--dangerously-skip-permissions` for automation
+- Each Sentry issue analysis uses your Claude Code quota (no additional costs)

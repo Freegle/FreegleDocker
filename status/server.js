@@ -4,6 +4,7 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const url = require("url");
+const SentryIntegration = require("./sentry-integration");
 
 // Status cache for all services
 const statusCache = new Map();
@@ -1256,6 +1257,29 @@ async function runPlaywrightTests(testFile = null) {
   }
 }
 
+// Initialize Sentry Integration if configured
+let sentryIntegration = null;
+if (process.env.SENTRY_AUTH_TOKEN) {
+  try {
+    sentryIntegration = new SentryIntegration({
+      sentryOrgSlug: process.env.SENTRY_ORG_SLUG || "o118493",
+      sentryAuthToken: process.env.SENTRY_AUTH_TOKEN,
+      pollIntervalMs: parseInt(process.env.SENTRY_POLL_INTERVAL_MS || "900000"), // 15 minutes
+    });
+
+    // Start Sentry integration after a delay
+    setTimeout(() => {
+      sentryIntegration.start();
+    }, 60000); // Wait 1 minute after startup
+
+    console.log("✅ Sentry Integration enabled (using Claude Code CLI)");
+  } catch (error) {
+    console.error("❌ Failed to initialize Sentry Integration:", error);
+  }
+} else {
+  console.log("ℹ️  Sentry Integration disabled (missing SENTRY_AUTH_TOKEN)");
+}
+
 // Start background checks after a delay and then every interval
 setTimeout(() => {
   runBackgroundChecks();
@@ -2041,6 +2065,65 @@ const httpServer = http.createServer(async (req, res) => {
         };
       }
     }); // End of req.on('end')
+    return;
+  }
+
+  // Sentry integration status endpoint
+  if (parsedUrl.pathname === "/api/sentry/status" && req.method === "GET") {
+    if (!sentryIntegration) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        enabled: false,
+        message: "Sentry integration is not configured",
+      }));
+      return;
+    }
+
+    const status = sentryIntegration.getStatus();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      enabled: true,
+      ...status,
+    }));
+    return;
+  }
+
+  // Manual Sentry poll trigger endpoint
+  if (parsedUrl.pathname === "/api/sentry/poll" && req.method === "POST") {
+    if (!sentryIntegration) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Sentry integration is not configured");
+      return;
+    }
+
+    try {
+      // Trigger immediate poll
+      sentryIntegration.pollSentryIssues();
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("Sentry polling triggered successfully");
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end(`Failed to trigger Sentry poll: ${error.message}`);
+    }
+    return;
+  }
+
+  // Clear Sentry processed issues database
+  if (parsedUrl.pathname === "/api/sentry/clear" && req.method === "POST") {
+    if (!sentryIntegration) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Sentry integration is not configured");
+      return;
+    }
+
+    try {
+      sentryIntegration.clearProcessedIssues();
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("Processed issues database cleared successfully");
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end(`Failed to clear database: ${error.message}`);
+    }
     return;
   }
 

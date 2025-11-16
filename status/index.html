@@ -291,6 +291,30 @@
                 </div>
             </div>
         </div>
+
+        <h2>🤖 Sentry Integration</h2>
+
+        <div id="sentry-integration" class="service loading">
+            <div>
+                <strong>Automated Error Fix System</strong><br>
+                <small>Monitors Sentry for errors, analyzes with Claude AI, creates fixes & PRs</small><br>
+                <span class="status" id="sentryStatus">Checking...</span>
+                <div class="container-actions" style="margin-top: 8px;">
+                    <button id="analyzeSentryBtn" class="action-button" style="background: #9b59b6;">🔍 Analyze Sentry Issues Now</button>
+                </div>
+                <div id="sentryDetails" style="margin-top: 12px; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px; display: none;">
+                    <div style="margin-bottom: 6px;"><strong>Status:</strong> <span id="sentryEnabled">Unknown</span></div>
+                    <div style="margin-bottom: 6px;"><strong>Processed Issues:</strong> <span id="sentryProcessed">0</span></div>
+                    <div style="margin-bottom: 6px;"><strong>Currently Processing:</strong> <span id="sentryActive">None</span></div>
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6;">
+                        <small style="color: #666;">
+                            Polls every 15 min for high-priority/frequent errors.<br>
+                            <a href="/SENTRY-INTEGRATION.md" target="_blank" style="color: #007bff;">View Documentation</a>
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -561,6 +585,104 @@
                 button.disabled = false;
             }
         }
+
+        // Sentry Integration Functions
+        async function checkSentryStatus() {
+            try {
+                const response = await fetch('/api/sentry/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    const element = document.getElementById('sentry-integration');
+                    const statusEl = document.getElementById('sentryStatus');
+                    const detailsEl = document.getElementById('sentryDetails');
+
+                    if (data.enabled) {
+                        element.className = 'service online';
+                        statusEl.textContent = 'Active - Polling for issues';
+                        detailsEl.style.display = 'block';
+
+                        document.getElementById('sentryEnabled').textContent = 'Enabled';
+                        document.getElementById('sentryEnabled').style.color = '#28a745';
+                        document.getElementById('sentryProcessed').textContent = data.processed || 0;
+
+                        if (data.activeProcessing && data.activeProcessing.length > 0) {
+                            const activeText = data.activeProcessing.map(issue =>
+                                `${issue.module} (${issue.duration}s)`
+                            ).join(', ');
+                            document.getElementById('sentryActive').textContent = activeText;
+                            document.getElementById('sentryActive').style.color = '#ffc107';
+                        } else {
+                            document.getElementById('sentryActive').textContent = 'None';
+                            document.getElementById('sentryActive').style.color = '#666';
+                        }
+                    } else {
+                        element.className = 'service offline';
+                        statusEl.textContent = 'Disabled - ' + (data.message || 'Not configured');
+                        detailsEl.style.display = 'block';
+                        document.getElementById('sentryEnabled').textContent = 'Disabled';
+                        document.getElementById('sentryEnabled').style.color = '#dc3545';
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking Sentry status:', error);
+                const element = document.getElementById('sentry-integration');
+                element.className = 'service offline';
+                document.getElementById('sentryStatus').textContent = 'Error checking status';
+            }
+        }
+
+        async function analyzeSentryIssues() {
+            const button = document.getElementById('analyzeSentryBtn');
+            const originalText = button.textContent;
+
+            button.disabled = true;
+            button.textContent = '⏳ Analyzing...';
+
+            try {
+                const response = await fetch('/api/sentry/poll', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    button.textContent = '✅ Analysis Started';
+                    document.getElementById('sentryStatus').textContent = 'Polling Sentry for high-priority issues...';
+
+                    // Refresh status after a short delay
+                    setTimeout(() => {
+                        checkSentryStatus();
+                        button.textContent = originalText;
+                        button.disabled = false;
+                    }, 3000);
+                } else {
+                    const error = await response.text();
+                    button.textContent = '❌ Failed';
+                    document.getElementById('sentryStatus').textContent = 'Error: ' + error;
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.disabled = false;
+                    }, 3000);
+                }
+            } catch (error) {
+                button.textContent = '❌ Error';
+                document.getElementById('sentryStatus').textContent = 'Error: ' + error.message;
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }, 3000);
+            }
+        }
+
+        // Add event listener for Sentry button
+        document.addEventListener('DOMContentLoaded', function() {
+            const analyzeBtn = document.getElementById('analyzeSentryBtn');
+            if (analyzeBtn) {
+                analyzeBtn.addEventListener('click', analyzeSentryIssues);
+            }
+
+            // Check Sentry status on page load and periodically
+            checkSentryStatus();
+            setInterval(checkSentryStatus, 30000); // Check every 30 seconds
+        });
 
         async function checkAllServices() {
             try {
