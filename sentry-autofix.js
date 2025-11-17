@@ -415,15 +415,14 @@ class SentryIntegration {
         console.log(`✅ Updated existing PR #${existingPR.number}: ${existingPR.url}`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'updated', existingPR.url, 'Updated existing PR with fix');
       } else {
-        // Create new PR
-        if (!fixResult.success) {
-          console.log("Generated test failed to validate fix. Creating draft PR.");
-          await this.createDraftPR(analysis, project, moduleKey, fixResult);
-          this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', fixResult.prUrl, fixResult.error || fixResult.testOutput);
-        } else {
-          console.log("Generated test passed. Creating PR.");
+        // Only create PR if test passed
+        if (fixResult.success) {
+          console.log("Verification test passed. Creating PR.");
           await this.createPR(analysis, project, moduleKey, fixResult);
           this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
+        } else {
+          console.log("❌ Verification test failed - NOT creating PR. Fix needs more work.");
+          this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', null, fixResult.error || fixResult.testOutput);
         }
       }
 
@@ -768,10 +767,10 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
 
     try {
       if (existingPR) {
-        // Checkout existing PR branch
-        console.log(`Found existing PR #${existingPR.number}, updating branch: ${existingPR.branchName}`);
+        // Checkout existing PR branch and reset it to master (remove old changes)
+        console.log(`Found existing PR #${existingPR.number}, resetting branch to master: ${existingPR.branchName}`);
         branchName = existingPR.branchName;
-        execSync(`cd ${project.repoPath} && git fetch origin ${branchName} && git checkout ${branchName}`, {
+        execSync(`cd ${project.repoPath} && git fetch origin ${branchName} && git checkout ${branchName} && git reset --hard master`, {
           encoding: "utf8",
           timeout: 10000,
         });
