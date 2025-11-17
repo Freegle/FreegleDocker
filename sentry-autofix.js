@@ -442,46 +442,59 @@ class SentryIntegration {
     try {
       console.log("Checking for existing PRs...");
 
-      // Get open PRs (including headRefName for branch name)
-      const openPRs = execSync(`cd ${project.repoPath} && gh pr list --json number,title,url,body,headRefName --limit 50`, {
+      // Only get OPEN PRs (we don't want to update closed ones)
+      const openPRsJson = execSync(`cd ${project.repoPath} && gh pr list --json number,title,url,body,headRefName,state --limit 50`, {
         encoding: 'utf8',
         timeout: 30000,
       });
 
-      // Get recently closed PRs (last 30 days)
-      const closedPRs = execSync(`cd ${project.repoPath} && gh pr list --state closed --json number,title,url,body,closedAt,headRefName --limit 50`, {
-        encoding: 'utf8',
-        timeout: 30000,
-      });
-
-      const allPRs = [
-        ...JSON.parse(openPRs),
-        ...JSON.parse(closedPRs).filter(pr => {
-          // Only include PRs closed in last 30 days
-          const closedDate = new Date(pr.closedAt);
-          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-          return closedDate > thirtyDaysAgo;
-        })
-      ];
+      const openPRs = JSON.parse(openPRsJson);
 
       // Extract keywords from Sentry issue for matching
       const keywords = this.extractKeywords(issue, analysis);
 
-      // Search for PRs that might be related
-      for (const pr of allPRs) {
+      // Search for OPEN PRs that might be related
+      for (const pr of openPRs) {
         const prText = `${pr.title} ${pr.body || ''}`.toLowerCase();
 
         // Check if PR mentions similar keywords or error messages
         for (const keyword of keywords) {
           if (prText.includes(keyword.toLowerCase())) {
-            console.log(`Found potential match: PR #${pr.number} - ${pr.title}`);
+            console.log(`Found potential match: OPEN PR #${pr.number} - ${pr.title}`);
             return {
               number: pr.number,
               title: pr.title,
               url: pr.url,
               branchName: pr.headRefName,
-              matchedKeyword: keyword
+              state: pr.state,
+              matchedKeyword: keyword,
+              isOpen: true
             };
+          }
+        }
+      }
+
+      // No open PRs found - check closed PRs for reference only (won't update them)
+      const closedPRsJson = execSync(`cd ${project.repoPath} && gh pr list --state closed --json number,title,url,body,closedAt --limit 50`, {
+        encoding: 'utf8',
+        timeout: 30000,
+      });
+
+      const closedPRs = JSON.parse(closedPRsJson).filter(pr => {
+        // Only check PRs closed in last 30 days
+        const closedDate = new Date(pr.closedAt);
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        return closedDate > thirtyDaysAgo;
+      });
+
+      for (const pr of closedPRs) {
+        const prText = `${pr.title} ${pr.body || ''}`.toLowerCase();
+
+        for (const keyword of keywords) {
+          if (prText.includes(keyword.toLowerCase())) {
+            console.log(`Found CLOSED PR #${pr.number} (will create new PR instead): ${pr.title}`);
+            // Return null so we create a new PR instead of updating the closed one
+            return null;
           }
         }
       }
