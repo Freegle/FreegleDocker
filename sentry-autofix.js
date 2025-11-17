@@ -1058,17 +1058,27 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
       let command;
       let containerName;
 
+      // Strip repository name prefix from test file path (container is already in the repo directory)
+      let cleanTestPath = testFile;
+      const repoNamePrefixes = ['iznik-server/', 'iznik-server-go/', 'iznik-nuxt3/'];
+      for (const prefix of repoNamePrefixes) {
+        if (cleanTestPath.startsWith(prefix)) {
+          cleanTestPath = cleanTestPath.substring(prefix.length);
+          break;
+        }
+      }
+
       // Determine test command based on module
       if (moduleKey === 'php') {
         containerName = 'freegle-apiv1';
-        command = `docker exec ${containerName} vendor/bin/phpunit ${testFile}`;
+        command = `docker exec ${containerName} vendor/bin/phpunit ${cleanTestPath}`;
       } else if (moduleKey === 'go') {
         containerName = 'freegle-apiv2';
-        command = `docker exec ${containerName} go test -run ${path.basename(testFile, path.extname(testFile))}`;
+        command = `docker exec ${containerName} go test -run ${path.basename(cleanTestPath, path.extname(cleanTestPath))}`;
       } else {
         // Playwright tests for nuxt3/modtools
         containerName = 'freegle-playwright';
-        command = `docker exec ${containerName} npx playwright test ${testFile}`;
+        command = `docker exec ${containerName} npx playwright test ${cleanTestPath}`;
       }
 
       console.log(`Running: ${command}`);
