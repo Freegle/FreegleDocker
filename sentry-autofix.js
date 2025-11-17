@@ -771,7 +771,7 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         });
       }
 
-      // Apply the test case first
+      // Apply the test case first (for validation only - don't commit it)
       if (analysis.testCase && analysis.testFile) {
         const testPath = path.join(project.repoPath, analysis.testFile);
         const testDir = path.dirname(testPath);
@@ -782,23 +782,25 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         }
 
         fs.writeFileSync(testPath, analysis.testCase);
-        console.log(`Created test file: ${analysis.testFile}`);
+        console.log(`Created reproduction test file: ${analysis.testFile} (for validation only)`);
 
         // Run just the generated test case to verify it reproduces the issue
-        console.log("Running generated test case to verify reproduction...");
+        console.log("Running reproduction test to verify it fails (proving bug exists)...");
         const testResult = await this.runSingleTest(analysis.testFile, project, moduleKey);
 
         if (!testResult.reproduced) {
-          console.warn("Generated test does not reproduce the issue");
+          console.warn("Reproduction test does not fail - cannot prove bug exists");
+          // Clean up the test file since we're not using it
+          fs.unlinkSync(testPath);
           return {
             success: false,
             branchName,
             testOutput: testResult.output,
-            error: "Test case does not reproduce the issue",
+            error: "Reproduction test does not reproduce the issue",
           };
         }
 
-        console.log("✓ Test case successfully reproduces the issue");
+        console.log("✓ Reproduction test fails as expected (bug confirmed)");
       }
 
       // Apply the fix files
@@ -852,79 +854,73 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         }
       }
 
-      // Run the test again to verify the fix works
+      // Now delete the reproduction test (we don't want it in the PR)
       if (analysis.testFile) {
-        console.log("Running test case again to verify fix...");
-        const fixTestResult = await this.runSingleTest(analysis.testFile, project, moduleKey);
+        const reproTestPath = path.join(project.repoPath, analysis.testFile);
+        if (fs.existsSync(reproTestPath)) {
+          console.log("Removing reproduction test (not needed in PR)...");
+          fs.unlinkSync(reproTestPath);
+        }
+      }
+
+      // Generate and run verification test
+      if (analysis.testFile) {
+        console.log("Now creating verification test that proves fix works...");
+
+        const verificationResult = await this.createVerificationTest(
+          analysis,
+          project,
+          moduleKey,
+          issue
+        );
+
+        if (!verificationResult.success) {
+          console.warn("⚠ Failed to create verification test:", verificationResult.error);
+          return {
+            success: false,
+            branchName,
+            testOutput: "Verification test generation failed",
+            error: verificationResult.error,
+            existingPR: existingPR,
+          };
+        }
+
+        // Run the verification test to ensure it passes
+        console.log("Running verification test to confirm it passes...");
+        const fixTestResult = await this.runSingleTest(verificationResult.testFile, project, moduleKey);
 
         if (fixTestResult.passed) {
-          // Fix worked! The test now passes (problem no longer reproduces)
-          // Now we need to create a verification test that ensures the fix stays in place
-          console.log("✓ Test now passes after fix applied");
-          console.log("Creating verification test to ensure fix stays in place...");
+          // Verification test passes! The fix works correctly
+          console.log("✓ Verification test passes - fix confirmed working");
 
-          const verificationTest = await this.createVerificationTest(
-            analysis,
-            project,
-            moduleKey,
-            issue
-          );
+          // Add the verification test to git
+          execSync(`git -C ${project.repoPath} add ${verificationResult.testFile}`, {
+            encoding: 'utf8',
+          });
 
-          if (verificationTest.success) {
-            console.log(`✓ Verification test created: ${verificationTest.testFile}`);
+          // If updating existing PR, commit and push the changes
+          if (existingPR) {
+            console.log(`Committing changes to existing PR #${existingPR.number}...`);
+            execSync(`git -C ${project.repoPath} add -A`, { encoding: 'utf8' });
 
-            // Add the verification test to git
-            execSync(`git -C ${project.repoPath} add ${verificationTest.testFile}`, {
-              encoding: 'utf8',
-            });
+            const commitMsg = `Update fix with actual code changes and verification test\n\nAdded:\n- Applied fix to source code\n- Verification test: ${verificationResult.testFile}`;
+            execSync(`git -C ${project.repoPath} commit -m "${commitMsg}"`, { encoding: 'utf8' });
+            execSync(`git -C ${project.repoPath} push origin ${branchName}`, { encoding: 'utf8' });
 
-            // If updating existing PR, commit and push the changes
-            if (existingPR) {
-              console.log(`Committing changes to existing PR #${existingPR.number}...`);
-              execSync(`git -C ${project.repoPath} add -A`, { encoding: 'utf8' });
-
-              const commitMsg = `Update fix with actual code changes and verification test\n\nAdded:\n- Applied fix to source code\n- Verification test: ${verificationTest.testFile}`;
-              execSync(`git -C ${project.repoPath} commit -m "${commitMsg}"`, { encoding: 'utf8' });
-              execSync(`git -C ${project.repoPath} push origin ${branchName}`, { encoding: 'utf8' });
-
-              console.log(`✓ Pushed updates to PR #${existingPR.number}: ${existingPR.url}`);
-            }
-
-            return {
-              success: true,
-              branchName,
-              testOutput: fixTestResult.output,
-              testPassed: true,
-              verificationTest: verificationTest.testFile,
-              existingPR: existingPR,
-            };
-          } else {
-            console.warn("⚠ Failed to create verification test");
-
-            // If updating existing PR, still commit and push the fix
-            if (existingPR) {
-              console.log(`Committing fix changes to existing PR #${existingPR.number}...`);
-              execSync(`git -C ${project.repoPath} add -A`, { encoding: 'utf8' });
-
-              const commitMsg = `Update PR with actual code fix\n\nApplied fix to source code (verification test generation failed)`;
-              execSync(`git -C ${project.repoPath} commit -m "${commitMsg}"`, { encoding: 'utf8' });
-              execSync(`git -C ${project.repoPath} push origin ${branchName}`, { encoding: 'utf8' });
-
-              console.log(`✓ Pushed fix to PR #${existingPR.number}: ${existingPR.url}`);
-            }
-
-            return {
-              success: true,
-              branchName,
-              testOutput: fixTestResult.output,
-              testPassed: true,
-              verificationTestError: verificationTest.error,
-              existingPR: existingPR,
-            };
+            console.log(`✓ Pushed updates to PR #${existingPR.number}: ${existingPR.url}`);
           }
+
+          return {
+            success: true,
+            branchName,
+            testOutput: fixTestResult.output,
+            testPassed: true,
+            verificationTest: verificationResult.testFile,
+            existingPR: existingPR,
+          };
         } else {
-          // Test still fails after fix - something went wrong
-          console.warn("⚠ Test still fails after applying fix");
+          // Verification test failed - the fix doesn't work
+          console.warn("⚠ Verification test failed - fix does not work correctly");
           return {
             success: false,
             branchName,
