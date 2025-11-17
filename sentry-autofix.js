@@ -405,24 +405,26 @@ class SentryIntegration {
 
       // Check for existing PRs that might already fix this
       const existingPR = await this.checkForExistingPR(issue, project, analysis);
+
+      // Apply the fix (whether we have an existing PR or not)
+      const fixResult = await this.applyFix(analysis, project, moduleKey, existingPR);
+
+      // Create or update PR based on test results
       if (existingPR) {
-        console.log(`Found existing PR that may fix this issue: ${existingPR.url}`);
-        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', existingPR.url, 'Existing PR found');
-        return;
-      }
-
-      // Apply the fix
-      const fixResult = await this.applyFix(analysis, project, moduleKey);
-
-      // Create PR based on test results
-      if (!fixResult.success) {
-        console.log("Generated test failed to validate fix. Creating draft PR.");
-        await this.createDraftPR(analysis, project, moduleKey, fixResult);
-        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', fixResult.prUrl, fixResult.error || fixResult.testOutput);
+        // We already pushed updates to the existing PR in applyFix
+        console.log(`✅ Updated existing PR #${existingPR.number}: ${existingPR.url}`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'updated', existingPR.url, 'Updated existing PR with fix');
       } else {
-        console.log("Generated test passed. Creating PR.");
-        await this.createPR(analysis, project, moduleKey, fixResult);
-        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
+        // Create new PR
+        if (!fixResult.success) {
+          console.log("Generated test failed to validate fix. Creating draft PR.");
+          await this.createDraftPR(analysis, project, moduleKey, fixResult);
+          this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', fixResult.prUrl, fixResult.error || fixResult.testOutput);
+        } else {
+          console.log("Generated test passed. Creating PR.");
+          await this.createPR(analysis, project, moduleKey, fixResult);
+          this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
+        }
       }
 
       console.log(`✅ Successfully processed issue ${issue.id}`);
@@ -440,14 +442,14 @@ class SentryIntegration {
     try {
       console.log("Checking for existing PRs...");
 
-      // Get open PRs
-      const openPRs = execSync(`cd ${project.repoPath} && gh pr list --json number,title,url,body --limit 50`, {
+      // Get open PRs (including headRefName for branch name)
+      const openPRs = execSync(`cd ${project.repoPath} && gh pr list --json number,title,url,body,headRefName --limit 50`, {
         encoding: 'utf8',
         timeout: 30000,
       });
 
       // Get recently closed PRs (last 30 days)
-      const closedPRs = execSync(`cd ${project.repoPath} && gh pr list --state closed --json number,title,url,body,closedAt --limit 50`, {
+      const closedPRs = execSync(`cd ${project.repoPath} && gh pr list --state closed --json number,title,url,body,closedAt,headRefName --limit 50`, {
         encoding: 'utf8',
         timeout: 30000,
       });
@@ -477,6 +479,7 @@ class SentryIntegration {
               number: pr.number,
               title: pr.title,
               url: pr.url,
+              branchName: pr.headRefName,
               matchedKeyword: keyword
             };
           }
@@ -745,17 +748,28 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
   /**
    * Apply fix and validate with generated test case
    */
-  async applyFix(analysis, project, moduleKey) {
+  async applyFix(analysis, project, moduleKey, existingPR = null) {
     console.log("Applying fix and running generated test case locally...");
 
-    const branchName = `sentry-auto-fix-${Date.now()}`;
+    let branchName;
 
     try {
-      // Create branch in the repository
-      execSync(`cd ${project.repoPath} && git checkout -b ${branchName}`, {
-        encoding: "utf8",
-        timeout: 10000,
-      });
+      if (existingPR) {
+        // Checkout existing PR branch
+        console.log(`Found existing PR #${existingPR.number}, updating branch: ${existingPR.branchName}`);
+        branchName = existingPR.branchName;
+        execSync(`cd ${project.repoPath} && git fetch origin ${branchName} && git checkout ${branchName}`, {
+          encoding: "utf8",
+          timeout: 10000,
+        });
+      } else {
+        // Create new branch
+        branchName = `sentry-auto-fix-${Date.now()}`;
+        execSync(`cd ${project.repoPath} && git checkout -b ${branchName}`, {
+          encoding: "utf8",
+          timeout: 10000,
+        });
+      }
 
       // Apply the test case first
       if (analysis.testCase && analysis.testFile) {
@@ -843,18 +857,89 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         console.log("Running test case again to verify fix...");
         const fixTestResult = await this.runSingleTest(analysis.testFile, project, moduleKey);
 
-        return {
-          success: fixTestResult.passed,
-          branchName,
-          testOutput: fixTestResult.output,
-          testPassed: fixTestResult.passed,
-        };
+        if (fixTestResult.passed) {
+          // Fix worked! The test now passes (problem no longer reproduces)
+          // Now we need to create a verification test that ensures the fix stays in place
+          console.log("✓ Test now passes after fix applied");
+          console.log("Creating verification test to ensure fix stays in place...");
+
+          const verificationTest = await this.createVerificationTest(
+            analysis,
+            project,
+            moduleKey,
+            issue
+          );
+
+          if (verificationTest.success) {
+            console.log(`✓ Verification test created: ${verificationTest.testFile}`);
+
+            // Add the verification test to git
+            execSync(`git -C ${project.repoPath} add ${verificationTest.testFile}`, {
+              encoding: 'utf8',
+            });
+
+            // If updating existing PR, commit and push the changes
+            if (existingPR) {
+              console.log(`Committing changes to existing PR #${existingPR.number}...`);
+              execSync(`git -C ${project.repoPath} add -A`, { encoding: 'utf8' });
+
+              const commitMsg = `Update fix with actual code changes and verification test\n\nAdded:\n- Applied fix to source code\n- Verification test: ${verificationTest.testFile}`;
+              execSync(`git -C ${project.repoPath} commit -m "${commitMsg}"`, { encoding: 'utf8' });
+              execSync(`git -C ${project.repoPath} push origin ${branchName}`, { encoding: 'utf8' });
+
+              console.log(`✓ Pushed updates to PR #${existingPR.number}: ${existingPR.url}`);
+            }
+
+            return {
+              success: true,
+              branchName,
+              testOutput: fixTestResult.output,
+              testPassed: true,
+              verificationTest: verificationTest.testFile,
+              existingPR: existingPR,
+            };
+          } else {
+            console.warn("⚠ Failed to create verification test");
+
+            // If updating existing PR, still commit and push the fix
+            if (existingPR) {
+              console.log(`Committing fix changes to existing PR #${existingPR.number}...`);
+              execSync(`git -C ${project.repoPath} add -A`, { encoding: 'utf8' });
+
+              const commitMsg = `Update PR with actual code fix\n\nApplied fix to source code (verification test generation failed)`;
+              execSync(`git -C ${project.repoPath} commit -m "${commitMsg}"`, { encoding: 'utf8' });
+              execSync(`git -C ${project.repoPath} push origin ${branchName}`, { encoding: 'utf8' });
+
+              console.log(`✓ Pushed fix to PR #${existingPR.number}: ${existingPR.url}`);
+            }
+
+            return {
+              success: true,
+              branchName,
+              testOutput: fixTestResult.output,
+              testPassed: true,
+              verificationTestError: verificationTest.error,
+              existingPR: existingPR,
+            };
+          }
+        } else {
+          // Test still fails after fix - something went wrong
+          console.warn("⚠ Test still fails after applying fix");
+          return {
+            success: false,
+            branchName,
+            testOutput: fixTestResult.output,
+            testPassed: false,
+            existingPR: existingPR,
+          };
+        }
       }
 
       return {
         success: true,
         branchName,
         testOutput: "No test case to validate",
+        existingPR: existingPR,
       };
 
     } catch (error) {
@@ -863,6 +948,96 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         success: false,
         branchName,
         error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Create a verification test that ensures the fix stays in place
+   * This test should PASS to prove the fix works correctly
+   */
+  async createVerificationTest(analysis, project, moduleKey, issue) {
+    try {
+      console.log("Generating verification test with Claude...");
+
+      const prompt = `You previously created a test that reproduces a bug and a fix for it.
+
+**Original Issue:**
+${issue.title}
+
+**Root Cause:**
+${analysis.rootCause}
+
+**The Fix Applied:**
+${analysis.fix}
+
+**Reproduction Test (designed to FAIL before fix):**
+${analysis.testCase}
+
+**Your Task:**
+Create a NEW verification test that PASSES to prove the fix works correctly. This test should:
+1. Test the CORRECT behavior (not the bug)
+2. Verify that the fix prevents the original error
+3. Use realistic test data similar to the reproduction test
+4. Follow the same testing framework and style
+
+**Output Format (JSON only, no markdown):**
+{
+  "verificationTest": "Complete test code that verifies the fix works",
+  "testFile": "Path where verification test should be created (e.g., 'test/ut/php/include/BugFixVerificationTest.php')"
+}
+
+CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanation).`;
+
+      const tempPromptFile = `/tmp/sentry-verification-${Date.now()}.txt`;
+      fs.writeFileSync(tempPromptFile, prompt);
+
+      const isRoot = process.getuid && process.getuid() === 0;
+      const skipPermissionsFlag = isRoot ? '' : '--dangerously-skip-permissions';
+
+      const result = execSync(
+        `cd ${project.repoPath} && cat ${tempPromptFile} | claude ${skipPermissionsFlag} --output-format text`,
+        {
+          encoding: 'utf8',
+          timeout: 300000, // 5 minute timeout
+          maxBuffer: 10 * 1024 * 1024,
+        }
+      );
+
+      fs.unlinkSync(tempPromptFile);
+
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in Claude response');
+      }
+
+      const verificationData = JSON.parse(jsonMatch[0]);
+
+      if (!verificationData.verificationTest || !verificationData.testFile) {
+        throw new Error('Invalid verification test response from Claude');
+      }
+
+      // Write the verification test file
+      const testPath = path.join(project.repoPath, verificationData.testFile);
+      const testDir = path.dirname(testPath);
+
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir, { recursive: true });
+      }
+
+      fs.writeFileSync(testPath, verificationData.verificationTest);
+
+      return {
+        success: true,
+        testFile: verificationData.testFile,
+        testPath: testPath
+      };
+
+    } catch (error) {
+      console.error("Error creating verification test:", error.message);
+      return {
+        success: false,
+        error: error.message
       };
     }
   }
