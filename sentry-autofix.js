@@ -789,11 +789,21 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
 
       // Apply the fix files
       for (const fixFile of analysis.fixFiles || []) {
-        const filePath = path.join(project.repoPath, fixFile.path);
+        // Strip repository name prefix if present (e.g., "iznik-server/include/..." -> "include/...")
+        let cleanPath = fixFile.path;
+        const repoNamePrefixes = ['iznik-server/', 'iznik-server-go/', 'iznik-nuxt3/'];
+        for (const prefix of repoNamePrefixes) {
+          if (cleanPath.startsWith(prefix)) {
+            cleanPath = cleanPath.substring(prefix.length);
+            break;
+          }
+        }
+
+        const filePath = path.join(project.repoPath, cleanPath);
 
         // Read current content
         if (fs.existsSync(filePath)) {
-          console.log(`Applying fix to: ${fixFile.path}`);
+          console.log(`Applying fix to: ${cleanPath}`);
           let content = fs.readFileSync(filePath, 'utf8');
 
           // Apply each change in the fix file
@@ -822,9 +832,9 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
 
           // Write the modified content back
           fs.writeFileSync(filePath, content);
-          console.log(`  ✓ File updated: ${fixFile.path}`);
+          console.log(`  ✓ File updated: ${cleanPath}`);
         } else {
-          console.warn(`  ⚠ File not found: ${fixFile.path}`);
+          console.warn(`  ⚠ File not found: ${cleanPath}`);
         }
       }
 
