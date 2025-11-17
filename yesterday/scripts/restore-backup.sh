@@ -67,7 +67,8 @@ echo "Backup size: ${BACKUP_SIZE_GB}GB (compressed)"
 
 echo "Updating Yesterday code..."
 cd /var/www/FreegleDocker
-git pull
+git fetch origin
+git reset --hard origin/master
 echo "✅ Code updated"
 
 echo "Configuring Yesterday environment..."
