@@ -383,9 +383,8 @@ class SentryIntegration {
         console.log(`Bypassing 'already processing' check (ignoreAlreadyProcessing=true)`);
       }
 
-      // Mark as being processed (with timestamp)
-      const timestamp = new Date().toISOString();
-      await this.addSentryComment(issue.id, `🤖 **Automated fix in progress**\n\n**Status:** Investigating with Claude Code CLI...\n**Module:** ${moduleKey}\n**Started:** ${timestamp}`);
+      // Processing issue
+      console.log(`Processing issue ${issue.id}...`);
 
       // Fetch detailed issue information
       const issueDetails = await this.fetchIssueDetails(issue);
@@ -398,25 +397,19 @@ class SentryIntegration {
 
       if (!analysis.canReproduce) {
         console.log("Claude could not create a reproducing test.");
-        await this.addSentryComment(issue.id, `🤖 **Status:** Unable to reproduce\n\n${analysis.reason}`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', null, analysis.reason);
         return;
       }
 
-      // Update status: Reproduced
-      await this.addSentryComment(issue.id, `🤖 **Status:** Reproduced ✅\n\nTest case created. Checking for existing PRs...`);
+      console.log("Checking for existing PRs...");
 
       // Check for existing PRs that might already fix this
       const existingPR = await this.checkForExistingPR(issue, project, analysis);
       if (existingPR) {
         console.log(`Found existing PR that may fix this issue: ${existingPR.url}`);
-        await this.addSentryComment(issue.id, `🤖 **Status:** Existing fix found\n\nPR [#${existingPR.number}](${existingPR.url}) may already fix this: "${existingPR.title}"`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', existingPR.url, 'Existing PR found');
         return;
       }
-
-      // Update status: Applying fix
-      await this.addSentryComment(issue.id, `🤖 **Status:** Applying fix and running tests...`);
 
       // Apply the fix
       const fixResult = await this.applyFix(analysis, project, moduleKey);
@@ -425,12 +418,10 @@ class SentryIntegration {
       if (!fixResult.success) {
         console.log("Generated test failed to validate fix. Creating draft PR.");
         await this.createDraftPR(analysis, project, moduleKey, fixResult);
-        await this.addSentryComment(issue.id, `🤖 **Status:** Test validation failed ⚠️\n\nDraft PR created: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}\n\n**Test result:** Generated test case ${fixResult.error ? 'did not reproduce issue' : 'still fails after fix'}.\n\n**Note:** Full test suite will run on CircleCI.`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', fixResult.prUrl, fixResult.error || fixResult.testOutput);
       } else {
         console.log("Generated test passed. Creating PR.");
         await this.createPR(analysis, project, moduleKey, fixResult);
-        await this.addSentryComment(issue.id, `🤖 **Status:** Test passed ✅\n\nPR created: ${fixResult.prUrl}\n\n**Root cause:** ${analysis.rootCause}\n\n**Test validation:** Generated test case reproduced the issue and passed after fix.\n\n**Note:** Full test suite will run on CircleCI.`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
       }
 
@@ -438,7 +429,6 @@ class SentryIntegration {
 
     } catch (error) {
       console.error(`Error processing issue ${issue.id}:`, error);
-      await this.addSentryComment(issue.id, `Automated fix failed: ${error.message}`).catch(() => {});
       this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'error', null, error.message);
     }
   }
@@ -1110,34 +1100,6 @@ but the proposed fix did not pass all tests. Please review and adjust.
     }
   }
 
-  /**
-   * Add comment to Sentry issue
-   */
-  async addSentryComment(issueId, comment) {
-    const url = `https://sentry.io/api/0/issues/${issueId}/notes/`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.sentryAuthToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: comment,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to add Sentry comment: ${response.status}`);
-    }
-
-    const result = await response.json();
-
-    // Add delay after Sentry API call to avoid rate limits
-    await this.sleep(500);
-
-    return result;
-  }
 
   /**
    * Get status of currently processing issues
