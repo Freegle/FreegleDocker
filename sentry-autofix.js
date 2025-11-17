@@ -407,7 +407,7 @@ class SentryIntegration {
       const existingPR = await this.checkForExistingPR(issue, project, analysis);
 
       // Apply the fix (whether we have an existing PR or not)
-      const fixResult = await this.applyFix(analysis, project, moduleKey, existingPR);
+      const fixResult = await this.applyFix(analysis, project, moduleKey, existingPR, issue);
 
       // Create or update PR based on test results
       if (existingPR) {
@@ -748,7 +748,7 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
   /**
    * Apply fix and validate with generated test case
    */
-  async applyFix(analysis, project, moduleKey, existingPR = null) {
+  async applyFix(analysis, project, moduleKey, existingPR = null, issue = null) {
     console.log("Applying fix and running generated test case locally...");
 
     let branchName;
