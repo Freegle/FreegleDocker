@@ -151,31 +151,31 @@ class SentryIntegration {
         php: {
           projectId: "6119406",
           projectSlug: "php",
-          repoPath: "/project/iznik-server",
+          repoPath: "/home/edward/FreegleDockerWSL/iznik-server",
           testCommand: "curl -X POST http://localhost:8081/api/tests/php"
         },
         go: {
           projectId: "4505568012730368",
           projectSlug: "go",
-          repoPath: "/project/iznik-server-go",
+          repoPath: "/home/edward/FreegleDockerWSL/iznik-server-go",
           testCommand: "curl -X POST http://localhost:8081/api/tests/go"
         },
         nuxt3: {
           projectId: "4504083802226688",
           projectSlug: "nuxt3",
-          repoPath: "/project/iznik-nuxt3",
+          repoPath: "/home/edward/FreegleDockerWSL/iznik-nuxt3",
           testCommand: "curl -X POST http://localhost:8081/api/tests/playwright"
         },
         capacitor: {
           projectId: "4506643536609280",
           projectSlug: "capacitor",
-          repoPath: "/project/iznik-nuxt3",
+          repoPath: "/home/edward/FreegleDockerWSL/iznik-nuxt3",
           testCommand: "curl -X POST http://localhost:8081/api/tests/playwright"
         },
         modtools: {
           projectId: "4506712427855872",
           projectSlug: "modtools",
-          repoPath: "/project/iznik-nuxt3-modtools",
+          repoPath: "/home/edward/FreegleDockerWSL/iznik-nuxt3-modtools",
           testCommand: "curl -X POST http://localhost:8081/api/tests/playwright"
         },
       };
@@ -645,8 +645,10 @@ class SentryIntegration {
   async analyzeWithClaudeInternal(issue, details, codeContext, moduleKey) {
     const prompt = `IMPORTANT: Use Task agents to thoroughly analyze this Sentry production error. Use the Explore agent to find relevant code in the repository.
 
+⏱️ **TIME CONSTRAINT: Complete this analysis within 10 minutes. Prioritize accuracy and completeness, but work efficiently.**
+
 **Your task:**
-1. Use Task tool with Explore agent to find code related to this error
+1. Use Task tool with Explore agent to find code related to this error (be focused, not exhaustive)
 2. Analyze the root cause using all available context
 3. Create a reproducing test case
 4. Propose a fix with specific file changes
@@ -667,21 +669,40 @@ ${JSON.stringify(details.latestEvent?.entries?.find(e => e.type === 'exception')
 ${JSON.stringify(codeContext, null, 2)}
 
 **Instructions:**
-- Use Task tool to launch Explore agent for finding relevant code
-- Search for files mentioned in stack trace
-- Examine related code comprehensively
-- Analyze the error deeply
+- Use Task tool to launch Explore agent for finding relevant code (focus on files in stack trace)
+- Search for specific files mentioned in stack trace first
+- Examine related code efficiently - prioritize depth over breadth
+- Analyze the error deeply but quickly
+- Work within the 10-minute time constraint
 
 **Output Format (JSON only, no markdown):**
 {
   "rootCause": "Brief explanation of what's causing the error",
   "canReproduce": true/false,
   "testCase": "Complete test code that reproduces the issue (if canReproduce=true)",
-  "testFile": "Path where test should be created (e.g., 'tests/e2e/bug-123.spec.js')",
-  "fix": "Complete code fix with file paths and changes",
-  "fixFiles": [{"path": "relative/path/to/file", "changes": "description of changes"}],
+  "testFile": "Path where test should be created (e.g., 'test/ut/php/include/BugTest.php')",
+  "fix": "High-level explanation of the fix",
+  "fixFiles": [
+    {
+      "path": "relative/path/to/file.php",
+      "changes": [
+        {
+          "type": "replace",
+          "lines": "111-111",
+          "old": "exact code to find and replace (including whitespace)",
+          "new": "exact replacement code (including whitespace)"
+        }
+      ]
+    }
+  ],
   "reason": "Explanation if canReproduce=false"
 }
+
+**IMPORTANT for fixFiles format:**
+- Each change must have type "replace" with exact "old" and "new" code snippets
+- Include enough context in "old" to make it unique in the file
+- Preserve exact indentation and whitespace in both "old" and "new"
+- The "lines" field is for reference only - actual replacement uses "old" code matching
 
 CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanation).`;
 
@@ -703,7 +724,7 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
       const response = execSync(`claude -p "$(cat ${tempPromptFile})" ${skipPermissionsFlag}`, {
         encoding: 'utf8',
         maxBuffer: 20 * 1024 * 1024, // 20MB buffer for Task agent outputs
-        timeout: 600000, // 10 minute timeout (Task agents need more time)
+        timeout: 900000, // 15 minute timeout (Task agents need more time)
         killSignal: 'SIGTERM',
         cwd: process.cwd(),
       });
@@ -782,11 +803,38 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
 
         // Read current content
         if (fs.existsSync(filePath)) {
-          // Apply changes (this is simplified - in reality Claude would provide exact diffs)
           console.log(`Applying fix to: ${fixFile.path}`);
+          let content = fs.readFileSync(filePath, 'utf8');
 
-          // For now, just log that we would apply changes
-          // In production, you'd parse fixFile.changes and apply them
+          // Apply each change in the fix file
+          for (const change of fixFile.changes || []) {
+            if (change.type === 'replace') {
+              // Replace old code with new code
+              if (content.includes(change.old)) {
+                content = content.replace(change.old, change.new);
+                console.log(`  ✓ Applied change at lines ${change.lines}`);
+              } else {
+                console.warn(`  ⚠ Could not find code to replace at lines ${change.lines}`);
+              }
+            } else if (change.type === 'insert') {
+              // Insert new code at specified location
+              const lines = content.split('\n');
+              const lineNumber = parseInt(change.line) - 1; // Convert to 0-indexed
+              if (lineNumber >= 0 && lineNumber < lines.length) {
+                lines.splice(lineNumber, 0, change.code);
+                content = lines.join('\n');
+                console.log(`  ✓ Inserted code at line ${change.line}`);
+              } else {
+                console.warn(`  ⚠ Invalid line number ${change.line} for insertion`);
+              }
+            }
+          }
+
+          // Write the modified content back
+          fs.writeFileSync(filePath, content);
+          console.log(`  ✓ File updated: ${fixFile.path}`);
+        } else {
+          console.warn(`  ⚠ File not found: ${fixFile.path}`);
         }
       }
 
@@ -915,12 +963,27 @@ ${analysis.fixFiles.map(f => `- ${f.path}: ${f.changes}`).join('\n')}
 🤖 This PR was automatically generated by the Sentry integration system.`;
 
     try {
-      const prCommand = `cd ${project.repoPath} && gh pr create --title "Fix: ${analysis.rootCause.substring(0, 60)}" --body "${prBody.replace(/"/g, '\\"')}"`;
+      // Push branch to remote first (required for PR creation)
+      const currentBranch = execSync(`cd ${project.repoPath} && git branch --show-current`, {
+        encoding: "utf8",
+      }).trim();
 
-      const prUrl = execSync(prCommand, {
+      execSync(`cd ${project.repoPath} && git push -u origin ${currentBranch}`, {
+        encoding: "utf8",
+        timeout: 60000,
+      });
+
+      // Write PR body to temp file to avoid shell escaping issues
+      const tempPrBodyFile = `/tmp/sentry-pr-body-${Date.now()}.txt`;
+      fs.writeFileSync(tempPrBodyFile, prBody);
+
+      const prUrl = execSync(`cd ${project.repoPath} && gh pr create --title "Fix: ${analysis.rootCause.substring(0, 60)}" --body-file "${tempPrBodyFile}"`, {
         encoding: "utf8",
         timeout: 30000,
       }).trim();
+
+      // Clean up temp file
+      fs.unlinkSync(tempPrBodyFile);
 
       console.log(`PR created: ${prUrl}`);
       fixResult.prUrl = prUrl;
@@ -957,12 +1020,27 @@ but the proposed fix did not pass all tests. Please review and adjust.
 🤖 This draft PR was automatically generated by the Sentry integration system.`;
 
     try {
-      const prCommand = `cd ${project.repoPath} && gh pr create --draft --title "[DRAFT] Fix attempt: ${analysis.rootCause.substring(0, 50)}" --body "${prBody.replace(/"/g, '\\"')}"`;
+      // Push branch to remote first (required for PR creation)
+      const currentBranch = execSync(`cd ${project.repoPath} && git branch --show-current`, {
+        encoding: "utf8",
+      }).trim();
 
-      const prUrl = execSync(prCommand, {
+      execSync(`cd ${project.repoPath} && git push -u origin ${currentBranch}`, {
+        encoding: "utf8",
+        timeout: 60000,
+      });
+
+      // Write PR body to temp file to avoid shell escaping issues
+      const tempPrBodyFile = `/tmp/sentry-pr-body-draft-${Date.now()}.txt`;
+      fs.writeFileSync(tempPrBodyFile, prBody);
+
+      const prUrl = execSync(`cd ${project.repoPath} && gh pr create --draft --title "[DRAFT] Fix attempt: ${analysis.rootCause.substring(0, 50)}" --body-file "${tempPrBodyFile}"`, {
         encoding: "utf8",
         timeout: 30000,
       }).trim();
+
+      // Clean up temp file
+      fs.unlinkSync(tempPrBodyFile);
 
       console.log(`Draft PR created: ${prUrl}`);
       fixResult.prUrl = prUrl;
