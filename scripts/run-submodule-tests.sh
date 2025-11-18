@@ -49,18 +49,46 @@ echo "placeholder" > secrets/image-domain.txt
 # Fix memory overcommit for Redis
 sudo sysctl vm.overcommit_memory=1 || true
 
+# Suppress docker-compose warnings about unset variables
+export COMPOSE_QUIET=1
+
 # Start required services based on test type
 echo "Starting Docker services..."
 if [ "$TEST_TYPE" = "playwright" ]; then
     # Playwright needs the full stack including the Nuxt production container
-    docker-compose -f docker-compose.yml up -d percona redis apiv1 apiv2 freegle-prod traefik
+    docker-compose -f docker-compose.yml up -d percona redis apiv1 apiv2 freegle-prod traefik 2>&1 | grep -v "WARN\|variable is not set"
+    REQUIRED_SERVICES="percona redis apiv1 apiv2 freegle-prod traefik"
 else
     # PHP and Go tests only need the API services
-    docker-compose -f docker-compose.yml up -d percona redis apiv1 apiv2
+    docker-compose -f docker-compose.yml up -d percona redis apiv1 apiv2 2>&1 | grep -v "WARN\|variable is not set"
+    REQUIRED_SERVICES="percona redis apiv1 apiv2"
 fi
 
 echo "Waiting for services to start..."
 sleep 30
+
+# Function to check service status
+check_service_status() {
+    local service=$1
+    local container_name=$(docker-compose -f docker-compose.yml ps -q $service 2>/dev/null)
+    if [ -z "$container_name" ]; then
+        echo "not started"
+        return
+    fi
+
+    local status=$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null)
+    local health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$container_name" 2>/dev/null)
+
+    if [ "$status" = "running" ]; then
+        if [ "$health" = "healthy" ] || [ "$health" = "no-healthcheck" ]; then
+            echo "running"
+        else
+            echo "starting ($health)"
+        fi
+    else
+        echo "$status"
+    fi
+}
 
 # Wait for API services to be healthy
 echo "Waiting for API services to be healthy..."
@@ -73,17 +101,25 @@ while true; do
 
     if [ $elapsed -gt $timeout_duration ]; then
         echo "Timeout waiting for API services after 10 minutes"
-        docker-compose -f docker-compose.yml logs
+        docker-compose -f docker-compose.yml logs 2>&1 | grep -v "WARN\|variable is not set"
         exit 1
     fi
 
+    # Show status of all required services
+    echo ""
+    echo "Service status (${elapsed}s elapsed):"
+    for service in $REQUIRED_SERVICES; do
+        status=$(check_service_status $service)
+        printf "  %-15s %s\n" "$service:" "$status"
+    done
+
     # Check API v1 health
-    if docker-compose -f docker-compose.yml exec -T apiv1 sh -c "curl -f -s http://localhost:80 > /dev/null 2>&1"; then
-        echo "API v1 is responding"
+    if docker-compose -f docker-compose.yml exec -T apiv1 sh -c "curl -f -s http://localhost:80 > /dev/null 2>&1" 2>/dev/null; then
+        echo ""
+        echo "API v1 is responding - all services ready!"
         break
     fi
 
-    echo "Waiting for API services... (${elapsed}s elapsed)"
     sleep 10
 done
 
