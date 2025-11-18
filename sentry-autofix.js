@@ -395,35 +395,41 @@ class SentryIntegration {
       // Analyze with Claude
       const analysis = await this.analyzeWithClaude(issue, issueDetails, codeContext, moduleKey);
 
-      if (!analysis.canReproduce) {
-        console.log("Claude could not create a reproducing test.");
+      if (!analysis.canFix) {
+        console.log(`Skipping - cannot fix: ${analysis.reason}`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', null, analysis.reason);
         return;
       }
 
+      if (analysis.confidence !== 'high') {
+        console.log(`Skipping - confidence too low (${analysis.confidence}): ${analysis.reason}`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', null, `Low confidence: ${analysis.reason}`);
+        return;
+      }
+
+      if (analysis.fixType !== 'simple') {
+        console.log(`Skipping - fix is not simple (${analysis.fixType}): ${analysis.reason}`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', null, `Complex fix: ${analysis.reason}`);
+        return;
+      }
+
+      console.log("Fix is simple and high confidence. Proceeding...");
       console.log("Checking for existing PRs...");
 
       // Check for existing PRs that might already fix this
       const existingPR = await this.checkForExistingPR(issue, project, analysis);
 
-      // Apply the fix (whether we have an existing PR or not)
-      const fixResult = await this.applyFix(analysis, project, moduleKey, existingPR, issue);
+      // Apply the fix (no tests, just the code change)
+      const fixResult = await this.applyFixSimple(analysis, project, moduleKey, existingPR, issue);
 
-      // Create or update PR based on test results
+      // Create or update PR
       if (existingPR) {
-        // We already pushed updates to the existing PR in applyFix
         console.log(`✅ Updated existing PR #${existingPR.number}: ${existingPR.url}`);
-        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'updated', existingPR.url, 'Updated existing PR with fix');
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'updated', existingPR.url, 'Updated existing PR with suggested fix');
       } else {
-        // Only create PR if test passed
-        if (fixResult.success) {
-          console.log("Verification test passed. Creating PR.");
-          await this.createPR(analysis, project, moduleKey, fixResult);
-          this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
-        } else {
-          console.log("❌ Verification test failed - NOT creating PR. Fix needs more work.");
-          this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'failed', null, fixResult.error || fixResult.testOutput);
-        }
+        console.log("Creating PR with suggested fix.");
+        await this.createPR(analysis, project, moduleKey, fixResult);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
       }
 
       console.log(`✅ Successfully processed issue ${issue.id}`);
@@ -648,15 +654,15 @@ class SentryIntegration {
    * Internal Claude analysis (retryable) - uses Task agents
    */
   async analyzeWithClaudeInternal(issue, details, codeContext, moduleKey) {
-    const prompt = `IMPORTANT: Use Task agents to thoroughly analyze this Sentry production error. Use the Explore agent to find relevant code in the repository.
+    const prompt = `IMPORTANT: Use Task agents to diagnose this Sentry production error. Use the Explore agent to find relevant code in the repository.
 
-⏱️ **TIME CONSTRAINT: Complete this analysis within 10 minutes. Prioritize accuracy and completeness, but work efficiently.**
+⏱️ **TIME CONSTRAINT: Complete this analysis within 10 minutes. Work efficiently.**
 
 **Your task:**
-1. Use Task tool with Explore agent to find code related to this error (be focused, not exhaustive)
-2. Analyze the root cause using all available context
-3. Create a reproducing test case
-4. Propose a fix with specific file changes
+1. Use Task tool with Explore agent to find code related to this error
+2. Analyze the root cause
+3. Determine if this is a SIMPLE fix (missing parameter, typo, null check within a single method)
+4. If simple, propose a fix. If complex, skip.
 
 **Module:** ${moduleKey}
 **Repository Path:** Based on module (php: iznik-server, go: iznik-server-go, nuxt3/capacitor/modtools: iznik-nuxt3*)
@@ -673,19 +679,24 @@ ${JSON.stringify(details.latestEvent?.entries?.find(e => e.type === 'exception')
 **Initial Code Context:**
 ${JSON.stringify(codeContext, null, 2)}
 
-**Instructions:**
-- Use Task tool to launch Explore agent for finding relevant code (focus on files in stack trace)
-- Search for specific files mentioned in stack trace first
-- Examine related code efficiently - prioritize depth over breadth
-- Analyze the error deeply but quickly
-- Work within the 10-minute time constraint
+**ONLY PROCEED WITH FIX IF:**
+- The error is caused by something obvious: missing parameter, typo, missing null check
+- The fix is within a SINGLE METHOD (no multi-file refactoring)
+- You are 90%+ confident the fix will work
+- Examples: array_key_exists() null parameter → add null check, missing function argument → add default, typo in variable name → fix typo
+
+**SKIP IF:**
+- Error requires understanding complex business logic
+- Fix needs changes across multiple methods or files
+- Root cause is unclear or requires deep investigation
+- You're less than 90% confident
 
 **Output Format (JSON only, no markdown):**
 {
   "rootCause": "Brief explanation of what's causing the error",
-  "canReproduce": true/false,
-  "testCase": "Complete test code that reproduces the issue (if canReproduce=true)",
-  "testFile": "Path where test should be created (e.g., 'test/ut/php/include/BugTest.php')",
+  "canFix": true/false,
+  "confidence": "high/low (high = 90%+ confident fix will work)",
+  "fixType": "simple/complex (simple = single method, obvious fix)",
   "fix": "High-level explanation of the fix",
   "fixFiles": [
     {
@@ -700,7 +711,7 @@ ${JSON.stringify(codeContext, null, 2)}
       ]
     }
   ],
-  "reason": "Explanation if canReproduce=false"
+  "reason": "Explanation if canFix=false or confidence=low"
 }
 
 **IMPORTANT for fixFiles format:**
@@ -746,7 +757,8 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
       }
 
       const analysis = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-      console.log("Claude analysis complete:", analysis.canReproduce ? "Can reproduce" : "Cannot reproduce");
+      console.log("Claude analysis complete:",
+        analysis.canFix ? `Can fix (confidence: ${analysis.confidence}, type: ${analysis.fixType})` : `Cannot fix (${analysis.reason})`);
 
       return analysis;
     } catch (error) {
@@ -987,6 +999,97 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         success: true,
         branchName,
         testOutput: "No test case to validate",
+        existingPR: existingPR,
+      };
+
+    } catch (error) {
+      console.error("Error applying fix:", error);
+      return {
+        success: false,
+        branchName,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Apply fix (simplified - no tests, just apply code changes)
+   */
+  async applyFixSimple(analysis, project, moduleKey, existingPR = null, issue = null) {
+    console.log("Applying suggested fix (no tests)...");
+
+    let branchName;
+
+    try {
+      if (existingPR) {
+        console.log(`Found existing PR #${existingPR.number}, resetting branch to master: ${existingPR.branchName}`);
+        branchName = existingPR.branchName;
+        execSync(`cd ${project.repoPath} && git fetch origin ${branchName} && git checkout ${branchName} && git reset --hard master`, {
+          encoding: "utf8",
+          timeout: 10000,
+        });
+      } else {
+        branchName = `sentry-auto-fix-${Date.now()}`;
+        execSync(`cd ${project.repoPath} && git checkout -b ${branchName}`, {
+          encoding: "utf8",
+          timeout: 10000,
+        });
+      }
+
+      // Apply the fix
+      console.log("Applying fix...");
+      for (const fileChange of analysis.fixFiles) {
+        const filePath = path.join(project.repoPath, fileChange.path);
+
+        if (!fs.existsSync(filePath)) {
+          throw new Error(`File not found: ${filePath}`);
+        }
+
+        let fileContent = fs.readFileSync(filePath, 'utf8');
+
+        for (const change of fileChange.changes) {
+          if (change.type === 'replace') {
+            const oldCode = change.old;
+            const newCode = change.new;
+
+            if (!fileContent.includes(oldCode)) {
+              console.warn(`⚠ Could not find exact match for old code in ${fileChange.path} at lines ${change.lines}`);
+              console.warn(`Looking for:\n${oldCode}`);
+              throw new Error(`Could not find exact code to replace in ${fileChange.path}`);
+            }
+
+            fileContent = fileContent.replace(oldCode, newCode);
+            console.log(`  ✓ Applied change at lines ${change.lines}`);
+          }
+        }
+
+        fs.writeFileSync(filePath, fileContent);
+        console.log(`  ✓ File updated: ${fileChange.path}`);
+      }
+
+      // Commit and push
+      const commitMessage = `Suggested fix for Sentry issue: ${issue.title}\n\nRoot cause: ${analysis.rootCause}\nFix: ${analysis.fix}\n\nConfidence: ${analysis.confidence}\nFix type: ${analysis.fixType}\n\nSentry issue: ${issue.permalink}`;
+
+      execSync(`cd ${project.repoPath} && git add .`, {
+        encoding: "utf8",
+        timeout: 10000,
+      });
+
+      execSync(`cd ${project.repoPath} && git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
+        encoding: "utf8",
+        timeout: 10000,
+      });
+
+      execSync(`cd ${project.repoPath} && git push -u origin ${branchName}`, {
+        encoding: "utf8",
+        timeout: 30000,
+      });
+
+      console.log(`✓ Pushed fix to branch: ${branchName}`);
+
+      return {
+        success: true,
+        branchName,
         existingPR: existingPR,
       };
 
