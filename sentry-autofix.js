@@ -371,6 +371,12 @@ class SentryIntegration {
     console.log(`Events (24h): ${issue.count}`);
     console.log(`Level: ${issue.level}`);
 
+    // Store original branch so we can restore it after processing
+    const originalBranch = execSync(`cd ${project.repoPath} && git rev-parse --abbrev-ref HEAD`, {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+
     try {
       // Check if another instance is already processing this (unless flag set to ignore)
       if (!this.ignoreAlreadyProcessing) {
@@ -437,6 +443,17 @@ class SentryIntegration {
     } catch (error) {
       console.error(`Error processing issue ${issue.id}:`, error);
       this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'error', null, error.message);
+    } finally {
+      // Always restore original branch
+      try {
+        console.log(`Restoring original branch: ${originalBranch}`);
+        execSync(`cd ${project.repoPath} && git checkout ${originalBranch}`, {
+          encoding: 'utf8',
+          timeout: 5000,
+        });
+      } catch (error) {
+        console.error(`Warning: Could not restore original branch ${originalBranch}:`, error.message);
+      }
     }
   }
 
@@ -797,7 +814,15 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
       // Apply the fix
       console.log("Applying fix...");
       for (const fileChange of analysis.fixFiles) {
-        const filePath = path.join(project.repoPath, fileChange.path);
+        // Normalize the path - remove any duplicate repo name prefix
+        // (Claude sometimes includes the repo name in the path)
+        let normalizedPath = fileChange.path;
+        const repoName = path.basename(project.repoPath);
+        if (normalizedPath.startsWith(repoName + '/') || normalizedPath.startsWith(repoName + '\\')) {
+          normalizedPath = normalizedPath.substring(repoName.length + 1);
+        }
+
+        const filePath = path.join(project.repoPath, normalizedPath);
 
         if (!fs.existsSync(filePath)) {
           throw new Error(`File not found: ${filePath}`);
