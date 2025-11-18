@@ -44,14 +44,49 @@ Webhook-triggered variant that:
 - Always runs tests when triggered by webhook
 - Uses same testing logic as main job
 
+## Submodule PR Testing
+
+Each submodule has its own CircleCI configuration that runs tests on pull requests using FreegleDocker's Docker Compose setup:
+
+### Test Types
+
+| Submodule | Test Type | Description |
+|-----------|-----------|-------------|
+| **iznik-server** | PHPUnit | Unit tests for PHP API |
+| **iznik-server-go** | Go tests | Unit tests for Go API with race detection |
+| **iznik-nuxt3** | Playwright | End-to-end browser tests |
+
+### How It Works
+
+1. PR is opened in submodule repository
+2. CircleCI clones FreegleDocker and initializes submodules
+3. PR code replaces the submodule directory
+4. Docker Compose services are started
+5. Tests run using the central `scripts/run-submodule-tests.sh` script
+6. Results are reported back to the PR
+
+### Test Script
+
+The `scripts/run-submodule-tests.sh` script centralizes test execution:
+
+```bash
+# Usage
+./scripts/run-submodule-tests.sh <php|go|playwright> <path-to-pr-code>
+
+# Examples
+./scripts/run-submodule-tests.sh php ./iznik-server      # PHPUnit tests
+./scripts/run-submodule-tests.sh go ./iznik-server-go   # Go tests
+./scripts/run-submodule-tests.sh playwright ./iznik-nuxt3  # Playwright tests
+```
+
 ## Webhook Integration Status
 
 The following submodules are **already configured** with GitHub Actions workflows that trigger CircleCI builds:
 
-- ✅ **iznik-nuxt3** - `.github/workflows/trigger-parent-ci.yml` configured
-- ✅ **iznik-nuxt3-modtools** - `.github/workflows/trigger-parent-ci.yml` configured  
-- ✅ **iznik-server** - `.github/workflows/trigger-parent-ci.yml` configured
-- ✅ **iznik-server-go** - `.github/workflows/trigger-parent-ci.yml` configured
+- ✅ **iznik-nuxt3** - `.github/workflows/trigger-parent-ci.yml` configured, PR Playwright tests
+- ✅ **iznik-nuxt3-modtools** - `.github/workflows/trigger-parent-ci.yml` configured
+- ✅ **iznik-server** - `.github/workflows/trigger-parent-ci.yml` configured, PR PHPUnit tests
+- ✅ **iznik-server-go** - `.github/workflows/trigger-parent-ci.yml` configured, PR Go tests
 
 ### Activation Required
 
