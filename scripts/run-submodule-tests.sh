@@ -126,9 +126,9 @@ done
 
 # Wait for initial testenv.php to complete if it's running
 # The container runs testenv.php on startup, we need to wait for it to finish
-# Check for actual php process running testenv.php (not just the init shell)
+# Check that a PHP process is actually running testenv.php (not just the init shell containing the string)
 echo "Waiting for initial database setup to complete..."
-while docker-compose -f docker-compose.yml exec -T apiv1 sh -c "ps aux | grep -E 'php.*testenv\.php' | grep -v grep" > /dev/null 2>&1; do
+while docker-compose -f docker-compose.yml exec -T apiv1 sh -c "pgrep -f 'testenv.php' | xargs -I{} ps -p {} -o comm= | grep -q php" 2>/dev/null; do
     echo "  testenv.php still running..."
     sleep 5
 done
