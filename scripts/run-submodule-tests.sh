@@ -113,15 +113,25 @@ while true; do
         printf "  %-15s %s\n" "$service:" "$status"
     done
 
-    # Check API v1 health
-    if docker-compose -f docker-compose.yml exec -T apiv1 sh -c "curl -f -s http://localhost:80 > /dev/null 2>&1" 2>/dev/null; then
+    # Check if API v1 container is healthy (uses Docker's built-in healthcheck)
+    apiv1_health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' freegle-apiv1 2>/dev/null)
+    if [ "$apiv1_health" = "healthy" ]; then
         echo ""
-        echo "API v1 is responding - all services ready!"
+        echo "API v1 is healthy - all services ready!"
         break
     fi
 
     sleep 10
 done
+
+# Wait for initial testenv.php to complete if it's running
+# The container runs testenv.php on startup, we need to wait for it to finish
+echo "Waiting for initial database setup to complete..."
+while docker-compose -f docker-compose.yml exec -T apiv1 pgrep -f "testenv.php" > /dev/null 2>&1; do
+    echo "  testenv.php still running..."
+    sleep 5
+done
+echo "Initial database setup complete"
 
 # Run the appropriate tests
 case $TEST_TYPE in
