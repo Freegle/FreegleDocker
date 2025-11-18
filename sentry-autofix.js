@@ -428,6 +428,13 @@ class SentryIntegration {
       // Apply the fix (no tests, just the code change)
       const fixResult = await this.applyFix(analysis, project, moduleKey, existingPR, issue);
 
+      // Check if fix was applied successfully
+      if (!fixResult.success) {
+        console.log(`❌ Fix failed to apply: ${fixResult.error}`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'error', null, `Failed to apply fix: ${fixResult.error}`);
+        return;
+      }
+
       // Create or update PR
       if (existingPR) {
         console.log(`✅ Updated existing PR #${existingPR.number}: ${existingPR.url}`);
@@ -805,7 +812,8 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         });
       } else {
         branchName = `sentry-auto-fix-${Date.now()}`;
-        execSync(`cd ${project.repoPath} && git checkout -b ${branchName}`, {
+        // Create branch from origin/master to avoid including local uncommitted work
+        execSync(`cd ${project.repoPath} && git fetch origin master && git checkout -b ${branchName} origin/master`, {
           encoding: "utf8",
           timeout: 10000,
         });
