@@ -483,6 +483,11 @@ commands:
           command: |
             mkdir -p ~/artifacts
 
+            # Support both FreegleDocker main build and submodule paths
+            if [ -d "$HOME/FreegleDocker" ]; then
+              cd "$HOME/FreegleDocker"
+            fi
+
             # Collect Docker logs
             if docker-compose -f docker-compose.yml ps > /dev/null 2>&1; then
               docker-compose -f docker-compose.yml logs > ~/artifacts/docker-logs.txt 2>&1 || true
@@ -755,9 +760,9 @@ jobs:
       - wait-for-basic-services
       - run-php-tests:
           reason: "Running PHPUnit tests for PR"
-      - collect-artifacts
       - upload-coverage:
           expected: "php"
+      - collect-artifacts
 
   go-tests:
     executor: machine-executor
@@ -770,9 +775,9 @@ jobs:
       - wait-for-basic-services
       - run-go-tests:
           reason: "Running Go tests for PR"
-      - collect-artifacts
       - upload-coverage:
           expected: "go"
+      - collect-artifacts
 
   playwright-tests:
     executor: machine-executor
@@ -786,9 +791,9 @@ jobs:
       - wait-for-prod-container
       - run-playwright-tests:
           reason: "Running Playwright tests for PR"
-      - collect-artifacts
       - upload-coverage:
           expected: "playwright"
+      - collect-artifacts
 
   # === FreegleDocker Main Build Job ===
 
@@ -873,10 +878,10 @@ jobs:
       - run-playwright-tests:
           reason: "Running Playwright tests after production container is healthy"
 
-      - collect-artifacts
-
       - upload-coverage:
           expected: "go,php,playwright"
+
+      - collect-artifacts
 
       - run:
           name: Evaluate overall test results
