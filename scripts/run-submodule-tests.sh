@@ -49,49 +49,20 @@ echo "placeholder" > secrets/image-domain.txt
 # Fix memory overcommit for Redis
 sudo sysctl vm.overcommit_memory=1 || true
 
-# Suppress docker-compose warnings about unset variables
+# Set environment variables (same as FreegleDocker CI)
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
 export COMPOSE_QUIET=1
 
-# Start required services based on test type
+# Start all Docker services (same as full FreegleDocker CI)
 echo "Starting Docker services..."
-if [ "$TEST_TYPE" = "playwright" ]; then
-    # Playwright needs the full stack including the Nuxt production container
-    docker-compose -f docker-compose.yml up -d percona redis apiv1 apiv2 freegle-prod traefik 2>&1 | grep -v "WARN\|variable is not set"
-    REQUIRED_SERVICES="percona redis apiv1 apiv2 freegle-prod traefik"
-else
-    # PHP and Go tests need the API services plus postgres (for spatial queries) and spamassassin
-    docker-compose -f docker-compose.yml up -d percona redis postgres beanstalkd spamassassin-app apiv1 apiv2 2>&1 | grep -v "WARN\|variable is not set"
-    REQUIRED_SERVICES="percona redis postgres beanstalkd spamassassin-app apiv1 apiv2"
-fi
+docker-compose -f docker-compose.yml up -d 2>&1 | grep -v "WARN\|variable is not set"
 
 echo "Waiting for services to start..."
 sleep 30
 
-# Function to check service status
-check_service_status() {
-    local service=$1
-    local container_name=$(docker-compose -f docker-compose.yml ps -q $service 2>/dev/null)
-    if [ -z "$container_name" ]; then
-        echo "not started"
-        return
-    fi
-
-    local status=$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null)
-    local health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$container_name" 2>/dev/null)
-
-    if [ "$status" = "running" ]; then
-        if [ "$health" = "healthy" ] || [ "$health" = "no-healthcheck" ]; then
-            echo "running"
-        else
-            echo "starting ($health)"
-        fi
-    else
-        echo "$status"
-    fi
-}
-
-# Wait for API services to be healthy
-echo "Waiting for API services to be healthy..."
+# Wait for API v1 to be healthy
+echo "Waiting for API v1 to be healthy..."
 start_time=$(date +%s)
 timeout_duration=600
 
@@ -100,27 +71,19 @@ while true; do
     elapsed=$((current_time - start_time))
 
     if [ $elapsed -gt $timeout_duration ]; then
-        echo "Timeout waiting for API services after 10 minutes"
+        echo "Timeout waiting for API v1 after 10 minutes"
         docker-compose -f docker-compose.yml logs 2>&1 | grep -v "WARN\|variable is not set"
         exit 1
     fi
 
-    # Show status of all required services
-    echo ""
-    echo "Service status (${elapsed}s elapsed):"
-    for service in $REQUIRED_SERVICES; do
-        status=$(check_service_status $service)
-        printf "  %-15s %s\n" "$service:" "$status"
-    done
-
-    # Check if API v1 container is healthy (uses Docker's built-in healthcheck)
+    # Check if API v1 container is healthy
     apiv1_health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' freegle-apiv1 2>/dev/null)
     if [ "$apiv1_health" = "healthy" ]; then
-        echo ""
-        echo "API v1 is healthy - all services ready!"
+        echo "API v1 is healthy (${elapsed}s elapsed)"
         break
     fi
 
+    echo "Waiting for API v1... (${elapsed}s elapsed, status: $apiv1_health)"
     sleep 10
 done
 
