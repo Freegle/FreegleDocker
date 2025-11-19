@@ -317,6 +317,22 @@ commands:
             echo "Setting up test environment..."
             docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
+            # Also run Go testenv to get additional test data (PAF addresses, jobs, engage_mails, etc.)
+            echo "Setting up Go test data..."
+            APIV2_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv2)
+            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1)
+            if [ -n "$APIV2_CONTAINER" ]; then
+              docker cp "$APIV2_CONTAINER":/app/.circleci/testenv.php /tmp/go-testenv.php 2>/dev/null || true
+              if [ -f /tmp/go-testenv.php ]; then
+                sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv.php
+                docker cp /tmp/go-testenv.php "$APIV1_CONTAINER":/var/www/iznik/go-testenv.php
+                docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php" || true
+                echo "✅ Go test data loaded"
+              else
+                echo "⚠️ Go testenv.php not found, skipping additional test data"
+              fi
+            fi
+
             # Trigger tests via API
             response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
             http_code="${response: -3}"
