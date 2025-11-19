@@ -258,6 +258,21 @@ commands:
             fi
             echo "🧪 << parameters.reason >>..."
 
+            # Load database schema first
+            echo "Loading database schema..."
+            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && \
+              sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
+              sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
+              sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
+              sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+              sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+              mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
+              mysql -h percona -u root -piznik iznik < install/schema.sql && \
+              mysql -h percona -u root -piznik iznik < install/functions.sql && \
+              mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
+              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
+              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
+
             # Set up test environment first
             echo "Setting up test environment..."
             docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
