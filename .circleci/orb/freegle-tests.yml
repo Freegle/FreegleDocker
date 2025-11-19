@@ -1,0 +1,1291 @@
+version: 2.1
+
+description: |
+  Shared commands and jobs for Freegle testing and app builds across repositories.
+  Used by FreegleDocker and submodule repos (iznik-server, iznik-server-go, iznik-nuxt3).
+
+executors:
+  machine-executor:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: large
+    environment:
+      DOCKER_BUILDKIT: 1
+      COMPOSE_DOCKER_CLI_BUILD: 1
+
+  android-executor:
+    docker:
+      - image: cimg/android:2025.10-node
+    resource_class: large
+
+  macos-executor:
+    macos:
+      xcode: 16.2.0
+    resource_class: macos.m1.medium.gen1
+
+commands:
+  # === Setup Commands ===
+
+  setup-dependencies:
+    description: "Install system dependencies and docker-compose"
+    steps:
+      - run:
+          name: Install system dependencies
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y curl jq
+
+            # Install docker-compose v2.20.3 (compatible with CircleCI Docker version)
+            sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+            docker-compose --version
+
+  start-docker-services:
+    description: "Start Docker Compose services with proper setup"
+    parameters:
+      reason:
+        type: string
+        default: "Starting Docker services"
+    steps:
+      - run:
+          name: Start Docker services
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
+          command: |
+            echo "<< parameters.reason >>"
+
+            # Clean up any existing containers first
+            docker-compose -f docker-compose.yml down --remove-orphans || true
+            docker system prune -f || true
+
+            # Fix memory overcommit for Redis
+            sudo sysctl vm.overcommit_memory=1
+            echo "Set vm.overcommit_memory=1 for Redis"
+
+            # Create secrets files after cleanup, right before Docker startup
+            echo "Creating secrets files after cleanup:"
+            mkdir -p secrets
+            echo "placeholder" > secrets/lovejunk-api.txt
+            echo "placeholder" > secrets/lovejunk-secret.txt
+            echo "placeholder" > secrets/partner-key.txt
+            echo "placeholder" > secrets/partner-name.txt
+            echo "placeholder" > secrets/image-domain.txt
+            echo "Current working directory: $(pwd)"
+            ls -la secrets/
+
+            # Start services in detached mode (use base file only, not override)
+            docker-compose -f docker-compose.yml up -d
+
+            echo "Waiting for basic services to start..."
+            sleep 30
+
+            echo "Service status:"
+            docker-compose -f docker-compose.yml ps
+
+  clone-freegle-docker:
+    description: "Clone FreegleDocker and initialize submodules"
+    steps:
+      - run:
+          name: Clone FreegleDocker
+          command: |
+            git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+            cd ~/FreegleDocker
+            git submodule update --init --recursive
+
+  replace-submodule:
+    description: "Replace a submodule with PR code"
+    parameters:
+      submodule:
+        type: string
+        description: "Name of submodule directory (iznik-server, iznik-server-go, iznik-nuxt3)"
+      source:
+        type: string
+        default: "~/project"
+        description: "Path to PR code"
+    steps:
+      - run:
+          name: Replace << parameters.submodule >> with PR code
+          command: |
+            cd ~/FreegleDocker
+            rm -rf << parameters.submodule >>
+            cp -r << parameters.source >> << parameters.submodule >>
+
+  start-services:
+    description: "Create secrets and start Docker services"
+    steps:
+      - run:
+          name: Create secrets files
+          command: |
+            cd ~/FreegleDocker
+            mkdir -p secrets
+            echo "placeholder" > secrets/lovejunk-api.txt
+            echo "placeholder" > secrets/lovejunk-secret.txt
+            echo "placeholder" > secrets/partner-key.txt
+            echo "placeholder" > secrets/partner-name.txt
+            echo "placeholder" > secrets/image-domain.txt
+      - run:
+          name: Fix memory overcommit for Redis
+          command: sudo sysctl vm.overcommit_memory=1 || true
+      - run:
+          name: Start Docker services
+          command: |
+            cd ~/FreegleDocker
+            docker-compose -f docker-compose.yml up -d
+            echo "Waiting for basic services to start..."
+            sleep 30
+            echo "Service status:"
+            docker-compose -f docker-compose.yml ps
+
+  wait-for-basic-services:
+    description: "Wait for API v1 and v2 services to be healthy"
+    steps:
+      - run:
+          name: Wait for API services to be ready
+          command: |
+            # Support both FreegleDocker main build (~/project) and submodule tests (~/FreegleDocker)
+            if [ -d ~/FreegleDocker ]; then
+              cd ~/FreegleDocker
+            fi
+            echo "Waiting for API v1 and v2 services to be healthy..."
+
+            start_time=$(date +%s)
+            timeout_duration=600  # 10 minutes for basic services
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "❌ Timeout waiting for API services after 10 minutes"
+                docker-compose -f docker-compose.yml logs
+                exit 1
+              fi
+
+              # Check if status service is responding
+              if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
+                echo "✅ Status service is responding!"
+
+                # Get health status from status service
+                health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
+
+                # Check if API v1 and v2 are healthy
+                apiv1_status=$(echo "$health_response" | jq -r '.apiv1.status // "unknown"')
+                apiv2_status=$(echo "$health_response" | jq -r '.apiv2.status // "unknown"')
+
+                if [ "$apiv1_status" = "success" ] && [ "$apiv2_status" = "success" ]; then
+                  echo "✅ API v1 and v2 services are healthy!"
+                  break
+                else
+                  elapsed_min=$((elapsed / 60))
+                  echo "[${elapsed_min}m] API v1: $apiv1_status, API v2: $apiv2_status - waiting..."
+                fi
+              else
+                echo "Status service not yet responding..."
+              fi
+
+              sleep 10
+            done
+
+            echo "🎉 API services are ready!"
+          no_output_timeout: 15m
+
+  wait-for-prod-container:
+    description: "Wait for production containers to be healthy"
+    steps:
+      - run:
+          name: Wait for production containers to be healthy
+          command: |
+            # Support both FreegleDocker main build (~/project) and submodule tests (~/FreegleDocker)
+            if [ -d ~/FreegleDocker ]; then
+              cd ~/FreegleDocker
+            fi
+            echo "⏳ Waiting for production containers to be healthy..."
+            start_time=$(date +%s)
+            timeout_duration=1200  # 20 minutes
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "❌ Timeout waiting for production containers after 20 minutes"
+                exit 1
+              fi
+
+              # Check both prod containers health
+              health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
+              freegle_prod_status=$(echo "$health_response" | jq -r '.["freegle-prod"].status // "unknown"')
+              modtools_prod_status=$(echo "$health_response" | jq -r '.["modtools-prod"].status // "unknown"')
+
+              if [ "$freegle_prod_status" = "success" ] && [ "$modtools_prod_status" = "success" ]; then
+                echo "✅ Both production containers are healthy!"
+                break
+              else
+                elapsed_min=$((elapsed / 60))
+                echo "[${elapsed_min}m] Freegle Prod: $freegle_prod_status | ModTools Prod: $modtools_prod_status - waiting..."
+
+                # Show container logs if they're having issues
+                if [ "$freegle_prod_status" = "failed" ] || [ "$freegle_prod_status" = "error" ]; then
+                  echo "Freegle Production container logs (last 10 lines):"
+                  docker logs freegle-freegle-prod --tail 10 2>&1 || true
+                fi
+
+                if [ "$modtools_prod_status" = "failed" ] || [ "$modtools_prod_status" = "error" ]; then
+                  echo "ModTools Production container logs (last 10 lines):"
+                  docker logs freegle-modtools-prod --tail 10 2>&1 || true
+                fi
+
+                sleep 15
+              fi
+            done
+          no_output_timeout: 25m
+
+  # === Test Execution Commands ===
+
+  run-go-tests:
+    description: "Run Go tests in the API v2 container"
+    parameters:
+      reason:
+        type: string
+        default: "Running Go tests"
+    steps:
+      - run:
+          name: Run Go tests
+          command: |
+            # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
+            if [ -d ~/FreegleDocker ]; then
+              cd ~/FreegleDocker
+            fi
+            echo "🧪 << parameters.reason >>..."
+
+            # Set up test environment first
+            echo "Setting up test environment..."
+            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+
+            echo "Setting up Go-specific test data..."
+            # Copy Go test environment file from container to temp location
+            docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
+            # Fix the include path to work in the apiv1 container
+            sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
+            # Copy back to apiv1 container
+            docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
+            # Run Go test environment setup
+            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
+
+            echo "Running Go tests..."
+            docker-compose -f docker-compose.yml exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
+
+            echo "✅ Go tests passed!"
+            echo "GO_TESTS_PASSED=true" >> $BASH_ENV
+          no_output_timeout: 35m
+
+  run-php-tests:
+    description: "Run PHPUnit tests via the status service API"
+    parameters:
+      reason:
+        type: string
+        default: "Running PHPUnit tests"
+    steps:
+      - run:
+          name: Run PHPUnit tests
+          command: |
+            # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
+            if [ -d ~/FreegleDocker ]; then
+              cd ~/FreegleDocker
+            fi
+            echo "🐘 << parameters.reason >>..."
+
+            # Trigger tests via API
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+            http_code="${response: -3}"
+
+            if [ "$http_code" -ne "200" ]; then
+              echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
+              echo "Response: $response"
+              exit 1
+            fi
+
+            echo "✅ PHP tests triggered successfully"
+
+            # Monitor test progress with timeout
+            echo "📊 Monitoring PHP test progress..."
+            start_time=$(date +%s)
+            timeout_duration=2700  # 45 minutes
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "❌ PHP tests timed out after 45 minutes"
+                exit 1
+              fi
+
+              sleep 10
+              status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
+              status=$(echo "$status_response" | jq -r '.status // "unknown"')
+              message=$(echo "$status_response" | jq -r '.message // "No message"')
+
+              elapsed_min=$((elapsed / 60))
+              echo "[${elapsed_min}m] Status: $status"
+              echo "Message: $message"
+
+              if [ "$status" = "completed" ]; then
+                echo "🎉 PHP tests completed!"
+                echo "✅ PHPUnit tests passed!"
+                echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+                break
+              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                echo "❌ PHP tests failed!"
+                echo "Error details:"
+                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+
+                # Show the failure details from the PHPUnit debug log
+                echo ""
+                echo "Extracting failure details from PHPUnit output..."
+                docker exec freegle-apiv1 sh -c '
+                  if [ -f /tmp/phpunit-debug.log ]; then
+                    echo "=== TEST FAILURES ==="
+                    grep "##teamcity\[testFailed" /tmp/phpunit-debug.log | head -10 | while read -r line; do
+                      test_name=$(echo "$line" | sed "s/.*name='"'"'\([^'"'"']*\)'"'"'.*/\1/")
+                      message=$(echo "$line" | sed "s/.*message='"'"'\([^'"'"']*\)'"'"'.*/\1/")
+                      details=$(echo "$line" | sed "s/.*details='"'"'\([^'"'"']*\)'"'"'.*/\1/" | sed "s/|n/\n/g")
+                      if [ -n "$test_name" ]; then
+                        echo "❌ $test_name"
+                        [ -n "$message" ] && echo "   Message: $message"
+                        [ -n "$details" ] && echo "   Details: $details"
+                      fi
+                    done
+
+                    echo ""
+                    echo "=== TEST SUMMARY ==="
+                    tail -20 /tmp/phpunit-debug.log | grep -E "Tests:|FAILURES!|Skipped:" || echo "No summary found"
+                  else
+                    echo "Debug log not found"
+                  fi
+                ' || echo "Could not extract failure details"
+
+                echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+                exit 1
+              fi
+            done
+          no_output_timeout: 50m
+
+  run-playwright-tests:
+    description: "Run Playwright tests via the status service API"
+    parameters:
+      reason:
+        type: string
+        default: "Running Playwright tests"
+    steps:
+      - run:
+          name: Run Playwright tests
+          command: |
+            # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
+            if [ -d ~/FreegleDocker ]; then
+              cd ~/FreegleDocker
+            fi
+            echo "🎭 << parameters.reason >>..."
+
+            # Trigger tests via API
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
+            http_code="${response: -3}"
+
+            if [ "$http_code" -ne "200" ]; then
+              echo "❌ Failed to trigger Playwright tests. HTTP code: $http_code"
+              echo "Response: $response"
+              exit 1
+            fi
+
+            echo "✅ Playwright tests triggered successfully"
+
+            # Monitor test progress with timeout
+            echo "📊 Monitoring Playwright test progress..."
+            start_time=$(date +%s)
+            timeout_duration=2700  # 45 minutes
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "⏰ Playwright tests timed out after 45 minutes"
+                exit 1
+              fi
+
+              sleep 10
+
+              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+              status=$(echo "$status_response" | jq -r '.status // "unknown"')
+              message=$(echo "$status_response" | jq -r '.message // "No message"')
+              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
+              total=$(echo "$status_response" | jq -r '.totalTests // 0')
+
+              elapsed_min=$((elapsed / 60))
+              echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
+              echo "Message: $message"
+
+              if [ "$status" = "completed" ]; then
+                success=$(echo "$status_response" | jq -r '.success // false')
+                echo "🎉 Playwright tests completed! Success: $success"
+
+                if [ "$success" = "true" ]; then
+                  echo "✅ All Playwright tests passed!"
+                  echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
+                  break
+                else
+                  echo "❌ Some Playwright tests failed!"
+                  echo "Test logs:"
+                  echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                  echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
+                  exit 1
+                fi
+              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                echo "❌ Playwright tests failed to run!"
+                echo "Error details:"
+                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
+                exit 1
+              fi
+            done
+          no_output_timeout: 50m
+
+  # === Artifact Collection ===
+
+  collect-artifacts:
+    description: "Collect build artifacts and logs"
+    steps:
+      - run:
+          name: Collect artifacts
+          command: |
+            mkdir -p ~/artifacts
+
+            # Collect Docker logs
+            if docker-compose -f docker-compose.yml ps > /dev/null 2>&1; then
+              docker-compose -f docker-compose.yml logs > ~/artifacts/docker-logs.txt 2>&1 || true
+              docker-compose -f docker-compose.yml ps > ~/artifacts/docker-status.txt 2>&1 || true
+            fi
+
+            # Collect PHPUnit test output files
+            mkdir -p ~/artifacts/phpunit
+            docker cp freegle-apiv1:/tmp/phpunit-output.log ~/artifacts/phpunit/ 2>/dev/null || true
+            docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/ 2>/dev/null || true
+
+            # Collect Go test coverage
+            mkdir -p ~/artifacts/go
+            docker cp freegle-apiv2:/app/coverage.out ~/artifacts/go/ 2>/dev/null || true
+            docker cp freegle-apiv2:/app/coverage.html ~/artifacts/go/ 2>/dev/null || true
+
+            # Collect Playwright test artifacts
+            mkdir -p ~/artifacts/playwright
+            curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null || true
+            docker cp freegle-playwright:/app/test-results ~/artifacts/playwright/ 2>/dev/null || true
+            docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright/ 2>/dev/null || true
+
+            # Build info
+            echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
+            echo "Branch: $CIRCLE_BRANCH" >> ~/artifacts/build-info.txt
+            date >> ~/artifacts/build-info.txt
+          when: always
+      - store_artifacts:
+          path: ~/artifacts
+
+  upload-coverage:
+    description: "Upload coverage reports to Coveralls"
+    parameters:
+      expected:
+        type: string
+        default: ""
+        description: "Comma-separated list of expected coverage types (go,php,playwright). If specified, missing coverage is a failure."
+    steps:
+      - run:
+          name: Check coverage prerequisites
+          command: |
+            EXPECTED_COVERAGE="<< parameters.expected >>"
+            if [ -z "${COVERALLS_REPO_TOKEN}" ]; then
+              if [ -n "$EXPECTED_COVERAGE" ]; then
+                echo "❌ COVERALLS_REPO_TOKEN not set but coverage is expected: $EXPECTED_COVERAGE"
+                exit 1
+              fi
+              echo "⚠️ COVERALLS_REPO_TOKEN not set - skipping coverage upload"
+              echo "SKIP_COVERAGE=true" >> $BASH_ENV
+            else
+              npm install -g coveralls
+              echo "GO_UPLOADED=false" >> $BASH_ENV
+              echo "PHP_UPLOADED=false" >> $BASH_ENV
+              echo "PLAYWRIGHT_UPLOADED=false" >> $BASH_ENV
+            fi
+          when: always
+      - run:
+          name: Upload Go coverage
+          command: |
+            if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
+            if docker cp freegle-apiv2:/app/coverage.out iznik-server-go/coverage.out 2>/dev/null; then
+              echo "Found Go coverage..."
+              go install github.com/jandelgado/gcov2lcov@latest || true
+              if command -v gcov2lcov > /dev/null; then
+                cd iznik-server-go
+                if gcov2lcov -infile=coverage.out -outfile=coverage.lcov 2>&1 && [ -s coverage.lcov ]; then
+                  cd ..
+                  export COVERALLS_SERVICE_NAME="circleci"
+                  export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+                  if cat iznik-server-go/coverage.lcov | coveralls; then
+                    echo "✅ Go coverage uploaded"
+                    echo "GO_UPLOADED=true" >> $BASH_ENV
+                  fi
+                else
+                  cd ..
+                fi
+              fi
+            else
+              echo "ℹ️ No Go coverage found"
+            fi
+          when: always
+      - run:
+          name: Upload PHP coverage
+          command: |
+            if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
+            if docker cp freegle-apiv1:/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+              echo "Found PHP coverage..."
+              composer global require php-coveralls/php-coveralls 2>/dev/null || true
+              if [ -f ~/.composer/vendor/bin/php-coveralls ]; then
+                export COVERALLS_RUN_LOCALLY=1
+                echo "coverage_clover: /tmp/phpunit-clover.xml" > /tmp/.coveralls.yml
+                echo "service_name: circleci" >> /tmp/.coveralls.yml
+                cd /tmp
+                if ~/.composer/vendor/bin/php-coveralls -v --config .coveralls.yml; then
+                  echo "✅ PHP coverage uploaded"
+                  echo "PHP_UPLOADED=true" >> $BASH_ENV
+                fi
+                cd -
+              fi
+            else
+              echo "ℹ️ No PHP coverage found"
+            fi
+          when: always
+      - run:
+          name: Upload Playwright coverage
+          command: |
+            if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
+            LCOV_PATH=""
+            if docker cp freegle-playwright:/app/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+              LCOV_PATH="/tmp/playwright-coverage.lcov"
+            elif docker cp freegle-playwright:/app/monocart-report/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+              LCOV_PATH="/tmp/playwright-coverage.lcov"
+            fi
+            if [ -n "$LCOV_PATH" ]; then
+              echo "Found Playwright coverage..."
+              export COVERALLS_SERVICE_NAME="circleci"
+              export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+              if cat "$LCOV_PATH" | coveralls; then
+                echo "✅ Playwright coverage uploaded"
+                echo "PLAYWRIGHT_UPLOADED=true" >> $BASH_ENV
+              fi
+            else
+              echo "ℹ️ No Playwright coverage found"
+            fi
+          when: always
+      - run:
+          name: Validate expected coverage
+          command: |
+            if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
+            EXPECTED="<< parameters.expected >>"
+            if [ -z "$EXPECTED" ]; then exit 0; fi
+            echo "📋 Validating expected coverage: $EXPECTED"
+            MISSING=""
+            IFS=',' read -ra TYPES \<<< "$EXPECTED"
+            for t in "${TYPES[@]}"; do
+              t=$(echo "$t" | xargs)
+              case "$t" in
+                go) [ "$GO_UPLOADED" != "true" ] && MISSING="$MISSING go" ;;
+                php) [ "$PHP_UPLOADED" != "true" ] && MISSING="$MISSING php" ;;
+                playwright) [ "$PLAYWRIGHT_UPLOADED" != "true" ] && MISSING="$MISSING playwright" ;;
+              esac
+            done
+            if [ -n "$MISSING" ]; then
+              echo "❌ Missing expected coverage:$MISSING"
+              exit 1
+            fi
+            echo "✅ All expected coverage uploaded"
+          when: always
+
+  # === App Build Commands ===
+
+  setup-android-fastlane:
+    description: "Install Ruby, Bundler, and Fastlane for Android builds"
+    steps:
+      - run:
+          name: Install Ruby and Bundler
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y ruby-full
+            sudo gem install bundler
+      - run:
+          name: Install Fastlane
+          command: |
+            bundle config set --local path 'vendor/bundle'
+            bundle update fastlane
+            bundle install
+      - run:
+          name: Decode Google Play JSON Key
+          command: |
+            echo "🔐 Decoding Google Play JSON Key..."
+
+            if [ -z "$GOOGLE_PLAY_JSON_KEY" ]; then
+              echo "❌ CRITICAL: GOOGLE_PLAY_JSON_KEY environment variable is not set"
+              exit 1
+            fi
+
+            echo $GOOGLE_PLAY_JSON_KEY | base64 -d > fastlane/google-play-api-key.json
+
+            if [ ! -f fastlane/google-play-api-key.json ]; then
+              echo "❌ CRITICAL: Failed to create google-play-api-key.json"
+              exit 1
+            fi
+
+            FILE_SIZE=$(wc -c < fastlane/google-play-api-key.json)
+            echo "✅ File created: $FILE_SIZE bytes"
+
+            if [ "$FILE_SIZE" -eq 0 ]; then
+              echo "❌ CRITICAL: google-play-api-key.json is empty"
+              exit 1
+            fi
+
+            if python3 -m json.tool fastlane/google-play-api-key.json > /dev/null 2>&1; then
+              echo "✅ Valid JSON structure"
+              echo "📧 Service Account: $(python3 -c "import json; print(json.load(open('fastlane/google-play-api-key.json'))['client_email'])")"
+            else
+              echo "❌ CRITICAL: Invalid JSON - Google Play API will not work!"
+              exit 1
+            fi
+
+            echo "✅ Google Play JSON Key validated successfully"
+
+jobs:
+  # === Submodule PR Test Jobs ===
+
+  php-tests:
+    executor: machine-executor
+    steps:
+      - checkout
+      - clone-freegle-docker
+      - replace-submodule:
+          submodule: "iznik-server"
+      - start-services
+      - wait-for-basic-services
+      - run-php-tests:
+          reason: "Running PHPUnit tests for PR"
+      - collect-artifacts
+      - upload-coverage:
+          expected: "php"
+
+  go-tests:
+    executor: machine-executor
+    steps:
+      - checkout
+      - clone-freegle-docker
+      - replace-submodule:
+          submodule: "iznik-server-go"
+      - start-services
+      - wait-for-basic-services
+      - run-go-tests:
+          reason: "Running Go tests for PR"
+      - collect-artifacts
+      - upload-coverage:
+          expected: "go"
+
+  playwright-tests:
+    executor: machine-executor
+    steps:
+      - checkout
+      - clone-freegle-docker
+      - replace-submodule:
+          submodule: "iznik-nuxt3"
+      - start-services
+      - wait-for-basic-services
+      - wait-for-prod-container
+      - run-playwright-tests:
+          reason: "Running Playwright tests for PR"
+      - collect-artifacts
+      - upload-coverage:
+          expected: "playwright"
+
+  # === FreegleDocker Main Build Job ===
+
+  build-and-test:
+    executor: machine-executor
+    steps:
+      - checkout
+
+      - run:
+          name: Check if only plans or yesterday files changed
+          command: |
+            if [ "$CIRCLE_BRANCH" = "master" ]; then
+              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+            else
+              CHANGED_FILES=$(git diff --name-only origin/master...HEAD)
+            fi
+
+            if [ -n "$CHANGED_FILES" ]; then
+              NON_SKIPPABLE_FILES=$(echo "$CHANGED_FILES" | grep -v -E '^(plans/|yesterday/)' || true)
+              if [ -z "$NON_SKIPPABLE_FILES" ]; then
+                echo "Only plans/ or yesterday/ files were changed. Skipping build."
+                circleci-agent step halt
+              fi
+            fi
+
+      - run:
+          name: Check if only submodule changes to feature branches
+          command: |
+            if [ "$CIRCLE_BRANCH" = "master" ]; then
+              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+            else
+              CHANGED_FILES=$(git diff --name-only origin/master...HEAD)
+            fi
+
+            if [ -n "$CHANGED_FILES" ]; then
+              SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(iznik-nuxt3|iznik-nuxt3-modtools|iznik-server|iznik-server-go)$' || true)
+              NON_SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -v -E '^(iznik-nuxt3|iznik-nuxt3-modtools|iznik-server|iznik-server-go)$' || true)
+
+              if [ -n "$SUBMODULE_CHANGES" ] && [ -z "$NON_SUBMODULE_CHANGES" ]; then
+                git submodule init
+                git submodule update --recursive
+
+                for submodule_path in $SUBMODULE_CHANGES; do
+                  if [ -d "$submodule_path" ]; then
+                    current_branch=$(cd "$submodule_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")
+                    if [ "$current_branch" = "HEAD" ]; then
+                      current_commit=$(cd "$submodule_path" && git rev-parse HEAD)
+                      current_branch=$(cd "$submodule_path" && git branch -r --contains "$current_commit" | grep -v HEAD | grep -E 'origin/(master|main|modtools)' | head -1 | sed 's/.*origin\///' | xargs || echo "")
+                    fi
+
+                    if [ "$current_branch" != "master" ] && [ "$current_branch" != "main" ] && [ "$current_branch" != "modtools" ]; then
+                      echo "⏭️ Submodule $submodule_path points to feature branch. Skipping build."
+                      circleci-agent step halt
+                    fi
+                  fi
+                done
+              fi
+            fi
+
+      - run:
+          name: Initialize and update git submodules
+          command: |
+            git submodule init
+            git submodule update --recursive
+            git submodule status
+
+      - setup-dependencies
+
+      - start-docker-services:
+          reason: "Starting all Docker services"
+
+      - wait-for-basic-services
+
+      - run-go-tests:
+          reason: "Running Go tests immediately after API services start"
+
+      - run-php-tests:
+          reason: "Running PHPUnit tests after Go tests complete"
+
+      - wait-for-prod-container
+
+      - run-playwright-tests:
+          reason: "Running Playwright tests after production container is healthy"
+
+      - collect-artifacts
+
+      - upload-coverage:
+          expected: "go,php,playwright"
+
+      - run:
+          name: Evaluate overall test results
+          command: |
+            echo "=== Overall Test Results ==="
+
+            if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+              echo "✅ All tests passed successfully!"
+              echo "ALL_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "❌ Not all tests passed"
+              exit 1
+            fi
+          when: always
+
+      - run:
+          name: Auto-merge master to production
+          command: |
+            if [ "$ALL_TESTS_PASSED" != "true" ]; then
+              echo "⏭️ Skipping auto-merge: not all tests passed"
+              exit 0
+            fi
+
+            if [ "$CIRCLE_BRANCH" != "master" ]; then
+              echo "⏭️ Skipping auto-merge: not on master branch"
+              exit 0
+            fi
+
+            echo "🔀 Auto-merging master to production in iznik-nuxt3..."
+
+            git config --global user.email "circleci@freegle.org"
+            git config --global user.name "CircleCI Auto-merge"
+
+            cd iznik-nuxt3
+            git fetch origin master:master
+            git fetch origin production:production
+            git checkout production
+
+            MASTER_COMMIT_MSG=$(git log master -1 --pretty=%B | head -n 1)
+
+            if git merge master -m "Auto-merge master to production after successful tests - Original commit: $MASTER_COMMIT_MSG"; then
+              if git push origin production; then
+                echo "🎉 Successfully pushed merged changes to production!"
+              else
+                echo "❌ Failed to push to production branch"
+                exit 1
+              fi
+            else
+              echo "❌ Merge failed - conflicts detected"
+              git merge --abort
+              exit 1
+            fi
+
+  # === App Build Jobs ===
+
+  increment-version:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - run:
+          name: Increment Version Number
+          command: |
+            CURRENT_VERSION="${CURRENT_VERSION:-3.2.37}"
+            echo "Current version: $CURRENT_VERSION"
+            major=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+            minor=$(echo "$CURRENT_VERSION" | cut -d. -f2)
+            patch=$(echo "$CURRENT_VERSION" | cut -d. -f3)
+            NEW_PATCH=$((patch + 1))
+            NEW_VERSION="$major.$minor.$NEW_PATCH"
+            echo "New version: $NEW_VERSION"
+            echo "$NEW_VERSION" > .new_version
+            cat .new_version
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .new_version
+
+  build-android-debug:
+    executor: android-executor
+    steps:
+      - checkout
+      - run:
+          name: Install Node.js 22
+          command: |
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+      - run:
+          name: Verify Node.js and npm versions
+          command: |
+            node --version
+            npm --version
+      - restore_cache:
+          keys:
+            - npm-deps-v1-{{ checksum "package-lock.json" }}
+            - npm-deps-v1-
+      - run:
+          name: Install Node.js Dependencies
+          command: npm ci
+      - save_cache:
+          key: npm-deps-v1-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+      - run:
+          name: Build Nuxt App (Debug)
+          command: |
+            export ISAPP=true
+            export APP_ENV=development
+            echo "🔧 Building debug version for master branch"
+            npm run generate
+      - run:
+          name: Setup Firebase Configuration
+          command: |
+            if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+              echo "Decoding google-services.json from environment variable"
+              echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+              if [ -f android/app/google-services.json ]; then
+                FILE_SIZE=$(wc -c < android/app/google-services.json)
+                echo "✅ File created: $FILE_SIZE bytes"
+                if python3 -m json.tool android/app/google-services.json > /dev/null 2>&1; then
+                  echo "✅ Valid JSON structure"
+                  echo "📱 Project ID: $(python3 -c "import json; print(json.load(open('android/app/google-services.json'))['project_info']['project_id'])")"
+                else
+                  echo "❌ ERROR: Invalid JSON - Firebase will not work!"
+                  exit 1
+                fi
+              else
+                echo "❌ ERROR: File was not created!"
+                exit 1
+              fi
+            else
+              echo "⚠️  GOOGLE_SERVICES_JSON_BASE64 not set - Push notifications will not work"
+            fi
+      - run:
+          name: Sync Capacitor to Android
+          command: npx cap sync android
+      - run:
+          name: Make gradlew executable
+          command: chmod +x android/gradlew
+      - run:
+          name: Create Debug Keystore
+          command: |
+            mkdir -p ~/.android
+            if [ ! -f ~/.android/debug.keystore ]; then
+              echo "Creating debug keystore..."
+              keytool -genkey -v \
+                -keystore ~/.android/debug.keystore \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+              echo "✅ Debug keystore created"
+            else
+              echo "✅ Debug keystore already exists"
+            fi
+      - run:
+          name: Build Debug APK
+          command: |
+            cd android
+            ./gradlew assembleDebug --stacktrace
+            echo "✅ Debug APK built successfully"
+            echo ""
+            echo "📋 APK Info:"
+            ls -lh app/build/outputs/apk/debug/
+      - store_artifacts:
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          destination: freegle-debug.apk
+      - run:
+          name: Build Complete
+          command: |
+            echo "🎉 Debug build complete!"
+            echo "📱 Download APK from CircleCI artifacts tab"
+
+  build-android:
+    executor: android-executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install Node.js 22
+          command: |
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+      - run:
+          name: Verify Node.js and npm versions
+          command: |
+            node --version
+            npm --version
+      - restore_cache:
+          keys:
+            - npm-deps-v1-{{ checksum "package-lock.json" }}
+            - npm-deps-v1-
+      - run:
+          name: Install Node.js Dependencies
+          command: npm ci
+      - save_cache:
+          key: npm-deps-v1-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+      - run:
+          name: Update Mobile Version in config.js
+          command: |
+            if [ ! -f .new_version ]; then
+              echo "❌ ERROR: Version file not found at .new_version"
+              exit 1
+            fi
+            NEW_VERSION=$(cat .new_version)
+            echo "📱 Using version from workspace: $NEW_VERSION"
+            if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "❌ ERROR: Invalid version format '$NEW_VERSION'. Expected format: X.Y.Z"
+              exit 1
+            fi
+            sed -i "s/MOBILE_VERSION: '[0-9]*\.[0-9]*\.[0-9]*'/MOBILE_VERSION: '$NEW_VERSION'/" config.js
+            if grep -q "MOBILE_VERSION: '$NEW_VERSION'" config.js; then
+              echo "✅ Successfully updated config.js with version $NEW_VERSION"
+              grep "MOBILE_VERSION:" config.js
+            else
+              echo "❌ ERROR: Failed to update config.js"
+              exit 1
+            fi
+      - run:
+          name: Build Nuxt App
+          command: |
+            export ISAPP=true
+            export APP_ENV=production
+            if [ -n "$SENTRY_DSN_APP_FD" ]; then
+              export SENTRY_DSN="$SENTRY_DSN_APP_FD"
+              echo "✅ Using app-specific Sentry DSN for error tracking"
+            else
+              echo "⚠️  SENTRY_DSN_APP_FD not set - app will use default Sentry DSN"
+            fi
+            npm run generate
+      - run:
+          name: Setup Firebase Configuration
+          command: |
+            if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+              echo "Decoding google-services.json from environment variable"
+              echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+              if [ -f android/app/google-services.json ]; then
+                FILE_SIZE=$(wc -c < android/app/google-services.json)
+                echo "✅ File created: $FILE_SIZE bytes"
+                if python3 -m json.tool android/app/google-services.json > /dev/null 2>&1; then
+                  echo "✅ Valid JSON structure"
+                  echo "📱 Project ID: $(python3 -c "import json; print(json.load(open('android/app/google-services.json'))['project_info']['project_id'])")"
+                else
+                  echo "❌ ERROR: Invalid JSON - Firebase will not work!"
+                  exit 1
+                fi
+              else
+                echo "❌ ERROR: File was not created!"
+                exit 1
+              fi
+            else
+              echo "⚠️  GOOGLE_SERVICES_JSON_BASE64 not set - Push notifications will not work"
+            fi
+      - run:
+          name: Sync Capacitor to Android
+          command: npx cap sync android
+      - run:
+          name: Make gradlew executable
+          command: chmod +x android/gradlew
+      - restore_cache:
+          keys:
+            - bundle-v1-{{ checksum "Gemfile.lock" }}
+            - bundle-v1-
+      - setup-android-fastlane
+      - save_cache:
+          key: bundle-v1-{{ checksum "Gemfile.lock" }}
+          paths:
+            - vendor/bundle
+      - run:
+          name: Build and Deploy to Google Play Beta Track
+          command: bundle exec fastlane android beta
+      - run:
+          name: Update CircleCI Version Variable
+          command: |
+            if [ ! -f .new_version ]; then
+              echo "⚠️  .new_version file not found - skipping version update"
+              exit 0
+            fi
+            NEW_VERSION=$(cat .new_version)
+            echo "📝 Updating CircleCI CURRENT_VERSION to: ${NEW_VERSION}"
+            curl -X DELETE \
+              -H "Circle-Token: ${CIRCLECI_API_TOKEN}" \
+              "https://circleci.com/api/v2/project/gh/Freegle/iznik-nuxt3/envvar/CURRENT_VERSION"
+            curl -X POST \
+              -H "Circle-Token: ${CIRCLECI_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"CURRENT_VERSION\",\"value\":\"${NEW_VERSION}\"}" \
+              "https://circleci.com/api/v2/project/gh/Freegle/iznik-nuxt3/envvar"
+            echo "✅ Updated CURRENT_VERSION to ${NEW_VERSION}"
+      - store_artifacts:
+          path: android/app/build/outputs/bundle/release/
+          destination: android-bundle
+      - store_artifacts:
+          path: android/app/build/outputs/apk/release/
+          destination: android-apk
+
+  build-ios:
+    executor: macos-executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install Node.js 22
+          command: |
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm install 22
+            nvm use 22
+            nvm alias default 22
+            echo 'export NVM_DIR="$HOME/.nvm"' >> $BASH_ENV
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> $BASH_ENV
+      - run:
+          name: Verify Node.js and npm versions
+          command: |
+            node --version
+            npm --version
+      - run:
+          name: Install Node.js Dependencies
+          command: npm ci
+      - run:
+          name: Update Mobile Version in config.js
+          command: |
+            if [ ! -f .new_version ]; then
+              echo "❌ ERROR: Version file not found at .new_version"
+              exit 1
+            fi
+            NEW_VERSION=$(cat .new_version)
+            echo "📱 Using version from workspace: $NEW_VERSION"
+            if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "❌ ERROR: Invalid version format '$NEW_VERSION'. Expected format: X.Y.Z"
+              exit 1
+            fi
+            sed -i '' "s/MOBILE_VERSION: '[0-9]*\.[0-9]*\.[0-9]*'/MOBILE_VERSION: '$NEW_VERSION'/" config.js
+            if grep -q "MOBILE_VERSION: '$NEW_VERSION'" config.js; then
+              echo "✅ Successfully updated config.js with version $NEW_VERSION"
+              grep "MOBILE_VERSION:" config.js
+            else
+              echo "❌ ERROR: Failed to update config.js"
+              exit 1
+            fi
+      - run:
+          name: Build Nuxt App
+          command: |
+            export ISAPP=true
+            export APP_ENV=production
+            if [ -n "$SENTRY_DSN_APP_FD" ]; then
+              export SENTRY_DSN="$SENTRY_DSN_APP_FD"
+              echo "✅ Using app-specific Sentry DSN for error tracking"
+            else
+              echo "⚠️  SENTRY_DSN_APP_FD not set - app will use default Sentry DSN"
+            fi
+            npm run generate
+      - run:
+          name: Sync Capacitor to iOS
+          command: npx cap sync ios
+      - run:
+          name: Setup Firebase Configuration for iOS
+          command: |
+            if [ -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
+              echo "Decoding GoogleService-Info.plist from environment variable"
+              echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > ios/App/App/GoogleService-Info.plist
+              if [ -f ios/App/App/GoogleService-Info.plist ]; then
+                echo "✅ GoogleService-Info.plist successfully created"
+                ls -lh ios/App/App/GoogleService-Info.plist
+              else
+                echo "❌ Failed to create GoogleService-Info.plist"
+                exit 1
+              fi
+            else
+              echo "❌ GOOGLE_SERVICE_INFO_PLIST_BASE64 environment variable not set"
+              exit 1
+            fi
+      - run:
+          name: Install Fastlane
+          command: |
+            bundle config set --local path 'vendor/bundle'
+            bundle update fastlane
+            bundle install
+      - run:
+          name: Setup iOS Certificates
+          command: |
+            mkdir -p ~/certificates
+            echo "$IOS_DISTRIBUTION_CERT" | base64 --decode > ~/certificates/ios_distribution.p12
+            echo "$IOS_PROVISIONING_PROFILE" | base64 --decode > ~/certificates/ios_appstore.mobileprovision
+            KEYCHAIN_PATH=~/Library/Keychains/temp.keychain-db
+            KEYCHAIN_PASSWORD=circleci
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security default-keychain -s "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -t 3600 -u "$KEYCHAIN_PATH"
+            echo "export IOS_CERTIFICATE_PATH=~/certificates/ios_distribution.p12" >> $BASH_ENV
+            echo "export IOS_PROVISIONING_PROFILE_PATH=~/certificates/ios_appstore.mobileprovision" >> $BASH_ENV
+            echo "export KEYCHAIN_NAME=$KEYCHAIN_PATH" >> $BASH_ENV
+            echo "export KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $BASH_ENV
+      - run:
+          name: Build and Deploy to TestFlight
+          command: |
+            export TERM=xterm-256color
+            bundle exec fastlane ios beta
+          no_output_timeout: 30m
+      - run:
+          name: Update CircleCI Version Variable
+          command: |
+            if [ ! -f .new_version ]; then
+              echo "⚠️  .new_version file not found - skipping version update"
+              exit 0
+            fi
+            NEW_VERSION=$(cat .new_version)
+            echo "📝 Updating CircleCI CURRENT_VERSION to: ${NEW_VERSION}"
+            curl -X DELETE \
+              -H "Circle-Token: ${CIRCLECI_API_TOKEN}" \
+              "https://circleci.com/api/v2/project/gh/Freegle/iznik-nuxt3/envvar/CURRENT_VERSION"
+            curl -X POST \
+              -H "Circle-Token: ${CIRCLECI_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"CURRENT_VERSION\",\"value\":\"${NEW_VERSION}\"}" \
+              "https://circleci.com/api/v2/project/gh/Freegle/iznik-nuxt3/envvar"
+            echo "✅ Updated CURRENT_VERSION to ${NEW_VERSION}"
+      - store_artifacts:
+          path: build/
+          destination: ios-build
+
+  auto-promote-production:
+    executor: android-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - bundle-v1-{{ checksum "Gemfile.lock" }}
+            - bundle-v1-
+      - setup-android-fastlane
+      - run:
+          name: Auto-promote Beta to Production
+          command: bundle exec fastlane android auto_promote
+
+  auto-submit-ios:
+    executor: macos-executor
+    steps:
+      - checkout
+      - run:
+          name: Install Node.js 22
+          command: |
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm install 22
+            nvm use 22
+            nvm alias default 22
+            echo 'export NVM_DIR="$HOME/.nvm"' >> $BASH_ENV
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> $BASH_ENV
+      - run:
+          name: Install Fastlane
+          command: |
+            gem install bundler
+            bundle update fastlane
+            bundle install
+      - run:
+          name: Auto-submit Latest TestFlight Build to App Store Review
+          command: bundle exec fastlane ios auto_submit
+
+  auto-release-ios:
+    executor: macos-executor
+    steps:
+      - checkout
+      - run:
+          name: Install Node.js 22
+          command: |
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm install 22
+            nvm use 22
+            nvm alias default 22
+            echo 'export NVM_DIR="$HOME/.nvm"' >> $BASH_ENV
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> $BASH_ENV
+      - run:
+          name: Install Fastlane
+          command: |
+            gem install bundler
+            bundle update fastlane
+            bundle install
+      - run:
+          name: Auto-release Apps from Pending Developer Release
+          command: bundle exec fastlane ios auto_release
