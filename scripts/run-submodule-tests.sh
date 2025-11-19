@@ -1,6 +1,11 @@
 #!/bin/bash
 # Run tests for a specific submodule using the FreegleDocker environment
 # Usage: ./scripts/run-submodule-tests.sh <php|go|playwright> <path-to-pr-code>
+#
+# This script mirrors the build-and-test flow in .circleci/config.yml
+# The only differences are:
+#   a) We replace the submodule with PR code
+#   b) We only run the relevant test type
 
 set -e
 
@@ -37,7 +42,8 @@ echo "Replacing $SUBMODULE_DIR with PR code..."
 rm -rf "$SUBMODULE_DIR"
 cp -r "$PR_CODE_PATH" "$SUBMODULE_DIR"
 
-# Create secrets files (same as FreegleDocker CI)
+# === start-services (from .circleci/config.yml) ===
+# Create secrets files
 echo "Creating secrets files..."
 mkdir -p secrets
 echo "placeholder" > secrets/lovejunk-api.txt
@@ -53,17 +59,21 @@ sudo sysctl vm.overcommit_memory=1 || true
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
-# Start all Docker services (same as full FreegleDocker CI)
+# Start services in detached mode (use base file only, not override)
 echo "Starting Docker services..."
 docker-compose -f docker-compose.yml up -d
 
-echo "Waiting for services to start..."
+echo "Waiting for basic services to start..."
 sleep 30
 
-# Wait for status service and API services to be healthy (same as FreegleDocker CI)
+echo "Service status:"
+docker-compose -f docker-compose.yml ps
+
+# === wait-for-basic-services (from .circleci/config.yml) ===
 echo "Waiting for API v1 and v2 services to be healthy..."
+
 start_time=$(date +%s)
-timeout_duration=600
+timeout_duration=600  # 10 minutes for basic services
 
 while true; do
     current_time=$(date +%s)
@@ -102,6 +112,52 @@ done
 
 echo "🎉 API services are ready!"
 
-# Run tests using shared script
+# === Run tests (same as .circleci/config.yml) ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/run-tests.sh" "$TEST_TYPE"
+chmod +x "$SCRIPT_DIR/run-tests.sh"
+
+case $TEST_TYPE in
+    go)
+        echo "🧪 Running Go tests..."
+        "$SCRIPT_DIR/run-tests.sh" go
+        ;;
+    php)
+        echo "🐘 Running PHPUnit tests..."
+        "$SCRIPT_DIR/run-tests.sh" php
+        ;;
+    playwright)
+        # === wait-for-prod-container (from .circleci/config.yml) ===
+        echo "⏳ Waiting for production containers to be healthy..."
+        start_time=$(date +%s)
+        timeout_duration=1200  # 20 minutes
+
+        while true; do
+            current_time=$(date +%s)
+            elapsed=$((current_time - start_time))
+
+            if [ $elapsed -gt $timeout_duration ]; then
+                echo "❌ Timeout waiting for production containers after 20 minutes"
+                exit 1
+            fi
+
+            # Check both prod containers health
+            health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
+            freegle_prod_status=$(echo "$health_response" | jq -r '.["freegle-prod"].status // "unknown"')
+            modtools_prod_status=$(echo "$health_response" | jq -r '.["modtools-prod"].status // "unknown"')
+
+            if [ "$freegle_prod_status" = "success" ] && [ "$modtools_prod_status" = "success" ]; then
+                echo "✅ Both production containers are healthy!"
+                break
+            else
+                elapsed_min=$((elapsed / 60))
+                echo "[${elapsed_min}m] Freegle Prod: $freegle_prod_status | ModTools Prod: $modtools_prod_status - waiting..."
+                sleep 15
+            fi
+        done
+
+        echo "🎭 Running Playwright tests..."
+        "$SCRIPT_DIR/run-tests.sh" playwright
+        ;;
+esac
+
+echo "=== Tests completed successfully ==="
