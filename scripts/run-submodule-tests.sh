@@ -60,8 +60,8 @@ if [ "$TEST_TYPE" = "playwright" ]; then
     REQUIRED_SERVICES="percona redis apiv1 apiv2 freegle-prod traefik"
 else
     # PHP and Go tests need the API services plus postgres (for spatial queries) and spamassassin
-    docker-compose -f docker-compose.yml up -d percona redis postgres beanstalkd spamassassin apiv1 apiv2 2>&1 | grep -v "WARN\|variable is not set"
-    REQUIRED_SERVICES="percona redis postgres beanstalkd spamassassin apiv1 apiv2"
+    docker-compose -f docker-compose.yml up -d percona redis postgres beanstalkd spamassassin-app apiv1 apiv2 2>&1 | grep -v "WARN\|variable is not set"
+    REQUIRED_SERVICES="percona redis postgres beanstalkd spamassassin-app apiv1 apiv2"
 fi
 
 echo "Waiting for services to start..."
