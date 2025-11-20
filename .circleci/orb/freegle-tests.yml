@@ -92,7 +92,7 @@ commands:
           command: |
             git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
             cd "$HOME/FreegleDocker"
-            git submodule update --init --recursive
+            git submodule update --init --recursive --remote
 
   replace-submodule:
     description: "Replace a submodule with PR code"
