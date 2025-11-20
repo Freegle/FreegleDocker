@@ -63,7 +63,11 @@ case $TEST_TYPE in
                 # Show the failure details from the PHPUnit debug log
                 echo ""
                 echo "Extracting failure details from PHPUnit output..."
-                docker exec freegle-apiv1 sh -c '
+                APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>/dev/null)
+                if [ -z "$APIV1_CONTAINER" ]; then
+                    echo "Could not find apiv1 container"
+                else
+                    docker exec "$APIV1_CONTAINER" sh -c '
                   if [ -f /tmp/phpunit-debug.log ]; then
                     echo "=== TEST FAILURES ==="
                     grep "##teamcity\[testFailed" /tmp/phpunit-debug.log | head -10 | while read -r line; do
@@ -84,6 +88,7 @@ case $TEST_TYPE in
                     echo "Debug log not found"
                   fi
                 ' || echo "Could not extract failure details"
+                fi
 
                 exit 1
             fi
