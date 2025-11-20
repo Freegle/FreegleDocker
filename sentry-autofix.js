@@ -894,12 +894,42 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
             const newCode = change.new;
 
             if (!fileContent.includes(oldCode)) {
-              console.warn(`⚠ Could not find exact match for old code in ${fileChange.path} at lines ${change.lines}`);
-              console.warn(`Looking for:\n${oldCode}`);
-              throw new Error(`Could not find exact code to replace in ${fileChange.path}`);
+              // Exact match failed - try fuzzy matching with normalized whitespace
+              const normalizeCode = (code) => {
+                return code
+                  .replace(/\s+/g, ' ')  // Normalize whitespace
+                  .replace(/\s*([{}();,])\s*/g, '$1')  // Remove spaces around punctuation
+                  .trim();
+              };
+
+              const normalizedOld = normalizeCode(oldCode);
+              const lines = fileContent.split('\n');
+              let foundMatch = false;
+
+              // Try to find a fuzzy match by checking each possible line range
+              for (let i = 0; i < lines.length; i++) {
+                const oldLineCount = oldCode.split('\n').length;
+                const potentialMatch = lines.slice(i, i + oldLineCount).join('\n');
+
+                if (normalizeCode(potentialMatch) === normalizedOld) {
+                  // Found a fuzzy match - use the actual code from the file
+                  console.log(`  ⚠ Using fuzzy match at lines ${i+1}-${i+oldLineCount} (whitespace/formatting differs)`);
+                  fileContent = fileContent.replace(potentialMatch, newCode);
+                  foundMatch = true;
+                  break;
+                }
+              }
+
+              if (!foundMatch) {
+                console.warn(`⚠ Could not find exact or fuzzy match for old code in ${fileChange.path} at lines ${change.lines}`);
+                console.warn(`Looking for:\n${oldCode}`);
+                throw new Error(`Could not find exact code to replace in ${fileChange.path}`);
+              }
+            } else {
+              // Exact match found
+              fileContent = fileContent.replace(oldCode, newCode);
             }
 
-            fileContent = fileContent.replace(oldCode, newCode);
             console.log(`  ✓ Applied change at lines ${change.lines}`);
           }
         }
