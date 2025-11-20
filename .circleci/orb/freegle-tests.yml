@@ -631,8 +631,20 @@ commands:
             fi
             # Get container ID using docker-compose
             APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>/dev/null)
+            COVERAGE_FOUND=false
+
+            # Try the standard test path first (used by PR tests)
             if [ -n "$APIV1_CONTAINER" ] && docker cp "$APIV1_CONTAINER":/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
-              echo "Found PHP coverage..."
+              COVERAGE_FOUND=true
+              echo "Found PHP coverage at /var/www/iznik/test/ut/php/clover.xml"
+            # Also try /tmp/phpunit-coverage.xml (used by status service when running via API)
+            elif [ -n "$APIV1_CONTAINER" ] && docker cp "$APIV1_CONTAINER":/tmp/phpunit-coverage.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+              COVERAGE_FOUND=true
+              echo "Found PHP coverage at /tmp/phpunit-coverage.xml"
+            fi
+
+            if [ "$COVERAGE_FOUND" = "true" ]; then
+              echo "Processing PHP coverage..."
               composer global require php-coveralls/php-coveralls 2>/dev/null || true
               if [ -f ~/.composer/vendor/bin/php-coveralls ]; then
                 export COVERALLS_RUN_LOCALLY=1
@@ -658,7 +670,7 @@ commands:
                 fi
               fi
             else
-              echo "ℹ️ No PHP coverage found"
+              echo "ℹ️ No PHP coverage found at either location"
             fi
           when: always
       - run:
