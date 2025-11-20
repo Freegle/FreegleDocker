@@ -62,22 +62,25 @@ Each submodule has its own CircleCI configuration that runs tests on pull reques
 2. CircleCI clones FreegleDocker and initializes submodules
 3. PR code replaces the submodule directory
 4. Docker Compose services are started
-5. Tests run using the central `scripts/run-submodule-tests.sh` script
+5. Tests run via the status container API endpoints
 6. Results are reported back to the PR
 
-### Test Script
+### Test Execution
 
-The `scripts/run-submodule-tests.sh` script centralizes test execution:
+Tests are executed via the status container's API endpoints:
 
 ```bash
-# Usage
-./scripts/run-submodule-tests.sh <php|go|playwright> <path-to-pr-code>
+# PHPUnit tests
+curl -X POST http://localhost:8081/api/tests/php
 
-# Examples
-./scripts/run-submodule-tests.sh php ./iznik-server      # PHPUnit tests
-./scripts/run-submodule-tests.sh go ./iznik-server-go   # Go tests
-./scripts/run-submodule-tests.sh playwright ./iznik-nuxt3  # Playwright tests
+# Go tests
+curl -X POST http://localhost:8081/api/tests/go
+
+# Playwright tests
+curl -X POST http://localhost:8081/api/tests/playwright
 ```
+
+The status container provides a unified API for test execution across all submodules, making it easy to integrate with CircleCI or run tests manually.
 
 ## Webhook Integration Status
 
