@@ -916,6 +916,13 @@ jobs:
             git submodule update --recursive
             git submodule status
 
+            # Checkout the configured branch for iznik-nuxt3-modtools
+            cd iznik-nuxt3-modtools
+            BRANCH=$(git config -f ../.gitmodules submodule.iznik-nuxt3-modtools.branch || echo master)
+            echo "Checking out iznik-nuxt3-modtools branch: $BRANCH"
+            git checkout $BRANCH
+            cd ..
+
       - setup-dependencies
 
       - start-docker-services:
