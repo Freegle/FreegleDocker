@@ -869,73 +869,77 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
         });
       }
 
-      // Apply the fix
-      console.log("Applying fix...");
-      for (const fileChange of analysis.fixFiles) {
-        // Normalize the path - remove any duplicate repo name prefix
-        // (Claude sometimes includes the repo name in the path)
-        let normalizedPath = fileChange.path;
-        const repoName = path.basename(project.repoPath);
-        if (normalizedPath.startsWith(repoName + '/') || normalizedPath.startsWith(repoName + '\\')) {
-          normalizedPath = normalizedPath.substring(repoName.length + 1);
-        }
+      // Apply the fix using Claude Code Task agent
+      console.log("🤖 Using Task agent to apply fix...");
 
-        const filePath = path.join(project.repoPath, normalizedPath);
+      const fixPrompt = `You are applying a fix for a Sentry production error.
 
-        if (!fs.existsSync(filePath)) {
-          throw new Error(`File not found: ${filePath}`);
-        }
+**Root Cause:** ${analysis.rootCause}
 
-        let fileContent = fs.readFileSync(filePath, 'utf8');
+**Fix Description:** ${analysis.fix}
 
-        for (const change of fileChange.changes) {
-          if (change.type === 'replace') {
-            const oldCode = change.old;
-            const newCode = change.new;
+**Files to modify:**
+${analysis.fixFiles.map(f => {
+  const changes = f.changes.map(c => `lines ${c.lines}`).join(', ');
+  return `- ${f.path}: ${changes}`;
+}).join('\n')}
 
-            if (!fileContent.includes(oldCode)) {
-              // Exact match failed - try fuzzy matching with normalized whitespace
-              const normalizeCode = (code) => {
-                return code
-                  .replace(/\s+/g, ' ')  // Normalize whitespace
-                  .replace(/\s*([{}();,])\s*/g, '$1')  // Remove spaces around punctuation
-                  .trim();
-              };
+**Detailed Changes:**
+${analysis.fixFiles.map(f => {
+  return `File: ${f.path}\n${f.changes.map(c => {
+    return `  Lines ${c.lines}:\n  OLD:\n${c.old}\n  NEW:\n${c.new}`;
+  }).join('\n')}`;
+}).join('\n\n')}
 
-              const normalizedOld = normalizeCode(oldCode);
-              const lines = fileContent.split('\n');
-              let foundMatch = false;
+**Current working directory:** ${project.repoPath}
 
-              // Try to find a fuzzy match by checking each possible line range
-              for (let i = 0; i < lines.length; i++) {
-                const oldLineCount = oldCode.split('\n').length;
-                const potentialMatch = lines.slice(i, i + oldLineCount).join('\n');
+**TASK:** Apply the fix described above to the files.
+- Read each file to understand the current code
+- Use the Edit tool to make the exact changes specified
+- The changes may not match exactly due to whitespace - use your judgment to find the right location
+- Be thorough and careful to preserve existing functionality
 
-                if (normalizeCode(potentialMatch) === normalizedOld) {
-                  // Found a fuzzy match - use the actual code from the file
-                  console.log(`  ⚠ Using fuzzy match at lines ${i+1}-${i+oldLineCount} (whitespace/formatting differs)`);
-                  fileContent = fileContent.replace(potentialMatch, newCode);
-                  foundMatch = true;
-                  break;
-                }
-              }
+The branch (${branchName}) is already checked out. Apply the changes directly to the files.`;
 
-              if (!foundMatch) {
-                console.warn(`⚠ Could not find exact or fuzzy match for old code in ${fileChange.path} at lines ${change.lines}`);
-                console.warn(`Looking for:\n${oldCode}`);
-                throw new Error(`Could not find exact code to replace in ${fileChange.path}`);
-              }
-            } else {
-              // Exact match found
-              fileContent = fileContent.replace(oldCode, newCode);
-            }
+      const taskPromptFile = `/tmp/task-apply-fix-${Date.now()}.txt`;
+      fs.writeFileSync(taskPromptFile, fixPrompt);
 
-            console.log(`  ✓ Applied change at lines ${change.lines}`);
+      let changesApplied = false;
+
+      try {
+        const taskResponse = execSync(
+          `claude -p "$(cat ${taskPromptFile})" --dangerously-skip-permissions`,
+          {
+            encoding: 'utf8',
+            maxBuffer: 20 * 1024 * 1024,
+            timeout: 600000, // 10 minutes
+            cwd: project.repoPath,
           }
+        );
+
+        fs.unlinkSync(taskPromptFile);
+
+        console.log(`  ✓ Task agent completed fix application`);
+
+        // Check if any files were modified
+        const gitStatus = execSync(`cd ${project.repoPath} && git status --porcelain`, { encoding: 'utf8' });
+        if (gitStatus.trim()) {
+          changesApplied = true;
+          console.log(`  ✓ Task agent made changes to files`);
+        } else {
+          console.log(`  ⚠ Task agent didn't modify any files`);
         }
 
-        fs.writeFileSync(filePath, fileContent);
-        console.log(`  ✓ File updated: ${fileChange.path}`);
+      } catch (taskError) {
+        console.error(`  ❌ Task agent failed: ${taskError.message}`);
+        if (fs.existsSync(taskPromptFile)) {
+          fs.unlinkSync(taskPromptFile);
+        }
+        throw new Error(`Task agent failed to apply fix: ${taskError.message}`);
+      }
+
+      if (!changesApplied) {
+        throw new Error('No changes were applied by Task agent');
       }
 
       // Commit and push
@@ -985,7 +989,10 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
 **Root Cause:** ${analysis.rootCause}
 
 **Changes:**
-${analysis.fixFiles.map(f => `- ${f.path}: ${f.changes}`).join('\n')}
+${analysis.fixFiles.map(f => {
+  const changes = f.changes.map(c => `lines ${c.lines}`).join(', ');
+  return `- ${f.path}: ${changes}`;
+}).join('\n')}
 
 **Test Case:** ${analysis.testFile || 'Included'}
 
@@ -1040,7 +1047,10 @@ ${analysis.fixFiles.map(f => `- ${f.path}: ${f.changes}`).join('\n')}
 **Root Cause:** ${analysis.rootCause}
 
 **Attempted Changes:**
-${analysis.fixFiles.map(f => `- ${f.path}: ${f.changes}`).join('\n')}
+${analysis.fixFiles.map(f => {
+  const changes = f.changes.map(c => `lines ${c.lines}`).join(', ');
+  return `- ${f.path}: ${changes}`;
+}).join('\n')}
 
 **Test Results:** ❌ Tests failed
 \`\`\`
