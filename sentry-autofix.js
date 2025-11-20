@@ -1317,10 +1317,10 @@ but the proposed fix did not pass all tests. Please review and adjust.
           const commentBody = comment.body || '';
           const commentAuthor = comment.author?.login || 'unknown';
 
-          // Skip comments from bot itself (starts with the bot emoji)
-          if (commentBody.trim().startsWith('🤖')) {
-            console.log(`  ⏭️  Skipping bot comment from ${commentAuthor}`);
-            this.recordProcessedComment(pr_number, commentId, 'review_comment', commentBody, 'bot_comment_skipped');
+          // Skip comments from bot itself (starts with the bot emoji or our own response marker)
+          if (commentBody.trim().startsWith('🤖') || commentBody.trim().startsWith('✅ I\'ve addressed your feedback')) {
+            console.log(`  ⏭️  Skipping own comment from ${commentAuthor}`);
+            this.recordProcessedComment(pr_number, commentId, 'review_comment', commentBody, 'own_comment_skipped');
             continue;
           }
 
