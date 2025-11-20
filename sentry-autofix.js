@@ -4,6 +4,52 @@ const path = require("path");
 const Database = require("better-sqlite3");
 
 class SentryIntegration {
+  /**
+   * Sanitize sensitive data from strings before including in PRs, commits, or logs
+   * Removes API keys, secrets, tokens, passwords, and other confidential data
+   */
+  sanitize(text) {
+    if (!text) return text;
+
+    let sanitized = text;
+
+    // Pattern 1: URL query parameters with secrets (secret=, key=, token=, apikey=, password=, api_key=)
+    // Matches both URL-encoded and plain values
+    sanitized = sanitized.replace(/([?&])(secret|key|token|apikey|password|api_key|auth|authorization)=([^&\s)`]+)/gi, '$1$2=REDACTED');
+
+    // Pattern 2: Non-URL parameter style (e.g., "token=value" outside URLs)
+    sanitized = sanitized.replace(/(^|[^\w])(secret|key|token|apikey|password|api_key|auth|authorization)=([^\s&),]+)/gi, '$1$2=REDACTED');
+
+    // Pattern 3: Bearer tokens
+    sanitized = sanitized.replace(/Bearer\s+[A-Za-z0-9_\-\.=]+/gi, 'Bearer REDACTED');
+
+    // Pattern 4: Authorization headers
+    sanitized = sanitized.replace(/(Authorization:\s*)([^\s]+)/gi, '$1REDACTED');
+
+    // Pattern 5: Long alphanumeric strings in URLs (likely API keys) - 20+ chars
+    sanitized = sanitized.replace(/(https?:\/\/[^\s]+\/)([A-Za-z0-9]{20,})([\/\s])/g, '$1REDACTED$3');
+
+    // Pattern 6: Common API key patterns in JSON/config formats
+    sanitized = sanitized.replace(/(['"])(secret|key|token|apikey|password|api_key)(['"])\s*[:=]\s*(['"])([^'"]{6,})(['"])/gi, '$1$2$3$4REDACTED$6');
+
+    // Pattern 7: MySQL/DB connection strings with passwords
+    sanitized = sanitized.replace(/(mysql|postgres|postgresql):\/\/([^:]+):([^@]+)@/gi, '$1://$2:REDACTED@');
+
+    // Pattern 8: AWS-style keys (AKIA... access keys)
+    sanitized = sanitized.replace(/AKIA[0-9A-Z]{16}/g, 'AKIA_REDACTED');
+
+    // Pattern 9: Generic long alphanumeric strings that look like secrets (40+ chars, mixed case)
+    sanitized = sanitized.replace(/\b[A-Za-z0-9]{40,}\b/g, (match) => {
+      // Only redact if it has both upper and lower case (likely a secret)
+      if (/[a-z]/.test(match) && /[A-Z]/.test(match)) {
+        return 'REDACTED';
+      }
+      return match;
+    });
+
+    return sanitized;
+  }
+
   constructor(config) {
     this.sentryOrgSlug = config.sentryOrgSlug;
     this.sentryAuthToken = config.sentryAuthToken;
@@ -417,7 +463,7 @@ class SentryIntegration {
   async processIssue(issue, moduleKey, project) {
     console.log(`\n=== Processing Sentry Issue ===`);
     console.log(`Module: ${moduleKey}`);
-    console.log(`Issue: ${issue.title}`);
+    console.log(`Issue: ${this.sanitize(issue.title)}`);
     console.log(`Events (24h): ${issue.count}`);
     console.log(`Level: ${issue.level}`);
 
@@ -728,6 +774,12 @@ class SentryIntegration {
    * Internal Claude analysis (retryable) - uses Task agents
    */
   async analyzeWithClaudeInternal(issue, details, codeContext, moduleKey) {
+    // Sanitize all potentially sensitive data before sending to Claude
+    const sanitizedTitle = this.sanitize(issue.title);
+    const sanitizedErrorMessage = this.sanitize(details.metadata?.value || issue.title);
+    const sanitizedStackTrace = this.sanitize(JSON.stringify(details.latestEvent?.entries?.find(e => e.type === 'exception'), null, 2));
+    const sanitizedCodeContext = this.sanitize(JSON.stringify(codeContext, null, 2));
+
     const prompt = `IMPORTANT: Use Task agents to diagnose this Sentry production error. Use the Explore agent to find relevant code in the repository.
 
 ⏱️ **TIME CONSTRAINT: Complete this analysis within 10 minutes. Work efficiently.**
@@ -740,18 +792,18 @@ class SentryIntegration {
 
 **Module:** ${moduleKey}
 **Repository Path:** Based on module (php: iznik-server, go: iznik-server-go, nuxt3/capacitor/modtools: iznik-nuxt3*)
-**Issue:** ${issue.title}
+**Issue:** ${sanitizedTitle}
 **Event Count (24h):** ${issue.count}
 **Level:** ${issue.level}
 
 **Error Message:**
-${details.metadata?.value || issue.title}
+${sanitizedErrorMessage}
 
 **Stack Trace:**
-${JSON.stringify(details.latestEvent?.entries?.find(e => e.type === 'exception'), null, 2)}
+${sanitizedStackTrace}
 
 **Initial Code Context:**
-${JSON.stringify(codeContext, null, 2)}
+${sanitizedCodeContext}
 
 **ONLY PROCEED WITH FIX IF:**
 - The error is caused by something obvious: missing parameter, typo, missing null check
@@ -872,11 +924,15 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
       // Apply the fix using Claude Code Task agent
       console.log("🤖 Using Task agent to apply fix...");
 
+      // Sanitize analysis data to prevent secrets from appearing in temporary files
+      const sanitizedRootCause = this.sanitize(analysis.rootCause);
+      const sanitizedFix = this.sanitize(analysis.fix);
+
       const fixPrompt = `You are applying a fix for a Sentry production error.
 
-**Root Cause:** ${analysis.rootCause}
+**Root Cause:** ${sanitizedRootCause}
 
-**Fix Description:** ${analysis.fix}
+**Fix Description:** ${sanitizedFix}
 
 **Files to modify:**
 ${analysis.fixFiles.map(f => {
@@ -887,7 +943,7 @@ ${analysis.fixFiles.map(f => {
 **Detailed Changes:**
 ${analysis.fixFiles.map(f => {
   return `File: ${f.path}\n${f.changes.map(c => {
-    return `  Lines ${c.lines}:\n  OLD:\n${c.old}\n  NEW:\n${c.new}`;
+    return `  Lines ${c.lines}:\n  OLD:\n${this.sanitize(c.old)}\n  NEW:\n${this.sanitize(c.new)}`;
   }).join('\n')}`;
 }).join('\n\n')}
 
@@ -942,8 +998,8 @@ The branch (${branchName}) is already checked out. Apply the changes directly to
         throw new Error('No changes were applied by Task agent');
       }
 
-      // Commit and push
-      const commitMessage = `Suggested fix for Sentry issue: ${issue.title}\n\nRoot cause: ${analysis.rootCause}\nFix: ${analysis.fix}\n\nConfidence: ${analysis.confidence}\nFix type: ${analysis.fixType}\n\nSentry issue: ${issue.permalink}`;
+      // Commit and push (sanitize all data to avoid exposing secrets)
+      const commitMessage = `Suggested fix for Sentry issue: ${this.sanitize(issue.title)}\n\nRoot cause: ${this.sanitize(analysis.rootCause)}\nFix: ${this.sanitize(analysis.fix)}\n\nConfidence: ${analysis.confidence}\nFix type: ${analysis.fixType}\n\nSentry issue: ${issue.permalink}`;
 
       execSync(`cd ${project.repoPath} && git add .`, {
         encoding: "utf8",
@@ -984,9 +1040,10 @@ The branch (${branchName}) is already checked out. Apply the changes directly to
   async createPR(analysis, project, moduleKey, fixResult, issue) {
     console.log("Creating PR...");
 
+    // Sanitize all user-facing text to prevent API keys/secrets from appearing in PRs
     const prBody = `## Automated Fix for Sentry Issue
 
-**Root Cause:** ${analysis.rootCause}
+**Root Cause:** ${this.sanitize(analysis.rootCause)}
 
 **Changes:**
 ${analysis.fixFiles.map(f => {
@@ -1018,7 +1075,7 @@ ${analysis.fixFiles.map(f => {
       const tempPrBodyFile = `/tmp/sentry-pr-body-${Date.now()}.txt`;
       fs.writeFileSync(tempPrBodyFile, prBody);
 
-      const prUrl = execSync(`cd ${project.repoPath} && gh pr create --title "Fix: ${analysis.rootCause.substring(0, 60)}" --body-file "${tempPrBodyFile}"`, {
+      const prUrl = execSync(`cd ${project.repoPath} && gh pr create --title "Fix: ${this.sanitize(analysis.rootCause).substring(0, 60)}" --body-file "${tempPrBodyFile}"`, {
         encoding: "utf8",
         timeout: 30000,
       }).trim();
@@ -1042,9 +1099,10 @@ ${analysis.fixFiles.map(f => {
   async createDraftPR(analysis, project, moduleKey, fixResult) {
     console.log("Creating draft PR (tests failed)...");
 
+    // Sanitize all user-facing text to prevent API keys/secrets from appearing in PRs
     const prBody = `## Automated Fix Attempt for Sentry Issue (⚠️ Tests Failed)
 
-**Root Cause:** ${analysis.rootCause}
+**Root Cause:** ${this.sanitize(analysis.rootCause)}
 
 **Attempted Changes:**
 ${analysis.fixFiles.map(f => {
@@ -1054,7 +1112,7 @@ ${analysis.fixFiles.map(f => {
 
 **Test Results:** ❌ Tests failed
 \`\`\`
-${fixResult.testOutput || fixResult.error}
+${this.sanitize(fixResult.testOutput || fixResult.error)}
 \`\`\`
 
 **Note:** This is an automated fix attempt. The reproducing test case was created successfully,
@@ -1078,7 +1136,7 @@ but the proposed fix did not pass all tests. Please review and adjust.
       const tempPrBodyFile = `/tmp/sentry-pr-body-draft-${Date.now()}.txt`;
       fs.writeFileSync(tempPrBodyFile, prBody);
 
-      const prUrl = execSync(`cd ${project.repoPath} && gh pr create --draft --title "[DRAFT] Fix attempt: ${analysis.rootCause.substring(0, 50)}" --body-file "${tempPrBodyFile}"`, {
+      const prUrl = execSync(`cd ${project.repoPath} && gh pr create --draft --title "[DRAFT] Fix attempt: ${this.sanitize(analysis.rootCause).substring(0, 50)}" --body-file "${tempPrBodyFile}"`, {
         encoding: "utf8",
         timeout: 30000,
       }).trim();
@@ -1345,10 +1403,14 @@ but the proposed fix did not pass all tests. Please review and adjust.
   async processPRComment(prNumber, commentId, commentBody, prRecord, project) {
     console.log(`  Analyzing comment with Claude...`);
 
+    // Sanitize issue title and reviewer comment to prevent secrets from leaking
+    const sanitizedTitle = this.sanitize(prRecord.title);
+    const sanitizedComment = this.sanitize(commentBody);
+
     const prompt = `You are analyzing a comment on a GitHub PR that was automatically created to fix a Sentry error.
 
-**Original Issue:** ${prRecord.title}
-**Comment from reviewer:** ${commentBody}
+**Original Issue:** ${sanitizedTitle}
+**Comment from reviewer:** ${sanitizedComment}
 
 Analyze this comment and determine:
 1. Does it request changes to the fix?
@@ -1449,14 +1511,19 @@ Respond in JSON format:
     let changesApplied = false;
 
     try {
+      // Sanitize all data to prevent secrets from appearing in revision prompts
+      const sanitizedTitle = this.sanitize(title);
+      const sanitizedComment = this.sanitize(commentBody);
+      const sanitizedChanges = analysis.requestedChanges.map(c => this.sanitize(c));
+
       const taskPrompt = `You are helping revise code in a PR based on reviewer feedback.
 
-**Original Issue:** ${title}
+**Original Issue:** ${sanitizedTitle}
 
-**Reviewer Feedback:** ${commentBody}
+**Reviewer Feedback:** ${sanitizedComment}
 
 **Requested Changes:**
-${analysis.requestedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+${sanitizedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 **Files to modify:**
 ${prFiles.map(f => `- ${f}`).join('\n')}
@@ -1503,12 +1570,13 @@ The PR branch (${prBranch}) is already checked out. Apply the changes directly t
 
     if (!changesApplied) {
       // Comment back on the PR explaining we couldn't automatically apply the changes
+      // Sanitize to prevent secrets from appearing in PR comments
       const failureComment = `🤖 I attempted to automatically apply your requested changes using a Task agent, but no changes were made.
 
-**Your feedback:** ${commentBody}
+**Your feedback:** ${this.sanitize(commentBody)}
 
 **What I understood:**
-${analysis.requestedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+${sanitizedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 The Task agent was unable to apply these changes. I'll need a human to manually apply them.`;
 
@@ -1531,9 +1599,10 @@ The Task agent was unable to apply these changes. I'll need a human to manually 
     }
 
     // Commit and push the revision
-    const commitMessage = `Address review feedback: ${analysis.summary}
+    // Sanitize to prevent secrets from appearing in commit messages
+    const commitMessage = `Address review feedback: ${this.sanitize(analysis.summary)}
 
-${analysis.requestedChanges.map((c, i) => `- ${c}`).join('\n')}
+${sanitizedChanges.map((c, i) => `- ${c}`).join('\n')}
 
 🤖 This revision was automatically generated based on PR comments.`;
 
@@ -1551,12 +1620,13 @@ ${analysis.requestedChanges.map((c, i) => `- ${c}`).join('\n')}
     console.log(`     ✓ Changes committed and pushed`);
 
     // Post a comment on the PR explaining what was done
+    // Sanitize to prevent secrets from appearing in PR comments
     const prComment = `✅ I've addressed your feedback and pushed the changes.
 
-**Your comment:** ${commentBody}
+**Your comment:** ${this.sanitize(commentBody)}
 
 **Changes made:**
-${analysis.requestedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+${sanitizedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 The updated code has been pushed to this PR. Please review when you have a chance!`;
 

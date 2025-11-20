@@ -291,9 +291,9 @@ commands:
             docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
             echo "Setting up Go-specific test data..."
-            # Get container IDs using docker-compose
-            APIV2_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv2)
-            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1)
+            # Get container IDs using docker-compose (filter out WARN lines)
+            APIV2_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv2 2>&1 | grep -v "^WARN" | head -1)
+            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>&1 | grep -v "^WARN" | head -1)
             # Copy Go test environment file from container to temp location
             docker cp "$APIV2_CONTAINER":/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
             # Fix the include path to work in the apiv1 container
@@ -347,8 +347,8 @@ commands:
 
             # Also run Go testenv to get additional test data (PAF addresses, jobs, engage_mails, etc.)
             echo "Setting up Go test data..."
-            APIV2_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv2)
-            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1)
+            APIV2_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv2 2>&1 | grep -v "^WARN" | head -1)
+            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>&1 | grep -v "^WARN" | head -1)
             if [ -n "$APIV2_CONTAINER" ]; then
               docker cp "$APIV2_CONTAINER":/app/.circleci/testenv.php /tmp/go-testenv.php 2>/dev/null || true
               if [ -f /tmp/go-testenv.php ]; then
@@ -409,7 +409,7 @@ commands:
                 # Show the failure details from the PHPUnit debug log
                 echo ""
                 echo "Extracting failure details from PHPUnit output..."
-                APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>/dev/null)
+                APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>&1 | grep -v "^WARN" | head -1)
                 if [ -z "$APIV1_CONTAINER" ]; then
                   echo "Could not find apiv1 container"
                 else
@@ -542,10 +542,10 @@ commands:
               docker-compose -f docker-compose.yml ps > ~/artifacts/docker-status.txt 2>&1 || true
             fi
 
-            # Get container IDs using docker-compose
-            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>/dev/null)
-            APIV2_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv2 2>/dev/null)
-            PW_CONTAINER=$(docker-compose -f docker-compose.yml ps -q playwright 2>/dev/null)
+            # Get container IDs using docker-compose (filter out WARN lines)
+            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>&1 | grep -v "^WARN" | head -1)
+            APIV2_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv2 2>&1 | grep -v "^WARN" | head -1)
+            PW_CONTAINER=$(docker-compose -f docker-compose.yml ps -q playwright 2>&1 | grep -v "^WARN" | head -1)
 
             # Collect PHPUnit test output files
             mkdir -p ~/artifacts/phpunit
@@ -646,8 +646,8 @@ commands:
             if [ -d "$HOME/FreegleDocker" ]; then
               cd "$HOME/FreegleDocker"
             fi
-            # Get container ID using docker-compose
-            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>/dev/null)
+            # Get container ID using docker-compose (filter out WARN lines)
+            APIV1_CONTAINER=$(docker-compose -f docker-compose.yml ps -q apiv1 2>&1 | grep -v "^WARN" | head -1)
             COVERAGE_FOUND=false
 
             # Try the standard test path first (used by PR tests)
