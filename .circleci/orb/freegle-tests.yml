@@ -95,10 +95,14 @@ commands:
             git submodule update --init --recursive
 
             # Checkout the configured branch for iznik-nuxt3-modtools
+            echo "=== Checking out modtools branch ==="
             cd iznik-nuxt3-modtools
+            git fetch origin
             BRANCH=$(git config -f ../.gitmodules submodule.iznik-nuxt3-modtools.branch || echo master)
-            echo "Checking out iznik-nuxt3-modtools branch: $BRANCH"
-            git checkout $BRANCH
+            echo "Branch from .gitmodules: $BRANCH"
+            git checkout $BRANCH || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
+            echo "Successfully checked out $BRANCH"
+            ls -la modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
             cd ..
 
   replace-submodule:
@@ -917,10 +921,14 @@ jobs:
             git submodule status
 
             # Checkout the configured branch for iznik-nuxt3-modtools
+            echo "=== Checking out modtools branch ==="
             cd iznik-nuxt3-modtools
+            git fetch origin
             BRANCH=$(git config -f ../.gitmodules submodule.iznik-nuxt3-modtools.branch || echo master)
-            echo "Checking out iznik-nuxt3-modtools branch: $BRANCH"
-            git checkout $BRANCH
+            echo "Branch from .gitmodules: $BRANCH"
+            git checkout $BRANCH || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
+            echo "Successfully checked out $BRANCH"
+            ls -la modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
             cd ..
 
       - setup-dependencies
