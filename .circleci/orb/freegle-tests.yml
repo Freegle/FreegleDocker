@@ -35,8 +35,10 @@ commands:
             sudo apt-get update
             sudo apt-get install -y curl jq
 
-            # Install docker-compose v2.20.3 (compatible with CircleCI Docker version)
-            sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            # Install latest stable docker-compose
+            COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name')
+            echo "Installing docker-compose ${COMPOSE_VERSION}"
+            sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
 
