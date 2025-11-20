@@ -92,7 +92,10 @@ commands:
           command: |
             git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
             cd "$HOME/FreegleDocker"
-            git submodule update --init --recursive --remote
+            git submodule update --init --recursive
+
+            # Checkout the configured branch for each submodule
+            git submodule foreach 'git checkout $(git config -f $toplevel/.gitmodules submodule.$name.branch || echo master)'
 
   replace-submodule:
     description: "Replace a submodule with PR code"
