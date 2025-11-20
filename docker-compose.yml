@@ -526,7 +526,7 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/Dockerfile
+      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
     tmpfs:
@@ -581,7 +581,7 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/Dockerfile.prod
+      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile.prod
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
     tmpfs:
