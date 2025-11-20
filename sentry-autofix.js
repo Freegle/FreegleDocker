@@ -11,9 +11,22 @@ class SentryIntegration {
     this.activeProcessing = new Map();
     this.ignoreAlreadyProcessing = config.ignoreAlreadyProcessing || false; // Flag to skip duplicate check
     this.maxIssuesPerPoll = config.maxIssuesPerPoll || null; // Limit number of issues to process
+    this.projectFilter = config.projectFilter || null; // Filter to specific projects
+    this.prNumber = config.prNumber || null; // Filter to specific PR number
 
     // Load Sentry project configurations from environment variables
     this.projects = this.loadProjectsFromEnv();
+
+    // Apply project filter if specified
+    if (this.projectFilter && Array.isArray(this.projectFilter)) {
+      const filteredProjects = {};
+      for (const projectName of this.projectFilter) {
+        if (this.projects[projectName]) {
+          filteredProjects[projectName] = this.projects[projectName];
+        }
+      }
+      this.projects = filteredProjects;
+    }
 
     // Initialize SQLite database for tracking processed issues
     this.initDatabase();
@@ -35,7 +48,7 @@ class SentryIntegration {
     const dbPath = process.env.SENTRY_DB_PATH || 'sentry-issues.db';
     this.db = new Database(dbPath);
 
-    // Create table if it doesn't exist
+    // Create tables if they don't exist
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS processed_issues (
         issue_id TEXT PRIMARY KEY,
@@ -44,9 +57,35 @@ class SentryIntegration {
         status TEXT NOT NULL,
         attempts INTEGER DEFAULT 1,
         pr_url TEXT,
+        pr_number INTEGER,
         error_message TEXT,
         first_processed_at INTEGER NOT NULL,
         last_processed_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS processed_pr_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pr_number INTEGER NOT NULL,
+        comment_id TEXT NOT NULL,
+        comment_type TEXT NOT NULL,
+        comment_body TEXT,
+        processed_at INTEGER NOT NULL,
+        action_taken TEXT,
+        UNIQUE(pr_number, comment_id)
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pr_test_failures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pr_number INTEGER NOT NULL,
+        test_run_id TEXT NOT NULL,
+        failure_details TEXT,
+        processed_at INTEGER NOT NULL,
+        fix_attempted BOOLEAN DEFAULT 0,
+        UNIQUE(pr_number, test_run_id)
       )
     `);
 
@@ -79,10 +118,20 @@ class SentryIntegration {
   }
 
   /**
+   * Extract PR number from GitHub PR URL
+   */
+  extractPRNumber(prUrl) {
+    if (!prUrl) return null;
+    const match = prUrl.match(/\/pull\/(\d+)/);
+    return match ? parseInt(match[1]) : null;
+  }
+
+  /**
    * Record that an issue has been processed
    */
   recordProcessedIssue(issueId, moduleKey, title, status, prUrl = null, errorMessage = null) {
     const now = Date.now();
+    const prNumber = this.extractPRNumber(prUrl);
     const existing = this.db.prepare('SELECT attempts, first_processed_at FROM processed_issues WHERE issue_id = ?').get(issueId);
 
     if (existing) {
@@ -92,17 +141,18 @@ class SentryIntegration {
         SET status = ?,
             attempts = attempts + 1,
             pr_url = ?,
+            pr_number = ?,
             error_message = ?,
             last_processed_at = ?
         WHERE issue_id = ?
-      `).run(status, prUrl, errorMessage, now, issueId);
+      `).run(status, prUrl, prNumber, errorMessage, now, issueId);
     } else {
       // Insert new record
       this.db.prepare(`
         INSERT INTO processed_issues
-        (issue_id, module, title, status, pr_url, error_message, first_processed_at, last_processed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(issueId, moduleKey, title, status, prUrl, errorMessage, now, now);
+        (issue_id, module, title, status, pr_url, pr_number, error_message, first_processed_at, last_processed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(issueId, moduleKey, title, status, prUrl, prNumber, errorMessage, now, now);
     }
   }
 
@@ -1103,6 +1153,387 @@ but the proposed fix did not pass all tests. Please review and adjust.
     `).all();
 
     return errors;
+  }
+
+  /**
+   * Record that a PR comment has been processed
+   */
+  recordProcessedComment(prNumber, commentId, commentType, commentBody, actionTaken) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT OR IGNORE INTO processed_pr_comments
+      (pr_number, comment_id, comment_type, comment_body, processed_at, action_taken)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(prNumber, String(commentId), commentType, commentBody, now, actionTaken);
+  }
+
+  /**
+   * Monitor open PRs created by this tool for comments and test failures
+   */
+  async monitorPRs() {
+    console.log('\n=== Monitoring Open Sentry PRs ===\n');
+
+    // Get all open PRs with Sentry autofix commits
+    let query = `
+      SELECT DISTINCT pr_number, pr_url, module, issue_id, title
+      FROM processed_issues
+      WHERE pr_number IS NOT NULL
+    `;
+
+    // Filter by specific PR number if specified
+    if (this.prNumber) {
+      query += ` AND pr_number = ${this.prNumber}`;
+    }
+
+    query += ` ORDER BY last_processed_at DESC`;
+
+    const openPRs = this.db.prepare(query).all();
+
+    if (openPRs.length === 0) {
+      if (this.prNumber) {
+        console.log(`No PR #${this.prNumber} found in database`);
+      } else {
+        console.log('No PRs with PR numbers found in database');
+      }
+      return;
+    }
+
+    console.log(`Found ${openPRs.length} PR(s) in database to monitor`);
+
+    for (const prRecord of openPRs) {
+      const { pr_number, pr_url, module, issue_id, title } = prRecord;
+      console.log(`\nChecking PR #${pr_number} (${module})...`);
+
+      try {
+        // Extract repo info from PR URL
+        const urlMatch = pr_url.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull/);
+        if (!urlMatch) {
+          console.warn(`  ⚠ Could not parse repo from URL: ${pr_url}`);
+          continue;
+        }
+
+        const [, owner, repo] = urlMatch;
+        const project = this.projects[module];
+
+        if (!project) {
+          console.warn(`  ⚠ Project module "${module}" not found`);
+          continue;
+        }
+
+        // Check PR status first
+        const prStatusOutput = execSync(`cd ${project.repoPath} && gh pr view ${pr_number} --json state,title`, {
+          encoding: 'utf8',
+          timeout: 10000,
+        });
+        const prStatus = JSON.parse(prStatusOutput);
+
+        if (prStatus.state !== 'OPEN') {
+          console.log(`  ✓ PR is ${prStatus.state.toLowerCase()} - skipping`);
+          continue;
+        }
+
+        // Check if master has moved on and merge it into the PR branch
+        try {
+          // Get the PR branch name
+          const prBranchOutput = execSync(`cd ${project.repoPath} && gh pr view ${pr_number} --json headRefName --jq '.headRefName'`, {
+            encoding: 'utf8',
+            timeout: 30000,
+          });
+          const prBranch = prBranchOutput.trim();
+
+          // Fetch latest master and PR branch
+          execSync(`cd ${project.repoPath} && git fetch origin master ${prBranch}`, {
+            encoding: 'utf8',
+            timeout: 30000,
+          });
+
+          // Note: We intentionally do NOT merge master into the PR branch here
+          // to keep the PR focused only on the Sentry fix changes
+        } catch (mergeCheckError) {
+          console.warn(`  ⚠ Could not check/merge master: ${mergeCheckError.message}`);
+        }
+
+        // Get comments on the PR
+        const commentsOutput = execSync(`cd ${project.repoPath} && gh pr view ${pr_number} --json comments`, {
+          encoding: 'utf8',
+          timeout: 10000,
+        });
+        const prData = JSON.parse(commentsOutput);
+        const comments = prData.comments || [];
+
+        console.log(`  Found ${comments.length} comment(s)`);
+
+        // Check which comments we've already processed
+        for (const comment of comments) {
+          const commentId = comment.id || comment.databaseId;
+          const existing = this.db.prepare(
+            'SELECT id FROM processed_pr_comments WHERE pr_number = ? AND comment_id = ?'
+          ).get(pr_number, commentId);
+
+          if (existing) {
+            continue;
+          }
+
+          const commentBody = comment.body || '';
+          const commentAuthor = comment.author?.login || 'unknown';
+
+          // Skip comments from bot itself (starts with the bot emoji)
+          if (commentBody.trim().startsWith('🤖')) {
+            console.log(`  ⏭️  Skipping bot comment from ${commentAuthor}`);
+            this.recordProcessedComment(pr_number, commentId, 'review_comment', commentBody, 'bot_comment_skipped');
+            continue;
+          }
+
+          console.log(`\n  📝 New comment from ${commentAuthor}:`);
+          console.log(`     "${commentBody.substring(0, 100)}${commentBody.length > 100 ? '...' : ''}"`);
+
+          // Use Claude to analyze the comment and determine if action is needed
+          await this.processPRComment(pr_number, commentId, commentBody, prRecord, project);
+        }
+
+      } catch (error) {
+        console.error(`  ❌ Error monitoring PR #${pr_number}:`, error.message);
+      }
+    }
+
+    console.log('\n=== PR Monitoring Complete ===\n');
+  }
+
+  /**
+   * Process a PR comment to determine if a fix revision is needed
+   */
+  async processPRComment(prNumber, commentId, commentBody, prRecord, project) {
+    console.log(`  Analyzing comment with Claude...`);
+
+    const prompt = `You are analyzing a comment on a GitHub PR that was automatically created to fix a Sentry error.
+
+**Original Issue:** ${prRecord.title}
+**Comment from reviewer:** ${commentBody}
+
+Analyze this comment and determine:
+1. Does it request changes to the fix?
+2. Does it point out problems with the code?
+3. What specific changes are being requested?
+
+Respond in JSON format:
+{
+  "needsRevision": true/false,
+  "summary": "brief summary of the feedback",
+  "requestedChanges": ["change 1", "change 2", ...]
+}`;
+
+    try {
+      const tempPromptFile = `/tmp/pr-comment-analysis-${Date.now()}.txt`;
+      fs.writeFileSync(tempPromptFile, prompt);
+
+      const claudeResponse = execSync(
+        `cat "${tempPromptFile}" | claude --dangerously-skip-permissions --output-format text`,
+        {
+          encoding: 'utf8',
+          timeout: 120000,
+        }
+      );
+
+      fs.unlinkSync(tempPromptFile);
+
+      console.log("Claude Code response received (with Task agent analysis)");
+
+      // Try to parse JSON from response
+      const jsonMatch = claudeResponse.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.warn('  ⚠ Could not parse Claude response as JSON');
+        this.recordProcessedComment(prNumber, commentId, 'review_comment', commentBody, 'skipped_unparseable');
+        return;
+      }
+
+      const analysis = JSON.parse(jsonMatch[0]);
+      console.log(`  Analysis: ${analysis.needsRevision ? 'Needs revision' : 'No action needed'}`);
+      if (analysis.summary) {
+        console.log(`  Summary: ${analysis.summary}`);
+      }
+
+      if (analysis.needsRevision && analysis.requestedChanges && analysis.requestedChanges.length > 0) {
+        console.log(`  🔧 Requested changes:`);
+        analysis.requestedChanges.forEach((change, i) => {
+          console.log(`     ${i + 1}. ${change}`);
+        });
+
+        console.log(`  🔄 Generating revised fix based on feedback...`);
+        await this.reviseFixBasedOnComment(prNumber, prRecord, project, commentBody, analysis);
+
+        this.recordProcessedComment(prNumber, commentId, 'review_comment', commentBody, 'revision_applied');
+        console.log(`  ✓ Revised fix pushed to PR`);
+      } else {
+        this.recordProcessedComment(prNumber, commentId, 'review_comment', commentBody, 'no_action_needed');
+        console.log(`  ✓ Comment recorded - no action needed`);
+      }
+
+    } catch (error) {
+      console.error(`  ❌ Error processing comment:`, error.message);
+      this.recordProcessedComment(prNumber, commentId, 'review_comment', commentBody, 'error');
+    }
+  }
+
+  /**
+   * Generate and apply a revised fix based on PR comment feedback
+   * Uses Task agent for all revisions (no string replacement)
+   */
+  async reviseFixBasedOnComment(prNumber, prRecord, project, commentBody, analysis) {
+    const { module, issue_id, title } = prRecord;
+
+    // Get PR branch name
+    const prBranch = execSync(`cd ${project.repoPath} && gh pr view ${prNumber} --json headRefName --jq '.headRefName'`, {
+      encoding: 'utf8',
+      timeout: 30000,
+    }).trim();
+
+    console.log(`     PR branch: ${prBranch}`);
+
+    // Checkout the PR branch to get current code
+    execSync(`cd ${project.repoPath} && git fetch origin ${prBranch} && git checkout ${prBranch}`, {
+      encoding: 'utf8',
+      timeout: 30000,
+    });
+
+    // Get the current files in the PR
+    const prFiles = execSync(`cd ${project.repoPath} && gh pr view ${prNumber} --json files --jq '.files[].path'`, {
+      encoding: 'utf8',
+      timeout: 30000,
+    }).trim().split('\n').filter(f => f);
+
+    console.log(`     Files in PR: ${prFiles.join(', ')}`);
+
+    // Use Task agent to apply the reviewer's requested changes
+    console.log(`     🤖 Using Task agent to apply reviewer feedback...`);
+
+    let changesApplied = false;
+
+    try {
+      const taskPrompt = `You are helping revise code in a PR based on reviewer feedback.
+
+**Original Issue:** ${title}
+
+**Reviewer Feedback:** ${commentBody}
+
+**Requested Changes:**
+${analysis.requestedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+**Files to modify:**
+${prFiles.map(f => `- ${f}`).join('\n')}
+
+**Current working directory:** ${project.repoPath}
+
+**TASK:** Apply the reviewer's requested changes to the files listed above.
+- Read each file to understand the current code
+- Make the changes requested by the reviewer
+- Use the Edit tool to apply the changes
+- Be thorough and careful to preserve existing functionality
+
+The PR branch (${prBranch}) is already checked out. Apply the changes directly to the files.`;
+
+      const taskPromptFile = `/tmp/task-revision-${Date.now()}.txt`;
+      fs.writeFileSync(taskPromptFile, taskPrompt);
+
+      const taskResponse = execSync(
+        `claude -p "$(cat ${taskPromptFile})" --dangerously-skip-permissions`,
+        {
+          encoding: 'utf8',
+          maxBuffer: 20 * 1024 * 1024,
+          timeout: 600000, // 10 minutes
+          cwd: project.repoPath,
+        }
+      );
+
+      fs.unlinkSync(taskPromptFile);
+
+      console.log(`     ✓ Task agent completed revision`);
+
+      // Check if any files were modified
+      const gitStatus = execSync(`cd ${project.repoPath} && git status --porcelain`, { encoding: 'utf8' });
+      if (gitStatus.trim()) {
+        changesApplied = true;
+        console.log(`     ✓ Task agent made changes to files`);
+      } else {
+        console.log(`     ⚠ Task agent didn't modify any files`);
+      }
+
+    } catch (taskError) {
+      console.error(`     ❌ Task agent failed: ${taskError.message}`);
+    }
+
+    if (!changesApplied) {
+      // Comment back on the PR explaining we couldn't automatically apply the changes
+      const failureComment = `🤖 I attempted to automatically apply your requested changes using a Task agent, but no changes were made.
+
+**Your feedback:** ${commentBody}
+
+**What I understood:**
+${analysis.requestedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+The Task agent was unable to apply these changes. I'll need a human to manually apply them.`;
+
+      const tempCommentFile = `/tmp/pr-comment-${Date.now()}.txt`;
+      fs.writeFileSync(tempCommentFile, failureComment);
+
+      try {
+        execSync(`cd ${project.repoPath} && gh pr comment ${prNumber} --body-file ${tempCommentFile}`, {
+          encoding: 'utf8',
+          timeout: 30000,
+        });
+        console.log(`     💬 Posted comment explaining automatic revision failed`);
+      } catch (commentError) {
+        console.warn(`     ⚠ Could not post comment: ${commentError.message}`);
+      } finally {
+        fs.unlinkSync(tempCommentFile);
+      }
+
+      throw new Error('No changes could be applied by Task agent');
+    }
+
+    // Commit and push the revision
+    const commitMessage = `Address review feedback: ${analysis.summary}
+
+${analysis.requestedChanges.map((c, i) => `- ${c}`).join('\n')}
+
+🤖 This revision was automatically generated based on PR comments.`;
+
+    execSync(`cd ${project.repoPath} && git add .`, { encoding: 'utf8' });
+
+    // Check if there are changes to commit
+    const gitStatus = execSync(`cd ${project.repoPath} && git status --porcelain`, { encoding: 'utf8' });
+    if (!gitStatus.trim()) {
+      throw new Error('No changes to commit after applying fix');
+    }
+
+    execSync(`cd ${project.repoPath} && git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, { encoding: 'utf8' });
+    execSync(`cd ${project.repoPath} && git pull origin ${prBranch} --rebase && git push origin ${prBranch}`, { encoding: 'utf8', timeout: 60000 });
+
+    console.log(`     ✓ Changes committed and pushed`);
+
+    // Post a comment on the PR explaining what was done
+    const prComment = `✅ I've addressed your feedback and pushed the changes.
+
+**Your comment:** ${commentBody}
+
+**Changes made:**
+${analysis.requestedChanges.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+The updated code has been pushed to this PR. Please review when you have a chance!`;
+
+    const tempCommentFile = `/tmp/pr-success-comment-${Date.now()}.txt`;
+    fs.writeFileSync(tempCommentFile, prComment);
+
+    try {
+      execSync(`cd ${project.repoPath} && gh pr comment ${prNumber} --body-file ${tempCommentFile}`, {
+        encoding: 'utf8',
+        timeout: 30000,
+      });
+      console.log(`     💬 Posted comment on PR explaining changes`);
+    } catch (commentError) {
+      console.warn(`     ⚠ Could not post comment: ${commentError.message}`);
+    } finally {
+      fs.unlinkSync(tempCommentFile);
+    }
   }
 }
 

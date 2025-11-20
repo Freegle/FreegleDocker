@@ -35,6 +35,7 @@ let config = {
   ignoreAlreadyProcessing: process.env.SENTRY_IGNORE_ALREADY_PROCESSING === 'true',
   maxIssuesPerPoll: process.env.SENTRY_MAX_ISSUES_PER_POLL ? parseInt(process.env.SENTRY_MAX_ISSUES_PER_POLL) : null,
   intervalMinutes: 15,
+  prNumber: null,
 };
 
 // Parse command line arguments
@@ -55,6 +56,8 @@ for (let i = 0; i < args.length; i++) {
       config.ignoreAlreadyProcessing = true;
     } else if (arg === '--max-issues') {
       config.maxIssuesPerPoll = parseInt(args[++i]);
+    } else if (arg === '--pr-number') {
+      config.prNumber = parseInt(args[++i]);
     }
   } else if (command === '--daemon' && !isNaN(parseInt(arg))) {
     config.intervalMinutes = parseInt(arg);
@@ -75,6 +78,7 @@ Usage:
   ./sentry-autofix --poll [options]            Poll once for all high-priority issues
   ./sentry-autofix --poll-one [options]        Poll once for just one issue and exit
   ./sentry-autofix --daemon [minutes] [opts]   Run repeatedly every X minutes (default: 15)
+  ./sentry-autofix --monitor-prs [options]     Monitor open PRs for comments and test failures
   ./sentry-autofix --clear                     Clear processed issues database
   ./sentry-autofix --status [options]          Show current status
   ./sentry-autofix --help                      Show this help message
@@ -85,6 +89,7 @@ Options:
   --db <path>                  SQLite database path (default: ./sentry-issues.db)
   --ignore-processed           Bypass duplicate check (process issues again)
   --max-issues <n>             Limit number of issues to process per poll
+  --pr-number <n>              Filter to specific PR number (for --monitor-prs)
 
 Examples:
   ./sentry-autofix --poll-one --token sntryu_xxx
@@ -109,6 +114,7 @@ Examples:
     pollIntervalMs: 900000, // Not used in CLI mode
     ignoreAlreadyProcessing: config.ignoreAlreadyProcessing,
     maxIssuesPerPoll: config.maxIssuesPerPoll,
+    prNumber: config.prNumber,
   });
   switch (command) {
     case '--poll':
@@ -161,6 +167,12 @@ Examples:
       const status = sentryIntegration.getStatus();
       console.log('Sentry Auto-Fix Status:');
       console.log(JSON.stringify(status, null, 2));
+      break;
+
+    case '--monitor-prs':
+      console.log('Monitoring open PRs for comments and test failures...');
+      await sentryIntegration.monitorPRs();
+      console.log('Done!');
       break;
 
     default:
