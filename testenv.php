@@ -153,6 +153,65 @@ if (!$existing_users3) {
 } else {
     error_log("Additional test user with full requirements already exists");
     $uid3 = $existing_users3[0]['id'];
+
+    # Ensure uid3 has all required relationships for Go tests
+    # Check for address
+    $existing_addr_u3 = $dbhr->preQuery("SELECT id FROM users_addresses WHERE userid = ? LIMIT 1", [$uid3]);
+    if (!$existing_addr_u3 && $pcid) {
+        $pafs = $dbhr->preQuery("SELECT * FROM paf_addresses LIMIT 1;");
+        foreach ($pafs as $paf) {
+            $a = new Address($dbhr, $dbhm);
+            $aid3 = $a->create($uid3, $paf['id'], "Test desc for user 2");
+            error_log("Created missing address $aid3 for existing user $uid3");
+        }
+    }
+
+    # Check for User2User chat as user1 with message
+    $r = new ChatRoom($dbhr, $dbhm);
+    $cm = new ChatMessage($dbhr, $dbhm);
+    $u3_u2u = $dbhr->preQuery("SELECT id FROM chat_rooms WHERE user1 = ? AND chattype = 'User2User' LIMIT 1", [$uid3]);
+    if (!$u3_u2u) {
+        list ($rid_u3, $banned) = $r->createConversation($uid3, $uid2);
+        $cm->create($rid_u3, $uid3, "Test message from user 2");
+        $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_u3]);
+        error_log("Created missing User2User chat for existing user $uid3");
+    } else {
+        # Ensure chat message exists
+        $rid_u3 = $u3_u2u[0]['id'];
+        $existing_msg_u3 = $dbhr->preQuery("SELECT id FROM chat_messages WHERE chatid = ? AND userid = ? AND message IS NOT NULL LIMIT 1", [$rid_u3, $uid3]);
+        if (!$existing_msg_u3) {
+            $cm->create($rid_u3, $uid3, "Test message from user 2");
+            error_log("Created missing chat message for existing User2User chat $rid_u3");
+        }
+        $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_u3]);
+    }
+
+    # Check for User2Mod chat as user1 with message
+    $u3_u2m = $dbhr->preQuery("SELECT id FROM chat_rooms WHERE user1 = ? AND chattype = 'User2Mod' LIMIT 1", [$uid3]);
+    if (!$u3_u2m) {
+        $rid_u3_mod = $r->createUser2Mod($uid3, $gid);
+        $cm->create($rid_u3_mod, $uid3, "Test mod message from user 2");
+        $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_u3_mod]);
+        error_log("Created missing User2Mod chat for existing user $uid3");
+    } else {
+        # Ensure chat message exists
+        $rid_u3_mod = $u3_u2m[0]['id'];
+        $existing_msg_u3_mod = $dbhr->preQuery("SELECT id FROM chat_messages WHERE chatid = ? AND userid = ? AND message IS NOT NULL LIMIT 1", [$rid_u3_mod, $uid3]);
+        if (!$existing_msg_u3_mod) {
+            $cm->create($rid_u3_mod, $uid3, "Test mod message from user 2");
+            error_log("Created missing chat message for existing User2Mod chat $rid_u3_mod");
+        }
+        $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_u3_mod]);
+    }
+
+    # Ensure uid3 is member of test group
+    $existing_membership_u3 = $dbhr->preQuery("SELECT id FROM memberships WHERE userid = ? AND groupid = ?", [$uid3, $gid]);
+    if (!$existing_membership_u3) {
+        $u_u3 = new User($dbhr, $dbhm, $uid3);
+        $u_u3->addMembership($gid);
+        $u_u3->setMembershipAtt($gid, 'ourPostingStatus', Group::POSTING_DEFAULT);
+        error_log("Added missing membership for existing user $uid3");
+    }
 }
 
 # Check for deleted user
@@ -235,6 +294,9 @@ if ($existing_chats[0]['count'] == 0) {
     $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE latestmessage IS NULL OR latestmessage < DATE_SUB(NOW(), INTERVAL 30 DAY)");
     error_log("Updated existing chat room timestamps");
 
+    # Initialize ChatRoom for potential use below
+    $r = new ChatRoom($dbhr, $dbhm);
+
     # Ensure the Test User has the required chat relationships for Go tests
     # Check if Test User has User2User chat as user1
     $test_user_u2u = $dbhr->preQuery("SELECT id FROM chat_rooms WHERE user1 = ? AND chattype = 'User2User' LIMIT 1", [$uid]);
@@ -246,6 +308,16 @@ if ($existing_chats[0]['count'] == 0) {
         $cm->create($rid_test, $uid, "Test User chat message for Go tests");
         $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_test]);
         error_log("Created User2User chat $rid_test for Test User");
+    } else {
+        # Chat room exists - ensure Test User has a chat message in it
+        $rid_test = $test_user_u2u[0]['id'];
+        $existing_msg = $dbhr->preQuery("SELECT id FROM chat_messages WHERE chatid = ? AND userid = ? AND message IS NOT NULL LIMIT 1", [$rid_test, $uid]);
+        if (!$existing_msg) {
+            error_log("Creating chat message for existing User2User chat $rid_test");
+            $cm = new ChatMessage($dbhr, $dbhm);
+            $cm->create($rid_test, $uid, "Test User chat message for Go tests");
+        }
+        $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_test]);
     }
 
     # Check if Test User has User2Mod chat as user1
@@ -257,6 +329,16 @@ if ($existing_chats[0]['count'] == 0) {
         $cm->create($rid_test_mod, $uid, "Test User mod chat message for Go tests");
         $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_test_mod]);
         error_log("Created User2Mod chat $rid_test_mod for Test User");
+    } else {
+        # Chat room exists - ensure Test User has a chat message in it
+        $rid_test_mod = $test_user_u2m[0]['id'];
+        $existing_msg = $dbhr->preQuery("SELECT id FROM chat_messages WHERE chatid = ? AND userid = ? AND message IS NOT NULL LIMIT 1", [$rid_test_mod, $uid]);
+        if (!$existing_msg) {
+            error_log("Creating chat message for existing User2Mod chat $rid_test_mod");
+            $cm = new ChatMessage($dbhr, $dbhm);
+            $cm->create($rid_test_mod, $uid, "Test User mod chat message for Go tests");
+        }
+        $dbhm->preExec("UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?", [$rid_test_mod]);
     }
 }
 
