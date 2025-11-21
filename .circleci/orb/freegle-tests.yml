@@ -127,7 +127,7 @@ commands:
             git fetch origin
             BRANCH=$(git config -f ../.gitmodules submodule.iznik-nuxt3-modtools.branch || echo master)
             echo "Branch from .gitmodules: $BRANCH"
-            git checkout $BRANCH || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
+            git checkout -B "$BRANCH" "origin/$BRANCH" || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
             echo "Successfully checked out $BRANCH"
             ls -la modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
             cd ..
@@ -947,7 +947,7 @@ jobs:
             git fetch origin
             BRANCH=$(git config -f ../.gitmodules submodule.iznik-nuxt3-modtools.branch || echo master)
             echo "Branch from .gitmodules: $BRANCH"
-            git checkout $BRANCH || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
+            git checkout -B "$BRANCH" "origin/$BRANCH" || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
             echo "Successfully checked out $BRANCH"
             ls -la modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
             cd ..
