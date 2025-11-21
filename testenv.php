@@ -570,6 +570,16 @@ if ($go_api_volunteering[0]['count'] == 0) {
 
     # Ensure existing volunteer opportunities meet the criteria
     $dbhm->preExec("UPDATE volunteering SET pending = 0, deleted = 0, heldby = NULL WHERE pending != 0 OR deleted != 0 OR heldby IS NOT NULL");
+
+    # Ensure at least one volunteering is linked to the test group (for Go test query)
+    $existing_vol_group = $dbhr->preQuery("SELECT vg.volunteeringid FROM volunteering_groups vg WHERE vg.groupid = ? LIMIT 1", [$gid]);
+    if (!$existing_vol_group) {
+        $vol_to_link = $dbhr->preQuery("SELECT id FROM volunteering WHERE pending = 0 AND deleted = 0 LIMIT 1");
+        if ($vol_to_link) {
+            $dbhm->preExec("INSERT IGNORE INTO volunteering_groups (volunteeringid, groupid) VALUES (?, ?)", [$vol_to_link[0]['id'], $gid]);
+            error_log("Linked existing volunteering " . $vol_to_link[0]['id'] . " to group $gid");
+        }
+    }
     error_log("Updated existing volunteer opportunities to meet Go API requirements");
 }
 
@@ -586,6 +596,16 @@ if ($existing_events[0]['count'] == 0) {
     $c->addGroup($gid);
 } else {
     error_log("Community events already exist");
+
+    # Ensure at least one community event is linked to the test group (for Go test query)
+    $existing_event_group = $dbhr->preQuery("SELECT ceg.eventid FROM communityevents_groups ceg WHERE ceg.groupid = ? LIMIT 1", [$gid]);
+    if (!$existing_event_group) {
+        $event_to_link = $dbhr->preQuery("SELECT id FROM communityevents WHERE pending = 0 AND deleted IS NULL LIMIT 1");
+        if ($event_to_link) {
+            $dbhm->preExec("INSERT IGNORE INTO communityevents_groups (eventid, groupid) VALUES (?, ?)", [$event_to_link[0]['id'], $gid]);
+            error_log("Linked existing community event " . $event_to_link[0]['id'] . " to group $gid");
+        }
+    }
 }
 
 # Insert remaining test data
