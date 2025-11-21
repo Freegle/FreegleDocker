@@ -106,11 +106,11 @@ if (!$existing_mod) {
 }
 
 # Check for additional test user with full requirements (needed for Go tests that require 2 different regular users)
+# Simplified query - just look for user with email test2@test.com
 $existing_users3 = $dbhr->preQuery("SELECT u.id FROM users u
-    INNER JOIN users_addresses ua ON ua.userid = u.id
-    INNER JOIN isochrones_users iu ON iu.userid = u.id
-    WHERE u.deleted IS NULL AND u.systemrole = 'User' AND u.id != ?
-    LIMIT 1", [$uid]);
+    INNER JOIN users_emails ue ON ue.userid = u.id
+    WHERE u.deleted IS NULL AND ue.email = 'test2@test.com'
+    LIMIT 1");
 
 if (!$existing_users3) {
     error_log("Creating additional test user with full requirements");
