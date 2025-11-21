@@ -1548,14 +1548,9 @@ const httpServer = http.createServer(async (req, res) => {
           "-c",
           `
         set -e
-        echo "Setting up test environment..."
-        docker exec -w /var/www/iznik freegle-apiv1 php install/testenv.php
-        echo "Setting up Go-specific test data..."
-        docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
-        # Fix the include path to work in the apiv1 container
-        sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
-        docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
-        docker exec -w /var/www/iznik freegle-apiv1 php go-testenv.php
+        echo "Setting up unified test environment..."
+        docker cp /project/testenv.php freegle-apiv1:/var/www/iznik/testenv.php
+        docker exec -w /var/www/iznik freegle-apiv1 php testenv.php
         echo "Running Go tests..."
         docker exec -w /app freegle-apiv2 go test ./test/... -v
       `,
@@ -1674,13 +1669,10 @@ const httpServer = http.createServer(async (req, res) => {
           [
             "-c",
             `
+          docker cp /project/testenv.php freegle-apiv1:/var/www/iznik/testenv.php && \\
           docker exec -w /var/www/iznik freegle-apiv1 sh -c "
-            echo 'Setting up test environment...' | tee ${outputFile} && \\
-            if [ -f install/testenv.php ]; then \\
-              php install/testenv.php 2>&1 | tee -a ${outputFile} || echo 'Warning: testenv.php failed but continuing...' | tee -a ${outputFile}; \\
-            else \\
-              echo 'Warning: testenv.php not found, skipping test environment setup' | tee -a ${outputFile}; \\
-            fi && \\
+            echo 'Setting up unified test environment...' | tee ${outputFile} && \\
+            php testenv.php 2>&1 | tee -a ${outputFile} || echo 'Warning: testenv.php failed but continuing...' | tee -a ${outputFile}; \\
             echo 'Running PHPUnit tests via wrapper script...' | tee -a ${outputFile} && \\
             echo 'Total tests: ${
               testStatus.progress.total

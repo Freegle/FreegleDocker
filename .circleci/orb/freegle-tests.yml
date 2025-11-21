@@ -313,20 +313,10 @@ commands:
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
 
-            # Set up test environment first
-            echo "Setting up test environment..."
-            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
-
-            echo "Setting up Go-specific test data..."
-            # Use fixed container names from docker-compose.yml (no dynamic lookup needed)
-            # Copy Go test environment file from container to temp location
-            docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv-from-container.php
-            # Fix the include path to work in the apiv1 container
-            sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv-from-container.php
-            # Copy back to apiv1 container
-            docker cp /tmp/go-testenv-from-container.php freegle-apiv1:/var/www/iznik/go-testenv.php
-            # Run Go test environment setup
-            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php"
+            # Set up test environment using unified testenv.php from FreegleDocker
+            echo "Setting up unified test environment..."
+            docker cp testenv.php freegle-apiv1:/var/www/iznik/testenv.php
+            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php testenv.php"
 
             echo "Running Go tests..."
             docker-compose -f docker-compose.yml exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
@@ -342,6 +332,9 @@ commands:
         type: string
         default: "Running PHPUnit tests"
     steps:
+      - restore_cache:
+          keys:
+            - geoip-db-v1
       - run:
           name: Run PHPUnit tests
           command: |
@@ -350,6 +343,20 @@ commands:
               cd "$HOME/FreegleDocker"
             fi
             echo "🐘 << parameters.reason >>..."
+
+            # Restore GeoIP database from cache if available
+            if [ -f ~/geoip-cache/GeoLite2-Country.mmdb ]; then
+              echo "📍 Restoring GeoIP database from cache..."
+              docker exec freegle-apiv1 mkdir -p /var/lib/GeoIP
+              docker cp ~/geoip-cache/GeoLite2-Country.mmdb freegle-apiv1:/var/lib/GeoIP/GeoLite2-Country.mmdb
+              docker cp ~/geoip-cache/GeoLite2-City.mmdb freegle-apiv1:/var/lib/GeoIP/GeoLite2-City.mmdb 2>/dev/null || true
+              echo "✅ GeoIP database restored from cache"
+            else
+              echo "⚠️ No GeoIP cache found - container will attempt download"
+              # Give container time to download GeoIP (it has retry logic)
+              echo "Waiting for GeoIP download attempt..."
+              sleep 30
+            fi
 
             # Load database schema first
             echo "Loading database schema..."
@@ -366,22 +373,10 @@ commands:
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
 
-            # Set up test environment (creates test data)
-            echo "Setting up test environment..."
-            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
-
-            # Also run Go testenv to get additional test data (PAF addresses, jobs, engage_mails, etc.)
-            echo "Setting up Go test data..."
-            # Use fixed container names from docker-compose.yml (no dynamic lookup needed)
-            docker cp freegle-apiv2:/app/.circleci/testenv.php /tmp/go-testenv.php 2>/dev/null || true
-            if [ -f /tmp/go-testenv.php ]; then
-              sed -i "s#dirname(__FILE__) . '/../include/config.php'#'/var/www/iznik/include/config.php'#" /tmp/go-testenv.php
-              docker cp /tmp/go-testenv.php freegle-apiv1:/var/www/iznik/go-testenv.php
-              docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php go-testenv.php" || true
-              echo "✅ Go test data loaded"
-            else
-              echo "⚠️ Go testenv.php not found, skipping additional test data"
-            fi
+            # Set up test environment using unified testenv.php from FreegleDocker
+            echo "Setting up unified test environment..."
+            docker cp testenv.php freegle-apiv1:/var/www/iznik/testenv.php
+            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php testenv.php"
 
             # Trigger tests via API
             response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
@@ -460,6 +455,22 @@ commands:
               fi
             done
           no_output_timeout: 50m
+      - run:
+          name: Save GeoIP database for caching
+          when: always
+          command: |
+            # Copy GeoIP database from container for caching (if it exists)
+            mkdir -p ~/geoip-cache
+            docker cp freegle-apiv1:/var/lib/GeoIP/GeoLite2-Country.mmdb ~/geoip-cache/GeoLite2-Country.mmdb 2>/dev/null && \
+              echo "✅ GeoIP Country database saved for caching" || \
+              echo "⚠️ GeoIP Country database not available to cache"
+            docker cp freegle-apiv1:/var/lib/GeoIP/GeoLite2-City.mmdb ~/geoip-cache/GeoLite2-City.mmdb 2>/dev/null && \
+              echo "✅ GeoIP City database saved for caching" || \
+              echo "⚠️ GeoIP City database not available to cache"
+      - save_cache:
+          key: geoip-db-v1
+          paths:
+            - ~/geoip-cache
 
   run-playwright-tests:
     description: "Run Playwright tests via the status service API"

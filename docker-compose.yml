@@ -339,6 +339,8 @@ services:
       - MAPBOX_KEY=${MAPBOX_KEY:-}
       - MAXMIND_ACCOUNT=${MAXMIND_ACCOUNT:-}
       - MAXMIND_KEY=${MAXMIND_KEY:-}
+    volumes:
+      - geoip_data:/var/lib/GeoIP
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
       interval: 10s
@@ -671,6 +673,8 @@ volumes:
     driver: local
   freegle_db: {}
   phpmyadmin-sessions:
+    driver: local
+  geoip_data:
     driver: local
 
 networks:
