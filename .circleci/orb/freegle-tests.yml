@@ -298,9 +298,9 @@ commands:
             fi
             echo "🧪 << parameters.reason >>..."
 
-            # Load database schema first
+            # Load database schema first (use container name directly for reliability)
             echo "Loading database schema..."
-            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && \
+            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
               sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
               sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
               sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
@@ -316,10 +316,10 @@ commands:
             # Set up test environment using unified testenv.php from FreegleDocker
             echo "Setting up unified test environment..."
             docker cp testenv.php freegle-apiv1:/var/www/iznik/testenv.php
-            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php testenv.php"
+            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php testenv.php"
 
             echo "Running Go tests..."
-            docker-compose -f docker-compose.yml exec -T apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
+            docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
 
             echo "✅ Go tests passed!"
             echo "GO_TESTS_PASSED=true" >> $BASH_ENV
@@ -358,9 +358,9 @@ commands:
               sleep 30
             fi
 
-            # Load database schema first
+            # Load database schema first (use container name directly for reliability)
             echo "Loading database schema..."
-            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && \
+            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
               sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
               sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
               sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
@@ -376,7 +376,7 @@ commands:
             # Set up test environment using unified testenv.php from FreegleDocker
             echo "Setting up unified test environment..."
             docker cp testenv.php freegle-apiv1:/var/www/iznik/testenv.php
-            docker-compose -f docker-compose.yml exec -T apiv1 sh -c "cd /var/www/iznik && php testenv.php"
+            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php testenv.php"
 
             # Trigger tests via API
             response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
@@ -448,7 +448,6 @@ commands:
                     echo "Debug log not found"
                   fi
                 ' || echo "Could not extract failure details"
-                fi
 
                 echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
                 exit 1

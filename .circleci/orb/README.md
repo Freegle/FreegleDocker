@@ -2,7 +2,6 @@
 
 This orb provides shared CircleCI commands and jobs for testing Freegle repositories.
 
-**Current version: 1.1.1** (published 2024-11-21)
 
 ## Publishing the Orb
 

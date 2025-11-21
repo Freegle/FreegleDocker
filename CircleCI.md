@@ -4,12 +4,13 @@ This document explains how continuous integration works across the Freegle ecosy
 
 ## Overview
 
-The Freegle project uses a **centralized testing approach** where the FreegleDocker repository orchestrates integration testing for all components. Individual repositories trigger tests in FreegleDocker rather than running their own isolated tests.
+The Freegle project uses a **shared CircleCI orb** (`freegle/tests`) that provides reusable CI/CD jobs and commands. Each repository references this orb to run the appropriate tests.
 
 ### Why This Architecture?
 
+- **Code Reuse**: CI logic defined once in the orb, used everywhere
 - **Integration Testing**: Tests the complete system as users experience it
-- **Resource Efficiency**: One comprehensive test environment vs. multiple isolated ones  
+- **Resource Efficiency**: One comprehensive test environment vs. multiple isolated ones
 - **Realistic Testing**: Tests against production-like Docker Compose stack
 - **Consistency**: All components tested together with same configuration
 - **Prevents Live System Contamination**: Playwright tests run in controlled environment
@@ -51,22 +52,60 @@ Each submodule contains `.github/workflows/trigger-parent-ci.yml` that automatic
 ### 3. Test Types by Component
 
 **Go API Server (iznik-server-go):**
-- Local CircleCI: Go unit tests, benchmarks, race detection
-- Integration: API endpoints tested via Playwright in FreegleDocker
-- *Future: Go tests may move to FreegleDocker for unified testing*
+- Uses `freegle/go-tests` job from orb
+- Go unit tests with race detection and coverage
+- Tests run in FreegleDocker Docker environment
+- Coverage uploaded to Coveralls
 
 **PHP API Server (iznik-server):**
-- Local CircleCI: PHPUnit tests with MySQL, Redis, PostgreSQL
-- Integration: Legacy API endpoints tested via Playwright in FreegleDocker
-- *Future: PHP tests may move to FreegleDocker for unified testing*
+- Uses `freegle/php-tests` job from orb
+- PHPUnit tests with MySQL, Redis
+- GeoIP database caching for MailRouterTest
+- Tests run in FreegleDocker Docker environment
+- Coverage uploaded to Coveralls
 
 **User Website (iznik-nuxt3):**
-- No local CI (avoids live system contamination)
-- Integration: Full Playwright test suite in FreegleDocker
+- Uses `freegle/playwright-tests` job from orb
+- Full Playwright E2E test suite
+- Tests run against production build in FreegleDocker
 
 **ModTools Website (iznik-nuxt3-modtools):**
-- No local CI (avoids live system contamination)
-- Integration: ModTools functionality tested in FreegleDocker
+- Uses `freegle/playwright-tests` job from orb
+- ModTools functionality tested in FreegleDocker
+
+## Freegle Tests Orb
+
+The shared CircleCI orb is defined in `.circleci/orb/freegle-tests.yml` and published to CircleCI's orb registry.
+
+### Available Jobs
+
+| Job | Description |
+|-----|-------------|
+| `freegle/build-and-test` | Full test suite (Go + PHP + Playwright) |
+| `freegle/php-tests` | PHPUnit tests only |
+| `freegle/go-tests` | Go tests only |
+| `freegle/playwright-tests` | Playwright E2E tests only |
+
+### Publishing Orb Updates
+
+```bash
+# Validate
+docker run --rm -v $(pwd)/.circleci/orb:/orb circleci/circleci-cli:alpine orb validate /orb/freegle-tests.yml
+
+# Publish (requires CIRCLECI_TOKEN in .env) - increment version as needed
+source .env
+docker run --rm -v $(pwd)/.circleci/orb:/orb circleci/circleci-cli:alpine orb publish /orb/freegle-tests.yml freegle/tests@X.Y.Z --token $CIRCLECI_TOKEN
+```
+
+### Unified Test Environment
+
+The orb uses `testenv.php` from FreegleDocker root to set up test data. This unified file handles:
+- Test groups, locations, and users
+- Reference data (PAF addresses, weights, engage_mails, jobs)
+- Community events, volunteering opportunities
+- Isochrones, chat rooms, and messages
+
+See `.circleci/orb/README.md` for full documentation.
 
 ## CircleCI Workflows
 
