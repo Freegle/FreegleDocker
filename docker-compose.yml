@@ -217,7 +217,11 @@ services:
       - "traefik.http.middlewares.tusd-cors-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Authorization, Origin, X-Requested-With, X-Request-ID, X-HTTP-Method-Override, Content-Type, Upload-Length, Upload-Offset, Tus-Resumable, Upload-Metadata, Upload-Defer-Length, Upload-Concat, Upload-Complete, Upload-Draft-Interop-Version, x-token, baggage, sentry-trace"
 
   status:
-    build: ./status
+    build:
+      context: ./status
+      network: host
+      additional_contexts:
+        scripts: ./scripts
     container_name: freegle-status
     networks:
       - default
@@ -300,6 +304,9 @@ services:
       - default
     build:
       context: ./iznik-server
+      network: host
+      additional_contexts:
+        scripts: ./scripts
       args:
         IZNIK_SERVER_BRANCH: ${IZNIK_SERVER_BRANCH:-master}
     depends_on:
@@ -377,6 +384,9 @@ services:
           - apiv2.localhost
     build:
       context: ./iznik-server-go
+      network: host
+      additional_contexts:
+        scripts: ./scripts
       args:
         IZNIK_SERVER_GO_BRANCH: ${IZNIK_SERVER_GO_BRANCH:-master}
     depends_on:
@@ -431,6 +441,9 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
+      network: host
+      additional_contexts:
+        scripts: ./scripts
       args:
         IZNIK_NUXT3_BRANCH: ${IZNIK_NUXT3_BRANCH:-master}
     tmpfs:
@@ -480,6 +493,9 @@ services:
     build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.prod
+      network: host
+      additional_contexts:
+        scripts: ./scripts
       args:
         IZNIK_NUXT3_BRANCH: ${IZNIK_NUXT3_BRANCH:-master}
     tmpfs:
@@ -528,7 +544,10 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
+      dockerfile: ./iznik-nuxt3-modtools/Dockerfile
+      network: host
+      additional_contexts:
+        scripts: ./scripts
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
     tmpfs:
@@ -582,8 +601,11 @@ services:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
     build:
-      context: .
-      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile.prod
+      context: ./iznik-nuxt3-modtools
+      dockerfile: Dockerfile.prod
+      network: host
+      additional_contexts:
+        scripts: ./scripts
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
     tmpfs:
@@ -629,9 +651,12 @@ services:
   playwright:
     container_name: freegle-playwright
     network_mode: "host"
-    build: 
+    build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.playwright
+      network: host
+      additional_contexts:
+        scripts: ./scripts
     working_dir: /app
     extra_hosts:
       - "freegle-dev.localhost:127.0.0.1"
