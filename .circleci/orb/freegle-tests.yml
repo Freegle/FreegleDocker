@@ -685,29 +685,36 @@ commands:
 
             if [ "$COVERAGE_FOUND" = "true" ]; then
               echo "Processing PHP coverage..."
-              composer global require php-coveralls/php-coveralls 2>/dev/null || true
-              if [ -f ~/.composer/vendor/bin/php-coveralls ]; then
-                export COVERALLS_RUN_LOCALLY=1
-                # Run from original checkout for git metadata
-                if [ -d ~/project/.git ]; then
-                  cp /tmp/phpunit-clover.xml ~/project/
-                  echo "coverage_clover: phpunit-clover.xml" > ~/project/.coveralls.yml
-                  echo "service_name: circleci" >> ~/project/.coveralls.yml
-                  cd ~/project
-                  if ~/.composer/vendor/bin/php-coveralls -v --config .coveralls.yml; then
-                    echo "✅ PHP coverage uploaded"
-                    echo "PHP_UPLOADED=true" >> $BASH_ENV
-                  fi
+              # Convert clover XML to lcov format for coveralls
+              # Use a simple conversion approach - extract line coverage
+              if python3 -c "
+import xml.etree.ElementTree as ET
+import sys
+
+tree = ET.parse('/tmp/phpunit-clover.xml')
+root = tree.getroot()
+
+print('TN:')
+for file_elem in root.findall('.//file'):
+    filepath = file_elem.get('name', '')
+    if filepath:
+        print(f'SF:{filepath}')
+        for line in file_elem.findall('.//line'):
+            num = line.get('num')
+            count = line.get('count', '0')
+            if num:
+                print(f'DA:{num},{count}')
+        print('end_of_record')
+" > /tmp/php-coverage.lcov 2>/dev/null; then
+                echo "Converted PHP coverage to lcov format"
+                if cat /tmp/php-coverage.lcov | coveralls; then
+                  echo "✅ PHP coverage uploaded"
+                  echo "PHP_UPLOADED=true" >> $BASH_ENV
                 else
-                  echo "coverage_clover: /tmp/phpunit-clover.xml" > /tmp/.coveralls.yml
-                  echo "service_name: circleci" >> /tmp/.coveralls.yml
-                  cd /tmp
-                  if ~/.composer/vendor/bin/php-coveralls -v --config .coveralls.yml; then
-                    echo "✅ PHP coverage uploaded"
-                    echo "PHP_UPLOADED=true" >> $BASH_ENV
-                  fi
-                  cd -
+                  echo "⚠️ PHP coverage upload failed"
                 fi
+              else
+                echo "⚠️ Failed to convert PHP coverage to lcov"
               fi
             else
               echo "ℹ️ No PHP coverage found at either location"
