@@ -527,6 +527,13 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Public restore status endpoint - no auth required
+// Used by ModTools dashboard to show backup status
+app.get('/api/restore-status', createProxyMiddleware({
+    target: 'http://yesterday-api:8082',
+    changeOrigin: true
+}));
+
 // Admin endpoints (require ADMIN_KEY)
 function requireAdminKey(req, res, next) {
     const key = req.headers['x-admin-key'] || req.query.admin_key;
