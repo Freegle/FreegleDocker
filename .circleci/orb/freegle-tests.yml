@@ -685,36 +685,34 @@ commands:
 
             if [ "$COVERAGE_FOUND" = "true" ]; then
               echo "Processing PHP coverage..."
-              # Convert clover XML to lcov format for coveralls
-              # Use a simple conversion approach - extract line coverage
-              if python3 -c "
-import xml.etree.ElementTree as ET
-import sys
+              echo "DEBUG: Coverage file size: $(wc -c < /tmp/phpunit-clover.xml) bytes"
+              echo "DEBUG: Coverage file head:"
+              head -20 /tmp/phpunit-clover.xml || true
 
-tree = ET.parse('/tmp/phpunit-clover.xml')
-root = tree.getroot()
+              # Install php-coveralls in the container and run from there
+              echo "DEBUG: Installing php-coveralls in container..."
+              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && composer require php-coveralls/php-coveralls --dev 2>&1" || echo "DEBUG: composer require failed"
 
-print('TN:')
-for file_elem in root.findall('.//file'):
-    filepath = file_elem.get('name', '')
-    if filepath:
-        print(f'SF:{filepath}')
-        for line in file_elem.findall('.//line'):
-            num = line.get('num')
-            count = line.get('count', '0')
-            if num:
-                print(f'DA:{num},{count}')
-        print('end_of_record')
-" > /tmp/php-coverage.lcov 2>/dev/null; then
-                echo "Converted PHP coverage to lcov format"
-                if cat /tmp/php-coverage.lcov | coveralls; then
-                  echo "✅ PHP coverage uploaded"
-                  echo "PHP_UPLOADED=true" >> $BASH_ENV
-                else
-                  echo "⚠️ PHP coverage upload failed"
-                fi
+              # Copy coverage file to container
+              echo "DEBUG: Copying coverage file to container..."
+              docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
+
+              # Create coveralls config in container
+              echo "DEBUG: Creating .coveralls.yml in container..."
+              docker exec freegle-apiv1 bash -c "cat > /var/www/iznik/.coveralls.yml << 'EOFCFG'
+coverage_clover: clover.xml
+service_name: circleci
+EOFCFG"
+
+              # Run php-coveralls from within the container (which has PHP)
+              echo "DEBUG: Running php-coveralls in container..."
+              if docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e COVERALLS_RUN_LOCALLY=1 -e CI_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 bash -c "cd /var/www/iznik && php composer/vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
+                echo "✅ PHP coverage uploaded"
+                echo "PHP_UPLOADED=true" >> $BASH_ENV
               else
-                echo "⚠️ Failed to convert PHP coverage to lcov"
+                echo "⚠️ PHP coverage upload failed"
+                echo "DEBUG: Checking if php-coveralls exists..."
+                docker exec freegle-apiv1 ls -la /var/www/iznik/composer/vendor/bin/php-coveralls 2>&1 || echo "DEBUG: php-coveralls not found"
               fi
             else
               echo "ℹ️ No PHP coverage found at either location"
