@@ -1540,7 +1540,7 @@ const httpServer = http.createServer(async (req, res) => {
     try {
       res.writeHead(200, { "Content-Type": "text/plain" });
 
-      // First set up test environment, then run Go tests in the apiv2 container
+      // Go tests create their own test data - no testenv.php setup needed
       const { spawn } = require("child_process");
       const testProcess = spawn(
         "sh",
@@ -1548,9 +1548,6 @@ const httpServer = http.createServer(async (req, res) => {
           "-c",
           `
         set -e
-        echo "Setting up unified test environment..."
-        docker cp /project/testenv.php freegle-apiv1:/var/www/iznik/testenv.php
-        docker exec -w /var/www/iznik freegle-apiv1 php testenv.php
         echo "Running Go tests..."
         docker exec -w /app freegle-apiv2 go test ./test/... -v
       `,

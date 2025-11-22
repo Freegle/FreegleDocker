@@ -1,6 +1,57 @@
 # Go Test Refactoring Plan
 
+## ✅ COMPLETED
+
+**Status**: All phases completed. All Go tests pass. Go tests now create their own test data and do not depend on testenv.php.
+
+**Completed**: 2025-11-22
+
+### What Was Done:
+- Created factory functions in `testUtils.go`:
+  - `uniquePrefix()`, `CreateTestGroup()`, `CreateTestUser()`, `CreateDeletedTestUser()`
+  - `CreateTestUserWithEmail()`, `CreateTestMembership()`, `CreateTestSession()`
+  - `CreateTestJob()`, `CreateTestAddress()`, `CreateTestIsochrone()`
+  - `CreateTestChatRoom()`, `CreateTestChatMessage()`, `CreateTestVolunteering()`
+  - `CreateTestCommunityEvent()`, `CreateTestMessage()`, `CreateTestNewsfeed()`
+  - `CreateFullTestUser()`, `CreatePersistentToken()`, `getToken()`, `indexMessageWords()`
+- Refactored all test files to use factory functions
+- Removed legacy functions: `GetUserWithToken`, `GetPersistentToken`, `GetGroup`, `GetUserWithMessage`, `GetMessage`, `GetChatFromModToGroup`, `SetupTestEnvironment`, `setupComprehensiveTestDataLegacy`
+- Updated `main_test.go` to remove `SetupTestEnvironment()` call
+- Fixed search tests by adding `indexMessageWords()` to populate search index
+- Fixed `CreateTestJob()` to use SRID 3857 (not 4326)
+- Fixed `CreateTestIsochrone()` to create actual polygon geometry
+- Fixed `CreatePersistentToken()` to use session ID (not user ID) in token
+- Fixed `TestListGroups` to create Moderator membership (GroupVolunteers returns Moderator/Owner members)
+
+### Remaining Tasks:
+1. (Optional) Remove testenv.php Go setup section from status container - it still runs but is no longer needed for Go tests
+2. PHP API tests still depend on testenv.php
+
+### Lessons Learned:
+
+1. **Create actual test data, don't reuse existing**: Factory functions should create their own data (e.g., isochrones) rather than trying to find and reuse existing records. This ensures tests are truly independent.
+
+2. **Keep a simple `getToken` helper**: Some test files (microvolunteering_test.go, src_test.go) create their own users inline with direct SQL. Keep a simple `getToken(t, userID)` function for these cases rather than forcing them to use `CreateFullTestUser`.
+
+3. **Geometry/spatial data**: Creating test isochrones requires valid polygon geometry. Use simple shapes like squares: `POLYGON((lng-0.1 lat-0.1, lng+0.1 lat-0.1, lng+0.1 lat+0.1, lng-0.1 lat+0.1, lng-0.1 lat-0.1))`
+
+4. **PersistentToken type mismatch**: The `user.PersistentToken` struct has `Token` as a string, not uint64. Check struct definitions when creating helper functions.
+
+5. **Search tests are timing-sensitive**: Full-text search indexes update asynchronously. Tests that verify search results immediately after inserting data may fail intermittently.
+
+6. **testenv.php still needed for PHP tests**: The Go test refactoring only removes the Go test dependency on testenv.php. PHP API tests still need it.
+
+7. **API naming can be misleading**: `GroupVolunteers` returns Moderator/Owner members, not volunteering opportunities. Always check the actual code to understand what an API returns.
+
+8. **SRID matters for spatial data**: Jobs table uses SRID 3857 (Web Mercator), while other tables use SRID 4326 (WGS84). Check existing data to confirm the correct SRID.
+
+9. **PersistentToken uses session ID, not user ID**: The `PersistentToken.ID` field is the session ID, not the user ID. The auth code looks up the session by ID to find the user.
+
+---
+
 **Goal**: Remove dependency on testenv.php by having each Go test create its own test data.
+
+**Key Assumption**: Current test failures are due to invalid/stale test data from testenv.php, not bugs in the code or test logic. Once tests create their own fresh, valid data, they should pass.
 
 **Benefits**:
 - Tests are self-contained and independent
