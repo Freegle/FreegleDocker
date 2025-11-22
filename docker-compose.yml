@@ -602,7 +602,7 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3-modtools
-      dockerfile: Dockerfile.prod
+      dockerfile: modtools/Dockerfile.prod
       network: host
       additional_contexts:
         scripts: ./scripts
