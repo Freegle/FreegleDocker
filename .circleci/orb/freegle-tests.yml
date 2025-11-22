@@ -76,6 +76,7 @@ commands:
             ls -la secrets/
 
             # Start services in detached mode (use base file only, not override)
+            # Note: base image is defined in docker-compose.yml and builds automatically
             docker-compose -f docker-compose.yml up -d
 
             echo "Waiting for basic services to start..."
@@ -689,17 +690,21 @@ commands:
               echo "DEBUG: Coverage file head:"
               head -20 /tmp/phpunit-clover.xml || true
 
-              # Install php-coveralls in the container and run from there
+              # Install php-coveralls in the container using composer.phar
               echo "DEBUG: Installing php-coveralls in container..."
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && composer require php-coveralls/php-coveralls --dev 2>&1" || echo "DEBUG: composer require failed"
+              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev 2>&1" || echo "DEBUG: composer require failed"
 
               # Copy coverage file to container
               echo "DEBUG: Copying coverage file to container..."
               docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
 
-              # Create coveralls config in container
+              # Create coveralls config in container with writable json_path
               echo "DEBUG: Creating .coveralls.yml in container..."
-              docker exec freegle-apiv1 bash -c "echo 'coverage_clover: clover.xml' > /var/www/iznik/.coveralls.yml && echo 'service_name: circleci' >> /var/www/iznik/.coveralls.yml"
+              docker exec freegle-apiv1 bash -c "cat > /var/www/iznik/.coveralls.yml << 'COVERALLS_EOF'
+coverage_clover: clover.xml
+json_path: /tmp/coveralls-upload.json
+service_name: circleci
+COVERALLS_EOF"
 
               # Run php-coveralls from within the container (which has PHP)
               echo "DEBUG: Running php-coveralls in container..."

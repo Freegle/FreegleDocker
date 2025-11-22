@@ -1,4 +1,14 @@
 services:
+  # Base image - must be built first, all other containers depend on it
+  base:
+    image: freegle-base:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+    command: ["true"]  # Exits immediately, just used for building
+    profiles:
+      - build  # Only runs when explicitly requested or as dependency
+
   reverse-proxy:
     container_name: freegle-traefik
     networks:
@@ -220,8 +230,6 @@ services:
     build:
       context: ./status
       network: host
-      additional_contexts:
-        scripts: ./scripts
     container_name: freegle-status
     networks:
       - default
@@ -305,8 +313,6 @@ services:
     build:
       context: ./iznik-server
       network: host
-      additional_contexts:
-        scripts: ./scripts
       args:
         IZNIK_SERVER_BRANCH: ${IZNIK_SERVER_BRANCH:-master}
     depends_on:
@@ -385,8 +391,6 @@ services:
     build:
       context: ./iznik-server-go
       network: host
-      additional_contexts:
-        scripts: ./scripts
       args:
         IZNIK_SERVER_GO_BRANCH: ${IZNIK_SERVER_GO_BRANCH:-master}
     depends_on:
@@ -442,8 +446,6 @@ services:
     build:
       context: ./iznik-nuxt3
       network: host
-      additional_contexts:
-        scripts: ./scripts
       args:
         IZNIK_NUXT3_BRANCH: ${IZNIK_NUXT3_BRANCH:-master}
     tmpfs:
@@ -494,8 +496,6 @@ services:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.prod
       network: host
-      additional_contexts:
-        scripts: ./scripts
       args:
         IZNIK_NUXT3_BRANCH: ${IZNIK_NUXT3_BRANCH:-master}
     tmpfs:
@@ -544,10 +544,8 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/Dockerfile
+      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
       network: host
-      additional_contexts:
-        scripts: ./scripts
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
     tmpfs:
@@ -604,8 +602,6 @@ services:
       context: ./iznik-nuxt3-modtools
       dockerfile: modtools/Dockerfile.prod
       network: host
-      additional_contexts:
-        scripts: ./scripts
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
     tmpfs:
@@ -655,8 +651,6 @@ services:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.playwright
       network: host
-      additional_contexts:
-        scripts: ./scripts
     working_dir: /app
     extra_hosts:
       - "freegle-dev.localhost:127.0.0.1"
