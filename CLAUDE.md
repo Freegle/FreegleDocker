@@ -128,6 +128,26 @@ When adding new submodules to this repository, follow these steps:
 
 The webhook workflow automatically triggers CircleCI builds when changes are pushed to master/main branches, enabling continuous integration testing of the complete Docker stack.
 
+### Publishing the CircleCI Orb
+
+**IMPORTANT**: After making changes to `.circleci/orb/freegle-tests.yml`, you must publish the orb to CircleCI for the changes to take effect:
+
+```bash
+# Load the CircleCI token from .env
+source .env
+
+# Configure the CLI (one-time setup)
+~/.local/bin/circleci setup --token "$CIRCLECI_TOKEN" --host https://circleci.com --no-prompt
+
+# Validate the orb YAML
+~/.local/bin/circleci orb validate .circleci/orb/freegle-tests.yml
+
+# Publish a new version (increment the patch version)
+~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x
+```
+
+Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
+
 ## Testing Consolidation
 
 All testing is now consolidated in the FreegleDocker CircleCI pipeline for consistency and efficiency:
@@ -187,3 +207,4 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - API endpoints: `/api/sentry/status`, `/api/sentry/poll`, `/api/sentry/clear`
 - Integration invokes `claude` CLI with `--dangerously-skip-permissions` for automation
 - Each Sentry issue analysis uses your Claude Code quota (no additional costs)
+- When making changes to the tests, don't forget to update the orb
