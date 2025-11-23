@@ -798,9 +798,11 @@ async function runPlaywrightTests(testFile = null) {
     // Execute tests in the Playwright container using docker exec (without nohup for proper output capture)
     const playwrightArgs = testFile ? `tests/e2e/${testFile}` : "";
     // Enable coverage reporter for CI builds
+    // Set NODE_PATH to find globally installed @playwright/test module
     const testCommand = `docker exec freegle-playwright sh -c "
       cd /app &&
       export ENABLE_MONOCART_REPORTER=true &&
+      export NODE_PATH=/usr/lib/node_modules &&
       npx playwright test ${playwrightArgs}
     "`;
 
