@@ -78,8 +78,11 @@ ENV PATH="/opt/google-cloud-sdk/bin:${PATH}"
 # ============ GO SWAGGER (for apiv2) ============
 RUN go install github.com/go-swagger/go-swagger/cmd/swagger@v0.31.0
 
-# ============ PLAYWRIGHT BROWSERS ============
-RUN npx playwright install chromium && npx playwright install-deps
+# ============ PLAYWRIGHT ============
+# Install @playwright/test and related packages globally, then install matching browsers
+RUN npm install -g @playwright/test monocart-reporter coveralls && \
+    npx playwright install chromium && \
+    npx playwright install-deps
 
 # Remove packages that conflict with our setup
 RUN apt-get update && apt-get remove -y apache2* sendmail* mlocate php-ssh2 || true && rm -rf /var/lib/apt/lists/*
