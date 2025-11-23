@@ -314,11 +314,6 @@ commands:
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
 
-            # Set up test environment using unified testenv.php from FreegleDocker
-            echo "Setting up unified test environment..."
-            docker cp testenv.php freegle-apiv1:/var/www/iznik/testenv.php
-            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php testenv.php"
-
             echo "Running Go tests..."
             docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
 
@@ -374,10 +369,9 @@ commands:
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
 
-            # Set up test environment using unified testenv.php from FreegleDocker
-            echo "Setting up unified test environment..."
-            docker cp testenv.php freegle-apiv1:/var/www/iznik/testenv.php
-            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php testenv.php"
+            # Set up test environment using testenv.php from iznik-server
+            echo "Setting up test environment..."
+            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
             # Trigger tests via API
             response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)

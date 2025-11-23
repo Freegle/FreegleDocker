@@ -1666,10 +1666,9 @@ const httpServer = http.createServer(async (req, res) => {
           [
             "-c",
             `
-          docker cp /project/testenv.php freegle-apiv1:/var/www/iznik/testenv.php && \\
           docker exec -w /var/www/iznik freegle-apiv1 sh -c "
-            echo 'Setting up unified test environment...' | tee ${outputFile} && \\
-            php testenv.php 2>&1 | tee -a ${outputFile} || echo 'Warning: testenv.php failed but continuing...' | tee -a ${outputFile}; \\
+            echo 'Setting up test environment...' | tee ${outputFile} && \\
+            php install/testenv.php 2>&1 | tee -a ${outputFile} || echo 'Warning: testenv.php failed but continuing...' | tee -a ${outputFile}; \\
             echo 'Running PHPUnit tests via wrapper script...' | tee -a ${outputFile} && \\
             echo 'Total tests: ${
               testStatus.progress.total
