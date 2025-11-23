@@ -694,11 +694,7 @@ commands:
 
               # Create coveralls config in container with writable json_path
               echo "DEBUG: Creating .coveralls.yml in container..."
-              docker exec freegle-apiv1 bash -c "cat > /var/www/iznik/.coveralls.yml << 'COVERALLS_EOF'
-coverage_clover: clover.xml
-json_path: /tmp/coveralls-upload.json
-service_name: circleci
-COVERALLS_EOF"
+              docker exec freegle-apiv1 bash -c "echo 'coverage_clover: clover.xml' > /var/www/iznik/.coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> /var/www/iznik/.coveralls.yml && echo 'service_name: circleci' >> /var/www/iznik/.coveralls.yml"
 
               # Run php-coveralls from within the container (which has PHP)
               echo "DEBUG: Running php-coveralls in container..."
