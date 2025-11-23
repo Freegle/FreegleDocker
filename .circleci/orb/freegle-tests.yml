@@ -75,8 +75,12 @@ commands:
             echo "Current working directory: $(pwd)"
             ls -la secrets/
 
+            # Pull the latest base image to bypass Docker layer cache
+            # This ensures we get the most recent freegle-base with updated dependencies
+            echo "Pulling latest freegle-base image..."
+            docker pull ghcr.io/freegle/freegle-base:latest
+
             # Start services in detached mode (use base file only, not override)
-            # Note: base image is defined in docker-compose.yml and builds automatically
             docker-compose -f docker-compose.yml up -d
 
             echo "Waiting for basic services to start..."

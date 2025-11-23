@@ -798,11 +798,9 @@ async function runPlaywrightTests(testFile = null) {
     // Execute tests in the Playwright container using docker exec (without nohup for proper output capture)
     const playwrightArgs = testFile ? `tests/e2e/${testFile}` : "";
     // Enable coverage reporter for CI builds
-    // First ensure browsers are installed (in case base image cache is stale)
     const testCommand = `docker exec freegle-playwright sh -c "
       cd /app &&
       export ENABLE_MONOCART_REPORTER=true &&
-      npx playwright install chromium 2>/dev/null || true &&
       npx playwright test ${playwrightArgs}
     "`;
 
