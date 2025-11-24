@@ -80,7 +80,8 @@ RUN go install github.com/go-swagger/go-swagger/cmd/swagger@v0.31.0
 
 # ============ PLAYWRIGHT ============
 # Install @playwright/test and related packages globally, then install matching browsers
-RUN npm install -g @playwright/test monocart-reporter coveralls && \
+# Version MUST match the version in iznik-nuxt3/package.json
+RUN npm install -g @playwright/test@1.52.0 monocart-reporter coveralls && \
     npx playwright install chromium && \
     npx playwright install-deps
 
