@@ -356,24 +356,25 @@ commands:
               sleep 30
             fi
 
-            # Load database schema first (use container name directly for reliability)
-            echo "Loading database schema..."
-            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
-              sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
-              sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
-              sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
-              sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-              sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-              mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
-              mysql -h percona -u root -piznik iznik < install/schema.sql && \
-              mysql -h percona -u root -piznik iznik < install/functions.sql && \
-              mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
-              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
-              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
-
-            # Set up test environment using testenv.php from iznik-server
-            echo "Setting up test environment..."
-            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+            # Database schema and test environment already set up by setup-test-database step
+            # Just verify the database is accessible
+            echo "Verifying database connection..."
+            docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik -e 'SELECT 1 FROM iznik.groups LIMIT 1'" || {
+              echo "Database not ready, setting up..."
+              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
+                sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
+                sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
+                sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
+                sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+                sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+                mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
+                mysql -h percona -u root -piznik iznik < install/schema.sql && \
+                mysql -h percona -u root -piznik iznik < install/functions.sql && \
+                mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
+                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
+                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
+              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+            }
 
             # Trigger tests via API
             response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
@@ -467,6 +468,39 @@ commands:
           key: geoip-db-v1
           paths:
             - ~/geoip-cache
+
+  setup-test-database:
+    description: "Set up test database schema and test environment"
+    steps:
+      - run:
+          name: Set up test database and environment
+          command: |
+            # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
+            if [ -d "$HOME/FreegleDocker" ]; then
+              cd "$HOME/FreegleDocker"
+            fi
+            echo "🗄️ Setting up test database and environment..."
+
+            # Load database schema first (use container name directly for reliability)
+            echo "Loading database schema..."
+            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
+              sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
+              sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
+              sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
+              sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+              sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+              mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
+              mysql -h percona -u root -piznik iznik < install/schema.sql && \
+              mysql -h percona -u root -piznik iznik < install/functions.sql && \
+              mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
+              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
+              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
+
+            # Set up test environment using testenv.php from iznik-server
+            echo "Setting up test environment (FreeglePlayground group, test users, etc.)..."
+            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+
+            echo "✅ Test database and environment ready!"
 
   run-playwright-tests:
     description: "Run Playwright tests via the status service API"
@@ -868,6 +902,7 @@ jobs:
       - start-services
       - wait-for-basic-services
       - wait-for-prod-container
+      - setup-test-database
       - run-playwright-tests:
           reason: "Running Playwright tests for PR"
       - upload-coverage:
@@ -958,6 +993,8 @@ jobs:
       - wait-for-basic-services
 
       - wait-for-prod-container
+
+      - setup-test-database
 
       - run-playwright-tests:
           reason: "Running Playwright tests first for faster debugging"
