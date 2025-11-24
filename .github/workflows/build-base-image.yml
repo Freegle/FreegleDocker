@@ -36,7 +36,7 @@ jobs:
           file: ./Dockerfile.base
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/freegle-base:latest
-            ghcr.io/${{ github.repository_owner }}/freegle-base:${{ github.sha }}
+            ghcr.io/freegle/freegle-base:latest
+            ghcr.io/freegle/freegle-base:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
