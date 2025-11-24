@@ -957,16 +957,16 @@ jobs:
 
       - wait-for-basic-services
 
-      - run-go-tests:
-          reason: "Running Go tests immediately after API services start"
-
-      - run-php-tests:
-          reason: "Running PHPUnit tests after Go tests complete"
-
       - wait-for-prod-container
 
       - run-playwright-tests:
-          reason: "Running Playwright tests after production container is healthy"
+          reason: "Running Playwright tests first for faster debugging"
+
+      - run-go-tests:
+          reason: "Running Go tests after Playwright tests"
+
+      - run-php-tests:
+          reason: "Running PHPUnit tests after Go tests complete"
 
       - upload-coverage:
           expected: "go,php,playwright"
