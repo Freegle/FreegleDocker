@@ -72,5 +72,25 @@ RUN go install github.com/go-swagger/go-swagger/cmd/swagger@v0.31.0
 # Remove packages that conflict with our setup
 RUN apt-get update && apt-get remove -y apache2* sendmail* mlocate php-ssh2 || true && rm -rf /var/lib/apt/lists/*
 
+# ============ GEOIP DATABASE ============
+# Copy fallback GeoIP database first, then try to download fresh version
+# This ensures we always have a working database even if MaxMind download limits are hit
+COPY iznik-server/install/GeoLite2-Country.mmdb /var/lib/GeoIP/GeoLite2-Country.mmdb
+ARG MAXMIND_ACCOUNT
+ARG MAXMIND_KEY
+RUN mkdir -p /var/lib/GeoIP \
+    && if [ -n "$MAXMIND_ACCOUNT" ] && [ -n "$MAXMIND_KEY" ]; then \
+         echo "Attempting to download fresh GeoIP database..." \
+         && echo "AccountID $MAXMIND_ACCOUNT" > /etc/GeoIP.conf \
+         && echo "LicenseKey $MAXMIND_KEY" >> /etc/GeoIP.conf \
+         && echo "ProductIds GeoLite2-Country" >> /etc/GeoIP.conf \
+         && echo "DatabaseDirectory /var/lib/GeoIP" >> /etc/GeoIP.conf \
+         && (geoipupdate -v -f /etc/GeoIP.conf \
+             && echo "GeoIP database downloaded successfully" \
+             || echo "GeoIP download failed (likely rate limited) - using fallback database") \
+       ; else \
+         echo "MaxMind credentials not provided - using fallback GeoIP database" \
+       ; fi
+
 # Final cleanup
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
