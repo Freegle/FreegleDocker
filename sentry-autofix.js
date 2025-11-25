@@ -1,6 +1,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const readline = require("readline");
 const Database = require("better-sqlite3");
 
 class SentryIntegration {
@@ -59,6 +60,7 @@ class SentryIntegration {
     this.maxIssuesPerPoll = config.maxIssuesPerPoll || null; // Limit number of issues to process
     this.projectFilter = config.projectFilter || null; // Filter to specific projects
     this.prNumber = config.prNumber || null; // Filter to specific PR number
+    this.forceClean = config.forceClean || false; // Discard uncommitted changes without prompting
 
     // Load Sentry project configurations from environment variables
     this.projects = this.loadProjectsFromEnv();
@@ -521,6 +523,13 @@ class SentryIntegration {
       // Check for existing PRs that might already fix this
       const existingPR = await this.checkForExistingPR(issue, project, analysis);
 
+      // Check if we should skip this issue (closed PR found)
+      if (existingPR && existingPR.skip) {
+        console.log(`⏭️  Skipping issue: ${existingPR.reason}`);
+        this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'skipped', null, existingPR.reason);
+        return;
+      }
+
       // Apply the fix (no tests, just the code change)
       const fixResult = await this.applyFix(analysis, project, moduleKey, existingPR, issue);
 
@@ -599,8 +608,8 @@ class SentryIntegration {
         }
       }
 
-      // No open PRs found - check closed PRs for reference only (won't update them)
-      const closedPRsJson = execSync(`cd ${project.repoPath} && gh pr list --state closed --json number,title,url,body,closedAt --limit 50`, {
+      // No open PRs found - check closed PRs to avoid re-attempting rejected fixes
+      const closedPRsJson = execSync(`cd ${project.repoPath} && gh pr list --state closed --json number,title,url,body,closedAt,mergedAt --limit 50`, {
         encoding: 'utf8',
         timeout: 30000,
       });
@@ -617,9 +626,16 @@ class SentryIntegration {
 
         for (const keyword of keywords) {
           if (prText.includes(keyword.toLowerCase())) {
-            console.log(`Found CLOSED PR #${pr.number} (will create new PR instead): ${pr.title}`);
-            // Return null so we create a new PR instead of updating the closed one
-            return null;
+            // Check if PR was merged or just closed
+            if (pr.mergedAt) {
+              console.log(`Found MERGED PR #${pr.number}: ${pr.title} - issue may already be fixed`);
+              // Return special marker to skip this issue
+              return { skip: true, reason: `Already fixed by merged PR #${pr.number}` };
+            } else {
+              console.log(`Found CLOSED (not merged) PR #${pr.number}: ${pr.title} - skipping to avoid re-attempting rejected fix`);
+              // Return special marker to skip this issue
+              return { skip: true, reason: `Previous fix attempt rejected (PR #${pr.number} closed without merging)` };
+            }
           }
         }
       }
@@ -905,10 +921,50 @@ CRITICAL: Your final message MUST be valid JSON only (no markdown, no explanatio
     let branchName;
 
     try {
+      // Check for uncommitted changes before switching branches
+      const gitStatus = execSync(`cd ${project.repoPath} && git status --porcelain`, {
+        encoding: "utf8",
+        timeout: 10000,
+      }).trim();
+
+      if (gitStatus) {
+        console.log(`\n⚠️  Uncommitted changes detected in ${project.repoPath}:`);
+        console.log(gitStatus.split('\n').map(l => `   ${l}`).join('\n'));
+
+        if (this.forceClean) {
+          console.log(`   --force-clean specified, discarding changes...`);
+          execSync(`cd ${project.repoPath} && git restore . && git clean -fd`, {
+            encoding: "utf8",
+            timeout: 10000,
+          });
+        } else {
+          // Prompt user for confirmation
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+
+          const answer = await new Promise((resolve) => {
+            rl.question('   Discard these changes and continue? (y/n): ', resolve);
+          });
+          rl.close();
+
+          if (answer.toLowerCase() !== 'y' && answer.toLowerCase() !== 'yes') {
+            throw new Error('Aborted: uncommitted changes in working directory. Commit or stash them, or use --force-clean to discard.');
+          }
+
+          execSync(`cd ${project.repoPath} && git restore . && git clean -fd`, {
+            encoding: "utf8",
+            timeout: 10000,
+          });
+        }
+      }
+
       if (existingPR) {
-        console.log(`Found existing PR #${existingPR.number}, resetting branch to master: ${existingPR.branchName}`);
+        console.log(`Found existing PR #${existingPR.number}, resetting branch to origin/master: ${existingPR.branchName}`);
         branchName = existingPR.branchName;
-        execSync(`cd ${project.repoPath} && git fetch origin ${branchName} && git checkout ${branchName} && git reset --hard master`, {
+        // Fetch both master and the PR branch, then reset to origin/master for a fresh fix attempt
+        execSync(`cd ${project.repoPath} && git fetch origin master ${branchName} && git checkout ${branchName} && git reset --hard origin/master`, {
           encoding: "utf8",
           timeout: 10000,
         });
@@ -991,6 +1047,14 @@ The branch (${branchName}) is already checked out. Apply the changes directly to
         if (fs.existsSync(taskPromptFile)) {
           fs.unlinkSync(taskPromptFile);
         }
+
+        // Check if this is a Claude ToS error - provide helpful message
+        const errorOutput = taskError.stdout || taskError.stderr || taskError.message || '';
+        if (errorOutput.includes('Consumer Terms') || errorOutput.includes('Privacy Policy') ||
+            errorOutput.includes('must run `claude`') || errorOutput.includes('review the updated terms')) {
+          throw new Error('Claude requires Terms of Service acceptance - run "claude" manually to accept, then retry');
+        }
+
         throw new Error(`Task agent failed to apply fix: ${taskError.message}`);
       }
 
@@ -1001,17 +1065,40 @@ The branch (${branchName}) is already checked out. Apply the changes directly to
       // Commit and push (sanitize all data to avoid exposing secrets)
       const commitMessage = `Suggested fix for Sentry issue: ${this.sanitize(issue.title)}\n\nRoot cause: ${this.sanitize(analysis.rootCause)}\nFix: ${this.sanitize(analysis.fix)}\n\nConfidence: ${analysis.confidence}\nFix type: ${analysis.fixType}\n\nSentry issue: ${issue.permalink}`;
 
-      execSync(`cd ${project.repoPath} && git add .`, {
+      // Only add the specific files that were identified for modification
+      // This prevents accidentally committing other changed files in the working directory
+      // Note: fixFiles paths are relative to FreegleDockerWSL (e.g., "iznik-server/include/foo.php")
+      // but we're running git add from within project.repoPath, so strip the repo directory prefix
+      const repoDir = path.basename(project.repoPath);
+      const filesToAdd = analysis.fixFiles.map(f => {
+        // If path starts with the repo directory name, strip it
+        if (f.path.startsWith(repoDir + '/')) {
+          return f.path.substring(repoDir.length + 1);
+        }
+        return f.path;
+      }).join(' ');
+      execSync(`cd ${project.repoPath} && git add ${filesToAdd}`, {
         encoding: "utf8",
         timeout: 10000,
       });
 
-      execSync(`cd ${project.repoPath} && git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
-        encoding: "utf8",
-        timeout: 10000,
-      });
+      // Write commit message to file to avoid shell escaping issues with backticks and special chars
+      const commitMsgFile = `/tmp/sentry-commit-msg-${Date.now()}.txt`;
+      fs.writeFileSync(commitMsgFile, commitMessage);
+      try {
+        execSync(`cd ${project.repoPath} && git commit -F "${commitMsgFile}"`, {
+          encoding: "utf8",
+          timeout: 10000,
+        });
+      } finally {
+        fs.unlinkSync(commitMsgFile);
+      }
 
-      execSync(`cd ${project.repoPath} && git push -u origin ${branchName}`, {
+      // Force push if updating existing PR (since we reset the branch to origin/master)
+      const pushCmd = existingPR
+        ? `cd ${project.repoPath} && git push --force-with-lease -u origin ${branchName}`
+        : `cd ${project.repoPath} && git push -u origin ${branchName}`;
+      execSync(pushCmd, {
         encoding: "utf8",
         timeout: 30000,
       });
@@ -1472,6 +1559,17 @@ Respond in JSON format:
 
     } catch (error) {
       console.error(`  ❌ Error processing comment:`, error.message);
+
+      // Check if this is a Claude ToS error - don't mark as processed so it can retry
+      const errorOutput = error.stdout || error.stderr || error.message || '';
+      if (errorOutput.includes('Consumer Terms') || errorOutput.includes('Privacy Policy') ||
+          errorOutput.includes('must run `claude`') || errorOutput.includes('review the updated terms')) {
+        console.error(`  ⚠ Claude requires ToS acceptance - comment NOT marked as processed (will retry later)`);
+        console.error(`  ⚠ Run 'claude' manually to accept the terms, then retry`);
+        // Don't record - allow retry later
+        return;
+      }
+
       this.recordProcessedComment(prNumber, commentId, 'review_comment', commentBody, 'error');
     }
   }
@@ -1510,11 +1608,12 @@ Respond in JSON format:
 
     let changesApplied = false;
 
+    // Sanitize all data to prevent secrets from appearing in revision prompts
+    const sanitizedTitle = this.sanitize(title);
+    const sanitizedComment = this.sanitize(commentBody);
+    const sanitizedChanges = analysis.requestedChanges.map(c => this.sanitize(c));
+
     try {
-      // Sanitize all data to prevent secrets from appearing in revision prompts
-      const sanitizedTitle = this.sanitize(title);
-      const sanitizedComment = this.sanitize(commentBody);
-      const sanitizedChanges = analysis.requestedChanges.map(c => this.sanitize(c));
 
       const taskPrompt = `You are helping revise code in a PR based on reviewer feedback.
 
@@ -1566,6 +1665,14 @@ The PR branch (${prBranch}) is already checked out. Apply the changes directly t
 
     } catch (taskError) {
       console.error(`     ❌ Task agent failed: ${taskError.message}`);
+
+      // Check if this is a Claude ToS error - throw to allow retry
+      const errorOutput = taskError.stdout || taskError.stderr || taskError.message || '';
+      if (errorOutput.includes('Consumer Terms') || errorOutput.includes('Privacy Policy') ||
+          errorOutput.includes('must run `claude`') || errorOutput.includes('review the updated terms')) {
+        console.error(`     ⚠ Claude requires ToS acceptance - will retry later`);
+        throw new Error('Claude requires Terms of Service acceptance');
+      }
     }
 
     if (!changesApplied) {
@@ -1606,7 +1713,10 @@ ${sanitizedChanges.map((c, i) => `- ${c}`).join('\n')}
 
 🤖 This revision was automatically generated based on PR comments.`;
 
-    execSync(`cd ${project.repoPath} && git add .`, { encoding: 'utf8' });
+    // Only add the specific files that are part of this PR
+    // This prevents accidentally committing other changed files in the working directory
+    const filesToAdd = prFiles.join(' ');
+    execSync(`cd ${project.repoPath} && git add ${filesToAdd}`, { encoding: 'utf8' });
 
     // Check if there are changes to commit
     const gitStatus = execSync(`cd ${project.repoPath} && git status --porcelain`, { encoding: 'utf8' });
@@ -1614,7 +1724,14 @@ ${sanitizedChanges.map((c, i) => `- ${c}`).join('\n')}
       throw new Error('No changes to commit after applying fix');
     }
 
-    execSync(`cd ${project.repoPath} && git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, { encoding: 'utf8' });
+    // Write commit message to file to avoid shell escaping issues with backticks and special chars
+    const commitMsgFile = `/tmp/sentry-commit-msg-${Date.now()}.txt`;
+    fs.writeFileSync(commitMsgFile, commitMessage);
+    try {
+      execSync(`cd ${project.repoPath} && git commit -F "${commitMsgFile}"`, { encoding: 'utf8' });
+    } finally {
+      fs.unlinkSync(commitMsgFile);
+    }
     execSync(`cd ${project.repoPath} && git pull origin ${prBranch} --rebase && git push origin ${prBranch}`, { encoding: 'utf8', timeout: 60000 });
 
     console.log(`     ✓ Changes committed and pushed`);

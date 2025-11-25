@@ -62,6 +62,8 @@ for (let i = 0; i < args.length; i++) {
     } else if (arg === '--project') {
       const projects = args[++i].split(',').map(p => p.trim());
       config.projectFilter = projects;
+    } else if (arg === '--force-clean') {
+      config.forceClean = true;
     }
   } else if (command === '--daemon' && !isNaN(parseInt(arg))) {
     config.intervalMinutes = parseInt(arg);
@@ -95,6 +97,7 @@ Options:
   --max-issues <n>             Limit number of issues to process per poll
   --pr-number <n>              Filter to specific PR number (for --monitor-prs)
   --project <name[,name...]>   Filter to specific project(s) (e.g., php, go, nuxt3)
+  --force-clean                Discard uncommitted changes in repos without prompting
 
 Examples:
   ./sentry-autofix --poll-one --token sntryu_xxx
@@ -124,6 +127,7 @@ Examples:
     maxIssuesPerPoll: config.maxIssuesPerPoll,
     prNumber: config.prNumber,
     projectFilter: config.projectFilter,
+    forceClean: config.forceClean,
   });
   switch (command) {
     case '--poll':
@@ -141,6 +145,7 @@ Examples:
         sentryAuthToken: config.sentryAuthToken,
         maxIssuesPerPoll: 1,
         ignoreAlreadyProcessing: config.ignoreAlreadyProcessing,
+        forceClean: config.forceClean,
       });
       await oneIssueIntegration.pollSentryIssues();
       console.log('Done!');
