@@ -14,10 +14,10 @@ This document summarizes push notification features available on iOS and Android
 
 ### Android Work
 
-- [ ] **PR 1: Android Notification Channels** (iznik-nuxt3) - [PR #120](https://github.com/Freegle/iznik-nuxt3/pull/120)
+- [x] **PR 1: Android Notification Channels** (iznik-nuxt3) - [PR #120](https://github.com/Freegle/iznik-nuxt3/pull/120)
   - [x] Create channels at startup: `chat_messages`, `social`, `reminders`, `tips`, `new_posts`
-  - [ ] Test: Verify channels appear in Android settings
-  - [ ] Test: Notifications still work with default channel
+  - [x] Test: Verify channels appear in Android settings
+  - [x] Test: Notifications still work with default channel
 
 - [ ] **PR 2: Backend Phase 1 - Channel Selection** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
   - [x] Add category config constants to `PushNotifications.php`
