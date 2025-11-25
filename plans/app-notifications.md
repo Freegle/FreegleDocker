@@ -19,16 +19,16 @@ This document summarizes push notification features available on iOS and Android
   - [ ] Test: Verify channels appear in Android settings
   - [ ] Test: Notifications still work with default channel
 
-- [ ] **PR 2: Backend Phase 1 - Channel Selection** (iznik-server)
-  - [ ] Add category config constants to `PushNotifications.php`
-  - [ ] Add `channel_id` to Android payloads (backwards compatible - old apps ignore)
-  - [ ] Add unit tests for new payload structure
+- [ ] **PR 2: Backend Phase 1 - Channel Selection** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
+  - [x] Add category config constants to `PushNotifications.php`
+  - [x] Add `channel_id` to Android payloads (backwards compatible - old apps ignore)
+  - [x] Add `interruption-level` to iOS payloads
+  - [x] Add unit tests for new payload structure
   - [ ] Test: Old app still receives notifications (fallback to default channel)
   - [ ] Test: New app uses correct channels per notification type
 
-- [ ] **PR 3: Backend Phase 1 - Grouping & Interruption** (iznik-server)
+- [ ] **PR 3: Backend Phase 1 - Grouping** (iznik-server)
   - [ ] Add `thread-id` to payloads for notification grouping
-  - [ ] Add `interruption-level` to iOS payloads
   - [ ] Send full message text (remove truncation)
   - [ ] Add unit tests
   - [ ] Test: Notifications from same chat group together
