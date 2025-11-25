@@ -6,26 +6,63 @@ This document summarizes push notification features available on iOS and Android
 
 ## Implementation Progress
 
+### Dual Notification Strategy
+
+To maintain backwards compatibility during rollout, the server will send **two notifications** for each event:
+
+1. **Legacy notification** (no `channel_id`): For old apps
+   - Simple format: "You have 2 new messages"
+   - Processed by apps that filter for notifications WITHOUT `channel_id`
+
+2. **New notification** (with `channel_id`): For new apps
+   - Rich format: Individual messages, threaded, with images and actions
+   - Processed by apps that filter for notifications WITH `channel_id`
+
+**App behavior:**
+- **Legacy app** (master): Only processes notifications WITHOUT `channel_id`
+- **New app** (PR #1): Only processes notifications WITH `channel_id`
+
+This ensures no duplicate notifications and a clean transition.
+
 ### Setup
 
 - [x] **Enable Android Debug Builds on Feature Branches** (iznik-nuxt3) - committed to master
   - [x] Modified `.circleci/config.yml` to run `build-android-debug` on `feature/*` branches
   - [ ] Test: PR triggers Android debug build
 
+### Rollout Order
+
+1. **Legacy app fix** (master) - committed
+   - [x] Remove old channels (`PushDefaultForeground`, `NewPosts`)
+   - [x] Ignore notifications with `channel_id` (process only legacy)
+   - [ ] Release to app stores and wait for rollout
+
+2. **Server update** (PR #2) - after legacy app rollout
+   - [ ] Send both legacy AND new notifications
+   - [ ] Legacy: no `channel_id`, simple message
+   - [ ] New: with `channel_id`, rich content
+
+3. **New app** (PR #1) - after server update
+   - [x] Create new channels (`chat_messages`, `social`, etc.)
+   - [x] Ignore notifications without `channel_id` (process only new)
+   - [ ] Release to app stores
+
 ### Android Work
 
 - [x] **PR 1: Android Notification Channels** (iznik-nuxt3) - [PR #120](https://github.com/Freegle/iznik-nuxt3/pull/120)
   - [x] Create channels at startup: `chat_messages`, `social`, `reminders`, `tips`, `new_posts`
+  - [x] Only process notifications WITH `channel_id`
   - [x] Test: Verify channels appear in Android settings
   - [x] Test: Notifications still work with default channel
 
-- [ ] **PR 2: Backend Phase 1 - Channel Selection** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
+- [ ] **PR 2: Backend - Dual Notification System** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
   - [x] Add category config constants to `PushNotifications.php`
-  - [x] Add `channel_id` to Android payloads (backwards compatible - old apps ignore)
+  - [x] Add `channel_id` to Android payloads
   - [x] Add `interruption-level` to iOS payloads
   - [x] Add unit tests for new payload structure
-  - [ ] Test: Old app still receives notifications (fallback to default channel)
-  - [ ] Test: New app uses correct channels per notification type
+  - [ ] Update to send BOTH legacy and new notifications
+  - [ ] Test: Old app receives legacy notification only
+  - [ ] Test: New app receives new notification only
 
 - [ ] **PR 3: Backend Phase 1 - Grouping** (iznik-server)
   - [ ] Add `thread-id` to payloads for notification grouping
