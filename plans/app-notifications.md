@@ -55,30 +55,20 @@ This ensures no duplicate notifications and a clean transition.
   - [x] Test: Verify channels appear in Android settings
   - [x] Test: Notifications still work with default channel
 
-- [ ] **PR 2: Backend - Dual Notification System** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
+- [ ] **PR 2: Backend - Combined Notification Enhancements** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
   - [x] Add category config constants to `PushNotifications.php`
   - [x] Add `channel_id` to Android payloads
   - [x] Add `interruption-level` to iOS payloads
+  - [x] Send BOTH legacy and new notifications (dual system)
+  - [x] Add `thread-id` / `tag` for notification grouping
+  - [x] Add `image` URL to notification payloads (profile photos for chats)
   - [x] Add unit tests for new payload structure
-  - [ ] Update to send BOTH legacy and new notifications
   - [ ] Test: Old app receives legacy notification only
   - [ ] Test: New app receives new notification only
-
-- [ ] **PR 3: Backend Phase 1 - Grouping** (iznik-server)
-  - [ ] Add `thread-id` to payloads for notification grouping
-  - [ ] Send full message text (remove truncation)
-  - [ ] Add unit tests
   - [ ] Test: Notifications from same chat group together
-  - [ ] Test: Old app still works (ignores new fields)
+  - [ ] Test: Images appear in Android notifications
 
-- [ ] **PR 4: Backend Phase 1 - Images** (iznik-server)
-  - [ ] Add `image` URL to notification payloads
-  - [ ] Determine image source per notification type
-  - [ ] Add unit tests
-  - [ ] Test: Android shows images in notifications
-  - [ ] Test: Old app still works (ignores image field)
-
-- [ ] **PR 5: Android Action Buttons** (iznik-nuxt3)
+- [ ] **PR 3: Android Action Buttons** (iznik-nuxt3)
   - [ ] Handle `category` field from payload
   - [ ] Implement Reply action with text input
   - [ ] Implement Mark Read action
@@ -87,11 +77,11 @@ This ensures no duplicate notifications and a clean transition.
 
 ### iOS Work (after Android complete)
 
-- [ ] **PR 6: iOS Notification Service Extension** (iznik-nuxt3)
+- [ ] **PR 4: iOS Notification Service Extension** (iznik-nuxt3)
   - [ ] Add Service Extension for image attachments
   - [ ] Test: Images appear in iOS notifications
 
-- [ ] **PR 7: iOS Action Categories** (iznik-nuxt3)
+- [ ] **PR 5: iOS Action Categories** (iznik-nuxt3)
   - [ ] Register notification categories at startup
   - [ ] Implement Reply action with text input
   - [ ] Test: Reply button appears on notifications
