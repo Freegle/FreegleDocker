@@ -14,8 +14,8 @@ This document summarizes push notification features available on iOS and Android
 
 ### Android Work
 
-- [ ] **PR 1: Android Notification Channels** (iznik-nuxt3)
-  - [ ] Create channels at startup: `chat_messages`, `social`, `reminders`, `tips`, `new_posts`
+- [ ] **PR 1: Android Notification Channels** (iznik-nuxt3) - [PR #120](https://github.com/Freegle/iznik-nuxt3/pull/120)
+  - [x] Create channels at startup: `chat_messages`, `social`, `reminders`, `tips`, `new_posts`
   - [ ] Test: Verify channels appear in Android settings
   - [ ] Test: Notifications still work with default channel
 
