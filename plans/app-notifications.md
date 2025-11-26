@@ -68,10 +68,25 @@ This ensures no duplicate notifications and a clean transition.
   - [ ] Test: Notifications from same chat group together
   - [ ] Test: Images appear in Android notifications
 
-- [ ] **PR 3: Android Action Buttons** (iznik-nuxt3)
-  - [ ] Handle `category` field from payload
-  - [ ] Implement Reply action with text input
-  - [ ] Implement Mark Read action
+- [x] **New Posts Push Notifications** (iznik-server) - Part of PR #31
+  - [x] Add `PostNotifications.php` class for OFFER/WANTED notifications
+  - [x] Add `users_postnotifications_tracking` table for tracking sent notifications
+  - [x] Add `post_notifications.php` cron script
+  - [x] Respect user's emailfrequency setting per group
+  - [x] Summarize multiple posts (e.g., "3 OFFERs and 2 WANTEDs")
+  - [x] Exclude taken/received/promised posts
+  - [x] Only send NEW style notifications (with channel_id)
+  - [x] TEMPORARY: Only send to Admin users for initial testing
+  - [x] Add PHPUnit tests for logic
+  - [ ] Test: Notifications appear on new app (Admin only)
+  - [ ] Test: Old app ignores these (no channel_id processing)
+  - [ ] Remove Admin-only restriction after testing
+
+- [x] **PR 3: Android Action Buttons** (iznik-nuxt3) - Part of PR #120
+  - [x] Handle `category` field from payload
+  - [x] Implement Reply action with text input (native Android + JS handler)
+  - [x] Implement Mark Read action (native Android + JS handler)
+  - [x] Update capacitor-push-notifications-cap7 plugin with action support
   - [ ] Test: Reply button appears, text input works
   - [ ] Test: Reply sends message successfully
 
