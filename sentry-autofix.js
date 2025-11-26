@@ -540,13 +540,25 @@ class SentryIntegration {
         return;
       }
 
+      // For PHP/Go projects, try to generate and run a test locally
+      const testResult = await this.generateAndRunTest(analysis, project, moduleKey, issue);
+
+      // If test was added successfully, need to push again
+      if (testResult.passed) {
+        console.log("Pushing updated commit with test...");
+        const pushCmd = existingPR
+          ? `cd ${project.repoPath} && git push --force-with-lease origin ${fixResult.branchName}`
+          : `cd ${project.repoPath} && git push origin ${fixResult.branchName}`;
+        execSync(pushCmd, { encoding: 'utf8', timeout: 30000 });
+      }
+
       // Create or update PR
       if (existingPR) {
         console.log(`✅ Updated existing PR #${existingPR.number}: ${existingPR.url}`);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'updated', existingPR.url, 'Updated existing PR with suggested fix');
       } else {
         console.log("Creating PR with suggested fix.");
-        await this.createPR(analysis, project, moduleKey, fixResult, issue);
+        await this.createPR(analysis, project, moduleKey, fixResult, issue, testResult);
         this.recordProcessedIssue(issue.id, moduleKey, issue.title, 'success', fixResult.prUrl);
       }
 
@@ -1122,10 +1134,281 @@ The branch (${branchName}) is already checked out. Apply the changes directly to
   }
 
   /**
+   * Generate and run a test for PHP/Go fixes
+   * Returns { success: boolean, testFile: string|null, error: string|null }
+   */
+  async generateAndRunTest(analysis, project, moduleKey, issue) {
+    // Only run tests for PHP and Go projects
+    if (moduleKey !== 'php' && moduleKey !== 'go') {
+      return { success: true, testFile: null, skipped: true, reason: 'Tests only run for PHP/Go projects' };
+    }
+
+    console.log(`\n🧪 Generating test for ${moduleKey} fix...`);
+
+    // Check if docker container is available
+    const containerName = moduleKey === 'php' ? 'freegle-apiv1' : 'freegle-apiv2';
+    try {
+      execSync(`docker ps --format '{{.Names}}' | grep -q ${containerName}`, {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+    } catch (e) {
+      console.log(`   ⚠️ Docker container ${containerName} not running - skipping local test`);
+      return { success: true, testFile: null, skipped: true, reason: `Docker container ${containerName} not available` };
+    }
+
+    // Generate test using Claude
+    const testPrompt = this.buildTestPrompt(analysis, project, moduleKey, issue);
+    let testResult = null;
+    let lastError = null;
+
+    // Try up to 2 times to generate and run a passing test
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      console.log(`   Attempt ${attempt}/2: Generating test...`);
+
+      try {
+        const testCode = await this.generateTest(testPrompt, moduleKey, attempt > 1 ? lastError : null);
+
+        if (!testCode) {
+          lastError = 'Failed to generate test code';
+          continue;
+        }
+
+        // Write test file
+        const testFile = this.writeTestFile(testCode, project, moduleKey);
+        console.log(`   ✓ Test file written: ${testFile}`);
+
+        // Run the test
+        const runResult = await this.runTest(testFile, project, moduleKey, containerName);
+
+        if (runResult.success) {
+          console.log(`   ✓ Test passed!`);
+          // Add test file to git
+          const repoDir = path.basename(project.repoPath);
+          const relativeTestFile = testFile.startsWith(repoDir + '/')
+            ? testFile.substring(repoDir.length + 1)
+            : testFile;
+          execSync(`cd ${project.repoPath} && git add ${relativeTestFile}`, { encoding: 'utf8' });
+
+          // Amend the commit to include the test
+          execSync(`cd ${project.repoPath} && git commit --amend --no-edit`, { encoding: 'utf8' });
+
+          return { success: true, testFile: testFile, passed: true };
+        } else {
+          console.log(`   ✗ Test failed: ${runResult.error}`);
+          lastError = runResult.error;
+
+          // Clean up failed test file
+          try {
+            const fullPath = path.join(project.repoPath, testFile.startsWith(path.basename(project.repoPath) + '/')
+              ? testFile.substring(path.basename(project.repoPath).length + 1)
+              : testFile);
+            if (fs.existsSync(fullPath)) {
+              fs.unlinkSync(fullPath);
+            }
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }
+      } catch (error) {
+        console.log(`   ✗ Error in attempt ${attempt}: ${error.message}`);
+        lastError = error.message;
+      }
+    }
+
+    // All attempts failed
+    console.log(`   ⚠️ Could not create passing test after 2 attempts`);
+    return { success: false, testFile: null, error: lastError };
+  }
+
+  /**
+   * Build prompt for test generation
+   */
+  buildTestPrompt(analysis, project, moduleKey, issue) {
+    const sanitizedRootCause = this.sanitize(analysis.rootCause);
+    const sanitizedFix = this.sanitize(analysis.fix);
+
+    if (moduleKey === 'php') {
+      return `Generate a PHPUnit test for the following fix. The test should verify the fix works correctly.
+
+**Root Cause:** ${sanitizedRootCause}
+**Fix:** ${sanitizedFix}
+
+**Files Modified:**
+${analysis.fixFiles.map(f => `- ${f.path}`).join('\n')}
+
+**Requirements:**
+- Create a focused test that specifically tests the fix (not a general test of the area)
+- Do NOT use hardcoded IDs - generate test data or use existing test utilities
+- Use the existing test base class (IznikTestCase or IznikAPITestCase)
+- Follow the existing test patterns in the codebase
+- Test should be in the appropriate test/ut/php/ subdirectory
+- Include proper setUp() and tearDown() methods
+- Test the specific edge case that was causing the Sentry error
+
+**Output Format (JSON only):**
+{
+  "testFile": "test/ut/php/include/SomeTest.php",
+  "testCode": "<?php\\n... full test file content ..."
+}
+
+CRITICAL: Output valid JSON only, no markdown.`;
+    } else {
+      return `Generate a Go test for the following fix. The test should verify the fix works correctly.
+
+**Root Cause:** ${sanitizedRootCause}
+**Fix:** ${sanitizedFix}
+
+**Files Modified:**
+${analysis.fixFiles.map(f => `- ${f.path}`).join('\n')}
+
+**Requirements:**
+- Create a focused test that specifically tests the fix (not a general test of the area)
+- Do NOT use hardcoded IDs - generate test data dynamically
+- Follow existing test patterns in the codebase
+- Test the specific edge case that was causing the Sentry error
+- Place test in the same package as the code being tested
+
+**Output Format (JSON only):**
+{
+  "testFile": "path/to/some_test.go",
+  "testCode": "package ...\\n... full test file content ..."
+}
+
+CRITICAL: Output valid JSON only, no markdown.`;
+    }
+  }
+
+  /**
+   * Generate test code using Claude
+   */
+  async generateTest(prompt, moduleKey, previousError = null) {
+    if (previousError) {
+      prompt += `\n\n**Previous attempt failed with error:**\n${this.sanitize(previousError)}\n\nPlease fix the test to address this error.`;
+    }
+
+    const tempPromptFile = `/tmp/sentry-test-prompt-${Date.now()}.txt`;
+    fs.writeFileSync(tempPromptFile, prompt);
+
+    try {
+      const response = execSync(`claude -p "$(cat ${tempPromptFile})" --dangerously-skip-permissions`, {
+        encoding: 'utf8',
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 300000, // 5 minutes
+        cwd: process.cwd(),
+      });
+
+      fs.unlinkSync(tempPromptFile);
+
+      // Extract JSON from response
+      const jsonMatch = response.match(/```json\n([\s\S]+?)\n```/) || response.match(/\{[\s\S]+\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not parse test generation response as JSON');
+      }
+
+      const jsonStr = jsonMatch[1] || jsonMatch[0];
+      const result = JSON.parse(jsonStr);
+      return result;
+    } catch (error) {
+      if (fs.existsSync(tempPromptFile)) {
+        fs.unlinkSync(tempPromptFile);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Write test file to disk
+   */
+  writeTestFile(testResult, project, moduleKey) {
+    const testFile = testResult.testFile;
+    const testCode = testResult.testCode;
+
+    // Handle path - testFile might include repo dir or not
+    const repoDir = path.basename(project.repoPath);
+    let relativePath = testFile;
+    if (testFile.startsWith(repoDir + '/')) {
+      relativePath = testFile.substring(repoDir.length + 1);
+    }
+
+    const fullPath = path.join(project.repoPath, relativePath);
+
+    // Ensure directory exists
+    const dir = path.dirname(fullPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(fullPath, testCode);
+    return testFile;
+  }
+
+  /**
+   * Run a specific test file
+   */
+  async runTest(testFile, project, moduleKey, containerName) {
+    const repoDir = path.basename(project.repoPath);
+    let relativePath = testFile;
+    if (testFile.startsWith(repoDir + '/')) {
+      relativePath = testFile.substring(repoDir.length + 1);
+    }
+
+    try {
+      if (moduleKey === 'php') {
+        // Run PHPUnit with filter for just this test file
+        const testClass = path.basename(relativePath, '.php');
+        const containerPath = `/var/www/iznik/${relativePath}`;
+
+        const result = execSync(
+          `docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php composer/vendor/phpunit/phpunit/phpunit --configuration test/ut/php/phpunit.xml ${containerPath} 2>&1"`,
+          { encoding: 'utf8', timeout: 120000 }
+        );
+
+        // Check for failures in output
+        if (result.includes('FAILURES!') || result.includes('ERRORS!')) {
+          return { success: false, error: result.substring(0, 500) };
+        }
+        return { success: true, output: result };
+
+      } else if (moduleKey === 'go') {
+        // Run go test for specific file
+        const testDir = path.dirname(relativePath);
+        const result = execSync(
+          `docker exec freegle-apiv2 sh -c "cd /app && go test -v ./${testDir}/... -run ${path.basename(relativePath, '_test.go')} 2>&1"`,
+          { encoding: 'utf8', timeout: 120000 }
+        );
+
+        if (result.includes('FAIL') || result.includes('panic')) {
+          return { success: false, error: result.substring(0, 500) };
+        }
+        return { success: true, output: result };
+      }
+
+      return { success: false, error: 'Unknown module type' };
+    } catch (error) {
+      return { success: false, error: error.message.substring(0, 500) };
+    }
+  }
+
+  /**
    * Create PR via GitHub CLI
    */
-  async createPR(analysis, project, moduleKey, fixResult, issue) {
+  async createPR(analysis, project, moduleKey, fixResult, issue, testResult = null) {
     console.log("Creating PR...");
+
+    // Build test status section for PR body
+    let testStatusSection = '';
+    if (testResult) {
+      if (testResult.skipped) {
+        testStatusSection = `**Local Test:** ⏭️ Skipped (${testResult.reason})`;
+      } else if (testResult.passed) {
+        testStatusSection = `**Local Test:** ✅ Passed\n**Test File:** ${testResult.testFile}`;
+      } else {
+        testStatusSection = `**Local Test:** ⚠️ Could not create passing test\n**Error:** ${this.sanitize(testResult.error || 'Unknown error').substring(0, 200)}`;
+      }
+    } else {
+      testStatusSection = '**Local Test:** Not attempted';
+    }
 
     // Sanitize all user-facing text to prevent API keys/secrets from appearing in PRs
     const prBody = `## Automated Fix for Sentry Issue
@@ -1138,7 +1421,7 @@ ${analysis.fixFiles.map(f => {
   return `- ${f.path}: ${changes}`;
 }).join('\n')}
 
-**Test Case:** ${analysis.testFile || 'Included'}
+${testStatusSection}
 
 **Note:** This fix was generated automatically. Tests will run on CircleCI - please review results before merging.
 
