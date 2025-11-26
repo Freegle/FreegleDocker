@@ -174,7 +174,22 @@ commands:
           name: Start Docker services
           command: |
             cd "$HOME/FreegleDocker"
-            docker-compose -f docker-compose.yml up -d
+            if ! docker-compose -f docker-compose.yml up -d; then
+              echo "❌ Docker Compose failed to start services"
+              echo ""
+              echo "=== Container Status ==="
+              docker-compose -f docker-compose.yml ps -a
+              echo ""
+              echo "=== freegle-apiv1 logs ==="
+              docker logs freegle-apiv1 2>&1 || echo "No logs available"
+              echo ""
+              echo "=== freegle-apiv2 logs ==="
+              docker logs freegle-apiv2 2>&1 || echo "No logs available"
+              echo ""
+              echo "=== All container logs ==="
+              docker-compose -f docker-compose.yml logs --tail 50 2>&1 || true
+              exit 1
+            fi
             echo "Waiting for basic services to start..."
             sleep 30
             echo "Service status:"
