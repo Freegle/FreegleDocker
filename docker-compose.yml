@@ -50,11 +50,11 @@ services:
       MYSQL_ROOT_PASSWORD: iznik
       MYSQL_DATABASE: iznik
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost || exit 1"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -P 3306 || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 60s
 
   postgres:
     container_name: freegle-postgres
