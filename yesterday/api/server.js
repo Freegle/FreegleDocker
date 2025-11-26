@@ -313,7 +313,8 @@ app.get('/api/restore-status', async (req, res) => {
           inProgress: false,
           status: 'completed',
           message: 'Last restore completed successfully',
-          backupDate: status.backupDate
+          backupDate: status.backupDate,
+          completedAt: status.timestamp
         });
       }
 
@@ -322,7 +323,8 @@ app.get('/api/restore-status', async (req, res) => {
           inProgress: false,
           status: 'failed',
           message: 'Last restore failed - check logs',
-          backupDate: status.backupDate
+          backupDate: status.backupDate,
+          completedAt: status.timestamp
         });
       }
 

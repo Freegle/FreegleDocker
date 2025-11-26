@@ -527,12 +527,69 @@ app.get('/health', (req, res) => {
     });
 });
 
+// CORS preflight for public endpoints
+app.options('/api/restore-status', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, sentry-trace, baggage');
+    res.status(204).end();
+});
+
 // Public restore status endpoint - no auth required
 // Used by ModTools dashboard to show backup status
-app.get('/api/restore-status', createProxyMiddleware({
-    target: 'http://yesterday-api:8082',
-    changeOrigin: true
-}));
+app.get('/api/restore-status', (req, res) => {
+    console.log('[PUBLIC] /api/restore-status accessed without auth');
+    const options = {
+        hostname: 'yesterday-api',
+        port: 8082,
+        path: '/api/restore-status',
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        }
+    };
+
+    const proxyReq = http.request(options, (proxyRes) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        proxyRes.pipe(res);
+    });
+
+    proxyReq.on('error', (err) => {
+        console.error('[PUBLIC] /api/restore-status proxy error:', err.message);
+        res.status(502).json({ error: 'Backend unavailable' });
+    });
+
+    proxyReq.end();
+});
+
+// Public current-backup endpoint - no auth required
+// Also used by ModTools dashboard
+app.get('/api/current-backup', (req, res) => {
+    console.log('[PUBLIC] /api/current-backup accessed without auth');
+    const options = {
+        hostname: 'yesterday-api',
+        port: 8082,
+        path: '/api/current-backup',
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json'
+        }
+    };
+
+    const proxyReq = http.request(options, (proxyRes) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        proxyRes.pipe(res);
+    });
+
+    proxyReq.on('error', (err) => {
+        console.error('[PUBLIC] /api/current-backup proxy error:', err.message);
+        res.status(502).json({ error: 'Backend unavailable' });
+    });
+
+    proxyReq.end();
+});
 
 // Admin endpoints (require ADMIN_KEY)
 function requireAdminKey(req, res, next) {
