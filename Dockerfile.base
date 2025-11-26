@@ -13,17 +13,20 @@ COPY scripts/retry.sh /usr/local/bin/retry
 RUN chmod +x /usr/local/bin/retry
 
 # ============ COMMON TOOLS ============
-RUN apt-get update && apt-get install -y \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg wget git vim \
     build-essential python3 \
     zip unzip jq netcat telnet \
     iputils-ping net-tools dnsutils \
-    lsb-release openssl \
-    && rm -rf /var/lib/apt/lists/*
+    lsb-release openssl
 
 # ============ NODE.JS 22 ============
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000
@@ -37,7 +40,9 @@ ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}" \
 # ============ PHP 8.1 + WEB SERVER ============
 # nginx: serves PHP API via php-fpm
 # postfix: mail relay for sending emails (configured to use mailhog)
-RUN apt-get update && apt-get install -y \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     php8.1-fpm php8.1-cli php8.1-mysql php8.1-pgsql php8.1-redis \
     php8.1-curl php8.1-zip php8.1-gd php8.1-mbstring php8.1-xml \
     php8.1-intl php8.1-xdebug php-mailparse php8.1-simplexml \
@@ -47,16 +52,16 @@ RUN apt-get update && apt-get install -y \
     php-pear php-dev libgeoip-dev php-mbstring \
     nginx postfix cron rsyslog openssh-server \
     default-mysql-client postgresql-client \
-    tesseract-ocr geoip-bin geoipupdate \
-    && rm -rf /var/lib/apt/lists/*
+    tesseract-ocr geoip-bin geoipupdate
 
 # ============ DOCKER CLI ============
-RUN install -m 0755 -d /etc/apt/keyrings \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
     && chmod a+r /etc/apt/keyrings/docker.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
-    && apt-get update && apt-get install -y docker-ce-cli docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin
 
 # ============ GOOGLE CLOUD SDK ============
 RUN curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz \
@@ -70,7 +75,9 @@ ENV PATH="/opt/google-cloud-sdk/bin:${PATH}"
 RUN go install github.com/go-swagger/go-swagger/cmd/swagger@v0.31.0
 
 # Remove packages that conflict with our setup
-RUN apt-get update && apt-get remove -y apache2* sendmail* mlocate php-ssh2 || true && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get remove -y apache2* sendmail* mlocate php-ssh2 || true
 
 # ============ GEOIP DATABASE ============
 # Copy fallback GeoIP database first, then try to download fresh version
