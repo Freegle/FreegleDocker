@@ -1843,17 +1843,9 @@ Respond in JSON format:
     } catch (error) {
       console.error(`  ❌ Error processing comment:`, error.message);
 
-      // Check if this is a Claude ToS error - don't mark as processed so it can retry
-      const errorOutput = error.stdout || error.stderr || error.message || '';
-      if (errorOutput.includes('Consumer Terms') || errorOutput.includes('Privacy Policy') ||
-          errorOutput.includes('must run `claude`') || errorOutput.includes('review the updated terms')) {
-        console.error(`  ⚠ Claude requires ToS acceptance - comment NOT marked as processed (will retry later)`);
-        console.error(`  ⚠ Run 'claude' manually to accept the terms, then retry`);
-        // Don't record - allow retry later
-        return;
-      }
-
-      this.recordProcessedComment(prNumber, commentId, 'review_comment', commentBody, 'error');
+      // Don't mark comments as processed when errors occur - allow retry on next monitoring run
+      // This ensures commit failures, ToS issues, and other transient errors don't prevent future retries
+      console.error(`  ⚠ Comment NOT marked as processed (will retry on next run)`);
     }
   }
 
@@ -1996,16 +1988,17 @@ ${sanitizedChanges.map((c, i) => `- ${c}`).join('\n')}
 
 🤖 This revision was automatically generated based on PR comments.`;
 
-    // Only add the specific files that are part of this PR
-    // This prevents accidentally committing other changed files in the working directory
-    const filesToAdd = prFiles.join(' ');
-    execSync(`cd ${project.repoPath} && git add ${filesToAdd}`, { encoding: 'utf8' });
+    // Add all modified and new files created by the Task agent
+    // The Task agent may create new files (like test files) that weren't in the original PR
+    execSync(`cd ${project.repoPath} && git add -A`, { encoding: 'utf8' });
 
-    // Check if there are changes to commit
-    const gitStatus = execSync(`cd ${project.repoPath} && git status --porcelain`, { encoding: 'utf8' });
-    if (!gitStatus.trim()) {
+    // Check if there are staged changes to commit
+    const gitDiffStaged = execSync(`cd ${project.repoPath} && git diff --staged --stat`, { encoding: 'utf8' });
+    if (!gitDiffStaged.trim()) {
       throw new Error('No changes to commit after applying fix');
     }
+
+    console.log(`     Staged files:\n${gitDiffStaged}`);
 
     // Write commit message to file to avoid shell escaping issues with backticks and special chars
     const commitMsgFile = `/tmp/sentry-commit-msg-${Date.now()}.txt`;
