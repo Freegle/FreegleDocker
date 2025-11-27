@@ -55,18 +55,23 @@ This ensures no duplicate notifications and a clean transition.
   - [x] Test: Verify channels appear in Android settings
   - [x] Test: Notifications still work with default channel
 
-- [ ] **PR 2: Backend - Combined Notification Enhancements** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
+- [x] **PR 2: Backend - Combined Notification Enhancements** (iznik-server) - [PR #31](https://github.com/Freegle/iznik-server/pull/31)
   - [x] Add category config constants to `PushNotifications.php`
   - [x] Add `channel_id` to Android payloads
   - [x] Add `interruption-level` to iOS payloads
   - [x] Send BOTH legacy and new notifications (dual system)
   - [x] Add `thread-id` / `tag` for notification grouping
   - [x] Add `image` URL to notification payloads (profile photos for chats)
+  - [x] Add `notId` field for Android notification replacement (prevents flooding)
+  - [x] Add `timestamp` field for proper notification ordering
+  - [x] Implement per-message notifications via `notifyIndividualMessages()`
+  - [x] Add `lastmsgnotified` column to chat_roster table for tracking
+  - [x] Fix notification query to check only `lastmsgnotified`, not `lastmsgseen`
   - [x] Add unit tests for new payload structure
+  - [x] Test: Notifications from same chat group together (via threadId)
+  - [x] Test: Images appear in Android notifications
   - [ ] Test: Old app receives legacy notification only
   - [ ] Test: New app receives new notification only
-  - [ ] Test: Notifications from same chat group together
-  - [ ] Test: Images appear in Android notifications
 
 - [x] **New Posts Push Notifications** (iznik-server) - Part of PR #31
   - [x] Add `PostNotifications.php` class for OFFER/WANTED notifications
@@ -86,9 +91,16 @@ This ensures no duplicate notifications and a clean transition.
   - [x] Handle `category` field from payload
   - [x] Implement Reply action with text input (native Android + JS handler)
   - [x] Implement Mark Read action (native Android + JS handler)
+  - [x] Implement View action to open app in specific chat
   - [x] Update capacitor-push-notifications-cap7 plugin with action support
-  - [ ] Test: Reply button appears, text input works
-  - [ ] Test: Reply sends message successfully
+  - [x] Add image support - downloads profile photos for large icon display
+  - [x] Add timestamp support - uses OS native timestamp display
+  - [x] Fix MessagingService null checking - proper error handling for backgrounded app
+  - [x] Add `notId` field to prevent notification flooding (one notification per chat)
+  - [x] Test: Action buttons appear and work correctly
+  - [x] Test: Notifications display correctly when app foregrounded or backgrounded
+  - [ ] **TODO: Mark as read on inline reply** - When user sends an inline reply from a notification, ensure the chat message is marked as read (update lastmsgseen in chat_roster)
+  - [ ] **TODO: Implement notification sorting** - Sort notifications by `timestamp` field within each thread group to handle FCM delivery reordering (notifications include `chatid`, `messageid`, and `timestamp` for this purpose)
 
 ### iOS Work (after Android complete)
 
