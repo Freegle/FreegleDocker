@@ -112,14 +112,7 @@ To enable the webhooks, add a `CIRCLECI_TOKEN` secret to each submodule reposito
 curl -X POST \
   -H "Circle-Token: YOUR_CIRCLECI_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "branch": "master",
-    "parameters": {
-      "webhook_repository": "manual-trigger",
-      "webhook_branch": "master", 
-      "webhook_commit": "manual"
-    }
-  }' \
+  -d '{"branch": "master"}' \
   https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline
 ```
 
@@ -131,9 +124,6 @@ The configuration uses these environment variables:
 - `CIRCLE_BUILD_NUM` - CircleCI build number
 - `CIRCLE_BUILD_URL` - URL to build details
 - `CIRCLE_SHA1` - Git commit SHA
-- `WEBHOOK_REPOSITORY` - Repository that triggered webhook (if applicable)
-- `WEBHOOK_BRANCH` - Branch that triggered webhook (if applicable)
-- `WEBHOOK_COMMIT` - Commit that triggered webhook (if applicable)
 
 ## Monitoring and Debugging
 
