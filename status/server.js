@@ -2633,7 +2633,7 @@ const httpServer = http.createServer(async (req, res) => {
 
       <strong>Option 1: Using Bonjour (Recommended)</strong>
       <p style="margin: 8px 0;">Install <a href="https://support.apple.com/kb/DL999" target="_blank" style="color: #5cb85c;">Bonjour Print Services</a> from Apple, then run in Command Prompt:</p>
-      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">dns-sd -P "Freegle Dev" _http._tcp local 3004 freegle-app-dev.local ${devServerHost || "YOUR_IP"}</pre>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">dns-sd -P "Freegle App Dev" _http._tcp local 3004 freegle-app-dev.local ${devServerHost || "YOUR_IP"}</pre>
       <p style="font-size: 12px; color: #888; margin-top: 4px;">Keep this window open while developing. Replace YOUR_IP with your actual IP if not auto-detected above.</p>
 
       <strong style="display: block; margin-top: 16px;">Option 2: Using mDNS Repeater</strong>

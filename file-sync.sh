@@ -21,7 +21,12 @@ get_container_info() {
         if [[ "$relative_path" == iznik-nuxt3/tests/* || "$relative_path" == iznik-nuxt3/playwright.config.js ]]; then
             echo "freegle-playwright /app/${relative_path#iznik-nuxt3/} Playwright"
         else
-            echo "freegle-freegle-dev /app/${relative_path#iznik-nuxt3/} Freegle-Dev"$'\n'"freegle-freegle-prod /app/${relative_path#iznik-nuxt3/} Freegle-Prod"
+            local targets="freegle-freegle-dev /app/${relative_path#iznik-nuxt3/} Freegle-Dev"$'\n'"freegle-freegle-prod /app/${relative_path#iznik-nuxt3/} Freegle-Prod"
+            # Only include dev-live if the container is running
+            if docker ps --format '{{.Names}}' | grep -q '^freegle-dev-live$'; then
+                targets="$targets"$'\n'"freegle-dev-live /app/${relative_path#iznik-nuxt3/} Freegle-Dev-Live"
+            fi
+            echo "$targets"
         fi
     elif [[ "$relative_path" == iznik-server-go/* ]]; then
         echo "freegle-apiv2 /app/${relative_path#iznik-server-go/} API-v2"
