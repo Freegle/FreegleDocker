@@ -2616,43 +2616,40 @@ const httpServer = http.createServer(async (req, res) => {
   </div>
 
   <div class="card">
-    <h3>Requirements</h3>
+    <h3>ADB Setup (Required)</h3>
+    <div class="help">
+      <p style="margin-bottom: 12px;">The dev app uses <code>adb reverse</code> to forward ports from the phone to your dev machine. This avoids needing to install the full Android SDK - just a minimal ADB tool.</p>
+
+      <strong>Step 1: Install Minimal ADB</strong>
+      <p style="margin: 8px 0;">Download and install <a href="https://androidmtk.com/download-minimal-adb-and-fastboot-tool" target="_blank" style="color: #5cb85c;">Minimal ADB and Fastboot</a> (small ~2MB download, no Android SDK needed).</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 2: Connect Phone via USB</strong>
+      <p style="margin: 8px 0;">Connect your Android phone via USB and enable USB debugging in Developer Options.</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 3: Run ADB Reverse Commands</strong>
+      <p style="margin: 8px 0;">Open Command Prompt and run:</p>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">adb reverse tcp:3004 tcp:3004
+adb reverse tcp:24678 tcp:24678</pre>
+      <p style="font-size: 12px; color: #888; margin-top: 4px;">This forwards localhost:3004 and localhost:24678 on the phone to your dev machine. Run these each time you reconnect the phone.</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 4: Start the Dev Server</strong>
+      <p style="margin: 8px 0;">Start the <code>freegle-dev-live</code> container from the <a href="/" style="color: #5cb85c;">status page</a>.</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 5: Open the Dev App</strong>
+      <p style="margin: 8px 0;">Open the Freegle Dev app on your phone. It will connect to localhost:3004 which ADB forwards to your dev machine.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Why ADB Reverse?</h3>
     <div class="help">
       <ul style="margin: 0; padding-left: 20px;">
-        <li>Phone must be on the same WiFi network as your computer</li>
-        <li>Start the freegle-dev-live container from the <a href="/" style="color: #5cb85c;">Production tab</a> on the status page</li>
-        <li>Port 3004 must be accessible (check firewall settings below)</li>
+        <li><strong>No Android SDK needed</strong> - Just install Minimal ADB (~2MB)</li>
+        <li><strong>No network configuration</strong> - Works regardless of WiFi/firewall settings</li>
+        <li><strong>Reliable</strong> - Unlike mDNS which Android doesn't resolve well</li>
+        <li><strong>Secure</strong> - Traffic stays on USB, not broadcast over network</li>
       </ul>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>mDNS Setup (Required for Hot Reload)</h3>
-    <div class="help">
-      <p style="margin-bottom: 12px;">The dev app connects to <code>freegle-app-dev.local</code> via mDNS. You must broadcast this hostname from your dev machine.</p>
-
-      <strong>Option 1: Using Bonjour (Recommended)</strong>
-      <p style="margin: 8px 0;">Install <a href="https://support.apple.com/kb/DL999" target="_blank" style="color: #5cb85c;">Bonjour Print Services</a> from Apple, then run in Command Prompt:</p>
-      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">dns-sd -P "Freegle App Dev" _http._tcp local 3004 freegle-app-dev.local ${devServerHost || "YOUR_IP"}</pre>
-      <p style="font-size: 12px; color: #888; margin-top: 4px;">Keep this window open while developing. Replace YOUR_IP with your actual IP if not auto-detected above.</p>
-
-      <strong style="display: block; margin-top: 16px;">Option 2: Using mDNS Repeater</strong>
-      <p style="margin: 8px 0;">Alternatively, use a tool like <a href="https://github.com/nicholasdille/mdns-repeater" target="_blank" style="color: #5cb85c;">mdns-repeater</a> or configure your router's local DNS.</p>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Windows + WSL2 Port Forwarding</h3>
-    <div class="help">
-      <p style="margin: 8px 0;">Run these commands in <strong>PowerShell as Administrator</strong>:</p>
-      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">
-# Port forwarding from Windows to WSL (app + hot reload)
-netsh interface portproxy add v4tov4 listenport=3004 listenaddress=0.0.0.0 connectport=3004 connectaddress=127.0.0.1
-netsh interface portproxy add v4tov4 listenport=24678 listenaddress=0.0.0.0 connectport=24678 connectaddress=127.0.0.1
-
-# Firewall rules to allow incoming connections
-New-NetFirewallRule -DisplayName "WSL Freegle Dev App" -Direction Inbound -LocalPort 3004 -Protocol TCP -Action Allow
-New-NetFirewallRule -DisplayName "WSL Freegle Dev HMR" -Direction Inbound -LocalPort 24678 -Protocol TCP -Action Allow</pre>
+      <p style="margin-top: 12px; font-size: 13px; color: #666;">The only downside is requiring a USB connection, but this is the standard approach for Android development.</p>
     </div>
   </div>
 
