@@ -495,7 +495,6 @@ services:
           - freegle-dev-live.localhost
     ports:
       - "0.0.0.0:3004:3002"
-      - "0.0.0.0:24678:24678"  # Vite HMR WebSocket for hot reload
     build:
       context: ./iznik-nuxt3
       network: host
@@ -519,8 +518,6 @@ services:
       - NUXT_SSR_LOG=false
       - NODE_ENV=development
       - NUXT_BUILD_MODE=development
-      # Enable mobile dev app HMR - configures Vite to use port 24678 for WebSocket
-      - MOBILE_DEV_HMR=true
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle-dev-live.rule=Host(`freegle-dev-live.localhost`)"

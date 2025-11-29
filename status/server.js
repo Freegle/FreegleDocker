@@ -2626,11 +2626,10 @@ const httpServer = http.createServer(async (req, res) => {
       <strong style="display: block; margin-top: 16px;">Step 2: Connect Phone via USB</strong>
       <p style="margin: 8px 0;">Connect your Android phone via USB and enable USB debugging in Developer Options.</p>
 
-      <strong style="display: block; margin-top: 16px;">Step 3: Run ADB Reverse Commands</strong>
+      <strong style="display: block; margin-top: 16px;">Step 3: Run ADB Reverse Command</strong>
       <p style="margin: 8px 0;">Open Command Prompt and run:</p>
-      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">adb reverse tcp:3004 tcp:3004
-adb reverse tcp:24678 tcp:24678</pre>
-      <p style="font-size: 12px; color: #888; margin-top: 4px;">This forwards localhost:3004 and localhost:24678 on the phone to your dev machine. Run these each time you reconnect the phone.</p>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">adb reverse tcp:3004 tcp:3004</pre>
+      <p style="font-size: 12px; color: #888; margin-top: 4px;">This forwards localhost:3004 on the phone to your dev machine. Run this each time you reconnect the phone.</p>
 
       <strong style="display: block; margin-top: 16px;">Step 4: Start the Dev Server</strong>
       <p style="margin: 8px 0;">Start the <code>freegle-dev-live</code> container from the <a href="/" style="color: #5cb85c;">status page</a>.</p>
@@ -2650,6 +2649,27 @@ adb reverse tcp:24678 tcp:24678</pre>
         <li><strong>Secure</strong> - Traffic stays on USB, not broadcast over network</li>
       </ul>
       <p style="margin-top: 12px; font-size: 13px; color: #666;">The only downside is requiring a USB connection, but this is the standard approach for Android development.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Known Limitations</h3>
+    <div class="help">
+      <strong>No Hot Module Replacement (HMR)</strong>
+      <p style="margin: 8px 0;">Hot reload doesn't work in the Android WebView due to WebSocket connection issues. After making code changes, tap the refresh icon to reload. This is a known limitation of Capacitor WebView development.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Troubleshooting</h3>
+    <div class="help">
+      <strong>App says "Cannot load localhost:3004"</strong>
+      <p style="margin: 8px 0;">The ADB reverse port forwarding resets when you disconnect/reconnect your phone. Re-run the command:</p>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">adb reverse tcp:3004 tcp:3004</pre>
+      <p style="margin-top: 8px; font-size: 13px;">You can check current port forwards with: <code>adb reverse --list</code></p>
+
+      <strong style="display: block; margin-top: 16px;">Phone not detected by ADB</strong>
+      <p style="margin: 8px 0;">Ensure USB debugging is enabled in Developer Options on your phone. You may need to authorize the computer when prompted on the phone.</p>
     </div>
   </div>
 
