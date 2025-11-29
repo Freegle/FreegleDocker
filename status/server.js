@@ -5,6 +5,23 @@ const fs = require("fs");
 const path = require("path");
 const url = require("url");
 
+// Detect which docker compose command is available
+function getDockerComposeCommand() {
+  try {
+    execSync("docker compose version", { stdio: "ignore" });
+    return "docker compose";
+  } catch {
+    try {
+      execSync("docker-compose version", { stdio: "ignore" });
+      return "docker-compose";
+    } catch {
+      return "docker compose"; // Default to v2 syntax
+    }
+  }
+}
+const DOCKER_COMPOSE = getDockerComposeCommand();
+console.log(`Using docker compose command: ${DOCKER_COMPOSE}`);
+
 // Status cache for all services
 const statusCache = new Map();
 let lastFullCheck = 0;
@@ -51,26 +68,32 @@ const healthCheckMessages = {
 const services = [
   // Freegle Components
   {
-    id: "freegle-dev",
-    container: "freegle-freegle-dev",
+    id: "freegle-dev-local",
+    container: "freegle-dev-local",
     checkType: "freegle-component",
     category: "freegle",
   },
   {
-    id: "freegle-prod",
-    container: "freegle-freegle-prod",
+    id: "freegle-dev-live",
+    container: "freegle-dev-live",
     checkType: "freegle-component",
     category: "freegle",
   },
   {
-    id: "modtools-dev",
-    container: "freegle-modtools-dev",
+    id: "freegle-prod-local",
+    container: "freegle-prod-local",
     checkType: "freegle-component",
     category: "freegle",
   },
   {
-    id: "modtools-prod",
-    container: "freegle-modtools-prod",
+    id: "modtools-dev-local",
+    container: "modtools-dev-local",
+    checkType: "freegle-component",
+    category: "freegle",
+  },
+  {
+    id: "modtools-prod-local",
+    container: "modtools-prod-local",
     checkType: "freegle-component",
     category: "freegle",
   },
@@ -219,7 +242,7 @@ async function getAllContainerStats() {
           const state = parts[2].trim();
           const createdAt = parts[3].trim();
 
-          if (name && name.startsWith("freegle-")) {
+          if (name && (name.startsWith("freegle-") || name.startsWith("modtools-"))) {
             // Get more detailed start time using docker inspect
             let startTime = null;
             try {
@@ -313,17 +336,20 @@ async function checkServiceStatus(service) {
         try {
           let testUrl, testDescription;
 
-          if (service.id === "freegle-dev") {
-            testUrl = "http://freegle-freegle-dev:3002/";
-            testDescription = "Freegle Dev site responding";
-          } else if (service.id === "freegle-prod") {
-            testUrl = "http://freegle-freegle-prod:3003/";
+          if (service.id === "freegle-dev-local") {
+            testUrl = "http://freegle-dev-local:3002/";
+            testDescription = "Freegle Dev (Local) site responding";
+          } else if (service.id === "freegle-dev-live") {
+            testUrl = "http://freegle-dev-live:3002/";
+            testDescription = "Freegle Dev (Live) site responding";
+          } else if (service.id === "freegle-prod-local") {
+            testUrl = "http://freegle-prod-local:3003/";
             testDescription = "Freegle Prod site responding";
-          } else if (service.id === "modtools-dev") {
-            testUrl = "http://freegle-modtools-dev:3000/";
+          } else if (service.id === "modtools-dev-local") {
+            testUrl = "http://modtools-dev-local:3000/";
             testDescription = "ModTools Dev site responding";
-          } else if (service.id === "modtools-prod") {
-            testUrl = "http://freegle-modtools-prod:3001/";
+          } else if (service.id === "modtools-prod-local") {
+            testUrl = "http://modtools-prod-local:3001/";
             testDescription = "ModTools Prod site responding";
           }
 
@@ -521,17 +547,20 @@ async function runBackgroundChecks() {
           try {
             let testUrl, testDescription;
 
-            if (service.id === "freegle-dev") {
-              testUrl = "http://freegle-freegle-dev:3002/";
-              testDescription = "Freegle Dev site responding";
-            } else if (service.id === "freegle-prod") {
-              testUrl = "http://freegle-freegle-prod:3003/";
+            if (service.id === "freegle-dev-local") {
+              testUrl = "http://freegle-dev-local:3002/";
+              testDescription = "Freegle Dev (Local) site responding";
+            } else if (service.id === "freegle-dev-live") {
+              testUrl = "http://freegle-dev-live:3002/";
+              testDescription = "Freegle Dev (Live) site responding";
+            } else if (service.id === "freegle-prod-local") {
+              testUrl = "http://freegle-prod-local:3003/";
               testDescription = "Freegle Prod site responding";
-            } else if (service.id === "modtools-dev") {
-              testUrl = "http://freegle-modtools-dev:3000/";
+            } else if (service.id === "modtools-dev-local") {
+              testUrl = "http://modtools-dev-local:3000/";
               testDescription = "ModTools Dev site responding";
-            } else if (service.id === "modtools-prod") {
-              testUrl = "http://freegle-modtools-prod:3001/";
+            } else if (service.id === "modtools-prod-local") {
+              testUrl = "http://modtools-prod-local:3001/";
               testDescription = "ModTools Prod site responding";
             }
 
@@ -705,7 +734,7 @@ async function getAllCpuUsage() {
     for (const line of lines) {
       if (line.trim()) {
         const [name, cpu] = line.split("\t");
-        if (name && name.startsWith("freegle-") && cpu) {
+        if (name && (name.startsWith("freegle-") || name.startsWith("modtools-")) && cpu) {
           cpuData[name] = parseFloat(cpu.replace("%", "")) || 0;
         }
       }
@@ -759,7 +788,7 @@ async function runPlaywrightTests(testFile = null) {
 
     // Check that the required containers are running
     const freegleProdCheck = execSync(
-      'docker ps --filter "name=freegle-freegle-prod" --format "{{.Status}}"',
+      'docker ps --filter "name=freegle-prod-local" --format "{{.Status}}"',
       {
         encoding: "utf8",
         timeout: 5000,
@@ -1306,6 +1335,31 @@ const httpServer = http.createServer(async (req, res) => {
         res.end(`Failed to restart container: ${error.message}`);
       }
     });
+    return;
+  }
+
+  // Start live container endpoint (for freegle-dev-live which uses a profile)
+  if (
+    parsedUrl.pathname === "/api/container/start-live" &&
+    req.method === "POST"
+  ) {
+    try {
+      console.log("Starting freegle-dev-live container with dev-live profile...");
+      execSync(
+        `${DOCKER_COMPOSE} --profile dev-live up -d freegle-dev-live`,
+        {
+          timeout: 120000,
+          cwd: "/project",
+        }
+      );
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, message: "Container starting" }));
+    } catch (error) {
+      console.error("Start live container error:", error);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: error.message }));
+    }
     return;
   }
 
@@ -2149,17 +2203,20 @@ const httpServer = http.createServer(async (req, res) => {
       } else if (service === "apiv1") {
         testUrl = "http://freegle-apiv1:80/api/config";
         testDescription = "API v1 config endpoint responding";
-      } else if (service === "freegle-dev") {
-        testUrl = "http://freegle-freegle-dev:3002/";
-        testDescription = "Freegle Dev site responding";
-      } else if (service === "freegle-prod") {
-        testUrl = "http://freegle-freegle-prod:3003/";
+      } else if (service === "freegle-dev-local") {
+        testUrl = "http://freegle-dev-local:3002/";
+        testDescription = "Freegle Dev (Local) site responding";
+      } else if (service === "freegle-dev-live") {
+        testUrl = "http://freegle-dev-live:3002/";
+        testDescription = "Freegle Dev (Live) site responding";
+      } else if (service === "freegle-prod-local") {
+        testUrl = "http://freegle-prod-local:3003/";
         testDescription = "Freegle Prod site responding";
-      } else if (service === "modtools-dev") {
-        testUrl = "http://freegle-modtools-dev:3000/";
+      } else if (service === "modtools-dev-local") {
+        testUrl = "http://modtools-dev-local:3000/";
         testDescription = "ModTools Dev site responding";
-      } else if (service === "modtools-prod") {
-        testUrl = "http://freegle-modtools-prod:3003/";
+      } else if (service === "modtools-prod-local") {
+        testUrl = "http://modtools-prod-local:3001/";
         testDescription = "ModTools Prod site responding";
       } else {
         res.writeHead(400, { "Content-Type": "text/plain" });
@@ -2191,13 +2248,15 @@ const httpServer = http.createServer(async (req, res) => {
         try {
           // Get the container name from the service
           let containerName = "";
-          if (service === "freegle-dev") containerName = "freegle-freegle-dev";
-          else if (service === "freegle-prod")
-            containerName = "freegle-freegle-prod";
-          else if (service === "modtools-dev")
-            containerName = "freegle-modtools-dev";
-          else if (service === "modtools-prod")
-            containerName = "freegle-modtools-prod";
+          if (service === "freegle-dev-local") containerName = "freegle-dev-local";
+          else if (service === "freegle-dev-live")
+            containerName = "freegle-dev-live";
+          else if (service === "freegle-prod-local")
+            containerName = "freegle-prod-local";
+          else if (service === "modtools-dev-local")
+            containerName = "modtools-dev-local";
+          else if (service === "modtools-prod-local")
+            containerName = "modtools-prod-local";
           else if (service === "apiv1") containerName = "freegle-apiv1";
           else if (service === "apiv2") containerName = "freegle-apiv2";
 
@@ -2375,6 +2434,282 @@ const httpServer = http.createServer(async (req, res) => {
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Certificate not found");
+    }
+    return;
+  }
+
+  // Dev Connect page - shows QR code for Freegle Dev app
+  if (parsedUrl.pathname === "/dev-connect") {
+    // Try to detect host IP from playwright container (has host networking)
+    // Priority: DEV_SERVER_HOST env var > auto-detect from playwright > manual entry
+    let devServerHost = process.env.DEV_SERVER_HOST || null;
+    const devServerPort = process.env.DEV_SERVER_PORT || "3004"; // Default to freegle-dev-live port
+
+    // Auto-detect LAN IP from playwright container which has host networking
+    if (!devServerHost) {
+      try {
+        const ips = execSync(
+          'docker exec freegle-playwright hostname -I 2>/dev/null',
+          { encoding: 'utf8', timeout: 3000 }
+        ).trim().split(' ');
+
+        // Find the 192.168.x.x or 10.x.x.x IP (typical LAN IPs)
+        devServerHost = ips.find(ip =>
+          ip.startsWith('192.168.') ||
+          ip.startsWith('10.') ||
+          (ip.startsWith('172.') && !ip.startsWith('172.17.') && !ip.startsWith('172.18.') && !ip.startsWith('172.19.'))
+        ) || null;
+      } catch (error) {
+        console.log('Could not auto-detect LAN IP:', error.message);
+      }
+    }
+
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Freegle Android Dev App - Connect</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #5cb85c; text-align: center; margin-bottom: 10px; }
+    .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .url-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .url-display {
+      font-family: monospace;
+      font-size: 18px;
+      background: #f0f0f0;
+      padding: 12px 20px;
+      border-radius: 8px;
+      word-break: break-all;
+    }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 8px; font-weight: 500; }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+    }
+    input[type="text"]:focus { border-color: #5cb85c; outline: none; }
+    button {
+      background: #5cb85c;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:hover { background: #4cae4c; }
+    .help { font-size: 14px; color: #666; margin-top: 16px; }
+    .help ul { margin: 8px 0; padding-left: 20px; }
+    .status { padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+    .status.success { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .status.checking { background: #fff3cd; color: #856404; }
+    .hidden { display: none; }
+    .intro p { margin-bottom: 12px; line-height: 1.5; }
+    .comparison-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .comparison-table th, .comparison-table td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+    .comparison-table th { background: #f8f8f8; font-weight: 600; }
+    .comparison-table tr.fast td:nth-child(2), .comparison-table tr.fast td:nth-child(3) { color: #28a745; font-weight: 500; }
+    .comparison-table tr.slow td:nth-child(2), .comparison-table tr.slow td:nth-child(3) { color: #dc3545; }
+  </style>
+</head>
+<body>
+  <h1>Freegle Android Dev App</h1>
+  <p class="subtitle">Connect your Android app to the local dev server</p>
+
+  <div style="background: #f8d7da; border: 2px solid #dc3545; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+    <h3 style="color: #dc3545; margin: 0 0 8px 0;">Warning: Production Data</h3>
+    <p style="margin: 0; font-size: 14px;">
+      The dev server (port 3004) connects to <strong>LIVE Freegle APIs</strong>.
+      Any posts, messages, or actions will affect <strong>REAL users and data</strong>.
+      Use with caution.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Connect Your Phone</h3>
+    <p style="margin-bottom: 16px;">Enter the URL <code>http://&lt;your-ip&gt;:3004</code> in the Freegle Dev app on your phone.</p>
+
+    <div class="form-group">
+      <label for="hostIp">Your computer's LAN IP address:</label>
+      <input type="text" id="hostIp" placeholder="e.g., 192.168.1.100" value="${devServerHost || ""}" readonly style="background: #f5f5f5;">
+    </div>
+    <div class="form-group">
+      <label>Dev server port:</label>
+      <input type="text" value="3004" readonly style="background: #f5f5f5;">
+    </div>
+
+  </div>
+
+  <div class="card intro">
+    <h3>How Live Reload Works</h3>
+    <p>The Freegle Dev app loads its web content from your local dev server instead of bundled assets. This means code changes appear instantly without rebuilding the APK, and you can test the same changes via browser and app easily.</p>
+    <p style="margin-top: 8px; font-size: 14px; color: #666;"><strong>Android only:</strong> This dev app workflow is for Android. For iOS development, use TestFlight builds.</p>
+    <p style="margin-top: 8px; font-size: 14px; color: #666;">The dev app is built automatically on CircleCI and uses a separate package ID (<code>org.ilovefreegle.dev</code>), so it can be installed alongside the production Freegle app on the same device.</p>
+
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Change Type</th>
+          <th>Rebuild APK?</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="fast">
+          <td>Vue components, JS, CSS</td>
+          <td>No</td>
+          <td>Instant (hot reload)</td>
+        </tr>
+        <tr class="fast">
+          <td>Pages, layouts, composables</td>
+          <td>No</td>
+          <td>Instant (hot reload)</td>
+        </tr>
+        <tr class="fast">
+          <td>Store changes (Pinia)</td>
+          <td>No</td>
+          <td>Instant (hot reload)</td>
+        </tr>
+        <tr class="slow">
+          <td>Capacitor plugins</td>
+          <td>Yes</td>
+          <td>~10 mins (CI build)</td>
+        </tr>
+        <tr class="slow">
+          <td>Native Android code</td>
+          <td>Yes</td>
+          <td>~10 mins (CI build)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top: 12px; font-size: 14px; color: #666;">
+      <strong>Tip:</strong> For most day-to-day development, you'll never need to rebuild the APK. Only plugin or native code changes require a new build.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>ADB Setup (Required)</h3>
+    <div class="help">
+      <p style="margin-bottom: 12px;">The dev app uses <code>adb reverse</code> to forward ports from the phone to your dev machine. This avoids needing to install the full Android SDK - just a minimal ADB tool.</p>
+
+      <strong>Step 1: Install Minimal ADB</strong>
+      <p style="margin: 8px 0;">Download and install <a href="https://androidmtk.com/download-minimal-adb-and-fastboot-tool" target="_blank" style="color: #5cb85c;">Minimal ADB and Fastboot</a> (small ~2MB download, no Android SDK needed).</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 2: Connect Phone via USB</strong>
+      <p style="margin: 8px 0;">Connect your Android phone via USB and enable USB debugging in Developer Options.</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 3: Run ADB Reverse Command</strong>
+      <p style="margin: 8px 0;">Open Command Prompt and run:</p>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">adb reverse tcp:3004 tcp:3004</pre>
+      <p style="font-size: 12px; color: #888; margin-top: 4px;">This forwards localhost:3004 on the phone to your dev machine. Run this each time you reconnect the phone.</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 4: Start the Dev Server</strong>
+      <p style="margin: 8px 0;">Start the <code>freegle-dev-live</code> container from the <a href="/" style="color: #5cb85c;">status page</a>.</p>
+
+      <strong style="display: block; margin-top: 16px;">Step 5: Open the Dev App</strong>
+      <p style="margin: 8px 0;">Open the Freegle Dev app on your phone. It will connect to localhost:3004 which ADB forwards to your dev machine.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Why ADB Reverse?</h3>
+    <div class="help">
+      <ul style="margin: 0; padding-left: 20px;">
+        <li><strong>No Android SDK needed</strong> - Just install Minimal ADB (~2MB)</li>
+        <li><strong>No network configuration</strong> - Works regardless of WiFi/firewall settings</li>
+        <li><strong>Reliable</strong> - Unlike mDNS which Android doesn't resolve well</li>
+        <li><strong>Secure</strong> - Traffic stays on USB, not broadcast over network</li>
+      </ul>
+      <p style="margin-top: 12px; font-size: 13px; color: #666;">The only downside is requiring a USB connection, but this is the standard approach for Android development.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Known Limitations</h3>
+    <div class="help">
+      <strong>No Hot Module Replacement (HMR)</strong>
+      <p style="margin: 8px 0;">Hot reload doesn't work in the Android WebView due to WebSocket connection issues. After making code changes, tap the refresh icon to reload. This is a known limitation of Capacitor WebView development.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Troubleshooting</h3>
+    <div class="help">
+      <strong>App says "Cannot load localhost:3004"</strong>
+      <p style="margin: 8px 0;">The ADB reverse port forwarding resets when you disconnect/reconnect your phone. Re-run the command:</p>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">adb reverse tcp:3004 tcp:3004</pre>
+      <p style="margin-top: 8px; font-size: 13px;">You can check current port forwards with: <code>adb reverse --list</code></p>
+
+      <strong style="display: block; margin-top: 16px;">Phone not detected by ADB</strong>
+      <p style="margin: 8px 0;">Ensure USB debugging is enabled in Developer Options on your phone. You may need to authorize the computer when prompted on the phone.</p>
+    </div>
+  </div>
+
+</body>
+</html>`);
+    return;
+  }
+
+  // API endpoint to test connection to dev server (server-side, avoids CORS)
+  if (parsedUrl.pathname === "/api/dev-connect/test" && req.method === "GET") {
+    const ip = parsedUrl.query.ip;
+    const port = parsedUrl.query.port || "3002";
+
+    if (!ip) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Missing ip parameter" }));
+      return;
+    }
+
+    const devUrl = "http://" + ip + ":" + port;
+
+    try {
+      const response = await fetch(devUrl);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          success: true,
+          url: devUrl,
+          status: response.status,
+        })
+      );
+    } catch (error) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          url: devUrl,
+          error: error.message,
+        })
+      );
     }
     return;
   }
