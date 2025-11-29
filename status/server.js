@@ -4,6 +4,7 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const url = require("url");
+const QRCode = require("qrcode");
 
 // Status cache for all services
 const statusCache = new Map();
@@ -2375,6 +2376,344 @@ const httpServer = http.createServer(async (req, res) => {
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Certificate not found");
+    }
+    return;
+  }
+
+  // Dev Connect page - shows QR code for Freegle Dev app
+  if (parsedUrl.pathname === "/dev-connect") {
+    // Try to detect host IP from playwright container (has host networking)
+    // Priority: DEV_SERVER_HOST env var > auto-detect from playwright > manual entry
+    let devServerHost = process.env.DEV_SERVER_HOST || null;
+    const devServerPort = process.env.DEV_SERVER_PORT || "3002";
+
+    // Auto-detect LAN IP from playwright container which has host networking
+    if (!devServerHost) {
+      try {
+        const ips = execSync(
+          'docker exec freegle-playwright hostname -I 2>/dev/null',
+          { encoding: 'utf8', timeout: 3000 }
+        ).trim().split(' ');
+
+        // Find the 192.168.x.x or 10.x.x.x IP (typical LAN IPs)
+        devServerHost = ips.find(ip =>
+          ip.startsWith('192.168.') ||
+          ip.startsWith('10.') ||
+          (ip.startsWith('172.') && !ip.startsWith('172.17.') && !ip.startsWith('172.18.') && !ip.startsWith('172.19.'))
+        ) || null;
+      } catch (error) {
+        console.log('Could not auto-detect LAN IP:', error.message);
+      }
+    }
+
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Freegle Android Dev App - Connect</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #5cb85c; text-align: center; margin-bottom: 10px; }
+    .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .qr-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    #qrcode { background: white; padding: 16px; border-radius: 8px; }
+    .url-display {
+      font-family: monospace;
+      font-size: 18px;
+      background: #f0f0f0;
+      padding: 12px 20px;
+      border-radius: 8px;
+      word-break: break-all;
+    }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 8px; font-weight: 500; }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+    }
+    input[type="text"]:focus { border-color: #5cb85c; outline: none; }
+    button {
+      background: #5cb85c;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:hover { background: #4cae4c; }
+    .help { font-size: 14px; color: #666; margin-top: 16px; }
+    .help ul { margin: 8px 0; padding-left: 20px; }
+    .status { padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+    .status.success { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .status.checking { background: #fff3cd; color: #856404; }
+    .hidden { display: none; }
+    .intro p { margin-bottom: 12px; line-height: 1.5; }
+    .comparison-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .comparison-table th, .comparison-table td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+    .comparison-table th { background: #f8f8f8; font-weight: 600; }
+    .comparison-table tr.fast td:nth-child(2), .comparison-table tr.fast td:nth-child(3) { color: #28a745; font-weight: 500; }
+    .comparison-table tr.slow td:nth-child(2), .comparison-table tr.slow td:nth-child(3) { color: #dc3545; }
+  </style>
+</head>
+<body>
+  <h1>Freegle Android Dev App</h1>
+  <p class="subtitle">Connect your Android app to the local server for app development</p>
+
+  <div id="qr-card" class="card">
+    <div class="qr-container">
+      <div id="qrcode"></div>
+      <div id="url-display" class="url-display"></div>
+      <p style="color: #666; text-align: center;">
+        Scan this QR code with the Freegle Dev app<br>
+        or enter the URL manually
+      </p>
+    </div>
+  </div>
+
+  <div class="card intro">
+    <h3>How Live Reload Works</h3>
+    <p>The Freegle Dev app loads its web content from your local dev server instead of bundled assets. This means code changes appear instantly without rebuilding the APK.</p>
+
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Change Type</th>
+          <th>Rebuild APK?</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="fast">
+          <td>Vue components, JS, CSS</td>
+          <td>No</td>
+          <td>Instant (hot reload)</td>
+        </tr>
+        <tr class="fast">
+          <td>Pages, layouts, composables</td>
+          <td>No</td>
+          <td>Instant (hot reload)</td>
+        </tr>
+        <tr class="fast">
+          <td>Store changes (Pinia)</td>
+          <td>No</td>
+          <td>Instant (hot reload)</td>
+        </tr>
+        <tr class="slow">
+          <td>Capacitor plugins</td>
+          <td>Yes</td>
+          <td>~10 mins (CI build)</td>
+        </tr>
+        <tr class="slow">
+          <td>Native Android code</td>
+          <td>Yes</td>
+          <td>~10 mins (CI build)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top: 12px; font-size: 14px; color: #666;">
+      <strong>Tip:</strong> For most day-to-day development, you'll never need to rebuild the APK. Only plugin or native code changes require a new build.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="form-group">
+      <label for="hostIp">Your computer's LAN IP address:</label>
+      <input type="text" id="hostIp" placeholder="e.g., 192.168.1.100" value="${devServerHost || ""}">
+    </div>
+    <div class="form-group">
+      <label for="port">Dev server port:</label>
+      <input type="text" id="port" value="${devServerPort}">
+    </div>
+    <div id="status" class="status hidden"></div>
+  </div>
+
+  <div class="card">
+    <div class="help">
+      <strong>How to find your LAN IP:</strong>
+      <ul>
+        <li><strong>Windows:</strong> Open PowerShell, run <code>ipconfig</code>, look for "IPv4 Address" under your WiFi/Ethernet adapter</li>
+        <li><strong>Mac:</strong> System Preferences → Network → select your connection → IP Address</li>
+        <li><strong>Linux:</strong> Run <code>ip addr</code> or <code>hostname -I</code></li>
+      </ul>
+      <strong>Requirements:</strong>
+      <ul>
+        <li>Phone must be on the same WiFi network</li>
+        <li>Dev server must be running (docker-compose up -d)</li>
+        <li>Port ${devServerPort} must be accessible (check firewall)</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    async function generateQR() {
+      const ip = document.getElementById('hostIp').value.trim();
+      const port = document.getElementById('port').value.trim();
+      const statusEl = document.getElementById('status');
+      const qrCard = document.getElementById('qr-card');
+
+      if (!ip) {
+        statusEl.className = 'status error';
+        statusEl.textContent = 'Please enter your LAN IP address';
+        statusEl.classList.remove('hidden');
+        return;
+      }
+
+      if (!port) {
+        statusEl.className = 'status error';
+        statusEl.textContent = 'Please enter the port number';
+        statusEl.classList.remove('hidden');
+        return;
+      }
+
+      const devUrl = 'http://' + ip + ':' + port;
+
+      // Show checking status
+      statusEl.className = 'status checking';
+      statusEl.textContent = 'Checking connection to ' + devUrl + '...';
+      statusEl.classList.remove('hidden');
+
+      // Test connection via server-side API to avoid CORS issues
+      try {
+        const testResponse = await fetch('/api/dev-connect/test?ip=' + encodeURIComponent(ip) + '&port=' + encodeURIComponent(port));
+        const testResult = await testResponse.json();
+
+        if (testResult.success) {
+          statusEl.className = 'status success';
+          statusEl.textContent = 'Connection successful! Server responded with HTTP ' + testResult.status;
+        } else {
+          statusEl.className = 'status error';
+          statusEl.textContent = 'Connection failed: ' + testResult.error;
+        }
+      } catch (error) {
+        statusEl.className = 'status error';
+        statusEl.textContent = 'Could not test connection: ' + error.message;
+      }
+
+      // Generate QR code via server-side API
+      try {
+        const qrResponse = await fetch('/api/dev-connect/qr?ip=' + encodeURIComponent(ip) + '&port=' + encodeURIComponent(port));
+        const qrResult = await qrResponse.json();
+
+        if (qrResult.qrCode) {
+          const qrcodeEl = document.getElementById('qrcode');
+          qrcodeEl.innerHTML = '<img src="' + qrResult.qrCode + '" alt="QR Code" style="width: 256px; height: 256px;">';
+          document.getElementById('url-display').textContent = qrResult.url;
+          qrCard.classList.remove('hidden');
+        } else {
+          statusEl.className = 'status error';
+          statusEl.textContent = 'Failed to generate QR code';
+        }
+      } catch (error) {
+        statusEl.className = 'status error';
+        statusEl.textContent = 'Failed to generate QR code: ' + error.message;
+      }
+    }
+
+    // Auto-generate on page load and when inputs change
+    document.getElementById('hostIp').addEventListener('input', generateQR);
+    document.getElementById('port').addEventListener('input', generateQR);
+
+    // Generate immediately on page load
+    generateQR();
+  </script>
+</body>
+</html>`);
+    return;
+  }
+
+  // API endpoint to get QR code as data URL
+  if (parsedUrl.pathname === "/api/dev-connect/qr" && req.method === "GET") {
+    const ip = parsedUrl.query.ip;
+    const port = parsedUrl.query.port || "3002";
+
+    if (!ip) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Missing ip parameter" }));
+      return;
+    }
+
+    const devUrl = "http://" + ip + ":" + port;
+
+    try {
+      const qrDataUrl = await QRCode.toDataURL(devUrl, {
+        width: 256,
+        margin: 2,
+      });
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          url: devUrl,
+          qrCode: qrDataUrl,
+        })
+      );
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Failed to generate QR code" }));
+    }
+    return;
+  }
+
+  // API endpoint to test connection to dev server (server-side, avoids CORS)
+  if (parsedUrl.pathname === "/api/dev-connect/test" && req.method === "GET") {
+    const ip = parsedUrl.query.ip;
+    const port = parsedUrl.query.port || "3002";
+
+    if (!ip) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Missing ip parameter" }));
+      return;
+    }
+
+    const devUrl = "http://" + ip + ":" + port;
+
+    try {
+      const response = await fetch(devUrl);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          success: true,
+          url: devUrl,
+          status: response.status,
+        })
+      );
+    } catch (error) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          success: false,
+          url: devUrl,
+          error: error.message,
+        })
+      );
     }
     return;
   }
