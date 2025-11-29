@@ -2569,7 +2569,7 @@ const httpServer = http.createServer(async (req, res) => {
 
   <div class="card intro">
     <h3>How Live Reload Works</h3>
-    <p>The Freegle Dev app loads its web content from your local dev server instead of bundled assets. This means code changes appear instantly without rebuilding the APK.</p>
+    <p>The Freegle Dev app loads its web content from your local dev server instead of bundled assets. This means code changes appear instantly without rebuilding the APK, and you can test the same changes via browser and app easily.</p>
     <p style="margin-top: 8px; font-size: 14px; color: #666;"><strong>Android only:</strong> This dev app workflow is for Android. For iOS development, use TestFlight builds.</p>
     <p style="margin-top: 8px; font-size: 14px; color: #666;">The dev app is built automatically on CircleCI and uses a separate package ID (<code>org.ilovefreegle.dev</code>), so it can be installed alongside the production Freegle app on the same device.</p>
 
