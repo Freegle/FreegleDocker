@@ -4,7 +4,23 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const url = require("url");
-const QRCode = require("qrcode");
+
+// Detect which docker compose command is available
+function getDockerComposeCommand() {
+  try {
+    execSync("docker compose version", { stdio: "ignore" });
+    return "docker compose";
+  } catch {
+    try {
+      execSync("docker-compose version", { stdio: "ignore" });
+      return "docker-compose";
+    } catch {
+      return "docker compose"; // Default to v2 syntax
+    }
+  }
+}
+const DOCKER_COMPOSE = getDockerComposeCommand();
+console.log(`Using docker compose command: ${DOCKER_COMPOSE}`);
 
 // Status cache for all services
 const statusCache = new Map();
@@ -52,26 +68,32 @@ const healthCheckMessages = {
 const services = [
   // Freegle Components
   {
-    id: "freegle-dev",
-    container: "freegle-freegle-dev",
+    id: "freegle-dev-local",
+    container: "freegle-dev-local",
     checkType: "freegle-component",
     category: "freegle",
   },
   {
-    id: "freegle-prod",
-    container: "freegle-freegle-prod",
+    id: "freegle-dev-live",
+    container: "freegle-dev-live",
     checkType: "freegle-component",
     category: "freegle",
   },
   {
-    id: "modtools-dev",
-    container: "freegle-modtools-dev",
+    id: "freegle-prod-local",
+    container: "freegle-prod-local",
     checkType: "freegle-component",
     category: "freegle",
   },
   {
-    id: "modtools-prod",
-    container: "freegle-modtools-prod",
+    id: "modtools-dev-local",
+    container: "modtools-dev-local",
+    checkType: "freegle-component",
+    category: "freegle",
+  },
+  {
+    id: "modtools-prod-local",
+    container: "modtools-prod-local",
     checkType: "freegle-component",
     category: "freegle",
   },
@@ -220,7 +242,7 @@ async function getAllContainerStats() {
           const state = parts[2].trim();
           const createdAt = parts[3].trim();
 
-          if (name && name.startsWith("freegle-")) {
+          if (name && (name.startsWith("freegle-") || name.startsWith("modtools-"))) {
             // Get more detailed start time using docker inspect
             let startTime = null;
             try {
@@ -314,17 +336,20 @@ async function checkServiceStatus(service) {
         try {
           let testUrl, testDescription;
 
-          if (service.id === "freegle-dev") {
-            testUrl = "http://freegle-freegle-dev:3002/";
-            testDescription = "Freegle Dev site responding";
-          } else if (service.id === "freegle-prod") {
-            testUrl = "http://freegle-freegle-prod:3003/";
+          if (service.id === "freegle-dev-local") {
+            testUrl = "http://freegle-dev-local:3002/";
+            testDescription = "Freegle Dev (Local) site responding";
+          } else if (service.id === "freegle-dev-live") {
+            testUrl = "http://freegle-dev-live:3002/";
+            testDescription = "Freegle Dev (Live) site responding";
+          } else if (service.id === "freegle-prod-local") {
+            testUrl = "http://freegle-prod-local:3003/";
             testDescription = "Freegle Prod site responding";
-          } else if (service.id === "modtools-dev") {
-            testUrl = "http://freegle-modtools-dev:3000/";
+          } else if (service.id === "modtools-dev-local") {
+            testUrl = "http://modtools-dev-local:3000/";
             testDescription = "ModTools Dev site responding";
-          } else if (service.id === "modtools-prod") {
-            testUrl = "http://freegle-modtools-prod:3001/";
+          } else if (service.id === "modtools-prod-local") {
+            testUrl = "http://modtools-prod-local:3001/";
             testDescription = "ModTools Prod site responding";
           }
 
@@ -522,17 +547,20 @@ async function runBackgroundChecks() {
           try {
             let testUrl, testDescription;
 
-            if (service.id === "freegle-dev") {
-              testUrl = "http://freegle-freegle-dev:3002/";
-              testDescription = "Freegle Dev site responding";
-            } else if (service.id === "freegle-prod") {
-              testUrl = "http://freegle-freegle-prod:3003/";
+            if (service.id === "freegle-dev-local") {
+              testUrl = "http://freegle-dev-local:3002/";
+              testDescription = "Freegle Dev (Local) site responding";
+            } else if (service.id === "freegle-dev-live") {
+              testUrl = "http://freegle-dev-live:3002/";
+              testDescription = "Freegle Dev (Live) site responding";
+            } else if (service.id === "freegle-prod-local") {
+              testUrl = "http://freegle-prod-local:3003/";
               testDescription = "Freegle Prod site responding";
-            } else if (service.id === "modtools-dev") {
-              testUrl = "http://freegle-modtools-dev:3000/";
+            } else if (service.id === "modtools-dev-local") {
+              testUrl = "http://modtools-dev-local:3000/";
               testDescription = "ModTools Dev site responding";
-            } else if (service.id === "modtools-prod") {
-              testUrl = "http://freegle-modtools-prod:3001/";
+            } else if (service.id === "modtools-prod-local") {
+              testUrl = "http://modtools-prod-local:3001/";
               testDescription = "ModTools Prod site responding";
             }
 
@@ -706,7 +734,7 @@ async function getAllCpuUsage() {
     for (const line of lines) {
       if (line.trim()) {
         const [name, cpu] = line.split("\t");
-        if (name && name.startsWith("freegle-") && cpu) {
+        if (name && (name.startsWith("freegle-") || name.startsWith("modtools-")) && cpu) {
           cpuData[name] = parseFloat(cpu.replace("%", "")) || 0;
         }
       }
@@ -760,7 +788,7 @@ async function runPlaywrightTests(testFile = null) {
 
     // Check that the required containers are running
     const freegleProdCheck = execSync(
-      'docker ps --filter "name=freegle-freegle-prod" --format "{{.Status}}"',
+      'docker ps --filter "name=freegle-prod-local" --format "{{.Status}}"',
       {
         encoding: "utf8",
         timeout: 5000,
@@ -1307,6 +1335,31 @@ const httpServer = http.createServer(async (req, res) => {
         res.end(`Failed to restart container: ${error.message}`);
       }
     });
+    return;
+  }
+
+  // Start live container endpoint (for freegle-dev-live which uses a profile)
+  if (
+    parsedUrl.pathname === "/api/container/start-live" &&
+    req.method === "POST"
+  ) {
+    try {
+      console.log("Starting freegle-dev-live container with dev-live profile...");
+      execSync(
+        `${DOCKER_COMPOSE} --profile dev-live up -d freegle-dev-live`,
+        {
+          timeout: 120000,
+          cwd: "/project",
+        }
+      );
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, message: "Container starting" }));
+    } catch (error) {
+      console.error("Start live container error:", error);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: error.message }));
+    }
     return;
   }
 
@@ -2150,17 +2203,20 @@ const httpServer = http.createServer(async (req, res) => {
       } else if (service === "apiv1") {
         testUrl = "http://freegle-apiv1:80/api/config";
         testDescription = "API v1 config endpoint responding";
-      } else if (service === "freegle-dev") {
-        testUrl = "http://freegle-freegle-dev:3002/";
-        testDescription = "Freegle Dev site responding";
-      } else if (service === "freegle-prod") {
-        testUrl = "http://freegle-freegle-prod:3003/";
+      } else if (service === "freegle-dev-local") {
+        testUrl = "http://freegle-dev-local:3002/";
+        testDescription = "Freegle Dev (Local) site responding";
+      } else if (service === "freegle-dev-live") {
+        testUrl = "http://freegle-dev-live:3002/";
+        testDescription = "Freegle Dev (Live) site responding";
+      } else if (service === "freegle-prod-local") {
+        testUrl = "http://freegle-prod-local:3003/";
         testDescription = "Freegle Prod site responding";
-      } else if (service === "modtools-dev") {
-        testUrl = "http://freegle-modtools-dev:3000/";
+      } else if (service === "modtools-dev-local") {
+        testUrl = "http://modtools-dev-local:3000/";
         testDescription = "ModTools Dev site responding";
-      } else if (service === "modtools-prod") {
-        testUrl = "http://freegle-modtools-prod:3003/";
+      } else if (service === "modtools-prod-local") {
+        testUrl = "http://modtools-prod-local:3001/";
         testDescription = "ModTools Prod site responding";
       } else {
         res.writeHead(400, { "Content-Type": "text/plain" });
@@ -2192,13 +2248,15 @@ const httpServer = http.createServer(async (req, res) => {
         try {
           // Get the container name from the service
           let containerName = "";
-          if (service === "freegle-dev") containerName = "freegle-freegle-dev";
-          else if (service === "freegle-prod")
-            containerName = "freegle-freegle-prod";
-          else if (service === "modtools-dev")
-            containerName = "freegle-modtools-dev";
-          else if (service === "modtools-prod")
-            containerName = "freegle-modtools-prod";
+          if (service === "freegle-dev-local") containerName = "freegle-dev-local";
+          else if (service === "freegle-dev-live")
+            containerName = "freegle-dev-live";
+          else if (service === "freegle-prod-local")
+            containerName = "freegle-prod-local";
+          else if (service === "modtools-dev-local")
+            containerName = "modtools-dev-local";
+          else if (service === "modtools-prod-local")
+            containerName = "modtools-prod-local";
           else if (service === "apiv1") containerName = "freegle-apiv1";
           else if (service === "apiv2") containerName = "freegle-apiv2";
 
@@ -2385,7 +2443,7 @@ const httpServer = http.createServer(async (req, res) => {
     // Try to detect host IP from playwright container (has host networking)
     // Priority: DEV_SERVER_HOST env var > auto-detect from playwright > manual entry
     let devServerHost = process.env.DEV_SERVER_HOST || null;
-    const devServerPort = process.env.DEV_SERVER_PORT || "3002";
+    const devServerPort = process.env.DEV_SERVER_PORT || "3004"; // Default to freegle-dev-live port
 
     // Auto-detect LAN IP from playwright container which has host networking
     if (!devServerHost) {
@@ -2431,13 +2489,12 @@ const httpServer = http.createServer(async (req, res) => {
       margin-bottom: 20px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    .qr-container {
+    .url-container {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 16px;
     }
-    #qrcode { background: white; padding: 16px; border-radius: 8px; }
     .url-display {
       font-family: monospace;
       font-size: 18px;
@@ -2484,22 +2541,37 @@ const httpServer = http.createServer(async (req, res) => {
 </head>
 <body>
   <h1>Freegle Android Dev App</h1>
-  <p class="subtitle">Connect your Android app to the local server for app development</p>
+  <p class="subtitle">Connect your Android app to the local dev server</p>
 
-  <div id="qr-card" class="card">
-    <div class="qr-container">
-      <div id="qrcode"></div>
-      <div id="url-display" class="url-display"></div>
-      <p style="color: #666; text-align: center;">
-        Scan this QR code with the Freegle Dev app<br>
-        or enter the URL manually
-      </p>
+  <div style="background: #f8d7da; border: 2px solid #dc3545; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+    <h3 style="color: #dc3545; margin: 0 0 8px 0;">Warning: Production Data</h3>
+    <p style="margin: 0; font-size: 14px;">
+      The dev server (port 3004) connects to <strong>LIVE Freegle APIs</strong>.
+      Any posts, messages, or actions will affect <strong>REAL users and data</strong>.
+      Use with caution.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Connect Your Phone</h3>
+    <p style="margin-bottom: 16px;">Enter the URL <code>http://&lt;your-ip&gt;:3004</code> in the Freegle Dev app on your phone.</p>
+
+    <div class="form-group">
+      <label for="hostIp">Your computer's LAN IP address:</label>
+      <input type="text" id="hostIp" placeholder="e.g., 192.168.1.100" value="${devServerHost || ""}" readonly style="background: #f5f5f5;">
     </div>
+    <div class="form-group">
+      <label>Dev server port:</label>
+      <input type="text" value="3004" readonly style="background: #f5f5f5;">
+    </div>
+
   </div>
 
   <div class="card intro">
     <h3>How Live Reload Works</h3>
     <p>The Freegle Dev app loads its web content from your local dev server instead of bundled assets. This means code changes appear instantly without rebuilding the APK.</p>
+    <p style="margin-top: 8px; font-size: 14px; color: #666;"><strong>Android only:</strong> This dev app workflow is for Android. For iOS development, use TestFlight builds.</p>
+    <p style="margin-top: 8px; font-size: 14px; color: #666;">The dev app is built automatically on CircleCI and uses a separate package ID (<code>org.ilovefreegle.dev</code>), so it can be installed alongside the production Freegle app on the same device.</p>
 
     <table class="comparison-table">
       <thead>
@@ -2544,141 +2616,48 @@ const httpServer = http.createServer(async (req, res) => {
   </div>
 
   <div class="card">
-    <div class="form-group">
-      <label for="hostIp">Your computer's LAN IP address:</label>
-      <input type="text" id="hostIp" placeholder="e.g., 192.168.1.100" value="${devServerHost || ""}">
+    <h3>Requirements</h3>
+    <div class="help">
+      <ul style="margin: 0; padding-left: 20px;">
+        <li>Phone must be on the same WiFi network as your computer</li>
+        <li>Start the freegle-dev-live container from the <a href="/" style="color: #5cb85c;">Production tab</a> on the status page</li>
+        <li>Port 3004 must be accessible (check firewall settings below)</li>
+      </ul>
     </div>
-    <div class="form-group">
-      <label for="port">Dev server port:</label>
-      <input type="text" id="port" value="${devServerPort}">
-    </div>
-    <div id="status" class="status hidden"></div>
   </div>
 
   <div class="card">
+    <h3>mDNS Setup (Required for Hot Reload)</h3>
     <div class="help">
-      <strong>How to find your LAN IP:</strong>
-      <ul>
-        <li><strong>Windows:</strong> Open PowerShell, run <code>ipconfig</code>, look for "IPv4 Address" under your WiFi/Ethernet adapter</li>
-        <li><strong>Mac:</strong> System Preferences → Network → select your connection → IP Address</li>
-        <li><strong>Linux:</strong> Run <code>ip addr</code> or <code>hostname -I</code></li>
-      </ul>
-      <strong>Requirements:</strong>
-      <ul>
-        <li>Phone must be on the same WiFi network</li>
-        <li>Dev server must be running (docker-compose up -d)</li>
-        <li>Port ${devServerPort} must be accessible (check firewall)</li>
-      </ul>
+      <p style="margin-bottom: 12px;">The dev app connects to <code>freegle-app-dev.local</code> via mDNS. You must broadcast this hostname from your dev machine.</p>
+
+      <strong>Option 1: Using Bonjour (Recommended)</strong>
+      <p style="margin: 8px 0;">Install <a href="https://support.apple.com/kb/DL999" target="_blank" style="color: #5cb85c;">Bonjour Print Services</a> from Apple, then run in Command Prompt:</p>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">dns-sd -P "Freegle Dev" _http._tcp local 3004 freegle-app-dev.local ${devServerHost || "YOUR_IP"}</pre>
+      <p style="font-size: 12px; color: #888; margin-top: 4px;">Keep this window open while developing. Replace YOUR_IP with your actual IP if not auto-detected above.</p>
+
+      <strong style="display: block; margin-top: 16px;">Option 2: Using mDNS Repeater</strong>
+      <p style="margin: 8px 0;">Alternatively, use a tool like <a href="https://github.com/nicholasdille/mdns-repeater" target="_blank" style="color: #5cb85c;">mdns-repeater</a> or configure your router's local DNS.</p>
     </div>
   </div>
 
-  <script>
-    async function generateQR() {
-      const ip = document.getElementById('hostIp').value.trim();
-      const port = document.getElementById('port').value.trim();
-      const statusEl = document.getElementById('status');
-      const qrCard = document.getElementById('qr-card');
+  <div class="card">
+    <h3>Windows + WSL2 Port Forwarding</h3>
+    <div class="help">
+      <p style="margin: 8px 0;">Run these commands in <strong>PowerShell as Administrator</strong>:</p>
+      <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px;">
+# Port forwarding from Windows to WSL (app + hot reload)
+netsh interface portproxy add v4tov4 listenport=3004 listenaddress=0.0.0.0 connectport=3004 connectaddress=127.0.0.1
+netsh interface portproxy add v4tov4 listenport=24678 listenaddress=0.0.0.0 connectport=24678 connectaddress=127.0.0.1
 
-      if (!ip) {
-        statusEl.className = 'status error';
-        statusEl.textContent = 'Please enter your LAN IP address';
-        statusEl.classList.remove('hidden');
-        return;
-      }
+# Firewall rules to allow incoming connections
+New-NetFirewallRule -DisplayName "WSL Freegle Dev App" -Direction Inbound -LocalPort 3004 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "WSL Freegle Dev HMR" -Direction Inbound -LocalPort 24678 -Protocol TCP -Action Allow</pre>
+    </div>
+  </div>
 
-      if (!port) {
-        statusEl.className = 'status error';
-        statusEl.textContent = 'Please enter the port number';
-        statusEl.classList.remove('hidden');
-        return;
-      }
-
-      const devUrl = 'http://' + ip + ':' + port;
-
-      // Show checking status
-      statusEl.className = 'status checking';
-      statusEl.textContent = 'Checking connection to ' + devUrl + '...';
-      statusEl.classList.remove('hidden');
-
-      // Test connection via server-side API to avoid CORS issues
-      try {
-        const testResponse = await fetch('/api/dev-connect/test?ip=' + encodeURIComponent(ip) + '&port=' + encodeURIComponent(port));
-        const testResult = await testResponse.json();
-
-        if (testResult.success) {
-          statusEl.className = 'status success';
-          statusEl.textContent = 'Connection successful! Server responded with HTTP ' + testResult.status;
-        } else {
-          statusEl.className = 'status error';
-          statusEl.textContent = 'Connection failed: ' + testResult.error;
-        }
-      } catch (error) {
-        statusEl.className = 'status error';
-        statusEl.textContent = 'Could not test connection: ' + error.message;
-      }
-
-      // Generate QR code via server-side API
-      try {
-        const qrResponse = await fetch('/api/dev-connect/qr?ip=' + encodeURIComponent(ip) + '&port=' + encodeURIComponent(port));
-        const qrResult = await qrResponse.json();
-
-        if (qrResult.qrCode) {
-          const qrcodeEl = document.getElementById('qrcode');
-          qrcodeEl.innerHTML = '<img src="' + qrResult.qrCode + '" alt="QR Code" style="width: 256px; height: 256px;">';
-          document.getElementById('url-display').textContent = qrResult.url;
-          qrCard.classList.remove('hidden');
-        } else {
-          statusEl.className = 'status error';
-          statusEl.textContent = 'Failed to generate QR code';
-        }
-      } catch (error) {
-        statusEl.className = 'status error';
-        statusEl.textContent = 'Failed to generate QR code: ' + error.message;
-      }
-    }
-
-    // Auto-generate on page load and when inputs change
-    document.getElementById('hostIp').addEventListener('input', generateQR);
-    document.getElementById('port').addEventListener('input', generateQR);
-
-    // Generate immediately on page load
-    generateQR();
-  </script>
 </body>
 </html>`);
-    return;
-  }
-
-  // API endpoint to get QR code as data URL
-  if (parsedUrl.pathname === "/api/dev-connect/qr" && req.method === "GET") {
-    const ip = parsedUrl.query.ip;
-    const port = parsedUrl.query.port || "3002";
-
-    if (!ip) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Missing ip parameter" }));
-      return;
-    }
-
-    const devUrl = "http://" + ip + ":" + port;
-
-    try {
-      const qrDataUrl = await QRCode.toDataURL(devUrl, {
-        width: 256,
-        margin: 2,
-      });
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          url: devUrl,
-          qrCode: qrDataUrl,
-        })
-      );
-    } catch (error) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Failed to generate QR code" }));
-    }
     return;
   }
 
