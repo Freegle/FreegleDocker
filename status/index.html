@@ -6,7 +6,7 @@
     <title>Freegle Docker Status</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
         .service { margin: 10px 0; padding: 15px; border-radius: 5px; }
         .service.online { background: #d4edda; border-left: 4px solid #28a745; display: flex; justify-content: space-between; align-items: center; position: relative; }
         .service.offline { background: #f8d7da; border-left: 4px solid #dc3545; display: flex; justify-content: space-between; align-items: center; position: relative; }
@@ -35,6 +35,32 @@
         .action-button.danger:hover { background: #c82333; }
         .action-button:disabled { background: #6c757d; cursor: not-allowed; }
         .container-actions { margin-top: 8px; }
+
+        /* Tab styles */
+        .tabs { display: flex; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab { padding: 12px 20px; cursor: pointer; border: none; background: none; font-size: 14px; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+        .tab:hover { color: #333; background: #f8f9fa; }
+        .tab.active { color: #007bff; border-bottom-color: #007bff; font-weight: bold; }
+        .tab.warning { color: #dc3545; }
+        .tab.warning.active { border-bottom-color: #dc3545; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-badge { background: #dc3545; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-left: 5px; }
+        .tab-light { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; border: 1px solid #999; }
+        .tab-light.green { background: #28a745; box-shadow: 0 0 4px #28a745; border-color: #28a745; }
+        .tab-light.amber { background: #ffc107; box-shadow: 0 0 4px #ffc107; border-color: #ffc107; }
+        .tab-light.red { background: #dc3545; box-shadow: 0 0 4px #dc3545; border-color: #dc3545; }
+        .tab-light.grey { background: #6c757d; border-color: #6c757d; }
+        /* Modal styles */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .modal h3 { margin: 0 0 16px 0; color: #dc3545; }
+        .modal p { margin: 0 0 20px 0; color: #333; line-height: 1.5; }
+        .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; }
+        .modal-buttons button { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; }
+        .modal-cancel { background: #6c757d; color: white; }
+        .modal-confirm { background: #dc3545; color: white; }
     </style>
 </head>
 <body>
@@ -42,283 +68,357 @@
         <div style="text-align: center; margin-bottom: 20px;">
             <img src="https://www.ilovefreegle.org/icon.png" alt="Freegle Logo" style="height: 60px; margin-bottom: 10px;">
             <div id="trafficLight" class="traffic-light red"></div>
-            <h1>Freegle Docker Environment Status</h1>
+            <h1>Freegle Environment Status</h1>
         </div>
         <div class="refresh">
             <span id="countdown"></span>
         </div>
-        
 
-        <h2>🏠 Freegle Components</h2>
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab active" data-tab="freegle-dev"><span class="tab-light grey" id="tab-light-freegle"></span>Freegle</button>
+            <button class="tab" data-tab="modtools-dev"><span class="tab-light grey" id="tab-light-modtools"></span>ModTools</button>
+            <button class="tab" data-tab="apis"><span class="tab-light grey" id="tab-light-apis"></span>APIs</button>
+            <button class="tab" data-tab="dev-tools"><span class="tab-light grey" id="tab-light-devtools"></span>Dev Tools</button>
+            <button class="tab" data-tab="testing"><span class="tab-light grey" id="tab-light-testing"></span>Testing</button>
+            <button class="tab" data-tab="infrastructure"><span class="tab-light grey" id="tab-light-infra"></span>Infrastructure</button>
+            <button class="tab warning" data-tab="production"><span class="tab-light grey" id="tab-light-production"></span>Production <span class="tab-badge">LIVE</span></button>
+        </div>
 
-        <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-            <button id="recreate-test-users" onclick="recreateTestUsers()" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
-                🔄 Recreate Test Users
-            </button>
-            <a href="/dev-connect" style="padding: 10px 20px; background-color: #5cb85c; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block;">
-                📱 Mobile Dev Connect
+        <!-- Freegle Tab -->
+        <div id="freegle-dev" class="tab-content active">
+            <h2>Freegle (User Site)</h2>
+
+            <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <button id="recreate-test-users" onclick="recreateTestUsers()" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+                    Recreate Test Users
+                </button>
+                <span id="recreate-status" style="margin-left: 10px; font-weight: bold;"></span>
+            </div>
+
+            <div id="freegle-dev-local" class="service loading">
+                <div>
+                    <strong>Dev Build (Local Data)</strong> - hot reload, local APIs<br>
+                    <span class="url">http://freegle-dev-local.localhost</span><br>
+                    <small>Login: test@test.com / freegle</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-dev-local</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="freegle-prod-local" class="service loading">
+                <div>
+                    <strong>Prod Build (Local Data)</strong> - optimized, local APIs<br>
+                    <span class="url">http://freegle-prod-local.localhost</span><br>
+                    <small>Login: test@test.com / freegle</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-prod-local</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ModTools Tab -->
+        <div id="modtools-dev" class="tab-content">
+            <h2>ModTools (Moderator Site)</h2>
+
+            <div id="modtools-dev-local" class="service loading">
+                <div>
+                    <strong>Dev Build (Local Data)</strong> - hot reload, local APIs<br>
+                    <span class="url">http://modtools-dev-local.localhost</span><br>
+                    <small>Login: testmod@test.com / freegle</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: modtools-dev-local</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="modtools-prod-local" class="service loading">
+                <div>
+                    <strong>Prod Build (Local Data)</strong> - optimized, local APIs<br>
+                    <span class="url">http://modtools-prod-local.localhost</span><br>
+                    <small>Login: testmod@test.com / freegle</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: modtools-prod-local</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- APIs Tab -->
+        <div id="apis" class="tab-content">
+            <h2>APIs</h2>
+
+            <div id="apiv1" class="service loading">
+                <div>
+                    <strong>API v1 (Legacy PHP)</strong> - iznik-server<br>
+                    <span class="url">http://apiv1.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="apiv2" class="service loading">
+                <div>
+                    <strong>API v2 (Modern Go)</strong> - iznik-server-go<br>
+                    <span class="url">http://apiv2.localhost:8192</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dev Tools Tab -->
+        <div id="dev-tools" class="tab-content">
+            <h2>Development Tools</h2>
+
+            <div id="phpmyadmin" class="service loading">
+                <div>
+                    <strong>PhpMyAdmin</strong> - Database management<br>
+                    <span class="url">http://phpmyadmin.localhost</span><br>
+                    <small>Login: root / iznik</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-phpmyadmin</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="mailhog" class="service loading">
+                <div>
+                    <strong>MailHog</strong> - Email testing<br>
+                    <span class="url">http://mailhog.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-mailhog</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Testing Tab -->
+        <div id="testing" class="tab-content">
+            <h2>Test Suites</h2>
+
+            <div id="go-tests" class="service loading">
+                <div>
+                    <strong>Go API Tests (iznik-server-go)</strong><br>
+                    <small>Test fast v2 API</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
+                    <span class="status">Waiting for services...</span>
+                    <div class="container-actions" style="margin-top: 8px;">
+                        <button id="runGoTestsBtn" class="action-button">Run Go Tests</button>
+                    </div>
+                    <div id="goTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                    <div id="goTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                    <div style="margin-top: 8px;">
+                        <button id="toggleGoLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="php-tests" class="service loading">
+                <div>
+                    <strong>PHPUnit Tests (iznik-server)</strong><br>
+                    <small>Tests v1 API and background function</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
+                    <span class="status">Waiting for services...</span>
+                    <div class="container-actions" style="margin-top: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <button id="runPhpTestsBtn" class="action-button">Run PHP Tests</button>
+                            <input type="text" id="phpTestFilter" placeholder="Filter (e.g. sessionTest)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #444; background: #fff; color: #000; font-size: 12px; width: 150px;">
+                        </div>
+                    </div>
+                    <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                    <div id="phpTestProgress" style="margin-top: 8px; display: none;">
+                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative;">
+                            <div id="phpTestProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; position: relative;">
+                                <span id="phpTestProgressText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
+                            </div>
+                            <span id="phpTestProgressLabel" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #666; font-size: 11px; z-index: 1;"></span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <button id="openPhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Open Full Logs</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="playwright" class="service loading">
+                <div>
+                    <strong>Playwright E2E Tests (iznik-nuxt3)</strong><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-playwright</small><br>
+                    <span class="status">Loading...</span>
+                    <div class="container-actions" style="margin-top: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <button id="runTestsBtn" class="action-button" style="background: #0070f3;">Run Tests</button>
+                            <input id="testFileInput" type="text" placeholder="Optional: specific test file (e.g., test-marketing-consent.spec.js)"
+                                   style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 300px;">
+                            <button id="clearTestFileBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Clear</button>
+                        </div>
+                        <div style="margin-top: 4px; font-size: 10px; color: #666;">
+                            Leave blank to run all tests, or specify a test file name to run only that test.
+                        </div>
+                    </div>
+                    <div id="testStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                    <div id="testProgress" style="margin-top: 8px; display: none;">
+                        <div id="testProgressText" style="font-size: 12px; color: #333; margin-bottom: 4px; font-weight: bold;"></div>
+                        <div id="currentTestName" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;"></div>
+                    </div>
+                    <div id="testLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                    <!-- Progress bar within the container -->
+                    <div id="inContainerProgress" style="display: none; margin: 8px 0;">
+                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div id="inContainerProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center;">
+                                <span id="inContainerProgressText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; margin-right: 4px; display: none;">Show/Hide Logs</button>
+                        <a id="reportLinkBtn" href="http://localhost:9323" target="_blank" class="action-button" style="background: #17a2b8; font-size: 10px; text-decoration: none;">HTML Report</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Infrastructure Tab -->
+        <div id="infrastructure" class="tab-content">
+            <h2>Networking</h2>
+
+            <div id="traefik" class="service loading">
+                <div>
+                    <strong>Traefik</strong> - Reverse proxy<br>
+                    <span class="url">http://localhost:8080</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-traefik</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <h2>Databases</h2>
+
+            <div id="percona" class="service loading">
+                <div>
+                    <strong>Percona MySQL</strong> - Primary database<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-percona</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="postgres" class="service loading">
+                <div>
+                    <strong>PostgreSQL</strong> - PostGIS database<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-postgres</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="redis" class="service loading">
+                <div>
+                    <strong>Redis</strong> - Cache<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-redis</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <h2>Services</h2>
+
+            <div id="tusd" class="service loading">
+                <div>
+                    <strong>TusD</strong> - File upload service<br>
+                    <span class="url">http://tusd.localhost</span><br>
+                    <small>Direct access: http://localhost:1080</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-tusd</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="beanstalkd" class="service loading">
+                <div>
+                    <strong>Beanstalkd</strong> - Job queue<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-beanstalkd</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="spamassassin" class="service loading">
+                <div>
+                    <strong>SpamAssassin</strong> - Email filtering<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-spamassassin</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="delivery" class="service loading">
+                <div>
+                    <strong>Image Delivery</strong> - wsrv.nl transformation service<br>
+                    <span class="url">http://delivery.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-delivery</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Production Tab -->
+        <div id="production" class="tab-content">
+            <div style="background: #f8d7da; border: 2px solid #dc3545; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <h3 style="color: #dc3545; margin-top: 0;">Warning: Production Data Access</h3>
+                <p style="margin-bottom: 0;">
+                    Containers on this tab connect to <strong>LIVE Freegle APIs</strong>.
+                    Any posts, messages, or actions will affect <strong>REAL users and data</strong>.
+                    Use with caution.
+                </p>
+            </div>
+
+            <h2>Freegle (Live Data)</h2>
+
+            <div id="freegle-dev-live" class="service loading" style="display: none;">
+                <div>
+                    <strong>Dev Build (Live Data)</strong><br>
+                    <span class="url">http://freegle-dev-live.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-dev-live</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="freegle-dev-live-starter" class="service" style="background: #f8f9fa; border-left: 4px solid #6c757d;">
+                <div>
+                    <strong>Dev Build (Live Data)</strong><br>
+                    <small>For mobile dev and testing with real data. Not started by default.</small><br>
+                    <button onclick="startLiveContainer()" style="margin-top: 8px; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        Start Live Data Container
+                    </button>
+                </div>
+            </div>
+
+            <h2>Mobile Development</h2>
+            <p style="color: #666; font-size: 14px;">
+                Use the Dev Build (Live Data) container above for mobile app development with live reload.
+                The container connects to production APIs so you can test with real data on your phone.
+            </p>
+            <a href="/dev-connect" target="_blank" class="action-button" style="background: #dc3545; text-decoration: none; display: inline-block; margin-top: 10px;">
+                Mobile Dev Connect Instructions
             </a>
-            <span id="recreate-status" style="margin-left: 10px; font-weight: bold;"></span>
-        </div>
 
-        <div id="freegle-dev" class="service loading">
-            <div>
-                <strong>Freegle Dev (User Site)</strong> - iznik-nuxt3 development<br>
-                <span class="url">http://freegle-dev.localhost</span><br>
-                <small>Login: test@test.com / freegle</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-freegle-dev</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="freegle-prod" class="service loading">
-            <div>
-                <strong>Freegle Prod (User Site)</strong> - iznik-nuxt3 production<br>
-                <span class="url">http://freegle-prod.localhost</span><br>
-                <small>Login: test@test.com / freegle</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-freegle-prod</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="modtools-dev" class="service loading">
-            <div>
-                <strong>ModTools Dev (Moderator Site)</strong> - iznik-nuxt3-modtools development<br>
-                <span class="url">http://modtools-dev.localhost</span><br>
-                <small>Login: testmod@test.com / freegle</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-modtools-dev</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
+            <h2>Sentry Integration</h2>
 
-        <div id="modtools-prod" class="service loading">
-            <div>
-                <strong>ModTools Prod (Moderator Site)</strong> - iznik-nuxt3-modtools production<br>
-                <span class="url">http://modtools-prod.localhost</span><br>
-                <small>Login: testmod@test.com / freegle</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-modtools-prod</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-
-        <div id="apiv1" class="service loading">
-            <div>
-                <strong>API v1 (Legacy PHP)</strong> - iznik-server<br>
-                <span class="url">http://apiv1.localhost</span><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="apiv2" class="service loading">
-            <div>
-                <strong>API v2 (Modern Go)</strong> - iznik-server-go<br>
-                <span class="url">http://apiv2.localhost:8192</span><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <h2>🧪 Development Tools</h2>
-        
-        <div id="phpmyadmin" class="service loading">
-            <div>
-                <strong>PhpMyAdmin</strong> - Database management<br>
-                <span class="url">http://phpmyadmin.localhost</span><br>
-                <small>Login: root / iznik</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-phpmyadmin</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="mailhog" class="service loading">
-            <div>
-                <strong>MailHog</strong> - Email testing<br>
-                <span class="url">http://mailhog.localhost</span><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-mailhog</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        
-        <h2>🔧 Infrastructure</h2>
-        
-        <div id="traefik" class="service loading">
-            <div>
-                <strong>Traefik</strong> - Reverse proxy<br>
-                <span class="url">http://localhost:8080</span><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-traefik</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="tusd" class="service loading">
-            <div>
-                <strong>TusD</strong> - File upload service<br>
-                <span class="url">http://tusd.localhost</span><br>
-                <small>Direct access: http://localhost:1080</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-tusd</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="percona" class="service loading">
-            <div>
-                <strong>Percona MySQL</strong> - Primary database<br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-percona</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="postgres" class="service loading">
-            <div>
-                <strong>PostgreSQL</strong> - PostGIS database<br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-postgres</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="redis" class="service loading">
-            <div>
-                <strong>Redis</strong> - Cache<br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-redis</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="beanstalkd" class="service loading">
-            <div>
-                <strong>Beanstalkd</strong> - Job queue<br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-beanstalkd</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="spamassassin" class="service loading">
-            <div>
-                <strong>SpamAssassin</strong> - Email filtering<br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-spamassassin</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <div id="delivery" class="service loading">
-            <div>
-                <strong>Image Delivery</strong> - wsrv.nl transformation service<br>
-                <span class="url">http://delivery.localhost</span><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-delivery</small><br>
-                <span class="status">Loading...</span>
-            </div>
-        </div>
-        
-        <h2>🧪 Testing</h2>
-        
-        
-        <div id="go-tests" class="service loading">
-            <div>
-                <strong>Go API Tests (iznik-server-go)</strong><br>
-                <small>Test fast v2 API</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
-                <span class="status">Waiting for services...</span>
-                <div class="container-actions" style="margin-top: 8px;">
-                    <button id="runGoTestsBtn" class="action-button">Run Go Tests</button>
-                </div>
-                <div id="goTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
-                <div id="goTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
-                <div style="margin-top: 8px;">
-                    <button id="toggleGoLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
-                </div>
-            </div>
-        </div>
-        
-        <div id="php-tests" class="service loading">
-            <div>
-                <strong>PHPUnit Tests (iznik-server)</strong><br>
-                <small>Tests v1 API and background function</small><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
-                <span class="status">Waiting for services...</span>
-                <div class="container-actions" style="margin-top: 8px;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <button id="runPhpTestsBtn" class="action-button">Run PHP Tests</button>
-                        <input type="text" id="phpTestFilter" placeholder="Filter (e.g. sessionTest)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #444; background: #fff; color: #000; font-size: 12px; width: 150px;">
+            <div id="sentry-integration" class="service loading">
+                <div>
+                    <strong>Automated Error Fix System</strong><br>
+                    <small>Monitors Sentry for errors, analyzes with Claude AI, creates fixes & PRs</small><br>
+                    <span class="status" id="sentryStatus">Checking...</span>
+                    <div class="container-actions" style="margin-top: 8px;">
+                        <button id="analyzeSentryBtn" class="action-button" style="background: #9b59b6;">Analyze Sentry Issues Now (WIP)</button>
                     </div>
-                </div>
-                <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
-                <div id="phpTestProgress" style="margin-top: 8px; display: none;">
-                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative;">
-                        <div id="phpTestProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; position: relative;">
-                            <span id="phpTestProgressText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
+                    <div id="sentryDetails" style="margin-top: 12px; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px; display: none;">
+                        <div style="margin-bottom: 6px;"><strong>Status:</strong> <span id="sentryEnabled">Unknown</span></div>
+                        <div style="margin-bottom: 6px;"><strong>Processed Issues:</strong> <span id="sentryProcessed">0</span></div>
+                        <div id="sentryBreakdown" style="margin-bottom: 6px; margin-left: 20px; font-size: 11px; display: none;"></div>
+                        <div style="margin-bottom: 6px;"><strong>Currently Processing:</strong> <span id="sentryActive">None</span></div>
+                        <div id="sentryRecentErrors" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6; display: none;">
+                            <strong style="color: #dc3545;">Recent Errors:</strong>
+                            <div id="sentryErrorList" style="margin-top: 6px; max-height: 150px; overflow-y: auto;"></div>
                         </div>
-                        <span id="phpTestProgressLabel" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #666; font-size: 11px; z-index: 1;"></span>
-                    </div>
-                </div>
-                <div style="margin-top: 8px;">
-                    <button id="openPhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Open Full Logs</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="playwright" class="service loading">
-            <div>
-                <strong>Playwright E2E Tests (iznik-nuxt3)</strong><br>
-                <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-playwright</small><br>
-                <span class="status">Loading...</span>
-                <div class="container-actions" style="margin-top: 8px;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <button id="runTestsBtn" class="action-button" style="background: #0070f3;">Run Tests</button>
-                        <input id="testFileInput" type="text" placeholder="Optional: specific test file (e.g., test-marketing-consent.spec.js)"
-                               style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 300px;">
-                        <button id="clearTestFileBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Clear</button>
-                    </div>
-                    <div style="margin-top: 4px; font-size: 10px; color: #666;">
-                        Leave blank to run all tests, or specify a test file name to run only that test.
-                    </div>
-                </div>
-                <div id="testStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
-                <div id="testProgress" style="margin-top: 8px; display: none;">
-                    <div id="testProgressText" style="font-size: 12px; color: #333; margin-bottom: 4px; font-weight: bold;"></div>
-                    <div id="currentTestName" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;"></div>
-                </div>
-                <div id="testLogs" class="logs" style="display: none; max-height: 200px;"></div>
-                <!-- Progress bar within the container -->
-                <div id="inContainerProgress" style="display: none; margin: 8px 0;">
-                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <div id="inContainerProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center;">
-                            <span id="inContainerProgressText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
+                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6;">
+                            <small style="color: #666;">
+                                Polls every 15 min for high-priority/frequent errors.<br>
+                                <a href="/SENTRY-INTEGRATION.md" target="_blank" style="color: #007bff;">View Documentation</a>
+                            </small>
                         </div>
-                    </div>
-                </div>
-                <div style="margin-top: 8px;">
-                    <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; margin-right: 4px; display: none;">Show/Hide Logs</button>
-                    <a id="reportLinkBtn" href="http://localhost:9323" target="_blank" class="action-button" style="background: #17a2b8; font-size: 10px; text-decoration: none;">HTML Report</a>
-                </div>
-            </div>
-        </div>
-
-        <h2>🤖 Sentry Integration</h2>
-
-        <div id="sentry-integration" class="service loading">
-            <div>
-                <strong>Automated Error Fix System</strong><br>
-                <small>Monitors Sentry for errors, analyzes with Claude AI, creates fixes & PRs</small><br>
-                <span class="status" id="sentryStatus">Checking...</span>
-                <div class="container-actions" style="margin-top: 8px;">
-                    <button id="analyzeSentryBtn" class="action-button" style="background: #9b59b6;">🔍 Analyze Sentry Issues Now (WIP)</button>
-                </div>
-                <div id="sentryDetails" style="margin-top: 12px; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px; display: none;">
-                    <div style="margin-bottom: 6px;"><strong>Status:</strong> <span id="sentryEnabled">Unknown</span></div>
-                    <div style="margin-bottom: 6px;"><strong>Processed Issues:</strong> <span id="sentryProcessed">0</span></div>
-                    <div id="sentryBreakdown" style="margin-bottom: 6px; margin-left: 20px; font-size: 11px; display: none;"></div>
-                    <div style="margin-bottom: 6px;"><strong>Currently Processing:</strong> <span id="sentryActive">None</span></div>
-                    <div id="sentryRecentErrors" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6; display: none;">
-                        <strong style="color: #dc3545;">Recent Errors:</strong>
-                        <div id="sentryErrorList" style="margin-top: 6px; max-height: 150px; overflow-y: auto;"></div>
-                    </div>
-                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #dee2e6;">
-                        <small style="color: #666;">
-                            Polls every 15 min for high-priority/frequent errors.<br>
-                            <a href="/SENTRY-INTEGRATION.md" target="_blank" style="color: #007bff;">View Documentation</a>
-                        </small>
                     </div>
                 </div>
             </div>
@@ -327,19 +427,20 @@
 
     <script>
         let countdownSeconds = 10;
-        
+
         function updateCountdown() {
             document.getElementById('countdown').textContent = `Next check in ${countdownSeconds} seconds`;
             if (countdownSeconds > 0) {
                 countdownSeconds--;
             }
         }
-        
+
         const services = [
-            { id: 'freegle-dev', container: 'freegle-freegle-dev' },
-            { id: 'freegle-prod', container: 'freegle-freegle-prod' },
-            { id: 'modtools-dev', container: 'freegle-modtools-dev' },
-            { id: 'modtools-prod', container: 'freegle-modtools-prod' },
+            { id: 'freegle-dev-local', container: 'freegle-dev-local' },
+            { id: 'freegle-dev-live', container: 'freegle-dev-live' },
+            { id: 'freegle-prod-local', container: 'freegle-prod-local' },
+            { id: 'modtools-dev-local', container: 'modtools-dev-local' },
+            { id: 'modtools-prod-local', container: 'modtools-prod-local' },
             { id: 'apiv1', container: 'freegle-apiv1' },
             { id: 'apiv2', container: 'freegle-apiv2' },
             { id: 'phpmyadmin', container: 'freegle-phpmyadmin' },
@@ -355,17 +456,133 @@
             { id: 'delivery', container: 'freegle-delivery' }
         ];
 
+        // Tab switching
+        function initTabs() {
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // Remove active from all tabs
+                    tabs.forEach(t => t.classList.remove('active'));
+                    // Add active to clicked tab
+                    tab.classList.add('active');
+
+                    // Hide all tab content
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+
+                    // Show target tab content
+                    const targetId = tab.dataset.tab;
+                    document.getElementById(targetId).classList.add('active');
+                });
+            });
+        }
+
+        // Update tab traffic lights based on service status
+        function updateTabLights(allStatus) {
+            // Define which services belong to which tab
+            const tabServices = {
+                'freegle': ['freegle-dev-local', 'freegle-prod-local'],
+                'modtools': ['modtools-dev-local', 'modtools-prod-local'],
+                'apis': ['apiv1', 'apiv2'],
+                'devtools': ['phpmyadmin', 'mailhog'],
+                'testing': ['playwright'],
+                'infra': ['traefik', 'percona', 'postgres', 'redis', 'tusd', 'beanstalkd', 'spamassassin', 'delivery'],
+                'production': ['freegle-dev-live']
+            };
+
+            for (const [tabName, serviceIds] of Object.entries(tabServices)) {
+                const lightEl = document.getElementById(`tab-light-${tabName}`);
+                if (!lightEl) continue;
+
+                // Check status of all services in this tab
+                let allOnline = true;
+                let anyOnline = false;
+                let hasServices = false;
+
+                for (const serviceId of serviceIds) {
+                    const status = allStatus[serviceId];
+                    if (status) {
+                        hasServices = true;
+                        if (status.status === 'success') {
+                            anyOnline = true;
+                        } else {
+                            allOnline = false;
+                        }
+                    }
+                }
+
+                // Special case for production tab - if container not started, show grey
+                if (tabName === 'production') {
+                    const liveStatus = allStatus['freegle-dev-live'];
+                    if (!liveStatus || liveStatus.status === 'not_found') {
+                        lightEl.className = 'tab-light grey';
+                        continue;
+                    }
+                }
+
+                // Set light color
+                if (!hasServices) {
+                    lightEl.className = 'tab-light grey';
+                } else if (allOnline) {
+                    lightEl.className = 'tab-light green';
+                } else if (anyOnline) {
+                    lightEl.className = 'tab-light amber';
+                } else {
+                    lightEl.className = 'tab-light red';
+                }
+            }
+        }
+
+        // Start live container with confirmation
+        function startLiveContainer() {
+            document.getElementById('liveWarningModal').classList.add('active');
+        }
+
+        function closeLiveModal() {
+            document.getElementById('liveWarningModal').classList.remove('active');
+        }
+
+        async function confirmStartLive() {
+            closeLiveModal();
+
+            const button = document.querySelector('#freegle-dev-live-starter button');
+            button.disabled = true;
+            button.textContent = 'Starting...';
+
+            try {
+                const response = await fetch('/api/container/start-live', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    button.textContent = 'Started - Building...';
+                    // Hide starter, show actual container div
+                    document.getElementById('freegle-dev-live-starter').style.display = 'none';
+                    document.getElementById('freegle-dev-live').style.display = 'block';
+                    // Refresh status
+                    fetchStatus();
+                } else {
+                    button.textContent = 'Failed: ' + result.error;
+                    button.disabled = false;
+                }
+            } catch (error) {
+                button.textContent = 'Error: ' + error.message;
+                button.disabled = false;
+            }
+        }
+
         function addActionButtons(service, element) {
             // Add visit button for web services
-            if (service.id === 'freegle-dev' || service.id === 'freegle-prod' || service.id === 'modtools-dev' || service.id === 'modtools-prod') {
-                const serviceUrl = service.id === 'freegle-dev' ? 'http://freegle-dev.localhost' :
-                                 service.id === 'freegle-prod' ? 'http://freegle-prod.localhost' :
-                                 service.id === 'modtools-dev' ? 'http://modtools-dev.localhost' :
-                                 'http://modtools-prod.localhost';
-                const serviceName = service.id === 'freegle-dev' ? 'Freegle Dev' :
-                                  service.id === 'freegle-prod' ? 'Freegle Prod' :
-                                  service.id === 'modtools-dev' ? 'ModTools Dev' :
-                                  'ModTools Prod';
+            const webServices = {
+                'freegle-dev-local': { url: 'http://freegle-dev-local.localhost', name: 'Freegle Dev' },
+                'freegle-dev-live': { url: 'http://freegle-dev-live.localhost', name: 'Freegle Live' },
+                'freegle-prod-local': { url: 'http://freegle-prod-local.localhost', name: 'Freegle Prod' },
+                'modtools-dev-local': { url: 'http://modtools-dev-local.localhost', name: 'ModTools Dev' },
+                'modtools-prod-local': { url: 'http://modtools-prod-local.localhost', name: 'ModTools Prod' }
+            };
+
+            if (webServices[service.id]) {
+                const { url: serviceUrl, name: serviceName } = webServices[service.id];
 
                 if (!element.querySelector('.visit-button')) {
                     const visitButton = document.createElement('a');
@@ -377,16 +594,12 @@
                     visitButton.style.right = '10px';
                     visitButton.style.bottom = '10px';
                     visitButton.style.zIndex = '1000';
-                    // Add top padding for ModTools buttons to account for CPU indicator
-                    if (service.id === 'modtools-dev' || service.id === 'modtools-prod') {
-                        visitButton.style.marginTop = '30px';
-                    }
                     element.appendChild(visitButton);
                 }
             } else if (service.id === 'phpmyadmin' || service.id === 'mailhog') {
                 const serviceUrl = service.id === 'phpmyadmin' ? 'http://phpmyadmin.localhost' : 'http://mailhog.localhost';
                 const serviceName = service.id === 'phpmyadmin' ? 'PhpMyAdmin' : 'MailHog';
-                
+
                 if (!element.querySelector('.visit-button')) {
                     const visitButton = document.createElement('a');
                     visitButton.href = serviceUrl;
@@ -400,7 +613,7 @@
                     element.appendChild(visitButton);
                 }
             }
-            
+
             // Add logs link next to container name
             const containerLine = element.querySelector('.container-name');
             if (containerLine && !containerLine.querySelector('.logs-link')) {
@@ -411,7 +624,7 @@
                 logsLink.textContent = 'logs';
                 containerLine.appendChild(logsLink);
             }
-            
+
             // Add container action buttons
             let actionsDiv = element.querySelector('.container-actions');
             if (!actionsDiv) {
@@ -419,7 +632,7 @@
                 actionsDiv.className = 'container-actions';
                 element.appendChild(actionsDiv);
             }
-            
+
             // Only add buttons if they don't already exist
             if (!actionsDiv.querySelector('.restart-btn')) {
                 // Restart button
@@ -429,9 +642,9 @@
                 restartBtn.onclick = () => restartContainer(service.container);
                 actionsDiv.appendChild(restartBtn);
             }
-            
+
             // Rebuild button (for containers that can be rebuilt - those with build context)
-            if (['freegle-dev', 'freegle-prod', 'modtools-dev', 'modtools-prod', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
+            if (['freegle-dev-local', 'freegle-dev-live', 'freegle-prod-local', 'modtools-dev-local', 'modtools-prod-local', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
                 if (!actionsDiv.querySelector('.rebuild-btn')) {
                     const rebuildBtn = document.createElement('button');
                     rebuildBtn.className = 'action-button danger rebuild-btn';
@@ -445,10 +658,10 @@
         function updateServiceDisplay(service, data) {
             const element = document.getElementById(service.id);
             if (!element) return;
-            
+
             const statusElement = element.querySelector('.status');
             addActionButtons(service, element);
-            
+
             // Format start time and uptime
             let timeInfo = '';
             if (data.startTime && data.uptime !== null) {
@@ -456,9 +669,9 @@
                 const uptimeStr = formatUptime(data.uptime);
                 timeInfo = `<br><small style="font-weight: normal; color: #999; font-size: 10px;">Started: ${formatDateTime(startTime)} (${uptimeStr})</small>`;
             }
-            
+
             if (data.status === 'success') {
-                statusElement.innerHTML = `Running<br><small style="font-weight: normal; color: #666;">✓ ${data.message}</small>${timeInfo}`;
+                statusElement.innerHTML = `Running<br><small style="font-weight: normal; color: #666;">${data.message}</small>${timeInfo}`;
                 element.className = 'service online';
             } else if (data.status === 'starting') {
                 statusElement.innerHTML = `Starting...<br><small style="font-weight: normal; color: #666;">${data.message}</small>${timeInfo}`;
@@ -467,7 +680,7 @@
                 statusElement.innerHTML = `Offline<br><small style="font-weight: normal; color: #666;">${data.message}</small>${timeInfo}`;
                 element.className = 'service offline';
             }
-            
+
             // Update CPU indicator for all running containers (including building ones)
             if (data.cpu !== undefined && data.cpu > 0) {
                 let cpuIndicator = element.querySelector('.cpu-indicator');
@@ -476,14 +689,14 @@
                     cpuIndicator.className = 'cpu-indicator';
                     element.appendChild(cpuIndicator);
                 }
-                
+
                 const cpu = Math.round(data.cpu || 0);
                 cpuIndicator.innerHTML = `
                     <div class="cpu-bar ${cpu > 80 ? 'high' : cpu > 50 ? 'medium' : ''}" style="width: ${cpu}%;"></div>
                     <div class="cpu-text">CPU ${cpu}%</div>
                 `;
             }
-            
+
             // Test button is always enabled since dependencies are handled by Docker Compose
         }
 
@@ -493,14 +706,14 @@
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = 'Restarting...';
-            
+
             try {
                 const response = await fetch('/api/container/restart', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ container: containerName })
                 });
-                
+
                 const result = await response.text();
                 if (response.ok) {
                     button.textContent = 'Restarted!';
@@ -519,24 +732,24 @@
                 button.disabled = false;
             }
         }
-        
+
         async function rebuildContainer(containerName, serviceName) {
             if (!confirm(`Are you sure you want to rebuild ${serviceName}? This will take several minutes.`)) {
                 return;
             }
-            
+
             const button = event.target;
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = 'Rebuilding...';
-            
+
             try {
                 const response = await fetch('/api/container/rebuild', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ container: containerName, service: serviceName })
                 });
-                
+
                 const result = await response.text();
                 if (response.ok) {
                     button.textContent = 'Rebuilt!';
@@ -561,7 +774,7 @@
             const statusSpan = document.getElementById('recreate-status');
 
             button.disabled = true;
-            button.textContent = '⏳ Creating users...';
+            button.textContent = 'Creating users...';
             statusSpan.textContent = '';
             statusSpan.style.color = '#666';
 
@@ -573,22 +786,22 @@
 
                 const result = await response.json();
                 if (response.ok) {
-                    button.textContent = '🔄 Recreate Test Users';
-                    statusSpan.textContent = '✅ ' + result.message;
+                    button.textContent = 'Recreate Test Users';
+                    statusSpan.textContent = result.message;
                     statusSpan.style.color = '#4CAF50';
                     setTimeout(() => {
                         statusSpan.textContent = '';
                         button.disabled = false;
                     }, 5000);
                 } else {
-                    button.textContent = '🔄 Recreate Test Users';
-                    statusSpan.textContent = '❌ ' + result.error;
+                    button.textContent = 'Recreate Test Users';
+                    statusSpan.textContent = result.error;
                     statusSpan.style.color = '#f44336';
                     button.disabled = false;
                 }
             } catch (error) {
-                button.textContent = '🔄 Recreate Test Users';
-                statusSpan.textContent = '❌ Error: ' + error.message;
+                button.textContent = 'Recreate Test Users';
+                statusSpan.textContent = 'Error: ' + error.message;
                 statusSpan.style.color = '#f44336';
                 button.disabled = false;
             }
@@ -628,15 +841,15 @@
                                 skipped: '#6c757d'
                             };
                             const statusIcons = {
-                                success: '✅',
-                                failed: '⚠️',
-                                error: '❌',
-                                skipped: '⊘'
+                                success: 'OK',
+                                failed: 'WARN',
+                                error: 'ERR',
+                                skipped: 'SKIP'
                             };
                             const breakdownHtml = Object.entries(data.processedByStatus)
                                 .map(([status, count]) => {
                                     const color = statusColors[status] || '#666';
-                                    const icon = statusIcons[status] || '•';
+                                    const icon = statusIcons[status] || '-';
                                     return `<div style="color: ${color};">${icon} ${status}: ${count}</div>`;
                                 })
                                 .join('');
@@ -735,7 +948,7 @@
             const originalText = button.textContent;
 
             button.disabled = true;
-            button.textContent = '⏳ Analyzing...';
+            button.textContent = 'Analyzing...';
 
             try {
                 const response = await fetch('/api/sentry/poll', {
@@ -743,7 +956,7 @@
                 });
 
                 if (response.ok) {
-                    button.textContent = '✅ Analysis Started';
+                    button.textContent = 'Analysis Started';
                     document.getElementById('sentryStatus').textContent = 'Polling Sentry for high-priority issues...';
 
                     // Refresh status after a short delay
@@ -754,7 +967,7 @@
                     }, 3000);
                 } else {
                     const error = await response.text();
-                    button.textContent = '❌ Failed';
+                    button.textContent = 'Failed';
                     document.getElementById('sentryStatus').textContent = 'Error: ' + error;
                     setTimeout(() => {
                         button.textContent = originalText;
@@ -762,7 +975,7 @@
                     }, 3000);
                 }
             } catch (error) {
-                button.textContent = '❌ Error';
+                button.textContent = 'Error';
                 document.getElementById('sentryStatus').textContent = 'Error: ' + error.message;
                 setTimeout(() => {
                     button.textContent = originalText;
@@ -788,9 +1001,12 @@
                 const response = await fetch('/api/status/all');
                 if (response.ok) {
                     const allStatus = await response.json();
-                    
+
                     // Update all services from cached data
                     for (const service of services) {
+                        // Skip freegle-dev-live - it's handled separately below
+                        if (service.id === 'freegle-dev-live') continue;
+
                         const data = allStatus[service.id];
                         if (data) {
                             updateServiceDisplay(service, data);
@@ -860,7 +1076,7 @@
                     // Playwright tests depend on production container
                     const playwrightElement = document.getElementById('playwright');
                     const playwrightBtn = document.getElementById('runTestsBtn');
-                    const prodReady = allStatus['freegle-prod'] && allStatus['freegle-prod'].status === 'success';
+                    const prodReady = allStatus['freegle-prod-local'] && allStatus['freegle-prod-local'].status === 'success';
 
                     if (playwrightElement) {
                         if (prodReady) {
@@ -875,7 +1091,7 @@
                             }
                         } else {
                             playwrightElement.className = 'service loading';
-                            if (allStatus['freegle-prod'] && allStatus['freegle-prod'].status === 'starting') {
+                            if (allStatus['freegle-prod-local'] && allStatus['freegle-prod-local'].status === 'starting') {
                                 playwrightElement.querySelector('.status').innerHTML = 'Waiting for Production...<br><small style="font-weight: normal; color: #666;">Container building/starting</small>';
                             } else {
                                 playwrightElement.querySelector('.status').innerHTML = 'Waiting for Production...<br><small style="font-weight: normal; color: #666;">Production container not ready</small>';
@@ -887,23 +1103,48 @@
                         }
                     }
 
-                    // Update traffic light
-                    const allOnline = services.every(service => {
+                    // Handle freegle-dev-live visibility based on container status
+                    const liveStatus = allStatus['freegle-dev-live'];
+                    const liveElement = document.getElementById('freegle-dev-live');
+                    const liveStarter = document.getElementById('freegle-dev-live-starter');
+                    if (liveStatus && liveStatus.status !== 'not_found') {
+                        // Container exists, show it and hide starter
+                        if (liveElement) {
+                            liveElement.style.display = 'block';
+                            // Update the display for this container
+                            const liveService = services.find(s => s.id === 'freegle-dev-live');
+                            if (liveService) {
+                                updateServiceDisplay(liveService, liveStatus);
+                            }
+                        }
+                        if (liveStarter) liveStarter.style.display = 'none';
+                    } else {
+                        // Container not running, show starter (grey background)
+                        if (liveElement) liveElement.style.display = 'none';
+                        if (liveStarter) liveStarter.style.display = 'block';
+                    }
+
+                    // Update traffic light (exclude production/live containers)
+                    const coreServices = services.filter(s => s.id !== 'freegle-dev-live');
+                    const allOnline = coreServices.every(service => {
                         const element = document.getElementById(service.id);
                         return element && element.className.includes('online');
                     });
-                    
+
                     const trafficLight = document.getElementById('trafficLight');
                     if (allOnline) {
                         trafficLight.className = 'traffic-light green';
                     } else {
                         trafficLight.className = 'traffic-light amber';
                     }
+
+                    // Update tab traffic lights
+                    updateTabLights(allStatus);
                 }
             } catch (error) {
                 console.error('Failed to get status data:', error);
             }
-            
+
             // Reset countdown
             countdownSeconds = 10;
         }
@@ -916,28 +1157,28 @@
             const progressDiv = document.getElementById('testProgress');
             const toggleLogsBtn = document.getElementById('toggleLogsBtn');
             const testFileInput = document.getElementById('testFileInput');
-            
+
             // Get the test file value
             const testFile = testFileInput.value.trim();
-            
+
             // Dependencies are handled by Docker Compose, so tests can run immediately
-            
+
             const originalText = button.textContent;
             button.disabled = true;
-            
+
             if (testFile) {
                 button.textContent = 'Starting Specific Test...';
-                statusDiv.innerHTML = `<span style="color: #0070f3;">▶ Running test file: ${testFile}...</span>`;
+                statusDiv.innerHTML = `<span style="color: #0070f3;">Running test file: ${testFile}...</span>`;
             } else {
                 button.textContent = 'Starting Tests...';
-                statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Initializing test environment...</span>';
+                statusDiv.innerHTML = '<span style="color: #0070f3;">Initializing test environment...</span>';
             }
-            
+
             logsDiv.style.display = 'none';
             progressDiv.style.display = 'block';
             toggleLogsBtn.style.display = 'none';
             updateProgress(0, 'Starting...');
-            
+
             try {
                 console.log('Making API request to /api/tests/playwright');
                 const requestBody = testFile ? { testFile: testFile } : {};
@@ -946,26 +1187,26 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody)
                 });
-                
+
                 console.log('API response status:', response.status);
-                
+
                 if (response.ok) {
                     button.textContent = 'Tests Running...';
-                    statusDiv.innerHTML = '<span style="color: #0070f3;">🧪 Tests are running in Docker container...</span>';
+                    statusDiv.innerHTML = '<span style="color: #0070f3;">Tests are running in Docker container...</span>';
                     updateProgress(10, 'Test environment starting...');
-                    
+
                     // Start polling for test results
                     console.log('Starting test result polling');
                     pollTestResults();
                 } else {
                     const error = await response.text();
                     console.error('API error response:', error);
-                    statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Failed to start tests: ${error}</span>`;
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Failed to start tests: ${error}</span>`;
                     resetTestUI(originalText);
                 }
             } catch (error) {
                 console.error('Test start error:', error);
-                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
                 resetTestUI(originalText);
             }
         }
@@ -976,22 +1217,22 @@
             const inContainerProgress = document.getElementById('inContainerProgress');
             const inContainerProgressBar = document.getElementById('inContainerProgressBar');
             const inContainerProgressText = document.getElementById('inContainerProgressText');
-            
+
             // Update progress text and in-container progress bar
             if (progressText) progressText.textContent = text;
-            
+
             if (inContainerProgressBar) {
                 inContainerProgressBar.style.width = percentage + '%';
                 inContainerProgressText.textContent = `${percentage}%`;
             }
-            
+
             // Show/hide progress bar based on test status
             if (percentage > 0 && document.getElementById('runTestsBtn').disabled) {
                 if (inContainerProgress) inContainerProgress.style.display = 'block';
             } else {
                 if (inContainerProgress) inContainerProgress.style.display = 'none';
             }
-            
+
             // Update current test name
             if (currentTest && currentTest.title) {
                 currentTestName.textContent = `Currently running: ${currentTest.title}`;
@@ -1006,57 +1247,57 @@
             const progressDiv = document.getElementById('testProgress');
             const toggleLogsBtn = document.getElementById('toggleLogsBtn');
             const inContainerProgress = document.getElementById('inContainerProgress');
-            
+
             button.textContent = buttonText;
             button.disabled = false;
             progressDiv.style.display = 'none';
             if (inContainerProgress) inContainerProgress.style.display = 'none';
             toggleLogsBtn.style.display = 'inline-block';
         }
-        
+
         async function pollTestResults() {
             console.log('Polling test results...');
             const statusDiv = document.getElementById('testStatus');
             const logsDiv = document.getElementById('testLogs');
-            
+
             try {
                 const response = await fetch('/api/tests/playwright/status');
                 console.log('Poll response status:', response.status);
-                
+
                 if (response.ok) {
                     const result = await response.json();
                     console.log('Poll result:', result.status, result.message);
-                    
+
                     if (result.status === 'running') {
-                        statusDiv.innerHTML = `<span style="color: #0070f3;">🧪 Tests running...</span>`;
-                        
+                        statusDiv.innerHTML = `<span style="color: #0070f3;">Tests running...</span>`;
+
                         // Update progress based on log content
                         const progress = estimateProgressFromLogs(result.logs, result);
                         updateProgress(progress.percentage, progress.text, result.currentRunningTest);
-                        
+
                         // Update logs
                         if (result.logs) {
                             logsDiv.textContent = result.logs;
                         }
-                        
+
                         // Continue polling
                         console.log('Continuing to poll in 2 seconds...');
                         setTimeout(pollTestResults, 2000);
                     } else if (result.status === 'completed') {
                         const color = result.success ? '#28a745' : '#dc3545';
-                        const icon = result.success ? '✅' : '❌';
+                        const icon = result.success ? 'PASS' : 'FAIL';
                         statusDiv.innerHTML = `<span style="color: ${color};">${icon} ${result.message}</span>`;
                         updateProgress(100, result.success ? 'All tests passed!' : 'Tests completed with failures');
-                        
+
                         if (result.logs) {
                             logsDiv.textContent = result.logs;
                         }
                         console.log('Tests completed, stopping polling');
                         resetTestUI('Run Playwright Tests');
                     } else if (result.status === 'failed') {
-                        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ ${result.message}</span>`;
+                        statusDiv.innerHTML = `<span style="color: #dc3545;">FAIL ${result.message}</span>`;
                         updateProgress(0, 'Test execution failed');
-                        
+
                         if (result.logs) {
                             logsDiv.textContent = result.logs;
                         }
@@ -1069,21 +1310,21 @@
                 } else {
                     // If status check fails, assume tests are done
                     console.error('Status check failed with:', response.status);
-                    statusDiv.innerHTML = '<span style="color: #6c757d;">❓ Test status unknown</span>';
+                    statusDiv.innerHTML = '<span style="color: #6c757d;">Test status unknown</span>';
                     resetTestUI('Run Playwright Tests');
                 }
             } catch (error) {
                 console.error('Error polling test results:', error);
-                statusDiv.innerHTML = '<span style="color: #6c757d;">❓ Unable to check test status</span>';
+                statusDiv.innerHTML = '<span style="color: #6c757d;">Unable to check test status</span>';
                 resetTestUI('Run Playwright Tests');
             }
         }
 
         function estimateProgressFromLogs(logs, result) {
             if (!logs) return { percentage: 5, text: 'Starting...' };
-            
+
             const lowerLogs = logs.toLowerCase();
-            
+
             // Use server-provided test progress data if available
             if (result && result.completedTests !== undefined && result.totalTests !== undefined) {
                 const completed = result.completedTests;
@@ -1092,7 +1333,7 @@
                 const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
                 return { percentage: Math.min(100, percentage), text: `${completed}/${total} tests completed` };
             }
-            
+
             // More granular progress tracking
             if (lowerLogs.includes('checking package.json')) {
                 return { percentage: 10, text: 'Initializing environment...' };
@@ -1104,7 +1345,7 @@
                 // Fallback progress estimation from logs
                 const testMatch = logs.match(/(\d+)\/(\d+) tests completed/i);
                 const runningMatch = logs.match(/running (\d+) tests?/i);
-                
+
                 if (testMatch) {
                     const completed = parseInt(testMatch[1]);
                     const total = parseInt(testMatch[2]);
@@ -1146,34 +1387,34 @@
             const now = new Date();
             const diffMs = now - date;
             const diffHours = diffMs / (1000 * 60 * 60);
-            
+
             if (diffHours < 24) {
                 // Show time if less than 24 hours ago
-                return date.toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
+                return date.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false 
+                    hour12: false
                 });
             } else {
                 // Show date and time if more than 24 hours ago
-                return date.toLocaleDateString('en-US', { 
-                    month: 'short', 
+                return date.toLocaleDateString('en-US', {
+                    month: 'short',
                     day: 'numeric',
-                    hour: '2-digit', 
+                    hour: '2-digit',
                     minute: '2-digit',
                     hour12: false
                 });
             }
         }
-        
+
         function formatUptime(seconds) {
             if (seconds === null || seconds < 0) return 'Unknown';
-            
+
             const days = Math.floor(seconds / 86400);
             const hours = Math.floor((seconds % 86400) / 3600);
             const minutes = Math.floor((seconds % 3600) / 60);
             const secs = seconds % 60;
-            
+
             if (days > 0) {
                 return `${days}d ${hours}h ${minutes}m`;
             } else if (hours > 0) {
@@ -1194,47 +1435,47 @@
                 if (response.ok) {
                     const result = await response.json();
                     console.log('Initial test status:', result.status);
-                    
+
                     if (result.status === 'running') {
                         console.log('Found running tests, starting UI polling');
                         const button = document.getElementById('runTestsBtn');
                         const statusDiv = document.getElementById('testStatus');
                         const progressDiv = document.getElementById('testProgress');
-                        
+
                         // Update UI to show tests are running
                         button.disabled = true;
                         button.textContent = 'Tests Running...';
-                        statusDiv.innerHTML = `<span style="color: #0070f3;">🧪 ${result.message || 'Tests in progress...'}</span>`;
+                        statusDiv.innerHTML = `<span style="color: #0070f3;">${result.message || 'Tests in progress...'}</span>`;
                         progressDiv.style.display = 'block';
-                        
+
                         // Update progress based on current status
                         const progress = estimateProgressFromLogs(result.logs, result);
                         updateProgress(progress.percentage, progress.text, result.currentRunningTest);
-                        
+
                         // Update logs if available
                         const logsDiv = document.getElementById('testLogs');
                         if (result.logs) {
                             logsDiv.textContent = result.logs;
                         }
-                        
+
                         // Start polling
                         setTimeout(pollTestResults, 2000);
                     } else if (result.status === 'completed' || result.status === 'failed') {
                         console.log('Found completed test results');
                         const statusDiv = document.getElementById('testStatus');
                         const toggleLogsBtn = document.getElementById('toggleLogsBtn');
-                        
+
                         // Show final status
                         const color = result.success ? '#28a745' : '#dc3545';
-                        const icon = result.success ? '✅' : '❌';
+                        const icon = result.success ? 'PASS' : 'FAIL';
                         statusDiv.innerHTML = `<span style="color: ${color};">${icon} ${result.message}</span>`;
-                        
+
                         // Show logs and controls
                         const logsDiv = document.getElementById('testLogs');
                         if (result.logs) {
                             logsDiv.textContent = result.logs;
                         }
-                        
+
                         // Make artifacts available
                         resetTestUI('Run Playwright Tests');
                     }
@@ -1250,36 +1491,36 @@
             const statusDiv = document.getElementById('goTestStatus');
             const logsDiv = document.getElementById('goTestLogs');
             const toggleLogsBtn = document.getElementById('toggleGoLogsBtn');
-            
+
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = 'Running Tests...';
-            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Running Go tests...</span>';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">Running Go tests...</span>';
             logsDiv.style.display = 'none';
             toggleLogsBtn.style.display = 'none';
-            
+
             try {
                 const response = await fetch('/api/tests/go', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
-                
+
                 const result = await response.text();
                 if (response.ok && result.includes('Go tests completed successfully')) {
-                    statusDiv.innerHTML = '<span style="color: #28a745;">✅ Go tests completed successfully</span>';
+                    statusDiv.innerHTML = '<span style="color: #28a745;">PASS Go tests completed successfully</span>';
                     logsDiv.textContent = result;
                     logsDiv.style.display = 'block';
                     toggleLogsBtn.style.display = 'inline-block';
                 } else {
-                    statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Go tests failed</span>';
+                    statusDiv.innerHTML = '<span style="color: #dc3545;">FAIL Go tests failed</span>';
                     logsDiv.textContent = result;
                     logsDiv.style.display = 'block';
                     toggleLogsBtn.style.display = 'inline-block';
                 }
             } catch (error) {
-                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
             }
-            
+
             button.textContent = originalText;
             button.disabled = false;
         }
@@ -1331,7 +1572,7 @@
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = 'Starting Tests...';
-            statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Starting PHP tests...</span>';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">Starting PHP tests...</span>';
             openLogsBtn.style.display = 'none';
             phpTestLogs = '';  // Reset logs
 
@@ -1339,7 +1580,7 @@
             const requestBody = {};
             if (filterInput && filterInput.value.trim()) {
                 requestBody.filter = filterInput.value.trim();
-                statusDiv.innerHTML = `<span style="color: #0070f3;">▶ Starting PHP tests with filter: ${requestBody.filter}...</span>`;
+                statusDiv.innerHTML = `<span style="color: #0070f3;">Starting PHP tests with filter: ${requestBody.filter}...</span>`;
             }
 
             try {
@@ -1356,7 +1597,7 @@
 
                 // Poll for status
                 button.textContent = 'Running Tests...';
-                statusDiv.innerHTML = '<span style="color: #0070f3;">▶ Running PHP tests...</span>';
+                statusDiv.innerHTML = '<span style="color: #0070f3;">Running PHP tests...</span>';
 
                 const pollInterval = setInterval(async () => {
                     try {
@@ -1372,7 +1613,7 @@
                                 progressMsg = progressMsg.substring(0, 57) + '...';
                             }
                             console.log('PHP Test Progress:', progressMsg);
-                            statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
+                            statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">${progressMsg}</span>`;
 
                             // Update progress bar if available
                             if (status.progress) {
@@ -1387,7 +1628,7 @@
                         } else if (status.status === 'completed') {
                             clearInterval(pollInterval);
                             document.getElementById('phpTestProgress').style.display = 'none';
-                            statusDiv.innerHTML = '<span style="color: #28a745;">✅ PHP tests completed successfully</span>';
+                            statusDiv.innerHTML = '<span style="color: #28a745;">PASS PHP tests completed successfully</span>';
                             phpTestLogs = status.logs || 'Tests completed';
                             openLogsBtn.style.display = 'inline-block';
                             button.textContent = originalText;
@@ -1397,10 +1638,7 @@
                             document.getElementById('phpTestProgress').style.display = 'none';
                             // Check if message already has an emoji/symbol
                             const message = status.message || 'PHP tests failed';
-                            const hasSymbol = message.includes('❌') || message.includes('✗') || message.includes('✅');
-                            statusDiv.innerHTML = hasSymbol
-                                ? `<span style="color: #dc3545;">${message}</span>`
-                                : `<span style="color: #dc3545;">❌ ${message}</span>`;
+                            statusDiv.innerHTML = `<span style="color: #dc3545;">FAIL ${message}</span>`;
                             phpTestLogs = status.logs || 'Test failed';
                             openLogsBtn.style.display = 'inline-block';
                             button.textContent = originalText;
@@ -1416,7 +1654,7 @@
                     clearInterval(pollInterval);
                     if (button.disabled) {
                         document.getElementById('phpTestProgress').style.display = 'none';
-                        statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Tests timed out</span>';
+                        statusDiv.innerHTML = '<span style="color: #dc3545;">Tests timed out</span>';
                         button.textContent = originalText;
                         button.disabled = false;
                     }
@@ -1424,7 +1662,7 @@
 
             } catch (error) {
                 document.getElementById('phpTestProgress').style.display = 'none';
-                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
                 button.textContent = originalText;
                 button.disabled = false;
             }
@@ -1474,7 +1712,7 @@
                     if (progressMsg.length > 60) {
                         progressMsg = progressMsg.substring(0, 57) + '...';
                     }
-                    statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
+                    statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">${progressMsg}</span>`;
 
                     // Update progress bar if available
                     if (status.progress) {
@@ -1494,7 +1732,7 @@
                                     progressMsg = progressMsg.substring(0, 57) + '...';
                                 }
                                 console.log('PHP Test Progress (auto-poll):', progressMsg);
-                                statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">▶ ${progressMsg}</span>`;
+                                statusDiv.innerHTML = `<span style="color: #0070f3; word-wrap: break-word;">${progressMsg}</span>`;
 
                                 // Update progress bar if available
                                 if (pollStatus.progress) {
@@ -1512,14 +1750,10 @@
                                 document.getElementById('phpTestProgress').style.display = 'none';
 
                                 if (pollStatus.status === 'completed') {
-                                    statusDiv.innerHTML = '<span style="color: #00a000;">✓ Tests completed successfully</span>';
+                                    statusDiv.innerHTML = '<span style="color: #00a000;">Tests completed successfully</span>';
                                 } else if (pollStatus.status === 'failed') {
-                                    // Check if message already has an emoji/symbol
                                     const message = pollStatus.message || 'Tests failed';
-                                    const hasSymbol = message.includes('❌') || message.includes('✗') || message.includes('✅');
-                                    statusDiv.innerHTML = hasSymbol
-                                        ? `<span style="color: #d00;">${message}</span>`
-                                        : `<span style="color: #d00;">✗ ${message}</span>`;
+                                    statusDiv.innerHTML = `<span style="color: #d00;">${message}</span>`;
                                 }
                             }
                         } catch (error) {
@@ -1533,6 +1767,9 @@
         }
 
         function initializePage() {
+            // Initialize tabs
+            initTabs();
+
             // Add action buttons on page load
             services.forEach(service => {
                 const element = document.getElementById(service.id);
@@ -1549,12 +1786,12 @@
             if (runTestsBtn) {
                 runTestsBtn.addEventListener('click', runPlaywrightTests);
                 console.log('Test button event listener added');
-                
+
                 // Test button is always enabled since dependencies are handled by Docker Compose
             } else {
                 console.error('runTestsBtn not found');
             }
-            
+
             // Add event listener for clear test file button
             const clearTestFileBtn = document.getElementById('clearTestFileBtn');
             if (clearTestFileBtn) {
@@ -1562,13 +1799,13 @@
                     document.getElementById('testFileInput').value = '';
                 });
             }
-            
+
             // Add event listeners for new test buttons
             const runGoTestsBtn = document.getElementById('runGoTestsBtn');
             if (runGoTestsBtn) {
                 runGoTestsBtn.addEventListener('click', runGoTests);
             }
-            
+
             const runPhpTestsBtn = document.getElementById('runPhpTestsBtn');
             if (runPhpTestsBtn) {
                 runPhpTestsBtn.addEventListener('click', runPhpTests);
@@ -1578,37 +1815,37 @@
             if (openPhpLogsBtn) {
                 openPhpLogsBtn.addEventListener('click', openPhpLogsInNewTab);
             }
-            
+
             // Add event listener for toggle logs button
             const toggleLogsBtn = document.getElementById('toggleLogsBtn');
             if (toggleLogsBtn) {
                 toggleLogsBtn.addEventListener('click', toggleLogs);
             }
-            
+
             const toggleGoLogsBtn = document.getElementById('toggleGoLogsBtn');
             if (toggleGoLogsBtn) {
                 toggleGoLogsBtn.addEventListener('click', () => toggleTestLogs('go'));
             }
-            
+
             const togglePhpLogsBtn = document.getElementById('togglePhpLogsBtn');
             if (togglePhpLogsBtn) {
                 togglePhpLogsBtn.addEventListener('click', () => toggleTestLogs('php'));
             }
-            
+
             // Check for existing test status first
             checkInitialTestStatus();
-            
+
             // Start countdown timer (updates every second)
             updateCountdown();
             setInterval(updateCountdown, 1000);
-            
+
             // Initial check and then every 10 seconds
             checkAllServices();
             setInterval(checkAllServices, 10000);
-            
+
             console.log('Status page initialized');
         }
-        
+
 
         // Initialize when DOM is loaded
         if (document.readyState === 'loading') {
@@ -1617,5 +1854,18 @@
             initializePage();
         }
     </script>
+
+    <!-- Warning Modal for Live Container -->
+    <div id="liveWarningModal" class="modal-overlay">
+        <div class="modal">
+            <h3>Warning: Production Data</h3>
+            <p>This container connects to <strong>LIVE Freegle APIs</strong>. Any posts, messages, or actions will affect <strong>REAL users and data</strong>.</p>
+            <p>Are you sure you want to start this container?</p>
+            <div class="modal-buttons">
+                <button class="modal-cancel" onclick="closeLiveModal()">Cancel</button>
+                <button class="modal-confirm" onclick="confirmStartLive()">Start Container</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

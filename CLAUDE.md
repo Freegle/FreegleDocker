@@ -11,8 +11,9 @@
 The Yesterday server (yesterday.ilovefreegle.org) runs with specific configuration:
 
 ### Active Containers
-- **Only dev containers run** - Production containers (freegle-prod, modtools-prod) are disabled in docker-compose.override.yml
-- Dev containers exposed on external ports: 3002 (Freegle), 3003 (ModTools)
+- **Only dev containers run** - Production containers (freegle-prod-local, modtools-prod-local) are disabled in docker-compose.override.yml
+- Dev containers exposed on external ports: 3002 (freegle-dev-local), 3003 (modtools-dev-local)
+- A template override file is provided: `docker-compose.override.yesterday.yml` - copy to `docker-compose.override.yml` on yesterday
 - **Why dev containers?** They start up much faster (seconds vs 10+ minutes for production builds)
   - Dev mode uses `npm run dev` which starts immediately
   - Production mode requires full `npm run build` which is very slow
@@ -37,14 +38,15 @@ The Yesterday server (yesterday.ilovefreegle.org) runs with specific configurati
 ## Container Architecture
 
 ### Freegle Development vs Production
-- **freegle-dev** (`freegle-dev.localhost`): Development mode with `npm run dev`, fast startup, hot reloading
-- **freegle-prod** (`freegle-prod.localhost`): Production mode with `npm run build`, full optimization, slower startup
-- Both containers use the same codebase but different Dockerfiles and environment configurations
+- **freegle-dev-local** (`freegle-dev-local.localhost`): Development mode with local test APIs, fast startup, hot reloading
+- **freegle-dev-live** (`freegle-dev-live.localhost`, port 3004): Development mode with PRODUCTION APIs - use with caution
+- **freegle-prod-local** (`freegle-prod-local.localhost`): Production build with local test APIs, slower startup
+- Both dev containers use the same codebase but different Dockerfiles and environment configurations
 - Production container uses `Dockerfile.prod` with hardcoded production build process
 
 ### ModTools Development vs Production
-- **modtools** (`modtools.localhost`): Development mode with `npm run dev`, fast startup, hot reloading
-- **modtools-prod** (`modtools-prod.localhost`): Production mode with `npm run build`, full optimization, slower startup
+- **modtools-dev-local** (`modtools-dev-local.localhost`): Development mode with local test APIs, fast startup, hot reloading
+- **modtools-prod-local** (`modtools-prod-local.localhost`): Production build with local test APIs, slower startup
 - Both containers use the same codebase but different Dockerfiles and environment configurations
 - Development container uses `modtools/Dockerfile` and production container uses `Dockerfile.prod`
 - Production container requires a full rebuild to pick up code changes since it runs a production build
@@ -73,8 +75,9 @@ The Playwright container is configured with special networking to behave exactly
 - **Container Lifecycle**: Container is restarted for each test run to ensure clean state, but report server persists using `nohup`
 
 Test URLs work properly:
-- `http://freegle-dev.localhost/` - Development Freegle site (fast, hot-reload)
-- `http://freegle-prod.localhost/` - Production Freegle site (optimized, tested by Playwright)
+- `http://freegle-dev-local.localhost/` - Development Freegle site (fast, hot-reload, local APIs)
+- `http://freegle-dev-live.localhost/` - Development Freegle site with PRODUCTION APIs (use with caution)
+- `http://freegle-prod-local.localhost/` - Production Freegle build (optimized, tested by Playwright)
 - `http://apiv2.localhost:8192/` - API v2 access  
 - `http://delivery.localhost/?url=http://freegle-prod.localhost/icon.png&w=116&output=png` - Image delivery
 - When you create new files, add them to git automatically unless they are temporary for testing.
