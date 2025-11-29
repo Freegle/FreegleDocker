@@ -178,10 +178,10 @@ services:
     shm_size: 1gb
     depends_on:
       - tusd
-      - freegle-dev
-      - freegle-prod
-      - modtools-dev
-      - modtools-prod
+      - freegle-dev-local
+      - freegle-prod-local
+      - modtools-dev-local
+      - modtools-prod-local
     extra_hosts:
       - "tusd.localhost:host-gateway"
     volumes:
@@ -432,12 +432,13 @@ services:
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
 
-  freegle-dev:
-    container_name: freegle-freegle-dev
+  # Development build with local APIs - standard dev workflow
+  freegle-dev-local:
+    container_name: freegle-dev-local
     networks:
       default:
         aliases:
-          - freegle-dev.localhost
+          - freegle-dev-local.localhost
     ports:
       - "0.0.0.0:3002:3002"
     extra_hosts:
@@ -465,7 +466,7 @@ services:
       - IZNIK_API_V2=http://apiv2.localhost/api
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://tusd.localhost/tus/
-      - USER_SITE=http://freegle-dev.localhost:3002
+      - USER_SITE=http://freegle-dev-local.localhost:3002
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
@@ -477,16 +478,60 @@ services:
       - TEST_BASE_URL=http://127.0.0.1:3002
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.freegle-dev.rule=Host(`freegle-dev.localhost`)"
-      - "traefik.http.routers.freegle-dev.entrypoints=web"
-      - "traefik.http.services.freegle-dev.loadbalancer.server.port=3002"
+      - "traefik.http.routers.freegle-dev-local.rule=Host(`freegle-dev-local.localhost`)"
+      - "traefik.http.routers.freegle-dev-local.entrypoints=web"
+      - "traefik.http.services.freegle-dev-local.loadbalancer.server.port=3002"
 
-  freegle-prod:
-    container_name: freegle-freegle-prod
+  # Development build with LIVE/PRODUCTION APIs - for mobile dev and testing with real data
+  # WARNING: Actions in this container affect REAL Freegle data!
+  # Not started by default - use status page button to start with confirmation
+  freegle-dev-live:
+    container_name: freegle-dev-live
+    profiles:
+      - dev-live
     networks:
       default:
         aliases:
-          - freegle-prod.localhost
+          - freegle-dev-live.localhost
+    ports:
+      - "0.0.0.0:3004:3002"
+      - "0.0.0.0:24678:24678"  # Vite HMR WebSocket for hot reload
+    build:
+      context: ./iznik-nuxt3
+      network: host
+      args:
+        IZNIK_NUXT3_BRANCH: ${IZNIK_NUXT3_BRANCH:-master}
+    tmpfs:
+      - /tmp
+    restart: "no"
+    environment:
+      # LIVE/Production APIs - REAL DATA!
+      - IZNIK_API_V1=https://fdapilive.ilovefreegle.org/api
+      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      # Use production delivery and USER_SITE - local delivery won't work
+      # from mobile devices since they can't resolve localhost hostnames
+      - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
+      - TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+      - USER_SITE=https://www.ilovefreegle.org
+      - NITRO_PRESET=node-server
+      - NUXT_NITRO_PRERENDER_ROUTES=false
+      - NUXT_DEV_MODE=true
+      - NUXT_SSR_LOG=false
+      - NODE_ENV=development
+      - NUXT_BUILD_MODE=development
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.freegle-dev-live.rule=Host(`freegle-dev-live.localhost`)"
+      - "traefik.http.routers.freegle-dev-live.entrypoints=web"
+      - "traefik.http.services.freegle-dev-live.loadbalancer.server.port=3002"
+
+  # Production build with local APIs - for testing production builds locally
+  freegle-prod-local:
+    container_name: freegle-prod-local
+    networks:
+      default:
+        aliases:
+          - freegle-prod-local.localhost
     ports:
       - "0.0.0.0:3012:3003"
     extra_hosts:
@@ -515,7 +560,7 @@ services:
       - IZNIK_API_V2=http://apiv2.localhost/api
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://tusd.localhost/tus/
-      - USER_SITE=http://freegle-prod.localhost:3003
+      - USER_SITE=http://freegle-prod-local.localhost:3003
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
@@ -527,16 +572,17 @@ services:
       - TEST_BASE_URL=http://127.0.0.1:3003
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.freegle-prod.rule=Host(`freegle-prod.localhost`)"
-      - "traefik.http.routers.freegle-prod.entrypoints=web"
-      - "traefik.http.services.freegle-prod.loadbalancer.server.port=3003"
+      - "traefik.http.routers.freegle-prod-local.rule=Host(`freegle-prod-local.localhost`)"
+      - "traefik.http.routers.freegle-prod-local.entrypoints=web"
+      - "traefik.http.services.freegle-prod-local.loadbalancer.server.port=3003"
 
-  modtools-dev:
-    container_name: freegle-modtools-dev
+  # Development build with local APIs - ModTools
+  modtools-dev-local:
+    container_name: modtools-dev-local
     networks:
       default:
         aliases:
-          - modtools-dev.localhost
+          - modtools-dev-local.localhost
     ports:
       - "0.0.0.0:3003:3000"
     extra_hosts:
@@ -561,20 +607,13 @@ services:
         condition: service_started
     restart: "no"
     environment:
-      # LIVE SERVER MODE - pointing at production APIs
-#      - IZNIK_API_V1=https://fdapidbg.ilovefreegle.org/api
-#      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
-#      - IMAGE_DELIVERY=https://images.ilovefreegle.org
-#      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
-      # LOCAL SERVER MODE (comment out above, uncomment below)
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://tusd.localhost/tus/
-      # END
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools-dev.localhost:3000
+      - USER_SITE=http://modtools-dev-local.localhost:3000
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=true
@@ -583,16 +622,17 @@ services:
       - NUXT_BUILD_MODE=development
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.modtools-dev.rule=Host(`modtools-dev.localhost`)"
-      - "traefik.http.routers.modtools-dev.entrypoints=web"
-      - "traefik.http.services.modtools-dev.loadbalancer.server.port=3000"
+      - "traefik.http.routers.modtools-dev-local.rule=Host(`modtools-dev-local.localhost`)"
+      - "traefik.http.routers.modtools-dev-local.entrypoints=web"
+      - "traefik.http.services.modtools-dev-local.loadbalancer.server.port=3000"
 
-  modtools-prod:
-    container_name: freegle-modtools-prod
+  # Production build with local APIs - ModTools
+  modtools-prod-local:
+    container_name: modtools-prod-local
     networks:
       default:
         aliases:
-          - modtools-prod.localhost
+          - modtools-prod-local.localhost
     ports:
       - "0.0.0.0:3013:3001"
     extra_hosts:
@@ -617,20 +657,13 @@ services:
         condition: service_started
     restart: "no"
     environment:
-      # LIVE SERVER MODE - pointing at production APIs
-#      - IZNIK_API_V1=https://fdapidbg.ilovefreegle.org/api
-#      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
-#      - IMAGE_DELIVERY=https://images.ilovefreegle.org
-#      - TUS_UPLOADER=https://tus.ilovefreegle.org/tus/
-      # LOCAL SERVER MODE (comment out above, uncomment below)
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://tusd.localhost/tus/
-      # END
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools-prod.localhost:3001
+      - USER_SITE=http://modtools-prod-local.localhost:3001
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=false
@@ -640,9 +673,9 @@ services:
       - TEST_BASE_URL=http://127.0.0.1:3001
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.modtools-prod.rule=Host(`modtools-prod.localhost`)"
-      - "traefik.http.routers.modtools-prod.entrypoints=web"
-      - "traefik.http.services.modtools-prod.loadbalancer.server.port=3001"
+      - "traefik.http.routers.modtools-prod-local.rule=Host(`modtools-prod-local.localhost`)"
+      - "traefik.http.routers.modtools-prod-local.entrypoints=web"
+      - "traefik.http.services.modtools-prod-local.loadbalancer.server.port=3001"
 
   playwright:
     container_name: freegle-playwright
@@ -653,26 +686,28 @@ services:
       network: host
     working_dir: /app
     extra_hosts:
-      - "freegle-dev.localhost:127.0.0.1"
-      - "freegle-prod.localhost:127.0.0.1"
+      - "freegle-dev-local.localhost:127.0.0.1"
+      - "freegle-prod-local.localhost:127.0.0.1"
+      - "freegle-dev-live.localhost:127.0.0.1"
+      - "modtools-dev-local.localhost:127.0.0.1"
+      - "modtools-prod-local.localhost:127.0.0.1"
       - "apiv1.localhost:127.0.0.1"
       - "apiv2.localhost:127.0.0.1"
       - "delivery.localhost:127.0.0.1"
-      - "modtools.localhost:127.0.0.1"
     volumes:
       - ./iznik-nuxt3/tests:/host-tests:ro
       - ./iznik-nuxt3:/app/src:ro
       - ./iznik-nuxt3:/host-playwright-config:ro
     environment:
-      - TEST_BASE_URL=http://freegle-prod.localhost
+      - TEST_BASE_URL=http://freegle-prod-local.localhost
       - NODE_ENV=test
       - CI=false
       - ENABLE_MONOCART_REPORTER=true
       - COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN:-}
     depends_on:
-      freegle-dev:
+      freegle-dev-local:
         condition: service_started
-      freegle-prod:
+      freegle-prod-local:
         condition: service_started
       apiv1:
         condition: service_healthy

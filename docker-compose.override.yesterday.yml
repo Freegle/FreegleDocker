@@ -1,0 +1,26 @@
+# Yesterday Server Override Configuration
+# Copy this to docker-compose.override.yml on the yesterday server
+#
+# This configuration:
+# - Disables production containers (freegle-prod-local, modtools-prod-local)
+# - Exposes dev containers on external ports for yesterday access
+# - Uses the updated container names (freegle-dev-local, modtools-dev-local)
+
+services:
+  # Disable production containers by assigning them to a profile that won't run
+  freegle-prod-local:
+    profiles:
+      - disabled
+
+  modtools-prod-local:
+    profiles:
+      - disabled
+
+  # Expose dev containers on external ports for yesterday server
+  freegle-dev-local:
+    ports:
+      - "3002:3002"
+
+  modtools-dev-local:
+    ports:
+      - "3003:3000"
