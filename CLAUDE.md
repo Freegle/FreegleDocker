@@ -212,3 +212,4 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - Each Sentry issue analysis uses your Claude Code quota (no additional costs)
 - When making changes to the tests, don't forget to update the orb
 - We should always create plans/ md files in FreegleDocker, never in submodules
+- When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
