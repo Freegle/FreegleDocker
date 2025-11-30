@@ -1,8 +1,10 @@
-# App Browse & Item Detail Flow Redesign
+# App Item Detail Flow Redesign (Phase 1)
 
 ## Overview
 
-This plan redesigns the browse experience and item detail view for the Freegle mobile app, creating a modern, engaging interface that feels native and enjoyable to use.
+This plan redesigns the item detail view for the Freegle mobile app, creating a modern, engaging interface that feels native and enjoyable to use.
+
+**Related:** See `mobile-browse-page.md` for the browse page redesign (Phase 2).
 
 ## Goals
 
@@ -86,7 +88,7 @@ This plan redesigns the browse experience and item detail view for the Freegle m
 |  - Distance indicator (visual)   |
 |  - Quick stats row               |
 |  - Description (collapsed)       |
-|  - Map thumbnail                 |
+|  - Location (tap for map modal)  |
 +----------------------------------+
 |  [Reply Button - Fixed Footer]   |  <- CTA
 +----------------------------------+
@@ -145,9 +147,6 @@ This plan redesigns the browse experience and item detail view for the Freegle m
 +----------------------------------+
 | [See description ∨]              |  <- Collapsed by default
 +----------------------------------+
-| [Map thumbnail - small]          |  <- ~80px height
-| Approximate location • 0.3 mi    |
-+----------------------------------+
 ```
 
 **Description Section:**
@@ -188,18 +187,27 @@ This plan redesigns the browse experience and item detail view for the Freegle m
 - Adds to visual clutter
 
 **New Approach:**
-- Small thumbnail map (~80px height) showing approximate area
-- Tap to expand to larger interactive map
-- Or: Show as location chip "Near: Loughborough, 0.3mi"
-- Full map accessible but not prominent
+- Map is hidden by default - no thumbnail, no preview
+- Location shown as text only in the quick stats row
+- Tap the map icon (standard map icon, not pin) to open full map in modal
+- Modal shows interactive map with approximate location
+- Clean, minimal default view - map only when explicitly requested
 
-**Map Chip Alternative:**
+**Quick Stats Row with Map Icon:**
 ```
-+----------------------------------+
-| 📍 Near Loughborough  [See map]  |
-|    0.3 miles away                |
-+----------------------------------+
++------+------+------+------+
+|  🕐  |  🗺️  |  💬  |  📦  |
+|  2h  | 0.3mi|   3  |   1  |
++------+------+------+------+
+         ↑
+    Tap to open map modal
 ```
+
+**Map Modal:**
+- Opens as overlay/modal when map icon tapped
+- Full interactive map showing approximate location
+- Close button or tap outside to dismiss
+- No map visible in the main item view
 
 ### 6. Visual Representation Instead of Tables
 
@@ -225,167 +233,51 @@ Or as inline badges:
 [2h ago] [0.3mi] [3 replies] [1 available]
 ```
 
-### 7. Browse List Card Redesign
-
-The current `MessageSummary.vue` uses a complex CSS grid layout with many elements (title, history, description, image, expand button). For mobile app, we need a cleaner, more modern card design.
-
-#### Current Problems with Browse Cards
-
-1. **Too much text** - Description, history, location all visible at once
-2. **Complex grid layout** - Different on mobile vs desktop, hard to maintain
-3. **Small touch targets** - "See details and reply" button is small
-4. **No visual hierarchy** - Everything competes for attention
-5. **Prominent button** - "See details and reply" feels like desktop UI
-
-#### New Card Design - "Photo First"
-
-**Mobile Card Layout (App):**
-```
-+----------------------------------+
-|                                  |
-|      [PHOTO - 70% height]        |
-|                                  |
-|    [0.3mi]              [OFFER]  |  <- Overlays on photo
-+----------------------------------+
-| Kids Bike - working condition    |  <- Title only
-| Loughborough • 2h ago            |  <- Location + time
-+----------------------------------+
-```
-
-**Key Changes:**
-- Photo dominates the card (70%+ of card height)
-- Distance badge overlays bottom-left of photo
-- Type badge (OFFER/WANTED) overlays bottom-right
-- Only item name visible below photo
-- Location and time as small subtitle
-- NO description preview - save for detail view
-- NO "See details" button - whole card is tappable
-
-#### Card Variations
-
-**With Photo:**
-- Photo fills top portion
-- Subtle gradient at bottom of photo for overlay readability
-- Title and meta below
-
-**Without Photo:**
-- Gradient background using Freegle brand colors
-- Large category icon centered
-- Item name overlaid on gradient
-- Same meta info below
-
-**Promised/Reserved:**
-- Semi-transparent overlay with "Reserved" badge
-- Slightly dimmed but still visible
-
-**Freegled/Completed:**
-- Grayscale filter
-- "Freegled!" badge overlay
-- Or: Remove from list entirely
-
-#### Card Sizes
-
-**Grid View (2 columns):**
-- Square aspect ratio (1:1)
-- Photo cropped to fill
-- Minimal text (title only, truncated)
-
-**List View (1 column):**
-- 16:9 aspect ratio
-- More room for subtitle
-- Optional: Show first line of description
-
-**App-Specific Cards:**
-Create new `MessageCardApp.vue` for mobile:
-- Optimized touch targets (min 44px)
-- No hover states (mobile doesn't have hover)
-- Haptic feedback on tap
-- Press-and-hold for quick actions
-
-#### Visual Refinements
-
-**Rounded Corners:**
-- 12-16px radius for modern feel
-- Consistent across cards
-
-**Shadows:**
-- Subtle, soft shadow (not harsh box-shadow)
-- `box-shadow: 0 2px 8px rgba(0,0,0,0.08)`
-
-**Typography:**
-- Item name: 16px, medium weight, 2 lines max
-- Meta: 13px, regular weight, muted color
-- No all-caps except for badges
-
-**Colors:**
-- OFFER badge: Green background, white text
-- WANTED badge: Blue/purple background, white text
-- Distance: Semi-transparent dark background
-- Time: Gray text, no background
-
-#### Animation & Interaction
-
-**On Tap:**
-- Scale down slightly (0.98) with 100ms ease
-- Release scales back up
-- Opens full-screen detail
-
-**On Long Press (500ms):**
-- Quick actions menu (Share, Hide, Report)
-- Haptic feedback
-
-**Scroll Behavior:**
-- Cards lazy-load as they enter viewport
-- Skeleton placeholders during load
-- Smooth scroll snap for grid view (optional)
-
 ---
 
 ## Implementation Tasks
 
-### Phase 1: Browse Card Redesign
-1. Create new `MessageCardApp.vue` component for mobile app
-2. Implement photo-first card layout with overlaid badges
-3. Create no-photo fallback with gradient/icon
-4. Add tap animation and haptic feedback
-5. Implement long-press quick actions menu
+### Phase 1: Individual Item Display (Priority)
 
-### Phase 2: Browse Page for App
-6. Create `/browse/app/index.vue` - simplified mobile browse
-7. Implement 2-column grid layout with scroll snap
-8. Add skeleton loading placeholders
-9. Optimize lazy loading for cards
+Focus on improving the display when viewing a single item. Entry points:
+- `/pages/message/[id].vue` - Direct link to message
+- `OurMessage` component with `startExpanded=true`
+- `MessageExpanded.vue` - The actual expanded view
 
-### Phase 3: Item Detail - Core Infrastructure
-10. Create `/browse/app/[id].vue` - full-screen item detail
-11. Implement full-screen modal wrapper component
-12. Add swipe-to-go-back gesture support (edge detection)
-13. Create shared photo lightbox component with zoom
+**Tasks:**
+1. Create `MessageExpandedApp.vue` - App-optimized item display
+2. Implement full-screen photo with Ken Burns animation
+3. Add photo carousel with swipe (tap to cycle, swipe for multiple)
+4. Create no-photo fallback (similar item photo or gradient)
+5. Redesign info section with visual stats row
+6. Implement collapsible description
+7. Create map modal (opened from map icon in stats row)
+8. Implement progressive reply (bottom sheet)
+9. Add "Example photo" badge for similar-item placeholders
+10. Respect `prefers-reduced-motion` for Ken Burns
 
-### Phase 4: Item Detail - Photo Experience
-14. Implement multi-photo carousel with swipe
-15. Add pinch-to-zoom using existing `zoompinch` library
-16. Create fallback visuals for no-photo posts
-17. Implement swipe-to-dismiss in lightbox
+**Conditional rendering:**
+```vue
+<!-- In OurMessage.vue or pages/message/[id].vue -->
+<MessageExpandedApp v-if="mobileStore.isApp" ... />
+<MessageExpanded v-else ... />
+```
 
-### Phase 5: Item Detail - Information Display
-18. Create visual stats chips component
-19. Implement collapsible description section
-20. Create compact map thumbnail component
-21. Add location chip alternative
+### Phase 2: Browse Page (Future)
+See separate plan: `mobile-browse-page.md`
 
-### Phase 6: Reply Flow
-22. Implement expandable reply footer (bottom sheet pattern)
-23. Add quick reply suggestions
-24. Create smooth expand/collapse animations
-25. Integrate with existing chat/message system
+### Phase 3: Reply Flow Enhancement
+11. Implement expandable reply footer (bottom sheet pattern)
+12. Add quick reply suggestions
+13. Create smooth expand/collapse animations
+14. Handle keyboard appearance gracefully
 
-### Phase 7: Polish & Refinement
-26. Add micro-interactions and animations
-27. Implement haptic feedback on key actions
-28. Performance optimization for image loading
-29. Accessibility review and improvements
-30. Cross-platform testing (iOS/Android differences)
+### Phase 4: Polish & Refinement
+15. Add micro-interactions and animations
+16. Implement haptic feedback on key actions
+17. Performance optimization for image loading
+18. Accessibility review and improvements
+19. Cross-platform testing (iOS/Android differences)
 
 ---
 
@@ -399,17 +291,11 @@ Create new `MessageCardApp.vue` for mobile:
 
 ### New Components Needed
 
-**Browse Components:**
-- `MessageCardApp.vue` - Photo-first mobile card
-- `MessageCardSkeleton.vue` - Loading placeholder
-- `QuickActionsSheet.vue` - Long-press actions bottom sheet
-
-**Detail Components:**
 - `AppMessageDetail.vue` - Full-screen item view
 - `PhotoLightbox.vue` - Enhanced zoom/swipe gallery
 - `ExpandableReplyFooter.vue` - Progressive reply UI (bottom sheet)
 - `VisualStatsRow.vue` - Compact stat badges
-- `MapThumbnail.vue` - Small inline map preview
+- `MapModal.vue` - Full map in modal (opened from quick stats row)
 - `NoPhotoPlaceholder.vue` - Gradient/icon fallback for posts without photos
 
 ### Libraries to Consider
