@@ -708,6 +708,8 @@ services:
         condition: service_started
       freegle-prod-local:
         condition: service_started
+      modtools-prod-local:
+        condition: service_started
       apiv1:
         condition: service_healthy
       apiv2:
