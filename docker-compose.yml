@@ -699,6 +699,7 @@ services:
       - ./iznik-nuxt3:/host-playwright-config:ro
     environment:
       - TEST_BASE_URL=http://freegle-prod-local.localhost
+      - TEST_MODTOOLS_BASE_URL=http://modtools-prod-local.localhost
       - NODE_ENV=test
       - CI=false
       - ENABLE_MONOCART_REPORTER=true
