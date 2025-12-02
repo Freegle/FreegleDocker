@@ -213,3 +213,6 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - When making changes to the tests, don't forget to update the orb
 - We should always create plans/ md files in FreegleDocker, never in submodules
 - When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
+- Avoid naked <a> tags - check ExternalLink
+- Avoid curved corners
+- Don't push unless I give you explicit instructions to do so.
