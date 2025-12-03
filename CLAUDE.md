@@ -101,6 +101,32 @@ The following submodules have `.github/workflows/trigger-parent-ci.yml` configur
 - `iznik-server`
 - `iznik-server-go`
 
+### How Submodule Updates Work
+
+When code is pushed to a submodule's master branch:
+
+1. **GitHub Actions workflow** (`trigger-parent-ci.yml`) runs in the submodule
+2. The workflow clones FreegleDocker and updates the submodule reference
+3. The updated reference is pushed back to FreegleDocker master
+4. This push triggers CircleCI to run the full test suite
+
+### GitHub Token Configuration
+
+The submodule workflows use a **fine-grained Personal Access Token (PAT)** from the FreegleGeeks service account.
+
+**Important**: The PAT must be scoped to the **Freegle organization**, not a personal account.
+
+To create/update the PAT:
+1. Log in as FreegleGeeks
+2. Settings → Developer settings → Fine-grained personal access tokens
+3. **Resource owner**: Select **Freegle** (the organization) - NOT FreegleGeeks
+4. **Repository access**: Select "Only select repositories" → choose `FreegleDocker`
+5. **Permissions**: Contents (Read and write), Metadata (Read-only)
+
+The PAT is stored as `FREEGLE_DOCKER_TOKEN` secret in each submodule repo.
+
+**Troubleshooting**: "Permission denied to FreegleGeeks" means the PAT is scoped to the user account instead of the Freegle organization.
+
 ### Adding New Submodules
 
 When adding new submodules to this repository, follow these steps:
@@ -117,10 +143,10 @@ When adding new submodules to this repository, follow these steps:
    cp iznik-nuxt3/.github/workflows/trigger-parent-ci.yml NEW_SUBMODULE/.github/workflows/
    ```
 
-4. **Add CIRCLECI_TOKEN secret** to the new submodule repository:
+4. **Add FREEGLE_DOCKER_TOKEN secret** to the new submodule repository:
    - Go to Settings → Secrets and Variables → Actions
-   - Add repository secret named `CIRCLECI_TOKEN`
-   - Use the CircleCI API token value
+   - Add repository secret named `FREEGLE_DOCKER_TOKEN`
+   - Use the fine-grained PAT from FreegleGeeks (scoped to Freegle org)
 
 5. **Update documentation** in:
    - Main `README.md` (add to webhook integration list)
@@ -128,8 +154,6 @@ When adding new submodules to this repository, follow these steps:
    - This `CLAUDE.md` file (add to current configuration list)
 
 6. **Test the integration** by making a test commit to the new submodule and verifying it triggers the FreegleDocker CircleCI pipeline.
-
-The webhook workflow automatically triggers CircleCI builds when changes are pushed to master/main branches, enabling continuous integration testing of the complete Docker stack.
 
 ### Publishing the CircleCI Orb
 

@@ -91,13 +91,48 @@ The following submodules are **already configured** with GitHub Actions workflow
 - ✅ **iznik-server** - `.github/workflows/trigger-parent-ci.yml` configured, PR PHPUnit tests
 - ✅ **iznik-server-go** - `.github/workflows/trigger-parent-ci.yml` configured, PR Go tests
 
-### Activation Required
+### How Submodule Updates Work
 
-To enable the webhooks, add a `CIRCLECI_TOKEN` secret to each submodule repository:
+When code is pushed to a submodule's master branch:
 
-1. Get CircleCI API Token from CircleCI → Personal API Tokens
-2. In each submodule: Settings → Secrets and Variables → Actions
-3. Add secret named `CIRCLCI_TOKEN` with your API token value
+1. **GitHub Actions workflow** (`trigger-parent-ci.yml`) runs in the submodule
+2. The workflow clones FreegleDocker and updates the submodule reference
+3. The updated reference is pushed back to FreegleDocker master
+4. This push triggers CircleCI to run the full test suite
+
+### GitHub Token Configuration
+
+The submodule workflows use a **fine-grained Personal Access Token (PAT)** to push updates to FreegleDocker.
+
+**Important**: The PAT must be scoped to the **Freegle organization**, not a personal account.
+
+#### Creating the PAT
+
+1. Log in to GitHub as the service account (e.g., FreegleGeeks)
+2. Go to Settings → Developer settings → Fine-grained personal access tokens
+3. Click "Generate new token"
+4. **Resource owner**: Select **Freegle** (the organization) - NOT your personal account
+5. **Repository access**: Select "Only select repositories" → choose `FreegleDocker`
+6. **Permissions**:
+   - Contents: Read and write
+   - Metadata: Read-only (required)
+7. Generate the token
+
+#### Adding the Secret to Submodules
+
+Add the PAT as a secret named `FREEGLE_DOCKER_TOKEN` in each submodule:
+
+1. Go to submodule repo → Settings → Secrets and Variables → Actions
+2. Add repository secret named `FREEGLE_DOCKER_TOKEN`
+3. Paste the PAT value
+
+Links to add secrets:
+- https://github.com/Freegle/iznik-nuxt3/settings/secrets/actions
+- https://github.com/Freegle/iznik-server/settings/secrets/actions
+- https://github.com/Freegle/iznik-server-go/settings/secrets/actions
+- https://github.com/Freegle/iznik-nuxt3-modtools/settings/secrets/actions
+
+**Troubleshooting**: If you get "Permission denied to FreegleGeeks", the PAT is likely scoped to the user account instead of the Freegle organization. Regenerate it with the correct resource owner.
 
 ## Manual Testing
 
