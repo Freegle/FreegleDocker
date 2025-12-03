@@ -216,3 +216,4 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - Avoid naked <a> tags - check ExternalLink
 - Avoid curved corners
 - Don't push unless I give you explicit instructions to do so.
+- Never commit or push to github unless explicitly told to by the user
