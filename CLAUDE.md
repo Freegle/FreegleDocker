@@ -242,3 +242,4 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - Don't push unless I give you explicit instructions to do so.
 - Never commit or push to github unless explicitly told to by the user
 - House style - put full stops at end of sentences.
+- **Browser Testing**: See `BROWSER-TESTING.md` for Chrome DevTools MCP usage, login flow, debugging computed styles, and injecting CSS fixes.
