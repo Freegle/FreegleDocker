@@ -1,156 +1,210 @@
 # Browser Testing with Chrome DevTools MCP
 
-This document describes how to use the Chrome DevTools MCP server to visually verify design changes in the Freegle application.
+## The Approach
 
-## Prerequisites
+Claude Code can control a browser to verify design changes visually. This creates a powerful iterative workflow:
 
-### 1. Chrome with Remote Debugging
+1. **Make a change** to Vue/CSS code
+2. **View the result** in the browser via MCP tools
+3. **Spot issues** like overlaps, alignment problems, or unexpected visual changes
+4. **Iterate** until the design looks right
 
-Start Chrome with remote debugging enabled on Windows:
+This is particularly useful for layout modernization work where changes to one component can have unintended effects elsewhere.
 
+## What Browser Testing Can Spot
+
+Visual browser testing catches issues that code review alone misses:
+
+- **Overlapping elements** - buttons covering text, modals clipping content
+- **Alignment problems** - elements not vertically centered, inconsistent spacing
+- **Responsive breakage** - layouts that work at one breakpoint but break at another
+- **Missing styles** - elements that lost styling after refactoring
+- **Unintended side effects** - changes to shared components affecting other pages
+- **Text overflow** - long content breaking layouts
+- **Z-index issues** - elements appearing behind others unexpectedly
+
+## Watching Claude Work
+
+When Claude uses browser tools, you can watch the browser window in real-time. This lets you:
+
+- **Intervene early** if something looks wrong before Claude continues
+- **Provide guidance** like "the button is too close to the edge" based on what you see
+- **Spot issues Claude might miss** - you know the design intent better
+
+The browser window stays visible throughout the session, so you're always in the loop.
+
+## Two-Tab Comparison Technique
+
+A useful pattern is to open two browser tabs side by side:
+
+1. **Tab 1**: The page you're modifying (freegle-dev-live)
+2. **Tab 2**: The production version or a reference page
+
+This helps spot unexpected changes - if something looks different between tabs that shouldn't, you've found a regression.
+
+Claude can switch between tabs using `list_pages` and `select_page` to compare before/after states.
+
+## Example: Layout Modernization
+
+When modernizing a page layout from Bootstrap grid to modern CSS:
+
+1. Navigate to the page and take a screenshot
+2. Make CSS changes (e.g., switch from `b-row`/`b-col` to flex/max-width)
+3. Take another screenshot to compare
+4. Check different viewport sizes for responsive issues
+5. Look for elements that shifted unexpectedly
+6. Iterate until the layout matches the design intent
+
+---
+
+## Setup and Technical Details
+
+The following sections contain technical details for setting up browser testing. Click to expand.
+
+<details>
+<summary><strong>Prerequisites</strong></summary>
+
+### Chrome with Remote Debugging
+
+Start Chrome with remote debugging enabled.
+
+**Windows:**
 ```cmd
 "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
 ```
 
-Or on Linux:
+**Linux/WSL:**
 ```bash
 google-chrome --remote-debugging-port=9222
 ```
 
-### 2. MCP Server Configuration
+### MCP Server Configuration
 
-The Chrome DevTools MCP is configured in `~/.claude.json` under the FreegleDockerWSL project:
+Add to `~/.claude.json` under the project's mcpServers:
 
 ```json
 "chrome-devtools": {
   "type": "stdio",
   "command": "npx",
-  "args": [
-    "-y",
-    "chrome-devtools-mcp@latest",
-    "--browserUrl",
-    "http://127.0.0.1:9222"
-  ],
-  "env": {}
+  "args": ["-y", "chrome-devtools-mcp@latest", "--browserUrl", "http://127.0.0.1:9222"]
 }
 ```
 
-After adding/modifying the config, restart Claude Code for changes to take effect.
+Restart Claude Code after config changes.
 
-### 3. Development Container Running
+### Development Container
 
-Ensure the freegle-dev-live container is running:
+Ensure freegle-dev-live is running:
 ```bash
 docker-compose up -d freegle-dev-live
 ```
 
-## Target URL
+</details>
 
-Use **freegle-dev-live** for visual testing as it:
-- Connects to PRODUCTION APIs (real data)
+<details>
+<summary><strong>Target URL and Test Credentials</strong></summary>
+
+### Which URL to Use
+
+Use **freegle-dev-live.localhost** for visual testing:
+- Connects to production APIs (real data)
 - Runs in development mode (hot reload)
-- Available at: `http://freegle-dev-live.localhost/`
+- Test user credentials work here
 
-## Test User Credentials
+Avoid freegle-dev-local for visual testing - it uses the local test database which may lack sample data.
 
-Test credentials are stored in `.env` (gitignored):
-- `TEST_USER_EMAIL` - Test account email address
+### Test Credentials
+
+Stored in `.env` (not committed to git):
+- `TEST_USER_EMAIL` - Test account email
 - `TEST_USER_PASSWORD` - Test account password
 
-These are used for testing logged-in features. The `.env` file is not committed to git.
+</details>
 
-## Workflow for Design Changes
-
-### Step 1: Make the Code Change
-
-Edit the Vue/CSS/JS files in `iznik-nuxt3/` as needed.
-
-### Step 2: Navigate to the Page
-
-```
-mcp__chrome-devtools__navigate_page
-  type: "url"
-  url: "http://freegle-dev-live.localhost/"
-```
-
-Or list existing pages and select one:
-```
-mcp__chrome-devtools__list_pages
-mcp__chrome-devtools__select_page
-  pageIdx: 0
-```
-
-### Step 3: Take a Snapshot (Accessibility Tree)
-
-Get a text representation of the page structure:
-```
-mcp__chrome-devtools__take_snapshot
-```
-
-This returns the accessibility tree with unique IDs (uid) for each element.
-
-### Step 4: Take a Screenshot
-
-Capture a visual screenshot:
-```
-mcp__chrome-devtools__take_screenshot
-```
-
-Or capture full page:
-```
-mcp__chrome-devtools__take_screenshot
-  fullPage: true
-```
-
-Or capture a specific element by uid:
-```
-mcp__chrome-devtools__take_screenshot
-  uid: "1_23"
-```
-
-### Step 5: Interact with the Page
-
-Click an element:
-```
-mcp__chrome-devtools__click
-  uid: "1_3"
-```
-
-Fill a form field:
-```
-mcp__chrome-devtools__fill
-  uid: "1_117"
-  value: "test@test.com"
-```
-
-### Step 6: Login Flow (if needed)
-
-1. Navigate to the site
-2. Click "Log in or Join" link
-3. Click "Log in" in the dialog
-4. Fill email field with test credentials
-5. Fill password field
-6. Click login button
-
-## Useful MCP Tools Reference
+<details>
+<summary><strong>Core MCP Tools</strong></summary>
 
 | Tool | Purpose |
 |------|---------|
 | `list_pages` | Show all open browser tabs |
 | `select_page` | Switch to a specific tab |
 | `navigate_page` | Go to URL or back/forward/reload |
-| `take_snapshot` | Get accessibility tree (text representation) |
+| `take_snapshot` | Get accessibility tree (text representation with element UIDs) |
 | `take_screenshot` | Capture visual screenshot |
-| `click` | Click an element by uid |
+| `click` | Click an element by UID |
 | `fill` | Type into input/textarea |
 | `hover` | Hover over element |
 | `press_key` | Press keyboard keys |
 | `wait_for` | Wait for text to appear |
+| `evaluate_script` | Run JavaScript in the page |
+| `resize_page` | Change viewport dimensions |
 
-## Troubleshooting
+</details>
 
-### "Not supported" error on new_page
-The connected browser may not support creating new tabs. Use `navigate_page` on an existing tab instead.
+<details>
+<summary><strong>Login Flow</strong></summary>
+
+For testing logged-in features, Claude can log in using the test credentials:
+
+1. Navigate to `http://freegle-dev-live.localhost/browse`
+2. Take a snapshot to get element UIDs
+3. Click "Log in" link (switches from Join to Login form)
+4. Fill email and password fields using `fill` or `evaluate_script`
+5. Click the "Log in" button
+6. Wait for page content with `wait_for`
+
+Using `evaluate_script` to set form values is more reliable than the `fill` tool for reactive Vue forms.
+
+</details>
+
+<details>
+<summary><strong>Debugging Styles</strong></summary>
+
+### Check Computed Styles
+
+Use `evaluate_script` to examine actual CSS values:
+
+```javascript
+() => {
+  const el = document.querySelector('.your-selector');
+  const style = getComputedStyle(el);
+  return { display: style.display, height: style.height };
+}
+```
+
+### Inject Test CSS
+
+Quickly test CSS fixes without waiting for hot reload:
+
+```javascript
+() => {
+  const style = document.createElement('style');
+  style.textContent = '.my-class { height: 100% !important; }';
+  document.head.appendChild(style);
+  return 'CSS injected';
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Viewport Sizes</strong></summary>
+
+Use `resize_page` to test different Bootstrap breakpoints:
+
+| Breakpoint | Size | Description |
+|------------|------|-------------|
+| xs | 375x667 | Mobile |
+| sm | 576x800 | Large mobile |
+| md | 768x1024 | Tablet portrait |
+| md-lg | 820x1180 | iPad Air (good for 2-column testing) |
+| lg | 992x768 | Tablet landscape |
+| xl | 1200x900 | Desktop |
+
+</details>
+
+<details>
+<summary><strong>Troubleshooting</strong></summary>
 
 ### MCP not connecting
 1. Verify Chrome is running with `--remote-debugging-port=9222`
@@ -161,81 +215,77 @@ The connected browser may not support creating new tabs. Use `navigate_page` on 
 1. Check container is running: `docker-compose ps`
 2. Verify URL resolves: `curl -I http://freegle-dev-live.localhost/`
 
-### resize_page not working
-The `resize_page` tool and JavaScript `window.resizeTo()` don't work on most browser configurations. To control viewport size:
-1. Manually resize the Chrome window, or
-2. Use Chrome DevTools Device Toolbar: F12 → click device icon (top-left) → select device or enter custom dimensions
-3. **Workaround**: Inject width constraints via DOM to force rendering at a specific width for screenshots:
-```
-mcp__chrome-devtools__evaluate_script
-  function: "() => { document.body.style.minWidth = '400px'; document.body.style.maxWidth = '400px'; document.body.style.width = '400px'; }"
-```
+### Viewport resize not working
+Some browser configurations restrict `resize_page`. Alternatives:
+- Manually resize the Chrome window
+- Use Chrome DevTools Device Toolbar (F12 > device icon)
+- Use `evaluate_script` to open a new window with specific dimensions
 
-## Code Conventions for Vue Components
+</details>
 
-When making design changes, follow these conventions:
+---
+
+## Code Conventions
+
+When making design changes, follow these conventions to avoid common issues.
+
+<details>
+<summary><strong>Vue Component Conventions</strong></summary>
 
 ### Icons
-Use `v-icon` with Font Awesome icons, NOT Bootstrap icons:
+Use `v-icon` with Font Awesome icons:
 ```vue
 <v-icon icon="info-circle" />
-<v-icon icon="shield-alt" />
-<v-icon icon="exclamation-triangle" />
 ```
 
-### SCSS Color Variables
-Import from `assets/css/_color-vars.scss`:
+### SCSS Imports
 ```scss
 @import 'assets/css/_color-vars.scss';
 ```
 
-Common variables (note British spelling for some):
-- `$colour-success-fg` - Green foreground
-- `$color-green--darker` - Darker green
-- `$color-gray--light` - Light gray
-- `$danger` - Bootstrap danger red (from Bootstrap variables)
-- `$info` - Bootstrap info blue
-
 ### SCSS Comments
-Never use `//` comments in SCSS - use `/* */` instead (Vite compilation errors).
+Never use `//` comments - use `/* */` instead (Vite compilation errors).
 
-### Link Text Whitespace
-Never add trailing/leading whitespace inside link tags - it renders as visible space:
+### Link Whitespace
+No trailing/leading whitespace inside link tags:
 ```vue
-<!-- BAD -->
+<!-- Good -->
+<ExternalLink href="...">Police</ExternalLink>
+
+<!-- Bad - visible space -->
 <ExternalLink href="...">
   Police </ExternalLink>
-
-<!-- GOOD -->
-<ExternalLink href="...">Police</ExternalLink>
 ```
 
-### Duplicate Titles
-Check for redundant titles - pages often have:
-- Title in the navbar/header (from layout)
-- Title in the page content (h1)
-
-If both show the same text, remove the h1 from page content to avoid duplication.
-
-### Text Contrast
-Check text contrast meets WCAG accessibility standards:
-- **4.5:1** minimum for normal text
-- **3:1** minimum for large text (18pt+ or 14pt bold)
-
-Common contrast problems to avoid:
-- White text on light green backgrounds (#61ae24 fails)
-- Green text on green backgrounds
-- Using `opacity` on text (reduces contrast)
-- Light gray text on white backgrounds
-
-Use a contrast checker tool or browser DevTools accessibility panel to verify.
-
-### House Style
-- Always put full stops at the end of sentences
-- Use consistent capitalization
-
 ### After Changes
-Always run eslint on modified files:
+Always run eslint:
 ```bash
 npx eslint --fix pages/your-file.vue
 ```
+
+</details>
+
+<details>
+<summary><strong>Accessibility</strong></summary>
+
+### Text Contrast Requirements
+- **4.5:1** minimum for normal text
+- **3:1** minimum for large text (18pt+ or 14pt bold)
+
+### Common Contrast Problems
+- White text on light green backgrounds
+- Light gray text on white backgrounds
+- Using `opacity` on text
+
+Use browser DevTools accessibility panel to verify contrast.
+
+</details>
+
+<details>
+<summary><strong>House Style</strong></summary>
+
+- Put full stops at the end of sentences.
+- Use consistent capitalization.
+- Check for duplicate titles (navbar + page h1 showing same text).
+
+</details>
