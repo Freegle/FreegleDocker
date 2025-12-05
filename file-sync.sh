@@ -2,7 +2,7 @@
 # File sync script for Freegle Docker development
 # Monitors WSL filesystem changes and syncs to Docker containers
 
-PROJECT_DIR="/workspace"
+PROJECT_DIR="/home/edward/FreegleDockerWSL"
 
 echo "Starting Freegle file sync monitor..."
 echo "Project: $PROJECT_DIR"
@@ -13,7 +13,7 @@ echo ""
 get_container_info() {
     local file_path="$1"
     local relative_path="${file_path#$PROJECT_DIR/}"
-    
+
     if [[ "$relative_path" == iznik-nuxt3-modtools/* ]]; then
         echo "freegle-modtools-dev /app/${relative_path#iznik-nuxt3-modtools/} ModTools-Dev"
     elif [[ "$relative_path" == iznik-nuxt3/* ]]; then
@@ -21,7 +21,7 @@ get_container_info() {
         if [[ "$relative_path" == iznik-nuxt3/tests/* || "$relative_path" == iznik-nuxt3/playwright.config.js ]]; then
             echo "freegle-playwright /app/${relative_path#iznik-nuxt3/} Playwright"
         else
-            local targets="freegle-freegle-dev /app/${relative_path#iznik-nuxt3/} Freegle-Dev"$'\n'"freegle-freegle-prod /app/${relative_path#iznik-nuxt3/} Freegle-Prod"
+            local targets="freegle-dev-local /app/${relative_path#iznik-nuxt3/} Freegle-Dev-Local"
             # Only include dev-live if the container is running
             if docker ps --format '{{.Names}}' | grep -q '^freegle-dev-live$'; then
                 targets="$targets"$'\n'"freegle-dev-live /app/${relative_path#iznik-nuxt3/} Freegle-Dev-Live"
