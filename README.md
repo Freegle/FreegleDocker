@@ -185,6 +185,27 @@ docker system prune -a  # Warning: removes all unused Docker data
 docker compose up -d
 ```
 
+## Lightweight Development Setup (Limited Resources)
+
+If you have limited disk space or memory, you can run just the frontend development container with live production APIs. This avoids running the database, PHP API, Go API, and other infrastructure containers.
+
+```bash
+docker compose --profile dev-live up -d freegle-dev-live
+```
+
+This starts:
+- **freegle-dev-live** - Frontend dev server (port 3004)
+- **host-scripts** - File sync for hot reloading
+- **status** - Status monitor at [http://localhost:8081](http://localhost:8081)
+
+**Access URLs** (no Traefik required):
+- Frontend: [http://localhost:3004](http://localhost:3004)
+- Status monitor: [http://localhost:8081](http://localhost:8081)
+
+The frontend connects to the **live production APIs** at ilovefreegle.org, so you can develop and test with real data. Changes to local `iznik-nuxt3` files are synced automatically.
+
+> ⚠️ **Warning**: Actions in this container affect REAL Freegle data! Use with care.
+
 ## Individual Container Management
 
 All containers use consistent `freegle-*` naming:

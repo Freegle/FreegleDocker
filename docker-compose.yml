@@ -487,6 +487,9 @@ services:
   # Not started by default - use status page button to start with confirmation
   freegle-dev-live:
     container_name: freegle-dev-live
+    depends_on:
+      - host-scripts
+      - status
     profiles:
       - dev-live
     networks:
