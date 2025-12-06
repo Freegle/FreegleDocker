@@ -631,10 +631,9 @@ commands:
             docker cp freegle-apiv2:/app/coverage.html ~/artifacts/go/ 2>/dev/null || true
 
             # Collect Playwright test artifacts
-            mkdir -p ~/artifacts/playwright
-            curl -s http://localhost:9323 > ~/artifacts/playwright-report.html 2>/dev/null || true
-            docker cp freegle-playwright:/app/test-results ~/artifacts/playwright/ 2>/dev/null || true
-            docker cp freegle-playwright:/app/playwright-report ~/artifacts/playwright/ 2>/dev/null || true
+            # Copy the entire playwright-report folder to artifacts root so HTML can find its data/ subfolder
+            docker cp freegle-playwright:/app/playwright-report ~/artifacts/ 2>/dev/null || true
+            docker cp freegle-playwright:/app/test-results ~/artifacts/ 2>/dev/null || true
 
             # Build info
             echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
