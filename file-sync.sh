@@ -2,7 +2,7 @@
 # File sync script for Freegle Docker development
 # Monitors WSL filesystem changes and syncs to Docker containers
 
-PROJECT_DIR="/home/edward/FreegleDockerWSL"
+PROJECT_DIR="/workspace"
 
 echo "Starting Freegle file sync monitor..."
 echo "Project: $PROJECT_DIR"
