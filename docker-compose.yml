@@ -497,7 +497,7 @@ services:
         aliases:
           - freegle-dev-live.localhost
     ports:
-      - "0.0.0.0:3004:3002"
+      - "0.0.0.0:3005:3002"
     build:
       context: ./iznik-nuxt3
       network: host

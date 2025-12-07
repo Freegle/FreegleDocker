@@ -748,17 +748,28 @@ async function getAllCpuUsage() {
 }
 
 // Function to run Playwright tests in Docker
-async function runPlaywrightTests(testFile = null) {
+async function runPlaywrightTests(testFile = null, testName = null) {
   if (testStatus.status === "running") {
     throw new Error("Tests are already running");
   }
 
-  const testFileMsg = testFile ? ` for file: ${testFile}` : " (all tests)";
+  let testDesc = "";
+  if (testFile) testDesc += ` for file: ${testFile}`;
+  if (testName) testDesc += ` with grep: "${testName}"`;
+  if (!testFile && !testName) testDesc = " (all tests)";
+
+  let statusMessage = "Initializing test environment...";
+  if (testFile && testName) {
+    statusMessage = `Running test "${testName}" in ${testFile}`;
+  } else if (testFile) {
+    statusMessage = `Running specific test file: ${testFile}`;
+  } else if (testName) {
+    statusMessage = `Running tests matching: "${testName}"`;
+  }
+
   testStatus = {
     status: "running",
-    message: testFile
-      ? `Running specific test file: ${testFile}`
-      : "Initializing test environment...",
+    message: statusMessage,
     logs: "",
     success: false,
     startTime: new Date(),
@@ -766,9 +777,10 @@ async function runPlaywrightTests(testFile = null) {
     completedTests: 0,
     totalTests: 0, // Reset to 0 - will be determined dynamically by the progress tracker
     testFile: testFile, // Store the test file for reference
+    testName: testName, // Store the test name filter for reference
   };
 
-  console.log("Starting Playwright tests in Docker" + testFileMsg);
+  console.log("Starting Playwright tests in Docker" + testDesc);
 
   try {
     // Clear any stale progress files from previous test runs
@@ -825,7 +837,16 @@ async function runPlaywrightTests(testFile = null) {
     testStatus.logs += "Playwright container is ready\n";
 
     // Execute tests in the Playwright container using docker exec (without nohup for proper output capture)
-    const playwrightArgs = testFile ? `tests/e2e/${testFile}` : "";
+    // Build playwright args: file path and/or grep filter
+    let playwrightArgs = "";
+    if (testFile) {
+      playwrightArgs += `tests/e2e/${testFile}`;
+    }
+    if (testName) {
+      // Escape quotes in testName for shell safety
+      const escapedTestName = testName.replace(/"/g, '\\"');
+      playwrightArgs += ` -g "${escapedTestName}"`;
+    }
     // Enable coverage reporter for CI builds
     // Set NODE_PATH to find globally installed @playwright/test module
     const testCommand = `docker exec freegle-playwright sh -c "
@@ -1513,24 +1534,35 @@ const httpServer = http.createServer(async (req, res) => {
     req.on("end", () => {
       try {
         let testFile = null;
+        let testName = null;
 
-        // Parse request body if it exists
+        // First check query parameters (parsedUrl.query is an object from url.parse)
+        if (parsedUrl.query && parsedUrl.query.testSpec) {
+          testFile = parsedUrl.query.testSpec;
+        }
+        if (parsedUrl.query && parsedUrl.query.testName) {
+          testName = parsedUrl.query.testName;
+        }
+
+        // Parse request body if it exists (body takes precedence)
         if (body.trim()) {
           try {
             const requestData = JSON.parse(body);
-            testFile = requestData.testFile;
+            if (requestData.testFile) testFile = requestData.testFile;
+            if (requestData.testName) testName = requestData.testName;
           } catch (parseError) {
             console.warn("Failed to parse request body:", parseError.message);
           }
         }
 
-        console.log(
-          "Received request to run Playwright tests",
-          testFile ? `for file: ${testFile}` : "(all tests)"
-        );
+        let logMessage = "Received request to run Playwright tests";
+        if (testFile) logMessage += ` for file: ${testFile}`;
+        if (testName) logMessage += ` with grep: "${testName}"`;
+        if (!testFile && !testName) logMessage += " (all tests)";
+        console.log(logMessage);
 
         // Start tests asynchronously (dependencies are handled by Docker Compose)
-        runPlaywrightTests(testFile).catch((error) => {
+        runPlaywrightTests(testFile, testName).catch((error) => {
           console.error("Test execution error:", error);
         });
 
@@ -1685,7 +1717,6 @@ const httpServer = http.createServer(async (req, res) => {
           failed: 0,
           current: null,
           teamCityMode: false,
-          seenTests: new Set(), // Track which tests we've already counted
         },
       };
 
@@ -1743,7 +1774,22 @@ const httpServer = http.createServer(async (req, res) => {
         // Monitor the output file for progress
         const monitorInterval = setInterval(() => {
           try {
-            // Get the last few lines from the output file
+            // Count ALL test started markers from the entire file (not just last 10 lines)
+            // This ensures we don't miss tests that run faster than our polling interval
+            try {
+              const markerCount = execSync(
+                `docker exec freegle-apiv1 sh -c "grep -c '##PHPUNIT_TEST_STARTED##' ${outputFile} 2>/dev/null || echo '0'"`,
+                { encoding: "utf8" }
+              ).trim();
+              const count = parseInt(markerCount) || 0;
+              if (count > testStatus.progress.completed) {
+                testStatus.progress.completed = count;
+              }
+            } catch (err) {
+              // Ignore grep errors
+            }
+
+            // Get the last few lines for status message and other info
             const lastLines = execSync(
               `docker exec freegle-apiv1 sh -c "tail -n 10 ${outputFile} 2>/dev/null || echo ''"`,
               { encoding: "utf8" }
@@ -1754,7 +1800,7 @@ const httpServer = http.createServer(async (req, res) => {
                 const lastLine = lines[lines.length - 1];
                 testStatus.lastLine = lastLine;
 
-                // Update progress tracking
+                // Update progress tracking from last lines (for current test name, total, failures)
                 for (let i = 0; i < lines.length; i++) {
                   const line = lines[i];
 
@@ -1771,20 +1817,13 @@ const httpServer = http.createServer(async (req, res) => {
                     }
                   }
 
-                  // Look for our clear test execution marker (use ONLY this for counting)
+                  // Look for our clear test execution marker for current test name only
                   if (line.includes("##PHPUNIT_TEST_STARTED##:")) {
-                    // Extract test name from marker
                     const testMatch = line.match(
                       /##PHPUNIT_TEST_STARTED##:(.+)/
                     );
                     if (testMatch) {
-                      const testName = testMatch[1];
-                      if (!testStatus.progress.seenTests.has(testName)) {
-                        testStatus.progress.seenTests.add(testName);
-                        testStatus.progress.completed =
-                          testStatus.progress.seenTests.size;
-                        testStatus.progress.current = testName;
-                      }
+                      testStatus.progress.current = testMatch[1];
                     }
                   }
 
