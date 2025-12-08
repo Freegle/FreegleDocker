@@ -20,7 +20,9 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.encodedcharacters.allowencodedslash=true"
       - "--entrypoints.api.address=:8192"
+      - "--entrypoints.api.http.encodedcharacters.allowencodedslash=true"
       - "--entrypoints.traefik.address=:8080"
       - "--accesslog=true"
       - "--entrypoints.web.forwardedHeaders.insecure=true"
@@ -490,6 +492,7 @@ services:
     depends_on:
       - host-scripts
       - status
+      - reverse-proxy
     profiles:
       - dev-live
     networks:
