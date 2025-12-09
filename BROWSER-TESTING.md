@@ -66,17 +66,13 @@ The following sections contain technical details for setting up browser testing.
 
 ### Chrome with Remote Debugging
 
-Start Chrome with remote debugging enabled.
+Start Chrome with remote debugging enabled. **Use WSL** (not Windows) so Chrome runs in the same environment as the MCP server:
 
-**Windows:**
-```cmd
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
-```
-
-**Linux/WSL:**
 ```bash
 google-chrome --remote-debugging-port=9222
 ```
+
+Note: Running Chrome from Windows won't work because the MCP server runs in WSL and needs to connect to localhost:9222 within the WSL network.
 
 ### MCP Server Configuration
 
