@@ -1076,6 +1076,22 @@ jobs:
 
       - setup-test-database
 
+      # Start Laravel tests in background (they use separate database, so can run in parallel)
+      - run:
+          name: Start Laravel tests in background
+          background: true
+          command: |
+            echo "🧪 Starting Laravel tests in background..."
+            # Run tests directly with coverage
+            if docker exec freegle-batch php artisan test --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1 | tee /tmp/laravel-test-output.log; then
+              echo "✅ Laravel tests passed!" >> /tmp/laravel-test-output.log
+              touch /tmp/laravel-tests-passed
+            else
+              echo "❌ Laravel tests failed!" >> /tmp/laravel-test-output.log
+              touch /tmp/laravel-tests-failed
+            fi
+          no_output_timeout: 30m
+
       - run-playwright-tests:
           reason: "Running Playwright tests first for faster debugging"
 
@@ -1085,8 +1101,31 @@ jobs:
       - run-php-tests:
           reason: "Running PHPUnit tests after Go tests complete"
 
-      - run-laravel-tests:
-          reason: "Running Laravel batch tests"
+      # Wait for background Laravel tests to complete
+      - run:
+          name: Wait for Laravel tests and collect results
+          command: |
+            echo "⏳ Waiting for Laravel tests to complete..."
+            # Wait for either success or failure marker
+            while [ ! -f /tmp/laravel-tests-passed ] && [ ! -f /tmp/laravel-tests-failed ]; do
+              sleep 5
+              echo "Still waiting for Laravel tests..."
+            done
+
+            # Show the output
+            echo "=== Laravel Test Output ==="
+            cat /tmp/laravel-test-output.log || echo "No output available"
+            echo "=========================="
+
+            if [ -f /tmp/laravel-tests-passed ]; then
+              echo "✅ Laravel tests passed!"
+              echo "LARAVEL_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "❌ Laravel tests failed!"
+              echo "LARAVEL_TESTS_PASSED=false" >> $BASH_ENV
+              exit 1
+            fi
+          no_output_timeout: 35m
 
       - upload-coverage:
           expected: "go,php,playwright,laravel"
