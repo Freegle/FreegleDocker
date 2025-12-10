@@ -1076,6 +1076,37 @@ jobs:
 
       - setup-test-database
 
+      # Wait for batch container to be healthy before running Laravel tests
+      - run:
+          name: Wait for batch container to be healthy
+          command: |
+            echo "⏳ Waiting for batch container to be healthy..."
+            TIMEOUT=120
+            ELAPSED=0
+            while [ $ELAPSED -lt $TIMEOUT ]; do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "not_found")
+              RUNNING=$(docker inspect --format='{{.State.Running}}' freegle-batch 2>/dev/null || echo "false")
+
+              if [ "$STATUS" = "healthy" ]; then
+                echo "✅ Batch container is healthy!"
+                exit 0
+              elif [ "$RUNNING" = "false" ]; then
+                echo "❌ Batch container is not running!"
+                echo "Container logs:"
+                docker logs freegle-batch --tail 50 2>&1 || true
+                exit 1
+              fi
+
+              echo "[$ELAPSED s] Batch container status: $STATUS (running: $RUNNING) - waiting..."
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+
+            echo "❌ Timeout waiting for batch container to be healthy"
+            echo "Container logs:"
+            docker logs freegle-batch --tail 50 2>&1 || true
+            exit 1
+
       # Start Laravel tests in background (they use separate database, so can run in parallel)
       - run:
           name: Start Laravel tests in background
