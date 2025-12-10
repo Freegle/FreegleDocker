@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('mod_bulkops_run', function (Blueprint $table) {
+            $table->foreign(['bulkopid'], 'mod_bulkops_run_ibfk_1')->references(['id'])->on('mod_bulkops')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['groupid'], 'mod_bulkops_run_ibfk_2')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('mod_bulkops_run', function (Blueprint $table) {
+            $table->dropForeign('mod_bulkops_run_ibfk_1');
+            $table->dropForeign('mod_bulkops_run_ibfk_2');
+        });
+    }
+};

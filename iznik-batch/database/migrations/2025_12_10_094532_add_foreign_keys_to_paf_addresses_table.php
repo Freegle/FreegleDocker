@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('paf_addresses', function (Blueprint $table) {
+            $table->foreign(['postcodeid'], 'paf_addresses_ibfk_11')->references(['id'])->on('locations')->onUpdate('no action')->onDelete('set null');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('paf_addresses', function (Blueprint $table) {
+            $table->dropForeign('paf_addresses_ibfk_11');
+        });
+    }
+};

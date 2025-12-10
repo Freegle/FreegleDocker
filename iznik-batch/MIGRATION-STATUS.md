@@ -1,0 +1,177 @@
+# Migration Status
+
+This document tracks progress migrating cron scripts from `iznik-server/scripts/cron/` to Laravel services in this application.
+
+## Status Legend
+
+- **Done** - Fully migrated and tested
+- **In Progress** - Partially implemented
+- **Not Started** - Not yet begun
+- **Skip** - Not needed in Laravel (external tool, deprecated, etc.)
+
+## Scripts Currently In Progress
+
+| Original Script | Frequency | Laravel Service | Status | Notes |
+|-----------------|-----------|-----------------|--------|-------|
+| `digest.php` | Every 1-5 min (varies by -i flag) | `DigestService` | In Progress | Core functionality implemented |
+| `chat_notifyemail_user2user.php` | Every 1 min (0-3,5-23h) | `ChatNotificationService` | In Progress | User-to-user notifications |
+| `chat_notifyemail_user2mod.php` | Every 1 min (0-3,5-23h) | `ChatNotificationService` | In Progress | User-to-mod notifications |
+| `messages_expired.php` | Every 60 min | `MessageExpiryService` | In Progress | Deadline expiry handling |
+| `purge_messages.php` | Daily 03:00 | `PurgeService` | In Progress | Message purging |
+| `purge_chats.php` | Daily 01:00 | `PurgeService` | In Progress | Chat purging |
+| `purge_logs.php` | Daily 04:00 | `PurgeService` | In Progress | Log purging |
+| `donations_email.php` | Hourly 06:00-22:00 | `DonationService` | In Progress | Donation reminders |
+| `bounce.php` | Every 2 hours | `UserManagementService` | In Progress | Bounced email handling |
+
+## High Frequency Scripts (Every 1-5 min) - Not Started
+
+| Script | Frequency | Priority | Description |
+|--------|-----------|----------|-------------|
+| `background.php` | Every 1 min | High | Background job processor |
+| `spool.php` | Every 5 min (x20 instances) | High | Outgoing email spool processing |
+| `chat_process.php` | Every 1 min | High | Chat message processing |
+| `admins.php` | Every 1 min | Medium | Admin notifications |
+| `tryst.php` | Every 1 min | Medium | Meeting coordination |
+| `memberships_processing.php` | Every 1 min | Medium | Membership processing |
+| `donations_ads_target.php` | Every 1 min | Medium | Donation ad targeting |
+| `user_exhort.php` | Every 1 min | Medium | User encouragement |
+| `lovejunk.php` | Every 1 min | Medium | LoveJunk integration |
+| `exports.php` | Every 1 min | Low | Data exports |
+| `notification_chaseup.php` | Every 5 min | Medium | Notification reminders |
+| `donations_thank.php` | Every 5 min | Medium | Donation thank-you emails |
+| `previews.php` | Every 5 min | Medium | Link preview generation |
+| `check_cgas.php` | Every 5 min | Low | CGA checking |
+| `message_spatial.php` | Every 5 min | Medium | Spatial index updates |
+| `messages_illustrations.php` | Every 1 min | Medium | Message illustrations |
+| `messages_remap.php` | Every 5 min | Low | Message remapping |
+| `chat_expected.php` | Every 5 min | Medium | Expected chat responses |
+| `chat_spam.php` | Every 5 min | Medium | Chat spam detection |
+| `check_spammers.php` | Every 5 min | Medium | Spam detection |
+| `users_modmails.php` | Every 5 min | Medium | Mod mail processing |
+| `visualise.php` | Every 5 min | Low | Data visualisation |
+| `microvolunteering.php` | Every 5 min | Low | Micro-volunteering |
+| `newsfeed_link_previews.php` | Every 1 min | Low | Newsfeed link previews |
+| `tn_sync.php` | Every 1 min | Medium | Trash Nothing sync |
+
+## Medium Frequency Scripts (Every 10-60 min) - Not Started
+
+| Script | Frequency | Priority | Description |
+|--------|-----------|----------|-------------|
+| `donations_giftaid.php` | Every 10 min | Medium | Gift Aid processing |
+| `alerts.php` | Every 10 min | Medium | System alerts |
+| `user_ratings.php` | Every 10 min | Low | User ratings |
+| `eximlogs.php` | Every 10 min | Low | Exim mail logs |
+| `whatjobs_spam.php` | Every 10 min | Low | WhatJobs spam |
+| `jobs_illustrations.php` | Every 30 min | Low | Job illustrations |
+| `message_unindexed.php` | Every 30 min | Low | Unindexed messages |
+| `chat_latestmessage.php` | Every 60 min | Low | Chat latest message |
+| `pledge.php` | Every 60 min | Low | Pledges |
+| `lastacces.php` | Every 59 min | Low | Last access tracking |
+| `mod_notifs.php` | Every 60 min | Medium | Moderator notifications |
+| `supporttools.php` | Every 60 min | Low | Support tools |
+| `membercounts.php` | Every 60 min | Low | Member counts |
+| `autorepost.php` | Every 60 min | Medium | Auto-repost messages |
+| `chaseup.php` | Every 60 min | Medium | Message chase-up |
+| `searchdups.php` | Every 60 min | Low | Search duplicates |
+| `autoapprove.php` | Every 60 min | Medium | Auto-approve messages |
+| `bounce_users.php` | Every 60 min | Medium | User bounce processing |
+| `chatdups.php` | Every 120 min | Low | Chat duplicates |
+| `get_app_release_versions.php` | Every 60 min | Low | App versions |
+
+## Daily Scripts - Not Started
+
+| Script | Time | Priority | Description |
+|--------|------|----------|-------------|
+| `chat_chaseup_expected.php` | 06:00 | Medium | Chat expected response chase-up |
+| `birthday.php` | 12:00 | Low | Birthday notifications |
+| `relevant.php` | 14:30 | Medium | Relevant message matching |
+| `chat_chaseupmods.php` | 15:30 | Medium | Moderator chat chase-up |
+| `newsfeed_digest.php` | 15:30 | Low | Newsfeed digest |
+| `newsfeed_modnotif.php` | 13:30 | Low | Newsfeed mod notifications |
+| `noticeboards.php` | 15:30 | Low | Noticeboards |
+| `group_welcomereview.php` | 01:00, 15:00 | Low | Group welcome review |
+| `message_deindex.php` | 01:00 | Low | Message de-indexing |
+| `group_stats.php` | 02:00 | Low | Group statistics |
+| `doogal` | 03:00 | Low | Doogal data import |
+| `users_kudos.php` | 03:00 | Low | User kudos |
+| `engage_update.php` | 03:00 | Low | Engagement update |
+| `purge_sessions.php` | 03:00 | Low | Session purging |
+| `email_validate.php` | 04:00 | Low | Email validation |
+| `messages_popular.php` | 05:00 | Low | Popular messages |
+| `users_remap.php` | 05:00 | Low | User remapping |
+| `locations_skewwhiff.php` | 05:00 | Low | Location fixes |
+| `nearby.php` | 14:05 | Medium | Nearby items |
+| `chat_review.php` | 11:00 | Medium | Chat review queue |
+| `engage.php` | 16:00 | Medium | User engagement emails |
+| `user_askdonation.php` | 17:00 | Medium | Donation requests |
+| `facebook_chaseup.php` | 18:00 | Low | Facebook chase-up |
+| `whatjobs.php` | Hourly 08:00-22:00 | Low | WhatJobs |
+| `microactions_score.php` | 23:00 | Low | Microactions scoring |
+| `restartproject.php` | 23:00 | Low | Restart project |
+| `repaircafewales.php` | 23:00 | Low | Repair Cafe Wales |
+| `archive_attachments.php` | 22:30 | Low | Attachment archiving |
+
+## Weekly Scripts - Not Started
+
+| Script | Schedule | Priority | Description |
+|--------|----------|----------|-------------|
+| `events.php` | Thu 23:00 | Low | Community events email |
+| `volunteering.php` | Mon 23:00 | Low | Volunteering opportunities email |
+| `stories.php` | Sat 11:00 | Low | Success story requests |
+| `groups_closed.php` | Sun 08:00 | Low | Closed groups check |
+| `stories_tocentral.php` | Fri 14:00 | Low | Stories to central |
+| `domains_common.php` | Fri 07:00 | Low | Common domains |
+| `git_summary_ai.php` | Fri 07:38 | Skip | Development tool |
+| `mod_active.php` | Mon 15:00 | Low | Active moderators |
+
+## Monthly Scripts - Not Started
+
+| Script | Schedule | Priority | Description |
+|--------|----------|----------|-------------|
+| `stories_newsletter.php` | 12th 23:00 | Low | Stories newsletter |
+| `users_retention.php` | 27th 11:00 | Low | User retention |
+| `lovejunk_tn_invoice.php` | 1st 15:00 | Low | LoveJunk/TN invoice |
+
+## Scripts to Skip
+
+| Script | Reason |
+|--------|--------|
+| `sa_train` | SpamAssassin training - external |
+| `cron_checker_iznik.php` | Monitoring - external tool |
+| `discourse_checkusers.php` | Discourse integration - separate system |
+| `discourse_not_signed_up.php` | Discourse integration - separate system |
+| `git_summary_ai.php` | Development tool |
+| `locations_pgsql` | PostgreSQL locations - external |
+| `doogal` | External data import script |
+| `eximlogs.php` | Mail server logs - external |
+| `facebook_share.php` | Disabled in crontab |
+| `tweet_*.php` | Twitter - commented out |
+| `sms.php` | Retired |
+| `badnumber.php` | Retired |
+| `spam_toddlers.php` | Commented out |
+
+## Known Issues
+
+### Schema Discrepancies
+
+When migrating, we've found cases where the database schema (from migration generator) differs from iznik-server constants. Always verify against iznik-server source code.
+
+Example: `messages_outcomes.outcome` enum - the migration generator may not capture all values defined in `Message::OUTCOME_*` constants. The iznik-server defines:
+- `OUTCOME_TAKEN`
+- `OUTCOME_RECEIVED`
+- `OUTCOME_WITHDRAWN`
+- `OUTCOME_REPOST`
+- `OUTCOME_EXPIRED`
+- `OUTCOME_PARTIAL`
+
+## Adding New Migrations
+
+When starting work on a new script:
+
+1. Update this file to mark it "In Progress"
+2. Read the original PHP script in `iznik-server/scripts/cron/`
+3. Check related PHPUnit tests in `iznik-server/test/ut/php/`
+4. Verify any constants/enums against iznik-server source
+5. Write tests first based on expected behavior
+6. Implement the service
+7. Update status to "Done" when tests pass

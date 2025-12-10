@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('newsfeed_unfollow', function (Blueprint $table) {
+            $table->foreign(['userid'], 'newsfeed_unfollow_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['newsfeedid'], 'newsfeed_unfollow_ibfk_2')->references(['id'])->on('newsfeed')->onUpdate('no action')->onDelete('cascade');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('newsfeed_unfollow', function (Blueprint $table) {
+            $table->dropForeign('newsfeed_unfollow_ibfk_1');
+            $table->dropForeign('newsfeed_unfollow_ibfk_2');
+        });
+    }
+};
