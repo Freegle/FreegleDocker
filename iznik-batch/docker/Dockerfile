@@ -31,6 +31,9 @@ RUN docker-php-ext-install \
 # Install Redis and PCOV PHP extensions
 RUN pecl install redis pcov && docker-php-ext-enable redis pcov
 
+# Enable PCOV for code coverage
+RUN echo "pcov.enabled=1" >> /usr/local/etc/php/conf.d/docker-php-ext-pcov.ini
+
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
@@ -49,14 +52,8 @@ WORKDIR /var/www/html
 # Copy application files
 COPY . .
 
-# Copy .env.example to .env for testing (will be overridden by environment variables)
-RUN cp .env.example .env
-
 # Install PHP dependencies including dev dependencies for testing
 RUN composer install --no-interaction --prefer-dist --optimize-autoloader || true
-
-# Generate application key
-RUN php artisan key:generate || true
 
 # Create storage directories with correct permissions
 RUN mkdir -p storage/framework/{sessions,views,cache} \

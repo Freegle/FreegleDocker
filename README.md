@@ -27,6 +27,7 @@ This will clone the required Freegle repositories:
 - `iznik-nuxt3-modtools` (Moderator website aka ModTools)
 - `iznik-server` (legacy PHP API)
 - `iznik-server-go` (modern Go API)
+- `iznik-batch` (Laravel-based batch processing - **WIP**)
 
 Since these are git submodules, you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
 
@@ -288,6 +289,7 @@ The only recognised postcode is EH3 6SS.
 We have the following tests, which can be run from the status page:
 * PHPUnit tests for iznik-server (v1 API and background processing)
 * Go tests for iznik-server-go (v2 API)
+* Laravel tests for iznik-batch (batch processing - **WIP**)
 * Playwright end-to-end tests for the user-facing site only.
 
 </details>
@@ -372,6 +374,18 @@ For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md
 
 * This doesn't run most of the various background jobs, so it won't be sending out emails in the way the live system would.
 * We're sharing the live tiles server - we've not added this to the Docker Compose setup yet.
+
+## iznik-batch (Work in Progress)
+
+The `iznik-batch` submodule is a Laravel-based batch processing system intended to eventually replace the legacy PHP background jobs in `iznik-server`. It provides:
+
+* Modern Laravel architecture for scheduled tasks and queue workers
+* Email digest generation and sending
+* Chat notification processing
+* Message expiry handling
+* User management and cleanup tasks
+
+**Status**: This is a work in progress. The batch container runs alongside the existing system but not all functionality has been migrated yet.
 
 </details>
 
