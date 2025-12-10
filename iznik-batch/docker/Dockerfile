@@ -46,8 +46,8 @@ WORKDIR /var/www/html
 # Copy application files
 COPY . .
 
-# Install PHP dependencies (will be done with mounted volume in development)
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev || true
+# Install PHP dependencies including dev dependencies for testing
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader || true
 
 # Create storage directories with correct permissions
 RUN mkdir -p storage/framework/{sessions,views,cache} \
