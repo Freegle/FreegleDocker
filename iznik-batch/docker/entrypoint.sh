@@ -1,11 +1,7 @@
 #!/bin/bash
 set -e
 
-# Install composer dependencies if vendor directory doesn't exist (needed when volume-mounted)
-if [ ! -d "/var/www/html/vendor" ]; then
-    echo "Installing composer dependencies..."
-    composer install --no-interaction --prefer-dist --optimize-autoloader
-fi
+echo "=== Laravel Batch Container Starting ==="
 
 # Wait for database server to be ready (connect without specifying database)
 echo "Waiting for database server..."
@@ -33,24 +29,15 @@ php -r "
 echo 'Database ready: '.getenv('DB_DATABASE').PHP_EOL;
 "
 
-# Clear any corrupted cache files from volume mounting
-echo "Clearing bootstrap cache files..."
-rm -f /var/www/html/bootstrap/cache/packages.php
-rm -f /var/www/html/bootstrap/cache/services.php
-rm -f /var/www/html/bootstrap/cache/config.php
-
-# Regenerate package discovery cache (creates packages.php and services.php)
-echo "Discovering packages..."
-php artisan package:discover --ansi
-
 # Run migrations to ensure tables exist
 echo "Running migrations..."
 php artisan migrate --force
 
-# Clear Laravel application caches (non-fatal if tables don't exist yet)
+# Clear Laravel application caches
 echo "Clearing application caches..."
 php artisan cache:clear || true
+php artisan config:clear || true
 
-echo "Starting Laravel batch job processor..."
+echo "=== Starting Laravel batch job processor ==="
 
 exec "$@"

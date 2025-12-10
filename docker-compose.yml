@@ -741,6 +741,8 @@ services:
     volumes:
       - ./iznik-batch:/var/www/html
       - ./iznik-server:/var/www/iznik:ro
+      - batch-vendor:/var/www/html/vendor
+      - batch-bootstrap-cache:/var/www/html/bootstrap/cache
     depends_on:
       percona:
         condition: service_healthy
@@ -782,6 +784,10 @@ volumes:
   phpmyadmin-sessions:
     driver: local
   geoip_data:
+    driver: local
+  batch-vendor:
+    driver: local
+  batch-bootstrap-cache:
     driver: local
 
 networks:
