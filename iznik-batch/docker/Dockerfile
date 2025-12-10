@@ -49,8 +49,14 @@ WORKDIR /var/www/html
 # Copy application files
 COPY . .
 
+# Copy .env.example to .env for testing (will be overridden by environment variables)
+RUN cp .env.example .env
+
 # Install PHP dependencies including dev dependencies for testing
 RUN composer install --no-interaction --prefer-dist --optimize-autoloader || true
+
+# Generate application key
+RUN php artisan key:generate || true
 
 # Create storage directories with correct permissions
 RUN mkdir -p storage/framework/{sessions,views,cache} \
