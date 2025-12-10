@@ -59,6 +59,7 @@ const healthCheckMessages = {
   "freegle-mailhog": "Email testing interface responding (HTTP)",
   "freegle-apiv1": "API config endpoint responding (curl /api/config)",
   "freegle-apiv2": "API online endpoint responding (curl /api/online)",
+  "freegle-batch": "Laravel batch processor ready (php artisan)",
   "freegle-delivery":
     "wsrv.nl image transformation service responding (wget /)",
   "freegle-playwright": "Playwright test container ready for test execution",
@@ -107,6 +108,12 @@ const services = [
     id: "apiv2",
     container: "freegle-apiv2",
     checkType: "api-service",
+    category: "freegle",
+  },
+  {
+    id: "batch",
+    container: "freegle-batch",
+    checkType: "batch-service",
     category: "freegle",
   },
 
@@ -1669,6 +1676,57 @@ const httpServer = http.createServer(async (req, res) => {
     } catch (error) {
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Failed to start Go tests: " + error.message);
+    }
+    return;
+  }
+
+  // Laravel tests endpoint
+  if (parsedUrl.pathname === "/api/tests/laravel" && req.method === "POST") {
+    console.log("Starting Laravel tests...");
+
+    try {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+
+      const { spawn } = require("child_process");
+      const testProcess = spawn(
+        "sh",
+        [
+          "-c",
+          `
+        set -e
+        echo "Running Laravel tests with coverage..."
+        docker exec freegle-batch php artisan test --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml
+      `,
+        ],
+        {
+          stdio: "pipe",
+        }
+      );
+
+      let output = "";
+
+      testProcess.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+
+      testProcess.stderr.on("data", (data) => {
+        output += data.toString();
+      });
+
+      testProcess.on("close", (code) => {
+        if (code === 0) {
+          res.end(output + "\n\nLaravel tests completed successfully!");
+        } else {
+          res.end(output + "\n\nLaravel tests failed with exit code: " + code);
+        }
+      });
+
+      testProcess.on("error", (error) => {
+        res.end("Error running Laravel tests: " + error.message);
+      });
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Failed to start Laravel tests: " + error.message);
     }
     return;
   }

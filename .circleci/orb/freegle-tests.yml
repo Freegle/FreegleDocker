@@ -92,7 +92,7 @@ commands:
             echo ""
             echo "=== Verifying container names ==="
             # All containers that have container_name set in docker-compose.yml
-            ALL_CONTAINERS="freegle-traefik freegle-percona freegle-postgres freegle-phpmyadmin freegle-mailhog freegle-beanstalkd freegle-spamassassin freegle-redis freegle-delivery freegle-tusd freegle-status freegle-host-scripts freegle-apiv1 freegle-apiv2 freegle-dev-local freegle-prod-local modtools-dev-local modtools-prod-local freegle-playwright"
+            ALL_CONTAINERS="freegle-traefik freegle-percona freegle-postgres freegle-phpmyadmin freegle-mailhog freegle-beanstalkd freegle-spamassassin freegle-redis freegle-delivery freegle-tusd freegle-status freegle-host-scripts freegle-apiv1 freegle-apiv2 freegle-batch freegle-dev-local freegle-prod-local modtools-dev-local modtools-prod-local freegle-playwright"
             MISSING=""
             for container in $ALL_CONTAINERS; do
               if docker inspect "$container" >/dev/null 2>&1; then
@@ -597,6 +597,34 @@ commands:
             done
           no_output_timeout: 50m
 
+  run-laravel-tests:
+    description: "Run Laravel tests in the batch container with coverage"
+    parameters:
+      reason:
+        type: string
+        default: "Running Laravel tests"
+    steps:
+      - run:
+          name: Run Laravel tests
+          command: |
+            # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
+            if [ -d "$HOME/FreegleDocker" ]; then
+              cd "$HOME/FreegleDocker"
+            fi
+            echo "🧪 << parameters.reason >>..."
+
+            # Run tests directly with coverage (status API also runs with coverage)
+            echo "Running Laravel tests with coverage..."
+            if docker exec freegle-batch php artisan test --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml; then
+              echo "✅ Laravel tests passed!"
+              echo "LARAVEL_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "❌ Laravel tests failed!"
+              echo "LARAVEL_TESTS_PASSED=false" >> $BASH_ENV
+              exit 1
+            fi
+          no_output_timeout: 30m
+
   # === Artifact Collection ===
 
   collect-artifacts:
@@ -667,6 +695,7 @@ commands:
               echo "GO_UPLOADED=false" >> $BASH_ENV
               echo "PHP_UPLOADED=false" >> $BASH_ENV
               echo "PLAYWRIGHT_UPLOADED=false" >> $BASH_ENV
+              echo "LARAVEL_UPLOADED=false" >> $BASH_ENV
             fi
           when: always
       - run:
@@ -799,6 +828,41 @@ commands:
             fi
           when: always
       - run:
+          name: Upload Laravel coverage
+          command: |
+            if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
+            # Support both FreegleDocker main build and submodule paths
+            if [ -d "$HOME/FreegleDocker" ]; then
+              cd "$HOME/FreegleDocker"
+            fi
+
+            # Copy Laravel coverage from batch container
+            if docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
+              echo "Found Laravel coverage..."
+              echo "DEBUG: Coverage file size: $(wc -c < /tmp/laravel-clover.xml) bytes"
+
+              # Install php-coveralls in the batch container
+              echo "Installing php-coveralls in batch container..."
+              docker exec freegle-batch composer require php-coveralls/php-coveralls --dev 2>&1 || echo "php-coveralls may already be installed"
+
+              # Copy coverage file to container
+              docker cp /tmp/laravel-clover.xml freegle-batch:/var/www/html/clover.xml
+
+              # Create coveralls config in container
+              docker exec freegle-batch bash -c "echo 'coverage_clover: clover.xml' > /var/www/html/.coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> /var/www/html/.coveralls.yml && echo 'service_name: circleci' >> /var/www/html/.coveralls.yml"
+
+              # Run php-coveralls from within the container
+              if docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e COVERALLS_RUN_LOCALLY=1 -e CI_BRANCH="$CIRCLE_BRANCH" freegle-batch bash -c "cd /var/www/html && php vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
+                echo "✅ Laravel coverage uploaded"
+                echo "LARAVEL_UPLOADED=true" >> $BASH_ENV
+              else
+                echo "⚠️ Laravel coverage upload failed"
+              fi
+            else
+              echo "ℹ️ No Laravel coverage found at /tmp/laravel-coverage.xml"
+            fi
+          when: always
+      - run:
           name: Validate expected coverage
           command: |
             if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
@@ -813,6 +877,7 @@ commands:
                 go) [ "$GO_UPLOADED" != "true" ] && MISSING="$MISSING go" ;;
                 php) [ "$PHP_UPLOADED" != "true" ] && MISSING="$MISSING php" ;;
                 playwright) [ "$PLAYWRIGHT_UPLOADED" != "true" ] && MISSING="$MISSING playwright" ;;
+                laravel) [ "$LARAVEL_UPLOADED" != "true" ] && MISSING="$MISSING laravel" ;;
               esac
             done
             if [ -n "$MISSING" ]; then
@@ -1020,8 +1085,11 @@ jobs:
       - run-php-tests:
           reason: "Running PHPUnit tests after Go tests complete"
 
+      - run-laravel-tests:
+          reason: "Running Laravel batch tests"
+
       - upload-coverage:
-          expected: "go,php,playwright"
+          expected: "go,php,playwright,laravel"
 
       - collect-artifacts
 
@@ -1030,11 +1098,12 @@ jobs:
           command: |
             echo "=== Overall Test Results ==="
 
-            if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ]; then
+            if [ "$GO_TESTS_PASSED" = "true" ] && [ "$PHP_TESTS_PASSED" = "true" ] && [ "$PLAYWRIGHT_TESTS_PASSED" = "true" ] && [ "$LARAVEL_TESTS_PASSED" = "true" ]; then
               echo "✅ All tests passed successfully!"
               echo "ALL_TESTS_PASSED=true" >> $BASH_ENV
             else
               echo "❌ Not all tests passed"
+              echo "Go: $GO_TESTS_PASSED, PHP: $PHP_TESTS_PASSED, Playwright: $PLAYWRIGHT_TESTS_PASSED, Laravel: $LARAVEL_TESTS_PASSED"
               exit 1
             fi
           when: always

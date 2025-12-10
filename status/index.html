@@ -78,7 +78,7 @@
         <div class="tabs">
             <button class="tab active" data-tab="freegle-dev"><span class="tab-light grey" id="tab-light-freegle"></span>Freegle</button>
             <button class="tab" data-tab="modtools-dev"><span class="tab-light grey" id="tab-light-modtools"></span>ModTools</button>
-            <button class="tab" data-tab="apis"><span class="tab-light grey" id="tab-light-apis"></span>APIs</button>
+            <button class="tab" data-tab="backend"><span class="tab-light grey" id="tab-light-backend"></span>Backend</button>
             <button class="tab" data-tab="dev-tools"><span class="tab-light grey" id="tab-light-devtools"></span>Dev Tools</button>
             <button class="tab" data-tab="testing"><span class="tab-light grey" id="tab-light-testing"></span>Testing</button>
             <button class="tab" data-tab="infrastructure"><span class="tab-light grey" id="tab-light-infra"></span>Infrastructure</button>
@@ -143,9 +143,9 @@
             </div>
         </div>
 
-        <!-- APIs Tab -->
-        <div id="apis" class="tab-content">
-            <h2>APIs</h2>
+        <!-- Backend Tab -->
+        <div id="backend" class="tab-content">
+            <h2>Backend</h2>
 
             <div id="apiv1" class="service loading">
                 <div>
@@ -161,6 +161,15 @@
                     <strong>API v2 (Modern Go)</strong> - iznik-server-go<br>
                     <span class="url">http://apiv2.localhost:8192</span><br>
                     <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="batch" class="service loading">
+                <div>
+                    <strong>Batch Processor (Laravel)</strong> - iznik-batch<br>
+                    <small>Handles digests, notifications, cleanup tasks</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-batch</small><br>
                     <span class="status">Loading...</span>
                 </div>
             </div>
@@ -271,6 +280,23 @@
                     <div style="margin-top: 8px;">
                         <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; margin-right: 4px; display: none;">Show/Hide Logs</button>
                         <a id="reportLinkBtn" href="http://localhost:9323" target="_blank" class="action-button" style="background: #17a2b8; font-size: 10px; text-decoration: none;">HTML Report</a>
+                    </div>
+                </div>
+            </div>
+
+            <div id="laravel-tests" class="service loading">
+                <div>
+                    <strong>Laravel Tests (iznik-batch)</strong><br>
+                    <small>Tests batch processor services</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-batch</small><br>
+                    <span class="status">Waiting for services...</span>
+                    <div class="container-actions" style="margin-top: 8px;">
+                        <button id="runLaravelTestsBtn" class="action-button">Run Laravel Tests</button>
+                    </div>
+                    <div id="laravelTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
+                    <div id="laravelTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
+                    <div style="margin-top: 8px;">
+                        <button id="toggleLaravelLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
                     </div>
                 </div>
             </div>
@@ -443,6 +469,7 @@
             { id: 'modtools-prod-local', container: 'modtools-prod-local' },
             { id: 'apiv1', container: 'freegle-apiv1' },
             { id: 'apiv2', container: 'freegle-apiv2' },
+            { id: 'batch', container: 'freegle-batch' },
             { id: 'phpmyadmin', container: 'freegle-phpmyadmin' },
             { id: 'mailhog', container: 'freegle-mailhog' },
             { id: 'playwright', container: 'freegle-playwright' },
@@ -484,9 +511,9 @@
             const tabServices = {
                 'freegle': ['freegle-dev-local', 'freegle-prod-local'],
                 'modtools': ['modtools-dev-local', 'modtools-prod-local'],
-                'apis': ['apiv1', 'apiv2'],
+                'backend': ['apiv1', 'apiv2', 'batch'],
                 'devtools': ['phpmyadmin', 'mailhog'],
-                'testing': ['playwright'],
+                'testing': ['playwright', 'batch'],
                 'infra': ['traefik', 'percona', 'postgres', 'redis', 'tusd', 'beanstalkd', 'spamassassin', 'delivery'],
                 'production': ['freegle-dev-live']
             };
@@ -1525,6 +1552,50 @@
             button.disabled = false;
         }
 
+        async function runLaravelTests() {
+            const button = document.getElementById('runLaravelTestsBtn');
+            const statusDiv = document.getElementById('laravelTestStatus');
+            const logsDiv = document.getElementById('laravelTestLogs');
+            const toggleLogsBtn = document.getElementById('toggleLaravelLogsBtn');
+
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Running Tests...';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">Running Laravel tests...</span>';
+            logsDiv.style.display = 'none';
+            toggleLogsBtn.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/tests/laravel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.text();
+                if (response.ok && result.includes('Laravel tests completed successfully')) {
+                    statusDiv.innerHTML = '<span style="color: #28a745;">PASS Laravel tests completed successfully</span>';
+                    logsDiv.textContent = result;
+                    logsDiv.style.display = 'block';
+                    toggleLogsBtn.style.display = 'inline-block';
+                } else {
+                    statusDiv.innerHTML = '<span style="color: #dc3545;">FAIL Laravel tests failed</span>';
+                    logsDiv.textContent = result;
+                    logsDiv.style.display = 'block';
+                    toggleLogsBtn.style.display = 'inline-block';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
+            }
+
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+
+        function toggleLaravelLogs() {
+            const logsDiv = document.getElementById('laravelTestLogs');
+            logsDiv.style.display = logsDiv.style.display === 'none' ? 'block' : 'none';
+        }
+
         let phpTestLogs = '';  // Store logs globally for opening in new tab
 
         function updatePhpTestProgress(progress) {
@@ -1809,6 +1880,16 @@
             const runPhpTestsBtn = document.getElementById('runPhpTestsBtn');
             if (runPhpTestsBtn) {
                 runPhpTestsBtn.addEventListener('click', runPhpTests);
+            }
+
+            const runLaravelTestsBtn = document.getElementById('runLaravelTestsBtn');
+            if (runLaravelTestsBtn) {
+                runLaravelTestsBtn.addEventListener('click', runLaravelTests);
+            }
+
+            const toggleLaravelLogsBtn = document.getElementById('toggleLaravelLogsBtn');
+            if (toggleLaravelLogsBtn) {
+                toggleLaravelLogsBtn.addEventListener('click', toggleLaravelLogs);
             }
 
             const openPhpLogsBtn = document.getElementById('openPhpLogsBtn');

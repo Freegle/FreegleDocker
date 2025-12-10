@@ -730,6 +730,51 @@ services:
       beanstalkd:
         condition: service_healthy
 
+  # Batch jobs processor (Laravel)
+  batch:
+    container_name: freegle-batch
+    networks:
+      - default
+    build:
+      context: ./iznik-batch
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ./iznik-batch:/var/www/html
+      - ./iznik-server:/var/www/iznik:ro
+    depends_on:
+      percona:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    restart: "no"
+    environment:
+      - DB_CONNECTION=mysql
+      - DB_HOST=percona
+      - DB_PORT=3306
+      - DB_DATABASE=iznik_laravel
+      - DB_IZNIK_DATABASE=iznik
+      - DB_USERNAME=root
+      - DB_PASSWORD=iznik
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MAIL_MAILER=smtp
+      - MAIL_HOST=mailhog
+      - MAIL_PORT=1025
+      - MAIL_ENCRYPTION=null
+      - FREEGLE_USER_SITE=http://freegle-dev-local.localhost
+      - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - LOG_CHANNEL=stderr
+    healthcheck:
+      test: ["CMD-SHELL", "php artisan about > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   rebuild-requests:
     driver: local

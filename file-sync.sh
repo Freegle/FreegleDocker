@@ -32,6 +32,8 @@ get_container_info() {
         echo "freegle-apiv2 /app/${relative_path#iznik-server-go/} API-v2"
     elif [[ "$relative_path" == iznik-server/* ]]; then
         echo "freegle-apiv1 /var/www/iznik/${relative_path#iznik-server/} API-v1"
+    elif [[ "$relative_path" == iznik-batch/* ]]; then
+        echo "freegle-batch /var/www/html/${relative_path#iznik-batch/} Batch"
     fi
 }
 
@@ -84,6 +86,7 @@ inotifywait -m -r -e modify,create,move \
     "$PROJECT_DIR/iznik-nuxt3-modtools" \
     "$PROJECT_DIR/iznik-server" \
     "$PROJECT_DIR/iznik-server-go" \
+    "$PROJECT_DIR/iznik-batch" \
     2>/dev/null | while read -r directory events filename; do
     
     full_path="$directory$filename"
