@@ -761,6 +761,9 @@ services:
       - DB_PASSWORD=iznik
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - CACHE_STORE=redis
+      - QUEUE_CONNECTION=redis
+      - SESSION_DRIVER=redis
       - MAIL_MAILER=smtp
       - MAIL_HOST=mailhog
       - MAIL_PORT=1025
