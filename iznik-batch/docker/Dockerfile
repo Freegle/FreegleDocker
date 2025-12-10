@@ -28,11 +28,11 @@ RUN docker-php-ext-install \
     zip \
     intl
 
-# Install Redis and PCOV PHP extensions
-RUN pecl install redis pcov && docker-php-ext-enable redis pcov
+# Install Redis and Xdebug PHP extensions
+RUN pecl install redis xdebug && docker-php-ext-enable redis xdebug
 
-# Enable PCOV for code coverage
-RUN echo "pcov.enabled=1" >> /usr/local/etc/php/conf.d/docker-php-ext-pcov.ini
+# Configure Xdebug for coverage mode
+RUN echo "xdebug.mode=coverage" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

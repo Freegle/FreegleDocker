@@ -28,12 +28,14 @@ if [ $maxTries -eq 0 ]; then
     exit 1
 fi
 
-# Create the Laravel database if it doesn't exist
-echo "Ensuring database exists..."
+# Create the Laravel databases if they don't exist (main + test)
+echo "Ensuring databases exist..."
 php -r "
 \$pdo = new PDO('mysql:host='.getenv('DB_HOST'), getenv('DB_USERNAME'), getenv('DB_PASSWORD'));
 \$pdo->exec('CREATE DATABASE IF NOT EXISTS '.getenv('DB_DATABASE'));
+\$pdo->exec('CREATE DATABASE IF NOT EXISTS '.getenv('DB_DATABASE').'_test');
 echo 'Database ready: '.getenv('DB_DATABASE').PHP_EOL;
+echo 'Test database ready: '.getenv('DB_DATABASE').'_test'.PHP_EOL;
 "
 
 # Run migrations to ensure tables exist
@@ -46,5 +48,8 @@ php artisan cache:clear || true
 php artisan config:clear || true
 
 echo "=== Starting Laravel batch job processor ==="
+
+# Create ready marker file to signal healthcheck that startup is complete
+touch /tmp/laravel-ready
 
 exec "$@"
