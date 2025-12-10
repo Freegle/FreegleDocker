@@ -39,13 +39,16 @@ rm -f /var/www/html/bootstrap/cache/packages.php
 rm -f /var/www/html/bootstrap/cache/services.php
 rm -f /var/www/html/bootstrap/cache/config.php
 
+# Regenerate package discovery cache (creates packages.php and services.php)
+echo "Discovering packages..."
+php artisan package:discover --ansi
+
 # Run migrations to ensure tables exist
 echo "Running migrations..."
 php artisan migrate --force
 
-# Clear Laravel caches (non-fatal if tables don't exist yet)
-echo "Clearing caches..."
-php artisan config:clear || true
+# Clear Laravel application caches (non-fatal if tables don't exist yet)
+echo "Clearing application caches..."
 php artisan cache:clear || true
 
 echo "Starting Laravel batch job processor..."
