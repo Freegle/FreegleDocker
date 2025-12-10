@@ -28,8 +28,8 @@ RUN docker-php-ext-install \
     zip \
     intl
 
-# Install Redis PHP extension
-RUN pecl install redis && docker-php-ext-enable redis
+# Install Redis and PCOV PHP extensions
+RUN pecl install redis pcov && docker-php-ext-enable redis pcov
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
