@@ -3,6 +3,13 @@ set -e
 
 echo "=== Laravel Batch Container Starting ==="
 
+# Create .env file if it doesn't exist (bind mount overwrites Docker build)
+if [ ! -f /var/www/html/.env ]; then
+    echo "Creating .env from .env.example..."
+    cp /var/www/html/.env.example /var/www/html/.env
+    php artisan key:generate
+fi
+
 # Wait for database server to be ready (connect without specifying database)
 echo "Waiting for database server..."
 maxTries=30
