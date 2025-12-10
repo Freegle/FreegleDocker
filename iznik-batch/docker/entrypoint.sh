@@ -33,6 +33,12 @@ php -r "
 echo 'Database ready: '.getenv('DB_DATABASE').PHP_EOL;
 "
 
+# Clear any corrupted cache files from volume mounting
+echo "Clearing bootstrap cache files..."
+rm -f /var/www/html/bootstrap/cache/packages.php
+rm -f /var/www/html/bootstrap/cache/services.php
+rm -f /var/www/html/bootstrap/cache/config.php
+
 # Run migrations to ensure tables exist
 echo "Running migrations..."
 php artisan migrate --force
