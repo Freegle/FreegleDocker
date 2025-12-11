@@ -42,6 +42,8 @@ commands:
             sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
 
   start-docker-services:
     description: "Start Docker Compose services with proper setup"
@@ -135,6 +137,8 @@ commands:
             echo "Successfully checked out $BRANCH"
             ls -la modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
             cd ..
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
 
   replace-submodule:
     description: "Replace a submodule with PR code"
@@ -898,12 +902,16 @@ commands:
             sudo apt-get update
             sudo apt-get install -y ruby-full
             sudo gem install bundler
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Install Fastlane
           command: |
             bundle config set --local path 'vendor/bundle'
             bundle update fastlane
             bundle install
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Decode Google Play JSON Key
           command: |
@@ -1255,6 +1263,8 @@ jobs:
           command: |
             curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
             sudo apt-get install -y nodejs
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Verify Node.js and npm versions
           command: |
@@ -1267,6 +1277,8 @@ jobs:
       - run:
           name: Install Node.js Dependencies
           command: npm ci
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - save_cache:
           key: npm-deps-v1-{{ checksum "package-lock.json" }}
           paths:
@@ -1355,6 +1367,8 @@ jobs:
           command: |
             curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
             sudo apt-get install -y nodejs
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Verify Node.js and npm versions
           command: |
@@ -1367,6 +1381,8 @@ jobs:
       - run:
           name: Install Node.js Dependencies
           command: npm ci
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - save_cache:
           key: npm-deps-v1-{{ checksum "package-lock.json" }}
           paths:
@@ -1487,6 +1503,8 @@ jobs:
             nvm alias default 22
             echo 'export NVM_DIR="$HOME/.nvm"' >> $BASH_ENV
             echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> $BASH_ENV
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Verify Node.js and npm versions
           command: |
@@ -1495,6 +1513,8 @@ jobs:
       - run:
           name: Install Node.js Dependencies
           command: npm ci
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Update Mobile Version in config.js
           command: |
@@ -1554,6 +1574,8 @@ jobs:
             bundle config set --local path 'vendor/bundle'
             bundle update fastlane
             bundle install
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Setup iOS Certificates
           command: |
@@ -1627,12 +1649,16 @@ jobs:
             nvm alias default 22
             echo 'export NVM_DIR="$HOME/.nvm"' >> $BASH_ENV
             echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> $BASH_ENV
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Install Fastlane
           command: |
             gem install bundler
             bundle update fastlane
             bundle install
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Auto-submit Latest TestFlight Build to App Store Review
           command: bundle exec fastlane ios auto_submit
@@ -1652,12 +1678,16 @@ jobs:
             nvm alias default 22
             echo 'export NVM_DIR="$HOME/.nvm"' >> $BASH_ENV
             echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> $BASH_ENV
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Install Fastlane
           command: |
             gem install bundler
             bundle update fastlane
             bundle install
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
       - run:
           name: Auto-release Apps from Pending Developer Release
           command: bundle exec fastlane ios auto_release
