@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('chat_messages_held', function (Blueprint $table) {
-            $table->foreign(['msgid'], 'chat_messages_held_ibfk_1')->references(['id'])->on('chat_messages')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['userid'], 'chat_messages_held_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['msgid'])->references(['id'])->on('chat_messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('chat_messages_held', function (Blueprint $table) {
-            $table->dropForeign('chat_messages_held_ibfk_1');
-            $table->dropForeign('chat_messages_held_ibfk_2');
         });
     }
 };

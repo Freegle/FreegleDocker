@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('simulation_message_isochrones_users', function (Blueprint $table) {
-            $table->foreign(['sim_msgid'], 'simulation_message_isochrones_users_ibfk_1')->references(['id'])->on('simulation_message_isochrones_messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['sim_msgid'])->references(['id'])->on('simulation_message_isochrones_messages')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('simulation_message_isochrones_users', function (Blueprint $table) {
-            $table->dropForeign('simulation_message_isochrones_users_ibfk_1');
         });
     }
 };

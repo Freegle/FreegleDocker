@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('spam_users', function (Blueprint $table) {
-            $table->foreign(['userid'], 'spam_users_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['byuserid'], 'spam_users_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['heldby'], 'spam_users_ibfk_4')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['byuserid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['heldby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -24,9 +24,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('spam_users', function (Blueprint $table) {
-            $table->dropForeign('spam_users_ibfk_1');
-            $table->dropForeign('spam_users_ibfk_2');
-            $table->dropForeign('spam_users_ibfk_4');
         });
     }
 };

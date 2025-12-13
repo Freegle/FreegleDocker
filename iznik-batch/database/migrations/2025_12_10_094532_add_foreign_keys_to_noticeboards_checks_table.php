@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('noticeboards_checks', function (Blueprint $table) {
-            $table->foreign(['userid'], 'noticeboards_checks_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['noticeboardid'], 'noticeboards_checks_ibfk_2')->references(['id'])->on('noticeboards')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['noticeboardid'])->references(['id'])->on('noticeboards')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('noticeboards_checks', function (Blueprint $table) {
-            $table->dropForeign('noticeboards_checks_ibfk_1');
-            $table->dropForeign('noticeboards_checks_ibfk_2');
         });
     }
 };

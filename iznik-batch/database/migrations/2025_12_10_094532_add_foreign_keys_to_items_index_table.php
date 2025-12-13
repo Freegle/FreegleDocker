@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('items_index', function (Blueprint $table) {
-            $table->foreign(['itemid'], 'items_index_ibfk_1')->references(['id'])->on('items')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['wordid'], 'items_index_ibfk_2')->references(['id'])->on('words')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['itemid'])->references(['id'])->on('items')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['wordid'])->references(['id'])->on('words')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('items_index', function (Blueprint $table) {
-            $table->dropForeign('items_index_ibfk_1');
-            $table->dropForeign('items_index_ibfk_2');
         });
     }
 };

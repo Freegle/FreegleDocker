@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('paf_addresses', function (Blueprint $table) {
-            $table->foreign(['postcodeid'], 'paf_addresses_ibfk_11')->references(['id'])->on('locations')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['postcodeid'])->references(['id'])->on('locations')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('paf_addresses', function (Blueprint $table) {
-            $table->dropForeign('paf_addresses_ibfk_11');
         });
     }
 };

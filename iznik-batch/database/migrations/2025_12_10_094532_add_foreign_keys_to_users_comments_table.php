@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users_comments', function (Blueprint $table) {
-            $table->foreign(['userid'], 'users_comments_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['byuserid'], 'users_comments_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['groupid'], 'users_comments_ibfk_3')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['byuserid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -24,9 +24,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users_comments', function (Blueprint $table) {
-            $table->dropForeign('users_comments_ibfk_1');
-            $table->dropForeign('users_comments_ibfk_2');
-            $table->dropForeign('users_comments_ibfk_3');
         });
     }
 };

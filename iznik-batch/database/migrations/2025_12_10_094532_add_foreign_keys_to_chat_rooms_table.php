@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('chat_rooms', function (Blueprint $table) {
-            $table->foreign(['groupid'], 'chat_rooms_ibfk_1')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['user1'], 'chat_rooms_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['user2'], 'chat_rooms_ibfk_3')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['user1'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['user2'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -24,9 +24,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('chat_rooms', function (Blueprint $table) {
-            $table->dropForeign('chat_rooms_ibfk_1');
-            $table->dropForeign('chat_rooms_ibfk_2');
-            $table->dropForeign('chat_rooms_ibfk_3');
         });
     }
 };

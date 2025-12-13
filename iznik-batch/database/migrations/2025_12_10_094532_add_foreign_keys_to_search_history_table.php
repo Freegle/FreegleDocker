@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('search_history', function (Blueprint $table) {
-            $table->foreign(['locationid'], 'search_history_ibfk_1')->references(['id'])->on('locations')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['locationid'])->references(['id'])->on('locations')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('search_history', function (Blueprint $table) {
-            $table->dropForeign('search_history_ibfk_1');
         });
     }
 };

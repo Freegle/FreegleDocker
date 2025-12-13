@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('volunteering', function (Blueprint $table) {
-            $table->foreign(['deletedby'], 'volunteering_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['heldby'], 'volunteering_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['deletedby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['heldby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('volunteering', function (Blueprint $table) {
-            $table->dropForeign('volunteering_ibfk_1');
-            $table->dropForeign('volunteering_ibfk_2');
         });
     }
 };

@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('mod_bulkops_run', function (Blueprint $table) {
-            $table->foreign(['bulkopid'], 'mod_bulkops_run_ibfk_1')->references(['id'])->on('mod_bulkops')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['groupid'], 'mod_bulkops_run_ibfk_2')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['bulkopid'])->references(['id'])->on('mod_bulkops')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('mod_bulkops_run', function (Blueprint $table) {
-            $table->dropForeign('mod_bulkops_run_ibfk_1');
-            $table->dropForeign('mod_bulkops_run_ibfk_2');
         });
     }
 };

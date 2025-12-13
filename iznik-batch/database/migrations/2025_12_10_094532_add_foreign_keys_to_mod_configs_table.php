@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('mod_configs', function (Blueprint $table) {
-            $table->foreign(['createdby'], 'mod_configs_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['createdby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('mod_configs', function (Blueprint $table) {
-            $table->dropForeign('mod_configs_ibfk_1');
         });
     }
 };

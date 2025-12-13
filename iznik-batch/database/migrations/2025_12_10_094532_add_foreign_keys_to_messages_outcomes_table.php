@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('messages_outcomes', function (Blueprint $table) {
-            $table->foreign(['msgid'], 'messages_outcomes_ibfk_1')->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('messages_outcomes', function (Blueprint $table) {
-            $table->dropForeign('messages_outcomes_ibfk_1');
         });
     }
 };

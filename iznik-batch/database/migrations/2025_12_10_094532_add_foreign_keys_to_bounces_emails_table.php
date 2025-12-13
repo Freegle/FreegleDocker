@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('bounces_emails', function (Blueprint $table) {
-            $table->foreign(['emailid'], 'bounces_emails_ibfk_1')->references(['id'])->on('users_emails')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['emailid'])->references(['id'])->on('users_emails')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('bounces_emails', function (Blueprint $table) {
-            $table->dropForeign('bounces_emails_ibfk_1');
         });
     }
 };

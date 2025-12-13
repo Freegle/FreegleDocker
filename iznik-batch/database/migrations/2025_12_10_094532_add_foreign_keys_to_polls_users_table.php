@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('polls_users', function (Blueprint $table) {
-            $table->foreign(['pollid'], 'polls_users_ibfk_1')->references(['id'])->on('polls')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['userid'], 'polls_users_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['pollid'])->references(['id'])->on('polls')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('polls_users', function (Blueprint $table) {
-            $table->dropForeign('polls_users_ibfk_1');
-            $table->dropForeign('polls_users_ibfk_2');
         });
     }
 };

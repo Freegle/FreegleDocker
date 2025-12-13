@@ -12,10 +12,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('alerts_tracking', function (Blueprint $table) {
-            $table->foreign(['emailid'], '_alerts_tracking_ibfk_3')->references(['id'])->on('users_emails')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['alertid'], 'alerts_tracking_ibfk_1')->references(['id'])->on('alerts')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['userid'], 'alerts_tracking_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['groupid'], 'alerts_tracking_ibfk_4')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['emailid'])->references(['id'])->on('users_emails')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['alertid'])->references(['id'])->on('alerts')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -25,10 +25,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('alerts_tracking', function (Blueprint $table) {
-            $table->dropForeign('_alerts_tracking_ibfk_3');
-            $table->dropForeign('alerts_tracking_ibfk_1');
-            $table->dropForeign('alerts_tracking_ibfk_2');
-            $table->dropForeign('alerts_tracking_ibfk_4');
         });
     }
 };

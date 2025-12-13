@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('mod_bulkops', function (Blueprint $table) {
-            $table->foreign(['configid'], 'mod_bulkops_ibfk_1')->references(['id'])->on('mod_configs')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['configid'])->references(['id'])->on('mod_configs')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('mod_bulkops', function (Blueprint $table) {
-            $table->dropForeign('mod_bulkops_ibfk_1');
         });
     }
 };

@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users_notifications', function (Blueprint $table) {
-            $table->foreign(['fromuser'], 'users_notifications_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['newsfeedid'], 'users_notifications_ibfk_2')->references(['id'])->on('newsfeed')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['touser'], 'users_notifications_ibfk_3')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['fromuser'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['newsfeedid'])->references(['id'])->on('newsfeed')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['touser'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -24,9 +24,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users_notifications', function (Blueprint $table) {
-            $table->dropForeign('users_notifications_ibfk_1');
-            $table->dropForeign('users_notifications_ibfk_2');
-            $table->dropForeign('users_notifications_ibfk_3');
         });
     }
 };

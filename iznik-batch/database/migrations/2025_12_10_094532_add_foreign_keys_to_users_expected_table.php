@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users_expected', function (Blueprint $table) {
-            $table->foreign(['expecter'], 'users_expected_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['expectee'], 'users_expected_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['chatmsgid'], 'users_expected_ibfk_3')->references(['id'])->on('chat_messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['expecter'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['expectee'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['chatmsgid'])->references(['id'])->on('chat_messages')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -24,9 +24,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users_expected', function (Blueprint $table) {
-            $table->dropForeign('users_expected_ibfk_1');
-            $table->dropForeign('users_expected_ibfk_2');
-            $table->dropForeign('users_expected_ibfk_3');
         });
     }
 };

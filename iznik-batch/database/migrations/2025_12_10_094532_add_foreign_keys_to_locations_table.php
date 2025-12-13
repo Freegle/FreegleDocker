@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('locations', function (Blueprint $table) {
-            $table->foreign(['gridid'], 'locations_ibfk_1')->references(['id'])->on('locations_grids')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['gridid'])->references(['id'])->on('locations_grids')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('locations', function (Blueprint $table) {
-            $table->dropForeign('locations_ibfk_1');
         });
     }
 };

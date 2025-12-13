@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('locations_grids_touches', function (Blueprint $table) {
-            $table->foreign(['gridid'], 'locations_grids_touches_ibfk_1')->references(['id'])->on('locations_grids')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['touches'], 'locations_grids_touches_ibfk_2')->references(['id'])->on('locations_grids')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['gridid'])->references(['id'])->on('locations_grids')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['touches'])->references(['id'])->on('locations_grids')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('locations_grids_touches', function (Blueprint $table) {
-            $table->dropForeign('locations_grids_touches_ibfk_1');
-            $table->dropForeign('locations_grids_touches_ibfk_2');
         });
     }
 };

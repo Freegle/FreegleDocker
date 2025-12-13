@@ -12,10 +12,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('visualise', function (Blueprint $table) {
-            $table->foreign(['attid'], '_visualise_ibfk_4')->references(['id'])->on('messages_attachments')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['msgid'], 'visualise_ibfk_1')->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['fromuser'], 'visualise_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['touser'], 'visualise_ibfk_3')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['attid'])->references(['id'])->on('messages_attachments')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['fromuser'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['touser'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -25,10 +25,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('visualise', function (Blueprint $table) {
-            $table->dropForeign('_visualise_ibfk_4');
-            $table->dropForeign('visualise_ibfk_1');
-            $table->dropForeign('visualise_ibfk_2');
-            $table->dropForeign('visualise_ibfk_3');
         });
     }
 };

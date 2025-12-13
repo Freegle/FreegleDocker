@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users_requests', function (Blueprint $table) {
-            $table->foreign(['userid'], 'users_requests_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['addressid'], 'users_requests_ibfk_2')->references(['id'])->on('users_addresses')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['completedby'], 'users_requests_ibfk_3')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['addressid'])->references(['id'])->on('users_addresses')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['completedby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -24,9 +24,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users_requests', function (Blueprint $table) {
-            $table->dropForeign('users_requests_ibfk_1');
-            $table->dropForeign('users_requests_ibfk_2');
-            $table->dropForeign('users_requests_ibfk_3');
         });
     }
 };

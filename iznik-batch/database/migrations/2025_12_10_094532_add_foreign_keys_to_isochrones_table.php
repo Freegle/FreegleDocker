@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('isochrones', function (Blueprint $table) {
-            $table->foreign(['locationid'], 'isochrones_ibfk_2')->references(['id'])->on('locations')->onUpdate('restrict')->onDelete('cascade');
+            $table->foreign(['locationid'])->references(['id'])->on('locations')->onUpdate('restrict')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('isochrones', function (Blueprint $table) {
-            $table->dropForeign('isochrones_ibfk_2');
         });
     }
 };

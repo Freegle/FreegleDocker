@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('chat_images', function (Blueprint $table) {
-            $table->foreign(['chatmsgid'], '_chat_images_ibfk_1')->references(['id'])->on('chat_messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['chatmsgid'])->references(['id'])->on('chat_messages')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('chat_images', function (Blueprint $table) {
-            $table->dropForeign('_chat_images_ibfk_1');
         });
     }
 };

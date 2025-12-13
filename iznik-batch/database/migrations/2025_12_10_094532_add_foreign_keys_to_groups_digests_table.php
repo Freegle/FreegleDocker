@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('groups_digests', function (Blueprint $table) {
-            $table->foreign(['groupid'], 'groups_digests_ibfk_1')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['msgid'], 'groups_digests_ibfk_3')->references(['id'])->on('messages')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('groups_digests', function (Blueprint $table) {
-            $table->dropForeign('groups_digests_ibfk_1');
-            $table->dropForeign('groups_digests_ibfk_3');
         });
     }
 };

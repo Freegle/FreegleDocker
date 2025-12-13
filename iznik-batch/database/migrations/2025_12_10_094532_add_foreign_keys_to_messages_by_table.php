@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('messages_by', function (Blueprint $table) {
-            $table->foreign(['msgid'], 'messages_by_ibfk_1')->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['userid'], 'messages_by_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('messages_by', function (Blueprint $table) {
-            $table->dropForeign('messages_by_ibfk_1');
-            $table->dropForeign('messages_by_ibfk_2');
         });
     }
 };

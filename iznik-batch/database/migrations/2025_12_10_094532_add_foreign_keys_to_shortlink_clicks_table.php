@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('shortlink_clicks', function (Blueprint $table) {
-            $table->foreign(['shortlinkid'], 'shortlink_clicks_ibfk_1')->references(['id'])->on('shortlinks')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['shortlinkid'])->references(['id'])->on('shortlinks')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('shortlink_clicks', function (Blueprint $table) {
-            $table->dropForeign('shortlink_clicks_ibfk_1');
         });
     }
 };

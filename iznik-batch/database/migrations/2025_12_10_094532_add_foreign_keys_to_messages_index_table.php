@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('messages_index', function (Blueprint $table) {
-            $table->foreign(['msgid'], '_messages_index_ibfk_1')->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['groupid'], '_messages_index_ibfk_3')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['wordid'], 'messages_index_ibfk_1')->references(['id'])->on('words')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['wordid'])->references(['id'])->on('words')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -24,9 +24,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('messages_index', function (Blueprint $table) {
-            $table->dropForeign('_messages_index_ibfk_1');
-            $table->dropForeign('_messages_index_ibfk_3');
-            $table->dropForeign('messages_index_ibfk_1');
         });
     }
 };

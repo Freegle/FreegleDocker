@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('spam_whitelist_links', function (Blueprint $table) {
-            $table->foreign(['userid'], 'spam_whitelist_links_ibfk_1')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('spam_whitelist_links', function (Blueprint $table) {
-            $table->dropForeign('spam_whitelist_links_ibfk_1');
         });
     }
 };

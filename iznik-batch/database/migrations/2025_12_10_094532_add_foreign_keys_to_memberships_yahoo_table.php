@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('memberships_yahoo', function (Blueprint $table) {
-            $table->foreign(['membershipid'], '_memberships_yahoo_ibfk_1')->references(['id'])->on('memberships')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['emailid'], 'memberships_yahoo_ibfk_1')->references(['id'])->on('users_emails')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['membershipid'])->references(['id'])->on('memberships')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['emailid'])->references(['id'])->on('users_emails')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('memberships_yahoo', function (Blueprint $table) {
-            $table->dropForeign('_memberships_yahoo_ibfk_1');
-            $table->dropForeign('memberships_yahoo_ibfk_1');
         });
     }
 };

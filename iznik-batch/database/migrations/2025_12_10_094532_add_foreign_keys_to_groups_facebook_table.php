@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('groups_facebook', function (Blueprint $table) {
-            $table->foreign(['groupid'], 'groups_facebook_ibfk_1')->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('groups_facebook', function (Blueprint $table) {
-            $table->dropForeign('groups_facebook_ibfk_1');
         });
     }
 };

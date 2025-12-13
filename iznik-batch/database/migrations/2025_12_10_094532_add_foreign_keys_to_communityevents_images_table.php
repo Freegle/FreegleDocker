@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('communityevents_images', function (Blueprint $table) {
-            $table->foreign(['eventid'], 'communityevents_images_ibfk_1')->references(['id'])->on('communityevents')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['eventid'])->references(['id'])->on('communityevents')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('communityevents_images', function (Blueprint $table) {
-            $table->dropForeign('communityevents_images_ibfk_1');
         });
     }
 };

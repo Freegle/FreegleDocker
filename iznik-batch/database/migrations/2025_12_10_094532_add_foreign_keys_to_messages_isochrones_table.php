@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('messages_isochrones', function (Blueprint $table) {
-            $table->foreign(['msgid'], 'messages_isochrones_ibfk_1')->references(['id'])->on('messages')->onUpdate('restrict')->onDelete('cascade');
-            $table->foreign(['isochroneid'], 'messages_isochrones_ibfk_2')->references(['id'])->on('isochrones')->onUpdate('restrict')->onDelete('cascade');
+            $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('restrict')->onDelete('cascade');
+            $table->foreign(['isochroneid'])->references(['id'])->on('isochrones')->onUpdate('restrict')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('messages_isochrones', function (Blueprint $table) {
-            $table->dropForeign('messages_isochrones_ibfk_1');
-            $table->dropForeign('messages_isochrones_ibfk_2');
         });
     }
 };

@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('messages_attachments_recognise', function (Blueprint $table) {
-            $table->foreign(['attid'], 'messages_attachments_recognise_ibfk_1')->references(['id'])->on('messages_attachments')->onUpdate('restrict')->onDelete('cascade');
+            $table->foreign(['attid'])->references(['id'])->on('messages_attachments')->onUpdate('restrict')->onDelete('cascade');
         });
     }
 
@@ -22,7 +22,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('messages_attachments_recognise', function (Blueprint $table) {
-            $table->dropForeign('messages_attachments_recognise_ibfk_1');
         });
     }
 };

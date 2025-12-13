@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('chat_roster', function (Blueprint $table) {
-            $table->foreign(['chatid'], 'chat_roster_ibfk_1')->references(['id'])->on('chat_rooms')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['userid'], 'chat_roster_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['chatid'])->references(['id'])->on('chat_rooms')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('chat_roster', function (Blueprint $table) {
-            $table->dropForeign('chat_roster_ibfk_1');
-            $table->dropForeign('chat_roster_ibfk_2');
         });
     }
 };

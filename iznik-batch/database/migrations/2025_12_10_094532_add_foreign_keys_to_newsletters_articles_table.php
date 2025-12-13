@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('newsletters_articles', function (Blueprint $table) {
-            $table->foreign(['newsletterid'], 'newsletters_articles_ibfk_1')->references(['id'])->on('newsletters')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['photoid'], 'newsletters_articles_ibfk_2')->references(['id'])->on('newsletters_images')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['newsletterid'])->references(['id'])->on('newsletters')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['photoid'])->references(['id'])->on('newsletters_images')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -23,8 +23,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('newsletters_articles', function (Blueprint $table) {
-            $table->dropForeign('newsletters_articles_ibfk_1');
-            $table->dropForeign('newsletters_articles_ibfk_2');
         });
     }
 };

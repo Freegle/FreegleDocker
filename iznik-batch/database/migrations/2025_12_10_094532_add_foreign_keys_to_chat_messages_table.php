@@ -12,12 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('chat_messages', function (Blueprint $table) {
-            $table->foreign(['chatid'], '_chat_messages_ibfk_1')->references(['id'])->on('chat_rooms')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['userid'], '_chat_messages_ibfk_2')->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['refmsgid'], '_chat_messages_ibfk_3')->references(['id'])->on('messages')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['reviewedby'], '_chat_messages_ibfk_4')->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['refchatid'], '_chat_messages_ibfk_5')->references(['id'])->on('chat_rooms')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['imageid'], 'chat_messages_ibfk_1')->references(['id'])->on('chat_images')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['chatid'])->references(['id'])->on('chat_rooms')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
+            $table->foreign(['refmsgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['reviewedby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['refchatid'])->references(['id'])->on('chat_rooms')->onUpdate('no action')->onDelete('set null');
+            $table->foreign(['imageid'])->references(['id'])->on('chat_images')->onUpdate('no action')->onDelete('set null');
         });
     }
 
@@ -27,12 +27,6 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('chat_messages', function (Blueprint $table) {
-            $table->dropForeign('_chat_messages_ibfk_1');
-            $table->dropForeign('_chat_messages_ibfk_2');
-            $table->dropForeign('_chat_messages_ibfk_3');
-            $table->dropForeign('_chat_messages_ibfk_4');
-            $table->dropForeign('_chat_messages_ibfk_5');
-            $table->dropForeign('chat_messages_ibfk_1');
         });
     }
 };
