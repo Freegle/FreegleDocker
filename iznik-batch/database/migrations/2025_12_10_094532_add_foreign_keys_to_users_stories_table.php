@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::table('users_stories', function (Blueprint $table) {
             $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
             $table->foreign(['reviewedby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['reviewedby'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
         });
     }
 

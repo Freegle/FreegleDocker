@@ -13,7 +13,6 @@ return new class extends Migration
     {
         Schema::table('communityevents', function (Blueprint $table) {
             $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
-            $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('set null');
         });
     }
 
