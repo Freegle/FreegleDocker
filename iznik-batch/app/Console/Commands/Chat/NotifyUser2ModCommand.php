@@ -69,12 +69,12 @@ class NotifyUser2ModCommand extends Command
             );
 
             $totalNotified += $count;
+            $iteration++;
 
             if ($count > 0) {
                 $this->info("Sent {$count} notifications.");
             } else {
                 // No messages to process, sleep before next iteration.
-                $iteration++;
                 sleep(1);
             }
         } while ($iteration < $maxIterations);

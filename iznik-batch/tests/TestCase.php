@@ -44,9 +44,10 @@ abstract class TestCase extends BaseTestCase
      */
     protected function createTestGroup(array $attributes = []): Group
     {
+        $uniqueId = uniqid();
         return Group::create(array_merge([
-            'nameshort' => 'TestGroup' . uniqid(),
-            'namefull' => 'Test Freegle Group',
+            'nameshort' => 'TestGroup' . $uniqueId,
+            'namefull' => 'Test Freegle Group ' . $uniqueId,
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5074,
