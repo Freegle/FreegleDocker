@@ -4,6 +4,10 @@ This document covers research on:
 1. Searchable application logs (not DB-based)
 2. Email content archiving with 7-day retention
 3. Visual email flow design tools
+4. Retention & user journey automation
+5. Migrating iznik-server `logs` table to Loki
+6. Self-hosted Loki implementation plan
+7. User activity timeline UI for Support Tools
 
 ## Current State
 
@@ -1432,3 +1436,157 @@ Write messages that make sense to someone who knows the system but not the code:
 - [Dittofeed Documentation](https://docs.dittofeed.com/) - Segments, journeys, and event tracking
 - [Dittofeed Self-Hosting Guide](https://docs.dittofeed.com/deployment/self-hosted) - Docker deployment
 - [Customer.io Journey Builder](https://customer.io/docs/journeys/) - Commercial alternative with similar concepts (for reference)
+
+---
+
+## Part 7: User Activity Timeline (Support Tools UI)
+
+This section addresses a different need from Loki: presenting the existing `logs` table data in a **user-friendly timeline UI** for support staff investigating user issues.
+
+### The Problem
+
+The current ModTools log viewer (Support Tools) has several usability issues:
+
+**Current Format Issues:**
+- Repetitive user info on every row (redundant when viewing a specific user's logs)
+- Internal IDs exposed (#35909200, #44182860) - meaningless to support staff
+- Dense run-on text with technical jargon ("using Approve and Unmod")
+- No visual hierarchy - all events have same visual weight
+- No grouping by time period
+- Hard to scan quickly for relevant events
+
+### Target Audience
+
+1. **Primary:** Support/Admin staff investigating user issues ("User X reported a problem - what happened?")
+2. **Secondary:** Moderators looking at member activity
+
+### Proposed UI Design
+
+**Grouped timeline with collapsible sections:**
+
+```
+▼ Today (3 events)
+  ✓ Approved chat message for offr                           06:41
+
+▼ Yesterday (8 events)
+  ✓ Approved "Extendable dining table & 6 chairs" on HuddersfieldFreegle   14:30
+  ⚙ Changed posting status on HuddersfieldFreegle            14:30
+  ✓ Approved "Bosch power washer" on EdinburghFreegle        14:30
+  ...
+
+▸ Last 7 days (23 events)
+▸ Last 30 days (87 events)
+▸ Older (142 events) - collapsed by default
+```
+
+**Key improvements:**
+- Human-readable sentences (no raw JSON, no internal IDs)
+- Visual icons for event types (✓ approval, ⚙ settings, 🚪 join/leave, etc.)
+- Clickable links to messages/groups/users
+- Time grouping with older events collapsed by default
+- No redundant user info (already viewing that user's logs)
+
+### Implementation Options
+
+#### Option A: Nuxt UI Timeline + Custom Grouping (Recommended)
+
+[Nuxt UI Timeline](https://ui.nuxt.com/docs/components/timeline) - Native to existing stack.
+
+**Pros:**
+- Already using Nuxt in iznik-nuxt3-modtools
+- Minimal dependencies
+- Full control over simplicity
+
+**Cons:**
+- Need to build grouping/collapsing logic ourselves
+- Need to build human-readable message transformation
+
+#### Option B: PrimeVue Timeline
+
+[PrimeVue Timeline](https://primevue.org/timeline/) - Popular component library.
+
+**Pros:**
+- More built-in features
+- Good documentation
+- Active community
+
+**Cons:**
+- Additional dependency
+- Still need custom grouping
+
+#### Option C: Full Audit Log Service (Retraced)
+
+[Retraced](https://github.com/retracedhq/retraced) - Full audit log service with embeddable UI.
+
+**Pros:**
+- Ready-made embeddable UI
+- Searchable, exportable
+
+**Cons:**
+- Adds Elasticsearch dependency
+- Separate service to maintain
+- Probably overkill for this use case
+
+### Recommended Approach: Option A
+
+Use Nuxt UI Timeline with custom components for:
+
+1. **API endpoint** - Fetches logs for a user, grouped by time period
+2. **Human-readable transformer** - Converts `{type: 'User', subtype: 'Joined', groupid: 123}` into "Joined Barnet Freegle group"
+3. **Collapsible time groups** - Today, Yesterday, Last 7 days, Last 30 days, Older
+4. **Clickable entity links** - Messages, groups, users open in new tab
+
+### Human-Readable Message Mapping
+
+Transform type/subtype combinations into sentences:
+
+| Type | Subtype | Template |
+|------|---------|----------|
+| User | Joined | "Joined {group}" |
+| User | Left | "Left {group}" |
+| User | Login | "Logged in via {method}" |
+| User | Bounce | "Email bounced: {email}" |
+| Message | Approved | "Approved '{subject}' on {group}" |
+| Message | Rejected | "Rejected '{subject}' on {group}" |
+| Message | Created | "Posted '{subject}' on {group}" |
+| Message | Outcome | "Marked '{subject}' as {outcome}" |
+| Chat | Created | "Started chat about '{subject}'" |
+| Chat | Replied | "Replied in chat about '{subject}'" |
+
+### Filtering Capabilities
+
+Simple filters (not complex query language):
+
+- **Event type:** All / Messages / Groups / Logins / Chats
+- **Time range:** All time / Last 7 days / Last 30 days / Last year
+- **Search:** Free text search in message subjects/group names
+
+### Location in ModTools
+
+Add as new tab/section in **Support Tools** user view:
+- Existing: Summary, Groups, Messages, etc.
+- New: **Activity Timeline**
+
+### Implementation Steps
+
+1. Create API endpoint `/api/user/{id}/activity-timeline`
+2. Build human-readable message transformer service
+3. Create Vue component with Nuxt UI Timeline
+4. Add collapsible time grouping
+5. Wire up entity links (messages, groups)
+6. Add to Support Tools user view
+
+### Relationship to Loki
+
+This UI is **independent of Loki migration**:
+- Currently reads from MySQL `logs` table
+- After Loki migration, could read from Loki instead
+- The UI layer and human-readable transformation remain the same
+- Loki would provide better search/retention, but the UI problem is separate
+
+### Sources
+
+- [Nuxt UI Timeline](https://ui.nuxt.com/docs/components/timeline)
+- [PrimeVue Timeline](https://primevue.org/timeline/)
+- [Retraced Audit Log](https://github.com/retracedhq/retraced)
+- [simple-vue-timeline](https://scottie34.github.io/simple-vue-timeline/)
