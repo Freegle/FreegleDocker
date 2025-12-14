@@ -12,9 +12,12 @@ class UserDonation extends Model
     protected $guarded = ['id'];
     public $timestamps = FALSE;
 
-    public const SOURCE_PAYPAL = 'PayPal';
+    public const SOURCE_DONATE_WITH_PAYPAL = 'DonateWithPayPal';
+    public const SOURCE_PAYPAL_GIVING_FUND = 'PayPalGivingFund';
+    public const SOURCE_FACEBOOK = 'Facebook';
+    public const SOURCE_EBAY = 'eBay';
+    public const SOURCE_BANK_TRANSFER = 'BankTransfer';
     public const SOURCE_STRIPE = 'Stripe';
-    public const SOURCE_NATIVE = 'Native';
 
     protected $casts = [
         'timestamp' => 'datetime',
@@ -37,7 +40,7 @@ class UserDonation extends Model
      */
     public function scopeFromPaymentProviders(Builder $query): Builder
     {
-        return $query->whereIn('source', [self::SOURCE_PAYPAL, self::SOURCE_STRIPE]);
+        return $query->whereIn('source', [self::SOURCE_DONATE_WITH_PAYPAL, self::SOURCE_STRIPE]);
     }
 
     /**
@@ -87,7 +90,7 @@ class UserDonation extends Model
     public function canChaseGiftAid(): bool
     {
         return !$this->giftaidconsent
-            && $this->giftaidchaseup === NULL
-            && in_array($this->source, [self::SOURCE_PAYPAL, self::SOURCE_STRIPE]);
+            && $this->giftaidchaseup === null
+            && in_array($this->source, [self::SOURCE_DONATE_WITH_PAYPAL, self::SOURCE_STRIPE]);
     }
 }

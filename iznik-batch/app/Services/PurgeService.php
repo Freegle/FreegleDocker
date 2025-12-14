@@ -36,7 +36,7 @@ class PurgeService
 
             $total += $deleted;
 
-            if ($total % 1000 === 0 && $total > 0) {
+            if ($total % $this->logInterval === 0 && $total > 0) {
                 Log::info("Purged {$total} spam chat messages");
             }
         } while ($deleted > 0);
@@ -66,7 +66,7 @@ class PurgeService
             ChatRoom::whereIn('id', $emptyRooms)->delete();
             $total += $emptyRooms->count();
 
-            if ($total % 1000 === 0) {
+            if ($total % $this->logInterval === 0) {
                 Log::info("Purged {$total} empty chat rooms");
             }
         } while (true);
@@ -88,7 +88,7 @@ class PurgeService
 
             $total += $deleted;
 
-            if ($total % 1000 === 0 && $total > 0) {
+            if ($total % $this->logInterval === 0 && $total > 0) {
                 Log::info("Purged {$total} orphaned chat images");
             }
         } while ($deleted > 0);
@@ -112,7 +112,7 @@ class PurgeService
 
             $total += $deleted;
 
-            if ($total % 1000 === 0 && $total > 0) {
+            if ($total % $this->logInterval === 0 && $total > 0) {
                 Log::info("Purged {$total} messages_history records");
             }
         } while ($deleted > 0);
@@ -141,7 +141,7 @@ class PurgeService
             Message::whereIn('id', $pendingMsgIds)->delete();
             $total += $pendingMsgIds->count();
 
-            if ($total % 1000 === 0) {
+            if ($total % $this->logInterval === 0) {
                 Log::info("Purged {$total} pending messages");
             }
         } while (true);
@@ -170,7 +170,7 @@ class PurgeService
             Message::whereIn('id', $draftMsgIds)->delete();
             $total += $draftMsgIds->count();
 
-            if ($total % 1000 === 0) {
+            if ($total % $this->logInterval === 0) {
                 Log::info("Purged {$total} old drafts");
             }
         } while (true);
@@ -200,7 +200,7 @@ class PurgeService
             Message::whereIn('id', $msgIds)->delete();
             $total += $msgIds->count();
 
-            if ($total % 1000 === 0) {
+            if ($total % $this->logInterval === 0) {
                 Log::info("Purged {$total} non-Freegle messages");
             }
         } while (true);
@@ -226,7 +226,7 @@ class PurgeService
 
             $total += $deleted;
 
-            if ($total % 1000 === 0 && $total > 0) {
+            if ($total % $this->logInterval === 0 && $total > 0) {
                 Log::info("Purged {$total} deleted messages");
             }
         } while ($deleted > 0);
@@ -260,7 +260,7 @@ class PurgeService
             Message::whereIn('id', $strandedIds)->delete();
             $total += $strandedIds->count();
 
-            if ($total % 1000 === 0) {
+            if ($total % $this->logInterval === 0) {
                 Log::info("Purged {$total} stranded messages");
             }
         } while (true);
@@ -286,7 +286,7 @@ class PurgeService
 
             $total += $updated;
 
-            if ($total % 1000 === 0 && $total > 0) {
+            if ($total % $this->logInterval === 0 && $total > 0) {
                 Log::info("Purged HTML body from {$total} messages");
             }
         } while ($updated > 0);

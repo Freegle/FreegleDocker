@@ -179,8 +179,128 @@ class UserDonationModelTest extends TestCase
 
     public function test_source_constants(): void
     {
-        $this->assertEquals('PayPal', UserDonation::SOURCE_PAYPAL);
+        $this->assertEquals('DonateWithPayPal', UserDonation::SOURCE_DONATE_WITH_PAYPAL);
+        $this->assertEquals('PayPalGivingFund', UserDonation::SOURCE_PAYPAL_GIVING_FUND);
+        $this->assertEquals('Facebook', UserDonation::SOURCE_FACEBOOK);
+        $this->assertEquals('eBay', UserDonation::SOURCE_EBAY);
+        $this->assertEquals('BankTransfer', UserDonation::SOURCE_BANK_TRANSFER);
         $this->assertEquals('Stripe', UserDonation::SOURCE_STRIPE);
-        $this->assertEquals('Native', UserDonation::SOURCE_NATIVE);
+    }
+
+    public function test_from_payment_providers_scope(): void
+    {
+        $user = $this->createTestUser();
+
+        $paypalDonation = UserDonation::create([
+            'userid' => $user->id,
+            'timestamp' => now(),
+            'GrossAmount' => 10.00,
+            'type' => 'PayPal',
+            'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
+            'Payer' => 'test10@example.com',
+            'PayerDisplayName' => 'Test User',
+        ]);
+
+        $stripeDonation = UserDonation::create([
+            'userid' => $user->id,
+            'timestamp' => now(),
+            'GrossAmount' => 20.00,
+            'type' => 'Stripe',
+            'source' => UserDonation::SOURCE_STRIPE,
+            'Payer' => 'test11@example.com',
+            'PayerDisplayName' => 'Test User',
+        ]);
+
+        $otherDonation = UserDonation::create([
+            'userid' => $user->id,
+            'timestamp' => now(),
+            'GrossAmount' => 30.00,
+            'type' => 'Other',
+            'source' => UserDonation::SOURCE_FACEBOOK,
+            'Payer' => 'test12@example.com',
+            'PayerDisplayName' => 'Test User',
+        ]);
+
+        $results = UserDonation::fromPaymentProviders()->get();
+
+        $this->assertTrue($results->contains('id', $paypalDonation->id));
+        $this->assertTrue($results->contains('id', $stripeDonation->id));
+        $this->assertFalse($results->contains('id', $otherDonation->id));
+    }
+
+    public function test_can_chase_gift_aid_returns_true(): void
+    {
+        $user = $this->createTestUser();
+
+        $donation = UserDonation::create([
+            'userid' => $user->id,
+            'timestamp' => now(),
+            'GrossAmount' => 10.00,
+            'type' => 'PayPal',
+            'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
+            'Payer' => 'test13@example.com',
+            'PayerDisplayName' => 'Test User',
+            'giftaidconsent' => false,
+            'giftaidchaseup' => null,
+        ]);
+
+        $this->assertTrue($donation->canChaseGiftAid());
+    }
+
+    public function test_can_chase_gift_aid_returns_false_with_consent(): void
+    {
+        $user = $this->createTestUser();
+
+        $donation = UserDonation::create([
+            'userid' => $user->id,
+            'timestamp' => now(),
+            'GrossAmount' => 10.00,
+            'type' => 'PayPal',
+            'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
+            'Payer' => 'test14@example.com',
+            'PayerDisplayName' => 'Test User',
+            'giftaidconsent' => true,
+            'giftaidchaseup' => null,
+        ]);
+
+        $this->assertFalse($donation->canChaseGiftAid());
+    }
+
+    public function test_can_chase_gift_aid_returns_false_if_already_chased(): void
+    {
+        $user = $this->createTestUser();
+
+        $donation = UserDonation::create([
+            'userid' => $user->id,
+            'timestamp' => now(),
+            'GrossAmount' => 10.00,
+            'type' => 'PayPal',
+            'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
+            'Payer' => 'test15@example.com',
+            'PayerDisplayName' => 'Test User',
+            'giftaidconsent' => false,
+            'giftaidchaseup' => now(),
+        ]);
+
+        $this->assertFalse($donation->canChaseGiftAid());
+    }
+
+    public function test_can_chase_gift_aid_returns_false_for_non_payment_provider(): void
+    {
+        $user = $this->createTestUser();
+
+        $donation = UserDonation::create([
+            'userid' => $user->id,
+            'timestamp' => now(),
+            'GrossAmount' => 10.00,
+            'type' => 'Other',
+            'source' => UserDonation::SOURCE_FACEBOOK,
+            'Payer' => 'test16@example.com',
+            'PayerDisplayName' => 'Test User',
+            'giftaidconsent' => false,
+            'giftaidchaseup' => null,
+        ]);
+
+        $this->assertFalse($donation->canChaseGiftAid());
     }
 }

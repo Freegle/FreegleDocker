@@ -275,5 +275,4 @@ class GroupModelTest extends TestCase
 
         $this->assertEquals(1, $group->messages()->count());
     }
-
 }

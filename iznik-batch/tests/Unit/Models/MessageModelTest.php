@@ -393,4 +393,15 @@ class MessageModelTest extends TestCase
         $this->assertEquals('Offer', Message::TYPE_OFFER);
         $this->assertEquals('Wanted', Message::TYPE_WANTED);
     }
+
+    public function test_attachments_relationship(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+
+        $message = $this->createTestMessage($user, $group);
+
+        $this->assertEquals(0, $message->attachments()->count());
+    }
 }
