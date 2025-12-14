@@ -17,14 +17,6 @@ class ChatImage extends Model
     ];
 
     /**
-     * Get the chat room.
-     */
-    public function chatRoom(): BelongsTo
-    {
-        return $this->belongsTo(ChatRoom::class, 'chatid');
-    }
-
-    /**
      * Get the chat message.
      */
     public function chatMessage(): BelongsTo

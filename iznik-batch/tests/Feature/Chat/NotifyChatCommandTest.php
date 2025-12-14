@@ -17,32 +17,18 @@ class NotifyChatCommandTest extends TestCase
         Mail::fake();
     }
 
-    protected function createTestChatRoom(User $user1, User $user2, string $type = ChatRoom::TYPE_USER2USER): ChatRoom
+    protected function createChatRoomWithLatest(User $user1, User $user2, string $type = ChatRoom::TYPE_USER2USER): ChatRoom
     {
-        return ChatRoom::create([
+        return parent::createTestChatRoom($user1, $user2, [
             'chattype' => $type,
-            'user1' => $user1->id,
-            'user2' => $user2->id,
-            'created' => now(),
             'latestmessage' => now(),
         ]);
     }
 
-    protected function createTestChatMessage(ChatRoom $room, User $sender): ChatMessage
+    protected function createChatMessageWithDate(ChatRoom $room, User $sender): ChatMessage
     {
-        return ChatMessage::create([
-            'chatid' => $room->id,
-            'userid' => $sender->id,
-            'message' => 'Test message',
-            'type' => ChatMessage::TYPE_DEFAULT,
+        return parent::createTestChatMessage($room, $sender, [
             'date' => now()->subMinutes(5),
-            'reviewrequired' => 0,
-            'processingrequired' => 0,
-            'processingsuccessful' => 1,
-            'mailedtoall' => 0,
-            'seenbyall' => 0,
-            'reviewrejected' => 0,
-            'platform' => 1,
         ]);
     }
 
@@ -78,9 +64,9 @@ class NotifyChatCommandTest extends TestCase
         $sender = $this->createTestUser();
         $recipient = $this->createTestUser();
 
-        $room = $this->createTestChatRoom($sender, $recipient);
+        $room = $this->createChatRoomWithLatest($sender, $recipient);
         $this->createRosterEntries($room, $sender, $recipient);
-        $this->createTestChatMessage($room, $sender);
+        $this->createChatMessageWithDate($room, $sender);
 
         $this->artisan('freegle:chat:notify-user2user', [
             '--chat' => $room->id,
@@ -109,7 +95,7 @@ class NotifyChatCommandTest extends TestCase
         $sender = $this->createTestUser();
         $recipient = $this->createTestUser();
 
-        $room = $this->createTestChatRoom($sender, $recipient);
+        $room = $this->createChatRoomWithLatest($sender, $recipient);
         $this->createRosterEntries($room, $sender, $recipient);
 
         // Create already-mailed message.

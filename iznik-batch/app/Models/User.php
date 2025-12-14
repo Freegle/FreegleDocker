@@ -92,22 +92,6 @@ class User extends Model
     }
 
     /**
-     * Get user's expected replies tracking.
-     */
-    public function expectedReplies(): HasMany
-    {
-        return $this->hasMany(UserExpected::class, 'userid');
-    }
-
-    /**
-     * Get user's engagement records.
-     */
-    public function engagements(): HasMany
-    {
-        return $this->hasMany(Engage::class, 'userid');
-    }
-
-    /**
      * Get the user's preferred email address.
      */
     public function getEmailPreferredAttribute(): ?string

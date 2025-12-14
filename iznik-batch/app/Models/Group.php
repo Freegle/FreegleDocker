@@ -66,35 +66,11 @@ class Group extends Model
     }
 
     /**
-     * Get group's community events.
-     */
-    public function communityEvents(): BelongsToMany
-    {
-        return $this->belongsToMany(CommunityEvent::class, 'communityevents_groups', 'groupid', 'eventid');
-    }
-
-    /**
-     * Get group's volunteering opportunities.
-     */
-    public function volunteering(): BelongsToMany
-    {
-        return $this->belongsToMany(Volunteering::class, 'volunteering_groups', 'groupid', 'volunteeringid');
-    }
-
-    /**
      * Get group's digest records.
      */
     public function digests(): HasMany
     {
         return $this->hasMany(GroupDigest::class, 'groupid');
-    }
-
-    /**
-     * Get group's Facebook pages.
-     */
-    public function facebookPages(): HasMany
-    {
-        return $this->hasMany(GroupFacebook::class, 'groupid');
     }
 
     /**

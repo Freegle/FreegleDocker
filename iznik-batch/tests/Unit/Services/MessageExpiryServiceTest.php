@@ -194,4 +194,29 @@ class MessageExpiryServiceTest extends TestCase
     {
         $this->assertEquals(90, MessageExpiryService::EXPIRE_LOOKBACK_DAYS);
     }
+
+    public function test_process_expired_from_spatial_index_logs_progress(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+
+        // Create 100 messages with spatial index entries to trigger progress logging.
+        for ($i = 0; $i < 100; $i++) {
+            $message = $this->createTestMessage($user, $group, [
+                'subject' => "OFFER: Test Item $i (TestLocation)",
+            ]);
+
+            DB::table('messages_spatial')->insert([
+                'msgid' => $message->id,
+                'point' => DB::raw("ST_GeomFromText('POINT(0 0)', 3857)"),
+                'successful' => 0,
+            ]);
+        }
+
+        $count = $this->service->processExpiredFromSpatialIndex();
+
+        $this->assertEquals(100, $count);
+    }
+
 }

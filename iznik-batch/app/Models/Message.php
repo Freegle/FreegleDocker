@@ -66,30 +66,6 @@ class Message extends Model
     }
 
     /**
-     * Get the location.
-     */
-    public function location(): BelongsTo
-    {
-        return $this->belongsTo(Location::class, 'locationid');
-    }
-
-    /**
-     * Get message likes/views.
-     */
-    public function likes(): HasMany
-    {
-        return $this->hasMany(MessageLike::class, 'msgid');
-    }
-
-    /**
-     * Get message history.
-     */
-    public function history(): HasMany
-    {
-        return $this->hasMany(MessageHistory::class, 'msgid');
-    }
-
-    /**
      * Get chat messages referencing this message.
      */
     public function chatMessages(): HasMany

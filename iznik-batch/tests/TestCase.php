@@ -2,6 +2,8 @@
 
 namespace Tests;
 
+use App\Models\ChatMessage;
+use App\Models\ChatRoom;
 use App\Models\Group;
 use App\Models\Membership;
 use App\Models\Message;
@@ -113,5 +115,39 @@ abstract class TestCase extends BaseTestCase
             ]);
         }
         return $messages;
+    }
+
+    /**
+     * Create a test chat room between two users.
+     */
+    protected function createTestChatRoom(User $user1, User $user2, array $attributes = []): ChatRoom
+    {
+        return ChatRoom::create(array_merge([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ], $attributes));
+    }
+
+    /**
+     * Create a test chat message.
+     */
+    protected function createTestChatMessage(ChatRoom $room, User $user, array $attributes = []): ChatMessage
+    {
+        return ChatMessage::create(array_merge([
+            'chatid' => $room->id,
+            'userid' => $user->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ], $attributes));
     }
 }
