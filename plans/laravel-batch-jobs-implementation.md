@@ -996,3 +996,218 @@ iznik-server-laravel/
 4. **Performance Profiling**: Compare query performance with original PHP.
 5. **Parallel Run**: Run alongside existing PHP crons to compare outputs.
 6. **Coverage Report**: Generate and review code coverage metrics.
+
+---
+
+## Go API to Laravel Email Integration
+
+### Problem Statement
+
+As the v2 Go API handles more functionality, it needs a clean way to trigger email generation via the Laravel batch system. The Go API should be able to request emails without duplicating the MJML templates or email sending logic.
+
+### Recommended Architecture: MySQL-based Job Queue
+
+The simplest, most robust approach is to use a MySQL table as a job queue. This aligns with the existing database-centric architecture and requires no additional infrastructure.
+
+#### Database Schema
+
+```sql
+CREATE TABLE `email_jobs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `email_type` varchar(100) NOT NULL COMMENT 'Email template type (e.g., welcome, chat_notification, donation_request)',
+  `payload` json NOT NULL COMMENT 'JSON payload with all data needed for email',
+  `status` enum('pending','processing','completed','failed') NOT NULL DEFAULT 'pending',
+  `priority` tinyint NOT NULL DEFAULT '5' COMMENT '1=urgent, 5=normal, 10=low',
+  `attempts` tinyint NOT NULL DEFAULT '0',
+  `max_attempts` tinyint NOT NULL DEFAULT '3',
+  `error_message` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `processed_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `status_priority_created` (`status`, `priority`, `created_at`),
+  KEY `email_type` (`email_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+```
+
+#### Go API Side
+
+```go
+// internal/email/queue.go
+package email
+
+import (
+    "database/sql"
+    "encoding/json"
+)
+
+type EmailJob struct {
+    Type     string      `json:"type"`
+    Payload  interface{} `json:"payload"`
+    Priority int         `json:"priority"`
+}
+
+func (q *EmailQueue) Enqueue(db *sql.DB, job EmailJob) error {
+    payloadJSON, err := json.Marshal(job.Payload)
+    if err != nil {
+        return err
+    }
+
+    _, err = db.Exec(`
+        INSERT INTO email_jobs (email_type, payload, priority)
+        VALUES (?, ?, ?)
+    `, job.Type, payloadJSON, job.Priority)
+    return err
+}
+
+// Example usage for welcome email
+func SendWelcomeEmail(db *sql.DB, userID int64, password string) error {
+    return queue.Enqueue(db, EmailJob{
+        Type: "welcome",
+        Payload: map[string]interface{}{
+            "user_id":  userID,
+            "password": password,
+        },
+        Priority: 1, // Urgent
+    })
+}
+```
+
+#### Laravel Side
+
+```php
+// app/Console/Commands/Email/ProcessEmailQueueCommand.php
+namespace App\Console\Commands\Email;
+
+use App\Mail\Welcome\WelcomeMail;
+use App\Mail\Chat\ChatNotification;
+use App\Models\User;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+
+class ProcessEmailQueueCommand extends Command
+{
+    protected $signature = 'freegle:email:process-queue
+                            {--batch=100 : Number of jobs to process}';
+
+    protected $description = 'Process email jobs from the queue';
+
+    private array $emailHandlers = [
+        'welcome' => 'handleWelcome',
+        'chat_notification' => 'handleChatNotification',
+        'donation_request' => 'handleDonationRequest',
+        // Add more email types as needed
+    ];
+
+    public function handle(): int
+    {
+        $batchSize = (int) $this->option('batch');
+
+        // Claim jobs atomically
+        $jobs = DB::table('email_jobs')
+            ->where('status', 'pending')
+            ->orderBy('priority')
+            ->orderBy('created_at')
+            ->limit($batchSize)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($jobs as $job) {
+            $this->processJob($job);
+        }
+
+        return Command::SUCCESS;
+    }
+
+    private function processJob(object $job): void
+    {
+        DB::table('email_jobs')
+            ->where('id', $job->id)
+            ->update([
+                'status' => 'processing',
+                'attempts' => DB::raw('attempts + 1'),
+            ]);
+
+        try {
+            $handler = $this->emailHandlers[$job->email_type] ?? null;
+            if (!$handler || !method_exists($this, $handler)) {
+                throw new \Exception("Unknown email type: {$job->email_type}");
+            }
+
+            $payload = json_decode($job->payload, true);
+            $this->$handler($payload);
+
+            DB::table('email_jobs')
+                ->where('id', $job->id)
+                ->update([
+                    'status' => 'completed',
+                    'processed_at' => now(),
+                ]);
+        } catch (\Exception $e) {
+            $status = $job->attempts >= $job->max_attempts ? 'failed' : 'pending';
+            DB::table('email_jobs')
+                ->where('id', $job->id)
+                ->update([
+                    'status' => $status,
+                    'error_message' => $e->getMessage(),
+                ]);
+        }
+    }
+
+    private function handleWelcome(array $payload): void
+    {
+        $user = User::findOrFail($payload['user_id']);
+        Mail::send(new WelcomeMail($user, $payload['password'] ?? null));
+    }
+
+    private function handleChatNotification(array $payload): void
+    {
+        // Implementation for chat notifications
+    }
+
+    private function handleDonationRequest(array $payload): void
+    {
+        // Implementation for donation requests
+    }
+}
+```
+
+### Alternative Architectures Considered
+
+#### 1. Redis Queue
+- **Pros**: Fast, native Laravel queue support, job delays
+- **Cons**: Additional infrastructure, Redis not currently used, adds complexity
+
+#### 2. Direct HTTP API Call from Go to Laravel
+- **Pros**: Immediate feedback, simpler Go code
+- **Cons**: Tight coupling, requires exposing Laravel endpoints, network failures block Go
+
+#### 3. RabbitMQ / AMQP
+- **Pros**: Enterprise-grade, guaranteed delivery
+- **Cons**: Significant infrastructure overhead, overkill for this use case
+
+#### 4. Beanstalkd (existing)
+- **Pros**: Already in use for background.php
+- **Cons**: Less Laravel-native, being phased out
+
+### Why MySQL Queue is Recommended
+
+1. **Zero new dependencies**: Uses existing MySQL infrastructure
+2. **Transactional consistency**: Jobs can be inserted in same transaction as other data
+3. **Easy debugging**: Jobs visible in database, easy to query/retry
+4. **Familiar tooling**: Standard SQL queries for monitoring
+5. **Atomic operations**: `SELECT ... FOR UPDATE` prevents double processing
+6. **Automatic retry**: Built-in attempt tracking and failure handling
+7. **Priority support**: Different email types can have different priorities
+8. **Audit trail**: Completed jobs can be kept for debugging/analytics
+
+### Implementation Steps
+
+1. **Create migration** for `email_jobs` table
+2. **Add Go email queue package** with type-safe job creation
+3. **Create Laravel command** to process the queue
+4. **Add to scheduler** (run every minute like other chat commands)
+5. **Add monitoring** via status page API endpoint
+6. **Write tests** for both Go and Laravel sides
+7. **Gradual migration**: Start with one email type, expand as proven
