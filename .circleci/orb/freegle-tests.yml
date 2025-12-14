@@ -845,23 +845,34 @@ commands:
               echo "Found Laravel coverage..."
               echo "DEBUG: Coverage file size: $(wc -c < /tmp/laravel-clover.xml) bytes"
 
-              # Install php-coveralls in the batch container
-              echo "Installing php-coveralls in batch container..."
-              docker exec freegle-batch composer require php-coveralls/php-coveralls --dev 2>&1 || echo "php-coveralls may already be installed"
+              # Run php-coveralls from outside the container where git is available
+              # This allows coveralls to get git info from the FreegleDocker repo
+              echo "Installing php-coveralls locally..."
+              composer global require php-coveralls/php-coveralls --quiet 2>/dev/null || true
 
-              # Copy coverage file to container
-              docker cp /tmp/laravel-clover.xml freegle-batch:/var/www/html/clover.xml
+              # Move coverage file to project root and create config
+              cp /tmp/laravel-clover.xml ./laravel-clover.xml
+              echo "coverage_clover: laravel-clover.xml" > .coveralls-laravel.yml
+              echo "json_path: /tmp/coveralls-laravel-upload.json" >> .coveralls-laravel.yml
+              echo "service_name: circleci" >> .coveralls-laravel.yml
+              echo "src_dir: iznik-batch/app" >> .coveralls-laravel.yml
 
-              # Create coveralls config in container
-              docker exec freegle-batch bash -c "echo 'coverage_clover: clover.xml' > /var/www/html/.coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> /var/www/html/.coveralls.yml && echo 'service_name: circleci' >> /var/www/html/.coveralls.yml"
-
-              # Run php-coveralls from within the container
-              if docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" -e COVERALLS_RUN_LOCALLY=1 -e CI_BRANCH="$CIRCLE_BRANCH" freegle-batch bash -c "cd /var/www/html && php vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
+              # Run php-coveralls from project root where .git exists
+              if COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" \
+                 COVERALLS_RUN_LOCALLY=1 \
+                 CI_NAME=circleci \
+                 CI_BUILD_NUMBER="$CIRCLE_BUILD_NUM" \
+                 CI_BRANCH="$CIRCLE_BRANCH" \
+                 CI_COMMIT_ID="$CIRCLE_SHA1" \
+                 ~/.composer/vendor/bin/php-coveralls -v --config .coveralls-laravel.yml 2>&1; then
                 echo "✅ Laravel coverage uploaded"
                 echo "LARAVEL_UPLOADED=true" >> $BASH_ENV
               else
                 echo "⚠️ Laravel coverage upload failed"
               fi
+
+              # Cleanup
+              rm -f ./laravel-clover.xml .coveralls-laravel.yml
             else
               echo "ℹ️ No Laravel coverage found at /tmp/laravel-coverage.xml"
             fi
