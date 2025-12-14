@@ -291,4 +291,187 @@ class PurgeServiceTest extends TestCase
         $this->assertArrayHasKey('deleted_messages', $results);
         $this->assertArrayHasKey('unvalidated_emails', $results);
     }
+
+    public function test_purge_old_messages_history(): void
+    {
+        // Insert old messages_history record.
+        DB::table('messages_history')->insert([
+            'msgid' => 1,
+            'arrival' => now()->subDays(100),
+        ]);
+
+        // Insert recent messages_history record.
+        DB::table('messages_history')->insert([
+            'msgid' => 2,
+            'arrival' => now()->subDays(10),
+        ]);
+
+        $purged = $this->service->purgeOldMessagesHistory(90);
+
+        $this->assertEquals(1, $purged);
+        $this->assertEquals(1, DB::table('messages_history')->count());
+    }
+
+    public function test_purge_old_drafts(): void
+    {
+        $user = $this->createTestUser();
+
+        // Create old draft.
+        $oldMessage = Message::create([
+            'type' => Message::TYPE_OFFER,
+            'fromuser' => $user->id,
+            'subject' => 'Old draft',
+            'source' => 'Platform',
+            'date' => now()->subDays(100),
+            'arrival' => now()->subDays(100),
+        ]);
+
+        DB::table('messages_drafts')->insert([
+            'msgid' => $oldMessage->id,
+            'timestamp' => now()->subDays(100),
+        ]);
+
+        // Create recent draft.
+        $recentMessage = Message::create([
+            'type' => Message::TYPE_OFFER,
+            'fromuser' => $user->id,
+            'subject' => 'Recent draft',
+            'source' => 'Platform',
+            'date' => now()->subDays(10),
+            'arrival' => now()->subDays(10),
+        ]);
+
+        DB::table('messages_drafts')->insert([
+            'msgid' => $recentMessage->id,
+            'timestamp' => now()->subDays(10),
+        ]);
+
+        $purged = $this->service->purgeOldDrafts(90);
+
+        $this->assertEquals(1, $purged);
+        $this->assertNotNull(Message::find($recentMessage->id));
+    }
+
+    public function test_purge_users_nearby(): void
+    {
+        $group = $this->createTestGroup();
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+        $this->createMembership($user1, $group);
+        $this->createMembership($user2, $group);
+
+        $message1 = $this->createTestMessage($user1, $group);
+        $message2 = $this->createTestMessage($user2, $group);
+
+        // Insert old users_nearby record.
+        DB::table('users_nearby')->insert([
+            'userid' => $user1->id,
+            'msgid' => $message1->id,
+            'timestamp' => now()->subDays(100),
+        ]);
+
+        // Insert recent users_nearby record.
+        DB::table('users_nearby')->insert([
+            'userid' => $user2->id,
+            'msgid' => $message2->id,
+            'timestamp' => now()->subDays(10),
+        ]);
+
+        $purged = $this->service->purgeUsersNearby(90);
+
+        $this->assertEquals(1, $purged);
+        $this->assertEquals(1, DB::table('users_nearby')->count());
+    }
+
+    public function test_purge_stranded_messages(): void
+    {
+        $user = $this->createTestUser();
+
+        // Create stranded message (not on any group, no chat refs, no drafts).
+        Message::create([
+            'type' => Message::TYPE_OFFER,
+            'fromuser' => $user->id,
+            'subject' => 'Stranded',
+            'source' => 'Platform',
+            'date' => now()->subDays(5),
+            'arrival' => now()->subDays(5),
+        ]);
+
+        // Create message on a group (should not be purged).
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $this->createTestMessage($user, $group);
+
+        $purged = $this->service->purgeStrandedMessages(2);
+
+        $this->assertEquals(1, $purged);
+    }
+
+    public function test_purge_orphaned_isochrones(): void
+    {
+        // Insert orphaned isochrone (not linked to any user) with NULL locationid.
+        DB::statement("INSERT INTO isochrones (transport, minutes, locationid, polygon) VALUES ('Walk', 30, NULL, ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))'))");
+
+        $purged = $this->service->purgeOrphanedIsochrones();
+
+        $this->assertEquals(1, $purged);
+        $this->assertEquals(0, DB::table('isochrones')->count());
+    }
+
+    public function test_purge_non_freegle_messages(): void
+    {
+        $user = $this->createTestUser();
+
+        // Create non-Freegle group.
+        $nonFreegleGroup = \App\Models\Group::create([
+            'nameshort' => 'NonFreegleGroup',
+            'namefull' => 'Non Freegle Group',
+            'type' => 'Other',
+            'region' => 'TestRegion',
+            'lat' => 51.5,
+            'lng' => -0.1,
+        ]);
+
+        // Create old message on non-Freegle group.
+        $oldMessage = Message::create([
+            'type' => Message::TYPE_OFFER,
+            'fromuser' => $user->id,
+            'subject' => 'Non-Freegle message',
+            'source' => 'Platform',
+            'date' => now()->subDays(100),
+            'arrival' => now()->subDays(100),
+        ]);
+
+        MessageGroup::create([
+            'msgid' => $oldMessage->id,
+            'groupid' => $nonFreegleGroup->id,
+            'collection' => MessageGroup::COLLECTION_APPROVED,
+            'arrival' => now()->subDays(100),
+        ]);
+
+        $purged = $this->service->purgeNonFreegleMessages(90);
+
+        $this->assertEquals(1, $purged);
+    }
+
+    public function test_purge_spam_chat_messages_with_no_spam(): void
+    {
+        $purged = $this->service->purgeSpamChatMessages();
+
+        $this->assertEquals(0, $purged);
+    }
+
+    public function test_purge_empty_chat_rooms_with_no_empty(): void
+    {
+        $purged = $this->service->purgeEmptyChatRooms();
+
+        $this->assertEquals(0, $purged);
+    }
+
+    public function test_purge_orphaned_chat_images_with_none(): void
+    {
+        $purged = $this->service->purgeOrphanedChatImages();
+
+        $this->assertEquals(0, $purged);
+    }
 }

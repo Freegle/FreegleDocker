@@ -102,7 +102,7 @@ class DonationService
         $conditions = [];
 
         foreach (self::EXCLUDED_PAYERS as $payer) {
-            $conditions[] = "payer NOT LIKE '%{$payer}%'";
+            $conditions[] = "Payer NOT LIKE '%{$payer}%'";
         }
 
         return implode(' AND ', $conditions);

@@ -185,4 +185,84 @@ class MessageExpiryServiceTest extends TestCase
         $this->assertEquals(0, $stats['processed']);
         Mail::assertNothingSent();
     }
+
+    public function test_process_expired_from_spatial_index_with_no_messages(): void
+    {
+        $count = $this->service->processExpiredFromSpatialIndex();
+
+        $this->assertEquals(0, $count);
+    }
+
+    public function test_process_expired_from_spatial_index_processes_messages(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser();
+        $this->createMembership($user, $group);
+
+        $message = $this->createTestMessage($user, $group);
+
+        // Insert into messages_spatial table.
+        \DB::statement("INSERT INTO messages_spatial (msgid, point, successful) VALUES ({$message->id}, ST_GeomFromText('POINT(0 0)', 3857), 0)");
+
+        $count = $this->service->processExpiredFromSpatialIndex();
+
+        $this->assertEquals(1, $count);
+
+        // Check outcome was created.
+        $outcome = MessageOutcome::where('msgid', $message->id)->first();
+        $this->assertNotNull($outcome);
+        $this->assertEquals(MessageOutcome::OUTCOME_EXPIRED, $outcome->outcome);
+
+        // Check entry removed from spatial index.
+        $this->assertDatabaseMissing('messages_spatial', ['msgid' => $message->id]);
+    }
+
+    public function test_process_expired_from_spatial_index_skips_successful(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser();
+        $this->createMembership($user, $group);
+
+        $message = $this->createTestMessage($user, $group);
+
+        // Insert into messages_spatial table with successful=1.
+        \DB::statement("INSERT INTO messages_spatial (msgid, point, successful) VALUES ({$message->id}, ST_GeomFromText('POINT(0 0)', 3857), 1)");
+
+        $count = $this->service->processExpiredFromSpatialIndex();
+
+        $this->assertEquals(0, $count);
+    }
+
+    public function test_process_expired_from_spatial_skips_messages_with_outcome(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser();
+        $this->createMembership($user, $group);
+
+        $message = $this->createTestMessage($user, $group);
+
+        // Create existing outcome.
+        MessageOutcome::create([
+            'msgid' => $message->id,
+            'outcome' => MessageOutcome::OUTCOME_TAKEN,
+            'timestamp' => now(),
+        ]);
+
+        // Insert into messages_spatial table.
+        \DB::statement("INSERT INTO messages_spatial (msgid, point, successful) VALUES ({$message->id}, ST_GeomFromText('POINT(0 0)', 3857), 0)");
+
+        $count = $this->service->processExpiredFromSpatialIndex();
+
+        $this->assertEquals(1, $count);
+
+        // Check no new outcome was created (only the existing TAKEN).
+        $outcomes = MessageOutcome::where('msgid', $message->id)->get();
+        $this->assertEquals(1, $outcomes->count());
+        $this->assertEquals(MessageOutcome::OUTCOME_TAKEN, $outcomes->first()->outcome);
+    }
+
+    public function test_expire_lookback_days_constant(): void
+    {
+        $this->assertEquals(90, MessageExpiryService::EXPIRE_LOOKBACK_DAYS);
+    }
 }

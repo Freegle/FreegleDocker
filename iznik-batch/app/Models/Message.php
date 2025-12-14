@@ -38,7 +38,7 @@ class Message extends Model
     public function groups(): BelongsToMany
     {
         return $this->belongsToMany(Group::class, 'messages_groups', 'msgid', 'groupid')
-            ->withPivot(['collection', 'arrival', 'approved_by', 'deleted']);
+            ->withPivot(['collection', 'arrival', 'approvedby', 'deleted']);
     }
 
     /**
@@ -103,7 +103,7 @@ class Message extends Model
     public function scopeApproved(Builder $query): Builder
     {
         return $query->whereHas('groups', function ($q) {
-            $q->wherePivot('collection', 'Approved');
+            $q->where('messages_groups.collection', 'Approved');
         });
     }
 

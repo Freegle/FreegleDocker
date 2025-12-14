@@ -119,10 +119,10 @@ class ChatRoom extends Model
      */
     public function getOtherUser(int $userId): ?User
     {
-        if ($this->user1 === $userId) {
+        if ($this->getAttributeValue('user1') === $userId) {
             return $this->user2()->first();
         }
-        if ($this->user2 === $userId) {
+        if ($this->getAttributeValue('user2') === $userId) {
             return $this->user1()->first();
         }
         return NULL;
@@ -141,6 +141,6 @@ class ChatRoom extends Model
      */
     public function involvesUser(int $userId): bool
     {
-        return $this->user1 === $userId || $this->user2 === $userId;
+        return $this->getAttributeValue('user1') === $userId || $this->getAttributeValue('user2') === $userId;
     }
 }

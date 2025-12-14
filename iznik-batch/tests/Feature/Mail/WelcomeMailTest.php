@@ -92,4 +92,29 @@ class WelcomeMailTest extends TestCase
         $this->assertEquals($email, $mail->recipientEmail);
         $this->assertEquals($password, $mail->password);
     }
+
+    /**
+     * Test that welcome email renders HTML via build method.
+     */
+    public function test_welcome_email_build_renders_html(): void
+    {
+        $email = 'user@test.com';
+        $password = 'secret123';
+
+        $mail = new WelcomeMail($email, $password);
+        $builtMail = $mail->build();
+
+        $this->assertInstanceOf(WelcomeMail::class, $builtMail);
+    }
+
+    /**
+     * Test welcome email attachments returns empty array.
+     */
+    public function test_welcome_email_attachments(): void
+    {
+        $email = 'user@test.com';
+        $mail = new WelcomeMail($email);
+
+        $this->assertEquals([], $mail->attachments());
+    }
 }
