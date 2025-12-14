@@ -752,6 +752,12 @@ services:
         condition: service_started
     restart: "no"
     environment:
+      - APP_NAME=Freegle Batch Jobs
+      - APP_KEY=base64:JXsa9TVxy8PQIrAgimIh0+4v8U7rSYhd3/+an8WYYQc=
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - APP_URL=http://localhost
+      - LOG_CHANNEL=stderr
       - DB_CONNECTION=mysql
       - DB_HOST=percona
       - DB_PORT=3306
@@ -770,9 +776,6 @@ services:
       - MAIL_ENCRYPTION=null
       - FREEGLE_USER_SITE=http://freegle-dev-local.localhost
       - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost
-      - APP_ENV=local
-      - APP_DEBUG=true
-      - LOG_CHANNEL=stderr
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/laravel-ready && php artisan about > /dev/null 2>&1 || exit 1"]
       interval: 30s
