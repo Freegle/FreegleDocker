@@ -129,16 +129,82 @@ app.get('/api/backups', async (req, res) => {
   }
 });
 
+// Helper: Sync in-memory jobs with status file (clean up completed jobs)
+async function syncJobsWithStatusFile() {
+  const statusFile = '/data/restore-status.json';
+
+  try {
+    const statusData = await fsPromises.readFile(statusFile, 'utf8');
+    const status = JSON.parse(statusData);
+
+    // If status file shows completed or failed, update in-memory job
+    if (status.backupDate && restorationJobs[status.backupDate]) {
+      if (status.status === 'completed' || status.status === 'failed') {
+        restorationJobs[status.backupDate].status = status.status;
+        restorationJobs[status.backupDate].completed = status.timestamp;
+        console.log(`Synced job ${status.backupDate} to status: ${status.status}`);
+      }
+    }
+  } catch (e) {
+    // No status file or error reading it - nothing to sync
+  }
+}
+
+// Helper: Check if any restore is currently in progress
+async function isRestoreInProgress() {
+  const statusFile = '/data/restore-status.json';
+  const triggerFile = '/data/restore-trigger';
+
+  // First, sync in-memory jobs with status file
+  await syncJobsWithStatusFile();
+
+  // Check if trigger file exists (restore queued)
+  try {
+    const queuedBackupDate = (await fsPromises.readFile(triggerFile, 'utf8')).trim();
+    return { inProgress: true, backupDate: queuedBackupDate, status: 'queued' };
+  } catch (e) {
+    // No trigger file
+  }
+
+  // Check status file for active restore
+  try {
+    const statusData = await fsPromises.readFile(statusFile, 'utf8');
+    const status = JSON.parse(statusData);
+
+    // Check if status is recent (within last 10 minutes) and still running
+    const statusAge = Date.now() - new Date(status.timestamp).getTime();
+    const isRecent = statusAge < 10 * 60 * 1000;
+
+    if (isRecent && status.status !== 'completed' && status.status !== 'failed') {
+      return { inProgress: true, backupDate: status.backupDate, status: status.status };
+    }
+  } catch (e) {
+    // No status file or error reading it
+  }
+
+  return { inProgress: false };
+}
+
 // POST /api/backups/:backupDate/load - Start loading a backup
 app.post('/api/backups/:backupDate/load', async (req, res) => {
   const { backupDate } = req.params;
 
-  // Check if already loading
-  if (restorationJobs[backupDate]) {
-    const job = restorationJobs[backupDate];
+  // Check if any restore is already in progress
+  const restoreStatus = await isRestoreInProgress();
+  if (restoreStatus.inProgress) {
+    return res.status(409).json({
+      error: `Backup ${restoreStatus.backupDate} is already being loaded (status: ${restoreStatus.status})`,
+      currentBackup: restoreStatus.backupDate,
+      status: restoreStatus.status
+    });
+  }
+
+  // Also check in-memory jobs (in case status file hasn't been written yet)
+  for (const [jobDate, job] of Object.entries(restorationJobs)) {
     if (job.status !== 'completed' && job.status !== 'failed') {
       return res.status(409).json({
-        error: 'Backup is already being loaded',
+        error: `Backup ${jobDate} is already being loaded (status: ${job.status})`,
+        currentBackup: jobDate,
         status: job.status,
         progress: job.progress
       });
