@@ -851,6 +851,10 @@ commands:
               echo "Installing php-coveralls locally..."
               composer global require php-coveralls/php-coveralls --quiet 2>/dev/null || true
 
+              # Find composer global bin directory
+              COMPOSER_BIN=$(composer global config bin-dir --absolute --quiet 2>/dev/null || echo "$HOME/.composer/vendor/bin")
+              echo "DEBUG: Composer bin dir: $COMPOSER_BIN"
+
               # Move coverage file to project root and create config
               cp /tmp/laravel-clover.xml ./laravel-clover.xml
               echo "coverage_clover: laravel-clover.xml" > .coveralls-laravel.yml
@@ -865,7 +869,7 @@ commands:
                  CI_BUILD_NUMBER="$CIRCLE_BUILD_NUM" \
                  CI_BRANCH="$CIRCLE_BRANCH" \
                  CI_COMMIT_ID="$CIRCLE_SHA1" \
-                 ~/.composer/vendor/bin/php-coveralls -v --config .coveralls-laravel.yml 2>&1; then
+                 "$COMPOSER_BIN/php-coveralls" -v --config .coveralls-laravel.yml 2>&1; then
                 echo "✅ Laravel coverage uploaded"
                 echo "LARAVEL_UPLOADED=true" >> $BASH_ENV
               else
