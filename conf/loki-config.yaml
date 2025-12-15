@@ -33,10 +33,20 @@ schema_config:
         prefix: index_
         period: 24h
 
+ingester:
+  # Faster flushing for dev environment (data queryable sooner)
+  chunk_idle_period: 1m       # Flush after 1 min of no writes (default: 30m)
+  max_chunk_age: 5m           # Max age before flush (default: 2h)
+  chunk_retain_period: 30s    # Keep in memory after flush (default: 0)
+  flush_check_period: 10s     # Check frequency (default: 30s)
+
 ruler:
   alertmanager_url: http://localhost:9093
 
 limits_config:
+  # Enable volume for Grafana Logs Drilldown
+  volume_enabled: true
+
   # Default retention: 31 days (744h)
   retention_period: 744h
 
@@ -73,6 +83,25 @@ limits_config:
     # Email logs - 31 days
     - selector: '{source="email"}'
       period: 744h
+
+    # Client-side logs - 7 days
+    - selector: '{source="client"}'
+      period: 168h
+
+    # Batch job logs - 31 days
+    - selector: '{source="batch"}'
+      period: 744h
+
+    # Batch event logs - 31 days
+    - selector: '{source="batch_event"}'
+      period: 744h
+
+  # Allow ingestion of very old logs (for historical backfill)
+  reject_old_samples: false
+
+  # Increase ingestion limits for batch imports
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
 
 compactor:
   working_directory: /loki/compactor
