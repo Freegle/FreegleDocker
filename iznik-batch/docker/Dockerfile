@@ -55,6 +55,9 @@ COPY . .
 # Install PHP dependencies including dev dependencies for testing
 RUN composer install --no-interaction --prefer-dist --optimize-autoloader || true
 
+# Install MJML in the spatie/mjml-php bin directory so it can find the package
+RUN cd vendor/spatie/mjml-php/bin && npm install mjml
+
 # Create storage directories with correct permissions
 RUN mkdir -p storage/framework/{sessions,views,cache} \
     && mkdir -p storage/logs \
