@@ -571,6 +571,43 @@ class ChatMessageModelTest extends TestCase
         $this->assertEquals(1, $message->images()->count());
     }
 
+    public function test_image_relationship(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        // Create an image.
+        $image = \App\Models\ChatImage::create([
+            'chatid' => $room->id,
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Image message',
+            'type' => ChatMessage::TYPE_IMAGE,
+            'imageid' => $image->id,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $this->assertNotNull($message->image);
+        $this->assertEquals($image->id, $message->image->id);
+    }
+
     public function test_type_constants(): void
     {
         $this->assertEquals('Default', ChatMessage::TYPE_DEFAULT);
