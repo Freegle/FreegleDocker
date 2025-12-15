@@ -11,9 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('messages_outcomes_intended', function (Blueprint $table) {
-            $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
-        });
+        // No foreign keys needed for this table.
     }
 
     /**
@@ -21,7 +19,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('messages_outcomes_intended', function (Blueprint $table) {
-        });
+        //
     }
 };
