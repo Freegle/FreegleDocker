@@ -414,6 +414,294 @@ Every entity mentioned in logs is clickable and links to the relevant ModTools p
 | ❌ | Error |
 | 🔄 | Repost/Retry |
 
+## Production Architecture
+
+### Current Phase: MySQL + Loki (Parallel, Feature-Flagged)
+
+MySQL logging continues as source of truth. Loki runs in parallel for fast searching and visualisation.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            Production Servers                               │
+├─────────────────┬─────────────────┬─────────────────┬─────────────────────────┤
+│   PHP Server    │   Go Server     │   Batch Jobs    │   Other Services      │
+│   (API v1)      │   (API v2)      │   (Laravel)     │   (cron, etc.)        │
+└────────┬────────┴────────┬────────┴────────┬────────┴───────────┬───────────┘
+         │                 │                 │                     │
+         │    ┌────────────┴─────────────────┴─────────────────────┘
+         │    │
+         ▼    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         JSON Log Files                                      │
+│   /var/log/freegle/api.log                                                  │
+│   /var/log/freegle/batch.log                                                │
+│   (append-only, logrotate managed)                                          │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │    Grafana Alloy        │  ← Tails files, ships to Loki
+                    │                         │
+                    │  - Disk buffer (1GB)    │  ← Survives Loki outages
+                    │  - positions.yaml       │  ← Tracks progress
+                    │  - Retry with backoff   │
+                    └────────────┬────────────┘
+                                 │
+         ┌───────────────────────┴───────────────────────┐
+         │                                               │
+         ▼                                               ▼
+┌─────────────────────────┐                 ┌─────────────────────────┐
+│        MySQL            │                 │         Loki            │
+│   (Source of Truth)     │                 │   (Fast Search/Query)   │
+│                         │                 │                         │
+│  - logs table           │                 │  - GCS backend          │
+│  - logs_api table       │                 │  - 31-day retention     │
+│  - Retained as audit    │                 │  - Grafana dashboards   │
+└─────────────────────────┘                 └────────────┬────────────┘
+                                                         │
+                                            ┌────────────▼────────────┐
+                                            │   Google Cloud Storage  │
+                                            │                         │
+                                            │  - gs://freegle-loki/   │
+                                            │  - Object versioning    │
+                                            │  - Cross-region backup  │
+                                            └─────────────────────────┘
+```
+
+### Feature Flags
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOKI_ENABLED` | `false` | Enable Loki logging (apps write to JSON files) |
+| `ALLOY_ENABLED` | `false` | Enable Grafana Alloy agent (ships files to Loki) |
+| `MYSQL_LOGGING` | `true` | Continue logging to MySQL (keep enabled for now) |
+
+### JSON Log File Format
+
+Apps write structured JSON logs to local files:
+
+```json
+{"ts":"2025-12-15T10:30:00Z","level":"info","source":"api","type":"User","subtype":"Login","user":12345,"text":"via Google","groupid":null}
+{"ts":"2025-12-15T10:30:01Z","level":"info","source":"api","type":"Message","subtype":"Approved","user":12345,"msgid":789,"groupid":456,"byuser":98765}
+```
+
+**File locations:**
+- `/var/log/freegle/api-v1.log` - PHP API logs
+- `/var/log/freegle/api-v2.log` - Go API logs
+- `/var/log/freegle/batch.log` - Laravel batch job logs
+
+**Logrotate config:**
+```
+/var/log/freegle/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
+### Grafana Alloy Configuration
+
+Alloy replaces Promtail (deprecated Feb 2026). Configuration:
+
+```yaml
+# /etc/alloy/config.alloy
+
+// Tail Freegle log files
+local.file_match "freegle_logs" {
+  path_targets = [
+    {__path__ = "/var/log/freegle/*.log"},
+  ]
+}
+
+loki.source.file "freegle" {
+  targets    = local.file_match.freegle_logs.targets
+  forward_to = [loki.write.default.receiver]
+
+  // Track position for crash recovery
+  tail_from_end = true
+}
+
+// Ship to Loki with disk buffer
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+
+  // Disk buffer survives restarts/outages
+  external_labels = {
+    env = "production",
+  }
+}
+```
+
+### Why This Architecture?
+
+1. **MySQL remains source of truth** - Critical audit logs preserved in database.
+2. **JSON files decouple apps from Loki** - Apps never block on Loki availability.
+3. **Alloy handles shipping** - Disk buffer, retries, position tracking built-in.
+4. **GCS provides durability** - Object storage with versioning for backup.
+5. **Gradual migration** - Can disable MySQL logging once Loki is proven reliable.
+
+## Backup and Restore
+
+### Loki Storage with Google Cloud Storage
+
+Production Loki stores all data (chunks + TSDB index) in GCS:
+
+```yaml
+# conf/loki-config.yaml (production)
+storage_config:
+  gcs:
+    bucket_name: freegle-loki
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/cache
+    shared_store: gcs
+```
+
+**GCS Bucket Configuration:**
+- **Bucket**: `gs://freegle-loki/`
+- **Location**: `europe-west2` (London)
+- **Storage class**: Standard
+- **Object versioning**: Enabled (protects against accidental deletion)
+- **Lifecycle rules**: Delete non-current versions after 30 days
+
+### Backup Strategy
+
+Since Loki stores everything in GCS, backup uses GCS-native features:
+
+**1. Cross-Region Replication (Primary Backup)**
+```bash
+# Set up replication to US region for disaster recovery
+gsutil replication set gs://freegle-loki gs://freegle-loki-backup-us
+```
+
+**2. Daily Snapshot to Separate Bucket**
+```bash
+# Cron job on backup server (runs with DB backups)
+#!/bin/bash
+DATE=$(date +%Y%m%d)
+gsutil -m rsync -r gs://freegle-loki/ gs://freegle-backups/loki/$DATE/
+```
+
+**3. Retention of Backups**
+- Keep daily snapshots for 7 days
+- Keep weekly snapshots for 4 weeks
+- Keep monthly snapshots for 12 months
+
+### Restore to Yesterday System
+
+The yesterday system can restore Loki data for historical analysis.
+
+**Option A: Point Yesterday's Loki at GCS (Recommended)**
+
+Configure yesterday's Loki to read from the same GCS bucket (read-only):
+
+```yaml
+# conf/loki-config.yaml (yesterday)
+storage_config:
+  gcs:
+    bucket_name: freegle-loki
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/cache
+    shared_store: gcs
+    # Read-only mode - don't write new data
+    ingester_name: yesterday-readonly
+
+# Disable ingestion on yesterday
+ingester:
+  lifecycler:
+    ring:
+      replication_factor: 1
+  chunk_idle_period: 999h  # Never flush
+```
+
+**Option B: Sync GCS to Local Filesystem**
+
+For fully offline yesterday access:
+
+```bash
+# On yesterday server
+#!/bin/bash
+# Sync from GCS to local storage
+gsutil -m rsync -r gs://freegle-loki/ /data/loki-restore/
+
+# Then configure Loki to use filesystem storage
+# conf/loki-config.yaml (yesterday - filesystem mode)
+storage_config:
+  filesystem:
+    directory: /data/loki-restore/chunks
+  tsdb_shipper:
+    active_index_directory: /data/loki-restore/index
+    cache_location: /data/loki-restore/cache
+    shared_store: filesystem
+```
+
+**Option C: Selective Date Range Restore**
+
+Restore only specific date ranges:
+
+```bash
+# Sync only December 2025 data
+gsutil -m rsync -r \
+  gs://freegle-loki/fake/index/tsdb/index_19722/ \
+  /data/loki-restore/index/
+
+gsutil -m rsync -r \
+  gs://freegle-loki/fake/chunks/ \
+  /data/loki-restore/chunks/
+```
+
+### Restore Verification
+
+After restoring to yesterday:
+
+```bash
+# Check Loki is serving data
+curl -s "http://localhost:3100/loki/api/v1/query?query={app=\"freegle\"}" | jq .
+
+# Query specific date range
+curl -G "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={source="api"}' \
+  --data-urlencode 'start=2025-12-01T00:00:00Z' \
+  --data-urlencode 'end=2025-12-15T00:00:00Z'
+```
+
+### Migration Caveats
+
+**Known issues with Loki data migration:**
+
+1. **No official migration tool** - Loki's migrate command is experimental and "NOT WELL TESTED".
+2. **Schema must match** - Source and dest Loki must use same schema version.
+3. **Index format matters** - TSDB indexes are not easily portable between instances.
+4. **GCS is simplest** - Reading from same bucket avoids migration entirely.
+
+**Recommendation**: Always use GCS as shared storage. Yesterday reads from same bucket as production (with appropriate IAM permissions).
+
+## Implementation Phases
+
+### Phase 1: Current (MySQL Primary)
+- [x] MySQL `logs` and `logs_api` tables as source of truth
+- [x] Direct Loki integration in PHP/Go (feature-flagged, dev only)
+- [x] CLI tools for database-to-Loki migration
+
+### Phase 2: Parallel Logging (In Progress)
+- [ ] Apps write to JSON log files (in addition to MySQL)
+- [ ] Deploy Grafana Alloy to tail log files
+- [ ] Configure Loki with GCS backend
+- [ ] Set up GCS backup/replication
+- [ ] Build ModTools log viewer UI
+
+### Phase 3: Loki Primary (Future)
+- [ ] Verify Loki reliability over 3+ months
+- [ ] Migrate historical logs from MySQL to Loki
+- [ ] Disable MySQL logging (keep tables for audit compliance)
+- [ ] Yesterday system reads from GCS
+
 ## Loki + Sentry Integration (Planned)
 
 ### Correlation via Trace IDs
