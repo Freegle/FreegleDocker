@@ -702,18 +702,205 @@ curl -G "http://localhost:3100/loki/api/v1/query_range" \
 - [ ] Disable MySQL logging (keep tables for audit compliance)
 - [ ] Yesterday system reads from GCS
 
-## Loki + Sentry Integration (Planned)
+## Client-Side Tracing
+
+Frontend logging with trace correlation allows grouping all client actions and backend API calls into a single traceable flow.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Nuxt3 Client                                      │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  useTrace() composable                                               │   │
+│  │  - Generates trace ID on: route change, modal open, user action     │   │
+│  │  - Stores current trace ID in reactive state                        │   │
+│  └──────────────────────────┬──────────────────────────────────────────┘   │
+│                             │                                               │
+│  ┌──────────────────────────▼──────────────────────────────────────────┐   │
+│  │  useClientLog() composable                                           │   │
+│  │  - Logs client events (page view, click, error)                     │   │
+│  │  - Batches logs and sends to v2 API                                 │   │
+│  └──────────────────────────┬──────────────────────────────────────────┘   │
+│                             │                                               │
+│  ┌──────────────────────────▼──────────────────────────────────────────┐   │
+│  │  API layer (useAPI, $fetch)                                          │   │
+│  │  - Adds X-Trace-ID header to all API requests                       │   │
+│  │  - Adds X-Session-ID header (browser session)                       │   │
+│  └──────────────────────────┬──────────────────────────────────────────┘   │
+│                             │                                               │
+│  ┌──────────────────────────▼──────────────────────────────────────────┐   │
+│  │  Sentry Integration                                                  │   │
+│  │  - Sets trace_id and session_id tags on all events                  │   │
+│  │  - Enables correlation between Sentry errors and Loki logs          │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Backend APIs                                      │
+│                                                                             │
+│  Extract X-Trace-ID and X-Session-ID from request headers                  │
+│  Include trace_id and session_id in all log entries                        │
+│  Set Sentry tags when exceptions occur                                      │
+│  Write logs to JSON files → Alloy ships to Loki                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              ▼                     ▼                     ▼
+     ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+     │      Loki       │   │     Sentry      │   │     MySQL       │
+     │                 │   │                 │   │                 │
+     │ {trace_id="x"}  │◄──┤ trace_id:x      │   │ (audit trail)   │
+     │ {session_id="y"}│   │ session_id:y    │   │                 │
+     └─────────────────┘   └─────────────────┘   └─────────────────┘
+```
+
+### Trace and Session IDs
+
+| ID | Scope | Generated When | Purpose |
+|----|-------|----------------|---------|
+| `session_id` | Browser session | Page load (stored in sessionStorage) | Group all activity in one browser session |
+| `trace_id` | User interaction | Route change, modal open, form submit | Group related actions into one trace |
+
+**Example flow:**
+1. User opens Browse page → new `trace_id` generated
+2. User clicks on a message → new `trace_id` generated
+3. User opens chat modal → new `trace_id` generated
+4. All API calls during that modal interaction share the same `trace_id`
+
+### HTTP Headers
+
+All API requests include these headers:
+
+| Header | Value | Example |
+|--------|-------|---------|
+| `X-Trace-ID` | Current trace UUID | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| `X-Session-ID` | Browser session UUID | `11111111-2222-3333-4444-555555555555` |
+| `X-Client-Timestamp` | ISO timestamp | `2025-12-15T14:30:00.123Z` |
+
+### Client Log Events
+
+The client logs these events to the v2 API:
+
+| Event | Trigger | Data |
+|-------|---------|------|
+| `page_view` | Route change | path, referrer, viewport |
+| `modal_open` | Modal opened | modal name, trigger element |
+| `modal_close` | Modal closed | modal name, duration |
+| `user_action` | Button click, form submit | action name, target |
+| `error` | JavaScript error | message, stack, component |
+| `performance` | Page load complete | LCP, FID, CLS metrics |
+
+### Log Format (JSON)
+
+All logs (client and server) use this JSON structure:
+
+```json
+{
+  "ts": "2025-12-15T14:30:00.123Z",
+  "level": "info",
+  "source": "client",
+  "trace_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "session_id": "11111111-2222-3333-4444-555555555555",
+  "user_id": 12345,
+  "event": "page_view",
+  "data": {
+    "path": "/browse",
+    "referrer": "/",
+    "viewport": "1920x1080"
+  }
+}
+```
+
+### Sentry Integration
+
+Sentry events are tagged with trace and session IDs for correlation:
+
+```javascript
+// In Sentry configuration
+Sentry.setTag('trace_id', traceId)
+Sentry.setTag('session_id', sessionId)
+
+// Construct Loki query URL for linking
+const lokiUrl = `${GRAFANA_URL}/explore?left=["now-1h","now","Loki",{"expr":"{trace_id=\\"${traceId}\\"}"}]`
+```
+
+From Sentry, you can:
+1. See `trace_id` tag on any error
+2. Search for related errors: `trace_id:a1b2c3d4-*`
+3. Click through to Loki to see full trace logs
+
+### Querying Traces in Loki
+
+```logql
+# All logs for a specific trace
+{app="freegle"} | json | trace_id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+# All traces for a user session
+{app="freegle"} | json | session_id="11111111-2222-3333-4444-555555555555"
+
+# Client-side errors with their traces
+{source="client"} | json | event="error"
+
+# Slow API calls with trace context
+{source="api"} | json | duration_ms > 1000 | line_format "{{.trace_id}} {{.endpoint}} {{.duration_ms}}ms"
+```
+
+### Implementation Files
+
+**Nuxt3 (iznik-nuxt3):**
+- `composables/useTrace.js` - Trace ID generation and management
+- `composables/useClientLog.js` - Client event logging
+- `plugins/trace.client.js` - Initialize tracing on app start
+- `plugins/sentry.client.js` - Updated with trace tags
+
+**Go API (iznik-server-go):**
+- `misc/trace.go` - Extract trace headers, include in logs
+
+**PHP API (iznik-server):**
+- `include/misc/Trace.php` - Extract trace headers
+- `include/misc/Loki.php` - Updated to include trace IDs
+
+## Loki + Sentry Integration
 
 ### Correlation via Trace IDs
 
-- Generate unique request ID in API entry point
-- Include in both Loki logs and Sentry events
-- Link from Sentry error to related Loki logs
+Every request/interaction has a trace ID that appears in:
+- Client logs (Loki)
+- API logs (Loki)
+- Sentry errors (as tag)
+
+This enables:
+- Click from Sentry error → see all related Loki logs
+- See client action that triggered backend error
+- Understand full user journey leading to issue
 
 ### Error Context Enrichment
 
-When Sentry captures an error, query Loki for recent logs from same user/session and attach as context.
+When viewing a Sentry error:
+1. Copy the `trace_id` tag value
+2. Query Loki: `{app="freegle"} | json | trace_id="<value>"`
+3. See timeline of client actions + API calls leading to error
+
+### Grafana Dashboard Links
+
+Configure Grafana data links to jump from Loki logs to Sentry:
+
+```
+Title: View in Sentry
+URL: https://sentry.io/organizations/freegle/issues/?query=trace_id:${__value.raw}
+```
 
 ### Proactive Issue Detection
 
-Use Loki queries to detect anomalies (high error rates, slow responses) and create Sentry issues programmatically.
+Use Loki queries to detect anomalies and create alerts:
+
+```logql
+# High error rate alert
+sum(rate({source="api"} | json | level="error" [5m])) > 10
+
+# Slow response alert
+avg(avg_over_time({source="api"} | json | unwrap duration_ms [5m])) > 500
+```

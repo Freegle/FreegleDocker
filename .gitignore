@@ -3,6 +3,8 @@
 /conf/
 !/conf/loki-config.yaml
 !/conf/grafana-provisioning/
+!/conf/alloy/
+!/conf/logrotate/
 /.claude/settings.local.json
 /logs/
 /.idea/prettier.xml

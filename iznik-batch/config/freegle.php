@@ -42,4 +42,19 @@ return [
     */
 
     'srid' => env('FREEGLE_SRID', 3857),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Loki Logging
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for Grafana Loki logging. Logs are written to JSON files
+    | that Alloy ships to Loki.
+    |
+    */
+
+    'loki' => [
+        'enabled' => env('LOKI_ENABLED', false) || env('LOKI_JSON_FILE', false),
+        'log_path' => env('LOKI_JSON_PATH', '/var/log/freegle'),
+    ],
 ];
