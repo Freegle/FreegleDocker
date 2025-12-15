@@ -17,7 +17,6 @@ class MessageAttachmentModelTest extends TestCase
 
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
         ]);
 
         $this->assertDatabaseHas('messages_attachments', [
@@ -35,7 +34,6 @@ class MessageAttachmentModelTest extends TestCase
 
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
         ]);
 
         $this->assertInstanceOf(Message::class, $attachment->message);
@@ -51,7 +49,6 @@ class MessageAttachmentModelTest extends TestCase
 
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
             'primary' => true,
         ]);
 
@@ -67,24 +64,22 @@ class MessageAttachmentModelTest extends TestCase
 
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
             'primary' => false,
         ]);
 
         $this->assertFalse($attachment->isPrimary());
     }
 
-    public function test_is_primary_returns_false_when_primary_is_null(): void
+    public function test_is_primary_returns_false_when_primary_not_set(): void
     {
         $user = $this->createTestUser();
         $group = $this->createTestGroup();
         $this->createMembership($user, $group);
         $message = $this->createTestMessage($user, $group);
 
+        // Not setting primary - it should default to false.
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
-            'primary' => null,
         ]);
 
         $this->assertFalse($attachment->isPrimary());
@@ -99,7 +94,6 @@ class MessageAttachmentModelTest extends TestCase
 
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
             'archived' => 1,
         ]);
 
@@ -117,7 +111,6 @@ class MessageAttachmentModelTest extends TestCase
 
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
             'rotated' => 1,
         ]);
 
@@ -135,7 +128,6 @@ class MessageAttachmentModelTest extends TestCase
 
         $attachment = MessageAttachment::create([
             'msgid' => $message->id,
-            'contenttype' => 'image/jpeg',
             'primary' => 1,
         ]);
 

@@ -13,13 +13,14 @@ class NotificationModelTest extends TestCase
         $user = $this->createTestUser();
 
         $notification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now(),
+            'type' => 'TryFeed',
         ]);
 
-        $this->assertDatabaseHas('notifications', [
+        $this->assertDatabaseHas('users_notifications', [
             'id' => $notification->id,
-            'userid' => $user->id,
+            'touser' => $user->id,
         ]);
     }
 
@@ -28,8 +29,9 @@ class NotificationModelTest extends TestCase
         $user = $this->createTestUser();
 
         $notification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now(),
+            'type' => 'TryFeed',
         ]);
 
         $this->assertInstanceOf(User::class, $notification->user);
@@ -42,9 +44,10 @@ class NotificationModelTest extends TestCase
         $fromUser = $this->createTestUser();
 
         $notification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'fromuser' => $fromUser->id,
             'timestamp' => now(),
+            'type' => 'CommentOnYourPost',
         ]);
 
         $this->assertInstanceOf(User::class, $notification->fromUser);
@@ -57,16 +60,18 @@ class NotificationModelTest extends TestCase
 
         // Create unseen notification.
         $unseenNotification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now(),
-            'seen' => null,
+            'type' => 'TryFeed',
+            'seen' => false,
         ]);
 
         // Create seen notification.
         $seenNotification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now(),
-            'seen' => now(),
+            'type' => 'TryFeed',
+            'seen' => true,
         ]);
 
         $unseenNotifications = Notification::unseen()->get();
@@ -81,14 +86,16 @@ class NotificationModelTest extends TestCase
 
         // Create recent notification.
         $recentNotification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now()->subHours(2),
+            'type' => 'TryFeed',
         ]);
 
         // Create old notification.
         $oldNotification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now()->subDays(2),
+            'type' => 'TryFeed',
         ]);
 
         $recentNotifications = Notification::recent(24)->get();
@@ -103,8 +110,9 @@ class NotificationModelTest extends TestCase
 
         // Create notification 3 hours ago.
         $notification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now()->subHours(3),
+            'type' => 'TryFeed',
         ]);
 
         // With 2 hours limit, should not include.
@@ -122,14 +130,16 @@ class NotificationModelTest extends TestCase
 
         // Create notification in range.
         $inRangeNotification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now()->subHours(2),
+            'type' => 'TryFeed',
         ]);
 
         // Create notification outside range.
         $outOfRangeNotification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now()->subDays(2),
+            'type' => 'TryFeed',
         ]);
 
         $from = now()->subHours(4)->toDateTimeString();
@@ -146,8 +156,9 @@ class NotificationModelTest extends TestCase
         $user = $this->createTestUser();
 
         $notification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now(),
+            'type' => 'TryFeed',
         ]);
 
         $notification->refresh();
@@ -155,33 +166,34 @@ class NotificationModelTest extends TestCase
         $this->assertInstanceOf(\Carbon\Carbon::class, $notification->timestamp);
     }
 
-    public function test_seen_is_cast_to_datetime(): void
+    public function test_seen_is_cast_to_boolean(): void
     {
         $user = $this->createTestUser();
 
         $notification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now(),
-            'seen' => now(),
+            'type' => 'TryFeed',
+            'seen' => true,
         ]);
 
         $notification->refresh();
 
-        $this->assertInstanceOf(\Carbon\Carbon::class, $notification->seen);
+        $this->assertTrue($notification->seen);
     }
 
-    public function test_seen_can_be_null(): void
+    public function test_seen_defaults_to_false(): void
     {
         $user = $this->createTestUser();
 
         $notification = Notification::create([
-            'userid' => $user->id,
+            'touser' => $user->id,
             'timestamp' => now(),
-            'seen' => null,
+            'type' => 'TryFeed',
         ]);
 
         $notification->refresh();
 
-        $this->assertNull($notification->seen);
+        $this->assertFalse($notification->seen);
     }
 }

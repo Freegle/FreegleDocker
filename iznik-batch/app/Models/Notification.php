@@ -8,13 +8,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Notification extends Model
 {
-    protected $table = 'notifications';
+    protected $table = 'users_notifications';
     protected $guarded = ['id'];
     public $timestamps = FALSE;
 
     protected $casts = [
         'timestamp' => 'datetime',
-        'seen' => 'datetime',
+        'seen' => 'boolean',
     ];
 
     /**
@@ -22,7 +22,7 @@ class Notification extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'userid');
+        return $this->belongsTo(User::class, 'touser');
     }
 
     /**
@@ -38,7 +38,7 @@ class Notification extends Model
      */
     public function scopeUnseen(Builder $query): Builder
     {
-        return $query->whereNull('seen');
+        return $query->where('seen', false);
     }
 
     /**

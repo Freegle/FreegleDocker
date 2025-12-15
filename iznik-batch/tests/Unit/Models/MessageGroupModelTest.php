@@ -74,7 +74,7 @@ class MessageGroupModelTest extends TestCase
         $message = $this->createTestMessage($user, $group);
 
         MessageGroup::where('msgid', $message->id)
-            ->update(['approved_by' => $approver->id]);
+            ->update(['approvedby' => $approver->id]);
 
         $messageGroup = MessageGroup::where('msgid', $message->id)->first();
 
