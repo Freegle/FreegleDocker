@@ -354,6 +354,8 @@ services:
       - MAPBOX_KEY=${MAPBOX_KEY:-}
       - MAXMIND_ACCOUNT=${MAXMIND_ACCOUNT:-}
       - MAXMIND_KEY=${MAXMIND_KEY:-}
+      - LOKI_ENABLED=true
+      - LOKI_URL=http://loki:3100
     volumes:
       - geoip_data:/var/lib/GeoIP
     healthcheck:
@@ -415,6 +417,8 @@ services:
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
+      - LOKI_ENABLED=true
+      - LOKI_URL=http://loki:3100
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8192/api/online || exit 1"]
       interval: 10s
@@ -730,6 +734,56 @@ services:
       beanstalkd:
         condition: service_healthy
 
+  # Loki - Log aggregation (optional, enabled by LOKI_ENABLED env var)
+  loki:
+    container_name: freegle-loki
+    image: grafana/loki:2.9.0
+    networks:
+      - default
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+      - ./conf/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.loki.rule=Host(`loki.localhost`)"
+      - "traefik.http.routers.loki.entrypoints=web"
+      - "traefik.http.services.loki.loadbalancer.server.port=3100"
+
+  # Grafana - Log visualization (optional, depends on Loki)
+  grafana:
+    container_name: freegle-grafana
+    image: grafana/grafana:latest
+    networks:
+      - default
+    ports:
+      - "3200:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./conf/grafana-provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-freegle}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: "no"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
+      - "traefik.http.routers.grafana.entrypoints=web"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
   # Batch jobs processor (Laravel)
   batch:
     container_name: freegle-batch
@@ -776,6 +830,8 @@ services:
       - MAIL_ENCRYPTION=null
       - FREEGLE_USER_SITE=http://freegle-dev-local.localhost
       - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost
+      - LOKI_ENABLED=true
+      - LOKI_URL=http://loki:3100
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/laravel-ready && php artisan about > /dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -794,6 +850,10 @@ volumes:
   batch-vendor:
     driver: local
   batch-bootstrap-cache:
+    driver: local
+  loki-data:
+    driver: local
+  grafana-data:
     driver: local
 
 networks:

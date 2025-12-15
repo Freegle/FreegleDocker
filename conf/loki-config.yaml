@@ -1,0 +1,83 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+limits_config:
+  # Default retention: 31 days (744h)
+  retention_period: 744h
+
+  # Stream-specific retention based on purge_logs.php policies
+  retention_stream:
+    # API request logs - 48 hours (matches logs_api purge)
+    - selector: '{source="api"}'
+      period: 48h
+
+    # API headers - 7 days for debugging
+    - selector: '{source="api_headers"}'
+      period: 168h
+
+    # Login/Logout - 365 days (8760h)
+    - selector: '{subtype="Login"}'
+      period: 8760h
+    - selector: '{subtype="Logout"}'
+      period: 8760h
+
+    # Bounces - 90 days (2160h)
+    - selector: '{subtype="Bounce"}'
+      period: 2160h
+
+    # User created/deleted - 31 days (744h, same as default)
+    - selector: '{subtype="Created"}'
+      period: 744h
+    - selector: '{subtype="Deleted"}'
+      period: 744h
+
+    # Plugin logs - 1 day (24h)
+    - selector: '{type="Plugin"}'
+      period: 24h
+
+    # Email logs - 31 days
+    - selector: '{source="email"}'
+      period: 744h
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem

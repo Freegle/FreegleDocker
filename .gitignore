@@ -1,6 +1,8 @@
 /.idea
 /data/
 /conf/
+!/conf/loki-config.yaml
+!/conf/grafana-provisioning/
 /.claude/settings.local.json
 /logs/
 /.idea/prettier.xml
@@ -38,3 +40,4 @@ sentry-issues.db-shm
 sentry-issues.db-wal
 sentry-issues.db
 /plans/exploratory-testing-state.json
+/iznik-batch/coverage/
