@@ -58,6 +58,12 @@ RUN composer install --no-interaction --prefer-dist --optimize-autoloader || tru
 # Install MJML in the spatie/mjml-php bin directory so it can find the package
 RUN cd vendor/spatie/mjml-php/bin && npm install mjml
 
+# Create .env file from example for Laravel to find (testing uses phpunit.xml env vars)
+RUN cp .env.example .env || touch .env
+
+# Generate application key
+RUN php artisan key:generate --force
+
 # Create storage directories with correct permissions
 RUN mkdir -p storage/framework/{sessions,views,cache} \
     && mkdir -p storage/logs \
