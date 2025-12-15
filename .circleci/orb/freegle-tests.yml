@@ -860,9 +860,9 @@ commands:
                 exit 0
               fi
 
-              # Initialize git repo in container (php-coveralls needs it for git info)
+              # Initialize git repo in container (php-coveralls needs it for git info including remotes)
               echo "Initializing git repo in container for php-coveralls..."
-              docker exec freegle-batch bash -c "cd /var/www/html && git config --global --add safe.directory /var/www/html && git init && git config user.email 'circleci@freegle.org' && git config user.name 'CircleCI' && git add -A && git commit -m 'CI commit' --allow-empty" 2>/dev/null || true
+              docker exec freegle-batch bash -c "cd /var/www/html && git config --global --add safe.directory /var/www/html && git init && git config user.email 'circleci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/FreegleDocker.git && git add -A && git commit -m 'CI commit' --allow-empty" 2>/dev/null || true
 
               # Run php-coveralls from within the container
               if docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" \
