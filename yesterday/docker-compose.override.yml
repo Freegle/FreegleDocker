@@ -178,7 +178,7 @@ services:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
       - TUS_UPLOADER=https://uploads.ilovefreegle.org/
 
-  freegle-dev:
+  freegle-dev-local:
     # Routed through Traefik for SSL termination on port 3002
     # No direct port binding - Traefik handles HTTPS and proxies to container
     ports: !reset []
@@ -215,7 +215,7 @@ services:
     deploy:
       replicas: 0
 
-  modtools-dev:
+  modtools-dev-local:
     # Routed through Traefik for SSL termination on port 3003
     # No direct port binding - Traefik handles HTTPS and proxies to container
     ports: !reset []
