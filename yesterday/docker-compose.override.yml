@@ -199,7 +199,7 @@ services:
       - IMAGE_BASE_URL=https://uploads.ilovefreegle.org
       - USER_SITE=https://${YESTERDAY_HOSTNAME}:8445
 
-  freegle-prod:
+  freegle-prod-local:
     # DISABLED: We only use dev containers on Yesterday
     # Reason: Dev containers start in seconds, prod containers take 10+ minutes to build
     # Production containers are disabled to save resources and startup time
@@ -236,7 +236,7 @@ services:
       - TUS_UPLOADER=https://uploads.ilovefreegle.org/
       - USER_SITE=https://${YESTERDAY_HOSTNAME}:8446
 
-  modtools-prod:
+  modtools-prod-local:
     # DISABLED: We only use dev containers on Yesterday
     # Reason: Dev containers start in seconds, prod containers take 10+ minutes to build
     # Production containers are disabled to save resources and startup time
