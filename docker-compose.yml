@@ -635,6 +635,52 @@ services:
       - "traefik.http.routers.modtools-dev-local.entrypoints=web"
       - "traefik.http.services.modtools-dev-local.loadbalancer.server.port=3000"
 
+  # Development mode with LIVE/Production APIs - ModTools
+  # WARNING: This connects to REAL production data!
+  modtools-dev-live:
+    container_name: modtools-dev-live
+    depends_on:
+      - host-scripts
+      - status
+      - reverse-proxy
+    profiles:
+      - dev-live
+    networks:
+      default:
+        aliases:
+          - modtools-dev-live.localhost
+    ports:
+      - "0.0.0.0:3006:3000"
+    build:
+      context: .
+      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
+      network: host
+      args:
+        IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
+    tmpfs:
+      - /tmp
+    restart: "no"
+    environment:
+      # LIVE/Production APIs - REAL DATA!
+      - IZNIK_API_V1=https://fdapilive.ilovefreegle.org/api
+      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      # Use production delivery and USER_SITE - local delivery won't work
+      # from mobile devices since they can't resolve localhost hostnames
+      - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
+      - TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+      - USER_SITE=https://modtools.ilovefreegle.org
+      - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
+      - NITRO_PRESET=node-server
+      - NUXT_DEV_MODE=true
+      - NUXT_SSR_LOG=false
+      - NODE_ENV=development
+      - NUXT_BUILD_MODE=development
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.modtools-dev-live.rule=Host(`modtools-dev-live.localhost`)"
+      - "traefik.http.routers.modtools-dev-live.entrypoints=web"
+      - "traefik.http.services.modtools-dev-live.loadbalancer.server.port=3000"
+
   # Production build with local APIs - ModTools
   modtools-prod-local:
     container_name: modtools-prod-local
