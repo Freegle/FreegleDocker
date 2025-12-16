@@ -57,6 +57,13 @@ echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
 
+# Install MJML in spatie package if not present (vendor is a named volume)
+if [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
+    echo "Installing MJML in spatie package..."
+    cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml --silent
+    cd /var/www/html
+fi
+
 echo "=== Starting Laravel batch job processor ==="
 
 # Create ready marker file to signal healthcheck that startup is complete
