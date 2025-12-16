@@ -420,7 +420,7 @@ services:
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8192/api/online || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8192/apiv2/online || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
