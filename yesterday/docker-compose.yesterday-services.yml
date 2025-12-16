@@ -78,6 +78,7 @@ services:
       - YESTERDAY_ADMIN_KEY=${YESTERDAY_ADMIN_KEY}
       - USERS_FILE=/data/2fa-users.json
       - WHITELIST_FILE=/data/ip-whitelist.json
+      - PERMANENT_WHITELIST_IPS=${PERMANENT_WHITELIST_IPS:-}
     networks:
       - default
       - freegledocker_default

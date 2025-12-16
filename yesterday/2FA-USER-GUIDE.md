@@ -86,6 +86,9 @@ If you need Admin access to PHPMyAdmin or Mailhog, contact a system administrato
 - You can use the system freely during this time without entering codes
 - After 1 hour, you'll need to authenticate again
 
+### Permanent IP Whitelisting (Administrators Only)
+Trusted servers can be permanently whitelisted to bypass 2FA entirely. This is configured via the `PERMANENT_WHITELIST_IPS` environment variable in the server configuration. Whitelisted IPs receive Admin permissions automatically. Contact a system administrator to add a server to the permanent whitelist.
+
 ### Keep Your Phone Safe
 - Your authenticator app is your key to access
 - Back up your authenticator app if possible (Authy and Microsoft Authenticator support cloud backup)

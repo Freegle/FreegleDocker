@@ -11,11 +11,14 @@ const http = require('http');
 const os = require('os');
 
 const app = express();
+const dns = require('dns').promises;
+
 const PORT = process.env.PORT || 8084;
 const ADMIN_KEY = process.env.YESTERDAY_ADMIN_KEY || 'changeme';
 const USERS_FILE = process.env.USERS_FILE || '/data/2fa-users.json';
 const WHITELIST_FILE = process.env.WHITELIST_FILE || '/data/ip-whitelist.json';
 const WHITELIST_DURATION = 1 * 60 * 60 * 1000; // 1 hour
+const PERMANENT_WHITELIST_IPS = process.env.PERMANENT_WHITELIST_IPS || ''; // Comma-separated IPs or hostnames
 const ACCOUNT_LOCK_DURATION = 15 * 60 * 1000; // 15 minutes
 const MAX_FAILED_ATTEMPTS = 5;
 
@@ -36,6 +39,7 @@ app.use(cookieParser());
 // In-memory cache
 let users = {};
 let ipWhitelist = {};
+let permanentWhitelist = []; // Resolved IPs from PERMANENT_WHITELIST_IPS
 
 // Load users from file
 async function loadUsers() {
@@ -88,6 +92,53 @@ async function saveWhitelist() {
     } catch (err) {
         console.error('Error saving whitelist:', err);
     }
+}
+
+// Load permanent IP whitelist from environment
+async function loadPermanentWhitelist() {
+    if (!PERMANENT_WHITELIST_IPS) {
+        console.log('No permanent IP whitelist configured');
+        return;
+    }
+
+    const entries = PERMANENT_WHITELIST_IPS.split(',').map(e => e.trim()).filter(e => e);
+    const resolved = [];
+
+    for (const entry of entries) {
+        // Check if it's an IP address (simple check)
+        if (/^[\d.]+$/.test(entry)) {
+            resolved.push({ ip: entry, source: entry });
+            console.log(`Permanent whitelist: ${entry} (direct IP)`);
+        } else {
+            // It's a hostname, resolve it
+            try {
+                const addresses = await dns.resolve4(entry);
+                for (const addr of addresses) {
+                    resolved.push({ ip: addr, source: entry });
+                    console.log(`Permanent whitelist: ${addr} (resolved from ${entry})`);
+                }
+            } catch (err) {
+                console.error(`Failed to resolve ${entry}: ${err.message}`);
+            }
+        }
+    }
+
+    permanentWhitelist = resolved;
+    console.log(`Loaded ${permanentWhitelist.length} permanent whitelist entries`);
+}
+
+// Check if IP is in permanent whitelist
+function isPermanentlyWhitelisted(ip) {
+    // Remove IPv6 prefix if present
+    const cleanIP = ip.replace(/^::ffff:/, '');
+    return permanentWhitelist.some(entry => entry.ip === cleanIP);
+}
+
+// Get permanent whitelist source for IP (for logging)
+function getPermanentWhitelistSource(ip) {
+    const cleanIP = ip.replace(/^::ffff:/, '');
+    const entry = permanentWhitelist.find(e => e.ip === cleanIP);
+    return entry ? entry.source : null;
 }
 
 // Clean up expired whitelist entries
@@ -423,6 +474,15 @@ function requireAuth(req, res, next) {
         return next();
     }
 
+    // Bypass authentication for permanently whitelisted IPs
+    if (isPermanentlyWhitelisted(clientIP)) {
+        const source = getPermanentWhitelistSource(clientIP);
+        req.userPermission = 'Admin';
+        req.username = `permanent-whitelist:${source}`;
+        console.log(`[PERMANENT WHITELIST] Allowing request from ${clientIP} (${source})`);
+        return next();
+    }
+
     if (isWhitelisted(clientIP)) {
         req.userPermission = ipWhitelist[clientIP].permission;
         req.username = ipWhitelist[clientIP].username;
@@ -523,7 +583,8 @@ app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         users: Object.keys(users).length,
-        whitelisted_ips: Object.keys(ipWhitelist).length
+        whitelisted_ips: Object.keys(ipWhitelist).length,
+        permanent_whitelist: permanentWhitelist.map(e => ({ ip: e.ip, source: e.source }))
     });
 });
 
@@ -796,6 +857,7 @@ app.use(requireAuth, checkAdminPorts, createProxyMiddleware({
 async function start() {
     await loadUsers();
     await loadWhitelist();
+    await loadPermanentWhitelist();
 
     // Detect container networks for internal access bypass
     containerSubnets = detectContainerNetworks();
