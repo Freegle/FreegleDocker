@@ -93,6 +93,12 @@ const services = [
     category: "freegle",
   },
   {
+    id: "modtools-dev-live",
+    container: "modtools-dev-live",
+    checkType: "freegle-component",
+    category: "freegle",
+  },
+  {
     id: "modtools-prod-local",
     container: "modtools-prod-local",
     checkType: "freegle-component",
@@ -355,6 +361,9 @@ async function checkServiceStatus(service) {
           } else if (service.id === "modtools-dev-local") {
             testUrl = "http://modtools-dev-local:3000/";
             testDescription = "ModTools Dev site responding";
+          } else if (service.id === "modtools-dev-live") {
+            testUrl = "http://modtools-dev-live:3000/";
+            testDescription = "ModTools Dev Live site responding";
           } else if (service.id === "modtools-prod-local") {
             testUrl = "http://modtools-prod-local:3001/";
             testDescription = "ModTools Prod site responding";
@@ -566,6 +575,9 @@ async function runBackgroundChecks() {
             } else if (service.id === "modtools-dev-local") {
               testUrl = "http://modtools-dev-local:3000/";
               testDescription = "ModTools Dev site responding";
+            } else if (service.id === "modtools-dev-live") {
+              testUrl = "http://modtools-dev-live:3000/";
+              testDescription = "ModTools Dev Live site responding";
             } else if (service.id === "modtools-prod-local") {
               testUrl = "http://modtools-prod-local:3001/";
               testDescription = "ModTools Prod site responding";
@@ -1346,7 +1358,7 @@ const httpServer = http.createServer(async (req, res) => {
       try {
         const { container } = JSON.parse(body);
 
-        if (!container || !/^freegle-[a-zA-Z0-9_-]+$/.test(container)) {
+        if (!container || !/^(freegle|modtools)-[a-zA-Z0-9_-]+$/.test(container)) {
           res.writeHead(400, { "Content-Type": "text/plain" });
           res.end("Invalid container name");
           return;
@@ -1391,6 +1403,31 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // Start modtools live container endpoint (for modtools-dev-live which uses a profile)
+  if (
+    parsedUrl.pathname === "/api/container/start-modtools-live" &&
+    req.method === "POST"
+  ) {
+    try {
+      console.log("Starting modtools-dev-live container with dev-live profile...");
+      execSync(
+        `${DOCKER_COMPOSE} --profile dev-live up -d modtools-dev-live`,
+        {
+          timeout: 120000,
+          cwd: "/project",
+        }
+      );
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: true, message: "Container starting" }));
+    } catch (error) {
+      console.error("Start modtools live container error:", error);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: error.message }));
+    }
+    return;
+  }
+
   // Container rebuild endpoint
   if (
     parsedUrl.pathname === "/api/container/rebuild" &&
@@ -1402,7 +1439,7 @@ const httpServer = http.createServer(async (req, res) => {
       try {
         const { container, service } = JSON.parse(body);
 
-        if (!container || !/^freegle-[a-zA-Z0-9_-]+$/.test(container)) {
+        if (!container || !/^(freegle|modtools)-[a-zA-Z0-9_-]+$/.test(container)) {
           res.writeHead(400, { "Content-Type": "text/plain" });
           res.end("Invalid container name");
           return;
@@ -2312,6 +2349,9 @@ const httpServer = http.createServer(async (req, res) => {
       } else if (service === "modtools-dev-local") {
         testUrl = "http://modtools-dev-local:3000/";
         testDescription = "ModTools Dev site responding";
+      } else if (service === "modtools-dev-live") {
+        testUrl = "http://modtools-dev-live:3000/";
+        testDescription = "ModTools Dev Live site responding";
       } else if (service === "modtools-prod-local") {
         testUrl = "http://modtools-prod-local:3001/";
         testDescription = "ModTools Prod site responding";
@@ -2352,6 +2392,8 @@ const httpServer = http.createServer(async (req, res) => {
             containerName = "freegle-prod-local";
           else if (service === "modtools-dev-local")
             containerName = "modtools-dev-local";
+          else if (service === "modtools-dev-live")
+            containerName = "modtools-dev-live";
           else if (service === "modtools-prod-local")
             containerName = "modtools-prod-local";
           else if (service === "apiv1") containerName = "freegle-apiv1";

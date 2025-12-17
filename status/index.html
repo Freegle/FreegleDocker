@@ -411,6 +411,27 @@
                 </div>
             </div>
 
+            <h2>ModTools (Live Data)</h2>
+
+            <div id="modtools-dev-live" class="service loading" style="display: none;">
+                <div>
+                    <strong>Dev Build (Live Data)</strong><br>
+                    <span class="url">http://modtools-dev-live.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: modtools-dev-live</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="modtools-dev-live-starter" class="service" style="background: #f8f9fa; border-left: 4px solid #6c757d;">
+                <div>
+                    <strong>Dev Build (Live Data)</strong><br>
+                    <small>For testing ModTools with real data. Not started by default.</small><br>
+                    <button onclick="startModtoolsLiveContainer()" style="margin-top: 8px; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        Start ModTools Live Container
+                    </button>
+                </div>
+            </div>
+
             <h2>Mobile Development</h2>
             <p style="color: #666; font-size: 14px;">
                 Use the Dev Build (Live Data) container above for mobile app development with live reload.
@@ -466,6 +487,7 @@
             { id: 'freegle-dev-live', container: 'freegle-dev-live' },
             { id: 'freegle-prod-local', container: 'freegle-prod-local' },
             { id: 'modtools-dev-local', container: 'modtools-dev-local' },
+            { id: 'modtools-dev-live', container: 'modtools-dev-live' },
             { id: 'modtools-prod-local', container: 'modtools-prod-local' },
             { id: 'apiv1', container: 'freegle-apiv1' },
             { id: 'apiv2', container: 'freegle-apiv2' },
@@ -598,6 +620,43 @@
             }
         }
 
+        // Start modtools live container with confirmation
+        function startModtoolsLiveContainer() {
+            document.getElementById('modtoolsLiveWarningModal').classList.add('active');
+        }
+
+        function closeModtoolsLiveModal() {
+            document.getElementById('modtoolsLiveWarningModal').classList.remove('active');
+        }
+
+        async function confirmStartModtoolsLive() {
+            closeModtoolsLiveModal();
+
+            const button = document.querySelector('#modtools-dev-live-starter button');
+            button.disabled = true;
+            button.textContent = 'Starting...';
+
+            try {
+                const response = await fetch('/api/container/start-modtools-live', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    button.textContent = 'Started - Building...';
+                    // Hide starter, show actual container div
+                    document.getElementById('modtools-dev-live-starter').style.display = 'none';
+                    document.getElementById('modtools-dev-live').style.display = 'block';
+                    // Refresh status
+                    fetchStatus();
+                } else {
+                    button.textContent = 'Failed: ' + result.error;
+                    button.disabled = false;
+                }
+            } catch (error) {
+                button.textContent = 'Error: ' + error.message;
+                button.disabled = false;
+            }
+        }
+
         function addActionButtons(service, element) {
             // Add visit button for web services
             const webServices = {
@@ -605,6 +664,7 @@
                 'freegle-dev-live': { url: 'http://freegle-dev-live.localhost', name: 'Freegle Live' },
                 'freegle-prod-local': { url: 'http://freegle-prod-local.localhost', name: 'Freegle Prod' },
                 'modtools-dev-local': { url: 'http://modtools-dev-local.localhost', name: 'ModTools Dev' },
+                'modtools-dev-live': { url: 'http://modtools-dev-live.localhost', name: 'ModTools Live' },
                 'modtools-prod-local': { url: 'http://modtools-prod-local.localhost', name: 'ModTools Prod' }
             };
 
@@ -671,7 +731,7 @@
             }
 
             // Rebuild button (for containers that can be rebuilt - those with build context)
-            if (['freegle-dev-local', 'freegle-dev-live', 'freegle-prod-local', 'modtools-dev-local', 'modtools-prod-local', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
+            if (['freegle-dev-local', 'freegle-dev-live', 'freegle-prod-local', 'modtools-dev-local', 'modtools-dev-live', 'modtools-prod-local', 'apiv1', 'apiv2', 'status'].includes(service.id)) {
                 if (!actionsDiv.querySelector('.rebuild-btn')) {
                     const rebuildBtn = document.createElement('button');
                     rebuildBtn.className = 'action-button danger rebuild-btn';
@@ -1151,8 +1211,29 @@
                         if (liveStarter) liveStarter.style.display = 'block';
                     }
 
+                    // Handle modtools-dev-live visibility based on container status
+                    const modtoolsLiveStatus = allStatus['modtools-dev-live'];
+                    const modtoolsLiveElement = document.getElementById('modtools-dev-live');
+                    const modtoolsLiveStarter = document.getElementById('modtools-dev-live-starter');
+                    if (modtoolsLiveStatus && modtoolsLiveStatus.status !== 'not_found') {
+                        // Container exists, show it and hide starter
+                        if (modtoolsLiveElement) {
+                            modtoolsLiveElement.style.display = 'block';
+                            // Update the display for this container
+                            const modtoolsLiveService = services.find(s => s.id === 'modtools-dev-live');
+                            if (modtoolsLiveService) {
+                                updateServiceDisplay(modtoolsLiveService, modtoolsLiveStatus);
+                            }
+                        }
+                        if (modtoolsLiveStarter) modtoolsLiveStarter.style.display = 'none';
+                    } else {
+                        // Container not running, show starter (grey background)
+                        if (modtoolsLiveElement) modtoolsLiveElement.style.display = 'none';
+                        if (modtoolsLiveStarter) modtoolsLiveStarter.style.display = 'block';
+                    }
+
                     // Update traffic light (exclude production/live containers)
-                    const coreServices = services.filter(s => s.id !== 'freegle-dev-live');
+                    const coreServices = services.filter(s => s.id !== 'freegle-dev-live' && s.id !== 'modtools-dev-live');
                     const allOnline = coreServices.every(service => {
                         const element = document.getElementById(service.id);
                         return element && element.className.includes('online');
@@ -1945,6 +2026,19 @@
             <div class="modal-buttons">
                 <button class="modal-cancel" onclick="closeLiveModal()">Cancel</button>
                 <button class="modal-confirm" onclick="confirmStartLive()">Start Container</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warning Modal for ModTools Live Container -->
+    <div id="modtoolsLiveWarningModal" class="modal-overlay">
+        <div class="modal">
+            <h3>Warning: Production Data</h3>
+            <p>This container connects to <strong>LIVE Freegle APIs</strong>. Any posts, messages, or actions will affect <strong>REAL users and data</strong>.</p>
+            <p>Are you sure you want to start the ModTools live container?</p>
+            <div class="modal-buttons">
+                <button class="modal-cancel" onclick="closeModtoolsLiveModal()">Cancel</button>
+                <button class="modal-confirm" onclick="confirmStartModtoolsLive()">Start Container</button>
             </div>
         </div>
     </div>

@@ -15,7 +15,12 @@ get_container_info() {
     local relative_path="${file_path#$PROJECT_DIR/}"
 
     if [[ "$relative_path" == iznik-nuxt3-modtools/* ]]; then
-        echo "freegle-modtools-dev /app/${relative_path#iznik-nuxt3-modtools/} ModTools-Dev"
+        local targets="modtools-dev-local /app/${relative_path#iznik-nuxt3-modtools/} ModTools-Dev-Local"
+        # Only include dev-live if the container is running
+        if docker ps --format '{{.Names}}' | grep -q '^modtools-dev-live$'; then
+            targets="$targets"$'\n'"modtools-dev-live /app/${relative_path#iznik-nuxt3-modtools/} ModTools-Dev-Live"
+        fi
+        echo "$targets"
     elif [[ "$relative_path" == iznik-nuxt3/* ]]; then
         # Sync to both Freegle and Playwright containers for test files
         if [[ "$relative_path" == iznik-nuxt3/tests/* || "$relative_path" == iznik-nuxt3/playwright.config.js ]]; then

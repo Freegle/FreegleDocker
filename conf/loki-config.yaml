@@ -52,9 +52,9 @@ limits_config:
 
   # Stream-specific retention based on purge_logs.php policies
   retention_stream:
-    # API request logs - 48 hours (matches logs_api purge)
+    # API request logs - 7 days (168h) for debugging and analysis
     - selector: '{source="api"}'
-      period: 48h
+      period: 168h
 
     # API headers - 7 days for debugging
     - selector: '{source="api_headers"}'
