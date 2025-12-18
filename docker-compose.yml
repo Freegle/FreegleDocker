@@ -254,6 +254,31 @@ services:
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
 
+  ai-support-helper:
+    build:
+      context: ./claude-agent-sdk
+      network: host
+    container_name: freegle-ai-support-helper
+    networks:
+      - default
+    ports:
+      - "8083:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai-support-helper.rule=Host(`ai-support-helper.localhost`)"
+      - "traefik.http.routers.ai-support-helper.entrypoints=web"
+      - "traefik.http.services.ai-support-helper.loadbalancer.server.port=3000"
+    environment:
+      # Anthropic API key for Claude API calls
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   host-scripts:
     image: alpine:latest
     container_name: freegle-host-scripts
