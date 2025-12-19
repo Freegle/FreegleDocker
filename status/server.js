@@ -394,7 +394,7 @@ async function checkServiceStatus(service) {
               ) {
                 try {
                   // Get full logs for production container to save to artifact
-                  const tailLines = service.id === "freegle-prod" ? 1000 : 10;
+                  const tailLines = service.id === "freegle-prod" ? 1000 : 20;
                   const logs = execSync(
                     `docker logs ${service.container} --tail=${tailLines}`,
                     {
@@ -605,7 +605,7 @@ async function runBackgroundChecks() {
                 ) {
                   try {
                     // Get full logs for production container to save to artifact
-                    const tailLines = service.id === "freegle-prod" ? 1000 : 10;
+                    const tailLines = service.id === "freegle-prod" ? 1000 : 20;
                     const logs = execSync(
                       `docker logs ${service.container} --tail=${tailLines}`,
                       {
