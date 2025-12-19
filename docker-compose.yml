@@ -444,6 +444,9 @@ services:
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
+      - LOKI_JSON_PATH=/var/log/freegle
+    volumes:
+      - apiv2_logs:/var/log/freegle
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8192/apiv2/online || exit 1"]
       interval: 10s
@@ -925,6 +928,8 @@ volumes:
   loki-data:
     driver: local
   grafana-data:
+    driver: local
+  apiv2_logs:
     driver: local
 
 networks:
