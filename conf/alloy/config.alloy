@@ -46,6 +46,8 @@ loki.process "freegle_process" {
       job_name   = "job_name",
       email_type = "email_type",
       groupid    = "groupid",
+      trace_id   = "trace_id",
+      session_id = "session_id",
     }
   }
 
@@ -64,6 +66,8 @@ loki.process "freegle_process" {
       job_name   = "job_name",
       email_type = "email_type",
       groupid    = "groupid",
+      trace_id   = "trace_id",
+      session_id = "session_id",
     }
   }
 
