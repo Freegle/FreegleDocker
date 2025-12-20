@@ -114,4 +114,27 @@ abstract class MjmlMailable extends Mailable
     {
         return [];
     }
+
+    /**
+     * Convert an image to a base64 data URI for embedding in emails.
+     *
+     * Images should be stored in resources/images/email/
+     *
+     * @param string $filename The image filename (e.g., 'rule-free.png')
+     * @return string Base64 data URI or empty string if file not found
+     */
+    protected function embedImage(string $filename): string
+    {
+        $path = resource_path("images/email/{$filename}");
+
+        if (!file_exists($path)) {
+            return '';
+        }
+
+        $data = file_get_contents($path);
+        $base64 = base64_encode($data);
+        $mime = mime_content_type($path);
+
+        return "data:{$mime};base64,{$base64}";
+    }
 }

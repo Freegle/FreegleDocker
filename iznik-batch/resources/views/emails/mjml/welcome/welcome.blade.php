@@ -64,34 +64,46 @@
       </mj-section>
 
       {{-- Simple rules with icons --}}
-      <mj-section mj-class="bg-light" padding="25px 20px 10px 20px">
+      <mj-section mj-class="bg-green-light" padding="25px 20px 10px 20px">
         <mj-column>
           <mj-text font-size="18px" font-weight="bold" align="center" color="#333333">
             Three simple rules
           </mj-text>
         </mj-column>
       </mj-section>
-      <mj-section mj-class="bg-light" padding="10px 20px 25px 20px">
+      <mj-section mj-class="bg-green-light" padding="10px 20px 25px 20px">
         <mj-column width="33%">
-          <mj-text align="center">
+          <mj-text align="center" padding-bottom="5px">
+            <a href="{{ $termsUrl }}" style="text-decoration: none;">
+              <img src="{{ $ruleFreeImage }}" alt="Free" width="80" style="display: block; margin: 0 auto;" />
+            </a>
+          </mj-text>
+          <mj-text align="center" padding-top="0">
             <a href="{{ $termsUrl }}" style="color: #555555; text-decoration: none;">
-              <span style="font-size: 28px; display: block;">🆓</span>
               <span style="font-size: 13px;">Everything must be<br/><strong>free and legal</strong></span>
             </a>
           </mj-text>
         </mj-column>
         <mj-column width="33%">
-          <mj-text align="center">
+          <mj-text align="center" padding-bottom="5px">
+            <a href="{{ $helpUrl }}" style="text-decoration: none;">
+              <img src="{{ $ruleNiceImage }}" alt="Be nice" width="80" style="display: block; margin: 0 auto;" />
+            </a>
+          </mj-text>
+          <mj-text align="center" padding-top="0">
             <a href="{{ $helpUrl }}" style="color: #555555; text-decoration: none;">
-              <span style="font-size: 28px; display: block;">😊</span>
               <span style="font-size: 13px;">Be <strong>nice</strong> to<br/>other freeglers</span>
             </a>
           </mj-text>
         </mj-column>
         <mj-column width="33%">
-          <mj-text align="center">
+          <mj-text align="center" padding-bottom="5px">
+            <a href="{{ $safetyUrl }}" style="text-decoration: none;">
+              <img src="{{ $ruleSafeImage }}" alt="Stay safe" width="80" style="display: block; margin: 0 auto;" />
+            </a>
+          </mj-text>
+          <mj-text align="center" padding-top="0">
             <a href="{{ $safetyUrl }}" style="color: #555555; text-decoration: none;">
-              <span style="font-size: 28px; display: block;">🛡️</span>
               <span style="font-size: 13px;">Stay <strong>safe</strong><br/>when meeting up</span>
             </a>
           </mj-text>

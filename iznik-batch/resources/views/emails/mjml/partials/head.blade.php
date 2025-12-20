@@ -6,7 +6,8 @@
     li { margin: 0.5em 0; }
   </mj-style>
   <mj-attributes>
-    <mj-all font-family="Trebuchet MS, Helvetica, Arial"></mj-all>
+    {{-- Modern system font stack: San Francisco (Apple), Segoe UI (Windows), Roboto (Android) --}}
+    <mj-all font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"></mj-all>
     {{-- Freegle brand colors from website --}}
     <mj-class name="bg-success" background-color="#338808" />
     <mj-class name="bg-secondary" background-color="#00A1CB" />
