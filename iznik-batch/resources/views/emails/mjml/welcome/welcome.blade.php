@@ -2,65 +2,121 @@
   @include('emails.mjml.partials.head')
   <mj-body>
     <mj-wrapper padding="0px" full-width="full-width">
-      @include('emails.mjml.partials.header', ['title' => 'Thanks for joining ' . config('freegle.branding.name')])
-      <mj-section background-color="#F7F6EC">
+      {{-- Welcome header --}}
+      <mj-section mj-class="bg-success" padding="30px 20px">
         <mj-column>
-          @if($password)
-          <mj-text font-weight="700">Here's your password: {{ $password }}.</mj-text>
-          @endif
-          <mj-text>We could give you a ten page long Terms of Use. Like you'd read that.  As far as we're concerned, it's simple...
-            <ol>
-              <li>Use {{ config('freegle.branding.name') }} to pass on unwanted items direct to others.</li>
-              <li>Everything must be free and legal.</li>
-              <li>Be nice to other freeglers, and they'll be nice to you.</li>
-              <li>We don't see or check items offered - see our <a href="{{ config('freegle.sites.user') }}/disclaimer">disclaimer</a>.</li>
-              <li>{{ config('freegle.branding.name') }} communities may have additional rules - please check the welcome mail you get when you join for details.</li>
-              <li>Please <a href="{{ config('freegle.sites.user') }}/disclaimer">keep yourself safe and watch out for scams</a>.</li>
-              <li>Objectionable content or behaviour will not be tolerated.  If you see anything inappropriate, suspicious or just dodgy then please <a href="{{ config('freegle.sites.user') }}/help">report it</a>.</li>
-              <li>You must be aged 13 or over, as there is user-generated content.</li>
-              <li>We keep your personal data private - see <a href="{{ config('freegle.sites.user') }}/privacy">privacy page</a>.</li>
-              <li>Your posts will be public - see <a href="{{ config('freegle.sites.user') }}/privacy">privacy page</a>.</li>
-              <li>We will email you posts, replies, events, newsletters, etc - control these in <a href="{{ config('freegle.sites.user') }}/settings">Settings</a>.</li>
-            </ol>
+          <mj-text font-size="36px" font-weight="bold" align="center" color="#ffffff" font-family="Georgia, serif">
+            Welcome{{ $firstName ? ', ' . $firstName : '' }}!
           </mj-text>
-          <mj-text font-size="14px"><b>Happy freegling!</b></mj-text>
-          <mj-divider border-color="#d2cfb7" border-style="dotted"></mj-divider>
+          <mj-text font-size="18px" align="center" color="#ffffff" padding-top="10px">
+            You're now part of the {{ config('freegle.branding.name') }} community
+          </mj-text>
         </mj-column>
       </mj-section>
-      <mj-section background-color="#FFFFFF">
-        <mj-column width="55%">
-          <mj-image fluid-on-mobile src="{{ config('freegle.images.welcome1') }}" width="280px" padding-bottom="20px" alt="" align="center" border="none"></mj-image>
+
+      {{-- Hero image --}}
+      <mj-section padding="0">
+        <mj-column>
+          <mj-image src="{{ config('freegle.images.welcome1') }}" alt="Welcome to Freegle" width="600px" padding="0"></mj-image>
         </mj-column>
-        <mj-column width="45%" background-color="#FFFFFF">
-          <mj-text align="left" padding=" 10px 10px" font-size="20px" line-height="30px" font-family="Alice, Helvetica, Arial, sans-serif">Post an OFFER</mj-text>
-          <mj-text align="left" padding="0 10px">Give something away!  Upload a photo, share the info, enter your postcode and email, and you're ready to go!</mj-text>
-          <mj-button href="{{ config('freegle.sites.user') }}/give" background-color="#325906" color="white" padding="20px 20px 30px 20px" border-radius="20px">POST AN OFFER</mj-button>
-        </mj-column>
-        <mj-divider padding="0 20px" border-width="1px" border-color="#000000"></mj-divider>
       </mj-section>
-      <mj-section background-color="#FFFFFF">
-        <mj-column width="55%">
-          <mj-image fluid-on-mobile src="{{ config('freegle.images.welcome2') }}" width="280px" padding-bottom="20px" alt="" align="center" border="none"></mj-image>
+
+      @if($password)
+      {{-- Password section - PROMINENT --}}
+      <mj-section background-color="#fff3cd" padding="25px 20px" border="2px solid #ffc107">
+        <mj-column>
+          <mj-text font-size="16px" align="center" color="#856404">
+            <strong>🔑 IMPORTANT: Your password</strong>
+          </mj-text>
+          <mj-text font-size="24px" font-weight="bold" align="center" color="#333333" padding-top="10px" font-family="Courier New, monospace">
+            {{ $password }}
+          </mj-text>
+          <mj-text font-size="13px" align="center" color="#856404" padding-top="10px">
+            Save this password - you'll need it to log in.
+          </mj-text>
         </mj-column>
-        <mj-column width="45%" background-color="#FFFFFF">
-          <mj-text align="left" padding=" 10px 10px" font-size="20px" line-height="30px" font-family="Alice, Helvetica, Arial, sans-serif">Post a WANTED</mj-text>
-          <mj-text align="left" padding="0 10px">Ask the {{ config('freegle.branding.name') }} community for something you need.</mj-text>
-          <mj-button href="{{ config('freegle.sites.user') }}/find" background-color="#325906" color="white" padding="20px 20px 30px 20px" border-radius="20px">POST A WANTED</mj-button>
-        </mj-column>
-        <mj-divider padding="0 20px" border-width="1px" border-color="#000000"></mj-divider>
       </mj-section>
-      <mj-section background-color="#FFFFFF">
-        <mj-column width="55%">
-          <mj-image fluid-on-mobile src="{{ config('freegle.images.welcome3') }}" width="280px" padding-bottom="20px" alt="" align="center" border="none"></mj-image>
+      @endif
+
+      {{-- Main CTA section --}}
+      <mj-section background-color="#ffffff" padding="30px 20px">
+        <mj-column>
+          <mj-text font-size="22px" font-weight="bold" align="center" mj-class="text-success" padding-bottom="20px">
+            Ready to start freegling?
+          </mj-text>
         </mj-column>
-        <mj-column width="45%" background-color="#FFFFFF">
-          <mj-text align="left" padding=" 10px 10px" font-size="20px" line-height="30px" font-family="Alice, Helvetica, Arial, sans-serif">Join a community</mj-text>
-          <mj-text align="left" padding="0 10px">Just browsing?  Find communities and sign up for email alerts here.</mj-text>
-          <mj-button href="{{ config('freegle.sites.user') }}/explore" background-color="#325906" color="white" padding="20px 20px 30px 20px" border-radius="20px">EXPLORE COMMUNITIES</mj-button>
-        </mj-column>
-        <mj-divider padding="0 20px" border-width="1px" border-color="#000000"></mj-divider>
       </mj-section>
-      @include('emails.mjml.partials.footer', ['email' => $email])
+
+      {{-- Big CTA Buttons --}}
+      <mj-section background-color="#ffffff" padding="0 20px 15px 20px">
+        <mj-column>
+          <mj-button href="{{ $giveUrl }}" mj-class="btn-success" font-size="18px" padding="18px 50px" width="280px">
+            🎁 Give stuff away
+          </mj-button>
+        </mj-column>
+      </mj-section>
+      <mj-section background-color="#ffffff" padding="0 20px 30px 20px">
+        <mj-column>
+          <mj-button href="{{ $findUrl }}" mj-class="btn-secondary" font-size="18px" padding="18px 50px" width="280px">
+            🔍 Find what you need
+          </mj-button>
+        </mj-column>
+      </mj-section>
+
+      {{-- Simple rules with icons --}}
+      <mj-section mj-class="bg-light" padding="25px 20px 10px 20px">
+        <mj-column>
+          <mj-text font-size="18px" font-weight="bold" align="center" color="#333333">
+            Three simple rules
+          </mj-text>
+        </mj-column>
+      </mj-section>
+      <mj-section mj-class="bg-light" padding="10px 20px 25px 20px">
+        <mj-column width="33%">
+          <mj-text align="center">
+            <a href="{{ $termsUrl }}" style="color: #555555; text-decoration: none;">
+              <span style="font-size: 28px; display: block;">🆓</span>
+              <span style="font-size: 13px;">Everything must be<br/><strong>free and legal</strong></span>
+            </a>
+          </mj-text>
+        </mj-column>
+        <mj-column width="33%">
+          <mj-text align="center">
+            <a href="{{ $helpUrl }}" style="color: #555555; text-decoration: none;">
+              <span style="font-size: 28px; display: block;">😊</span>
+              <span style="font-size: 13px;">Be <strong>nice</strong> to<br/>other freeglers</span>
+            </a>
+          </mj-text>
+        </mj-column>
+        <mj-column width="33%">
+          <mj-text align="center">
+            <a href="{{ $safetyUrl }}" style="color: #555555; text-decoration: none;">
+              <span style="font-size: 28px; display: block;">🛡️</span>
+              <span style="font-size: 13px;">Stay <strong>safe</strong><br/>when meeting up</span>
+            </a>
+          </mj-text>
+        </mj-column>
+      </mj-section>
+
+      {{-- Closing message --}}
+      <mj-section mj-class="bg-success" padding="20px">
+        <mj-column>
+          <mj-text font-size="18px" font-weight="bold" align="center" color="#ffffff" font-family="Georgia, serif">
+            Happy freegling! 🌱
+          </mj-text>
+        </mj-column>
+      </mj-section>
+
+      @include('emails.mjml.partials.footer', ['email' => $email, 'settingsUrl' => $settingsUrl])
+
+      {{-- Tracking pixel --}}
+      @if($trackingPixelMjml)
+      <mj-section padding="0">
+        <mj-column>
+          {!! $trackingPixelMjml !!}
+        </mj-column>
+      </mj-section>
+      @endif
     </mj-wrapper>
   </mj-body>
 </mjml>

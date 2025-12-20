@@ -50,8 +50,12 @@ abstract class MjmlMailable extends Mailable
 
     /**
      * Set the MJML template and render it.
+     *
+     * @param string $template MJML template path (e.g., 'emails.mjml.welcome.welcome')
+     * @param array $data Data to pass to templates
+     * @param string|null $textTemplate Optional plain text template path
      */
-    protected function mjmlView(string $template, array $data = []): static
+    protected function mjmlView(string $template, array $data = [], ?string $textTemplate = NULL): static
     {
         $this->mjmlTemplate = $template;
         $this->mjmlData = array_merge($this->getDefaultData(), $data);
@@ -63,7 +67,14 @@ abstract class MjmlMailable extends Mailable
         $html = $this->compileMjml($mjmlContent);
 
         // Set the HTML content.
-        return $this->html($html);
+        $this->html($html);
+
+        // Set plain text version if template provided.
+        if ($textTemplate && view()->exists($textTemplate)) {
+            $this->text($textTemplate, $this->mjmlData);
+        }
+
+        return $this;
     }
 
     /**

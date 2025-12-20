@@ -1,8 +1,13 @@
-<mj-section background-color="#E0E0E0">
+<mj-section background-color="#f5f5f5" padding="20px">
   <mj-column>
-    <mj-text font-size="9px" color="#707070">This mail was sent to&nbsp;{{ $email }}. You can change your settings by clicking <a href="{{ config('freegle.sites.user') }}/settings">here</a>.
-      <hr style="border: 0; border-top: 1px solid #AAA; " />
-      {{ config('freegle.branding.name') }} is registered as a charity with HMRC (ref. XT32865) and is run by volunteers. Which is nice.  Registered address: Weaver's Field, Loud Bridge, Chipping PR3 2NX
+    <mj-text font-size="12px" color="#666666" align="center" line-height="1.6">
+      This email was sent to {{ $email }}<br/>
+      <a href="{{ $settingsUrl ?? config('freegle.sites.user') . '/settings' }}" style="color: #338808;">Change your email settings</a>
+    </mj-text>
+    <mj-divider border-color="#ddd" border-width="1px" padding="15px 40px"></mj-divider>
+    <mj-text font-size="11px" color="#666666" align="center" line-height="1.5">
+      {{ config('freegle.branding.name') }} is registered as a charity with HMRC (ref. XT32865) and is run by volunteers. Which is nice.<br/>
+      Registered address: Weaver's Field, Loud Bridge, Chipping PR3 2NX
     </mj-text>
   </mj-column>
 </mj-section>

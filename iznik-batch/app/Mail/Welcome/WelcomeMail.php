@@ -3,18 +3,36 @@
 namespace App\Mail\Welcome;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\TrackableEmail;
+use App\Models\User;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
 class WelcomeMail extends MjmlMailable
 {
+    use TrackableEmail;
+
+    private ?User $user = NULL;
+
     /**
      * Create a new message instance.
      */
     public function __construct(
         public string $recipientEmail,
-        public ?string $password = NULL
+        public ?string $password = NULL,
+        public ?int $userId = NULL
     ) {
+        if ($this->userId) {
+            $this->user = User::find($this->userId);
+        }
+
+        $this->initTracking(
+            'Welcome',
+            $this->recipientEmail,
+            $this->userId,
+            NULL,
+            $this->getSubject()
+        );
     }
 
     /**
@@ -36,7 +54,7 @@ class WelcomeMail extends MjmlMailable
      */
     protected function getSubject(): string
     {
-        return 'Welcome to ' . config('freegle.branding.name') . '!';
+        return '💚 Welcome to ' . config('freegle.branding.name') . '!';
     }
 
     /**
@@ -44,9 +62,24 @@ class WelcomeMail extends MjmlMailable
      */
     public function build(): static
     {
-        return $this->mjmlView('emails.mjml.welcome.welcome', [
-            'email' => $this->recipientEmail,
-            'password' => $this->password,
-        ]);
+        $firstName = $this->user?->firstname ?? NULL;
+        $userSite = config('freegle.sites.user');
+
+        return $this->mjmlView(
+            'emails.mjml.welcome.welcome',
+            array_merge([
+                'email' => $this->recipientEmail,
+                'password' => $this->password,
+                'firstName' => $firstName,
+                'userSite' => $userSite,
+                'giveUrl' => $this->trackedUrl("{$userSite}/give", 'cta_give', 'cta'),
+                'findUrl' => $this->trackedUrl("{$userSite}/find", 'cta_find', 'cta'),
+                'termsUrl' => $this->trackedUrl("{$userSite}/terms", 'rule_free', 'info'),
+                'helpUrl' => $this->trackedUrl("{$userSite}/help", 'rule_nice', 'info'),
+                'safetyUrl' => $this->trackedUrl("{$userSite}/safety", 'rule_safe', 'info'),
+                'settingsUrl' => $this->trackedUrl("{$userSite}/settings", 'footer_settings', 'settings'),
+            ], $this->getTrackingData()),
+            'emails.text.welcome.welcome'
+        );
     }
 }

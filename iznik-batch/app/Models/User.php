@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -134,5 +135,21 @@ class User extends Model
             ->where('groupid', $groupId)
             ->whereIn('role', ['Moderator', 'Owner'])
             ->exists();
+    }
+
+    /**
+     * Get user's last known location.
+     */
+    public function lastLocation(): BelongsTo
+    {
+        return $this->belongsTo(Location::class, 'lastlocation');
+    }
+
+    /**
+     * Get user's first name for personalization.
+     */
+    public function getFirstNameAttribute(): ?string
+    {
+        return $this->attributes['firstname'] ?? NULL;
     }
 }

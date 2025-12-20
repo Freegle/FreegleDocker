@@ -348,8 +348,16 @@ class TestMailCommand extends Command
 
         $this->info("Generating welcome email for user: {$user->displayname} (ID: {$user->id})");
 
-        // WelcomeMail takes email and optional password.
-        return new WelcomeMail($user->email_preferred, 'test-password-123');
+        // Check if user has location for nearby offers.
+        $location = $user->lastLocation;
+        if ($location) {
+            $this->info("User location: {$location->name} ({$location->lat}, {$location->lng})");
+        } else {
+            $this->warn("User has no location set - nearby offers will not be shown");
+        }
+
+        // WelcomeMail takes email, optional password, and user ID for nearby offers.
+        return new WelcomeMail($user->email_preferred, 'test-password-123', $user->id);
     }
 
     /**
