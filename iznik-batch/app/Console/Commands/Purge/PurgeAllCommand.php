@@ -14,7 +14,7 @@ class PurgeAllCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:purge:all';
+    protected $signature = 'purge:all';
 
     /**
      * The console command description.

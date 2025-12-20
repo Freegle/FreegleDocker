@@ -16,7 +16,7 @@ class SendDigestCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:digest:send
+    protected $signature = 'mail:digest
                             {frequency : Digest frequency in hours (-1 for immediate, 1 for hourly, etc.)}
                             {--mod=1 : Modulo divisor for sharding}
                             {--val=0 : Modulo value for this instance}

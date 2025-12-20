@@ -889,8 +889,7 @@ services:
       - DB_CONNECTION=mysql
       - DB_HOST=percona
       - DB_PORT=3306
-      - DB_DATABASE=iznik_laravel
-      - DB_IZNIK_DATABASE=iznik
+      - DB_DATABASE=iznik
       - DB_USERNAME=root
       - DB_PASSWORD=iznik
       - REDIS_HOST=redis

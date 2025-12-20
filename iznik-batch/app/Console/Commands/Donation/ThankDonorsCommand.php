@@ -11,7 +11,7 @@ class ThankDonorsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:donations:thank';
+    protected $signature = 'mail:donations:thank';
 
     /**
      * The console command description.

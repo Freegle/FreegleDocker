@@ -14,7 +14,7 @@ class PurgeMessagesCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:purge:messages
+    protected $signature = 'purge:messages
                             {--history-days=90 : Days to keep messages_history}
                             {--pending-days=90 : Days to keep pending messages}
                             {--draft-days=90 : Days to keep drafts}

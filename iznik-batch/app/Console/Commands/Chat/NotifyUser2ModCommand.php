@@ -15,7 +15,7 @@ class NotifyUser2ModCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:chat:notify-user2mod
+    protected $signature = 'mail:chat:user2mod
                             {--chat= : Process only a specific chat ID}
                             {--delay=30 : Delay in seconds before sending notification}
                             {--since=24 : How many hours back to look for messages}

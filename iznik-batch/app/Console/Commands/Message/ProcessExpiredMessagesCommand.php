@@ -14,7 +14,7 @@ class ProcessExpiredMessagesCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:messages:process-expired
+    protected $signature = 'messages:process-expired
                             {--spatial : Also process spatial index expiry}';
 
     /**

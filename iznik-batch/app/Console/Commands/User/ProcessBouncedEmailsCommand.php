@@ -11,7 +11,7 @@ class ProcessBouncedEmailsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:users:process-bounced';
+    protected $signature = 'mail:bounced';
 
     /**
      * The console command description.

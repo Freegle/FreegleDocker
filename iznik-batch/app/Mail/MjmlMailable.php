@@ -49,13 +49,21 @@ abstract class MjmlMailable extends Mailable
     }
 
     /**
-     * Set the MJML template.
+     * Set the MJML template and render it.
      */
     protected function mjmlView(string $template, array $data = []): static
     {
         $this->mjmlTemplate = $template;
         $this->mjmlData = array_merge($this->getDefaultData(), $data);
-        return $this;
+
+        // Render the Blade template to get MJML content.
+        $mjmlContent = view($this->mjmlTemplate, $this->mjmlData)->render();
+
+        // Compile MJML to HTML.
+        $html = $this->compileMjml($mjmlContent);
+
+        // Set the HTML content.
+        return $this->html($html);
     }
 
     /**

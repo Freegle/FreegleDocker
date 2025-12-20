@@ -9,299 +9,69 @@ This document tracks progress migrating cron scripts from `iznik-server/scripts/
 - **Not Started** - Not yet begun
 - **Skip** - Not needed in Laravel (external tool, deprecated, etc.)
 
+## Artisan Command Naming
+
+All email-related commands use the `mail:` prefix. Other batch commands use descriptive prefixes.
+
+### Email Commands
+
+| Command | Description |
+|---------|-------------|
+| `mail:chat:user2user` | Send user-to-user chat notifications |
+| `mail:chat:user2mod` | Send user-to-moderator chat notifications |
+| `mail:digest` | Send message digests |
+| `mail:donations:thank` | Send donation thank-you emails |
+| `mail:donations:ask` | Send donation request emails |
+| `mail:bounced` | Process bounced emails |
+| `mail:test` | **Test any email type** without database side effects |
+
+### Other Commands
+
+| Command | Description |
+|---------|-------------|
+| `messages:process-expired` | Process expired messages |
+| `purge:messages` | Purge old messages |
+| `purge:chats` | Purge old chat rooms |
+| `purge:logs` | Purge old log entries |
+| `users:update-kudos` | Update user kudos scores |
+| `users:retention-stats` | Generate retention statistics |
+
+## Testing Emails (mail:test)
+
+The `mail:test` command allows sending any email type without making persistent database changes.
+
+```bash
+# List available email types
+docker exec freegle-batch php artisan mail:test --list
+
+# Preview email content without sending (dry-run)
+docker exec freegle-batch php artisan mail:test welcome --user=123 --dry-run
+
+# Send test email to override address
+docker exec freegle-batch php artisan mail:test welcome --user=123 --to=test@example.com
+
+# Test chat notification
+docker exec freegle-batch php artisan mail:test chat:user2user --chat=456 --to=test@example.com
+
+# Test digest email
+docker exec freegle-batch php artisan mail:test digest --group=789 --to=test@example.com
+```
+
+The command uses database transactions that are rolled back after the email is generated, so no permanent changes are made.
+
 ## Scripts Currently In Progress
 
-| Original Script | Frequency | Laravel Service | Status | Notes |
+| Original Script | Frequency | Artisan Command | Status | Notes |
 |-----------------|-----------|-----------------|--------|-------|
-| `digest.php` | Every 1-5 min (varies by -i flag) | `DigestService` | In Progress | Core functionality implemented |
-| `chat_notifyemail_user2user.php` | Every 1 min (0-3,5-23h) | `ChatNotificationService` | In Progress | User-to-user notifications |
-| `chat_notifyemail_user2mod.php` | Every 1 min (0-3,5-23h) | `ChatNotificationService` | In Progress | User-to-mod notifications |
-| `messages_expired.php` | Every 60 min | `MessageExpiryService` | In Progress | Deadline expiry handling |
-| `purge_messages.php` | Daily 03:00 | `PurgeService` | In Progress | Message purging |
-| `purge_chats.php` | Daily 01:00 | `PurgeService` | In Progress | Chat purging |
-| `purge_logs.php` | Daily 04:00 | `PurgeService` | In Progress | Log purging |
-| `donations_email.php` | Hourly 06:00-22:00 | `DonationService` | In Progress | Donation reminders |
-| `bounce.php` | Every 2 hours | `UserManagementService` | In Progress | Bounced email handling |
-
----
-
-## PHPUnit Test Cases for Cron Jobs (iznik-server)
-
-This section documents all PHPUnit test cases in iznik-server that test cron job functionality. Use this as a reference when implementing Laravel equivalents.
-
-<details>
-<summary><strong>📧 DigestTest.php - Email Digest Sending</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/DigestTest.php`
-**Related Cron:** `digest.php`
-**Laravel Service:** `DigestService`
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testImmediate()` | Tests immediate delivery of digests (mocked sendOne) | `test_send_single_message_digest` | ✅ Covered |
-| `testSend()` | Tests digest sending with actual mail generation | `test_send_multiple_message_digest` | ✅ Covered |
-| `testTN()` | Tests that TrashNothing users don't receive digests | - | ❌ Not Started |
-| `testError()` | Tests error handling when digest sending fails | - | ❌ Not Started |
-| `testMultipleMails()` | Tests digest with multiple messages on a group | `test_send_multiple_message_digest` | ✅ Covered |
-| `testNearby($withdraw)` | Data provider test for nearby groups (with withdrawn messages) | - | ❌ Not Started |
-| `testLongItem()` | Tests digest formatting with long item descriptions | - | ❌ Not Started |
-
-**Laravel Tests Implemented:**
-- `test_send_digest_for_closed_group_does_nothing`
-- `test_send_digest_with_no_new_messages_does_nothing`
-- `test_send_single_message_digest`
-- `test_send_multiple_message_digest`
-- `test_digest_only_sends_to_members_with_matching_frequency`
-- `test_digest_updates_record_with_last_message`
-- `test_get_active_groups_returns_freegle_groups`
-- `test_get_valid_frequencies`
-
-</details>
-
-<details>
-<summary><strong>💬 NotificationsTest.php - User Notifications for Comments/Loves</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/NotificationsTest.php`
-**Related Cron:** `notification_chaseup.php`, various notification scripts
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testEmail()` | Tests notification emails when loved/commented, including about-me notifications | - | ❌ Not Started |
-| `testDeleted1()` | Tests notifications disappear when comments are deleted | - | ❌ Not Started |
-| `testDeleted2()` | Tests notifications disappear when entire threads are deleted | - | ❌ Not Started |
-| `testOff()` | Tests sending notification turn-off emails | - | ❌ Not Started |
-
-</details>
-
-<details>
-<summary><strong>📮 BounceTest.php - Email Bounce Processing</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/BounceTest.php`
-**Related Cron:** `bounce.php`, `bounce_users.php`
-**Laravel Service:** `UserManagementService`
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testBasic()` | Tests bounce processing: saves bounce, processes it, verifies user logs and mail suspension | `test_process_bounced_emails_marks_invalid` | ✅ Covered |
-
-**Laravel Tests Implemented:**
-- `test_process_bounced_emails_marks_invalid`
-- `test_process_bounced_emails_ignores_non_bounced`
-
-</details>
-
-<details>
-<summary><strong>📊 StatsTest.php - Daily Stats Generation</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/StatsTest.php`
-**Related Cron:** `group_stats.php`
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testBasic()` | Tests daily stats generation for a group (approved message count, member count, breakdowns) | - | ❌ Not Started |
-| `testHeatmap()` | Tests generating heatmaps for message/user flow analysis | - | ❌ Not Started |
-
-</details>
-
-<details>
-<summary><strong>🤝 VolunteeringDigestTest.php - Volunteering Opportunities Digest</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/VolunteeringDigestTest.php`
-**Related Cron:** `volunteering.php`
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testEvents()` | Tests sending volunteering opportunity digests, handles exceptions, turns off subscriptions, validates email addresses | - | ❌ Not Started |
-
-</details>
-
-<details>
-<summary><strong>📅 EventDigestTest.php - Community Events Digest</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/EventDigestTest.php`
-**Related Cron:** `events.php`
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testEvents()` | Tests sending community event digests, exception handling, subscription turn-off, invalid email handling | - | ❌ Not Started |
-
-</details>
-
-<details>
-<summary><strong>🚨 AlertsTest.php - Alert Processing</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/AlertsTest.php`
-**Related Cron:** `alerts.php`
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testMultiple()` | Tests alert processing across groups, verifies completion state | - | ❌ Not Started |
-| `testErrors()` | Tests error handling when mailing mods and database errors | - | ❌ Not Started |
-
-</details>
-
-<details>
-<summary><strong>📱 PostNotificationsTest.php - Post Notifications via Push</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/PostNotificationsTest.php`
-**Related Cron:** Background job processing
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testNoPostsNoNotifications()` | Verifies no notifications when group has no posts | - | ❌ Not Started |
-| `testNoAppSubscriptionNoNotification()` | Tests no notifications without app subscriptions | - | ❌ Not Started |
-| `testSinglePostNotification()` | Tests notification for single post with message details | - | ❌ Not Started |
-| `testMultiplePostsSummaryNotification()` | Tests summary notification for multiple posts | - | ❌ Not Started |
-| `testTakenPostsExcluded()` | Tests taken/received posts excluded from notifications | - | ❌ Not Started |
-| `testNoNotificationForOwnPosts()` | Tests users don't get notified about their own posts | - | ❌ Not Started |
-| `testTrackingSamePostsNotResent()` | Tests frequency tracking prevents duplicate notifications | - | ❌ Not Started |
-| `testClosedGroupNoNotifications()` | Tests closed groups don't get notifications | - | ❌ Not Started |
-| `testIOSNotification()` | Tests iOS push subscriptions receive notifications | - | ❌ Not Started |
-| `testMixedOffersAndWanteds()` | Tests mixed message types in summary notification | - | ❌ Not Started |
-| `testDailyFrequencyTiming()` | Tests daily frequency respects timing (24-hour minimum) | - | ❌ Not Started |
-| `testRegularUsersReceiveNotifications()` | Tests non-admin users receive notifications | - | ❌ Not Started |
-
-</details>
-
-<details>
-<summary><strong>🔔 PushNotificationsTest.php - Push Notification System</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/PushNotificationsTest.php`
-**Related Cron:** Background job processing for push notifications
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testBasic()` | Tests adding push subscriptions (FCM Android, Firefox, Google), notifying users and group mods | - | ❌ Not Started |
-| `testExecuteOld()` | Tests executing old-style (non-FCM) push notifications | - | ❌ Not Started |
-| `testExecuteFCM()` | Tests executing FCM Android and iOS push notifications | - | ❌ Not Started |
-| `testPoke()` | Tests poking users with app notifications | - | ❌ Not Started |
-| `testErrors()` | Tests error handling in push notification system | - | ❌ Not Started |
-| `testCategoryConstants()` | Tests push notification category constants are defined correctly | - | ❌ Not Started |
-| `testNotificationPayloadCategory()` | Tests chat message category with threadId and image | - | ❌ Not Started |
-| `testNotificationPayloadChitChatCategory()` | Tests newsfeed notification categories (comment, reply, loved) | - | ❌ Not Started |
-| `testExecuteSendWithCategory()` | Tests push sending with category, threadId, and image | - | ❌ Not Started |
-| `testDualNotificationSystem()` | Tests dual notification system (legacy + new) for categorized pushes | - | ❌ Not Started |
-
-</details>
-
-<details>
-<summary><strong>📬 MailTest.php - Mail Seed List Processing</strong></summary>
-
-**Original File:** `iznik-server/test/ut/php/include/MailTest.php`
-**Related Cron:** Mail deliverability monitoring
-**Laravel Service:** Not yet created
-
-| PHPUnit Test Method | Description | Laravel Equivalent | Status |
-|---------------------|-------------|-------------------|--------|
-| `testBasic()` | Tests retrieving seed list entries for mail deliverability monitoring | - | ❌ Not Started |
-
-</details>
-
----
-
-## Laravel Test Coverage Summary
-
-### Services with Tests Implemented
-
-<details>
-<summary><strong>DigestService (8 tests)</strong></summary>
-
-| Test Method | What it Tests |
-|-------------|---------------|
-| `test_send_digest_for_closed_group_does_nothing` | Closed groups are skipped |
-| `test_send_digest_with_no_new_messages_does_nothing` | No messages = no digest |
-| `test_send_single_message_digest` | Single message uses SingleDigest mailable |
-| `test_send_multiple_message_digest` | Multiple messages use MultipleDigest mailable |
-| `test_digest_only_sends_to_members_with_matching_frequency` | Frequency filtering |
-| `test_digest_updates_record_with_last_message` | GroupDigest record updated |
-| `test_get_active_groups_returns_freegle_groups` | activeFreegle scope |
-| `test_get_valid_frequencies` | Valid frequency values |
-
-</details>
-
-<details>
-<summary><strong>ChatNotificationService (9 tests)</strong></summary>
-
-| Test Method | What it Tests |
-|-------------|---------------|
-| `test_notify_sends_email_for_unmailed_message` | Basic email sending |
-| `test_notify_skips_already_mailed_messages` | Skip already mailed |
-| `test_notify_skips_rejected_messages` | Skip rejected messages |
-| `test_notify_with_no_messages_returns_zero` | Empty returns 0 |
-| `test_notify_respects_delay` | Delay parameter works |
-| `test_force_all_sends_regardless_of_flags` | Force option |
-| `test_notify_specific_chat_room` | Process single chat |
-| `test_notify_user2mod_type` | User-to-mod notifications |
-| `test_updates_roster_last_message_emailed` | Roster record updated |
-
-</details>
-
-<details>
-<summary><strong>MessageExpiryService (6 tests)</strong></summary>
-
-| Test Method | What it Tests |
-|-------------|---------------|
-| `test_process_deadline_expired_marks_message` | Message marked expired |
-| `test_process_deadline_expired_sends_email` | Expiry email sent |
-| `test_process_deadline_expired_with_no_messages` | Empty returns 0 |
-| `test_skips_messages_with_existing_outcome` | Skip completed messages |
-| `test_skips_messages_with_future_deadline` | Future deadlines ignored |
-| `test_skips_messages_without_deadline` | No deadline = skipped |
-
-</details>
-
-<details>
-<summary><strong>PurgeService (8 tests)</strong></summary>
-
-| Test Method | What it Tests |
-|-------------|---------------|
-| `test_purge_deleted_messages` | Delete old deleted messages |
-| `test_purge_pending_messages` | Delete old pending messages |
-| `test_purge_spam_chat_messages` | Delete spam chat messages |
-| `test_purge_empty_chat_rooms` | Delete empty chat rooms |
-| `test_purge_orphaned_chat_images` | Clean up orphaned images |
-| `test_purge_unvalidated_emails` | Delete unvalidated emails |
-| `test_purge_html_body` | Purge HTML body data |
-| `test_run_all_returns_results` | Full purge run |
-
-</details>
-
-<details>
-<summary><strong>DonationService (7 tests)</strong></summary>
-
-| Test Method | What it Tests |
-|-------------|---------------|
-| `test_thank_donors_sends_email` | Thank you email sent |
-| `test_thank_donors_skips_already_thanked` | Skip already thanked |
-| `test_thank_donors_skips_old_donations` | Skip old donations |
-| `test_thank_donors_with_no_donations` | Empty returns 0 |
-| `test_ask_for_donations_respects_interval` | Donation ask interval |
-| `test_ask_for_donations_with_no_recipients` | No eligible recipients |
-| `test_get_stats_returns_monthly_totals` | Stats calculation |
-
-</details>
-
-<details>
-<summary><strong>UserManagementService (7 tests)</strong></summary>
-
-| Test Method | What it Tests |
-|-------------|---------------|
-| `test_process_bounced_emails_marks_invalid` | Bounce processing |
-| `test_process_bounced_emails_ignores_non_bounced` | Skip non-bounced |
-| `test_cleanup_inactive_users_anonymizes_old_users` | User anonymization |
-| `test_cleanup_inactive_users_ignores_recent_users` | Skip recent users |
-| `test_merge_duplicates_with_no_duplicates` | Merge with no dups |
-| `test_retention_stats_counts_active_users` | Active user counting |
-| `test_retention_stats_counts_new_users` | New user counting |
-
-</details>
+| `digest.php` | Every 1-5 min (varies by -i flag) | `mail:digest` | In Progress | Core functionality implemented |
+| `chat_notifyemail_user2user.php` | Every 1 min (0-3,5-23h) | `mail:chat:user2user` | In Progress | User-to-user notifications |
+| `chat_notifyemail_user2mod.php` | Every 1 min (0-3,5-23h) | `mail:chat:user2mod` | In Progress | User-to-mod notifications |
+| `messages_expired.php` | Every 60 min | `messages:process-expired` | In Progress | Deadline expiry handling |
+| `purge_messages.php` | Daily 03:00 | `purge:messages` | In Progress | Message purging |
+| `purge_chats.php` | Daily 01:00 | `purge:chats` | In Progress | Chat purging |
+| `purge_logs.php` | Daily 04:00 | `purge:logs` | In Progress | Log purging |
+| `donations_email.php` | Hourly 06:00-22:00 | `mail:donations:ask` | In Progress | Donation reminders |
+| `bounce.php` | Every 2 hours | `mail:bounced` | In Progress | Bounced email handling |
 
 ---
 

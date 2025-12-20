@@ -5,9 +5,8 @@ This is the Laravel-based batch job processor for Freegle. It handles background
 ## Architecture
 
 - **Laravel 12** application with PHP 8.3+
-- Connects to two databases:
-  - `iznik_laravel` (mysql connection) - Laravel's own database for migrations/testing
-  - `iznik` (iznik connection) - Read-only access to main Freegle database
+- Uses the main `iznik` database directly (same as iznik-server)
+- PHPUnit tests use `iznik_batch_test` database
 - Uses MJML for email templates via `spatie/laravel-mjml`
 - Container name: `freegle-batch`
 
@@ -25,7 +24,7 @@ All domain-specific configuration is in `config/freegle.php` and can be overridd
 ## Running Tests
 
 ```bash
-# Run all unit and feature tests (uses MySQL iznik_laravel database)
+# Run all unit and feature tests (uses iznik_test database)
 docker exec freegle-batch php artisan test --testsuite=Unit,Feature
 
 # Run integration tests (requires MailHog)
@@ -37,8 +36,8 @@ docker exec freegle-batch php artisan test --filter="test_method_name"
 
 ## Test Suites
 
-- **Unit** - Unit tests using MySQL iznik_laravel database
-- **Feature** - Feature tests using MySQL iznik_laravel database
+- **Unit** - Unit tests using iznik_batch_test database
+- **Feature** - Feature tests using iznik_batch_test database
 - **Integration** - Tests that require external services (MailHog)
 
 ## Database Migrations
@@ -47,7 +46,7 @@ Migrations are generated from the existing `iznik` database schema using `kitloo
 
 ```bash
 # Re-generate migrations from iznik database (if schema changes)
-docker exec freegle-batch php artisan migrate:generate --connection=iznik
+docker exec freegle-batch php artisan migrate:generate
 ```
 
 ## Code Style

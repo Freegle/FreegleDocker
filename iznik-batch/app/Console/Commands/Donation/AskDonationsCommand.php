@@ -11,7 +11,7 @@ class AskDonationsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:donations:ask';
+    protected $signature = 'mail:donations:ask';
 
     /**
      * The console command description.

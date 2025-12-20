@@ -14,7 +14,7 @@ class PurgeChatsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:purge:chats
+    protected $signature = 'purge:chats
                             {--spam-days=7 : Days to keep spam chat messages}';
 
     /**

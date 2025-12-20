@@ -11,7 +11,7 @@ class RetentionStatsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:users:retention-stats';
+    protected $signature = 'users:retention-stats';
 
     /**
      * The console command description.

@@ -14,7 +14,7 @@ class UpdateKudosCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'freegle:users:update-kudos';
+    protected $signature = 'users:update-kudos';
 
     /**
      * The console command description.
