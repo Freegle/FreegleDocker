@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ChatImage;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
+use App\Models\EmailTracking;
 use App\Models\Message;
 use App\Models\MessageGroup;
 use App\Traits\ChunkedProcessing;
@@ -382,6 +383,32 @@ class PurgeService
     }
 
     /**
+     * Purge old email tracking data.
+     *
+     * Deletes tracking records older than the specified retention period.
+     * Associated clicks and images are deleted via cascade.
+     */
+    public function purgeEmailTracking(int $daysOld = 90): int
+    {
+        $cutoff = now()->subDays($daysOld);
+        $total = 0;
+
+        do {
+            $deleted = EmailTracking::where('sent_at', '<', $cutoff)
+                ->limit($this->chunkSize)
+                ->delete();
+
+            $total += $deleted;
+
+            if ($total % $this->logInterval === 0 && $total > 0) {
+                Log::info("Purged {$total} email tracking records");
+            }
+        } while ($deleted > 0);
+
+        return $total;
+    }
+
+    /**
      * Run all purge operations.
      */
     public function runAll(): array
@@ -402,6 +429,7 @@ class PurgeService
         $results['users_nearby'] = $this->purgeUsersNearby();
         $results['orphaned_isochrones'] = $this->purgeOrphanedIsochrones();
         $results['completed_admins'] = $this->purgeCompletedAdmins();
+        $results['email_tracking'] = $this->purgeEmailTracking();
 
         return $results;
     }

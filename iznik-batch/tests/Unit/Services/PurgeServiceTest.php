@@ -5,6 +5,9 @@ namespace Tests\Unit\Services;
 use App\Models\ChatImage;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
+use App\Models\EmailTracking;
+use App\Models\EmailTrackingClick;
+use App\Models\EmailTrackingImage;
 use App\Models\Message;
 use App\Models\MessageGroup;
 use App\Services\PurgeService;
@@ -273,6 +276,45 @@ class PurgeServiceTest extends TestCase
         $this->assertArrayHasKey('users_nearby', $results);
         $this->assertArrayHasKey('orphaned_isochrones', $results);
         $this->assertArrayHasKey('completed_admins', $results);
+        $this->assertArrayHasKey('email_tracking', $results);
+    }
+
+    public function test_purge_email_tracking(): void
+    {
+        // Create old tracking record.
+        $oldTracking = EmailTracking::create([
+            'tracking_id' => EmailTracking::generateTrackingId(),
+            'email_type' => 'Test',
+            'recipient_email' => 'old@example.com',
+            'sent_at' => now()->subDays(100),
+        ]);
+
+        // Create associated click and image records.
+        EmailTrackingClick::create([
+            'email_tracking_id' => $oldTracking->id,
+            'link_url' => 'https://example.com',
+            'clicked_at' => now()->subDays(100),
+        ]);
+
+        EmailTrackingImage::create([
+            'email_tracking_id' => $oldTracking->id,
+            'image_position' => 'header',
+            'loaded_at' => now()->subDays(100),
+        ]);
+
+        // Create recent tracking record.
+        $recentTracking = EmailTracking::create([
+            'tracking_id' => EmailTracking::generateTrackingId(),
+            'email_type' => 'Test',
+            'recipient_email' => 'recent@example.com',
+            'sent_at' => now()->subDays(10),
+        ]);
+
+        $count = $this->service->purgeEmailTracking();
+
+        $this->assertEquals(1, $count);
+        $this->assertDatabaseMissing('email_tracking', ['id' => $oldTracking->id]);
+        $this->assertDatabaseHas('email_tracking', ['id' => $recentTracking->id]);
     }
 
     public function test_purge_html_body(): void
