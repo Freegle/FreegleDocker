@@ -57,9 +57,10 @@ class MjmlMailableTest extends TestCase
             }
         };
 
-        $mailable->exposeMjmlView('test.template', ['custom' => 'value']);
+        // Use a real template that exists in the codebase.
+        $mailable->exposeMjmlView('emails.mjml.donation.thank-you', ['custom' => 'value']);
 
-        $this->assertEquals('test.template', $mailable->getMjmlTemplate());
+        $this->assertEquals('emails.mjml.donation.thank-you', $mailable->getMjmlTemplate());
         $this->assertArrayHasKey('custom', $mailable->getMjmlData());
         $this->assertEquals('value', $mailable->getMjmlData()['custom']);
         // Should also have default data merged.

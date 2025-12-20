@@ -62,7 +62,7 @@ class WelcomeMailTest extends TestCase
 
         $envelope = $mail->envelope();
 
-        $this->assertEquals('Welcome to Freegle!', $envelope->subject);
+        $this->assertEquals('💚 Welcome to Freegle!', $envelope->subject);
     }
 
     /**
