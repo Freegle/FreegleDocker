@@ -340,8 +340,6 @@ services:
     build:
       context: ./iznik-server
       network: host
-      args:
-        IZNIK_SERVER_BRANCH: ${IZNIK_SERVER_BRANCH:-master}
     depends_on:
       percona:
         condition: service_healthy
