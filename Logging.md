@@ -26,9 +26,9 @@ All logging uses fire-and-forget async patterns to avoid impacting API latency.
          ▼                                          ▼
 ┌─────────────────────────┐            ┌─────────────────────────┐
 │        MySQL            │            │         Loki            │
-│   (Source of Truth)     │            │   (Fast Search/Query)   │
+│   (Source of Truth)     │            │   (Primary for API)     │
 │   - logs table          │            │   - 7-day API retention │
-│   - logs_api table      │            │   - Grafana dashboards  │
+│                         │            │   - Grafana dashboards  │
 └─────────────────────────┘            └─────────────────────────┘
 ```
 
@@ -430,42 +430,6 @@ Sentry events are tagged with `trace_id` and `session_id` for correlation:
 ---
 
 <details>
-<summary><strong>Database Migration</strong></summary>
-
-### Export Script: logs_dump.php
-
-Run on production to export logs to a JSON file:
-
-```bash
-# Export last 7 days of logs table
-php scripts/cli/logs_dump.php -d 7 -t logs -o /tmp/logs_7days.json
-
-# Export specific date range, both tables
-php scripts/cli/logs_dump.php -s "2025-12-01" -e "2025-12-15" -t both -o /tmp/logs_dec.json
-```
-
-**Arguments:**
-- `-s <start>` - Start date (YYYY-MM-DD)
-- `-e <end>` - End date
-- `-d <days>` - Days ago (alternative to start/end)
-- `-t <table>` - Table: `logs`, `logs_api`, or `both`
-- `-o <file>` - Output file path
-- `-v` - Verbose output
-
-### Import Script: logs_loki_import.php
-
-Run locally to import the JSON file into Loki:
-
-```bash
-php scripts/cli/logs_loki_import.php -i /tmp/logs_7days.json -v
-php scripts/cli/logs_loki_import.php -i /tmp/logs_7days.json --dry-run
-```
-
-</details>
-
----
-
-<details>
 <summary><strong>Backup and Restore</strong></summary>
 
 ### GCS Storage (Production)
@@ -530,16 +494,17 @@ All logging uses async patterns:
 ## Implementation Status
 
 ### Phase 1: MySQL Primary (Complete)
-- [x] MySQL `logs` and `logs_api` tables as source of truth
+- [x] MySQL `logs` table as source of truth
 - [x] Direct Loki integration in PHP/Go (feature-flagged)
-- [x] CLI tools for database-to-Loki migration
 
 ### Phase 2: Parallel Logging (Current)
 - [x] Apps write to Loki (Docker: direct, Live: via Alloy)
 - [x] Grafana Alloy deployed to live servers
 - [x] GCS backend configured with backups
 - [x] ModTools System Log viewer built
-- [ ] **Migrate MySQL log reads to Loki** (see below)
+- [x] **logs_api table retired** - all reads now use Loki queries
+- [ ] **DROP logs_api table from live DB** - after code is fully deployed, run: `DROP TABLE logs_api;`
+- [ ] **Migrate MySQL logs table reads to Loki** (see below)
 
 ### Phase 3: Loki Primary (Future)
 - [ ] Disable MySQL logging after 3+ months reliability
@@ -559,13 +524,6 @@ Before disabling MySQL logging, these read operations need Loki alternatives:
 | Log.php | ModTools logs API |
 | Message.php | Recent message activity |
 | Spam.php | Group counts for spam detection |
-
-**logs_api table:**
-| File | Query Purpose |
-|------|---------------|
-| session.php | Successful logins by IP |
-| Spam.php | IP correlation for spam detection |
-| spam_toddlers.php | Spam detection queries |
 
 **Other tables:**
 | Table | Used By |
