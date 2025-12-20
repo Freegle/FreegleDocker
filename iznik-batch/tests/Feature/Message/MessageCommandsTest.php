@@ -18,13 +18,13 @@ class MessageCommandsTest extends TestCase
 
     public function test_process_expired_command_runs_successfully(): void
     {
-        $this->artisan('freegle:messages:process-expired')
+        $this->artisan('messages:process-expired')
             ->assertExitCode(0);
     }
 
     public function test_process_expired_command_displays_stats(): void
     {
-        $this->artisan('freegle:messages:process-expired')
+        $this->artisan('messages:process-expired')
             ->expectsOutputToContain('Processing expired messages')
             ->expectsOutputToContain('Deadline expired:')
             ->assertExitCode(0);
@@ -32,7 +32,7 @@ class MessageCommandsTest extends TestCase
 
     public function test_process_expired_with_spatial_option(): void
     {
-        $this->artisan('freegle:messages:process-expired', ['--spatial' => true])
+        $this->artisan('messages:process-expired', ['--spatial' => true])
             ->expectsOutputToContain('Processing spatial index expiry')
             ->assertExitCode(0);
     }
@@ -65,7 +65,7 @@ class MessageCommandsTest extends TestCase
         // Set message deadline in the past.
         $message->update(['deadline' => now()->subDays(5)]);
 
-        $this->artisan('freegle:messages:process-expired')
+        $this->artisan('messages:process-expired')
             ->assertExitCode(0);
     }
 
@@ -102,7 +102,7 @@ class MessageCommandsTest extends TestCase
             'timestamp' => now(),
         ]);
 
-        $this->artisan('freegle:messages:process-expired')
+        $this->artisan('messages:process-expired')
             ->assertExitCode(0);
     }
 }

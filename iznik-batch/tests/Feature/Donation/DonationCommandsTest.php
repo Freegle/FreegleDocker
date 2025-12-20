@@ -17,13 +17,13 @@ class DonationCommandsTest extends TestCase
 
     public function test_thank_donors_command_runs_successfully(): void
     {
-        $this->artisan('freegle:donations:thank')
+        $this->artisan('mail:donations:thank')
             ->assertExitCode(0);
     }
 
     public function test_thank_donors_command_displays_stats(): void
     {
-        $this->artisan('freegle:donations:thank')
+        $this->artisan('mail:donations:thank')
             ->expectsOutputToContain('Thanking donors')
             ->expectsOutputToContain('Processed:')
             ->expectsOutputToContain('Emails sent:')
@@ -45,19 +45,19 @@ class DonationCommandsTest extends TestCase
             'thanked' => 0,
         ]);
 
-        $this->artisan('freegle:donations:thank')
+        $this->artisan('mail:donations:thank')
             ->assertExitCode(0);
     }
 
     public function test_ask_donations_command_runs_successfully(): void
     {
-        $this->artisan('freegle:donations:ask')
+        $this->artisan('mail:donations:ask')
             ->assertExitCode(0);
     }
 
     public function test_ask_donations_command_displays_table(): void
     {
-        $this->artisan('freegle:donations:ask')
+        $this->artisan('mail:donations:ask')
             ->expectsOutputToContain('Asking for donations')
             ->expectsTable(
                 ['Metric', 'Value'],

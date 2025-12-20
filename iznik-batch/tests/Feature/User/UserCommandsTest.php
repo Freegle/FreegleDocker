@@ -10,13 +10,13 @@ class UserCommandsTest extends TestCase
 {
     public function test_process_bounced_command_runs_successfully(): void
     {
-        $this->artisan('freegle:users:process-bounced')
+        $this->artisan('mail:bounced')
             ->assertExitCode(0);
     }
 
     public function test_process_bounced_displays_stats(): void
     {
-        $this->artisan('freegle:users:process-bounced')
+        $this->artisan('mail:bounced')
             ->expectsOutputToContain('Processing bounced emails')
             ->expectsOutputToContain('Processed:')
             ->expectsOutputToContain('Marked invalid:')
@@ -35,19 +35,19 @@ class UserCommandsTest extends TestCase
             'added' => now()->subDays(30),
         ]);
 
-        $this->artisan('freegle:users:process-bounced')
+        $this->artisan('mail:bounced')
             ->assertExitCode(0);
     }
 
     public function test_retention_stats_command_runs_successfully(): void
     {
-        $this->artisan('freegle:users:retention-stats')
+        $this->artisan('users:retention-stats')
             ->assertExitCode(0);
     }
 
     public function test_retention_stats_displays_table(): void
     {
-        $this->artisan('freegle:users:retention-stats')
+        $this->artisan('users:retention-stats')
             ->expectsOutputToContain('Calculating user retention statistics')
             ->expectsOutputToContain('Active users (30 days)')
             ->expectsOutputToContain('Active users (90 days)')
@@ -74,19 +74,19 @@ class UserCommandsTest extends TestCase
             'added' => now(),
         ]);
 
-        $this->artisan('freegle:users:retention-stats')
+        $this->artisan('users:retention-stats')
             ->assertExitCode(0);
     }
 
     public function test_update_kudos_command_runs_successfully(): void
     {
-        $this->artisan('freegle:users:update-kudos')
+        $this->artisan('users:update-kudos')
             ->assertExitCode(0);
     }
 
     public function test_update_kudos_displays_stats(): void
     {
-        $this->artisan('freegle:users:update-kudos')
+        $this->artisan('users:update-kudos')
             ->expectsOutputToContain('Updating user kudos')
             ->expectsOutputToContain('Updated kudos for')
             ->assertExitCode(0);
@@ -103,7 +103,7 @@ class UserCommandsTest extends TestCase
             $this->createTestMessage($user, $group);
         }
 
-        $this->artisan('freegle:users:update-kudos')
+        $this->artisan('users:update-kudos')
             ->assertExitCode(0);
     }
 }

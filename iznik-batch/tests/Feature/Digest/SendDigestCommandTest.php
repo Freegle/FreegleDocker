@@ -17,7 +17,7 @@ class SendDigestCommandTest extends TestCase
 
     public function test_command_with_invalid_frequency_fails(): void
     {
-        $this->artisan('freegle:digest:send', ['frequency' => 99])
+        $this->artisan('mail:digest', ['frequency' => 99])
             ->expectsOutput('Invalid frequency: 99')
             ->assertExitCode(1);
     }
@@ -31,7 +31,7 @@ class SendDigestCommandTest extends TestCase
             'emailfrequency' => Membership::EMAIL_DIGEST_IMMEDIATE,
         ]);
 
-        $this->artisan('freegle:digest:send', ['frequency' => -1])
+        $this->artisan('mail:digest', ['frequency' => -1])
             ->assertExitCode(0);
     }
 
@@ -48,7 +48,7 @@ class SendDigestCommandTest extends TestCase
 
         $this->createTestMessage($poster, $group);
 
-        $this->artisan('freegle:digest:send', [
+        $this->artisan('mail:digest', [
             'frequency' => 1,
             '--group' => $group->id,
         ])->assertExitCode(0);
@@ -69,7 +69,7 @@ class SendDigestCommandTest extends TestCase
         ]);
 
         // Run with modulo sharding.
-        $this->artisan('freegle:digest:send', [
+        $this->artisan('mail:digest', [
             'frequency' => -1,
             '--mod' => 2,
             '--val' => 0,
@@ -80,7 +80,7 @@ class SendDigestCommandTest extends TestCase
     {
         $group = $this->createTestGroup();
 
-        $this->artisan('freegle:digest:send', ['frequency' => 1])
+        $this->artisan('mail:digest', ['frequency' => 1])
             ->expectsTable(['Metric', 'Value'], [
                 ['Groups processed', '1'],
                 ['Members processed', '0'],

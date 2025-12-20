@@ -5,10 +5,14 @@ use Illuminate\Support\Facades\Schedule;
 /**
  * Define the application's command schedule.
  *
- * Digest commands run at different intervals based on frequency.
- * Chat notification commands run continuously with internal timing.
+ * IMPORTANT: Most commands are disabled for now. Only enable when ready to go live.
+ * The welcome mail is not scheduled - it's sent in response to user signup via API.
  */
 
+// TODO: Enable these commands when ready to go live with Laravel batch processing.
+// For now, all scheduled tasks remain in iznik-server crontab.
+
+/*
 // Immediate digests (-1) - run every minute.
 Schedule::command('mail:digest -1')
     ->everyMinute()
@@ -98,3 +102,4 @@ Schedule::command('users:retention-stats')
     ->weekly()
     ->sundays()
     ->at('06:00');
+*/

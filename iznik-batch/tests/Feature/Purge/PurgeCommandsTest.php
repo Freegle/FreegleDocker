@@ -14,13 +14,13 @@ class PurgeCommandsTest extends TestCase
 {
     public function test_purge_all_command_runs_successfully(): void
     {
-        $this->artisan('freegle:purge:all')
+        $this->artisan('purge:all')
             ->assertExitCode(0);
     }
 
     public function test_purge_all_displays_table(): void
     {
-        $this->artisan('freegle:purge:all')
+        $this->artisan('purge:all')
             ->expectsOutputToContain('Running all purge operations')
             ->expectsOutputToContain('All purge operations complete')
             ->expectsOutputToContain('Total records purged')
@@ -29,13 +29,13 @@ class PurgeCommandsTest extends TestCase
 
     public function test_purge_chats_command_runs_successfully(): void
     {
-        $this->artisan('freegle:purge:chats')
+        $this->artisan('purge:chats')
             ->assertExitCode(0);
     }
 
     public function test_purge_chats_displays_stats(): void
     {
-        $this->artisan('freegle:purge:chats')
+        $this->artisan('purge:chats')
             ->expectsOutputToContain('Purging chat data')
             ->expectsOutputToContain('Purging spam chat messages')
             ->expectsOutputToContain('Purging empty chat rooms')
@@ -46,7 +46,7 @@ class PurgeCommandsTest extends TestCase
 
     public function test_purge_chats_with_custom_spam_days(): void
     {
-        $this->artisan('freegle:purge:chats', ['--spam-days' => 14])
+        $this->artisan('purge:chats', ['--spam-days' => 14])
             ->assertExitCode(0);
     }
 
@@ -79,19 +79,19 @@ class PurgeCommandsTest extends TestCase
             'platform' => 1,
         ]);
 
-        $this->artisan('freegle:purge:chats', ['--spam-days' => 7])
+        $this->artisan('purge:chats', ['--spam-days' => 7])
             ->assertExitCode(0);
     }
 
     public function test_purge_messages_command_runs_successfully(): void
     {
-        $this->artisan('freegle:purge:messages')
+        $this->artisan('purge:messages')
             ->assertExitCode(0);
     }
 
     public function test_purge_messages_displays_stats(): void
     {
-        $this->artisan('freegle:purge:messages')
+        $this->artisan('purge:messages')
             ->expectsOutputToContain('Purging message data')
             ->expectsOutputToContain('Purging messages_history')
             ->expectsOutputToContain('Purging pending messages')
@@ -106,7 +106,7 @@ class PurgeCommandsTest extends TestCase
 
     public function test_purge_messages_with_custom_options(): void
     {
-        $this->artisan('freegle:purge:messages', [
+        $this->artisan('purge:messages', [
             '--history-days' => 30,
             '--pending-days' => 60,
             '--draft-days' => 45,
@@ -138,7 +138,7 @@ class PurgeCommandsTest extends TestCase
             'arrival' => now()->subDays(100),
         ]);
 
-        $this->artisan('freegle:purge:messages', ['--pending-days' => 90])
+        $this->artisan('purge:messages', ['--pending-days' => 90])
             ->assertExitCode(0);
     }
 
@@ -166,7 +166,7 @@ class PurgeCommandsTest extends TestCase
             'arrival' => now()->subDays(5),
         ]);
 
-        $this->artisan('freegle:purge:messages', ['--deleted-retention' => 2])
+        $this->artisan('purge:messages', ['--deleted-retention' => 2])
             ->assertExitCode(0);
     }
 }

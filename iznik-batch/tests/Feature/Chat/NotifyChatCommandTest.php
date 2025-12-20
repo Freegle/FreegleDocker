@@ -49,13 +49,13 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_user2user_command_runs_successfully(): void
     {
-        $this->artisan('freegle:chat:notify-user2user', ['--max-iterations' => 1])
+        $this->artisan('mail:chat:user2user', ['--max-iterations' => 1])
             ->assertExitCode(0);
     }
 
     public function test_user2mod_command_runs_successfully(): void
     {
-        $this->artisan('freegle:chat:notify-user2mod', ['--max-iterations' => 1])
+        $this->artisan('mail:chat:user2mod', ['--max-iterations' => 1])
             ->assertExitCode(0);
     }
 
@@ -68,7 +68,7 @@ class NotifyChatCommandTest extends TestCase
         $this->createRosterEntries($room, $sender, $recipient);
         $this->createChatMessageWithDate($room, $sender);
 
-        $this->artisan('freegle:chat:notify-user2user', [
+        $this->artisan('mail:chat:user2user', [
             '--chat' => $room->id,
             '--max-iterations' => 1,
         ])->assertExitCode(0);
@@ -76,7 +76,7 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_command_accepts_delay_option(): void
     {
-        $this->artisan('freegle:chat:notify-user2user', [
+        $this->artisan('mail:chat:user2user', [
             '--delay' => 60,
             '--max-iterations' => 1,
         ])->assertExitCode(0);
@@ -84,7 +84,7 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_command_accepts_since_option(): void
     {
-        $this->artisan('freegle:chat:notify-user2user', [
+        $this->artisan('mail:chat:user2user', [
             '--since' => 48,
             '--max-iterations' => 1,
         ])->assertExitCode(0);
@@ -114,7 +114,7 @@ class NotifyChatCommandTest extends TestCase
             'platform' => 1,
         ]);
 
-        $this->artisan('freegle:chat:notify-user2user', [
+        $this->artisan('mail:chat:user2user', [
             '--force' => true,
             '--max-iterations' => 1,
         ])->assertExitCode(0);
@@ -122,14 +122,14 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_command_displays_completion_message(): void
     {
-        $this->artisan('freegle:chat:notify-user2user', ['--max-iterations' => 1])
+        $this->artisan('mail:chat:user2user', ['--max-iterations' => 1])
             ->expectsOutputToContain('User2User notification complete')
             ->assertExitCode(0);
     }
 
     public function test_user2mod_command_displays_completion_message(): void
     {
-        $this->artisan('freegle:chat:notify-user2mod', ['--max-iterations' => 1])
+        $this->artisan('mail:chat:user2mod', ['--max-iterations' => 1])
             ->expectsOutputToContain('User2Mod notification complete')
             ->assertExitCode(0);
     }

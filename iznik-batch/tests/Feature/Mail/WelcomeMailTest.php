@@ -117,4 +117,21 @@ class WelcomeMailTest extends TestCase
 
         $this->assertEquals([], $mail->attachments());
     }
+
+    /**
+     * Test welcome email with user ID.
+     */
+    public function test_welcome_email_with_user_id(): void
+    {
+        Mail::fake();
+
+        $email = 'test@example.com';
+
+        // Test with a non-existent user ID - should still work, just no nearby offers.
+        Mail::to($email)->send(new WelcomeMail($email, NULL, 999999999));
+
+        Mail::assertSent(WelcomeMail::class, function ($mail) use ($email) {
+            return $mail->recipientEmail === $email && $mail->userId === 999999999;
+        });
+    }
 }
