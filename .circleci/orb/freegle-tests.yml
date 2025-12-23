@@ -782,8 +782,9 @@ commands:
 
               # Initialize a minimal git repo in container for php-coveralls (it needs git info)
               # The submodule's .git file points to a path not mounted in container
+              # Must create an initial commit so there's a branch for collectBranch()
               echo "DEBUG: Initializing git repo in container for php-coveralls..."
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && rm -f .git && git init && git config user.email 'ci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/iznik-server.git && git checkout -b $CIRCLE_BRANCH 2>/dev/null || true"
+              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && rm -f .git && git init && git config user.email 'ci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/iznik-server.git && git commit --allow-empty -m 'CI initial commit' && git branch -M $CIRCLE_BRANCH"
 
               # Run php-coveralls from within the container (which has PHP)
               # Note: Uses COVERALLS_REPO_TOKEN_IZNIK_SERVER for iznik-server repo
