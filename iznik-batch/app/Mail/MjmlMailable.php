@@ -130,15 +130,16 @@ abstract class MjmlMailable extends Mailable
     {
         $deliveryBase = config('freegle.delivery.base_url', 'https://delivery.ilovefreegle.org');
 
-        // Generate srcset entries
+        // Generate srcset entries.
+        // Use &amp; for MJML/XML compatibility - will be decoded to & in final HTML.
         $srcsetParts = [];
         foreach ($widths as $width) {
-            $resizedUrl = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&w={$width}";
+            $resizedUrl = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&amp;w={$width}";
             $srcsetParts[] = "{$resizedUrl} {$width}w";
         }
 
-        // Generate default src
-        $src = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&w={$defaultWidth}";
+        // Generate default src.
+        $src = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&amp;w={$defaultWidth}";
 
         return [
             'src' => $src,
