@@ -16,6 +16,11 @@ return [
         'mod' => env('FREEGLE_MOD_SITE', 'https://modtools.org'),
     ],
 
+    'api' => [
+        'base_url' => env('FREEGLE_API_BASE_URL', 'https://api.ilovefreegle.org'),
+        'v2_url' => env('FREEGLE_API_V2_URL', 'https://api.ilovefreegle.org/apiv2'),
+    ],
+
     'branding' => [
         'name' => env('FREEGLE_SITE_NAME', 'Freegle'),
         'logo_url' => env('FREEGLE_LOGO_URL', 'https://www.ilovefreegle.org/icon.png'),
@@ -27,9 +32,27 @@ return [
     ],
 
     'images' => [
+        // Base URLs for source images
         'welcome1' => env('FREEGLE_WELCOME_IMAGE1', 'https://www.ilovefreegle.org/images/welcome1.jpg'),
         'welcome2' => env('FREEGLE_WELCOME_IMAGE2', 'https://www.ilovefreegle.org/images/welcome2.jpg'),
         'welcome3' => env('FREEGLE_WELCOME_IMAGE3', 'https://www.ilovefreegle.org/images/welcome3.jpg'),
+        'rule_free' => env('FREEGLE_RULE_FREE_IMAGE', 'https://www.ilovefreegle.org/emailimages/rule-free.png'),
+        'rule_nice' => env('FREEGLE_RULE_NICE_IMAGE', 'https://www.ilovefreegle.org/emailimages/rule-nice.png'),
+        'rule_safe' => env('FREEGLE_RULE_SAFE_IMAGE', 'https://www.ilovefreegle.org/emailimages/rule-safe.png'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Image Delivery Service
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the image delivery/resizing service (weserv/images).
+    | All email images should use this service for optimal sizing.
+    |
+    */
+
+    'delivery' => [
+        'base_url' => env('FREEGLE_DELIVERY_URL', 'https://delivery.ilovefreegle.org'),
     ],
 
     /*
