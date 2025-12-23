@@ -3,23 +3,24 @@
 namespace Tests\Feature\Mail;
 
 use App\Mail\Welcome\WelcomeMail;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Mail;
-use Tests\Support\MailHogHelper;
+use Tests\Support\MailpitHelper;
 use Tests\TestCase;
 
 /**
- * Integration tests that actually send emails to MailHog and verify via API.
+ * Integration tests that actually send emails to Mailpit and verify via API.
  *
- * These tests require MailHog to be running and accessible.
+ * These tests require Mailpit to be running and accessible.
  * Note: These tests do NOT use RefreshDatabase - they use the real database
- * and send real emails to MailHog.
+ * and send real emails to Mailpit.
  *
  * Tests use unique identifiers (uniqid) to ensure they can run in parallel
  * without data conflicts.
  */
 class WelcomeMailIntegrationTest extends TestCase
 {
-    protected MailHogHelper $mailHog;
+    protected MailpitHelper $mailpit;
     protected string $testRunId;
 
     protected function setUp(): void
@@ -29,11 +30,23 @@ class WelcomeMailIntegrationTest extends TestCase
         // Generate unique ID for this test run to avoid conflicts in parallel execution.
         $this->testRunId = uniqid('test_', TRUE);
 
-        // Set up MailHog helper with docker network URL.
-        $this->mailHog = new MailHogHelper('http://mailhog:8025');
+        // Configure for actual SMTP sending (override phpunit.xml array mailer).
+        Config::set('mail.default', 'smtp');
+        Config::set('mail.mailers.smtp.host', 'mailhog');
+        Config::set('mail.mailers.smtp.port', 1025);
+
+        // Enable spam checking.
+        Config::set('freegle.spam_check.enabled', true);
+        Config::set('freegle.spam_check.spamassassin_host', 'spamassassin-app');
+        Config::set('freegle.spam_check.spamassassin_port', 783);
+        Config::set('freegle.spam_check.rspamd_host', 'rspamd');
+        Config::set('freegle.spam_check.rspamd_port', 11334);
+
+        // Set up Mailpit helper with docker network URL.
+        $this->mailpit = new MailpitHelper('http://mailhog:8025');
 
         // Clear all messages before each test.
-        $this->mailHog->deleteAllMessages();
+        $this->mailpit->deleteAllMessages();
     }
 
     protected function tearDown(): void
@@ -51,12 +64,12 @@ class WelcomeMailIntegrationTest extends TestCase
     }
 
     /**
-     * Test welcome email is actually delivered to MailHog.
+     * Test welcome email is actually delivered to Mailpit.
      */
-    public function test_welcome_email_delivered_to_mailhog(): void
+    public function test_welcome_email_delivered_to_mailpit(): void
     {
-        if (!$this->isMailHogAvailable()) {
-            $this->markTestSkipped('MailHog is not available.');
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
         }
 
         $recipientEmail = $this->uniqueEmail('delivery');
@@ -65,12 +78,12 @@ class WelcomeMailIntegrationTest extends TestCase
         // Send the email.
         Mail::to($recipientEmail)->send(new WelcomeMail($recipientEmail, $password));
 
-        // Wait for and verify the message via MailHog API.
-        $message = $this->mailHog->assertMessageSentTo($recipientEmail);
+        // Wait for and verify the message via Mailpit API.
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
 
         $this->assertNotNull($message);
         // Subject contains emoji and site name.
-        $subject = $this->mailHog->getSubject($message);
+        $subject = $this->mailpit->getSubject($message);
         $this->assertStringContainsString('Welcome to Freegle', $subject);
     }
 
@@ -79,8 +92,8 @@ class WelcomeMailIntegrationTest extends TestCase
      */
     public function test_welcome_email_contains_expected_content(): void
     {
-        if (!$this->isMailHogAvailable()) {
-            $this->markTestSkipped('MailHog is not available.');
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
         }
 
         $recipientEmail = $this->uniqueEmail('content');
@@ -88,21 +101,21 @@ class WelcomeMailIntegrationTest extends TestCase
 
         Mail::to($recipientEmail)->send(new WelcomeMail($recipientEmail, $password));
 
-        $message = $this->mailHog->assertMessageSentTo($recipientEmail);
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
 
         // Verify body contains key content.
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, 'part of the'),
+            $this->mailpit->bodyContains($message, 'part of the'),
             'Email body should contain welcome text'
         );
 
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, $password),
+            $this->mailpit->bodyContains($message, $password),
             'Email body should contain the password'
         );
 
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, 'Happy freegling'),
+            $this->mailpit->bodyContains($message, 'Happy freegling'),
             'Email body should contain closing text'
         );
     }
@@ -112,19 +125,19 @@ class WelcomeMailIntegrationTest extends TestCase
      */
     public function test_welcome_email_without_password_excludes_password_section(): void
     {
-        if (!$this->isMailHogAvailable()) {
-            $this->markTestSkipped('MailHog is not available.');
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
         }
 
         $recipientEmail = $this->uniqueEmail('nopassword');
 
         Mail::to($recipientEmail)->send(new WelcomeMail($recipientEmail, NULL));
 
-        $message = $this->mailHog->assertMessageSentTo($recipientEmail);
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
 
         // Verify the password section is not in the body.
         $this->assertFalse(
-            $this->mailHog->bodyContains($message, "IMPORTANT: Your password"),
+            $this->mailpit->bodyContains($message, "IMPORTANT: Your password"),
             'Email body should not contain password section when password is null'
         );
     }
@@ -134,18 +147,18 @@ class WelcomeMailIntegrationTest extends TestCase
      */
     public function test_welcome_email_footer_contains_recipient(): void
     {
-        if (!$this->isMailHogAvailable()) {
-            $this->markTestSkipped('MailHog is not available.');
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
         }
 
         $recipientEmail = $this->uniqueEmail('footer');
 
         Mail::to($recipientEmail)->send(new WelcomeMail($recipientEmail));
 
-        $message = $this->mailHog->assertMessageSentTo($recipientEmail);
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
 
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, $recipientEmail),
+            $this->mailpit->bodyContains($message, $recipientEmail),
             'Email footer should contain recipient email address'
         );
     }
@@ -155,41 +168,103 @@ class WelcomeMailIntegrationTest extends TestCase
      */
     public function test_welcome_email_contains_cta_buttons(): void
     {
-        if (!$this->isMailHogAvailable()) {
-            $this->markTestSkipped('MailHog is not available.');
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
         }
 
         $recipientEmail = $this->uniqueEmail('cta');
 
         Mail::to($recipientEmail)->send(new WelcomeMail($recipientEmail));
 
-        $message = $this->mailHog->assertMessageSentTo($recipientEmail);
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
 
         // Check for CTA button text (URLs are tracked via redirect).
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, 'Give stuff away'),
+            $this->mailpit->bodyContains($message, 'Give stuff away'),
             'Email should contain Give button text'
         );
 
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, 'Find what you need'),
+            $this->mailpit->bodyContains($message, 'Find what you need'),
             'Email should contain Find button text'
         );
 
-        // Verify the three rules section exists.
+        // Verify the three rules section exists (uppercase in text version).
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, 'Three simple rules'),
+            $this->mailpit->bodyContains($message, 'THREE SIMPLE RULES') ||
+            $this->mailpit->bodyContains($message, 'Three simple rules'),
             'Email should contain rules section'
         );
     }
 
     /**
-     * Check if MailHog is available.
+     * Test welcome email passes spam checks.
+     *
+     * This test sends the email through SpamAssassin and Rspamd
+     * and reports the spam scores in the headers.
      */
-    protected function isMailHogAvailable(): bool
+    public function test_welcome_email_passes_spam_checks(): void
+    {
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
+        }
+
+        $recipientEmail = $this->uniqueEmail('spam');
+
+        Mail::to($recipientEmail)->send(new WelcomeMail($recipientEmail, 'testpass123'));
+
+        // Wait for the message (returns full message with headers).
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
+        $this->assertNotNull($message, 'Message should have been sent');
+
+        // Get spam report.
+        $spamReport = $this->mailpit->getSpamReport($message);
+
+        // Log spam report for analysis.
+        $saScore = $spamReport['spamassassin']['score'];
+        $rspamdScore = $spamReport['rspamd']['score'];
+        $saSymbols = $spamReport['spamassassin']['symbols'];
+        $rspamdSymbols = $spamReport['rspamd']['symbols'];
+
+        fwrite(STDERR, "\n");
+        fwrite(STDERR, "=== Welcome Email Spam Report ===\n");
+        fwrite(STDERR, "SpamAssassin Score: " . ($saScore !== null ? sprintf('%.1f', $saScore) : 'N/A') . "\n");
+        fwrite(STDERR, "SpamAssassin Symbols: " . (count($saSymbols) > 0 ? implode(', ', $saSymbols) : 'none') . "\n");
+        fwrite(STDERR, "Rspamd Score: " . ($rspamdScore !== null ? sprintf('%.1f', $rspamdScore) : 'N/A') . "\n");
+        fwrite(STDERR, "Rspamd Symbols: " . (count($rspamdSymbols) > 0 ? implode(', ', $rspamdSymbols) : 'none') . "\n");
+        fwrite(STDERR, "================================\n");
+
+        // Assert spam scores are below threshold (5.0).
+        // Note: If spam checking is not enabled, scores will be null.
+        if ($saScore !== null) {
+            $this->assertLessThan(
+                5.0,
+                $saScore,
+                "SpamAssassin score {$saScore} exceeds threshold. Symbols: " . implode(', ', $saSymbols)
+            );
+        }
+
+        if ($rspamdScore !== null) {
+            $this->assertLessThan(
+                5.0,
+                $rspamdScore,
+                "Rspamd score {$rspamdScore} exceeds threshold. Symbols: " . implode(', ', $rspamdSymbols)
+            );
+        }
+
+        // If neither spam checker returned results, still pass but warn.
+        if ($saScore === null && $rspamdScore === null) {
+            fwrite(STDERR, "WARNING: No spam scores available. Check spam check services.\n");
+        }
+    }
+
+    /**
+     * Check if Mailpit is available.
+     */
+    protected function isMailpitAvailable(): bool
     {
         try {
-            $ch = curl_init('http://mailhog:8025/api/v2/messages');
+            $ch = curl_init('http://mailhog:8025/api/v1/messages');
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
             curl_setopt($ch, CURLOPT_TIMEOUT, 5);

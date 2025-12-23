@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Mail;
 
+use App\Mail\Traits\FeatureFlags;
 use App\Mail\Welcome\WelcomeMail;
 use App\Models\BatchEmailProgress;
 use App\Models\User;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Mail;
 
 class SendPendingWelcomeMailsCommand extends Command
 {
+    use FeatureFlags;
+
     /**
      * The name and signature of the console command.
      */
@@ -28,12 +31,19 @@ class SendPendingWelcomeMailsCommand extends Command
     protected $description = "Send pending welcome emails to new users";
 
     private const JOB_TYPE = "welcome";
+    private const EMAIL_TYPE = "Welcome";
 
     /**
      * Execute the console command.
      */
     public function handle(EmailSpoolerService $spooler): int
     {
+        // Check if Welcome emails are enabled for this batch system.
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            $this->info("Welcome emails are not enabled in iznik-batch. Set FREEGLE_MAIL_ENABLED_TYPES in .env to include 'Welcome'.");
+            return Command::SUCCESS;
+        }
+
         $limit = (int) $this->option("limit");
         $days = (int) $this->option("days");
         $spool = $this->option("spool");

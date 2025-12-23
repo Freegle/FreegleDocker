@@ -56,6 +56,12 @@ docker exec freegle-batch php artisan migrate:generate
 - Use MJML templates in `resources/views/emails/mjml/`
 - All Mailable classes must extend `MjmlMailable` and implement `getSubject()`
 
+## Email Guidelines
+
+- **Never use base64 data URIs in emails** - Gmail and most email clients strip them for security reasons. Use hosted image URLs instead.
+- Email images should be hosted on a CDN or web server and referenced via HTTPS URLs.
+- Configure image URLs in `config/freegle.php` under the `images` key.
+
 ## Reference Material
 
 When implementing services, check the PHPUnit tests in `iznik-server/test/ut/php` for the original business logic and schema usage. This helps understand the intention of the original code.

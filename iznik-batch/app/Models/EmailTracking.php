@@ -129,8 +129,9 @@ class EmailTracking extends Model
      */
     public function getPixelUrl(): string
     {
-        $domain = config('app.api_domain', 'apiv2.ilovefreegle.org');
-        return "https://{$domain}/e/d/p/{$this->tracking_id}";
+        // Email tracking routes are at /e/d/... (not /apiv2/e/d/...)
+        $baseUrl = config('freegle.api.base_url', 'https://api.ilovefreegle.org');
+        return "{$baseUrl}/e/d/p/{$this->tracking_id}";
     }
 
     /**
@@ -138,9 +139,10 @@ class EmailTracking extends Model
      */
     public function getTrackedLinkUrl(string $destinationUrl, ?string $position = null, ?string $action = null): string
     {
-        $domain = config('app.api_domain', 'apiv2.ilovefreegle.org');
+        // Email tracking routes are at /e/d/... (not /apiv2/e/d/...)
+        $baseUrl = config('freegle.api.base_url', 'https://api.ilovefreegle.org');
         $encodedUrl = base64_encode($destinationUrl);
-        $url = "https://{$domain}/e/d/r/{$this->tracking_id}?url={$encodedUrl}";
+        $url = "{$baseUrl}/e/d/r/{$this->tracking_id}?url={$encodedUrl}";
 
         if ($position) {
             $url .= "&p=" . urlencode($position);
@@ -157,9 +159,10 @@ class EmailTracking extends Model
      */
     public function getTrackedImageUrl(string $originalImageUrl, string $position, ?int $scrollPercent = null): string
     {
-        $domain = config('app.api_domain', 'apiv2.ilovefreegle.org');
+        // Email tracking routes are at /e/d/... (not /apiv2/e/d/...)
+        $baseUrl = config('freegle.api.base_url', 'https://api.ilovefreegle.org');
         $encodedUrl = base64_encode($originalImageUrl);
-        $url = "https://{$domain}/e/d/i/{$this->tracking_id}?url={$encodedUrl}&p=" . urlencode($position);
+        $url = "{$baseUrl}/e/d/i/{$this->tracking_id}?url={$encodedUrl}&p=" . urlencode($position);
 
         if ($scrollPercent !== null) {
             $url .= "&s={$scrollPercent}";

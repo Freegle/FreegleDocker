@@ -29,9 +29,22 @@ return [
 
     'mail' => [
         'noreply_addr' => env('FREEGLE_NOREPLY_ADDR', 'noreply@ilovefreegle.org'),
+        'user_domain' => env('FREEGLE_USER_DOMAIN', 'users.ilovefreegle.org'),
+        // Email logging - send BCC copies of specific email types for debugging/monitoring.
+        // Format: comma-separated list of email types to log (e.g., "Welcome,ChatNotification").
+        'log_types' => env('FREEGLE_MAIL_LOG_TYPES', ''),
+        'log_address' => env('FREEGLE_MAIL_LOG_ADDRESS', ''),
+        // Email types enabled for sending from iznik-batch.
+        // Comma-separated list of email type names that this system should send.
+        // Email types: Welcome, ChatNotification, etc.
+        // If empty, NO emails will be sent (fail-safe default).
+        'enabled_types' => env('FREEGLE_MAIL_ENABLED_TYPES', ''),
     ],
 
     'images' => [
+        // Image domain for user profile images
+        'domain' => env('FREEGLE_IMAGES_DOMAIN', 'https://images.ilovefreegle.org'),
+
         // Base URLs for source images
         'welcome1' => env('FREEGLE_WELCOME_IMAGE1', 'https://www.ilovefreegle.org/images/welcome1.jpg'),
         'welcome2' => env('FREEGLE_WELCOME_IMAGE2', 'https://www.ilovefreegle.org/images/welcome2.jpg'),
@@ -79,5 +92,25 @@ return [
     'loki' => [
         'enabled' => env('LOKI_ENABLED', false) || env('LOKI_JSON_FILE', false),
         'log_path' => env('LOKI_JSON_PATH', '/var/log/freegle'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Spam Checking
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for spam checking emails during testing.
+    | When enabled, emails are checked against SpamAssassin and Rspamd
+    | and the scores are added as headers.
+    |
+    */
+
+    'spam_check' => [
+        'enabled' => env('SPAM_CHECK_ENABLED', false),
+        'spamassassin_host' => env('SPAMASSASSIN_HOST', 'spamassassin-app'),
+        'spamassassin_port' => env('SPAMASSASSIN_PORT', 783),
+        'rspamd_host' => env('RSPAMD_HOST', 'rspamd'),
+        'rspamd_port' => env('RSPAMD_PORT', 11334),
+        'fail_threshold' => env('SPAM_FAIL_THRESHOLD', 5.0),
     ],
 ];

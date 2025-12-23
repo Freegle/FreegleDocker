@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Mail;
 
+use App\Mail\Traits\FeatureFlags;
 use App\Mail\Welcome\WelcomeMail;
 use App\Models\EmailTracking;
 use App\Models\User;
@@ -13,6 +14,9 @@ use Illuminate\Support\Facades\Mail;
 
 class RecoverMissedWelcomeMailsCommand extends Command
 {
+    use FeatureFlags;
+
+    private const EMAIL_TYPE = "Welcome";
     /**
      * The name and signature of the console command.
      */
@@ -36,6 +40,12 @@ class RecoverMissedWelcomeMailsCommand extends Command
      */
     public function handle(EmailSpoolerService $spooler): int
     {
+        // Check if Welcome emails are enabled for this batch system.
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            $this->info("Welcome emails are not enabled in iznik-batch. Set FREEGLE_MAIL_ENABLED_TYPES in .env to include 'Welcome'.");
+            return Command::SUCCESS;
+        }
+
         $startDate = $this->option("start");
         $endDate = $this->option("end");
         $limit = (int) $this->option("limit");

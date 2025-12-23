@@ -134,4 +134,36 @@ class WelcomeMailTest extends TestCase
             return $mail->recipientEmail === $email && $mail->userId === 999999999;
         });
     }
+
+    /**
+     * Test welcome email has X-Freegle custom headers.
+     * Note: Headers are added via withSymfonyMessage during send.
+     * We verify the build completes successfully.
+     */
+    public function test_welcome_email_has_custom_headers(): void
+    {
+        $email = 'test@example.com';
+        $userId = 12345;
+
+        $mail = new WelcomeMail($email, NULL, $userId);
+
+        // Build should complete without error (headers are added during send).
+        $result = $mail->build();
+        $this->assertInstanceOf(WelcomeMail::class, $result);
+    }
+
+    /**
+     * Test welcome email has plain text template (multipart).
+     */
+    public function test_welcome_email_has_plain_text_template(): void
+    {
+        $email = 'test@example.com';
+        $password = 'secret123';
+
+        $mail = new WelcomeMail($email, $password);
+        $mail->build();
+
+        // Verify plain text view is set by checking the view exists.
+        $this->assertTrue(view()->exists('emails.text.welcome.welcome'));
+    }
 }

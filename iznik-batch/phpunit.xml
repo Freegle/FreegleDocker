@@ -39,5 +39,6 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="FREEGLE_MAIL_ENABLED_TYPES" value="Welcome,ChatNotification"/>
     </php>
 </phpunit>
