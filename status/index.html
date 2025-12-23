@@ -34,7 +34,7 @@
         .action-button.danger { background: #dc3545; }
         .action-button.danger:hover { background: #c82333; }
         .action-button:disabled { background: #6c757d; cursor: not-allowed; }
-        .container-actions { margin-top: 8px; }
+        .container-actions { position: absolute; right: 130px; bottom: 10px; }
 
         /* Tab styles */
         .tabs { display: flex; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; flex-wrap: wrap; }
@@ -46,6 +46,7 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .tab-badge { background: #dc3545; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-left: 5px; }
+        .wip-badge { background: #ffc107; color: #333; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-left: 5px; font-weight: bold; }
         .tab-light { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; border: 1px solid #999; }
         .tab-light.green { background: #28a745; box-shadow: 0 0 4px #28a745; border-color: #28a745; }
         .tab-light.amber { background: #ffc107; box-shadow: 0 0 4px #ffc107; border-color: #ffc107; }
@@ -167,7 +168,7 @@
 
             <div id="batch" class="service loading">
                 <div>
-                    <strong>Batch Processor (Laravel)</strong> - iznik-batch<br>
+                    <strong>Batch Processor (Laravel)</strong> <span class="wip-badge">WIP</span> - iznik-batch<br>
                     <small>Handles digests, notifications, cleanup tasks</small><br>
                     <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-batch</small><br>
                     <span class="status">Loading...</span>
@@ -189,11 +190,11 @@
                 </div>
             </div>
 
-            <div id="mailhog" class="service loading">
+            <div id="mailpit" class="service loading">
                 <div>
-                    <strong>MailHog</strong> - Email testing<br>
-                    <span class="url">http://mailhog.localhost</span><br>
-                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-mailhog</small><br>
+                    <strong>Mailpit</strong> - Email testing with spam scoring<br>
+                    <span class="url">http://mailpit.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-mailpit</small><br>
                     <span class="status">Loading...</span>
                 </div>
             </div>
@@ -286,7 +287,7 @@
 
             <div id="laravel-tests" class="service loading">
                 <div>
-                    <strong>Laravel Tests (iznik-batch)</strong><br>
+                    <strong>Laravel Tests (iznik-batch)</strong> <span class="wip-badge">WIP</span><br>
                     <small>Tests batch processor services</small><br>
                     <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-batch</small><br>
                     <span class="status">Waiting for services...</span>
@@ -363,8 +364,17 @@
 
             <div id="spamassassin" class="service loading">
                 <div>
-                    <strong>SpamAssassin</strong> - Email filtering<br>
+                    <strong>SpamAssassin</strong> - Email spam filtering (legacy)<br>
                     <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-spamassassin</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="rspamd" class="service loading">
+                <div>
+                    <strong>Rspamd</strong> - Email spam filtering (modern, ML-based)<br>
+                    <span class="url">http://rspamd.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-rspamd</small><br>
                     <span class="status">Loading...</span>
                 </div>
             </div>
@@ -493,13 +503,14 @@
             { id: 'apiv2', container: 'freegle-apiv2' },
             { id: 'batch', container: 'freegle-batch' },
             { id: 'phpmyadmin', container: 'freegle-phpmyadmin' },
-            { id: 'mailhog', container: 'freegle-mailhog' },
+            { id: 'mailpit', container: 'freegle-mailpit' },
             { id: 'playwright', container: 'freegle-playwright' },
             { id: 'percona', container: 'freegle-percona' },
             { id: 'postgres', container: 'freegle-postgres' },
             { id: 'redis', container: 'freegle-redis' },
             { id: 'beanstalkd', container: 'freegle-beanstalkd' },
             { id: 'spamassassin', container: 'freegle-spamassassin' },
+            { id: 'rspamd', container: 'freegle-rspamd' },
             { id: 'traefik', container: 'freegle-traefik' },
             { id: 'tusd', container: 'freegle-tusd' },
             { id: 'delivery', container: 'freegle-delivery' }
@@ -534,9 +545,9 @@
                 'freegle': ['freegle-dev-local', 'freegle-prod-local'],
                 'modtools': ['modtools-dev-local', 'modtools-prod-local'],
                 'backend': ['apiv1', 'apiv2', 'batch'],
-                'devtools': ['phpmyadmin', 'mailhog'],
+                'devtools': ['phpmyadmin', 'mailpit'],
                 'testing': ['playwright', 'batch'],
-                'infra': ['traefik', 'percona', 'postgres', 'redis', 'tusd', 'beanstalkd', 'spamassassin', 'delivery'],
+                'infra': ['traefik', 'percona', 'postgres', 'redis', 'tusd', 'beanstalkd', 'spamassassin', 'rspamd', 'delivery'],
                 'production': ['freegle-dev-live']
             };
 
@@ -683,9 +694,19 @@
                     visitButton.style.zIndex = '1000';
                     element.appendChild(visitButton);
                 }
-            } else if (service.id === 'phpmyadmin' || service.id === 'mailhog') {
-                const serviceUrl = service.id === 'phpmyadmin' ? 'http://phpmyadmin.localhost' : 'http://mailhog.localhost';
-                const serviceName = service.id === 'phpmyadmin' ? 'PhpMyAdmin' : 'MailHog';
+            } else if (service.id === 'phpmyadmin' || service.id === 'mailpit' || service.id === 'rspamd') {
+                const serviceUrls = {
+                    'phpmyadmin': 'http://phpmyadmin.localhost',
+                    'mailpit': 'http://mailpit.localhost',
+                    'rspamd': 'http://rspamd.localhost'
+                };
+                const serviceNames = {
+                    'phpmyadmin': 'PhpMyAdmin',
+                    'mailpit': 'Mailpit',
+                    'rspamd': 'Rspamd'
+                };
+                const serviceUrl = serviceUrls[service.id];
+                const serviceName = serviceNames[service.id];
 
                 if (!element.querySelector('.visit-button')) {
                     const visitButton = document.createElement('a');

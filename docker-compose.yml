@@ -98,13 +98,16 @@ services:
       - "traefik.http.routers.phpmyadmin.entrypoints=web"
       - "traefik.http.services.phpmyadmin.loadbalancer.server.port=80"
 
-  mailhog:
-    image: mailhog/mailhog
-    container_name: freegle-mailhog
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: freegle-mailpit
     networks:
-      - default
+      default:
+        aliases:
+          - mailhog
     ports:
       - "0.0.0.0:8025:8025"
+      - "0.0.0.0:1025:1025"
     depends_on:
       percona:
         condition: service_healthy
@@ -116,13 +119,25 @@ services:
         condition: service_healthy
       spamassassin-app:
         condition: service_healthy
+      rspamd:
+        condition: service_healthy
       reverse-proxy:
         condition: service_healthy
+    environment:
+      - MP_SMTP_AUTH_ACCEPT_ANY=true
+      - MP_SMTP_AUTH_ALLOW_INSECURE=true
+      - MP_ENABLE_SPAMASSASSIN=spamassassin-app:783
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8025/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.mailhog.rule=Host(`mailhog.localhost`)"
-      - "traefik.http.routers.mailhog.entrypoints=web"
-      - "traefik.http.services.mailhog.loadbalancer.server.port=8025"
+      - "traefik.http.routers.mailpit.rule=Host(`mailpit.localhost`) || Host(`mailhog.localhost`)"
+      - "traefik.http.routers.mailpit.entrypoints=web"
+      - "traefik.http.services.mailpit.loadbalancer.server.port=8025"
 
   beanstalkd:
     image: schickling/beanstalkd
@@ -157,6 +172,34 @@ services:
       retries: 5
       start_period: 60s
 
+  rspamd:
+    image: rspamd/rspamd:latest
+    container_name: freegle-rspamd
+    networks:
+      - default
+    ports:
+      - "11334:11334"
+    volumes:
+      - ./conf/rspamd/local.d:/etc/rspamd/local.d:ro
+      - rspamd_data:/var/lib/rspamd
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_SERVERS=redis:6379
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "rspamadm control stat > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rspamd.rule=Host(`rspamd.localhost`)"
+      - "traefik.http.routers.rspamd.entrypoints=web"
+      - "traefik.http.services.rspamd.loadbalancer.server.port=11334"
+
   redis:
     container_name: freegle-redis
     networks:
@@ -186,6 +229,8 @@ services:
       - modtools-prod-local
     extra_hosts:
       - "tusd.localhost:host-gateway"
+      - "freegle-dev-local.localhost:host-gateway"
+      - "freegle-prod-local.localhost:host-gateway"
     volumes:
       - ./delivery-nginx.conf:/etc/nginx/nginx.conf:ro
       - ./delivery-imagesweserv.conf:/etc/nginx/imagesweserv.conf:ro
@@ -345,7 +390,7 @@ services:
         condition: service_healthy
       beanstalkd:
         condition: service_started
-      mailhog:
+      mailpit:
         condition: service_started
       redis:
         condition: service_started
@@ -443,6 +488,10 @@ services:
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - LOKI_JSON_PATH=/var/log/freegle
+      # Allowed domains for email tracking redirects
+      - USER_SITE=www.ilovefreegle.org
+      - IMAGE_DOMAIN=images.ilovefreegle.org
+      - GROUP_DOMAIN=groups.ilovefreegle.org
     volumes:
       - apiv2_logs:/var/log/freegle
     healthcheck:
@@ -486,7 +535,7 @@ services:
     depends_on:
       phpmyadmin:
         condition: service_started
-      mailhog:
+      mailpit:
         condition: service_started
       apiv1:
         condition: service_healthy
@@ -583,7 +632,7 @@ services:
     depends_on:
       phpmyadmin:
         condition: service_started
-      mailhog:
+      mailpit:
         condition: service_started
       apiv1:
         condition: service_healthy
@@ -634,7 +683,7 @@ services:
     depends_on:
       phpmyadmin:
         condition: service_started
-      mailhog:
+      mailpit:
         condition: service_started
       apiv1:
         condition: service_healthy
@@ -730,7 +779,7 @@ services:
     depends_on:
       phpmyadmin:
         condition: service_started
-      mailhog:
+      mailpit:
         condition: service_started
       apiv1:
         condition: service_healthy
@@ -874,7 +923,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      mailhog:
+      mailpit:
         condition: service_started
     restart: "no"
     environment:
@@ -882,6 +931,7 @@ services:
       - APP_KEY=base64:JXsa9TVxy8PQIrAgimIh0+4v8U7rSYhd3/+an8WYYQc=
       - APP_ENV=local
       - APP_DEBUG=true
+      - RUN_MIGRATIONS=true
       - APP_URL=http://localhost
       - LOG_CHANNEL=stderr
       - DB_CONNECTION=mysql
@@ -899,8 +949,11 @@ services:
       - MAIL_HOST=mailhog
       - MAIL_PORT=1025
       - MAIL_ENCRYPTION=null
-      - FREEGLE_USER_SITE=http://freegle-dev-local.localhost
-      - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost
+      - MAIL_EHLO_DOMAIN=freegle-batch
+      - FREEGLE_USER_SITE=http://freegle-dev-local.localhost:3002
+      - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost:3003
+      - FREEGLE_API_BASE_URL=http://localhost:8193
+      - FREEGLE_DELIVERY_URL=http://delivery.localhost
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
     healthcheck:
@@ -921,6 +974,8 @@ volumes:
   batch-vendor:
     driver: local
   batch-bootstrap-cache:
+    driver: local
+  rspamd_data:
     driver: local
   loki-data:
     driver: local
