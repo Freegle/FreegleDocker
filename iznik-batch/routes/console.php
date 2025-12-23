@@ -6,11 +6,24 @@ use Illuminate\Support\Facades\Schedule;
  * Define the application's command schedule.
  *
  * IMPORTANT: Most commands are disabled for now. Only enable when ready to go live.
- * The welcome mail is not scheduled - it's sent in response to user signup via API.
+ * Commands are gradually being enabled as we migrate from iznik-server crontab.
  */
 
-// TODO: Enable these commands when ready to go live with Laravel batch processing.
-// For now, all scheduled tasks remain in iznik-server crontab.
+// =============================================================================
+// ACTIVE SCHEDULED COMMANDS
+// =============================================================================
+
+// Welcome mail processing - check for pending welcome mails every minute.
+// Uses withoutOverlapping() to prevent duplicate runs if processing is slow.
+// Uses runInBackground() so it doesn't block other scheduled commands.
+Schedule::command('mail:welcome:send --limit=100')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// =============================================================================
+// DISABLED COMMANDS (to be enabled when ready)
+// =============================================================================
 
 /*
 // Immediate digests (-1) - run every minute.
@@ -82,11 +95,13 @@ Schedule::command('purge:messages')
 // Donation-related commands.
 Schedule::command('mail:donations:thank')
     ->dailyAt('09:00')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->runInBackground();
 
 Schedule::command('mail:donations:ask')
     ->dailyAt('17:00')
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->runInBackground();
 
 // User management commands.
 Schedule::command('users:update-kudos')
@@ -96,10 +111,24 @@ Schedule::command('users:update-kudos')
 
 Schedule::command('mail:bounced')
     ->hourly()
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->runInBackground();
 
 Schedule::command('users:retention-stats')
     ->weekly()
     ->sundays()
-    ->at('06:00');
+    ->at('06:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Email spool processing - runs continuously in daemon mode.
+// This is started by the container entrypoint, not by the scheduler.
+// The daemon processes emails in a loop with 1 second sleep between batches.
+// Start with: php artisan mail:spool:process --daemon --limit=100
+
+// Clean up old sent emails - run daily.
+Schedule::command('mail:spool:process --cleanup --cleanup-days=7')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
 */

@@ -69,7 +69,9 @@ class WelcomeMailIntegrationTest extends TestCase
         $message = $this->mailHog->assertMessageSentTo($recipientEmail);
 
         $this->assertNotNull($message);
-        $this->assertEquals('Welcome to Freegle!', $this->mailHog->getSubject($message));
+        // Subject contains emoji and site name.
+        $subject = $this->mailHog->getSubject($message);
+        $this->assertStringContainsString('Welcome to Freegle', $subject);
     }
 
     /**
@@ -90,8 +92,8 @@ class WelcomeMailIntegrationTest extends TestCase
 
         // Verify body contains key content.
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, 'Thanks for joining Freegle'),
-            'Email body should contain welcome header'
+            $this->mailHog->bodyContains($message, 'part of the'),
+            'Email body should contain welcome text'
         );
 
         $this->assertTrue(
@@ -122,7 +124,7 @@ class WelcomeMailIntegrationTest extends TestCase
 
         // Verify the password section is not in the body.
         $this->assertFalse(
-            $this->mailHog->bodyContains($message, "Here's your password"),
+            $this->mailHog->bodyContains($message, "IMPORTANT: Your password"),
             'Email body should not contain password section when password is null'
         );
     }
@@ -163,22 +165,21 @@ class WelcomeMailIntegrationTest extends TestCase
 
         $message = $this->mailHog->assertMessageSentTo($recipientEmail);
 
-        // Check for CTA links.
-        $userSite = config('freegle.sites.user');
-
+        // Check for CTA button text (URLs are tracked via redirect).
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, $userSite . '/give'),
-            'Email should contain link to post an offer'
+            $this->mailHog->bodyContains($message, 'Give stuff away'),
+            'Email should contain Give button text'
         );
 
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, $userSite . '/find'),
-            'Email should contain link to post a wanted'
+            $this->mailHog->bodyContains($message, 'Find what you need'),
+            'Email should contain Find button text'
         );
 
+        // Verify the three rules section exists.
         $this->assertTrue(
-            $this->mailHog->bodyContains($message, $userSite . '/explore'),
-            'Email should contain link to explore communities'
+            $this->mailHog->bodyContains($message, 'Three simple rules'),
+            'Email should contain rules section'
         );
     }
 

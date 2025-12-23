@@ -14,10 +14,10 @@
         </mj-column>
       </mj-section>
 
-      {{-- Hero image --}}
+      {{-- Hero image with responsive srcset --}}
       <mj-section padding="0">
         <mj-column>
-          <mj-image src="{{ config('freegle.images.welcome1') }}" alt="Welcome to Freegle" width="600px" padding="0"></mj-image>
+          <mj-image src="{{ $heroImage['src'] }}" srcset="{{ $heroImage['srcset'] }}" alt="Welcome to Freegle" width="600px" padding="0"></mj-image>
         </mj-column>
       </mj-section>
 
@@ -75,7 +75,7 @@
         <mj-column width="33%">
           <mj-text align="center" padding-bottom="5px">
             <a href="{{ $termsUrl }}" style="text-decoration: none;">
-              <img src="{{ $ruleFreeImage }}" alt="Free" width="80" style="display: block; margin: 0 auto;" />
+              <img src="{{ $ruleFreeImage['src'] }}" srcset="{{ $ruleFreeImage['srcset'] }}" alt="Free" width="80" style="display: block; margin: 0 auto;" />
             </a>
           </mj-text>
           <mj-text align="center" padding-top="0">
@@ -87,7 +87,7 @@
         <mj-column width="33%">
           <mj-text align="center" padding-bottom="5px">
             <a href="{{ $helpUrl }}" style="text-decoration: none;">
-              <img src="{{ $ruleNiceImage }}" alt="Be nice" width="80" style="display: block; margin: 0 auto;" />
+              <img src="{{ $ruleNiceImage['src'] }}" srcset="{{ $ruleNiceImage['srcset'] }}" alt="Be nice" width="80" style="display: block; margin: 0 auto;" />
             </a>
           </mj-text>
           <mj-text align="center" padding-top="0">
@@ -99,7 +99,7 @@
         <mj-column width="33%">
           <mj-text align="center" padding-bottom="5px">
             <a href="{{ $safetyUrl }}" style="text-decoration: none;">
-              <img src="{{ $ruleSafeImage }}" alt="Stay safe" width="80" style="display: block; margin: 0 auto;" />
+              <img src="{{ $ruleSafeImage['src'] }}" srcset="{{ $ruleSafeImage['srcset'] }}" alt="Stay safe" width="80" style="display: block; margin: 0 auto;" />
             </a>
           </mj-text>
           <mj-text align="center" padding-top="0">

@@ -93,6 +93,14 @@ class User extends Model
     }
 
     /**
+     * Get user's email tracking records.
+     */
+    public function emailTracking(): HasMany
+    {
+        return $this->hasMany(EmailTracking::class, 'userid');
+    }
+
+    /**
      * Get the user's preferred email address.
      */
     public function getEmailPreferredAttribute(): ?string
