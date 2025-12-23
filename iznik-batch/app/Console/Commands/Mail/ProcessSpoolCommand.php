@@ -24,6 +24,11 @@ class ProcessSpoolCommand extends Command
     protected $description = "Process spooled emails from the file-based queue";
 
     /**
+     * Flag to indicate shutdown has been requested.
+     */
+    protected bool $shouldShutdown = false;
+
+    /**
      * Execute the console command.
      */
     public function handle(EmailSpoolerService $spooler): int
@@ -87,9 +92,12 @@ class ProcessSpoolCommand extends Command
     {
         $limit = (int) $this->option("limit");
 
+        // Register signal handlers for graceful shutdown.
+        $this->registerSignalHandlers();
+
         $this->info("Running in daemon mode. Press Ctrl+C to stop.");
 
-        while (true) {
+        while (!$this->shouldShutdown) {
             $stats = $spooler->processSpool($limit);
 
             if ($stats["processed"] > 0) {
@@ -113,13 +121,35 @@ class ProcessSpoolCommand extends Command
             // Sleep before next batch.
             sleep(1);
 
-            // Check for termination signals.
+            // Dispatch any pending signals.
             if (function_exists("pcntl_signal_dispatch")) {
                 pcntl_signal_dispatch();
             }
         }
 
+        $this->info("Shutting down gracefully...");
+
         return Command::SUCCESS;
+    }
+
+    /**
+     * Register signal handlers for graceful shutdown.
+     */
+    protected function registerSignalHandlers(): void
+    {
+        if (!function_exists("pcntl_signal")) {
+            $this->warn("PCNTL not available - graceful shutdown disabled.");
+            return;
+        }
+
+        $handler = function (int $signal): void {
+            $this->info("Received signal {$signal}, initiating graceful shutdown...");
+            $this->shouldShutdown = true;
+        };
+
+        pcntl_signal(SIGTERM, $handler);
+        pcntl_signal(SIGINT, $handler);
+        pcntl_signal(SIGHUP, $handler);
     }
 
     /**
