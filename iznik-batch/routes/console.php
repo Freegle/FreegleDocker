@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Schedule;
 // Welcome mail processing - check for pending welcome mails every minute.
 // Uses withoutOverlapping() to prevent duplicate runs if processing is slow.
 // Uses runInBackground() so it doesn't block other scheduled commands.
-Schedule::command('mail:welcome:send --limit=100')
+// Uses --spool to write to file for resilient async processing.
+Schedule::command('mail:welcome:send --limit=100 --spool')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
@@ -64,13 +65,13 @@ Schedule::command('mail:digest 24')
 
 // Chat notifications - run continuously with internal looping.
 // User2User notifications.
-Schedule::command('mail:chat:user2user --max-iterations=60')
+Schedule::command('mail:chat:user2user --max-iterations=60 --spool')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 
 // User2Mod notifications.
-Schedule::command('mail:chat:user2mod --max-iterations=60')
+Schedule::command('mail:chat:user2mod --max-iterations=60 --spool')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
@@ -121,14 +122,12 @@ Schedule::command('users:retention-stats')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Email spool processing - runs continuously in daemon mode.
-// This is started by the container entrypoint, not by the scheduler.
-// The daemon processes emails in a loop with 1 second sleep between batches.
-// Start with: php artisan mail:spool:process --daemon --limit=100
+// Email spool processing - runs continuously in daemon mode via supervisor.
+// See docker/supervisor.conf for the mail-spooler program.
+*/
 
 // Clean up old sent emails - run daily.
 Schedule::command('mail:spool:process --cleanup --cleanup-days=7')
     ->dailyAt('04:00')
     ->withoutOverlapping()
     ->runInBackground();
-*/

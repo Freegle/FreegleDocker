@@ -8,6 +8,7 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoster;
 use App\Models\User;
+use App\Services\EmailSpoolerService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -31,6 +32,19 @@ class ChatNotificationService
      * How far back to look for unmailed messages.
      */
     public const DEFAULT_SINCE_HOURS = 24;
+
+    /**
+     * Optional spooler for deferred email sending.
+     */
+    protected ?EmailSpoolerService $spooler = null;
+
+    /**
+     * Set the spooler for deferred email sending.
+     */
+    public function setSpooler(EmailSpoolerService $spooler): void
+    {
+        $this->spooler = $spooler;
+    }
 
     /**
      * Send notifications for a specific chat type.
@@ -281,14 +295,20 @@ class ChatNotificationService
         // Get previous messages for context.
         $previousMessages = $this->getPreviousMessages($chatRoom, $message);
 
-        Mail::send(new ChatNotification(
+        $mailable = new ChatNotification(
             $sendingTo,
             $sendingFrom,
             $chatRoom,
             $message,
             $chatType,
             $previousMessages
-        ));
+        );
+
+        if ($this->spooler) {
+            $this->spooler->spool($mailable, $sendingTo->email_preferred, 'chat');
+        } else {
+            Mail::send($mailable);
+        }
     }
 
     /**

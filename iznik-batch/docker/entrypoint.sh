@@ -35,22 +35,28 @@ echo 'Database ready: '.getenv('DB_DATABASE').PHP_EOL;
 echo 'Test database ready: '.getenv('DB_DATABASE').'_test'.PHP_EOL;
 "
 
-# Run migrations to ensure tables exist (retry on failure)
-echo "Running migrations..."
-migrationAttempts=3
-while [ $migrationAttempts -gt 0 ]; do
-    if php artisan migrate --force 2>&1; then
-        echo "Migrations completed successfully."
-        break
-    fi
-    migrationAttempts=$((migrationAttempts - 1))
-    if [ $migrationAttempts -gt 0 ]; then
-        echo "Migration failed, retrying... ($migrationAttempts attempts remaining)"
-        sleep 5
-    else
-        echo "WARNING: Migrations failed after all retries, continuing anyway..."
-    fi
-done
+# Run migrations only if explicitly enabled (disabled by default for safety).
+# Set RUN_MIGRATIONS=true in docker-compose.yml for development environments.
+if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+    echo "Running migrations (RUN_MIGRATIONS=true)..."
+    migrationAttempts=3
+    while [ $migrationAttempts -gt 0 ]; do
+        if php artisan migrate --force 2>&1; then
+            echo "Migrations completed successfully."
+            break
+        fi
+        migrationAttempts=$((migrationAttempts - 1))
+        if [ $migrationAttempts -gt 0 ]; then
+            echo "Migration failed, retrying... ($migrationAttempts attempts remaining)"
+            sleep 5
+        else
+            echo "WARNING: Migrations failed after all retries, continuing anyway..."
+        fi
+    done
+else
+    echo "Skipping migrations (RUN_MIGRATIONS not set to true)."
+    echo "To run migrations manually: docker exec freegle-batch php artisan migrate --force"
+fi
 
 # Clear Laravel application caches
 echo "Clearing application caches..."

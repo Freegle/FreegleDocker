@@ -4,6 +4,7 @@ namespace App\Console\Commands\Chat;
 
 use App\Models\ChatRoom;
 use App\Services\ChatNotificationService;
+use App\Services\EmailSpoolerService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -20,7 +21,8 @@ class NotifyUser2ModCommand extends Command
                             {--delay=30 : Delay in seconds before sending notification}
                             {--since=24 : How many hours back to look for messages}
                             {--force : Force sending even for already mailed messages}
-                            {--max-iterations=120 : Maximum iterations before exiting}';
+                            {--max-iterations=120 : Maximum iterations before exiting}
+                            {--spool : Spool emails instead of sending directly}';
 
     /**
      * The console command description.
@@ -30,13 +32,19 @@ class NotifyUser2ModCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(ChatNotificationService $notificationService): int
+    public function handle(ChatNotificationService $notificationService, EmailSpoolerService $spooler): int
     {
         $chatId = $this->option('chat') ? (int) $this->option('chat') : null;
         $delay = (int) $this->option('delay');
         $sinceHours = (int) $this->option('since');
         $forceAll = (bool) $this->option('force');
         $maxIterations = (int) $this->option('max-iterations');
+        $spool = (bool) $this->option('spool');
+
+        // Inject spooler if spooling is enabled.
+        if ($spool) {
+            $notificationService->setSpooler($spooler);
+        }
 
         $this->registerShutdownHandlers();
 
@@ -45,6 +53,7 @@ class NotifyUser2ModCommand extends Command
             'delay' => $delay,
             'since_hours' => $sinceHours,
             'force' => $forceAll,
+            'spool' => $spool,
         ]);
 
         $this->info('Processing User2Mod chat notifications...');

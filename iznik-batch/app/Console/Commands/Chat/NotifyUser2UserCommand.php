@@ -4,6 +4,7 @@ namespace App\Console\Commands\Chat;
 
 use App\Models\ChatRoom;
 use App\Services\ChatNotificationService;
+use App\Services\EmailSpoolerService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -26,7 +27,8 @@ class NotifyUser2UserCommand extends Command
                             {--since=24 : How many hours back to look for messages}
                             {--force : Force sending even for already mailed messages}
                             {--once : Run once and exit (for manual testing)}
-                            {--max-iterations=120 : Maximum iterations before exiting}';
+                            {--max-iterations=120 : Maximum iterations before exiting}
+                            {--spool : Spool emails instead of sending directly}';
 
     /**
      * The console command description.
@@ -36,7 +38,7 @@ class NotifyUser2UserCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(ChatNotificationService $notificationService): int
+    public function handle(ChatNotificationService $notificationService, EmailSpoolerService $spooler): int
     {
         $chatId = $this->option('chat') ? (int) $this->option('chat') : null;
         $delay = (int) $this->option('delay');
@@ -44,6 +46,12 @@ class NotifyUser2UserCommand extends Command
         $forceAll = (bool) $this->option('force');
         $runOnce = (bool) $this->option('once');
         $maxIterations = $runOnce ? 1 : (int) $this->option('max-iterations');
+        $spool = (bool) $this->option('spool');
+
+        // Inject spooler if spooling is enabled.
+        if ($spool) {
+            $notificationService->setSpooler($spooler);
+        }
 
         $this->registerShutdownHandlers();
 
@@ -53,6 +61,7 @@ class NotifyUser2UserCommand extends Command
             'since_hours' => $sinceHours,
             'force' => $forceAll,
             'once' => $runOnce,
+            'spool' => $spool,
         ]);
 
         $this->info('Processing User2User chat notifications...');
