@@ -331,4 +331,99 @@ class ChatNotificationTest extends TestCase
 
         $this->assertNotEmpty($envelope->subject);
     }
+
+    public function test_chat_notification_decodes_emojis(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        // Message with emoji escape sequences (as stored in database).
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Hello \\u1f600\\u world \\u2764\\u',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        // Build the email to trigger message preparation.
+        $mail->build();
+
+        // Get the rendered HTML content.
+        $html = $mail->render();
+
+        // Verify emojis are decoded - the HTML should contain actual emoji characters.
+        $this->assertStringContainsString('😀', $html);
+        $this->assertStringContainsString('❤', $html);
+
+        // Verify the escape sequences are NOT present.
+        $this->assertStringNotContainsString('\\u1f600\\u', $html);
+        $this->assertStringNotContainsString('\\u2764\\u', $html);
+    }
+
+    public function test_chat_notification_handles_compound_emojis(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        // Message with compound emoji (flag emoji with two code points).
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'From \\u1f1ec-1f1e7\\u with love',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Verify flag emoji is decoded (🇬🇧).
+        $this->assertStringContainsString('🇬🇧', $html);
+        $this->assertStringNotContainsString('\\u1f1ec-1f1e7\\u', $html);
+    }
 }

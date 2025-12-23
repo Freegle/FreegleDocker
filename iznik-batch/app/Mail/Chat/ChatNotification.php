@@ -9,6 +9,7 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\Message;
 use App\Models\User;
+use App\Support\EmojiUtils;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Support\Collection;
@@ -276,7 +277,8 @@ class ChatNotification extends MjmlMailable
      */
     protected function getMessageDisplayText(ChatMessage $message): string
     {
-        $text = $message->message ?? '';
+        // Decode emoji escape sequences (\u{codepoints}\u) to actual emojis.
+        $text = EmojiUtils::decodeEmojis($message->message ?? '');
 
         switch ($message->type) {
             case ChatMessage::TYPE_INTERESTED:
