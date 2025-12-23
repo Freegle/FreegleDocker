@@ -78,9 +78,10 @@ class WelcomeMail extends MjmlMailable
                 'helpUrl' => $this->trackedUrl("{$userSite}/help", 'rule_nice', 'info'),
                 'safetyUrl' => $this->trackedUrl("{$userSite}/safety", 'rule_safe', 'info'),
                 'settingsUrl' => $this->trackedUrl("{$userSite}/settings", 'footer_settings', 'settings'),
-                'ruleFreeImage' => $this->embedImage('rule-free.png'),
-                'ruleNiceImage' => $this->embedImage('rule-nice.png'),
-                'ruleSafeImage' => $this->embedImage('rule-safe.png'),
+                'heroImage' => $this->responsiveImage(config('freegle.images.welcome1'), [300, 600, 900], 600),
+                'ruleFreeImage' => $this->responsiveImage(config('freegle.images.rule_free')),
+                'ruleNiceImage' => $this->responsiveImage(config('freegle.images.rule_nice')),
+                'ruleSafeImage' => $this->responsiveImage(config('freegle.images.rule_safe')),
             ], $this->getTrackingData()),
             'emails.text.welcome.welcome'
         );

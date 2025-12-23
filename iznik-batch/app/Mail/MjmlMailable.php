@@ -116,25 +116,33 @@ abstract class MjmlMailable extends Mailable
     }
 
     /**
-     * Convert an image to a base64 data URI for embedding in emails.
+     * Generate responsive image data for email templates.
      *
-     * Images should be stored in resources/images/email/
+     * Uses the image delivery service (weserv/images) to create
+     * multiple sizes for responsive srcset.
      *
-     * @param string $filename The image filename (e.g., 'rule-free.png')
-     * @return string Base64 data URI or empty string if file not found
+     * @param string $sourceUrl The source image URL
+     * @param array $widths Array of widths to generate (default: [80, 160, 240])
+     * @param int $defaultWidth The default width for src attribute
+     * @return array{src: string, srcset: string}
      */
-    protected function embedImage(string $filename): string
+    protected function responsiveImage(string $sourceUrl, array $widths = [80, 160, 240], int $defaultWidth = 80): array
     {
-        $path = resource_path("images/email/{$filename}");
+        $deliveryBase = config('freegle.delivery.base_url', 'https://delivery.ilovefreegle.org');
 
-        if (!file_exists($path)) {
-            return '';
+        // Generate srcset entries
+        $srcsetParts = [];
+        foreach ($widths as $width) {
+            $resizedUrl = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&w={$width}";
+            $srcsetParts[] = "{$resizedUrl} {$width}w";
         }
 
-        $data = file_get_contents($path);
-        $base64 = base64_encode($data);
-        $mime = mime_content_type($path);
+        // Generate default src
+        $src = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&w={$defaultWidth}";
 
-        return "data:{$mime};base64,{$base64}";
+        return [
+            'src' => $src,
+            'srcset' => implode(', ', $srcsetParts),
+        ];
     }
 }
