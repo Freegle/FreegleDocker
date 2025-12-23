@@ -780,10 +780,24 @@ commands:
               echo "DEBUG: Creating .coveralls.yml in container..."
               docker exec freegle-apiv1 bash -c "echo 'coverage_clover: clover.xml' > /var/www/iznik/.coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> /var/www/iznik/.coveralls.yml && echo 'service_name: circleci' >> /var/www/iznik/.coveralls.yml"
 
+              # Initialize a minimal git repo in container for php-coveralls (it needs git info)
+              # The submodule's .git file points to a path not mounted in container
+              echo "DEBUG: Initializing git repo in container for php-coveralls..."
+              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && rm -f .git && git init && git config user.email 'ci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/iznik-server.git && git checkout -b $CIRCLE_BRANCH 2>/dev/null || true"
+
               # Run php-coveralls from within the container (which has PHP)
               # Note: Uses COVERALLS_REPO_TOKEN_IZNIK_SERVER for iznik-server repo
+              # Pass git info via environment variables since container doesn't have access to .git/modules
               echo "DEBUG: Running php-coveralls in container..."
-              if docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN_IZNIK_SERVER" -e COVERALLS_RUN_LOCALLY=1 -e CI_BRANCH="$CIRCLE_BRANCH" freegle-apiv1 bash -c "cd /var/www/iznik && php composer/vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
+              if docker exec \
+                -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN_IZNIK_SERVER" \
+                -e COVERALLS_RUN_LOCALLY=1 \
+                -e CI_BRANCH="$CIRCLE_BRANCH" \
+                -e CI_COMMIT_ID="$CIRCLE_SHA1" \
+                -e CI_BUILD_NUMBER="$CIRCLE_BUILD_NUM" \
+                -e CI_BUILD_URL="$CIRCLE_BUILD_URL" \
+                -e CI_NAME="circleci" \
+                freegle-apiv1 bash -c "cd /var/www/iznik && php composer/vendor/bin/php-coveralls -v --config .coveralls.yml --exclude-no-stmt 2>&1"; then
                 echo "✅ PHP coverage uploaded"
                 echo "PHP_UPLOADED=true" >> $BASH_ENV
               else
