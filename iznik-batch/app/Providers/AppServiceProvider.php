@@ -49,15 +49,22 @@ class AppServiceProvider extends ServiceProvider
         $finder = new ExecutableFinder();
 
         // Check for MJML (required for email rendering).
-        if (!$finder->find('mjml')) {
-            $message = 'MJML binary not found. Email templates will not render correctly. ' .
-                'Install with: npm install -g mjml';
-            Log::error($message);
+        // Look in common locations including local node_modules.
+        $mjmlPaths = [
+            base_path('node_modules/.bin'),
+            '/usr/local/bin',
+            '/usr/bin',
+        ];
 
-            // Also output to stderr for CLI visibility.
-            if ($this->app->runningInConsole()) {
-                fwrite(STDERR, "ERROR: {$message}\n");
-            }
+        $mjmlBinary = $finder->find('mjml', null, $mjmlPaths);
+
+        if (!$mjmlBinary) {
+            $message = 'MJML binary not found. Email templates will not render correctly. ' .
+                'Install with: npm install mjml (in project root)';
+            Log::critical($message);
+
+            // Fatal error - cannot send emails without MJML.
+            throw new \RuntimeException($message);
         }
     }
 }
