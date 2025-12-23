@@ -3,17 +3,24 @@
 namespace App\Services;
 
 use App\Mail\Chat\ChatNotification;
+use App\Mail\Traits\FeatureFlags;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoster;
 use App\Models\User;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class ChatNotificationService
 {
+    use FeatureFlags;
+
+    /**
+     * Email type identifier for feature flag checking.
+     */
+    private const EMAIL_TYPE = 'ChatNotification';
+
     /**
      * Default delay in seconds before notifying about a message.
      * This allows users to type multiple messages before notification.
@@ -27,6 +34,7 @@ class ChatNotificationService
 
     /**
      * Send notifications for a specific chat type.
+     * Simplified: sends each message individually (no batching).
      */
     public function notifyByEmail(
         string $chatType,
@@ -35,10 +43,16 @@ class ChatNotificationService
         int $sinceHours = self::DEFAULT_SINCE_HOURS,
         bool $forceAll = false
     ): int {
+        // Check if ChatNotification emails are enabled.
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            Log::info("ChatNotification emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotification'.");
+            return 0;
+        }
+
         $notified = 0;
 
-        // Get chat rooms with unmailed messages.
-        $chatRooms = $this->getChatRoomsWithUnmailedMessages(
+        // Get unmailed messages that need notification.
+        $messages = $this->getUnmailedMessages(
             $chatType,
             $chatId,
             $delay,
@@ -46,11 +60,11 @@ class ChatNotificationService
             $forceAll
         );
 
-        foreach ($chatRooms as $chatRoom) {
+        foreach ($messages as $message) {
             try {
-                $notified += $this->processChatRoom($chatRoom, $chatType, $forceAll);
+                $notified += $this->processMessage($message, $chatType, $forceAll);
             } catch (\Exception $e) {
-                Log::error("Error processing chat room {$chatRoom->id}: " . $e->getMessage());
+                Log::error("Error processing chat message {$message->id}: " . $e->getMessage());
             }
         }
 
@@ -58,9 +72,9 @@ class ChatNotificationService
     }
 
     /**
-     * Get chat rooms that have unmailed messages.
+     * Get unmailed messages that need notification.
      */
-    protected function getChatRoomsWithUnmailedMessages(
+    protected function getUnmailedMessages(
         string $chatType,
         ?int $chatId,
         int $delay,
@@ -70,12 +84,14 @@ class ChatNotificationService
         $startTime = now()->subHours($sinceHours);
         $endTime = now()->subSeconds($delay);
 
-        $query = ChatRoom::select('chat_rooms.*')
-            ->join('chat_messages', 'chat_rooms.id', '=', 'chat_messages.chatid')
+        $query = ChatMessage::query()
+            ->join('chat_rooms', 'chat_messages.chatid', '=', 'chat_rooms.id')
+            ->join('users', 'chat_messages.userid', '=', 'users.id')
             ->where('chat_rooms.chattype', $chatType)
             ->where('chat_messages.date', '>=', $startTime)
             ->where('chat_messages.date', '<=', $endTime)
-            ->distinct();
+            ->whereNull('users.deleted')
+            ->select('chat_messages.*');
 
         // For User2User chats, only include reviewed messages.
         if ($chatType === ChatRoom::TYPE_USER2USER) {
@@ -94,19 +110,25 @@ class ChatNotificationService
             $query->where('chat_rooms.id', $chatId);
         }
 
-        return $query->get();
+        return $query->orderBy('chat_messages.id', 'asc')
+            ->with(['chatRoom', 'user', 'refMessage'])
+            ->get();
     }
 
     /**
-     * Process a single chat room and send notifications.
+     * Process a single message and send notifications to relevant users.
      */
-    protected function processChatRoom(ChatRoom $chatRoom, string $chatType, bool $forceAll): int
+    protected function processMessage(ChatMessage $message, string $chatType, bool $forceAll): int
     {
         $notified = 0;
-        $lastMaxMailed = $this->getLastMailedToAll($chatRoom);
+        $chatRoom = $message->chatRoom;
 
-        // Get members who haven't been mailed.
-        $membersToNotify = $this->getMembersToNotify($chatRoom, $forceAll);
+        if (!$chatRoom) {
+            return 0;
+        }
+
+        // Get members who need to be notified about this message.
+        $membersToNotify = $this->getMembersToNotify($chatRoom, $message, $forceAll);
 
         foreach ($membersToNotify as $roster) {
             try {
@@ -115,66 +137,58 @@ class ChatNotificationService
                     continue;
                 }
 
-                // Check if user wants email notifications.
-                if (!$this->shouldNotifyUser($sendingTo, $chatRoom, $chatType)) {
+                // Check if we should notify this user about this message.
+                if (!$this->shouldNotifyUser($sendingTo, $message, $chatRoom, $chatType)) {
                     continue;
                 }
 
                 // Get the other user in the conversation.
                 $sendingFrom = $this->getOtherUser($chatRoom, $sendingTo);
 
-                // Get unmailed messages for this user.
-                $unmailedMessages = $this->getUnmailedMessages(
-                    $chatRoom,
-                    $roster,
-                    $sendingTo,
-                    $forceAll
-                );
-
-                if ($unmailedMessages->isEmpty()) {
-                    continue;
-                }
-
                 // Send the notification email.
                 $this->sendNotificationEmail(
                     $sendingTo,
                     $sendingFrom,
                     $chatRoom,
-                    $unmailedMessages,
+                    $message,
                     $chatType
                 );
 
                 // Update roster with last message emailed.
-                $lastMessage = $unmailedMessages->last();
-                $roster->update(['lastmsgemailed' => $lastMessage->id]);
+                $roster->update(['lastmsgemailed' => $message->id]);
+
+                // Update message mailedtoall if all members have been notified.
+                $this->updateMailedToAll($message);
 
                 $notified++;
-            } catch (\Exception $e) {
-                Log::error("Error notifying user {$roster->userid} for chat {$chatRoom->id}: " . $e->getMessage());
-            }
-        }
 
-        // Update mailedtoall flag for messages that have been sent to everyone.
-        if ($notified > 0) {
-            $this->updateMailedToAll($chatRoom, $lastMaxMailed);
+                Log::info("Sent chat notification", [
+                    'chat_id' => $chatRoom->id,
+                    'message_id' => $message->id,
+                    'to_user' => $sendingTo->id,
+                    'from_user' => $sendingFrom?->id,
+                ]);
+            } catch (\Exception $e) {
+                Log::error("Error notifying user {$roster->userid} for message {$message->id}: " . $e->getMessage());
+            }
         }
 
         return $notified;
     }
 
     /**
-     * Get members of a chat who need to be notified.
+     * Get members who need to be notified about a specific message.
      */
-    protected function getMembersToNotify(ChatRoom $chatRoom, bool $forceAll): Collection
+    protected function getMembersToNotify(ChatRoom $chatRoom, ChatMessage $message, bool $forceAll): Collection
     {
         $query = ChatRoster::where('chatid', $chatRoom->id)
             ->with('user');
 
         if (!$forceAll) {
-            // Only get members who haven't been mailed the latest message.
-            $query->where(function ($q) use ($chatRoom) {
+            // Only get members who haven't been mailed this message yet.
+            $query->where(function ($q) use ($message) {
                 $q->whereNull('lastmsgemailed')
-                    ->orWhereRaw('lastmsgemailed < ?', [$chatRoom->lastmsg ?? 0]);
+                    ->orWhere('lastmsgemailed', '<', $message->id);
             });
         }
 
@@ -182,18 +196,41 @@ class ChatNotificationService
     }
 
     /**
-     * Check if a user should be notified.
+     * Check if a user should be notified about a specific message.
      */
-    protected function shouldNotifyUser(User $user, ChatRoom $chatRoom, string $chatType): bool
+    protected function shouldNotifyUser(User $user, ChatMessage $message, ChatRoom $chatRoom, string $chatType): bool
     {
+        // Check if this is the user's own message.
+        $isOwnMessage = $message->userid === $user->id;
+
+        if ($isOwnMessage) {
+            // Only send copy of own messages if user has this preference enabled.
+            // TN users always get their own messages.
+            $wantsCopy = $user->notifsOn(User::NOTIFS_EMAIL_MINE) || $user->isTN();
+            if (!$wantsCopy) {
+                return FALSE;
+            }
+        }
+
         // For User2Mod chats, always notify the member (user1).
         if ($chatType === ChatRoom::TYPE_USER2MOD && $chatRoom->user1 === $user->id) {
-            return true;
+            return TRUE;
+        }
+
+        // TN users always get notifications.
+        if ($user->isTN()) {
+            return TRUE;
         }
 
         // Check user's notification preferences.
-        // This will be expanded based on the original implementation.
-        return true; // For now, always notify.
+        $emailNotifs = $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
+
+        // Force mail if this is a user2mod chat and user is the member.
+        if ($chatType === ChatRoom::TYPE_USER2MOD && $chatRoom->user1 === $user->id) {
+            return TRUE;
+        }
+
+        return $emailNotifs;
     }
 
     /**
@@ -209,33 +246,26 @@ class ChatNotificationService
     }
 
     /**
-     * Get unmailed messages for a user.
+     * Get previous messages for context (up to 3 messages before the current one).
      */
-    protected function getUnmailedMessages(
+    protected function getPreviousMessages(
         ChatRoom $chatRoom,
-        ChatRoster $roster,
-        User $sendingTo,
-        bool $forceAll
+        ChatMessage $currentMessage,
+        int $limit = 3
     ): Collection {
-        $query = ChatMessage::where('chatid', $chatRoom->id)
+        return ChatMessage::where('chatid', $chatRoom->id)
+            ->where('id', '<', $currentMessage->id)
+            ->where('date', '>=', now()->subDays(90))
+            ->where('reviewrejected', 0)
             ->whereHas('user', function ($q) {
                 $q->whereNull('deleted');
             })
-            ->where('date', '>=', now()->subDays(90))
-            ->orderBy('id', 'asc');
-
-        if (!$forceAll) {
-            $query->where('reviewrejected', 0);
-
-            if ($roster->lastmsgemailed) {
-                $query->where('id', '>', $roster->lastmsgemailed);
-            }
-        }
-
-        // Don't notify users of their own messages.
-        $query->where('userid', '!=', $sendingTo->id);
-
-        return $query->with(['user', 'refMessage'])->get();
+            ->orderBy('id', 'desc')
+            ->limit($limit)
+            ->with(['user', 'refMessage'])
+            ->get()
+            ->reverse()
+            ->values();
     }
 
     /**
@@ -245,42 +275,37 @@ class ChatNotificationService
         User $sendingTo,
         ?User $sendingFrom,
         ChatRoom $chatRoom,
-        Collection $messages,
+        ChatMessage $message,
         string $chatType
     ): void {
+        // Get previous messages for context.
+        $previousMessages = $this->getPreviousMessages($chatRoom, $message);
+
         Mail::send(new ChatNotification(
             $sendingTo,
             $sendingFrom,
             $chatRoom,
-            $messages,
-            $chatType
+            $message,
+            $chatType,
+            $previousMessages
         ));
     }
 
     /**
-     * Get the last message ID that was mailed to all members.
+     * Update the mailedtoall flag if all roster members have been notified.
      */
-    protected function getLastMailedToAll(ChatRoom $chatRoom): ?int
+    protected function updateMailedToAll(ChatMessage $message): void
     {
-        return ChatMessage::where('chatid', $chatRoom->id)
-            ->where('mailedtoall', 1)
-            ->max('id');
-    }
+        // Check if all roster members have been mailed this message.
+        $notMailedCount = ChatRoster::where('chatid', $message->chatid)
+            ->where(function ($q) use ($message) {
+                $q->whereNull('lastmsgemailed')
+                    ->orWhere('lastmsgemailed', '<', $message->id);
+            })
+            ->count();
 
-    /**
-     * Update the mailedtoall flag for messages that have been sent to everyone.
-     */
-    protected function updateMailedToAll(ChatRoom $chatRoom, ?int $lastMaxMailed): void
-    {
-        // Find the minimum last message emailed across all roster members.
-        $minMailedToAll = ChatRoster::where('chatid', $chatRoom->id)
-            ->min('lastmsgemailed');
-
-        if ($minMailedToAll) {
-            ChatMessage::where('chatid', $chatRoom->id)
-                ->where('id', '>', $lastMaxMailed ?? 0)
-                ->where('id', '<=', $minMailedToAll)
-                ->update(['mailedtoall' => 1]);
+        if ($notMailedCount === 0) {
+            $message->update(['mailedtoall' => 1]);
         }
     }
 }
