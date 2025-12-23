@@ -41,7 +41,7 @@ class ChatNotificationTest extends TestCase
             $user2,
             $user1,
             $room,
-            collect([$message]),
+            $message,
             ChatRoom::TYPE_USER2USER
         );
 
@@ -79,7 +79,7 @@ class ChatNotificationTest extends TestCase
             $user2,
             $user1,
             $room,
-            collect([$message]),
+            $message,
             ChatRoom::TYPE_USER2USER
         );
 
@@ -121,7 +121,7 @@ class ChatNotificationTest extends TestCase
             $user2,
             $user1,
             $room,
-            collect([$message]),
+            $message,
             ChatRoom::TYPE_USER2USER
         );
 
@@ -161,7 +161,7 @@ class ChatNotificationTest extends TestCase
             $user2,
             $user1,
             $room,
-            collect([$message]),
+            $message,
             ChatRoom::TYPE_USER2USER
         );
 
@@ -200,7 +200,7 @@ class ChatNotificationTest extends TestCase
             $user,
             null,
             $room,
-            collect([$message]),
+            $message,
             ChatRoom::TYPE_USER2MOD
         );
 
@@ -239,7 +239,7 @@ class ChatNotificationTest extends TestCase
             $user2,
             null,
             $room,
-            collect([$message]),
+            $message,
             ChatRoom::TYPE_USER2USER
         );
 
@@ -284,11 +284,11 @@ class ChatNotificationTest extends TestCase
             $user2,
             $user1,
             $room,
-            collect([$chatMessage]),
+            $chatMessage,
             ChatRoom::TYPE_USER2USER
         );
 
-        $this->assertStringContainsString('Re:', $mail->replySubject);
+        $this->assertStringContainsString('Regarding:', $mail->replySubject);
         $this->assertStringContainsString('OFFER: Test Item', $mail->replySubject);
     }
 
@@ -323,7 +323,7 @@ class ChatNotificationTest extends TestCase
             $user2,
             $user1,
             $room,
-            collect([$message]),
+            $message,
             ChatRoom::TYPE_USER2USER
         );
 
