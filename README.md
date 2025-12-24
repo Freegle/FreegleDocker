@@ -42,7 +42,7 @@ Add these to your hosts file:
 127.0.0.1 modtools-dev.localhost
 127.0.0.1 modtools-prod.localhost
 127.0.0.1 phpmyadmin.localhost
-127.0.0.1 mailhog.localhost
+127.0.0.1 mailpit.localhost
 127.0.0.1 tusd.localhost
 127.0.0.1 status.localhost
 127.0.0.1 apiv1.localhost
@@ -260,7 +260,7 @@ You can see this via 'Pending' calls in the Network tab.
 
 ## Development Tools
 * **[PhpMyAdmin](https://phpmyadmin.localhost)** - Database management (Login: `root` / `iznik`)
-* **[MailHog](https://mailhog.localhost)** - Email testing interface
+* **[Mailpit](https://mailpit.localhost)** - Email testing interface
 * **[TusD](https://tusd.localhost)** - Image upload service
 * **[Image Delivery](https://delivery.localhost)** - Image processing service (weserv/images)
 * **[Traefik Dashboard](http://localhost:8080)** - Reverse proxy dashboard

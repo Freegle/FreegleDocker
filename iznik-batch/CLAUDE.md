@@ -27,7 +27,7 @@ All domain-specific configuration is in `config/freegle.php` and can be overridd
 # Run all unit and feature tests (uses iznik_test database)
 docker exec freegle-batch php artisan test --testsuite=Unit,Feature
 
-# Run integration tests (requires MailHog)
+# Run integration tests (requires Mailpit)
 docker exec freegle-batch php artisan test --testsuite=Integration
 
 # Run specific test
@@ -38,7 +38,7 @@ docker exec freegle-batch php artisan test --filter="test_method_name"
 
 - **Unit** - Unit tests using iznik_batch_test database
 - **Feature** - Feature tests using iznik_batch_test database
-- **Integration** - Tests that require external services (MailHog)
+- **Integration** - Tests that require external services (Mailpit)
 
 ## Database Migrations
 

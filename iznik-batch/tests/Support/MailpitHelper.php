@@ -18,10 +18,7 @@ class MailpitHelper
 
     public function __construct(?string $baseUrl = null)
     {
-        // Support both MAILPIT and legacy MAILHOG env vars for backwards compatibility.
-        $this->baseUrl = $baseUrl
-            ?? env('MAILPIT_API_URL')
-            ?? env('MAILHOG_API_URL', 'http://mailpit:8025');
+        $this->baseUrl = $baseUrl ?? env('MAILPIT_API_URL', 'http://mailpit:8025');
     }
 
     /**

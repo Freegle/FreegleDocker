@@ -5,7 +5,7 @@ echo "=================================="
 
 # Test each service
 services=(
-    "mailhog.localhost:MailHog"
+    "mailpit.localhost:Mailpit"
     "tusd.localhost:TusD"
     "status.localhost:Status"
     "phpmyadmin.localhost:PhpMyAdmin"

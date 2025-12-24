@@ -56,7 +56,7 @@ const healthCheckMessages = {
     "Email filtering port connection test passed (nc -z 783)",
   "freegle-tusd": "File upload endpoint responding (wget /tus/)",
   "freegle-phpmyadmin": "Database management interface responding (HTTP)",
-  "freegle-mailhog": "Email testing interface responding (HTTP)",
+  "freegle-mailpit": "Email testing interface responding (HTTP)",
   "freegle-apiv1": "API config endpoint responding (curl /api/config)",
   "freegle-apiv2": "API online endpoint responding (curl /api/online)",
   "freegle-batch": "Laravel batch processor ready (php artisan)",
@@ -131,8 +131,8 @@ const services = [
     category: "dev",
   },
   {
-    id: "mailhog",
-    container: "freegle-mailhog",
+    id: "mailpit",
+    container: "freegle-mailpit",
     checkType: "dev-tool",
     category: "dev",
   },
@@ -2439,9 +2439,9 @@ const httpServer = http.createServer(async (req, res) => {
       if (service === "phpmyadmin") {
         testUrl = "http://freegle-phpmyadmin:80/";
         testDescription = "PhpMyAdmin login page accessible";
-      } else if (service === "mailhog") {
-        testUrl = "http://freegle-mailhog:8025/";
-        testDescription = "MailHog web interface accessible";
+      } else if (service === "mailpit") {
+        testUrl = "http://freegle-mailpit:8025/";
+        testDescription = "Mailpit web interface accessible";
       } else {
         res.writeHead(400, { "Content-Type": "text/plain" });
         res.end("Unknown service");

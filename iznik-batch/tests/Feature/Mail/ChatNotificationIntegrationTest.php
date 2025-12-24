@@ -38,7 +38,7 @@ class ChatNotificationIntegrationTest extends TestCase
         $this->testRunId = uniqid("chat_", TRUE);
 
         Config::set("mail.default", "smtp");
-        Config::set("mail.mailers.smtp.host", "mailhog");
+        Config::set("mail.mailers.smtp.host", "mailpit");
         Config::set("mail.mailers.smtp.port", 1025);
 
         Config::set("freegle.spam_check.enabled", true);
@@ -47,7 +47,7 @@ class ChatNotificationIntegrationTest extends TestCase
         Config::set("freegle.spam_check.rspamd_host", "rspamd");
         Config::set("freegle.spam_check.rspamd_port", 11334);
 
-        $this->mailpit = new MailpitHelper("http://mailhog:8025");
+        $this->mailpit = new MailpitHelper("http://mailpit:8025");
         $this->mailpit->deleteAllMessages();
     }
 
@@ -302,7 +302,7 @@ class ChatNotificationIntegrationTest extends TestCase
     protected function isMailpitAvailable(): bool
     {
         try {
-            $ch = curl_init("http://mailhog:8025/api/v1/messages");
+            $ch = curl_init("http://mailpit:8025/api/v1/messages");
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
             curl_setopt($ch, CURLOPT_TIMEOUT, 5);

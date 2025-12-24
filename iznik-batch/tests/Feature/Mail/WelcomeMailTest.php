@@ -4,19 +4,19 @@ namespace Tests\Feature\Mail;
 
 use App\Mail\Welcome\WelcomeMail;
 use Illuminate\Support\Facades\Mail;
-use Tests\Support\MailHogHelper;
+use Tests\Support\MailpitHelper;
 use Tests\TestCase;
 
 class WelcomeMailTest extends TestCase
 {
-    protected MailHogHelper $mailHog;
+    protected MailpitHelper $mailpit;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Set up MailHog helper with docker network URL.
-        $this->mailHog = new MailHogHelper('http://mailhog:8025');
+        // Set up Mailpit helper with docker network URL.
+        $this->mailpit = new MailpitHelper('http://mailpit:8025');
     }
 
     /**

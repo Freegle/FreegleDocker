@@ -32,7 +32,7 @@ class WelcomeMailIntegrationTest extends TestCase
 
         // Configure for actual SMTP sending (override phpunit.xml array mailer).
         Config::set('mail.default', 'smtp');
-        Config::set('mail.mailers.smtp.host', 'mailhog');
+        Config::set('mail.mailers.smtp.host', 'mailpit');
         Config::set('mail.mailers.smtp.port', 1025);
 
         // Enable spam checking.
@@ -43,7 +43,7 @@ class WelcomeMailIntegrationTest extends TestCase
         Config::set('freegle.spam_check.rspamd_port', 11334);
 
         // Set up Mailpit helper with docker network URL.
-        $this->mailpit = new MailpitHelper('http://mailhog:8025');
+        $this->mailpit = new MailpitHelper('http://mailpit:8025');
 
         // Clear all messages before each test.
         $this->mailpit->deleteAllMessages();
@@ -264,7 +264,7 @@ class WelcomeMailIntegrationTest extends TestCase
     protected function isMailpitAvailable(): bool
     {
         try {
-            $ch = curl_init('http://mailhog:8025/api/v1/messages');
+            $ch = curl_init('http://mailpit:8025/api/v1/messages');
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
             curl_setopt($ch, CURLOPT_TIMEOUT, 5);

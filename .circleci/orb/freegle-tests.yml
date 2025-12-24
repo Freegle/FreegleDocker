@@ -94,7 +94,7 @@ commands:
             echo ""
             echo "=== Verifying container names ==="
             # All containers that have container_name set in docker-compose.yml
-            ALL_CONTAINERS="freegle-traefik freegle-percona freegle-postgres freegle-phpmyadmin freegle-mailhog freegle-beanstalkd freegle-spamassassin freegle-redis freegle-delivery freegle-tusd freegle-status freegle-host-scripts freegle-apiv1 freegle-apiv2 freegle-batch freegle-dev-local freegle-prod-local modtools-dev-local modtools-prod-local freegle-playwright"
+            ALL_CONTAINERS="freegle-traefik freegle-percona freegle-postgres freegle-phpmyadmin freegle-mailpit freegle-beanstalkd freegle-spamassassin freegle-redis freegle-delivery freegle-tusd freegle-status freegle-host-scripts freegle-apiv1 freegle-apiv2 freegle-batch freegle-dev-local freegle-prod-local modtools-dev-local modtools-prod-local freegle-playwright"
             MISSING=""
             for container in $ALL_CONTAINERS; do
               if docker inspect "$container" >/dev/null 2>&1; then

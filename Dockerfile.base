@@ -39,7 +39,7 @@ ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}" \
 
 # ============ PHP 8.1 + WEB SERVER ============
 # nginx: serves PHP API via php-fpm
-# postfix: mail relay for sending emails (configured to use mailhog)
+# postfix: mail relay for sending emails (configured to use mailpit)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \

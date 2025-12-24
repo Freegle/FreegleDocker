@@ -102,9 +102,7 @@ services:
     image: axllent/mailpit:latest
     container_name: freegle-mailpit
     networks:
-      default:
-        aliases:
-          - mailhog
+      - default
     ports:
       - "0.0.0.0:8025:8025"
       - "0.0.0.0:1025:1025"
@@ -135,7 +133,7 @@ services:
       start_period: 10s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.mailpit.rule=Host(`mailpit.localhost`) || Host(`mailhog.localhost`)"
+      - "traefik.http.routers.mailpit.rule=Host(`mailpit.localhost`)"
       - "traefik.http.routers.mailpit.entrypoints=web"
       - "traefik.http.services.mailpit.loadbalancer.server.port=8025"
 
@@ -407,7 +405,7 @@ services:
       - IMAGE_DOMAIN=apiv1
       - SPAMD_HOST=spamassassin-app
       - SPAMD_PORT=783
-      - SMTP_HOST=mailhog
+      - SMTP_HOST=mailpit
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - SMTP_PORT=1025
       - IMAGE_DELIVERY=http://freegle-delivery
@@ -946,7 +944,7 @@ services:
       - QUEUE_CONNECTION=redis
       - SESSION_DRIVER=redis
       - MAIL_MAILER=smtp
-      - MAIL_HOST=mailhog
+      - MAIL_HOST=mailpit
       - MAIL_PORT=1025
       - MAIL_ENCRYPTION=null
       - MAIL_EHLO_DOMAIN=freegle-batch
