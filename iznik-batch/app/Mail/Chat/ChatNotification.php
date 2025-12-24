@@ -9,6 +9,7 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\Message;
 use App\Models\User;
+use App\Models\UserAddress;
 use App\Support\EmojiUtils;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
@@ -280,6 +281,9 @@ class ChatNotification extends MjmlMailable
             ? $this->trackedUrl($this->userSite . '/profile/' . $messageUser->id, 'message_profile', 'profile')
             : null;
 
+        // Get map URL for address messages.
+        $mapUrl = $this->getAddressMapUrl($message);
+
         return [
             'id' => $message->id,
             'type' => $message->type,
@@ -293,6 +297,7 @@ class ChatNotification extends MjmlMailable
             'isFromRecipient' => $isFromRecipient,
             'replyExpected' => $message->replyexpected ?? FALSE,
             'refMessage' => $refMessageInfo,
+            'mapUrl' => $mapUrl,
         ];
     }
 
@@ -359,7 +364,7 @@ class ChatNotification extends MjmlMailable
                 return "This item is no longer available:";
 
             case ChatMessage::TYPE_ADDRESS:
-                return "Shared their address with you.";
+                return $this->getAddressDisplayText($message);
 
             case ChatMessage::TYPE_NUDGE:
                 if ($message->userid === $this->recipient->id) {
@@ -379,6 +384,82 @@ class ChatNotification extends MjmlMailable
             default:
                 return $text ?: '(Empty message)';
         }
+    }
+
+    /**
+     * Get display text for an address message.
+     * The message field contains the address ID which we look up from users_addresses.
+     */
+    protected function getAddressDisplayText(ChatMessage $message): string
+    {
+        $otherUser = $this->sender?->displayname ?? 'Someone';
+        $isFromRecipient = $message->userid === $this->recipient->id;
+
+        // Build the intro text based on who sent the address.
+        $intro = $isFromRecipient
+            ? "You sent an address to {$otherUser}."
+            : "{$otherUser} sent you an address.";
+
+        // The message field contains the address ID.
+        $addressId = intval($message->message);
+        if (!$addressId) {
+            return $intro;
+        }
+
+        // Look up the address.
+        $userAddress = UserAddress::find($addressId);
+        if (!$userAddress) {
+            return $intro;
+        }
+
+        // Get the formatted multiline address.
+        $formattedAddress = $userAddress->getMultiLine();
+        if (!$formattedAddress) {
+            return $intro;
+        }
+
+        // Build the full text with the address.
+        $result = $intro . "\n\n" . $formattedAddress;
+
+        // Add collection instructions if present.
+        if (!empty($userAddress->instructions)) {
+            $result .= "\n\n" . $userAddress->instructions;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get Google Maps URL for an address message.
+     */
+    protected function getAddressMapUrl(ChatMessage $message): ?string
+    {
+        if ($message->type !== ChatMessage::TYPE_ADDRESS) {
+            return null;
+        }
+
+        // The message field contains the address ID.
+        $addressId = intval($message->message);
+        if (!$addressId) {
+            return null;
+        }
+
+        // Look up the address.
+        $userAddress = UserAddress::find($addressId);
+        if (!$userAddress) {
+            return null;
+        }
+
+        // Get coordinates (falls back to postcode if needed).
+        [$lat, $lng] = $userAddress->getCoordinates();
+        if (!$lat || !$lng) {
+            return null;
+        }
+
+        // Build Google Maps URL with tracked link.
+        $googleMapsUrl = "https://maps.google.com/?q={$lat},{$lng}&z=16";
+
+        return $this->trackedUrl($googleMapsUrl, 'address_map', 'map');
     }
 
     /**
@@ -447,15 +528,19 @@ class ChatNotification extends MjmlMailable
             return NULL;
         }
 
-        // Chat images are accessed via /cimg/{imageid}.
+        $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
+
+        // Chat message images use mimg_{id}.jpg format (m = message/chat).
         if ($message->imageid) {
-            return $this->userSite . '/cimg/' . $message->imageid;
+            $sourceUrl = "{$imagesDomain}/mimg_{$message->imageid}.jpg";
+            return $this->getDeliveryUrl($sourceUrl, 200);
         }
 
         // Try to get image from the images relationship.
         $image = $message->images()->first();
         if ($image) {
-            return $this->userSite . '/cimg/' . $image->id;
+            $sourceUrl = "{$imagesDomain}/mimg_{$image->id}.jpg";
+            return $this->getDeliveryUrl($sourceUrl, 200);
         }
 
         return NULL;

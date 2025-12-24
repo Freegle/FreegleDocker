@@ -13,9 +13,18 @@
     {{-- RSVP banner if reply expected --}}
     @if($replyExpected)
     <mj-section mj-class="bg-danger" padding="12px 20px">
-      <mj-column>
-        <mj-text font-size="16px" font-weight="bold" color="#ffffff" align="center">
-          ⏰ Reply requested - please respond
+      <mj-column width="32px" vertical-align="middle">
+        <mj-image
+          src="{{ config('freegle.images.email_assets') }}/clock.svg"
+          width="24px"
+          height="24px"
+          alt=""
+          padding="0"
+        />
+      </mj-column>
+      <mj-column vertical-align="middle">
+        <mj-text font-size="16px" font-weight="bold" color="#ffffff" padding="0">
+          Reply requested - please respond
         </mj-text>
       </mj-column>
     </mj-section>
@@ -171,6 +180,31 @@
           padding="0"
         />
       </mj-column>
+    </mj-section>
+    @endif
+
+    {{-- Google Maps link for address messages --}}
+    @if(!empty($chatMessage['mapUrl']))
+    <mj-section background-color="#ffffff" padding="5px 20px 15px 20px">
+      @if(!$chatMessage['isFromRecipient'])
+      {{-- Spacer column to align with profile image --}}
+      <mj-column width="44px" vertical-align="top">
+        <mj-text padding="0">&nbsp;</mj-text>
+      </mj-column>
+      @endif
+      <mj-column vertical-align="top">
+        <mj-text padding="0 0 0 {{ $chatMessage['isFromRecipient'] ? '0' : '8px' }}" font-size="14px" align="{{ $chatMessage['isFromRecipient'] ? 'right' : 'left' }}">
+          <a href="{{ $chatMessage['mapUrl'] }}" style="color: #338808; text-decoration: none;">
+            📍 View in Google Maps
+          </a>
+        </mj-text>
+      </mj-column>
+      @if($chatMessage['isFromRecipient'])
+      {{-- Spacer column for right-aligned messages --}}
+      <mj-column width="44px" vertical-align="top">
+        <mj-text padding="0">&nbsp;</mj-text>
+      </mj-column>
+      @endif
     </mj-section>
     @endif
 

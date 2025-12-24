@@ -30,6 +30,8 @@ class TestMailCommand extends Command
                             {--chat= : Chat room ID (for chat types)}
                             {--group= : Group ID (for digest)}
                             {--message= : Message ID (for digest)}
+                            {--message-type= : Specific chat message type (Default, Interested, Promised, Reneged, Completed, Image, Address, Nudge, Schedule)}
+                            {--all-types : Send test emails for all chat message types}
                             {--dry-run : Preview email content without sending}
                             {--list : List available email types}';
 
@@ -51,6 +53,21 @@ class TestMailCommand extends Command
     ];
 
     /**
+     * Chat message types to test with --all-types.
+     */
+    protected array $chatMessageTypes = [
+        ChatMessage::TYPE_DEFAULT,
+        ChatMessage::TYPE_INTERESTED,
+        ChatMessage::TYPE_PROMISED,
+        ChatMessage::TYPE_RENEGED,
+        ChatMessage::TYPE_COMPLETED,
+        ChatMessage::TYPE_IMAGE,
+        ChatMessage::TYPE_ADDRESS,
+        ChatMessage::TYPE_NUDGE,
+        ChatMessage::TYPE_SCHEDULE,
+    ];
+
+    /**
      * Execute the console command.
      */
     public function handle(): int
@@ -62,6 +79,7 @@ class TestMailCommand extends Command
 
         $type = $this->argument('type');
         $dryRun = $this->option('dry-run');
+        $allTypes = $this->option('all-types');
 
         if (!$type) {
             $this->error("Email type is required. Use --list to see available types.");
@@ -72,6 +90,11 @@ class TestMailCommand extends Command
             $this->error("Unknown email type: {$type}");
             $this->listEmailTypes();
             return Command::FAILURE;
+        }
+
+        // Handle --all-types for chat notifications.
+        if ($allTypes && str_starts_with($type, 'chat:')) {
+            return $this->sendAllChatMessageTypes($type, $dryRun);
         }
 
         // Wrap everything in a transaction that we'll roll back.
@@ -114,6 +137,98 @@ class TestMailCommand extends Command
 
         // Always roll back - we never want to persist any changes.
         DB::rollBack();
+
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Send test emails for all chat message types.
+     */
+    protected function sendAllChatMessageTypes(string $type, bool $dryRun): int
+    {
+        $chatType = match ($type) {
+            'chat:user2user' => ChatRoom::TYPE_USER2USER,
+            'chat:user2mod' => ChatRoom::TYPE_USER2MOD,
+            default => ChatRoom::TYPE_USER2USER,
+        };
+
+        $toEmail = $this->option('to');
+        if (!$toEmail) {
+            $this->error("Please specify --to=email to find chat messages for that user");
+            return Command::FAILURE;
+        }
+
+        // Find the user by email.
+        $recipient = User::whereHas('emails', function ($q) use ($toEmail) {
+            $q->where('email', $toEmail);
+        })->first();
+
+        if (!$recipient) {
+            $this->error("No user found with email: {$toEmail}");
+            return Command::FAILURE;
+        }
+
+        $this->info("Found user: {$recipient->displayname} (ID: {$recipient->id})");
+        $this->newLine();
+
+        $sentCount = 0;
+        $skippedTypes = [];
+
+        foreach ($this->chatMessageTypes as $messageType) {
+            $this->info("=== Testing message type: {$messageType} ===");
+
+            DB::beginTransaction();
+
+            try {
+                $mailable = $this->buildChatNotificationForType($chatType, $recipient, $messageType);
+
+                if (!$mailable) {
+                    $skippedTypes[] = $messageType;
+                    $this->warn("Skipped {$messageType} - no messages found");
+                    DB::rollBack();
+                    $this->newLine();
+                    continue;
+                }
+
+                if ($dryRun) {
+                    $this->previewEmail($mailable);
+                } else {
+                    $mailable->render();
+
+                    $spooler = app(EmailSpoolerService::class);
+                    $to = collect($mailable->to)->pluck('address')->toArray();
+                    $spoolId = $spooler->spool($mailable, $to, class_basename($mailable));
+
+                    $stats = $spooler->processSpool(1);
+
+                    if ($stats['sent'] > 0) {
+                        $this->info("Sent {$messageType} notification (spool ID: {$spoolId})");
+                        $sentCount++;
+                    } else {
+                        $this->warn("Spooled but not sent yet");
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->error("Error for {$messageType}: " . $e->getMessage());
+                $skippedTypes[] = $messageType;
+            }
+
+            DB::rollBack();
+            $this->newLine();
+
+            // Small delay between sends to avoid overwhelming the mail server.
+            if (!$dryRun) {
+                usleep(500000); // 0.5 second
+            }
+        }
+
+        $this->newLine();
+        $this->info("=== Summary ===");
+        $this->info("Sent: {$sentCount} emails");
+
+        if (!empty($skippedTypes)) {
+            $this->warn("Skipped types (no messages found): " . implode(', ', $skippedTypes));
+        }
 
         return Command::SUCCESS;
     }
@@ -163,6 +278,7 @@ class TestMailCommand extends Command
     {
         $toEmail = $this->option('to');
         $chatId = $this->option('chat');
+        $messageType = $this->option('message-type');
 
         // Find recipient by email.
         if (!$toEmail) {
@@ -181,6 +297,11 @@ class TestMailCommand extends Command
         }
 
         $this->info("Found user: {$recipient->displayname} (ID: {$recipient->id})");
+
+        // If a specific message type is requested, use that.
+        if ($messageType) {
+            return $this->buildChatNotificationForType($chatType, $recipient, $messageType);
+        }
 
         // Find a chat room for this user.
         $chatRoomQuery = ChatRoom::where('chattype', $chatType)
@@ -226,6 +347,85 @@ class TestMailCommand extends Command
         // Get the most recent message and use the rest as previous messages.
         $latestMessage = $messages->last();
         $previousMessages = $messages->count() > 1 ? $messages->slice(0, -1) : collect();
+
+        return new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
+    }
+
+    /**
+     * Build a chat notification for a specific message type.
+     */
+    protected function buildChatNotificationForType(string $chatType, User $recipient, string $messageType): ?ChatNotification
+    {
+        $this->info("Looking for {$messageType} messages...");
+
+        // Get recipient's chat room IDs first (fast query).
+        $recipientChatIds = ChatRoom::where('chattype', $chatType)
+            ->where(function ($q) use ($recipient) {
+                $q->where('user1', $recipient->id)->orWhere('user2', $recipient->id);
+            })
+            ->pluck('id');
+
+        // Find a message of this type in recipient's chats.
+        $latestMessage = null;
+        $chatRoom = null;
+
+        if ($recipientChatIds->isNotEmpty()) {
+            $latestMessage = ChatMessage::whereIn('chatid', $recipientChatIds)
+                ->where('userid', '!=', $recipient->id)
+                ->where('type', $messageType)
+                ->orderBy('id', 'desc')
+                ->with(['user', 'refMessage', 'chatRoom'])
+                ->first();
+
+            if ($latestMessage) {
+                $chatRoom = $latestMessage->chatRoom;
+            }
+        }
+
+        if (!$latestMessage) {
+            // Try to find any recent message of this type (limit search for performance).
+            // Only search last 30 days and use indexed columns.
+            $since = now()->subDays(30);
+            $latestMessage = ChatMessage::select('chat_messages.*')
+                ->join('chat_rooms', 'chat_rooms.id', '=', 'chat_messages.chatid')
+                ->where('chat_rooms.chattype', $chatType)
+                ->where('chat_messages.type', $messageType)
+                ->where('chat_messages.date', '>=', $since)
+                ->orderBy('chat_messages.id', 'desc')
+                ->limit(1)
+                ->with(['user', 'refMessage', 'chatRoom'])
+                ->first();
+
+            if ($latestMessage) {
+                $chatRoom = $latestMessage->chatRoom;
+                // Override recipient to be the other user in this chat.
+                $recipientId = ($chatRoom->user1 === $latestMessage->userid) ? $chatRoom->user2 : $chatRoom->user1;
+                $newRecipient = User::find($recipientId);
+                if ($newRecipient) {
+                    $recipient = $newRecipient;
+                }
+                $this->warn("Using chat from different user to find {$messageType} message");
+            } else {
+                $this->warn("No {$messageType} messages found in any {$chatType} chat");
+                return null;
+            }
+        }
+
+        $this->info("Using chat room: {$chatRoom->id}");
+        $this->info("Found {$messageType} message ID: {$latestMessage->id}");
+
+        // Get sender (the other user).
+        $senderId = ($chatRoom->user1 === $recipient->id) ? $chatRoom->user2 : $chatRoom->user1;
+        $sender = $senderId ? User::find($senderId) : null;
+
+        // Get some previous messages for context.
+        $previousMessages = ChatMessage::where('chatid', $chatRoom->id)
+            ->where('id', '<', $latestMessage->id)
+            ->orderBy('id', 'desc')
+            ->limit(3)
+            ->with(['user', 'refMessage'])
+            ->get()
+            ->reverse();
 
         return new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
     }

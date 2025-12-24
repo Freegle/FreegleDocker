@@ -112,16 +112,33 @@ class User extends Model
 
     /**
      * Get full name or display name.
+     * Strips the "-gXXX" suffix from TrashNothing user names.
      */
     public function getDisplayNameAttribute(): string
     {
+        $name = null;
+
         if ($this->fullname) {
-            return $this->fullname;
+            $name = $this->fullname;
+        } elseif ($this->firstname || $this->lastname) {
+            $name = trim("{$this->firstname} {$this->lastname}");
         }
-        if ($this->firstname || $this->lastname) {
-            return trim("{$this->firstname} {$this->lastname}");
+
+        if (!$name) {
+            return 'Freegle User';
         }
-        return 'Freegle User';
+
+        // Strip the "-gXXX" suffix from TrashNothing user names.
+        return self::removeTNGroup($name);
+    }
+
+    /**
+     * Remove TrashNothing group suffix from a name.
+     * TN users often have names like "Alice-g298" - we hide the "-gXXX" part.
+     */
+    public static function removeTNGroup(string $name): string
+    {
+        return preg_replace('/^([\s\S]+?)-g[0-9]+$/', '$1', $name);
     }
 
     /**

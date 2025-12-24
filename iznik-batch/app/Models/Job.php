@@ -75,7 +75,7 @@ class Job extends Model
                 ->whereIn('name', $titles)
                 ->pluck('externaluid', 'name');
 
-            $placeholderUrl = config('freegle.images.job_placeholder');
+            $placeholderUrl = config('freegle.images.email_assets') . '/briefcase.png';
 
             foreach ($results as $job) {
                 $job->image_url = self::buildImageUrl($images[$job->title] ?? null) ?? $placeholderUrl;
