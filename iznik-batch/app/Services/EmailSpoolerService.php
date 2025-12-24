@@ -45,9 +45,22 @@ class EmailSpoolerService
         // Get subject from envelope.
         $envelope = $mailable->envelope();
 
+        // Extract BCC addresses from the mailable.
+        $bcc = [];
+        if (property_exists($mailable, 'bcc') && !empty($mailable->bcc)) {
+            foreach ($mailable->bcc as $bccEntry) {
+                if (is_array($bccEntry) && isset($bccEntry['address'])) {
+                    $bcc[] = $bccEntry['address'];
+                } elseif (is_string($bccEntry)) {
+                    $bcc[] = $bccEntry;
+                }
+            }
+        }
+
         $data = [
             'id' => $id,
             'to' => is_array($to) ? $to : [$to],
+            'bcc' => $bcc,
             'subject' => $envelope->subject,
             'html' => $rendered,
             'from' => [
@@ -126,6 +139,11 @@ class EmailSpoolerService
                     $message->to($data['to'])
                         ->subject($data['subject'])
                         ->from($data['from']['address'], $data['from']['name']);
+
+                    // Apply BCC if present.
+                    if (!empty($data['bcc'])) {
+                        $message->bcc($data['bcc']);
+                    }
                 });
 
                 // Move to sent directory.
