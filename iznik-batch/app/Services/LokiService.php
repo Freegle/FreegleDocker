@@ -62,7 +62,7 @@ class LokiService
      * Log an email send event.
      *
      * @param string $type Email type (digest, notification, etc.)
-     * @param string $recipient Recipient email (will be hashed)
+     * @param string $recipient Recipient email address
      * @param string $subject Email subject
      * @param int|null $userId User ID
      * @param int|null $groupId Group ID
@@ -86,6 +86,10 @@ class LokiService
             'email_type' => $type,
         ];
 
+        if ($userId) {
+            $labels['user_id'] = (string) $userId;
+        }
+
         if ($groupId) {
             $labels['groupid'] = (string) $groupId;
         }
@@ -94,7 +98,7 @@ class LokiService
             'timestamp' => now()->toIso8601String(),
             'labels' => $labels,
             'message' => array_merge([
-                'recipient' => $this->hashEmail($recipient),
+                'recipient' => $recipient,
                 'subject' => $subject,
                 'user_id' => $userId,
                 'group_id' => $groupId,
