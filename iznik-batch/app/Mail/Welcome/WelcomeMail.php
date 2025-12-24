@@ -3,6 +3,7 @@
 namespace App\Mail\Welcome;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
 use App\Mail\Traits\TrackableEmail;
 use App\Models\User;
 use Illuminate\Mail\Mailables\Address;
@@ -10,7 +11,7 @@ use Illuminate\Mail\Mailables\Envelope;
 
 class WelcomeMail extends MjmlMailable
 {
-    use TrackableEmail;
+    use LoggableEmail, TrackableEmail;
 
     private ?User $user = NULL;
 
@@ -84,7 +85,7 @@ class WelcomeMail extends MjmlMailable
                 'ruleSafeImage' => $this->responsiveImage(config('freegle.images.rule_safe')),
             ], $this->getTrackingData()),
             'emails.text.welcome.welcome'
-        );
+        )->applyLogging('Welcome');
     }
 
 }

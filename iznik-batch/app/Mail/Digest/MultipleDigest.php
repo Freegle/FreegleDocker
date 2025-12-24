@@ -3,12 +3,15 @@
 namespace App\Mail\Digest;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
 use App\Models\Group;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
 class MultipleDigest extends MjmlMailable
 {
+    use LoggableEmail;
+
     public function __construct(
         protected User $user,
         protected Group $group,
@@ -28,7 +31,8 @@ class MultipleDigest extends MjmlMailable
             'frequency' => $this->frequency,
             'messageCount' => $this->messages->count(),
             'settingsUrl' => $this->getSettingsUrl(),
-        ])->to($this->user->email_preferred);
+        ])->to($this->user->email_preferred)
+            ->applyLogging('MultipleDigest');
     }
 
     /**

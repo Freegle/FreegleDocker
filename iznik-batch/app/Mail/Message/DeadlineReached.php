@@ -3,12 +3,15 @@
 namespace App\Mail\Message;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
 use App\Models\Group;
 use App\Models\Message;
 use App\Models\User;
 
 class DeadlineReached extends MjmlMailable
 {
+    use LoggableEmail;
+
     public Message $message;
 
     public User $user;
@@ -63,7 +66,8 @@ class DeadlineReached extends MjmlMailable
                 'withdrawUrl' => $this->withdrawUrl,
                 'outcomeType' => $this->outcomeType,
                 'groupName' => $groupName,
-            ]);
+            ])
+            ->applyLogging('DeadlineReached');
     }
 
     /**

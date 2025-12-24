@@ -3,10 +3,13 @@
 namespace App\Mail\Donation;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
 use App\Models\User;
 
 class DonationThankYou extends MjmlMailable
 {
+    use LoggableEmail;
+
     public User $user;
 
     public string $userSite;
@@ -30,7 +33,8 @@ class DonationThankYou extends MjmlMailable
             ->mjmlView('emails.mjml.donation.thank-you', [
                 'user' => $this->user,
                 'userSite' => $this->userSite,
-            ]);
+            ])
+            ->applyLogging('DonationThankYou');
     }
 
     /**

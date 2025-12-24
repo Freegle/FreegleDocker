@@ -3,10 +3,13 @@
 namespace App\Mail\Donation;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
 use App\Models\User;
 
 class AskForDonation extends MjmlMailable
 {
+    use LoggableEmail;
+
     public User $user;
 
     public ?string $itemSubject;
@@ -42,7 +45,8 @@ class AskForDonation extends MjmlMailable
                 'itemSubject' => $this->itemSubject,
                 'target' => $this->target,
                 'donateUrl' => $this->donateUrl,
-            ]);
+            ])
+            ->applyLogging('AskForDonation');
     }
 
     /**
