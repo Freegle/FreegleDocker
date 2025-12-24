@@ -34,12 +34,46 @@ commands:
           name: Install system dependencies
           command: |
             sudo apt-get update
-            sudo apt-get install -y curl jq
+            sudo apt-get install -y curl jq file
 
-            # Install latest stable docker-compose
-            COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name')
+            # Install latest stable docker-compose with retry and validation
+            COMPOSE_VERSION=$(curl -sf --retry 3 --retry-delay 5 https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name')
+            if [ -z "$COMPOSE_VERSION" ] || [ "$COMPOSE_VERSION" = "null" ]; then
+              echo "Failed to get docker-compose version from API, using fallback"
+              COMPOSE_VERSION="v2.32.4"
+            fi
             echo "Installing docker-compose ${COMPOSE_VERSION}"
-            sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+            # Download with -f to fail on HTTP errors, retry on transient failures
+            for attempt in 1 2 3; do
+              echo "Download attempt $attempt..."
+              if sudo curl -fL --retry 3 --retry-delay 10 \
+                "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
+                -o /usr/local/bin/docker-compose; then
+
+                # Validate it's a binary, not an HTML error page
+                if file /usr/local/bin/docker-compose | grep -q "ELF"; then
+                  echo "docker-compose downloaded and validated successfully"
+                  break
+                else
+                  echo "Downloaded file is not a valid binary:"
+                  file /usr/local/bin/docker-compose
+                  head -5 /usr/local/bin/docker-compose
+                  sudo rm -f /usr/local/bin/docker-compose
+                fi
+              fi
+
+              if [ $attempt -lt 3 ]; then
+                echo "Download failed, waiting 30s before retry..."
+                sleep 30
+              fi
+            done
+
+            if [ ! -f /usr/local/bin/docker-compose ] || ! file /usr/local/bin/docker-compose | grep -q "ELF"; then
+              echo "ERROR: Failed to download valid docker-compose binary after 3 attempts"
+              exit 1
+            fi
+
             sudo chmod +x /usr/local/bin/docker-compose
             docker-compose --version
           max_auto_reruns: 3
