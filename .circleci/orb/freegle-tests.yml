@@ -9,7 +9,7 @@ executors:
     machine:
       image: ubuntu-2404:current
       docker_layer_caching: true
-    resource_class: xlarge
+    resource_class: large
     environment:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
@@ -33,6 +33,16 @@ commands:
       - run:
           name: Install system dependencies
           command: |
+            # Create 8GB swap file to handle memory spikes
+            echo "Creating swap file..."
+            sudo fallocate -l 8G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+            echo "Swap enabled:"
+            free -h
+
+
             sudo apt-get update
             sudo apt-get install -y curl jq file
 
@@ -78,6 +88,28 @@ commands:
             docker-compose --version
           max_auto_reruns: 3
           auto_rerun_delay: 10s
+      - run:
+          name: Start resource monitor
+          background: true
+          command: |
+            echo "Resource monitor started - logging every 30 seconds"
+            while true; do
+              echo ""
+              echo "========================================"
+              echo "RESOURCE CHECK: $(date '+%Y-%m-%d %H:%M:%S')"
+              echo "========================================"
+              echo "--- Memory ---"
+              free -h
+              echo "--- Swap Usage ---"
+              swapon --show
+              echo "--- CPU Load ---"
+              uptime
+              echo "--- Top 5 Memory Consumers ---"
+              ps aux --sort=-%mem | head -6
+              echo "--- Docker Stats ---"
+              docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" 2>/dev/null || echo "No containers running"
+              sleep 30
+            done
 
   start-docker-services:
     description: "Start Docker Compose services with proper setup"
