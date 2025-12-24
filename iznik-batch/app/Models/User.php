@@ -261,10 +261,11 @@ class User extends Model
      */
     public function getProfileImageUrl(bool $thumbnail = TRUE): ?string
     {
-        // Find the user's default profile image.
+        // Find the user's profile image, preferring the default one.
         $profileImage = \DB::table('users_images')
             ->where('userid', $this->id)
-            ->where('default', 1)
+            ->orderByDesc('default')
+            ->orderBy('id')
             ->first(['id', 'url']);
 
         if (!$profileImage) {

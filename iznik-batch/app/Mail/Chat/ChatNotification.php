@@ -134,6 +134,17 @@ class ChatNotification extends MjmlMailable
         // Get job ads for the recipient.
         $jobAds = $this->recipient->getJobAds();
 
+        // Check if recipient is the poster of the referenced message.
+        $isRecipientPoster = $this->refMessage && $this->refMessage->fromuser === $this->recipient->id;
+
+        // Get item image URL if there's a referenced message with attachments.
+        $refMessageImageUrl = $this->getRefMessageImageUrl();
+
+        // Build sender page URL (for clicking on sender name/image).
+        $senderPageUrl = $this->sender?->id
+            ? $this->trackedUrl($this->userSite . '/profile/' . $this->sender->id, 'sender_profile', 'profile')
+            : null;
+
         $this->to($this->recipient->email_preferred, $this->recipient->displayname)
             ->subject($this->replySubject)
             ->mjmlView('emails.mjml.chat.notification', array_merge([
@@ -142,12 +153,15 @@ class ChatNotification extends MjmlMailable
                 'sender' => $this->sender,
                 'senderName' => $this->sender?->displayname ?? 'Someone',
                 'senderProfileUrl' => $this->getSenderProfileUrl(),
+                'senderPageUrl' => $senderPageUrl,
                 'chatRoom' => $this->chatRoom,
                 'chatMessage' => $preparedMessage,
                 'previousMessages' => $preparedPreviousMessages,
                 'chatType' => $this->chatType,
                 'chatUrl' => $this->trackedUrl($this->chatUrl, 'reply_button', 'reply'),
                 'refMessage' => $this->refMessage,
+                'refMessageImageUrl' => $refMessageImageUrl,
+                'isRecipientPoster' => $isRecipientPoster,
                 'replyExpected' => $replyExpected,
                 'showOutcomeButtons' => $showOutcomeButtons,
                 'outcomeUrls' => $outcomeUrls,
@@ -258,17 +272,59 @@ class ChatNotification extends MjmlMailable
         // Get image URL if this is an image message.
         $imageUrl = $this->getMessageImageUrl($message);
 
+        // Get referenced message info if this message refers to an item.
+        $refMessageInfo = $this->getMessageRefInfo($message);
+
+        // Get user page URL for clicking on profile.
+        $userPageUrl = $messageUser?->id
+            ? $this->trackedUrl($this->userSite . '/profile/' . $messageUser->id, 'message_profile', 'profile')
+            : null;
+
         return [
             'id' => $message->id,
             'type' => $message->type,
             'text' => $displayText,
             'imageUrl' => $imageUrl,
             'profileUrl' => $profileUrl,
+            'userPageUrl' => $userPageUrl,
             'userName' => $messageUser?->displayname ?? 'Someone',
             'date' => $message->date,
             'formattedDate' => $message->date?->format('M j, g:i a') ?? '',
             'isFromRecipient' => $isFromRecipient,
             'replyExpected' => $message->replyexpected ?? FALSE,
+            'refMessage' => $refMessageInfo,
+        ];
+    }
+
+    /**
+     * Get referenced message info (subject and image) for a chat message.
+     */
+    protected function getMessageRefInfo(ChatMessage $message): ?array
+    {
+        $refMsg = $message->refMessage;
+        if (!$refMsg) {
+            return null;
+        }
+
+        // Get the primary attachment for the referenced message.
+        $attachment = $refMsg->attachments()
+            ->orderByDesc('primary')
+            ->first();
+
+        $imageUrl = null;
+        if ($attachment) {
+            if (!empty($attachment->externalurl)) {
+                $imageUrl = $this->getDeliveryUrl($attachment->externalurl, 75);
+            } else {
+                $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
+                $imageUrl = $this->getDeliveryUrl("{$imagesDomain}/timg_{$attachment->id}.jpg", 75);
+            }
+        }
+
+        return [
+            'subject' => $refMsg->subject,
+            'imageUrl' => $imageUrl,
+            'url' => $this->trackedUrl($this->userSite . '/message/' . $refMsg->id, 'ref_message', 'view_item'),
         ];
     }
 
@@ -282,29 +338,25 @@ class ChatNotification extends MjmlMailable
 
         switch ($message->type) {
             case ChatMessage::TYPE_INTERESTED:
-                $refSubject = $message->refMessage?->subject ?? '';
-                if ($refSubject && $text) {
-                    return "{$text}";
-                }
-                return $text ?: 'Expressed interest';
+                // Show the user's message if any, otherwise just indicate interest.
+                return $text ?: 'Interested in this:';
 
             case ChatMessage::TYPE_PROMISED:
                 $otherUser = $this->sender?->displayname ?? 'Someone';
-                $refSubject = $message->refMessage?->subject ?? 'an item';
                 if ($message->userid === $this->recipient->id) {
-                    return "You promised {$refSubject} to {$otherUser}";
+                    return "You promised this to {$otherUser}:";
                 }
-                return "{$otherUser} promised {$refSubject} to you";
+                return "{$otherUser} promised this to you:";
 
             case ChatMessage::TYPE_RENEGED:
                 $otherUser = $this->sender?->displayname ?? 'Someone';
                 if ($message->userid === $this->recipient->id) {
-                    return "You cancelled your promise";
+                    return "You cancelled your promise for:";
                 }
-                return "{$otherUser} cancelled their promise";
+                return "{$otherUser} cancelled their promise for:";
 
             case ChatMessage::TYPE_COMPLETED:
-                return "This item is no longer available.";
+                return "This item is no longer available:";
 
             case ChatMessage::TYPE_ADDRESS:
                 return "Shared their address with you.";
@@ -456,5 +508,35 @@ class ChatNotification extends MjmlMailable
                 'outcome'
             ),
         ];
+    }
+
+    /**
+     * Get the primary image URL for the referenced message.
+     */
+    protected function getRefMessageImageUrl(): ?string
+    {
+        if (!$this->refMessage) {
+            return null;
+        }
+
+        // Get primary attachment for this message.
+        $attachment = $this->refMessage->attachments()
+            ->orderByDesc('primary')
+            ->first();
+
+        if (!$attachment) {
+            return null;
+        }
+
+        // If there's an external URL, use it directly.
+        if (!empty($attachment->externalurl)) {
+            return $this->getDeliveryUrl($attachment->externalurl, 200);
+        }
+
+        // Build URL from image domain - message images use timg_ prefix for thumbnails.
+        $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
+        $sourceUrl = "{$imagesDomain}/timg_{$attachment->id}.jpg";
+
+        return $this->getDeliveryUrl($sourceUrl, 200);
     }
 }

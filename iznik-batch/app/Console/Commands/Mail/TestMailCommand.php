@@ -14,9 +14,9 @@ use App\Models\Group;
 use App\Models\Membership;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\EmailSpoolerService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 
 class TestMailCommand extends Command
 {
@@ -62,7 +62,6 @@ class TestMailCommand extends Command
 
         $type = $this->argument('type');
         $dryRun = $this->option('dry-run');
-        $overrideTo = $this->option('to');
 
         if (!$type) {
             $this->error("Email type is required. Use --list to see available types.");
@@ -87,23 +86,25 @@ class TestMailCommand extends Command
                 return Command::FAILURE;
             }
 
-            // Override recipient if specified.
-            if ($overrideTo) {
-                $mailable->to($overrideTo);
-                $this->info("Recipient overridden to: {$overrideTo}");
-            }
-
             if ($dryRun) {
                 $this->previewEmail($mailable);
             } else {
-                if (!$overrideTo) {
-                    $this->error('You must specify --to when sending test emails to avoid sending to real users.');
-                    DB::rollBack();
-                    return Command::FAILURE;
-                }
+                // Use the spooler to send like production does.
+                // Call render() first to trigger build() which sets the 'to' address.
+                $mailable->render();
 
-                Mail::send($mailable);
-                $this->info("Test email sent successfully to: {$overrideTo}");
+                $spooler = app(EmailSpoolerService::class);
+                $to = collect($mailable->to)->pluck('address')->toArray();
+                $spoolId = $spooler->spool($mailable, $to, class_basename($mailable));
+
+                // Process the spooled email immediately.
+                $stats = $spooler->processSpool(1);
+
+                if ($stats['sent'] > 0) {
+                    $this->info("Test email sent successfully! (spool ID: {$spoolId})");
+                } else {
+                    $this->warn("Email spooled but not sent yet. Check spool directory.");
+                }
             }
         } catch (\Exception $e) {
             $this->error("Error: " . $e->getMessage());
@@ -160,58 +161,53 @@ class TestMailCommand extends Command
      */
     protected function buildChatNotification(string $chatType): ?ChatNotification
     {
-        $userId = $this->option('user');
+        $toEmail = $this->option('to');
         $chatId = $this->option('chat');
 
-        // Find a suitable chat room.
-        if ($chatId) {
-            $chatRoom = ChatRoom::find($chatId);
-            if (!$chatRoom) {
-                $this->error("Chat room not found: {$chatId}");
-                return null;
-            }
-        } elseif ($userId) {
-            // Find a chat room for this user.
-            $chatRoom = ChatRoom::where('chattype', $chatType)
-                ->where(function ($q) use ($userId) {
-                    $q->where('user1', $userId)->orWhere('user2', $userId);
-                })
-                ->whereHas('messages')
-                ->first();
-
-            if (!$chatRoom) {
-                $this->error("No {$chatType} chat found for user {$userId}");
-                return null;
-            }
-        } else {
-            // Find any chat with messages.
-            $chatRoom = ChatRoom::where('chattype', $chatType)
-                ->whereHas('messages')
-                ->inRandomOrder()
-                ->first();
-
-            if (!$chatRoom) {
-                $this->error("No {$chatType} chats with messages found");
-                return null;
-            }
-        }
-
-        $this->info("Using chat room: {$chatRoom->id}");
-
-        // Get recipient user.
-        $recipient = User::find($userId ?? $chatRoom->user1);
-        if (!$recipient) {
-            $this->error("Could not find recipient user");
+        // Find recipient by email.
+        if (!$toEmail) {
+            $this->error("Please specify --to=email to find chat messages for that user");
             return null;
         }
 
-        $this->info("Generating email for user: {$recipient->displayname} (ID: {$recipient->id})");
+        // Find the user by email.
+        $recipient = User::whereHas('emails', function ($q) use ($toEmail) {
+            $q->where('email', $toEmail);
+        })->first();
+
+        if (!$recipient) {
+            $this->error("No user found with email: {$toEmail}");
+            return null;
+        }
+
+        $this->info("Found user: {$recipient->displayname} (ID: {$recipient->id})");
+
+        // Find a chat room for this user.
+        $chatRoomQuery = ChatRoom::where('chattype', $chatType)
+            ->where(function ($q) use ($recipient) {
+                $q->where('user1', $recipient->id)->orWhere('user2', $recipient->id);
+            });
+
+        if ($chatId) {
+            $chatRoomQuery->where('id', $chatId);
+        }
+
+        $chatRoom = $chatRoomQuery->whereHas('messages', function ($q) use ($recipient) {
+            $q->where('userid', '!=', $recipient->id);
+        })->orderBy('id', 'desc')->first();
+
+        if (!$chatRoom) {
+            $this->error("No {$chatType} chat with messages found for user {$recipient->id}");
+            return null;
+        }
+
+        $this->info("Using chat room: {$chatRoom->id}");
 
         // Get sender (the other user).
         $senderId = ($chatRoom->user1 === $recipient->id) ? $chatRoom->user2 : $chatRoom->user1;
         $sender = $senderId ? User::find($senderId) : null;
 
-        // Get recent messages.
+        // Get recent messages from the other user.
         $messages = ChatMessage::where('chatid', $chatRoom->id)
             ->where('userid', '!=', $recipient->id)
             ->orderBy('id', 'desc')
@@ -221,20 +217,17 @@ class TestMailCommand extends Command
             ->reverse();
 
         if ($messages->isEmpty()) {
-            // Create a fake message for testing.
-            $this->warn("No messages from other users found, using synthetic message");
-            $messages = collect([
-                (object) [
-                    'id' => 0,
-                    'message' => 'This is a test message for email preview.',
-                    'date' => now(),
-                    'user' => $sender,
-                    'refMessage' => null,
-                ],
-            ]);
+            $this->error("No messages from other users found in this chat");
+            return null;
         }
 
-        return new ChatNotification($recipient, $sender, $chatRoom, $messages, $chatType);
+        $this->info("Found " . $messages->count() . " messages from sender");
+
+        // Get the most recent message and use the rest as previous messages.
+        $latestMessage = $messages->last();
+        $previousMessages = $messages->count() > 1 ? $messages->slice(0, -1) : collect();
+
+        return new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
     }
 
     /**

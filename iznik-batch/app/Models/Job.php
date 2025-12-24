@@ -19,28 +19,98 @@ class Job extends Model
     ];
 
     /**
-     * Query jobs near a location.
+     * Minimum CPC (cost per click) to show a job ad.
+     */
+    public const MINIMUM_CPC = 0.02;
+
+    /**
+     * Query jobs near a location using bounding box search.
      *
      * @param float $lat Latitude
      * @param float $lng Longitude
      * @param int $limit Maximum number of jobs to return
-     * @param int $radiusMiles Search radius in miles
      */
-    public static function nearLocation(float $lat, float $lng, int $limit = 4, int $radiusMiles = 50): Collection
+    public static function nearLocation(float $lat, float $lng, int $limit = 4): Collection
     {
-        // Convert miles to meters (1 mile = 1609.34 meters).
-        $radiusMeters = $radiusMiles * 1609.34;
+        // Use same bounding box approach as iznik-server for efficient spatial index usage.
+        // Expand the box iteratively until we find enough jobs.
+        $step = 0.02;
+        $ambit = $step;
+        $srid = config('freegle.srid', 3857);
 
-        return static::select('id', 'title', 'location', 'company', 'city', 'url')
-            ->whereRaw(
-                'ST_Distance_Sphere(geometry, ST_SRID(POINT(?, ?), 4326)) < ?',
-                [$lng, $lat, $radiusMeters]
-            )
-            ->orderByRaw(
-                'ST_Distance_Sphere(geometry, ST_SRID(POINT(?, ?), 4326))',
-                [$lng, $lat]
-            )
-            ->limit($limit)
-            ->get();
+        $results = collect();
+        $gotIds = [];
+
+        while ($results->count() < $limit && $ambit < 1) {
+            $swlat = $lat - $ambit;
+            $nelat = $lat + $ambit;
+            $swlng = $lng - $ambit;
+            $nelng = $lng + $ambit;
+
+            $poly = "POLYGON(($swlng $swlat, $swlng $nelat, $nelng $nelat, $nelng $swlat, $swlng $swlat))";
+
+            $jobs = static::select('id', 'title', 'location', 'company', 'city', 'url', 'cpc')
+                ->whereRaw("ST_Within(geometry, ST_GeomFromText(?, ?))", [$poly, $srid])
+                ->whereRaw("cpc >= ?", [self::MINIMUM_CPC])
+                ->where('visible', 1)
+                ->when(count($gotIds) > 0, function ($query) use ($gotIds) {
+                    $query->whereNotIn('id', $gotIds);
+                })
+                ->orderByDesc('cpc')
+                ->limit($limit - $results->count())
+                ->get();
+
+            foreach ($jobs as $job) {
+                $gotIds[] = $job->id;
+                $results->push($job);
+            }
+
+            $ambit += $step;
+        }
+
+        // Add images to jobs from ai_images table.
+        if ($results->isNotEmpty()) {
+            $titles = $results->pluck('title')->toArray();
+            $images = DB::table('ai_images')
+                ->whereIn('name', $titles)
+                ->pluck('externaluid', 'name');
+
+            $placeholderUrl = config('freegle.images.job_placeholder');
+
+            foreach ($results as $job) {
+                $job->image_url = self::buildImageUrl($images[$job->title] ?? null) ?? $placeholderUrl;
+            }
+        }
+
+        return $results->take($limit);
+    }
+
+    /**
+     * Build image URL from external UID.
+     */
+    protected static function buildImageUrl(?string $externaluid): ?string
+    {
+        if (!$externaluid) {
+            return null;
+        }
+
+        // Extract the file ID from the externaluid (format: freegletusd-{id})
+        $p = strrpos($externaluid, 'freegletusd-');
+        if ($p === false) {
+            return null;
+        }
+
+        $fileId = substr($externaluid, $p + strlen('freegletusd-'));
+        $tusUploader = config('freegle.tus_uploader', 'https://uploads.ilovefreegle.org:8080');
+        $deliveryUrl = config('freegle.delivery.base_url');
+
+        // URL format: https://uploads.ilovefreegle.org:8080/{fileId} (no trailing slash)
+        $sourceUrl = $tusUploader . '/' . $fileId;
+
+        if ($deliveryUrl) {
+            return $deliveryUrl . '?url=' . urlencode($sourceUrl) . '&w=50';
+        }
+
+        return $sourceUrl;
     }
 }

@@ -23,14 +23,38 @@
 
     {{-- Referenced item --}}
     @if($refMessage)
-    <mj-section mj-class="bg-light" padding="15px 20px" border-bottom="2px solid #e9ecef">
+    <mj-section mj-class="bg-light" padding="15px 20px {{ $refMessageImageUrl ? '10px' : '15px' }} 20px">
       <mj-column>
         <mj-text font-size="13px" color="#666666" align="center" padding-bottom="4px">
-          About your post
+          @if($isRecipientPoster)
+            About your post
+          @else
+            Re: {{ $refMessage->subject }}
+          @endif
         </mj-text>
+        @if($isRecipientPoster)
         <mj-text font-size="16px" font-weight="600" color="#333333" align="center">
           {{ $refMessage->subject }}
         </mj-text>
+        @endif
+      </mj-column>
+    </mj-section>
+    @if($refMessageImageUrl)
+    <mj-section mj-class="bg-light" padding="5px 20px 15px 20px">
+      <mj-column>
+        <mj-image
+          src="{{ $refMessageImageUrl }}"
+          width="200px"
+          alt="{{ $refMessage->subject }}"
+          padding="0"
+          border-radius="8px"
+        />
+      </mj-column>
+    </mj-section>
+    @endif
+    <mj-section padding="0">
+      <mj-column>
+        <mj-divider border-color="#e9ecef" border-width="2px" padding="0" />
       </mj-column>
     </mj-section>
     @endif
@@ -49,7 +73,11 @@
     <mj-section background-color="#ffffff" padding="8px 20px">
       <mj-column vertical-align="top">
         <mj-text padding="0 8px 0 0" line-height="1.6" align="right">
+          @if($chatMessage['userPageUrl'])
+          <a href="{{ $chatMessage['userPageUrl'] }}" style="font-weight: 600; color: #338808; font-size: 14px; text-decoration: none;">{{ $chatMessage['userName'] }} (you)</a>
+          @else
           <span style="font-weight: 600; color: #338808; font-size: 14px;">{{ $chatMessage['userName'] }} (you)</span>
+          @endif
           <br/>
           <span style="color: #000000; font-size: 18px; font-weight: 500;">{!! nl2br(e($chatMessage['text'])) !!}</span>
         </mj-text>
@@ -62,6 +90,7 @@
           border-radius="18px"
           alt="{{ $chatMessage['userName'] }}"
           padding="0"
+          href="{{ $chatMessage['userPageUrl'] ?? '' }}"
         />
       </mj-column>
     </mj-section>
@@ -76,15 +105,59 @@
           border-radius="18px"
           alt="{{ $chatMessage['userName'] }}"
           padding="0"
+          href="{{ $chatMessage['userPageUrl'] ?? '' }}"
         />
       </mj-column>
       <mj-column vertical-align="top">
         <mj-text padding="0 0 0 8px" line-height="1.6">
+          @if($chatMessage['userPageUrl'])
+          <a href="{{ $chatMessage['userPageUrl'] }}" style="font-weight: 600; color: #333333; font-size: 14px; text-decoration: none;">{{ $chatMessage['userName'] }}</a>
+          @else
           <span style="font-weight: 600; color: #333333; font-size: 14px;">{{ $chatMessage['userName'] }}</span>
+          @endif
           <br/>
           <span style="color: #000000; font-size: 18px; font-weight: 500;">{!! nl2br(e($chatMessage['text'])) !!}</span>
         </mj-text>
       </mj-column>
+    </mj-section>
+    @endif
+
+    {{-- Show referenced item if this message refers to one --}}
+    @if(!empty($chatMessage['refMessage']))
+    <mj-section background-color="#ffffff" padding="5px 20px">
+      {{-- Spacer column to align with profile image --}}
+      <mj-column width="44px" vertical-align="top">
+        <mj-text padding="0">&nbsp;</mj-text>
+      </mj-column>
+      {{-- Item summary --}}
+      @if($chatMessage['refMessage']['imageUrl'])
+      <mj-column width="55px" vertical-align="middle" background-color="#f8f9fa" border-radius="8px 0 0 8px" padding="8px 0 8px 8px">
+        <mj-image
+          src="{{ $chatMessage['refMessage']['imageUrl'] }}"
+          width="45px"
+          height="45px"
+          alt="{{ $chatMessage['refMessage']['subject'] }}"
+          padding="0"
+          border-radius="4px"
+          href="{{ $chatMessage['refMessage']['url'] }}"
+        />
+      </mj-column>
+      <mj-column vertical-align="middle" background-color="#f8f9fa" border-radius="0 8px 8px 0" padding="8px 8px 8px 0">
+        <mj-text padding="0 0 0 8px" line-height="1.4">
+          <a href="{{ $chatMessage['refMessage']['url'] }}" style="color: #338808; font-weight: 600; font-size: 13px; text-decoration: none;">
+            {{ $chatMessage['refMessage']['subject'] }}
+          </a>
+        </mj-text>
+      </mj-column>
+      @else
+      <mj-column vertical-align="middle" background-color="#f8f9fa" border-radius="8px" padding="8px">
+        <mj-text padding="0" line-height="1.4">
+          <a href="{{ $chatMessage['refMessage']['url'] }}" style="color: #338808; font-weight: 600; font-size: 13px; text-decoration: none;">
+            {{ $chatMessage['refMessage']['subject'] }}
+          </a>
+        </mj-text>
+      </mj-column>
+      @endif
     </mj-section>
     @endif
 
@@ -153,17 +226,60 @@
           border-radius="14px"
           alt="{{ $prevMessage['userName'] }}"
           padding="0"
+          href="{{ $prevMessage['userPageUrl'] ?? '' }}"
         />
       </mj-column>
       <mj-column vertical-align="top">
         <mj-text padding="0 0 0 8px" line-height="1.4">
+          @if($prevMessage['userPageUrl'])
+          <a href="{{ $prevMessage['userPageUrl'] }}" style="font-weight: 600; color: #555555; font-size: 13px; text-decoration: none;">{{ $prevMessage['userName'] }}</a>
+          @else
           <span style="font-weight: 600; color: #555555; font-size: 13px;">{{ $prevMessage['userName'] }}</span>
+          @endif
           <span style="color: #888888; font-size: 12px;"> · {{ $prevMessage['formattedDate'] }}</span>
           <br/>
           <span style="color: #666666; font-size: 14px;">{!! nl2br(e($prevMessage['text'])) !!}</span>
         </mj-text>
       </mj-column>
     </mj-section>
+    {{-- Show referenced item for previous message --}}
+    @if(!empty($prevMessage['refMessage']))
+    <mj-section mj-class="bg-light" padding="4px 20px 8px 20px">
+      {{-- Spacer column to align with profile image --}}
+      <mj-column width="36px" vertical-align="top">
+        <mj-text padding="0">&nbsp;</mj-text>
+      </mj-column>
+      {{-- Item summary --}}
+      @if($prevMessage['refMessage']['imageUrl'])
+      <mj-column width="45px" vertical-align="middle" background-color="#e9ecef" border-radius="6px 0 0 6px" padding="6px 0 6px 6px">
+        <mj-image
+          src="{{ $prevMessage['refMessage']['imageUrl'] }}"
+          width="36px"
+          height="36px"
+          alt="{{ $prevMessage['refMessage']['subject'] }}"
+          padding="0"
+          border-radius="4px"
+          href="{{ $prevMessage['refMessage']['url'] }}"
+        />
+      </mj-column>
+      <mj-column vertical-align="middle" background-color="#e9ecef" border-radius="0 6px 6px 0" padding="6px 6px 6px 0">
+        <mj-text padding="0 0 0 6px" line-height="1.3">
+          <a href="{{ $prevMessage['refMessage']['url'] }}" style="color: #338808; font-size: 12px; text-decoration: none;">
+            {{ $prevMessage['refMessage']['subject'] }}
+          </a>
+        </mj-text>
+      </mj-column>
+      @else
+      <mj-column vertical-align="middle" background-color="#e9ecef" border-radius="6px" padding="6px">
+        <mj-text padding="0" line-height="1.3">
+          <a href="{{ $prevMessage['refMessage']['url'] }}" style="color: #338808; font-size: 12px; text-decoration: none;">
+            {{ $prevMessage['refMessage']['subject'] }}
+          </a>
+        </mj-text>
+      </mj-column>
+      @endif
+    </mj-section>
+    @endif
     @endforeach
 
     <mj-section mj-class="bg-light" padding="10px 20px 20px 20px">
@@ -198,17 +314,33 @@
         </mj-text>
       </mj-column>
     </mj-section>
-    <mj-section mj-class="bg-light" padding="0 20px 10px 20px">
-      <mj-column>
-        @foreach($jobAds as $job)
-        <mj-text font-size="14px" color="#333333" padding="5px 0">
+    @foreach($jobAds as $job)
+    <mj-section mj-class="bg-light" padding="5px 20px">
+      @if($job->image_url)
+      <mj-column width="55px" vertical-align="middle">
+        <mj-image
+          src="{{ $job->image_url }}"
+          width="45px"
+          height="45px"
+          alt="{{ $job->title }}"
+          padding="0"
+          border-radius="4px"
+          href="{{ config('freegle.sites.user') }}/job/{{ $job->id }}"
+        />
+      </mj-column>
+      @endif
+      <mj-column vertical-align="middle">
+        <mj-text font-size="14px" color="#333333" padding="0 0 0 8px" line-height="1.4">
           <a href="{{ config('freegle.sites.user') }}/job/{{ $job->id }}" style="color: #338808; font-weight: bold; text-decoration: none;">
-            {{ $job->title }}@if($job->location) ({{ $job->location }})@endif
+            {{ $job->title }}
           </a>
+          @if($job->location)
+          <br/><span style="color: #666666; font-size: 12px;">{{ $job->location }}</span>
+          @endif
         </mj-text>
-        @endforeach
       </mj-column>
     </mj-section>
+    @endforeach
     <mj-section mj-class="bg-light" padding="0 20px 10px 20px">
       <mj-column>
         <mj-text font-size="12px" color="#666666" line-height="1.4">

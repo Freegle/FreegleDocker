@@ -52,7 +52,11 @@ return [
         'rule_free' => env('FREEGLE_RULE_FREE_IMAGE', 'https://www.ilovefreegle.org/emailimages/rule-free.png'),
         'rule_nice' => env('FREEGLE_RULE_NICE_IMAGE', 'https://www.ilovefreegle.org/emailimages/rule-nice.png'),
         'rule_safe' => env('FREEGLE_RULE_SAFE_IMAGE', 'https://www.ilovefreegle.org/emailimages/rule-safe.png'),
+        'job_placeholder' => env('FREEGLE_JOB_PLACEHOLDER', 'https://www.ilovefreegle.org/emailimages/briefcase.png'),
     ],
+
+    // TUS uploader for AI-generated images
+    'tus_uploader' => env('TUS_UPLOADER', 'https://uploads.ilovefreegle.org:8080'),
 
     /*
     |--------------------------------------------------------------------------
