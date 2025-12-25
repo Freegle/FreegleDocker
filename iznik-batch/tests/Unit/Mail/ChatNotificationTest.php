@@ -426,4 +426,528 @@ class ChatNotificationTest extends TestCase
         $this->assertStringContainsString('🇬🇧', $html);
         $this->assertStringNotContainsString('\\u1f1ec-1f1e7\\u', $html);
     }
+
+    public function test_chat_notification_interested_message_type(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+        $group = $this->createTestGroup();
+        $this->createMembership($user1, $group);
+
+        $refMessage = $this->createTestMessage($user1, $group, [
+            'subject' => 'OFFER: Test Item (Location)',
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user2->id,
+            'message' => 'I would love this!',
+            'type' => ChatMessage::TYPE_INTERESTED,
+            'date' => now(),
+            'refmsgid' => $refMessage->id,
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user1,
+            $user2,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('I would love this!', $html);
+    }
+
+    public function test_chat_notification_promised_message_type(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => '',
+            'type' => ChatMessage::TYPE_PROMISED,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('promised', $html);
+    }
+
+    public function test_chat_notification_nudge_message_type(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => '',
+            'type' => ChatMessage::TYPE_NUDGE,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('Nudge', $html);
+        $this->assertStringContainsString('please can you reply', $html);
+    }
+
+    public function test_chat_notification_completed_message_type(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => '',
+            'type' => ChatMessage::TYPE_COMPLETED,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('no longer available', $html);
+    }
+
+    public function test_chat_notification_reply_to_format(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $envelope = $mail->envelope();
+
+        // Reply-to should be in the format notify-{chatid}-{userid}@domain.
+        $replyTo = $envelope->replyTo;
+        $this->assertNotEmpty($replyTo);
+        $this->assertStringContainsString('notify-' . $room->id . '-' . $user2->id, $replyTo[0]->address);
+    }
+
+    public function test_chat_notification_from_display_name(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice Smith']);
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $envelope = $mail->envelope();
+
+        // From name should be "SenderName on Freegle".
+        $this->assertStringContainsString('Alice Smith', $envelope->from->name);
+        $this->assertStringContainsString('on', $envelope->from->name);
+    }
+
+    public function test_chat_notification_with_previous_messages(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $prevMessage = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Previous message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now()->subMinutes(5),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user2->id,
+            'message' => 'Latest message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user1,
+            $user2,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER,
+            collect([$prevMessage])
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('Latest message', $html);
+        $this->assertStringContainsString('Previous message', $html);
+    }
+
+    public function test_chat_notification_uses_regarding_instead_of_re(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user1, $group);
+
+        $refMessage = $this->createTestMessage($user1, $group, [
+            'subject' => 'OFFER: Test Item (Location)',
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $chatMessage = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user2->id,
+            'message' => 'Interested!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+            'refmsgid' => $refMessage->id,
+        ]);
+
+        $mail = new ChatNotification(
+            $user1,
+            $user2,
+            $room,
+            $chatMessage,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        // Verify "Regarding:" is used instead of "Re:".
+        $this->assertStringStartsWith('Regarding:', $mail->replySubject);
+        $this->assertStringNotContainsString('Re:', $mail->replySubject);
+    }
+
+    public function test_chat_notification_chat_url_contains_room_id(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $this->assertStringContainsString('/chats/' . $room->id, $mail->chatUrl);
+    }
+
+    public function test_chat_notification_image_message_type(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => '',
+            'type' => ChatMessage::TYPE_IMAGE,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('Sent an image', $html);
+    }
+
+    public function test_chat_notification_schedule_message_type(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => '',
+            'type' => ChatMessage::TYPE_SCHEDULE,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('Suggested a collection time', $html);
+    }
+
+    public function test_chat_notification_reneged_message_type(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => '',
+            'type' => ChatMessage::TYPE_RENEGED,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('cancelled', $html);
+        $this->assertStringContainsString('promise', $html);
+    }
 }
