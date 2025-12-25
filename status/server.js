@@ -852,6 +852,48 @@ async function runPlaywrightTests(testFile = null, testName = null) {
       testStatus.logs += `Warning: Failed to restart container: ${restartError.message}\n`;
     }
 
+    // Set up test database - same as CircleCI's setup-test-database command
+    testStatus.message = "Setting up test database...";
+    testStatus.logs += "Setting up test database and environment...\n";
+
+    try {
+      // Load database schema (matches CircleCI setup-test-database)
+      execSync(
+        `docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \\
+          sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \\
+          sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \\
+          sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \\
+          sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
+          sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
+          mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \\
+          mysql -h percona -u root -piznik iznik < install/schema.sql && \\
+          mysql -h percona -u root -piznik iznik < install/functions.sql && \\
+          mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \\
+          mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\\" && \\
+          mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"
+        "`,
+        {
+          encoding: "utf8",
+          timeout: 120000,
+        }
+      );
+      testStatus.logs += "Database schema loaded\n";
+
+      // Run testenv.php to create FreeglePlayground group and test users
+      execSync(
+        'docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"',
+        {
+          encoding: "utf8",
+          timeout: 60000,
+        }
+      );
+      testStatus.logs += "Test environment set up (FreeglePlayground group, test users)\n";
+    } catch (setupError) {
+      console.warn("Test database setup warning:", setupError.message);
+      testStatus.logs += `Warning: Test database setup issue: ${setupError.message}\n`;
+      // Continue anyway - the database might already be set up
+    }
+
     testStatus.message = "Executing tests in Playwright container...";
     testStatus.logs += "Playwright container is ready\n";
 
@@ -1584,8 +1626,9 @@ const httpServer = http.createServer(async (req, res) => {
         if (parsedUrl.query && parsedUrl.query.testSpec) {
           testFile = parsedUrl.query.testSpec;
         }
-        if (parsedUrl.query && parsedUrl.query.testName) {
-          testName = parsedUrl.query.testName;
+        // Support both 'testName' and 'filter' as query parameters
+        if (parsedUrl.query && (parsedUrl.query.testName || parsedUrl.query.filter)) {
+          testName = parsedUrl.query.testName || parsedUrl.query.filter;
         }
 
         // Parse request body if it exists (body takes precedence)
@@ -1593,7 +1636,10 @@ const httpServer = http.createServer(async (req, res) => {
           try {
             const requestData = JSON.parse(body);
             if (requestData.testFile) testFile = requestData.testFile;
-            if (requestData.testName) testName = requestData.testName;
+            // Support both 'testName' and 'filter' in request body
+            if (requestData.testName || requestData.filter) {
+              testName = requestData.testName || requestData.filter;
+            }
           } catch (parseError) {
             console.warn("Failed to parse request body:", parseError.message);
           }
