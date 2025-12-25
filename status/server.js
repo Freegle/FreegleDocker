@@ -137,6 +137,18 @@ const services = [
     category: "dev",
   },
   {
+    id: "loki",
+    container: "freegle-loki",
+    checkType: "loki",
+    category: "dev",
+  },
+  {
+    id: "grafana",
+    container: "freegle-grafana",
+    checkType: "dev-tool",
+    category: "dev",
+  },
+  {
     id: "playwright",
     container: "freegle-playwright",
     checkType: "playwright",
@@ -2557,6 +2569,9 @@ const httpServer = http.createServer(async (req, res) => {
             break;
           case "playwright":
             testDescription = "Playwright test container ready for execution";
+            break;
+          case "loki":
+            testDescription = "Loki log aggregation ready";
             break;
           default:
             testDescription = "Health check passed";

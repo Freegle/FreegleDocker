@@ -2,12 +2,17 @@
 # File sync script for Freegle Docker development
 # Monitors WSL filesystem changes and syncs to Docker containers
 
-PROJECT_DIR="/workspace"
+# Use the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
 
 echo "Starting Freegle file sync monitor..."
 echo "Project: $PROJECT_DIR"
 echo "Press Ctrl+C to stop"
 echo ""
+
+# Debounce tracking - prevent syncing same file within 2 seconds
+declare -A LAST_SYNC
 
 # Function to determine target container
 get_container_info() {
@@ -34,33 +39,42 @@ get_container_info() {
             echo "$targets"
         fi
     elif [[ "$relative_path" == iznik-server-go/* ]]; then
-        echo "freegle-apiv2 /app/${relative_path#iznik-server-go/} API-v2"
+        echo "apiv2 /app/${relative_path#iznik-server-go/} API-v2"
     elif [[ "$relative_path" == iznik-server/* ]]; then
-        echo "freegle-apiv1 /var/www/iznik/${relative_path#iznik-server/} API-v1"
+        echo "apiv1 /var/www/iznik/${relative_path#iznik-server/} API-v1"
     elif [[ "$relative_path" == iznik-batch/* ]]; then
         echo "freegle-batch /var/www/html/${relative_path#iznik-batch/} Batch"
     fi
 }
 
-# Function to sync file
+# Function to sync file with debouncing
 sync_file() {
     local file_path="$1"
+    local now=$(date +%s)
+
+    # Check debounce - skip if synced within last 2 seconds
+    local last="${LAST_SYNC[$file_path]:-0}"
+    if (( now - last < 2 )); then
+        return
+    fi
+    LAST_SYNC[$file_path]=$now
+
     local container_info
     container_info=$(get_container_info "$file_path")
-    
+
     if [[ -z "$container_info" ]]; then
         return
     fi
-    
+
     local filename=$(basename "$file_path")
     local timestamp=$(date '+%H:%M:%S')
-    
+
     # Handle multiple containers (for test files)
     while IFS= read -r line; do
         if [[ -n "$line" ]]; then
             read -r container target_path service <<< "$line"
             echo "[$timestamp] $service: $filename"
-            
+
             if docker cp "$file_path" "$container:$target_path" 2>/dev/null; then
                 echo "  ✓ Synced to $container"
             else
@@ -73,7 +87,6 @@ sync_file() {
 # Install inotify-tools if not present
 if ! command -v inotifywait &> /dev/null; then
     echo "Installing inotify-tools..."
-    # Check if we're in Alpine Linux container
     if [ -f /etc/alpine-release ]; then
         apk add --no-cache inotify-tools
     else
@@ -84,18 +97,18 @@ fi
 echo "Starting file watcher..."
 echo ""
 
-# Monitor file changes
+# Monitor file changes - exclude node_modules, .git, build artifacts, and migrations
 inotifywait -m -r -e modify,create,move \
-    --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|~|\.tmp|\.swp|\.log)' \
+    --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|migrations|~|\.tmp|\.swp|\.log)' \
     "$PROJECT_DIR/iznik-nuxt3" \
     "$PROJECT_DIR/iznik-nuxt3-modtools" \
     "$PROJECT_DIR/iznik-server" \
     "$PROJECT_DIR/iznik-server-go" \
     "$PROJECT_DIR/iznik-batch" \
     2>/dev/null | while read -r directory events filename; do
-    
+
     full_path="$directory$filename"
-    
+
     # Only process regular files
     if [[ -f "$full_path" ]]; then
         sync_file "$full_path"

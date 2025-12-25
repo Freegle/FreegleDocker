@@ -198,6 +198,25 @@
                     <span class="status">Loading...</span>
                 </div>
             </div>
+
+            <div id="loki" class="service loading">
+                <div>
+                    <strong>Loki</strong> - Log aggregation (view logs in Grafana)<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-loki</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="grafana" class="service loading">
+                <div>
+                    <strong>Grafana</strong> - Log visualization and dashboards<br>
+                    <span class="url">http://grafana.localhost</span><br>
+                    <small>Login: admin / freegle</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-grafana</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+                <a href="http://grafana.localhost" target="_blank" class="action-button" style="text-decoration: none;">Visit</a>
+            </div>
         </div>
 
         <!-- Testing Tab -->
@@ -504,6 +523,8 @@
             { id: 'batch', container: 'freegle-batch' },
             { id: 'phpmyadmin', container: 'freegle-phpmyadmin' },
             { id: 'mailpit', container: 'freegle-mailpit' },
+            { id: 'loki', container: 'freegle-loki' },
+            { id: 'grafana', container: 'freegle-grafana' },
             { id: 'playwright', container: 'freegle-playwright' },
             { id: 'percona', container: 'freegle-percona' },
             { id: 'postgres', container: 'freegle-postgres' },
