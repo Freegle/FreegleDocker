@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('groups_facebook_toshare')) {
+            return;
+        }
+
         Schema::create('groups_facebook_toshare', function (Blueprint $table) {
             $table->comment('Stores central posts for sharing out to group pages');
             $table->bigIncrements('id');

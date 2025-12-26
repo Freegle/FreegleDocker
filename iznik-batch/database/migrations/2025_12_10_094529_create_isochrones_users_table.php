@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('isochrones_users')) {
+            return;
+        }
+
         Schema::create('isochrones_users', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('userid')->index('userid');

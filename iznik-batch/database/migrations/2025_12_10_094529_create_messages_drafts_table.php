@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_drafts')) {
+            return;
+        }
+
         Schema::create('messages_drafts', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('msgid')->unique('msgid');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('engage_mails')) {
+            return;
+        }
+
         Schema::create('engage_mails', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->enum('engagement', ['UT', 'New', 'Occasional', 'Frequent', 'Obsessed', 'Inactive', 'AtRisk', 'Dormant'])->index('engagement');

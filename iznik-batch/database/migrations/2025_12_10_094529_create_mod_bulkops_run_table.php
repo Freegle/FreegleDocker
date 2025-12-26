@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('mod_bulkops_run')) {
+            return;
+        }
+
         Schema::create('mod_bulkops_run', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('bulkopid')->index('bulkopid');

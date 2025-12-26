@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('transport_mode_probabilities')) {
+            return;
+        }
+
         Schema::create('transport_mode_probabilities', function (Blueprint $table) {
             $table->comment('Transport mode choice probabilities by area type from NTS');
             $table->increments('id');

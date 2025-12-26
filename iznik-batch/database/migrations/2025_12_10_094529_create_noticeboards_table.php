@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('noticeboards')) {
+            return;
+        }
+
         Schema::create('noticeboards', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('name')->nullable();

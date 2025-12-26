@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('weights')) {
+            return;
+        }
+
         Schema::create('weights', function (Blueprint $table) {
             $table->comment('Standard weights, from FRN 2009');
             $table->string('name', 80)->primary();

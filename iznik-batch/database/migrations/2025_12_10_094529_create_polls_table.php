@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('polls')) {
+            return;
+        }
+
         Schema::create('polls', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->timestamp('date')->useCurrent();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('words_cache')) {
+            return;
+        }
+
         Schema::create('words_cache', function (Blueprint $table) {
             $table->bigIncrements('id')->unique('id');
             $table->string('search')->unique('search');

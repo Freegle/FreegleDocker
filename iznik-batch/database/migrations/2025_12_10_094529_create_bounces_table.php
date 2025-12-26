@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('bounces')) {
+            return;
+        }
+
         Schema::create('bounces', function (Blueprint $table) {
             $table->comment('Bounce messages received by email');
             $table->bigIncrements('id');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('visualise')) {
+            return;
+        }
+
         Schema::create('visualise', function (Blueprint $table) {
             $table->comment('Data to allow us to visualise flows of items to people');
             $table->bigIncrements('id');

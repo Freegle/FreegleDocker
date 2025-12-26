@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('aviva_votes')) {
+            return;
+        }
+
         Schema::create('aviva_votes', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->timestamp('timestamp')->useCurrent()->index('timestamp');

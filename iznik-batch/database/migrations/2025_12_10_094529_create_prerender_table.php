@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('prerender')) {
+            return;
+        }
+
         Schema::create('prerender', function (Blueprint $table) {
             $table->comment('Saved copies of HTML for logged out view of pages');
             $table->bigIncrements('id');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('spam_countries')) {
+            return;
+        }
+
         Schema::create('spam_countries', function (Blueprint $table) {
             $table->bigIncrements('id')->unique('id');
             $table->string('country', 80)->index('country')->comment('A country we want to block');

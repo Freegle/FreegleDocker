@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('logs_sql')) {
+            return;
+        }
+
         Schema::create('logs_sql', function (Blueprint $table) {
             $table->comment('Log of modification SQL operations');
             $table->bigIncrements('id')->unique('id');

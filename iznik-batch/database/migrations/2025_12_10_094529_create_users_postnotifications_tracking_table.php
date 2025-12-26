@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_postnotifications_tracking')) {
+            return;
+        }
+
         Schema::create('users_postnotifications_tracking', function (Blueprint $table) {
             $table->comment('Tracks which posts we have sent push notifications about');
             $table->bigIncrements('id');

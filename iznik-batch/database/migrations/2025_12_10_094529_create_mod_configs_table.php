@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('mod_configs')) {
+            return;
+        }
+
         Schema::create('mod_configs', function (Blueprint $table) {
             $table->comment('Configurations for use by moderators');
             $table->bigIncrements('id')->unique('id')->comment('Unique ID of config');

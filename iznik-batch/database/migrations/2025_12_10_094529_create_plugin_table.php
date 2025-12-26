@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('plugin')) {
+            return;
+        }
+
         Schema::create('plugin', function (Blueprint $table) {
             $table->comment('Outstanding work required to be performed by the plugin');
             $table->bigIncrements('id');

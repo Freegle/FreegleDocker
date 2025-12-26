@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('paf_pobox')) {
+            return;
+        }
+
         Schema::create('paf_pobox', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('pobox', 60)->unique('pobox');

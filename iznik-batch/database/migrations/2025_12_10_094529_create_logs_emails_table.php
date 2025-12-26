@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('logs_emails')) {
+            return;
+        }
+
         Schema::create('logs_emails', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->timestamp('timestamp')->useCurrentOnUpdate()->useCurrent()->index('timestamp');

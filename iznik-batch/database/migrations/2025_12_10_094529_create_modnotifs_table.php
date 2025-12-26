@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('modnotifs')) {
+            return;
+        }
+
         Schema::create('modnotifs', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('userid')->unique('userid');

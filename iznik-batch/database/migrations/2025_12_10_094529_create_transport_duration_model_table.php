@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('transport_duration_model')) {
+            return;
+        }
+
         Schema::create('transport_duration_model', function (Blueprint $table) {
             $table->comment('Transport speed and duration parameters by area type and region');
             $table->increments('id');

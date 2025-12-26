@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('microactions')) {
+            return;
+        }
+
         Schema::create('microactions', function (Blueprint $table) {
             $table->comment('Micro-volunteering tasks');
             $table->bigIncrements('id');

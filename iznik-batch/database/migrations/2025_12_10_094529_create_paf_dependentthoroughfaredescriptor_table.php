@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('paf_dependentthoroughfaredescriptor')) {
+            return;
+        }
+
         Schema::create('paf_dependentthoroughfaredescriptor', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('dependentthoroughfaredescriptor', 80)->unique('dependentthoroughfaredescriptor');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('authorities')) {
+            return;
+        }
+
         Schema::create('authorities', function (Blueprint $table) {
             $table->comment('Counties and Unitary Authorities.  May be multigeometries');
             $table->bigIncrements('id');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('items_non')) {
+            return;
+        }
+
         Schema::create('items_non', function (Blueprint $table) {
             $table->comment('Not considered items by us, but by image recognition');
             $table->bigIncrements('id');

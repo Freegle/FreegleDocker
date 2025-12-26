@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_banned')) {
+            return;
+        }
+
         Schema::create('users_banned', function (Blueprint $table) {
             $table->unsignedBigInteger('userid')->index('userid');
             $table->unsignedBigInteger('groupid')->index('groupid');

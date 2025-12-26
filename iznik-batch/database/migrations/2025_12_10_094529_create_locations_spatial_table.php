@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('locations_spatial')) {
+            return;
+        }
+
         Schema::create('locations_spatial', function (Blueprint $table) {
             $table->unsignedBigInteger('locationid')->unique('locationid');
             $table->geography('geometry', null, 3857);

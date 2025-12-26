@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_dashboard')) {
+            return;
+        }
+
         Schema::create('users_dashboard', function (Blueprint $table) {
             $table->comment('Cached copy of mod dashboard, gen in cron');
             $table->bigIncrements('id');

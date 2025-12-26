@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('paf_addresses')) {
+            return;
+        }
+
         Schema::create('paf_addresses', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('postcodeid')->nullable()->index('postcodeid');

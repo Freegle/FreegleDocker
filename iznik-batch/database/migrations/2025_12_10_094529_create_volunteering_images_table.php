@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('volunteering_images')) {
+            return;
+        }
+
         Schema::create('volunteering_images', function (Blueprint $table) {
             $table->comment('Attachments parsed out from messages and resized');
             $table->bigIncrements('id');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('simulation_message_isochrones_messages')) {
+            return;
+        }
+
         Schema::create('simulation_message_isochrones_messages', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('runid');

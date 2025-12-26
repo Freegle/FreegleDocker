@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('returnpath_seedlist')) {
+            return;
+        }
+
         Schema::create('returnpath_seedlist', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->timestamp('timestamp')->useCurrentOnUpdate()->useCurrent();

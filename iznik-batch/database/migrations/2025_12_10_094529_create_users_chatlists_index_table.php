@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_chatlists_index')) {
+            return;
+        }
+
         Schema::create('users_chatlists_index', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('chatid')->index('chatid_2');

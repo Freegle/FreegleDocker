@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('ebay_favourites')) {
+            return;
+        }
+
         Schema::create('ebay_favourites', function (Blueprint $table) {
             $table->bigInteger('id', true);
             $table->timestamp('timestamp')->useCurrent();

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('spatial_ref_sys')) {
+            return;
+        }
+
         Schema::create('spatial_ref_sys', function (Blueprint $table) {
             $table->integer('SRID');
             $table->string('AUTH_NAME', 256)->nullable();

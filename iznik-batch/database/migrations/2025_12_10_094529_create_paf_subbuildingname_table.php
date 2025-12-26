@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('paf_subbuildingname')) {
+            return;
+        }
+
         Schema::create('paf_subbuildingname', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('subbuildingname', 60)->unique('subbuildingname');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('noticeboards_images')) {
+            return;
+        }
+
         Schema::create('noticeboards_images', function (Blueprint $table) {
             $table->comment('Attachments parsed out from messages and resized');
             $table->bigIncrements('id');

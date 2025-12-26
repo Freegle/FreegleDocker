@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('merges')) {
+            return;
+        }
+
         Schema::create('merges', function (Blueprint $table) {
             $table->comment('Offers of merges to members');
             $table->bigIncrements('id');

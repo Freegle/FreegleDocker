@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('mod_stdmsgs')) {
+            return;
+        }
+
         Schema::create('mod_stdmsgs', function (Blueprint $table) {
             $table->bigIncrements('id')->unique('id')->comment('Unique ID of standard message');
             $table->unsignedBigInteger('configid')->nullable()->index('configid');

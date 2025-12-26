@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_groups')) {
+            return;
+        }
+
         Schema::create('messages_groups', function (Blueprint $table) {
             $table->comment('The state of the message on each group');
             $table->unsignedBigInteger('msgid')->comment('id in the messages table');

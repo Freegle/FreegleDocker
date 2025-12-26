@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_likes')) {
+            return;
+        }
+
         Schema::create('messages_likes', function (Blueprint $table) {
             $table->unsignedBigInteger('msgid');
             $table->unsignedBigInteger('userid')->index('userid');

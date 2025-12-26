@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('alerts')) {
+            return;
+        }
+
         Schema::create('alerts', function (Blueprint $table) {
             $table->comment('Try all means to reach people with these');
             $table->bigIncrements('id');

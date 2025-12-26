@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_nudges')) {
+            return;
+        }
+
         Schema::create('users_nudges', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('fromuser')->index('fromuser');

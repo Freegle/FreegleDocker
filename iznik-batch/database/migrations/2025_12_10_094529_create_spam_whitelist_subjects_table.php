@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('spam_whitelist_subjects')) {
+            return;
+        }
+
         Schema::create('spam_whitelist_subjects', function (Blueprint $table) {
             $table->comment('Whitelisted subjects');
             $table->bigInteger('id', true)->unique('id');

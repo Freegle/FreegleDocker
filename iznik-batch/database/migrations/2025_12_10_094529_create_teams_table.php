@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('teams')) {
+            return;
+        }
+
         Schema::create('teams', function (Blueprint $table) {
             $table->comment('Users who have particular roles in the organisation');
             $table->bigIncrements('id');

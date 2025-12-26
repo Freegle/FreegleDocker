@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('trysts')) {
+            return;
+        }
+
         Schema::create('trysts', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->timestamp('arrangedat')->useCurrent();

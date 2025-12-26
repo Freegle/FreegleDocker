@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_attachments_recognise')) {
+            return;
+        }
+
         Schema::create('messages_attachments_recognise', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('attid')->unique('attid');

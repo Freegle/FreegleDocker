@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('locations_grids_touches')) {
+            return;
+        }
+
         Schema::create('locations_grids_touches', function (Blueprint $table) {
             $table->comment('A record of which grid squares touch others');
             $table->unsignedBigInteger('gridid');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('memberships_yahoo')) {
+            return;
+        }
+
         Schema::create('memberships_yahoo', function (Blueprint $table) {
             $table->comment('Which groups users are members of');
             $table->bigIncrements('id');

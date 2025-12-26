@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_items')) {
+            return;
+        }
+
         Schema::create('messages_items', function (Blueprint $table) {
             $table->comment('Where known, items for our message');
             $table->unsignedBigInteger('msgid');

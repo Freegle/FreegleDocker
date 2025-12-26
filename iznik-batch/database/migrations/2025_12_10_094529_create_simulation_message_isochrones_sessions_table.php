@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('simulation_message_isochrones_sessions')) {
+            return;
+        }
+
         Schema::create('simulation_message_isochrones_sessions', function (Blueprint $table) {
             $table->string('id', 32)->primary();
             $table->unsignedBigInteger('runid')->index('simulation_message_isochrones_sessions_ibfk_1');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_outcomes_intended')) {
+            return;
+        }
+
         Schema::create('messages_outcomes_intended', function (Blueprint $table) {
             $table->comment('When someone starts telling us an outcome but doesn\'t finish');
             $table->bigIncrements('id');

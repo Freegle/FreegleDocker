@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('logs_errors')) {
+            return;
+        }
+
         Schema::create('logs_errors', function (Blueprint $table) {
             $table->comment('Errors from client');
             $table->bigInteger('id', true);

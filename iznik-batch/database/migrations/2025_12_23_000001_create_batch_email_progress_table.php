@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('batch_email_progress')) {
+            return;
+        }
+
         Schema::create('batch_email_progress', function (Blueprint $table) {
             $table->id();
             $table->string('job_type', 50)->unique()

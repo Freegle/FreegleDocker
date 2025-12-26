@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('memberships_history')) {
+            return;
+        }
+
         Schema::create('memberships_history', function (Blueprint $table) {
             $table->comment('Used to spot multijoiners');
             $table->bigIncrements('id');

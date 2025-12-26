@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_spatial')) {
+            return;
+        }
+
         Schema::create('messages_spatial', function (Blueprint $table) {
             $table->comment('Recent open messages with locations');
             $table->bigIncrements('id');

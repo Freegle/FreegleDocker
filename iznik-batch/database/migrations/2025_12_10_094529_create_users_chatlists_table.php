@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_chatlists')) {
+            return;
+        }
+
         Schema::create('users_chatlists', function (Blueprint $table) {
             $table->comment('Cache of lists of chats for performance');
             $table->bigIncrements('id');

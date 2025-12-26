@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('logs_src')) {
+            return;
+        }
+
         Schema::create('logs_src', function (Blueprint $table) {
             $table->comment('Record which mails we sent generated website traffic');
             $table->bigIncrements('id');

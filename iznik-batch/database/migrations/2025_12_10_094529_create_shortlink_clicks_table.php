@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('shortlink_clicks')) {
+            return;
+        }
+
         Schema::create('shortlink_clicks', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('shortlinkid')->index('shortlinkid');

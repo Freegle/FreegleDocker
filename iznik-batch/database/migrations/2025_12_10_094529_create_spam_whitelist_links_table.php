@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('spam_whitelist_links')) {
+            return;
+        }
+
         Schema::create('spam_whitelist_links', function (Blueprint $table) {
             $table->comment('Whitelisted domains for URLs');
             $table->bigIncrements('id');

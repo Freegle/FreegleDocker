@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('chat_rooms')) {
+            return;
+        }
+
         Schema::create('chat_rooms', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('name')->nullable();

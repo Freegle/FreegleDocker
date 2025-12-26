@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_nearby')) {
+            return;
+        }
+
         Schema::create('users_nearby', function (Blueprint $table) {
             $table->unsignedBigInteger('userid')->index('userid');
             $table->unsignedBigInteger('msgid')->index('msgid');

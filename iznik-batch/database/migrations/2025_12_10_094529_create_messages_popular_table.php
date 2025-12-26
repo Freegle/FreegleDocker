@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_popular')) {
+            return;
+        }
+
         Schema::create('messages_popular', function (Blueprint $table) {
             $table->comment('Recent popular messages');
             $table->bigIncrements('id');

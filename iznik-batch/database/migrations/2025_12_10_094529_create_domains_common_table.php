@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('domains_common')) {
+            return;
+        }
+
         Schema::create('domains_common', function (Blueprint $table) {
             $table->bigInteger('id', true);
             $table->string('domain')->unique('domain');

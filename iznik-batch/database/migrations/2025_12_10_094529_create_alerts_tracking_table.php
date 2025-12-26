@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('alerts_tracking')) {
+            return;
+        }
+
         Schema::create('alerts_tracking', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('alertid')->index('alertid');

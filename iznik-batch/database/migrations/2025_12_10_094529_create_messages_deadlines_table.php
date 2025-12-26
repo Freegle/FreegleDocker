@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_deadlines')) {
+            return;
+        }
+
         Schema::create('messages_deadlines', function (Blueprint $table) {
             $table->unsignedBigInteger('msgid')->unique('msgid');
             $table->tinyInteger('FOP')->default(1);

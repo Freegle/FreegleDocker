@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('abtest')) {
+            return;
+        }
+
         Schema::create('abtest', function (Blueprint $table) {
             $table->comment('For testing site changes to see which work');
             $table->bigIncrements('id');

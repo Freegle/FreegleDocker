@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('link_previews')) {
+            return;
+        }
+
         Schema::create('link_previews', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('url')->unique('url');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users')) {
+            return;
+        }
+
         Schema::create('users', function (Blueprint $table) {
             $table->bigIncrements('id')->unique('id');
             $table->string('yahooUserId', 20)->nullable()->unique('yahoouserid')->comment('Unique ID of user on Yahoo if known');

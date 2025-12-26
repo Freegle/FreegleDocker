@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('engage')) {
+            return;
+        }
+
         Schema::create('engage', function (Blueprint $table) {
             $table->comment('User re-engagement attempts');
             $table->bigIncrements('id');

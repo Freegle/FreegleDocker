@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('locations_grids')) {
+            return;
+        }
+
         Schema::create('locations_grids', function (Blueprint $table) {
             $table->comment('Used to map lat/lng to gridid for location searches');
             $table->bigIncrements('id');

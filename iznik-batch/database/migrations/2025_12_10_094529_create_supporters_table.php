@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('supporters')) {
+            return;
+        }
+
         Schema::create('supporters', function (Blueprint $table) {
             $table->comment('People who have supported this site');
             $table->bigIncrements('id')->unique('id');

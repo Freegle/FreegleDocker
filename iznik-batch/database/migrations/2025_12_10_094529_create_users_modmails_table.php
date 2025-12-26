@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_modmails')) {
+            return;
+        }
+
         Schema::create('users_modmails', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('userid');

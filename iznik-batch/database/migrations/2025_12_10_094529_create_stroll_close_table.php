@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('stroll_close')) {
+            return;
+        }
+
         Schema::create('stroll_close', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('userid');

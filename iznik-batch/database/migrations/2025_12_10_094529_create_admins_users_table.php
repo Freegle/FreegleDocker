@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('admins_users')) {
+            return;
+        }
+
         Schema::create('admins_users', function (Blueprint $table) {
             $table->comment('Used to prevent dups of related admins');
             $table->bigIncrements('id');

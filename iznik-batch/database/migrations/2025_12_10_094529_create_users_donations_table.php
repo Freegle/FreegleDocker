@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_donations')) {
+            return;
+        }
+
         Schema::create('users_donations', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->enum('type', ['PayPal', 'External', 'Other', 'Stripe'])->default('PayPal');

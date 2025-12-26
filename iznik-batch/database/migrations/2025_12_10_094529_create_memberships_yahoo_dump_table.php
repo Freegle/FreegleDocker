@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('memberships_yahoo_dump')) {
+            return;
+        }
+
         Schema::create('memberships_yahoo_dump', function (Blueprint $table) {
             $table->comment('Copy of last member sync from Yahoo');
             $table->bigIncrements('id');

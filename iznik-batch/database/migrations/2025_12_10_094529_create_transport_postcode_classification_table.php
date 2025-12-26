@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('transport_postcode_classification')) {
+            return;
+        }
+
         Schema::create('transport_postcode_classification', function (Blueprint $table) {
             $table->comment('Postcode to Rural-Urban Classification and Region mapping from ONSPD');
             $table->bigIncrements('id');

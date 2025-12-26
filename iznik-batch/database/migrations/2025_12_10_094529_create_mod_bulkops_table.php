@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('mod_bulkops')) {
+            return;
+        }
+
         Schema::create('mod_bulkops', function (Blueprint $table) {
             $table->bigIncrements('id')->unique('uniqueid');
             $table->string('title');

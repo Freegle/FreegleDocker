@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_builddates')) {
+            return;
+        }
+
         Schema::create('users_builddates', function (Blueprint $table) {
             $table->comment('Used to spot old clients');
             $table->bigIncrements('id');

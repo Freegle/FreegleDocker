@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('locations_dodgy')) {
+            return;
+        }
+
         Schema::create('locations_dodgy', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('locationid')->nullable()->index('locationid');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_index')) {
+            return;
+        }
+
         Schema::create('messages_index', function (Blueprint $table) {
             $table->comment('For indexing messages for search keywords');
             $table->unsignedBigInteger('msgid');

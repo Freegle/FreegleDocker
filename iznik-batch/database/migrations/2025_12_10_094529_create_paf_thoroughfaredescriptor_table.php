@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('paf_thoroughfaredescriptor')) {
+            return;
+        }
+
         Schema::create('paf_thoroughfaredescriptor', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('thoroughfaredescriptor', 80)->unique('thoroughfaredescriptor');

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('stroll_route')) {
+            return;
+        }
+
         Schema::create('stroll_route', function (Blueprint $table) {
             $table->comment('Edward\'s 2019 stroll; can delete after');
             $table->bigIncrements('id');

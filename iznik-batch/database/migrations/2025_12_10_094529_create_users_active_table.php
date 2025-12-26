@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('users_active')) {
+            return;
+        }
+
         Schema::create('users_active', function (Blueprint $table) {
             $table->comment('Track when users are active hourly');
             $table->bigIncrements('id');

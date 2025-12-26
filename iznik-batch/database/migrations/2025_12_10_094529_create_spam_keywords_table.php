@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('spam_keywords')) {
+            return;
+        }
+
         Schema::create('spam_keywords', function (Blueprint $table) {
             $table->comment('Keywords often used by spammers');
             $table->bigIncrements('id');

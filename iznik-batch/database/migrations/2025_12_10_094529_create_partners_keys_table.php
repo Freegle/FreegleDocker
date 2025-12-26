@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('partners_keys')) {
+            return;
+        }
+
         Schema::create('partners_keys', function (Blueprint $table) {
             $table->comment('For site-to-site integration');
             $table->bigIncrements('id');

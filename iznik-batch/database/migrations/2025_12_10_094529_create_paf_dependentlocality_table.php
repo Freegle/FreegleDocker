@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('paf_dependentlocality')) {
+            return;
+        }
+
         Schema::create('paf_dependentlocality', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('dependentlocality', 35)->unique('dependentlocality');

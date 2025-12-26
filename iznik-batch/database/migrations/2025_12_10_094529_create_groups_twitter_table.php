@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('groups_twitter')) {
+            return;
+        }
+
         Schema::create('groups_twitter', function (Blueprint $table) {
             $table->unsignedBigInteger('groupid')->unique('groupid');
             $table->string('name', 80)->nullable();

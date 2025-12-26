@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('locations_excluded')) {
+            return;
+        }
+
         Schema::create('locations_excluded', function (Blueprint $table) {
             $table->comment('Stops locations being suggested on a group');
             $table->bigIncrements('id');

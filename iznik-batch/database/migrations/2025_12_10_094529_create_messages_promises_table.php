@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('messages_promises')) {
+            return;
+        }
+
         Schema::create('messages_promises', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->unsignedBigInteger('msgid');

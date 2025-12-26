@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('os_county_electoral_division_region')) {
+            return;
+        }
+
         Schema::create('os_county_electoral_division_region', function (Blueprint $table) {
             $table->integer('OGR_FID', true)->unique('ogr_fid');
             $table->geometry('SHAPE');
