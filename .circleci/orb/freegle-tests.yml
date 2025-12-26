@@ -1224,7 +1224,7 @@ jobs:
           name: Wait for batch container to be healthy
           command: |
             echo "⏳ Waiting for batch container to be healthy..."
-            TIMEOUT=120
+            TIMEOUT=300
             ELAPSED=0
             while [ $ELAPSED -lt $TIMEOUT ]; do
               STATUS=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "not_found")
