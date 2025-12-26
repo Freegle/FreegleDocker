@@ -200,12 +200,62 @@ sleep 60  # Wait time after docker-compose up
 for i in {1..60}; do  # 60 attempts = 10 minutes max
 ```
 
+## Self-Hosted Runner
+
+Builds run on a dedicated self-hosted runner for faster execution and to avoid CircleCI cloud timeouts.
+
+### Runner Configuration
+
+- **Resource class**: `freegle/circleci-docker-runner`
+- **Machine type**: Dedicated Linux server with Docker
+- **Runner software**: CircleCI Machine Runner 3.x
+
+### Runner Setup
+
+The runner is installed directly on the host machine (not in Docker) to avoid permission issues:
+
+```bash
+# Runner binary location
+/opt/circleci/circleci-runner
+
+# Configuration file
+/etc/circleci-runner/circleci-runner-config.yaml
+
+# Systemd service
+sudo systemctl status circleci-runner
+```
+
+### Prerequisites on Runner Machine
+
+- Docker and docker-compose
+- Git (configured with HTTPS for GitHub: `git config --global url."https://github.com/".insteadOf "git@github.com:"`)
+- curl, jq
+- Passwordless sudo for circleci user
+
+### Custom Runner Docker Image
+
+For containerized runner deployments, a custom Dockerfile is available at `circleci-runner/Dockerfile` with all required tools pre-installed.
+
+### Troubleshooting
+
+```bash
+# Check runner status
+sudo systemctl status circleci-runner
+
+# View runner logs
+sudo journalctl -u circleci-runner -f
+
+# Restart runner
+sudo systemctl restart circleci-runner
+```
+
 ## Security Considerations
 
 - API tokens should be stored as encrypted secrets
 - Webhook payloads can be signed for verification
 - Only `master` branch commits trigger submodule updates
 - Git push uses service account credentials
+- Self-hosted runner has passwordless sudo for build operations
 
 ## Benefits
 
