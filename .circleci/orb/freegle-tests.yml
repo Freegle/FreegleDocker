@@ -149,21 +149,6 @@ commands:
             # Force rebuild with --pull to get latest base images
             # This ensures we get the most recent freegle-base with updated dependencies
             echo "Building and starting services with fresh base images..."
-
-            # Ensure BuildKit is available and configured
-            echo "Docker version:"
-            docker version
-            echo "Docker buildx version:"
-            docker buildx version || echo "buildx not available"
-
-            # Configure buildx as the default builder if available
-            docker buildx create --name mybuilder --use 2>/dev/null || docker buildx use mybuilder 2>/dev/null || true
-
-            # Enable BuildKit for docker-compose builds
-            export DOCKER_BUILDKIT=1
-            export COMPOSE_DOCKER_CLI_BUILD=1
-
-            echo "Building with DOCKER_BUILDKIT=$DOCKER_BUILDKIT COMPOSE_DOCKER_CLI_BUILD=$COMPOSE_DOCKER_CLI_BUILD"
             docker-compose -f docker-compose.yml build --pull
             docker-compose -f docker-compose.yml up -d
 
@@ -261,11 +246,6 @@ commands:
           name: Start Docker services
           command: |
             cd "$HOME/FreegleDocker"
-            # Ensure BuildKit is available and configured
-            docker buildx create --name mybuilder --use 2>/dev/null || docker buildx use mybuilder 2>/dev/null || true
-            export DOCKER_BUILDKIT=1
-            export COMPOSE_DOCKER_CLI_BUILD=1
-            echo "Building with DOCKER_BUILDKIT=$DOCKER_BUILDKIT"
             if ! docker-compose -f docker-compose.yml up -d; then
               echo "❌ Docker Compose failed to start services"
               echo ""
