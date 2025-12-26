@@ -1,18 +1,37 @@
 #!/bin/bash
 # File sync script for Freegle Docker development
 # Monitors WSL filesystem changes and syncs to Docker containers
+# Uses a "settle" pattern - waits for files to stop changing before syncing
 
 # Use the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
+
+# Queue file for pending syncs
+QUEUE_FILE="/tmp/freegle-sync-queue.$$"
+QUEUE_LOCK="/tmp/freegle-sync-queue.$$.lock"
 
 echo "Starting Freegle file sync monitor..."
 echo "Project: $PROJECT_DIR"
 echo "Press Ctrl+C to stop"
 echo ""
 
-# Debounce tracking - prevent syncing same file within 2 seconds
-declare -A LAST_SYNC
+# Cleanup on exit
+cleanup() {
+    rm -f "$QUEUE_FILE" "$QUEUE_LOCK"
+    kill $SETTLE_PID 2>/dev/null
+}
+trap cleanup EXIT
+
+# Function to get file mtime
+get_mtime() {
+    local file="$1"
+    if [[ -f "$file" ]]; then
+        stat -c %Y "$file" 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
+}
 
 # Function to determine target container
 get_container_info() {
@@ -47,17 +66,9 @@ get_container_info() {
     fi
 }
 
-# Function to sync file with debouncing
-sync_file() {
+# Function to actually perform the sync
+do_sync() {
     local file_path="$1"
-    local now=$(date +%s)
-
-    # Check debounce - skip if synced within last 2 seconds
-    local last="${LAST_SYNC[$file_path]:-0}"
-    if (( now - last < 2 )); then
-        return
-    fi
-    LAST_SYNC[$file_path]=$now
 
     local container_info
     container_info=$(get_container_info "$file_path")
@@ -84,6 +95,67 @@ sync_file() {
     done <<< "$container_info"
 }
 
+# Background process to handle settling files
+process_pending_syncs() {
+    declare -A PENDING_MTIME
+
+    while true; do
+        sleep 2
+
+        # Read any new entries from queue file with locking
+        if [[ -s "$QUEUE_FILE" ]]; then
+            # Copy and clear atomically with lock
+            local temp_queue="/tmp/freegle-sync-temp.$$"
+            (
+                flock -x 200
+                cp "$QUEUE_FILE" "$temp_queue" 2>/dev/null
+                > "$QUEUE_FILE"
+            ) 200>"$QUEUE_LOCK"
+
+            # Now read from temp file (outside the lock/subshell)
+            if [[ -f "$temp_queue" ]]; then
+                while IFS='|' read -r file_path mtime; do
+                    if [[ -n "$file_path" ]]; then
+                        PENDING_MTIME["$file_path"]=$mtime
+                    fi
+                done < "$temp_queue"
+                rm -f "$temp_queue"
+            fi
+        fi
+
+        # Process pending files
+        for file_path in "${!PENDING_MTIME[@]}"; do
+            if [[ ! -f "$file_path" ]]; then
+                # File was deleted, remove from pending
+                unset PENDING_MTIME["$file_path"]
+                continue
+            fi
+
+            local current_mtime=$(get_mtime "$file_path")
+            local last_mtime="${PENDING_MTIME[$file_path]}"
+
+            if [[ "$current_mtime" == "$last_mtime" ]]; then
+                # File hasn't changed in 2 seconds - it's settled, sync it
+                do_sync "$file_path"
+                unset PENDING_MTIME["$file_path"]
+            else
+                # File changed, update mtime and wait another cycle
+                PENDING_MTIME["$file_path"]=$current_mtime
+            fi
+        done
+    done
+}
+
+# Function to queue a file for sync
+queue_sync() {
+    local file_path="$1"
+    local mtime=$(get_mtime "$file_path")
+    (
+        flock -x 200
+        echo "${file_path}|${mtime}" >> "$QUEUE_FILE"
+    ) 200>"$QUEUE_LOCK"
+}
+
 # Install inotify-tools if not present
 if ! command -v inotifywait &> /dev/null; then
     echo "Installing inotify-tools..."
@@ -94,8 +166,16 @@ if ! command -v inotifywait &> /dev/null; then
     fi
 fi
 
-echo "Starting file watcher..."
+echo "Starting file watcher with settle detection..."
+echo "(Files will sync after 2 seconds of no changes)"
 echo ""
+
+# Initialize queue file
+> "$QUEUE_FILE"
+
+# Start the settle processor in the background
+process_pending_syncs &
+SETTLE_PID=$!
 
 # Monitor file changes - exclude node_modules, .git, build artifacts, and migrations
 inotifywait -m -r -e modify,create,move \
@@ -109,8 +189,8 @@ inotifywait -m -r -e modify,create,move \
 
     full_path="$directory$filename"
 
-    # Only process regular files
+    # Only process regular files - queue them for sync after settling
     if [[ -f "$full_path" ]]; then
-        sync_file "$full_path"
+        queue_sync "$full_path"
     fi
 done
