@@ -403,23 +403,23 @@ commands:
             fi
             echo "🧪 << parameters.reason >>..."
 
-            # Load database schema first (use container name directly for reliability)
-            echo "Loading database schema..."
+            # Load database schema into separate Go test database (allows parallel execution with PHP tests)
+            echo "Loading database schema into iznik_go_test..."
             docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
               sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
               sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
               sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
               sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
               sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-              mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
-              mysql -h percona -u root -piznik iznik < install/schema.sql && \
-              mysql -h percona -u root -piznik iznik < install/functions.sql && \
-              mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
+              mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \
+              mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \
+              mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \
+              mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql && \
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
               mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
 
-            echo "Running Go tests..."
-            docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
+            echo "Running Go tests against iznik_go_test database..."
+            docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
 
             echo "✅ Go tests passed!"
             echo "GO_TESTS_PASSED=true" >> $BASH_ENV
@@ -699,9 +699,9 @@ commands:
             fi
             echo "🧪 << parameters.reason >>..."
 
-            # Run tests directly with coverage (status API also runs with coverage)
-            echo "Running Laravel tests with coverage..."
-            if docker exec freegle-batch php artisan test --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml; then
+            # Run tests in parallel with coverage using paratest
+            echo "Running Laravel tests in parallel with coverage..."
+            if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --coverage-clover=/tmp/laravel-coverage.xml; then
               echo "✅ Laravel tests passed!"
               echo "LARAVEL_TESTS_PASSED=true" >> $BASH_ENV
             else
@@ -1232,29 +1232,159 @@ jobs:
             docker logs freegle-batch --tail 50 2>&1 || true
             exit 1
 
-      # Run Laravel tests first (before other tests)
+      # Run Laravel, Playwright, and Go tests in parallel
       - run:
-          name: Run Laravel tests
+          name: Run Laravel, Playwright, and Go tests in parallel
           command: |
-            echo "🧪 Running Laravel tests..."
-            if docker exec freegle-batch php artisan test --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml; then
-              echo "✅ Laravel tests passed!"
-              echo "LARAVEL_TESTS_PASSED=true" >> $BASH_ENV
-            else
-              echo "❌ Laravel tests failed!"
-              echo "LARAVEL_TESTS_PASSED=false" >> $BASH_ENV
+            echo "🚀 Running Laravel, Playwright, and Go tests in parallel..."
+
+            # Start Laravel tests in background (using paratest for parallel execution)
+            echo "🧪 Starting Laravel tests in background..."
+            (
+              if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --coverage-clover=/tmp/laravel-coverage.xml; then
+                echo "pass" > /tmp/laravel-result
+                echo "✅ Laravel tests passed!"
+              else
+                echo "fail" > /tmp/laravel-result
+                echo "❌ Laravel tests failed!"
+              fi
+            ) 2>&1 | sed 's/^/[Laravel] /' &
+            LARAVEL_PID=$!
+
+            # Start Go tests in background (uses separate iznik_go_test database)
+            echo "🧪 Starting Go tests in background..."
+            (
+              # Load database schema into separate Go test database
+              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
+                sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
+                sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
+                sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
+                sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+                sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
+                mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \
+                mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \
+                mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \
+                mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql"
+
+              if docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."; then
+                echo "pass" > /tmp/go-result
+                echo "✅ Go tests passed!"
+              else
+                echo "fail" > /tmp/go-result
+                echo "❌ Go tests failed!"
+              fi
+            ) 2>&1 | sed 's/^/[Go] /' &
+            GO_PID=$!
+
+            # Run Playwright tests in foreground with monitoring
+            echo "🎭 Starting Playwright tests..."
+
+            # Trigger Playwright tests via API
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
+            http_code="${response: -3}"
+
+            if [ "$http_code" -ne "200" ]; then
+              echo "❌ Failed to trigger Playwright tests. HTTP code: $http_code"
+              echo "Response: $response"
+              # Wait for background jobs before exiting
+              wait $LARAVEL_PID 2>/dev/null || true
+              wait $GO_PID 2>/dev/null || true
               exit 1
             fi
-          no_output_timeout: 30m
 
-      - run-playwright-tests:
-          reason: "Running Playwright tests after Laravel tests"
+            echo "✅ Playwright tests triggered successfully"
 
-      - run-go-tests:
-          reason: "Running Go tests after Playwright tests"
+            # Monitor Playwright test progress
+            echo "📊 Monitoring test progress..."
+            start_time=$(date +%s)
+            timeout_duration=2700  # 45 minutes
+            PLAYWRIGHT_PASSED=false
+
+            while true; do
+              current_time=$(date +%s)
+              elapsed=$((current_time - start_time))
+
+              if [ $elapsed -gt $timeout_duration ]; then
+                echo "⏰ Playwright tests timed out after 45 minutes"
+                break
+              fi
+
+              sleep 10
+
+              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+              status=$(echo "$status_response" | jq -r '.status // "unknown"')
+              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
+              total=$(echo "$status_response" | jq -r '.totalTests // 0')
+
+              elapsed_min=$((elapsed / 60))
+              LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
+              GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
+              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS"
+
+              if [ "$status" = "completed" ]; then
+                success=$(echo "$status_response" | jq -r '.success // false')
+                echo "🎉 Playwright tests completed! Success: $success"
+
+                if [ "$success" = "true" ]; then
+                  echo "✅ All Playwright tests passed!"
+                  PLAYWRIGHT_PASSED=true
+                else
+                  echo "❌ Some Playwright tests failed!"
+                  echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                fi
+                break
+              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                echo "❌ Playwright tests failed to run!"
+                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                break
+              fi
+            done
+
+            # Wait for background tests to complete
+            echo "⏳ Waiting for Laravel and Go tests to complete..."
+            wait $LARAVEL_PID 2>/dev/null || true
+            wait $GO_PID 2>/dev/null || true
+
+            # Check results
+            LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "fail")
+            GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "fail")
+
+            echo ""
+            echo "=== Parallel Test Results ==="
+            echo "Laravel: $LARAVEL_RESULT"
+            echo "Go: $GO_RESULT"
+            echo "Playwright: $([ "$PLAYWRIGHT_PASSED" = "true" ] && echo "pass" || echo "fail")"
+
+            # Set environment variables for later steps
+            if [ "$LARAVEL_RESULT" = "pass" ]; then
+              echo "LARAVEL_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "LARAVEL_TESTS_PASSED=false" >> $BASH_ENV
+            fi
+
+            if [ "$GO_RESULT" = "pass" ]; then
+              echo "GO_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "GO_TESTS_PASSED=false" >> $BASH_ENV
+            fi
+
+            if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
+              echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
+            fi
+
+            # Fail if any test suite failed
+            if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PLAYWRIGHT_PASSED" != "true" ]; then
+              echo "❌ One or more test suites failed"
+              exit 1
+            fi
+
+            echo "✅ All Laravel, Go, and Playwright tests passed!"
+          no_output_timeout: 50m
 
       - run-php-tests:
-          reason: "Running PHPUnit tests after Go tests complete"
+          reason: "Running PHPUnit tests after parallel tests complete"
 
       - upload-coverage:
           expected: "go,php,playwright,laravel"

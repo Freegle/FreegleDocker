@@ -1789,8 +1789,8 @@ const httpServer = http.createServer(async (req, res) => {
           "-c",
           `
         set -e
-        echo "Running Laravel tests with coverage..."
-        docker exec freegle-batch php artisan test --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml
+        echo "Running Laravel tests in parallel with coverage..."
+        docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --coverage-clover=/tmp/laravel-coverage.xml
       `,
         ],
         {

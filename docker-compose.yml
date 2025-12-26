@@ -808,6 +808,7 @@ services:
   playwright:
     container_name: freegle-playwright
     network_mode: "host"
+    shm_size: 2gb  # Chrome needs more shared memory for parallel browser instances
     build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.playwright
