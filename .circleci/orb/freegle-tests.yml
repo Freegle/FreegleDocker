@@ -31,15 +31,21 @@ commands:
       - run:
           name: Install system dependencies
           command: |
-            # Create 8GB swap file to handle memory spikes
-            echo "Creating swap file..."
-            sudo fallocate -l 8G /swapfile
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
-            echo "Swap enabled:"
-            free -h
-
+            # Create swap file only on CircleCI cloud runners (not self-hosted)
+            # Self-hosted runners use host swap and can't run swapon in containers
+            if [ -z "$CIRCLECI_RUNNER_RESOURCE_CLASS" ] || ! echo "$CIRCLECI_RUNNER_RESOURCE_CLASS" | grep -q "/"; then
+              echo "Creating swap file (cloud runner)..."
+              sudo fallocate -l 8G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo "Swap enabled:"
+              free -h
+            else
+              echo "Skipping swap creation (self-hosted runner: $CIRCLECI_RUNNER_RESOURCE_CLASS)"
+              echo "Current memory:"
+              free -h
+            fi
 
             sudo apt-get update
             sudo apt-get install -y curl jq file
