@@ -1,0 +1,34 @@
+# Custom CircleCI Runner with required tools for Freegle builds
+FROM circleci/runner-agent:launch-agent
+
+USER root
+
+# Install required tools for Freegle builds
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    jq \
+    wget \
+    sudo \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI (to communicate with host Docker)
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install standalone docker-compose (v2)
+RUN curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose \
+    && chmod +x /usr/local/bin/docker-compose
+
+# Allow circleci user to use sudo without password (needed for some build steps)
+RUN echo "circleci ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Switch back to circleci user
+USER circleci
