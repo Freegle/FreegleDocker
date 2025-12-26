@@ -193,7 +193,7 @@ commands:
           command: |
             git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
             cd "$HOME/FreegleDocker"
-            git submodule update --init --recursive
+            git submodule update --init --recursive --jobs 4
 
             # Checkout the configured branch for iznik-nuxt3-modtools
             echo "=== Checking out modtools branch ==="
@@ -1139,7 +1139,7 @@ jobs:
 
               if [ -n "$SUBMODULE_CHANGES" ] && [ -z "$NON_SUBMODULE_CHANGES" ]; then
                 git submodule init
-                git submodule update --recursive
+                git submodule update --recursive --jobs 4
 
                 for submodule_path in $SUBMODULE_CHANGES; do
                   if [ -d "$submodule_path" ]; then
@@ -1162,7 +1162,7 @@ jobs:
           name: Initialize and update git submodules
           command: |
             git submodule init
-            git submodule update --recursive
+            git submodule update --recursive --jobs 4
             git submodule status
 
             # Checkout the configured branch for iznik-nuxt3-modtools
