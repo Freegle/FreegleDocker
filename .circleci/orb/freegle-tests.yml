@@ -1119,28 +1119,22 @@ jobs:
   build-and-test:
     executor: machine-executor
     steps:
+      # Fix ownership of root-owned files BEFORE checkout so git can write
+      - run:
+          name: Fix file ownership before checkout
+          command: |
+            # Docker creates files with root ownership that git checkout can't overwrite
+            echo "Fixing file ownership..."
+            sudo chown -R $(id -u):$(id -g) . 2>/dev/null || true
+            echo "Ownership fixed"
+
       - checkout
 
       - run:
-          name: Clean up root-owned files and pre-create directories
+          name: Pre-create runtime directories
           command: |
-            # Docker creates directories with root ownership that the runner can't delete
-            # This prevents "permission denied" errors when rerunning builds
-            # NOTE: Don't delete conf/ - it contains checked-in config files
-            echo "Cleaning up root-owned runtime directories..."
-            sudo rm -rf ssl 2>/dev/null || true
-            sudo rm -rf test-results 2>/dev/null || true
-            sudo rm -rf logs 2>/dev/null || true
-            sudo rm -rf data 2>/dev/null || true
-            sudo rm -rf status/data 2>/dev/null || true
-            # Clean root-owned files but skip git-tracked directories
-            sudo find . -user root -not -path "./.git/*" -not -path "./conf/*" -delete 2>/dev/null || true
-            echo "Cleanup complete"
-
-            # Pre-create runtime directories with correct ownership so Docker doesn't create them as root
-            echo "Pre-creating directories..."
+            # Pre-create directories with correct ownership so Docker doesn't create them as root
             mkdir -p ssl/certs logs data status/data test-results
-            echo "Directories ready"
 
       - run:
           name: Check if only plans or yesterday files changed
