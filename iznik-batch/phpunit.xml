@@ -7,6 +7,8 @@
          beStrictAboutOutputDuringTests="false"
          beStrictAboutTestsThatDoNotTestAnything="false"
          failOnRisky="false"
+         displayDetailsOnTestsThatTriggerDeprecations="false"
+         displayDetailsOnTestsThatTriggerWarnings="false"
 >
     <testsuites>
         <testsuite name="Unit">
@@ -27,6 +29,8 @@
             <directory>app</directory>
         </include>
     </source>
+    <coverage cacheDirectory="/tmp/phpunit-cache">
+    </coverage>
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>

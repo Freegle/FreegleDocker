@@ -700,8 +700,9 @@ commands:
             echo "🧪 << parameters.reason >>..."
 
             # Run tests in parallel with coverage using paratest
+            # --cache-directory: Required by PHPUnit 11 for coverage static analysis cache
             echo "Running Laravel tests in parallel with coverage..."
-            if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --coverage-clover=/tmp/laravel-coverage.xml; then
+            if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml; then
               echo "✅ Laravel tests passed!"
               echo "LARAVEL_TESTS_PASSED=true" >> $BASH_ENV
             else
@@ -1256,7 +1257,7 @@ jobs:
             # Start Laravel tests in background (using paratest for parallel execution)
             echo "🧪 Starting Laravel tests in background..."
             (
-              if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --coverage-clover=/tmp/laravel-coverage.xml; then
+              if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml; then
                 echo "pass" > /tmp/laravel-result
                 echo "✅ Laravel tests passed!"
               else
