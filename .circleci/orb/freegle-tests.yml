@@ -160,6 +160,17 @@ commands:
             echo "Current working directory: $(pwd)"
             ls -la secrets/
 
+            # Scale parallel builds based on available resources
+            # Each build needs ~2 CPU cores and ~4GB RAM
+            CPU_CORES=$(nproc)
+            MEM_GB=$(free -g | awk '/^Mem:/{print $2}')
+            CPU_LIMIT=$((CPU_CORES / 2))
+            MEM_LIMIT=$((MEM_GB / 4))
+            PARALLEL_LIMIT=$(( CPU_LIMIT < MEM_LIMIT ? CPU_LIMIT : MEM_LIMIT ))
+            PARALLEL_LIMIT=$(( PARALLEL_LIMIT < 1 ? 1 : PARALLEL_LIMIT ))
+            export COMPOSE_PARALLEL_LIMIT=$PARALLEL_LIMIT
+            echo "Building with COMPOSE_PARALLEL_LIMIT=$PARALLEL_LIMIT (CPUs: $CPU_CORES, RAM: ${MEM_GB}GB)"
+
             # Force rebuild with --pull to get latest base images
             # This ensures we get the most recent freegle-base with updated dependencies
             echo "Building and starting services with fresh base images..."
