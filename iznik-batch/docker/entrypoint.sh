@@ -7,6 +7,19 @@ echo "=== Laravel Batch Container Starting ==="
 # No .env file is needed - APP_KEY and all other config is passed via environment
 echo "Using environment variables for configuration (no .env file needed)"
 
+# Install PHP dependencies (host mount may not have vendor directory)
+if [ ! -f "/var/www/html/vendor/autoload.php" ]; then
+    echo "Installing PHP dependencies..."
+    composer install --no-interaction --prefer-dist --optimize-autoloader
+
+    # Install MJML in the spatie/mjml-php bin directory
+    if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ]; then
+        echo "Installing MJML in spatie package..."
+        cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml --silent
+        cd /var/www/html
+    fi
+fi
+
 # Wait for database server to be ready (connect without specifying database)
 echo "Waiting for database server..."
 maxTries=30
@@ -63,8 +76,8 @@ echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
 
-# Install MJML in spatie package if not present (vendor is a named volume)
-if [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
+# Ensure MJML is installed in spatie package
+if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
     echo "Installing MJML in spatie package..."
     cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml --silent
     cd /var/www/html
