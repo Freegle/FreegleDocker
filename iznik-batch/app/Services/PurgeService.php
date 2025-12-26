@@ -139,7 +139,7 @@ class PurgeService
                 break;
             }
 
-            Message::whereIn('id', $pendingMsgIds)->delete();
+            $this->retryOnDeadlock(fn () => Message::whereIn('id', $pendingMsgIds)->delete());
             $total += $pendingMsgIds->count();
 
             if ($total % $this->logInterval === 0) {
@@ -168,7 +168,7 @@ class PurgeService
                 break;
             }
 
-            Message::whereIn('id', $draftMsgIds)->delete();
+            $this->retryOnDeadlock(fn () => Message::whereIn('id', $draftMsgIds)->delete());
             $total += $draftMsgIds->count();
 
             if ($total % $this->logInterval === 0) {
@@ -198,7 +198,7 @@ class PurgeService
                 break;
             }
 
-            Message::whereIn('id', $msgIds)->delete();
+            $this->retryOnDeadlock(fn () => Message::whereIn('id', $msgIds)->delete());
             $total += $msgIds->count();
 
             if ($total % $this->logInterval === 0) {
@@ -219,11 +219,11 @@ class PurgeService
         $total = 0;
 
         do {
-            $deleted = Message::where('date', '>=', $earliestDate)
+            $deleted = $this->retryOnDeadlock(fn () => Message::where('date', '>=', $earliestDate)
                 ->whereNotNull('deleted')
                 ->where('deleted', '<=', $cutoff)
                 ->limit($this->chunkSize)
-                ->delete();
+                ->delete());
 
             $total += $deleted;
 
@@ -258,7 +258,7 @@ class PurgeService
                 break;
             }
 
-            Message::whereIn('id', $strandedIds)->delete();
+            $this->retryOnDeadlock(fn () => Message::whereIn('id', $strandedIds)->delete());
             $total += $strandedIds->count();
 
             if ($total % $this->logInterval === 0) {
@@ -279,11 +279,11 @@ class PurgeService
         $total = 0;
 
         do {
-            $updated = Message::where('arrival', '>=', $earliestDate)
+            $updated = $this->retryOnDeadlock(fn () => Message::where('arrival', '>=', $earliestDate)
                 ->where('arrival', '<=', $cutoff)
                 ->whereNotNull('htmlbody')
                 ->limit($this->chunkSize)
-                ->update(['htmlbody' => null]);
+                ->update(['htmlbody' => null]));
 
             $total += $updated;
 
