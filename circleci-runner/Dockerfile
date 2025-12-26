@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     gnupg \
     lsb-release \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Docker CLI (to communicate with host Docker)
@@ -30,6 +31,13 @@ RUN curl -fsSL "https://github.com/docker/compose/releases/latest/download/docke
 
 # Allow circleci user to use sudo without password (needed for some build steps)
 RUN echo "circleci ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Add GitHub's SSH host keys to known_hosts to avoid interactive prompts
+RUN mkdir -p /root/.ssh /home/circleci/.ssh \
+    && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null \
+    && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> /home/circleci/.ssh/known_hosts 2>/dev/null \
+    && chmod 600 /root/.ssh/known_hosts /home/circleci/.ssh/known_hosts \
+    && chown -R circleci:circleci /home/circleci/.ssh
 
 # Switch back to circleci user
 USER circleci
