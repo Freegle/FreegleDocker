@@ -667,14 +667,6 @@ services:
       - NODE_ENV=production
       - NUXT_BUILD_MODE=production
       - TEST_BASE_URL=http://127.0.0.1:3003
-    healthcheck:
-      # Check the Node backend on port 3004 directly (not nginx on 3003)
-      # This ensures the build is complete and Node is serving pages
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3004/ > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 300s  # Allow 5 minutes for build
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle-prod-local.rule=Host(`freegle-prod-local.localhost`)"
@@ -826,14 +818,6 @@ services:
       - NODE_ENV=production
       - NUXT_BUILD_MODE=production
       - TEST_BASE_URL=http://127.0.0.1:3001
-    healthcheck:
-      # Check the Node backend on port 3002 directly (not nginx on 3001)
-      # This ensures the build is complete and Node is serving pages
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3002/ > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 300s  # Allow 5 minutes for build
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools-prod-local.rule=Host(`modtools-prod-local.localhost`)"
