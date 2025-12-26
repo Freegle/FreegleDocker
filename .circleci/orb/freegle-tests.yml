@@ -29,6 +29,20 @@ commands:
     description: "Install system dependencies and docker-compose"
     steps:
       - run:
+          name: Kill stale apt processes
+          command: |
+            # Kill any stale unattended-upgrade processes that may block apt
+            sudo pkill -9 unattended-upgrade 2>/dev/null || true
+            sudo pkill -9 apt 2>/dev/null || true
+            sudo pkill -9 dpkg 2>/dev/null || true
+            # Remove stale apt locks
+            sudo rm -f /var/lib/apt/lists/lock 2>/dev/null || true
+            sudo rm -f /var/lib/dpkg/lock* 2>/dev/null || true
+            sudo rm -f /var/cache/apt/archives/lock 2>/dev/null || true
+            # Reconfigure dpkg if interrupted
+            sudo dpkg --configure -a 2>/dev/null || true
+            echo "Cleaned up stale apt processes and locks"
+      - run:
           name: Install system dependencies
           command: |
             # Try to create swap file - may fail on self-hosted runners (that's OK)
