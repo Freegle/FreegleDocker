@@ -25,7 +25,12 @@ services:
       - "--entrypoints.api.http.encodedcharacters.allowencodedslash=true"
       - "--entrypoints.traefik.address=:8080"
       - "--accesslog=true"
+      - "--accesslog.fields.defaultmode=keep"
+      - "--accesslog.fields.headers.defaultmode=keep"
+      - "--log.level=DEBUG"
       - "--entrypoints.web.forwardedHeaders.insecure=true"
+      # Increase transport settings for parallel requests
+      - "--serversTransport.maxIdleConnsPerHost=200"
     ports:
       - "80:80"
       - "8192:8192"
@@ -242,7 +247,11 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.delivery.rule=Host(`delivery.localhost`)"
       - "traefik.http.routers.delivery.entrypoints=web"
+      - "traefik.http.routers.delivery.middlewares=retry-delivery"
       - "traefik.http.services.delivery.loadbalancer.server.port=80"
+      # Retry middleware for connection resilience
+      - "traefik.http.middlewares.retry-delivery.retry.attempts=3"
+      - "traefik.http.middlewares.retry-delivery.retry.initialinterval=100ms"
 
   tusd:
     image: tusproject/tusd:latest
@@ -434,13 +443,16 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv1.rule=Host(`apiv1.localhost`)"
       - "traefik.http.routers.apiv1.entrypoints=web"
-      - "traefik.http.routers.apiv1.middlewares=apiv1-cors"
+      - "traefik.http.routers.apiv1.middlewares=apiv1-cors,retry-api1"
       - "traefik.http.services.apiv1-localhost-freegledocker.loadbalancer.server.port=80"
       - "traefik.http.middlewares.limit.buffering.maxRequestBodyBytes=8000000"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
+      # Retry middleware for connection resilience
+      - "traefik.http.middlewares.retry-api1.retry.attempts=3"
+      - "traefik.http.middlewares.retry-api1.retry.initialinterval=100ms"
     secrets:
       - LOVE_JUNK_API
       - LOVE_JUNK_SECRET
@@ -504,12 +516,15 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"
       - "traefik.http.routers.apiv2.entrypoints=web"
-      - "traefik.http.routers.apiv2.middlewares=apiv2-cors"
+      - "traefik.http.routers.apiv2.middlewares=apiv2-cors,retry-api"
       - "traefik.http.services.apiv2.loadbalancer.server.port=8192"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
+      # Retry middleware for connection resilience
+      - "traefik.http.middlewares.retry-api.retry.attempts=3"
+      - "traefik.http.middlewares.retry-api.retry.initialinterval=100ms"
 
   # Development build with local APIs - standard dev workflow
   freegle-dev-local:
@@ -652,11 +667,23 @@ services:
       - NODE_ENV=production
       - NUXT_BUILD_MODE=production
       - TEST_BASE_URL=http://127.0.0.1:3003
+    healthcheck:
+      # Check the Node backend on port 3004 directly (not nginx on 3003)
+      # This ensures the build is complete and Node is serving pages
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3004/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s  # Allow 5 minutes for build
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle-prod-local.rule=Host(`freegle-prod-local.localhost`)"
       - "traefik.http.routers.freegle-prod-local.entrypoints=web"
+      - "traefik.http.routers.freegle-prod-local.middlewares=retry-prod"
       - "traefik.http.services.freegle-prod-local.loadbalancer.server.port=3003"
+      # Retry middleware for connection resilience under parallel load
+      - "traefik.http.middlewares.retry-prod.retry.attempts=3"
+      - "traefik.http.middlewares.retry-prod.retry.initialinterval=100ms"
 
   # Development build with local APIs - ModTools
   modtools-dev-local:
@@ -799,6 +826,14 @@ services:
       - NODE_ENV=production
       - NUXT_BUILD_MODE=production
       - TEST_BASE_URL=http://127.0.0.1:3001
+    healthcheck:
+      # Check the Node backend on port 3002 directly (not nginx on 3001)
+      # This ensures the build is complete and Node is serving pages
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3002/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s  # Allow 5 minutes for build
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools-prod-local.rule=Host(`modtools-prod-local.localhost`)"
