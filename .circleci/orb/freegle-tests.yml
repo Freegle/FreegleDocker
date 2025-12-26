@@ -6,8 +6,9 @@ description: |
 
 executors:
   machine-executor:
-    machine: true
-    resource_class: freegle/circleci-docker-runner
+    machine:
+      image: ubuntu-2404:current
+    resource_class: large
     environment:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
