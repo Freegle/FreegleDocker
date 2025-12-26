@@ -973,11 +973,11 @@ services:
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/laravel-ready && php artisan about > /dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
+      test: ["CMD-SHELL", "test -f /tmp/laravel-ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
 
 volumes:
   rebuild-requests:
