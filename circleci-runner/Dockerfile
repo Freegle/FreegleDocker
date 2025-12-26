@@ -1,5 +1,6 @@
 # Custom CircleCI Runner with required tools for Freegle builds
-FROM circleci/runner-agent:launch-agent
+# Uses Machine Runner 3.0 (launch-agent is deprecated)
+FROM circleci/runner-agent:machine-3
 
 USER root
 
