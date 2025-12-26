@@ -132,8 +132,18 @@ class ChatNotification extends MjmlMailable
         // Check if reply is expected.
         $replyExpected = $this->message->replyexpected ?? FALSE;
 
-        // Get job ads for the recipient.
+        // Get job ads for the recipient and add tracked URLs.
         $jobAds = $this->recipient->getJobAds();
+        $jobCount = count($jobAds['jobs']);
+        foreach ($jobAds['jobs'] as $index => $job) {
+            $job->tracked_url = $this->trackedUrl(
+                config('freegle.sites.user') . '/job/' . $job->id .
+                '?source=email&campaign=chat_notification&position=' . $index .
+                '&list_length=' . $jobCount,
+                'job_ad_' . $index,
+                'job_click'
+            );
+        }
 
         // Check if recipient is the poster of the referenced message.
         $isRecipientPoster = $this->refMessage && $this->refMessage->fromuser === $this->recipient->id;

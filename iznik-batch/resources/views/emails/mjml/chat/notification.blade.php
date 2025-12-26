@@ -359,13 +359,13 @@
           alt="{{ $job->title }}"
           padding="0"
           border-radius="4px"
-          href="{{ config('freegle.sites.user') }}/job/{{ $job->id }}"
+          href="{{ $job->tracked_url }}"
         />
       </mj-column>
       @endif
       <mj-column vertical-align="middle">
         <mj-text font-size="14px" color="#333333" padding="0 0 0 8px" line-height="1.4">
-          <a href="{{ config('freegle.sites.user') }}/job/{{ $job->id }}" style="color: #338808; font-weight: bold; text-decoration: none;">
+          <a href="{{ $job->tracked_url }}" style="color: #338808; font-weight: bold; text-decoration: none;">
             {{ $job->title }}
           </a>
           @if($job->location)
