@@ -1126,21 +1126,20 @@ jobs:
           command: |
             # Docker creates directories with root ownership that the runner can't delete
             # This prevents "permission denied" errors when rerunning builds
-            echo "Cleaning up root-owned files..."
-            sudo rm -rf ssl/certs 2>/dev/null || true
+            # NOTE: Don't delete conf/ - it contains checked-in config files
+            echo "Cleaning up root-owned runtime directories..."
             sudo rm -rf ssl 2>/dev/null || true
             sudo rm -rf test-results 2>/dev/null || true
-            sudo rm -rf conf 2>/dev/null || true
             sudo rm -rf logs 2>/dev/null || true
             sudo rm -rf data 2>/dev/null || true
             sudo rm -rf status/data 2>/dev/null || true
-            # Clean any other Docker-created directories
-            sudo find . -user root -exec rm -rf {} + 2>/dev/null || true
+            # Clean root-owned files but skip git-tracked directories
+            sudo find . -user root -not -path "./.git/*" -not -path "./conf/*" -delete 2>/dev/null || true
             echo "Cleanup complete"
 
-            # Pre-create directories with correct ownership so Docker doesn't create them as root
+            # Pre-create runtime directories with correct ownership so Docker doesn't create them as root
             echo "Pre-creating directories..."
-            mkdir -p ssl/certs conf logs data status/data test-results
+            mkdir -p ssl/certs logs data status/data test-results
             echo "Directories ready"
 
       - run:
