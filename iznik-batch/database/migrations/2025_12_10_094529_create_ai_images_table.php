@@ -11,12 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('ai_images', function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->string('name')->unique('name');
-            $table->string('externaluid')->nullable();
-            $table->timestamp('created')->useCurrent()->index('created');
-        });
+        if (!Schema::hasTable('ai_images')) {
+            Schema::create('ai_images', function (Blueprint $table) {
+                $table->bigIncrements('id');
+                $table->string('name')->unique('name');
+                $table->string('externaluid')->nullable();
+                $table->timestamp('created')->useCurrent()->index('created');
+            });
+        }
     }
 
     /**
