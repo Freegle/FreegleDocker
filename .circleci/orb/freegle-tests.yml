@@ -826,8 +826,8 @@ commands:
 
             # Collect PHPUnit test output files
             mkdir -p ~/artifacts/phpunit
-            docker cp freegle-apiv1:/tmp/phpunit-output.log ~/artifacts/phpunit/ 2>/dev/null || true
-            docker cp freegle-apiv1:/tmp/phpunit-debug.log ~/artifacts/phpunit/ 2>/dev/null || true
+            docker cp freegle-apiv1-phpunit:/tmp/phpunit-output.log ~/artifacts/phpunit/ 2>/dev/null || true
+            docker cp freegle-apiv1-phpunit:/tmp/phpunit-debug.log ~/artifacts/phpunit/ 2>/dev/null || true
 
             # Collect Go test coverage
             mkdir -p ~/artifacts/go
