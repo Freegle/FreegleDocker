@@ -42,6 +42,7 @@ let testStatus = {
 const testStatuses = {
   phpTests: null,
   goTests: null,
+  laravelTests: null,
   playwrightTests: null,
 };
 
@@ -1729,20 +1730,52 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // Go tests status endpoint
+  if (parsedUrl.pathname === "/api/tests/go/status" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(testStatuses.goTests || { status: "idle" }));
+    return;
+  }
+
   // Go tests endpoint
   if (parsedUrl.pathname === "/api/tests/go" && req.method === "POST") {
     console.log("Starting Go tests...");
 
-    try {
-      res.writeHead(200, { "Content-Type": "text/plain" });
+    // Check for coverage parameter (for CI)
+    const withCoverage = parsedUrl.query && parsedUrl.query.coverage === "true";
 
-      // Go tests use a separate iznik_go_test database (same as CircleCI)
-      const { spawn } = require("child_process");
-      const testProcess = spawn(
-        "sh",
-        [
-          "-c",
-          `
+    // Check if already running
+    if (testStatuses.goTests && testStatuses.goTests.status === "running") {
+      res.writeHead(409, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Go tests are already running" }));
+      return;
+    }
+
+    // Initialize test status
+    testStatuses.goTests = {
+      status: "running",
+      message: "Setting up Go test database...",
+      logs: "",
+      progress: { completed: 0, total: 0, passed: 0, failed: 0, current: "" },
+      startTime: Date.now(),
+      withCoverage,
+    };
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "started" }));
+
+    // Build test command - add race detection and coverage for CI
+    const testCmd = withCoverage
+      ? "export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."
+      : "export MYSQL_DBNAME=iznik_go_test && go test ./test/... -v";
+
+    // Run tests asynchronously
+    const { spawn } = require("child_process");
+    const testProcess = spawn(
+      "sh",
+      [
+        "-c",
+        `
         set -e
         echo "Setting up Go test database (iznik_go_test)..."
 
@@ -1761,39 +1794,75 @@ const httpServer = http.createServer(async (req, res) => {
           mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"" || echo "Warning: Database setup had issues, continuing..."
 
         echo "Running Go tests against iznik_go_test database..."
-        docker exec -w /app freegle-apiv2 sh -c "export MYSQL_DBNAME=iznik_go_test && go test ./test/... -v"
+        docker exec -w /app freegle-apiv2 sh -c "${testCmd} 2>&1"
       `,
-        ],
-        {
-          stdio: "pipe",
+      ],
+      { stdio: "pipe" }
+    );
+
+    testProcess.stdout.on("data", (data) => {
+      const text = data.toString();
+      testStatuses.goTests.logs += text;
+
+      // Parse Go test output for progress
+      const lines = text.split("\n");
+      for (const line of lines) {
+        // Count test starts: === RUN   TestName
+        if (line.match(/^=== RUN\s+(\S+)/)) {
+          const match = line.match(/^=== RUN\s+(\S+)/);
+          testStatuses.goTests.progress.current = match[1];
         }
-      );
-
-      let output = "";
-
-      testProcess.stdout.on("data", (data) => {
-        output += data.toString();
-      });
-
-      testProcess.stderr.on("data", (data) => {
-        output += data.toString();
-      });
-
-      testProcess.on("close", (code) => {
-        if (code === 0) {
-          res.end(output + "\n\nGo tests completed successfully!");
-        } else {
-          res.end(output + "\n\nGo tests failed with exit code: " + code);
+        // Count passes: --- PASS: TestName
+        if (line.match(/^--- PASS:/)) {
+          testStatuses.goTests.progress.passed++;
+          testStatuses.goTests.progress.completed++;
         }
-      });
+        // Count failures: --- FAIL: TestName
+        if (line.match(/^--- FAIL:/)) {
+          testStatuses.goTests.progress.failed++;
+          testStatuses.goTests.progress.completed++;
+        }
+        // Get total from "ok" or "FAIL" summary lines
+        if (line.match(/^(ok|FAIL)\s+\S+/)) {
+          testStatuses.goTests.message = `Running tests... ${testStatuses.goTests.progress.passed}✓ ${testStatuses.goTests.progress.failed}✗`;
+        }
+      }
 
-      testProcess.on("error", (error) => {
-        res.end("Error running Go tests: " + error.message);
-      });
-    } catch (error) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end("Failed to start Go tests: " + error.message);
-    }
+      // Update message with current progress
+      const p = testStatuses.goTests.progress;
+      if (p.current) {
+        testStatuses.goTests.message = `Running: ${p.current} (${p.passed}✓ ${p.failed}✗)`;
+      }
+    });
+
+    testProcess.stderr.on("data", (data) => {
+      testStatuses.goTests.logs += data.toString();
+    });
+
+    testProcess.on("close", (code) => {
+      const p = testStatuses.goTests.progress;
+      testStatuses.goTests.status = code === 0 ? "completed" : "failed";
+      testStatuses.goTests.success = code === 0;
+      testStatuses.goTests.endTime = Date.now();
+      testStatuses.goTests.message = code === 0
+        ? `All tests passed (${p.passed}✓)`
+        : `Tests failed (${p.passed}✓ ${p.failed}✗)`;
+      console.log(`Go tests completed with code ${code}`);
+    });
+
+    testProcess.on("error", (error) => {
+      testStatuses.goTests.status = "failed";
+      testStatuses.goTests.message = `Error: ${error.message}`;
+      testStatuses.goTests.endTime = Date.now();
+    });
+
+    return;
+  }
+
+  // Laravel tests status endpoint
+  if (parsedUrl.pathname === "/api/tests/laravel/status" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(testStatuses.laravelTests || { status: "idle" }));
     return;
   }
 
@@ -1801,50 +1870,101 @@ const httpServer = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === "/api/tests/laravel" && req.method === "POST") {
     console.log("Starting Laravel tests...");
 
-    try {
-      res.writeHead(200, { "Content-Type": "text/plain" });
-
-      const { spawn } = require("child_process");
-      const testProcess = spawn(
-        "sh",
-        [
-          "-c",
-          `
-        set -e
-        echo "Running Laravel tests in parallel with coverage..."
-        docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --coverage-clover=/tmp/laravel-coverage.xml
-      `,
-        ],
-        {
-          stdio: "pipe",
-        }
-      );
-
-      let output = "";
-
-      testProcess.stdout.on("data", (data) => {
-        output += data.toString();
-      });
-
-      testProcess.stderr.on("data", (data) => {
-        output += data.toString();
-      });
-
-      testProcess.on("close", (code) => {
-        if (code === 0) {
-          res.end(output + "\n\nLaravel tests completed successfully!");
-        } else {
-          res.end(output + "\n\nLaravel tests failed with exit code: " + code);
-        }
-      });
-
-      testProcess.on("error", (error) => {
-        res.end("Error running Laravel tests: " + error.message);
-      });
-    } catch (error) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end("Failed to start Laravel tests: " + error.message);
+    // Check if already running
+    if (testStatuses.laravelTests && testStatuses.laravelTests.status === "running") {
+      res.writeHead(409, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Laravel tests are already running" }));
+      return;
     }
+
+    // Initialize test status
+    testStatuses.laravelTests = {
+      status: "running",
+      message: "Starting Laravel tests...",
+      logs: "",
+      progress: { completed: 0, total: 0, passed: 0, failed: 0, current: "" },
+      startTime: Date.now(),
+    };
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "started" }));
+
+    // Run tests asynchronously
+    const { spawn } = require("child_process");
+    const testProcess = spawn(
+      "sh",
+      [
+        "-c",
+        `
+        set -e
+        echo "Clearing Laravel cache files..."
+        docker exec freegle-batch rm -f bootstrap/cache/*.php 2>&1 || true
+        docker exec freegle-batch rm -rf storage/framework/cache/data/* 2>&1 || true
+        docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
+
+        echo "Running Laravel tests in parallel with coverage..."
+        docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+      `,
+      ],
+      { stdio: "pipe" }
+    );
+
+    testProcess.stdout.on("data", (data) => {
+      const text = data.toString();
+      testStatuses.laravelTests.logs += text;
+
+      // Parse paratest/PHPUnit output for progress
+      const lines = text.split("\n");
+      for (const line of lines) {
+        // Look for test count in paratest output
+        const countMatch = line.match(/(\d+)\s+tests?,\s+(\d+)\s+assertions?/);
+        if (countMatch) {
+          testStatuses.laravelTests.progress.total = parseInt(countMatch[1]);
+        }
+        // Count dots (.) for passes and F for failures
+        const dots = (line.match(/\./g) || []).length;
+        const fails = (line.match(/F/g) || []).length;
+        if (dots > 0 || fails > 0) {
+          testStatuses.laravelTests.progress.passed += dots;
+          testStatuses.laravelTests.progress.failed += fails;
+          testStatuses.laravelTests.progress.completed += dots + fails;
+        }
+        // Look for "OK" or "FAILURES" in output
+        if (line.includes("OK (")) {
+          const okMatch = line.match(/OK \((\d+) tests?/);
+          if (okMatch) {
+            testStatuses.laravelTests.progress.passed = parseInt(okMatch[1]);
+            testStatuses.laravelTests.progress.completed = parseInt(okMatch[1]);
+          }
+        }
+      }
+
+      // Update message with progress
+      const p = testStatuses.laravelTests.progress;
+      testStatuses.laravelTests.message = `Running tests... ${p.passed}✓ ${p.failed}✗`;
+    });
+
+    testProcess.stderr.on("data", (data) => {
+      testStatuses.laravelTests.logs += data.toString();
+    });
+
+    testProcess.on("close", (code) => {
+      const p = testStatuses.laravelTests.progress;
+      testStatuses.laravelTests.status = code === 0 ? "completed" : "failed";
+      testStatuses.laravelTests.success = code === 0;
+      testStatuses.laravelTests.endTime = Date.now();
+      testStatuses.laravelTests.message = code === 0
+        ? `All tests passed (${p.passed}✓)`
+        : `Tests failed (${p.passed}✓ ${p.failed}✗)`;
+      console.log(`Laravel tests completed with code ${code}`);
+    });
+
+    testProcess.on("error", (error) => {
+      testStatuses.laravelTests.status = "failed";
+      testStatuses.laravelTests.message = `Error: ${error.message}`;
+      testStatuses.laravelTests.endTime = Date.now();
+    });
+
     return;
   }
 

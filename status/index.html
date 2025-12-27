@@ -1661,6 +1661,8 @@
         }
 
         // Initialize when DOM is ready
+        let goTestPollingInterval = null;
+
         async function runGoTests() {
             const button = document.getElementById('runGoTestsBtn');
             const statusDiv = document.getElementById('goTestStatus');
@@ -1670,7 +1672,7 @@
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = 'Running Tests...';
-            statusDiv.innerHTML = '<span style="color: #0070f3;">Running Go tests...</span>';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">Starting Go tests...</span>';
             logsDiv.style.display = 'none';
             toggleLogsBtn.style.display = 'none';
 
@@ -1680,25 +1682,52 @@
                     headers: { 'Content-Type': 'application/json' }
                 });
 
-                const result = await response.text();
-                if (response.ok && result.includes('Go tests completed successfully')) {
-                    statusDiv.innerHTML = '<span style="color: #28a745;">PASS Go tests completed successfully</span>';
-                    logsDiv.textContent = result;
-                    logsDiv.style.display = 'block';
-                    toggleLogsBtn.style.display = 'inline-block';
-                } else {
-                    statusDiv.innerHTML = '<span style="color: #dc3545;">FAIL Go tests failed</span>';
-                    logsDiv.textContent = result;
-                    logsDiv.style.display = 'block';
-                    toggleLogsBtn.style.display = 'inline-block';
+                if (!response.ok) {
+                    const error = await response.json();
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.error || 'Failed to start tests'}</span>`;
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    return;
                 }
+
+                // Start polling for status
+                goTestPollingInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch('/api/tests/go/status');
+                        const status = await statusResponse.json();
+
+                        if (status.status === 'running') {
+                            const p = status.progress || {};
+                            statusDiv.innerHTML = `<span style="color: #0070f3;">${status.message || 'Running...'} (${p.passed || 0}✓ ${p.failed || 0}✗)</span>`;
+                        } else if (status.status === 'completed') {
+                            clearInterval(goTestPollingInterval);
+                            statusDiv.innerHTML = `<span style="color: #28a745;">PASS ${status.message}</span>`;
+                            logsDiv.textContent = status.logs || '';
+                            logsDiv.style.display = 'block';
+                            toggleLogsBtn.style.display = 'inline-block';
+                            button.textContent = originalText;
+                            button.disabled = false;
+                        } else if (status.status === 'failed') {
+                            clearInterval(goTestPollingInterval);
+                            statusDiv.innerHTML = `<span style="color: #dc3545;">FAIL ${status.message}</span>`;
+                            logsDiv.textContent = status.logs || '';
+                            logsDiv.style.display = 'block';
+                            toggleLogsBtn.style.display = 'inline-block';
+                            button.textContent = originalText;
+                            button.disabled = false;
+                        }
+                    } catch (e) {
+                        console.error('Error polling Go test status:', e);
+                    }
+                }, 1000);
             } catch (error) {
                 statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
+                button.textContent = originalText;
+                button.disabled = false;
             }
-
-            button.textContent = originalText;
-            button.disabled = false;
         }
+
+        let laravelTestPollingInterval = null;
 
         async function runLaravelTests() {
             const button = document.getElementById('runLaravelTestsBtn');
@@ -1709,7 +1738,7 @@
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = 'Running Tests...';
-            statusDiv.innerHTML = '<span style="color: #0070f3;">Running Laravel tests...</span>';
+            statusDiv.innerHTML = '<span style="color: #0070f3;">Starting Laravel tests...</span>';
             logsDiv.style.display = 'none';
             toggleLogsBtn.style.display = 'none';
 
@@ -1719,24 +1748,49 @@
                     headers: { 'Content-Type': 'application/json' }
                 });
 
-                const result = await response.text();
-                if (response.ok && result.includes('Laravel tests completed successfully')) {
-                    statusDiv.innerHTML = '<span style="color: #28a745;">PASS Laravel tests completed successfully</span>';
-                    logsDiv.textContent = result;
-                    logsDiv.style.display = 'block';
-                    toggleLogsBtn.style.display = 'inline-block';
-                } else {
-                    statusDiv.innerHTML = '<span style="color: #dc3545;">FAIL Laravel tests failed</span>';
-                    logsDiv.textContent = result;
-                    logsDiv.style.display = 'block';
-                    toggleLogsBtn.style.display = 'inline-block';
+                if (!response.ok) {
+                    const error = await response.json();
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.error || 'Failed to start tests'}</span>`;
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    return;
                 }
+
+                // Start polling for status
+                laravelTestPollingInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch('/api/tests/laravel/status');
+                        const status = await statusResponse.json();
+
+                        if (status.status === 'running') {
+                            const p = status.progress || {};
+                            statusDiv.innerHTML = `<span style="color: #0070f3;">${status.message || 'Running...'} (${p.passed || 0}✓ ${p.failed || 0}✗)</span>`;
+                        } else if (status.status === 'completed') {
+                            clearInterval(laravelTestPollingInterval);
+                            statusDiv.innerHTML = `<span style="color: #28a745;">PASS ${status.message}</span>`;
+                            logsDiv.textContent = status.logs || '';
+                            logsDiv.style.display = 'block';
+                            toggleLogsBtn.style.display = 'inline-block';
+                            button.textContent = originalText;
+                            button.disabled = false;
+                        } else if (status.status === 'failed') {
+                            clearInterval(laravelTestPollingInterval);
+                            statusDiv.innerHTML = `<span style="color: #dc3545;">FAIL ${status.message}</span>`;
+                            logsDiv.textContent = status.logs || '';
+                            logsDiv.style.display = 'block';
+                            toggleLogsBtn.style.display = 'inline-block';
+                            button.textContent = originalText;
+                            button.disabled = false;
+                        }
+                    } catch (e) {
+                        console.error('Error polling Laravel test status:', e);
+                    }
+                }, 1000);
             } catch (error) {
                 statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message}</span>`;
+                button.textContent = originalText;
+                button.disabled = false;
             }
-
-            button.textContent = originalText;
-            button.disabled = false;
         }
 
         function toggleLaravelLogs() {
