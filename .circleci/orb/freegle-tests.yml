@@ -1256,11 +1256,16 @@ jobs:
             docker logs freegle-batch --tail 50 2>&1 || true
             exit 1
 
-      # Run Laravel, Playwright, and Go tests in parallel
+      # Restore GeoIP cache before running tests
+      - restore_cache:
+          keys:
+            - geoip-db-v1
+
+      # Run Laravel, Playwright, Go, and PHPUnit tests in parallel
       - run:
-          name: Run Laravel, Playwright, and Go tests in parallel
+          name: Run Laravel, Playwright, Go, and PHPUnit tests in parallel
           command: |
-            echo "🚀 Running Laravel, Playwright, and Go tests in parallel..."
+            echo "🚀 Running Laravel, Playwright, Go, and PHPUnit tests in parallel..."
 
             # Start Laravel tests in background (using paratest for parallel execution)
             echo "🧪 Starting Laravel tests in background..."
@@ -1306,6 +1311,71 @@ jobs:
             ) 2>&1 | sed 's/^/[Go] /' &
             GO_PID=$!
 
+            # Start PHPUnit tests in background (uses separate iznik_phpunit_test database)
+            echo "🐘 Starting PHPUnit tests in background..."
+            (
+              # Restore GeoIP database from cache if available
+              if [ -f ~/geoip-cache/GeoLite2-Country.mmdb ]; then
+                echo "📍 Restoring GeoIP database from cache..."
+                docker exec freegle-apiv1 mkdir -p /var/lib/GeoIP
+                docker cp ~/geoip-cache/GeoLite2-Country.mmdb freegle-apiv1:/var/lib/GeoIP/GeoLite2-Country.mmdb
+                docker cp ~/geoip-cache/GeoLite2-City.mmdb freegle-apiv1:/var/lib/GeoIP/GeoLite2-City.mmdb 2>/dev/null || true
+                echo "✅ GeoIP database restored from cache"
+              fi
+
+              # Create and initialize separate PHPUnit test database
+              echo "Setting up iznik_phpunit_test database..."
+              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
+                mysql -h percona -u root -piznik -e 'DROP DATABASE IF EXISTS iznik_phpunit_test; CREATE DATABASE iznik_phpunit_test;' && \
+                mysql -h percona -u root -piznik iznik_phpunit_test < install/schema.sql && \
+                mysql -h percona -u root -piznik iznik_phpunit_test < install/functions.sql && \
+                mysql -h percona -u root -piznik iznik_phpunit_test < install/damlevlim.sql && \
+                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
+                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
+              echo "✅ Database iznik_phpunit_test created and initialized"
+
+              # Override database config to use iznik_phpunit_test
+              echo "Configuring PHPUnit to use iznik_phpunit_test..."
+              docker exec freegle-apiv1 sh -c "sed -i \"s/'SQLDB', '[^']*'/'SQLDB', 'iznik_phpunit_test'/\" /etc/iznik.conf"
+
+              # Run test environment setup
+              echo "Running testenv.php..."
+              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php" || echo "Warning: testenv.php had issues but continuing..."
+
+              # Run PHPUnit tests directly
+              echo "Running PHPUnit tests..."
+              if docker exec freegle-apiv1 sh -c "cd /var/www/iznik && /var/www/iznik/run-phpunit.sh /var/www/iznik/test/ut/php/"; then
+                echo "pass" > /tmp/php-result
+                echo "✅ PHPUnit tests passed!"
+                # Copy coverage file
+                docker cp freegle-apiv1:/tmp/phpunit-coverage.xml /tmp/phpunit-coverage.xml 2>/dev/null || true
+              else
+                echo "fail" > /tmp/php-result
+                echo "❌ PHPUnit tests failed!"
+                # Show failure details
+                docker exec freegle-apiv1 sh -c '
+                  if [ -f /tmp/phpunit-debug.log ]; then
+                    echo "=== TEST FAILURES ==="
+                    grep "##teamcity\[testFailed" /tmp/phpunit-debug.log | head -10 | while read -r line; do
+                      test_name=$(echo "$line" | sed "s/.*name='"'"'\([^'"'"']*\)'"'"'.*/\1/")
+                      message=$(echo "$line" | sed "s/.*message='"'"'\([^'"'"']*\)'"'"'.*/\1/")
+                      if [ -n "$test_name" ]; then
+                        echo "❌ $test_name"
+                        [ -n "$message" ] && echo "   Message: $message"
+                      fi
+                    done
+                    echo ""
+                    echo "=== TEST SUMMARY ==="
+                    tail -20 /tmp/phpunit-debug.log | grep -E "Tests:|FAILURES!|Skipped:" || echo "No summary found"
+                  fi
+                ' || echo "Could not extract failure details"
+              fi
+
+              # Restore original database config (so container continues to work normally)
+              docker exec freegle-apiv1 sh -c "sed -i \"s/'SQLDB', 'iznik_phpunit_test'/'SQLDB', 'iznik'/\" /etc/iznik.conf"
+            ) 2>&1 | sed 's/^/[PHPUnit] /' &
+            PHPUNIT_PID=$!
+
             # Run Playwright tests in foreground with monitoring
             echo "🎭 Starting Playwright tests..."
 
@@ -1319,6 +1389,7 @@ jobs:
               # Wait for background jobs before exiting
               wait $LARAVEL_PID 2>/dev/null || true
               wait $GO_PID 2>/dev/null || true
+              wait $PHPUNIT_PID 2>/dev/null || true
               exit 1
             fi
 
@@ -1349,7 +1420,8 @@ jobs:
               elapsed_min=$((elapsed / 60))
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
-              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS"
+              PHPUNIT_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
+              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS | PHPUnit: $PHPUNIT_STATUS"
 
               if [ "$status" = "completed" ]; then
                 success=$(echo "$status_response" | jq -r '.success // false')
@@ -1371,18 +1443,21 @@ jobs:
             done
 
             # Wait for background tests to complete
-            echo "⏳ Waiting for Laravel and Go tests to complete..."
+            echo "⏳ Waiting for Laravel, Go, and PHPUnit tests to complete..."
             wait $LARAVEL_PID 2>/dev/null || true
             wait $GO_PID 2>/dev/null || true
+            wait $PHPUNIT_PID 2>/dev/null || true
 
             # Check results
             LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "fail")
             GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "fail")
+            PHPUNIT_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "fail")
 
             echo ""
             echo "=== Parallel Test Results ==="
             echo "Laravel: $LARAVEL_RESULT"
             echo "Go: $GO_RESULT"
+            echo "PHPUnit: $PHPUNIT_RESULT"
             echo "Playwright: $([ "$PLAYWRIGHT_PASSED" = "true" ] && echo "pass" || echo "fail")"
 
             # Set environment variables for later steps
@@ -1398,6 +1473,12 @@ jobs:
               echo "GO_TESTS_PASSED=false" >> $BASH_ENV
             fi
 
+            if [ "$PHPUNIT_RESULT" = "pass" ]; then
+              echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+            fi
+
             if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
               echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
             else
@@ -1405,16 +1486,30 @@ jobs:
             fi
 
             # Fail if any test suite failed
-            if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PLAYWRIGHT_PASSED" != "true" ]; then
+            if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PHPUNIT_RESULT" != "pass" ] || [ "$PLAYWRIGHT_PASSED" != "true" ]; then
               echo "❌ One or more test suites failed"
               exit 1
             fi
 
-            echo "✅ All Laravel, Go, and Playwright tests passed!"
+            echo "✅ All Laravel, Go, PHPUnit, and Playwright tests passed!"
           no_output_timeout: 50m
 
-      - run-php-tests:
-          reason: "Running PHPUnit tests after parallel tests complete"
+      - run:
+          name: Save GeoIP database for caching
+          when: always
+          command: |
+            # Copy GeoIP database from container for caching (if it exists)
+            mkdir -p ~/geoip-cache
+            docker cp freegle-apiv1:/var/lib/GeoIP/GeoLite2-Country.mmdb ~/geoip-cache/GeoLite2-Country.mmdb 2>/dev/null && \
+              echo "✅ GeoIP Country database saved for caching" || \
+              echo "⚠️ GeoIP Country database not available to cache"
+            docker cp freegle-apiv1:/var/lib/GeoIP/GeoLite2-City.mmdb ~/geoip-cache/GeoLite2-City.mmdb 2>/dev/null && \
+              echo "✅ GeoIP City database saved for caching" || \
+              echo "⚠️ GeoIP City database not available to cache"
+      - save_cache:
+          key: geoip-db-v1
+          paths:
+            - ~/geoip-cache
 
       - upload-coverage:
           expected: "go,php,playwright,laravel"
