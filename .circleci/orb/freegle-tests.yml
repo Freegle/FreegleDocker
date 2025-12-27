@@ -1343,6 +1343,7 @@ jobs:
           command: |
             echo "🚀 Running all tests in parallel..."
             mkdir -p ~/test-output
+            TESTS_KILLED_EARLY=false
 
             # Start Laravel tests in background
             echo "🧪 Starting Laravel tests in background..."
@@ -1478,23 +1479,23 @@ jobs:
               # Fail-fast: Check if any background test has failed
               if [ "$LARAVEL_STATUS" = "fail" ]; then
                 echo "❌ FAIL-FAST: Laravel tests failed - stopping all tests"
-                # Kill remaining background tests
                 kill $GO_PID 2>/dev/null || true
                 kill $PHPUNIT_PID 2>/dev/null || true
+                TESTS_KILLED_EARLY=true
                 break
               fi
               if [ "$GO_STATUS" = "fail" ]; then
                 echo "❌ FAIL-FAST: Go tests failed - stopping all tests"
-                # Kill remaining background tests
                 kill $LARAVEL_PID 2>/dev/null || true
                 kill $PHPUNIT_PID 2>/dev/null || true
+                TESTS_KILLED_EARLY=true
                 break
               fi
               if [ "$PHP_STATUS" = "fail" ]; then
                 echo "❌ FAIL-FAST: PHPUnit tests failed - stopping all tests"
-                # Kill remaining background tests
                 kill $LARAVEL_PID 2>/dev/null || true
                 kill $GO_PID 2>/dev/null || true
+                TESTS_KILLED_EARLY=true
                 break
               fi
 
@@ -1512,6 +1513,7 @@ jobs:
                   kill $LARAVEL_PID 2>/dev/null || true
                   kill $GO_PID 2>/dev/null || true
                   kill $PHPUNIT_PID 2>/dev/null || true
+                  TESTS_KILLED_EARLY=true
                 fi
                 break
               elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
@@ -1521,11 +1523,32 @@ jobs:
                 kill $LARAVEL_PID 2>/dev/null || true
                 kill $GO_PID 2>/dev/null || true
                 kill $PHPUNIT_PID 2>/dev/null || true
+                TESTS_KILLED_EARLY=true
                 break
               fi
             done
 
-            # Wait for background tests to complete
+            # If tests were killed early due to failure, exit immediately
+            if [ "$TESTS_KILLED_EARLY" = "true" ]; then
+              echo "❌ Tests failed - exiting immediately"
+              LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "killed")
+              GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "killed")
+              PHP_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "killed")
+              echo ""
+              echo "=== Parallel Test Results (fail-fast) ==="
+              echo "Laravel: $LARAVEL_RESULT"
+              echo "Go: $GO_RESULT"
+              echo "PHPUnit: $PHP_RESULT"
+              echo "Playwright: $([ "$PLAYWRIGHT_PASSED" = "true" ] && echo "pass" || echo "fail")"
+              echo ""
+              echo "LARAVEL_TESTS_PASSED=false" >> $BASH_ENV
+              echo "GO_TESTS_PASSED=false" >> $BASH_ENV
+              echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+              echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
+              exit 1
+            fi
+
+            # Wait for background tests to complete (only if no early failure)
             echo "⏳ Waiting for all background tests to complete..."
             wait $LARAVEL_PID 2>/dev/null || true
             wait $GO_PID 2>/dev/null || true
