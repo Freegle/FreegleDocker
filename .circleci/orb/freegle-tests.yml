@@ -1395,6 +1395,29 @@ jobs:
               PHP_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
               echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS | PHPUnit: $PHP_STATUS"
 
+              # Fail-fast: Check if any background test has failed
+              if [ "$LARAVEL_STATUS" = "fail" ]; then
+                echo "❌ FAIL-FAST: Laravel tests failed - stopping all tests"
+                # Kill remaining background tests
+                kill $GO_PID 2>/dev/null || true
+                kill $PHPUNIT_PID 2>/dev/null || true
+                break
+              fi
+              if [ "$GO_STATUS" = "fail" ]; then
+                echo "❌ FAIL-FAST: Go tests failed - stopping all tests"
+                # Kill remaining background tests
+                kill $LARAVEL_PID 2>/dev/null || true
+                kill $PHPUNIT_PID 2>/dev/null || true
+                break
+              fi
+              if [ "$PHP_STATUS" = "fail" ]; then
+                echo "❌ FAIL-FAST: PHPUnit tests failed - stopping all tests"
+                # Kill remaining background tests
+                kill $LARAVEL_PID 2>/dev/null || true
+                kill $GO_PID 2>/dev/null || true
+                break
+              fi
+
               if [ "$status" = "completed" ]; then
                 success=$(echo "$status_response" | jq -r '.success // false')
                 echo "🎉 Playwright tests completed! Success: $success"
