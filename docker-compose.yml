@@ -497,11 +497,11 @@ services:
     volumes:
       - geoip_data:/var/lib/GeoIP
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:80/api/config && mysql -u root -piznik -h percona -e 'SELECT 1 FROM iznik_phpunit_test.users_notifications LIMIT 1' >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
     secrets:
       - LOVE_JUNK_API
       - LOVE_JUNK_SECRET
