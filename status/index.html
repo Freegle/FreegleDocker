@@ -1171,22 +1171,21 @@
                         if (basicServicesReady) {
                             // Only update class if not currently running tests
                             if (!goTestsElement.querySelector('#goTestStatus').textContent.includes('Running')) {
-                                goTestsElement.className = 'service online';
+                                goTestsElement.className = 'service online test-suite';
                                 goTestsElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Click to run tests</small>';
                                 if (goTestBtn) {
                                     goTestBtn.disabled = false;
-                                    goTestBtn.style.background = '#17a2b8';
+                                    goTestBtn.style.background = '';  // Let CSS handle it
                                 }
                             }
                         } else {
-                            goTestsElement.className = 'service loading';
+                            goTestsElement.className = 'service loading test-suite';
                             const waitingFor = [];
                             if (!apiv1Ready) waitingFor.push('API v1');
                             if (!apiv2Ready) waitingFor.push('API v2');
                             goTestsElement.querySelector('.status').innerHTML = `Waiting for services...<br><small style="font-weight: normal; color: #666;">Needs: ${waitingFor.join(', ')}</small>`;
                             if (goTestBtn) {
                                 goTestBtn.disabled = true;
-                                goTestBtn.style.background = '#6c757d';
                             }
                         }
                     }
@@ -1205,15 +1204,15 @@
                         if (infraReady) {
                             // Only update class if not currently running tests
                             if (!phpTestsElement.querySelector('#phpTestStatus').textContent.includes('Running')) {
-                                phpTestsElement.className = 'service online';
+                                phpTestsElement.className = 'service online test-suite';
                                 phpTestsElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Container starts on demand</small>';
                                 if (phpTestBtn) {
                                     phpTestBtn.disabled = false;
-                                    phpTestBtn.style.background = '#17a2b8';
+                                    phpTestBtn.style.background = '';  // Let CSS handle it
                                 }
                             }
                         } else {
-                            phpTestsElement.className = 'service loading';
+                            phpTestsElement.className = 'service loading test-suite';
                             const waitingFor = [];
                             if (!perconaReady) waitingFor.push('Percona');
                             if (!redisReady) waitingFor.push('Redis');
@@ -1221,7 +1220,6 @@
                             phpTestsElement.querySelector('.status').innerHTML = `Waiting for services...<br><small style="font-weight: normal; color: #666;">Needs: ${waitingFor.join(', ')}</small>`;
                             if (phpTestBtn) {
                                 phpTestBtn.disabled = true;
-                                phpTestBtn.style.background = '#6c757d';
                             }
                         }
                     }
@@ -1235,15 +1233,15 @@
                         if (prodReady) {
                             // Only update if not currently running tests
                             if (!playwrightElement.querySelector('#testStatus').textContent.includes('Running')) {
-                                playwrightElement.className = 'service online';
+                                playwrightElement.className = 'service online test-suite';
                                 playwrightElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Production container healthy</small>';
                                 if (playwrightBtn) {
                                     playwrightBtn.disabled = false;
-                                    playwrightBtn.style.background = '#0070f3';
+                                    playwrightBtn.style.background = '';  // Let CSS handle it
                                 }
                             }
                         } else {
-                            playwrightElement.className = 'service loading';
+                            playwrightElement.className = 'service loading test-suite';
                             if (allStatus['freegle-prod-local'] && allStatus['freegle-prod-local'].status === 'starting') {
                                 playwrightElement.querySelector('.status').innerHTML = 'Waiting for Production...<br><small style="font-weight: normal; color: #666;">Container building/starting</small>';
                             } else {
@@ -1251,7 +1249,6 @@
                             }
                             if (playwrightBtn) {
                                 playwrightBtn.disabled = true;
-                                playwrightBtn.style.background = '#6c757d';
                             }
                         }
                     }
