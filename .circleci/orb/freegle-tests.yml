@@ -1414,6 +1414,12 @@ jobs:
                 sleep 10
                 status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
+                # Extract progress counts for display
+                completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+                total=$(echo "$status_response" | jq -r '.progress.total // 0')
+                echo "$completed" > /tmp/php-completed
+                echo "$total" > /tmp/php-total
+
 
                 if [ "$status" = "completed" ]; then
                   echo "pass" > /tmp/php-result
@@ -1474,7 +1480,10 @@ jobs:
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
               PHP_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
-              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS | PHPUnit: $PHP_STATUS"
+              PHP_COMPLETED=$([ -f /tmp/php-completed ] && cat /tmp/php-completed || echo '0')
+              PHP_TOTAL=$([ -f /tmp/php-total ] && cat /tmp/php-total || echo '0')
+              PHP_DISPLAY=$([ "$PHP_STATUS" = "running" ] && echo "$PHP_STATUS ($PHP_COMPLETED/$PHP_TOTAL)" || echo "$PHP_STATUS")
+              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS | PHPUnit: $PHP_DISPLAY"
 
               # Fail-fast: Check if any background test has failed
               if [ "$LARAVEL_STATUS" = "fail" ]; then
