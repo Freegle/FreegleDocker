@@ -1257,16 +1257,16 @@ jobs:
             docker logs freegle-batch --tail 50 2>&1 || true
             exit 1
 
-      # Run Laravel, Playwright, and Go tests in parallel
+      # Run Laravel, Playwright, Go, and PHPUnit tests in parallel
       - run:
-          name: Run Laravel, Playwright, and Go tests in parallel
+          name: Run Laravel, Playwright, Go, and PHPUnit tests in parallel
           command: |
-            echo "🚀 Running Laravel, Playwright, and Go tests in parallel..."
+            echo "🚀 Running all tests in parallel..."
+            mkdir -p ~/test-output
 
-            # Start Laravel tests in background (using paratest for parallel execution)
+            # Start Laravel tests in background
             echo "🧪 Starting Laravel tests in background..."
             (
-              # Clear Laravel caches - delete files directly since artisan may not bootstrap with corrupt cache
               echo "🧹 Clearing Laravel cache files..."
               docker exec freegle-batch rm -f bootstrap/cache/*.php 2>&1 || true
               docker exec freegle-batch rm -rf storage/framework/cache/data/* 2>&1 || true
@@ -1279,7 +1279,7 @@ jobs:
                 echo "fail" > /tmp/laravel-result
                 echo "❌ Laravel tests failed!"
               fi
-            ) 2>&1 | sed 's/^/[Laravel] /' &
+            ) > ~/test-output/laravel.out 2>&1 &
             LARAVEL_PID=$!
 
             # Start Go tests in background (uses separate iznik_go_test database)
@@ -1304,8 +1304,50 @@ jobs:
                 echo "fail" > /tmp/go-result
                 echo "❌ Go tests failed!"
               fi
-            ) 2>&1 | sed 's/^/[Go] /' &
+            ) > ~/test-output/go.out 2>&1 &
             GO_PID=$!
+
+            # Start PHPUnit tests in background (uses separate iznik_phpunit_test database)
+            echo "🧪 Starting PHPUnit tests in background..."
+            (
+              # Restore GeoIP database from cache if available
+              if [ -f ~/geoip-cache/GeoLite2-Country.mmdb ]; then
+                echo "📍 Restoring GeoIP database from cache..."
+                docker exec freegle-apiv1-phpunit mkdir -p /var/lib/GeoIP
+                docker cp ~/geoip-cache/GeoLite2-Country.mmdb freegle-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-Country.mmdb
+                docker cp ~/geoip-cache/GeoLite2-City.mmdb freegle-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-City.mmdb 2>/dev/null || true
+              fi
+
+              # Trigger PHPUnit tests via API
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+              http_code="${response: -3}"
+
+              if [ "$http_code" -ne "200" ]; then
+                echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
+                echo "fail" > /tmp/php-result
+                exit 1
+              fi
+
+              # Poll for PHPUnit completion
+              while true; do
+                sleep 10
+                status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
+                status=$(echo "$status_response" | jq -r '.status // "unknown"')
+
+                if [ "$status" = "completed" ]; then
+                  echo "pass" > /tmp/php-result
+                  echo "✅ PHPUnit tests passed!"
+                  break
+                elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                  echo "fail" > /tmp/php-result
+                  echo "❌ PHPUnit tests failed!"
+                  # Get the logs for the output file
+                  echo "$status_response" | jq -r '.logs // "No logs"'
+                  break
+                fi
+              done
+            ) > ~/test-output/phpunit.out 2>&1 &
+            PHPUNIT_PID=$!
 
             # Run Playwright tests in foreground with monitoring
             echo "🎭 Starting Playwright tests..."
@@ -1350,7 +1392,8 @@ jobs:
               elapsed_min=$((elapsed / 60))
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
-              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS"
+              PHP_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
+              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS | PHPUnit: $PHP_STATUS"
 
               if [ "$status" = "completed" ]; then
                 success=$(echo "$status_response" | jq -r '.success // false')
@@ -1372,18 +1415,21 @@ jobs:
             done
 
             # Wait for background tests to complete
-            echo "⏳ Waiting for Laravel and Go tests to complete..."
+            echo "⏳ Waiting for all background tests to complete..."
             wait $LARAVEL_PID 2>/dev/null || true
             wait $GO_PID 2>/dev/null || true
+            wait $PHPUNIT_PID 2>/dev/null || true
 
             # Check results
             LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "fail")
             GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "fail")
+            PHP_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "fail")
 
             echo ""
             echo "=== Parallel Test Results ==="
             echo "Laravel: $LARAVEL_RESULT"
             echo "Go: $GO_RESULT"
+            echo "PHPUnit: $PHP_RESULT"
             echo "Playwright: $([ "$PLAYWRIGHT_PASSED" = "true" ] && echo "pass" || echo "fail")"
 
             # Set environment variables for later steps
@@ -1399,6 +1445,12 @@ jobs:
               echo "GO_TESTS_PASSED=false" >> $BASH_ENV
             fi
 
+            if [ "$PHP_RESULT" = "pass" ]; then
+              echo "PHP_TESTS_PASSED=true" >> $BASH_ENV
+            else
+              echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
+            fi
+
             if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
               echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
             else
@@ -1406,16 +1458,25 @@ jobs:
             fi
 
             # Fail if any test suite failed
-            if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PLAYWRIGHT_PASSED" != "true" ]; then
+            if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PHP_RESULT" != "pass" ] || [ "$PLAYWRIGHT_PASSED" != "true" ]; then
               echo "❌ One or more test suites failed"
+              # Show failed test output files
+              echo ""
+              echo "=== Test Output Files ==="
+              for f in ~/test-output/*.out; do
+                if [ -f "$f" ]; then
+                  echo "📄 $f: $(wc -l < "$f") lines"
+                fi
+              done
               exit 1
             fi
 
-            echo "✅ All Laravel, Go, and Playwright tests passed!"
+            echo "✅ All tests passed!"
           no_output_timeout: 50m
 
-      - run-php-tests:
-          reason: "Running PHPUnit tests after parallel tests complete"
+      - store_artifacts:
+          path: ~/test-output
+          destination: test-output
 
       - upload-coverage:
           expected: "go,php,playwright,laravel"
