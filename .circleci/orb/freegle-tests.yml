@@ -1508,11 +1508,19 @@ jobs:
                 else
                   echo "❌ Some Playwright tests failed!"
                   echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                  echo "❌ FAIL-FAST: Playwright tests failed - stopping all tests"
+                  kill $LARAVEL_PID 2>/dev/null || true
+                  kill $GO_PID 2>/dev/null || true
+                  kill $PHPUNIT_PID 2>/dev/null || true
                 fi
                 break
               elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                 echo "❌ Playwright tests failed to run!"
                 echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
+                echo "❌ FAIL-FAST: Playwright tests failed to run - stopping all tests"
+                kill $LARAVEL_PID 2>/dev/null || true
+                kill $GO_PID 2>/dev/null || true
+                kill $PHPUNIT_PID 2>/dev/null || true
                 break
               fi
             done
