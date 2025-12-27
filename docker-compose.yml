@@ -464,6 +464,51 @@ services:
       - "83:80"
       - "8181:80"
 
+  # Separate container for PHPUnit tests - uses isolated database to run in parallel with Playwright
+  apiv1-phpunit:
+    container_name: freegle-apiv1-phpunit
+    networks:
+      - default
+    build:
+      context: ./iznik-server
+      network: host
+    depends_on:
+      percona:
+        condition: service_healthy
+      beanstalkd:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: "no"
+    environment:
+      - MYSQL_HOST=percona
+      - MYSQL_PORT=3306
+      - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
+      - SKIP_DB_INIT=${SKIP_DB_INIT:-false}
+      - PHEANSTALK_SERVER=beanstalkd
+      - REDIS_CONNECT=redis
+      - SQLDB=iznik_phpunit_test
+      - IMAGE_DOMAIN=apiv1-phpunit
+      - SPAMD_HOST=spamassassin-app
+      - SPAMD_PORT=783
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - LOKI_ENABLED=false
+    volumes:
+      - geoip_data:/var/lib/GeoIP
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    secrets:
+      - LOVE_JUNK_API
+      - LOVE_JUNK_SECRET
+      - PARTNER_KEY
+      - PARTNER_NAME
+      - IMAGE_DOMAIN
+
   apiv2:
     container_name: freegle-apiv2
     networks:

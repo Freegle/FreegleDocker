@@ -62,6 +62,23 @@
         .modal-buttons button { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; }
         .modal-cancel { background: #6c757d; color: white; }
         .modal-confirm { background: #dc3545; color: white; }
+
+        /* Test suite consistent layout */
+        .test-suite { position: relative; padding-right: 180px !important; min-height: 100px; }
+        .test-suite .test-info { flex: 1; }
+        .test-suite .test-actions { position: absolute; right: 15px; top: 15px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+        .test-suite .run-test-btn { background: #28a745; color: white; padding: 10px 20px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; min-width: 150px; }
+        .test-suite .run-test-btn:hover { background: #218838; }
+        .test-suite .run-test-btn:disabled { background: #ffc107; color: #333; cursor: wait; }
+        .filter-input-wrapper { position: relative; display: inline-block; margin-top: 8px; }
+        .filter-input-wrapper input { padding: 6px 28px 6px 8px; border: 1px solid #ccc; font-size: 12px; width: 140px; }
+        .filter-input-wrapper .clear-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 14px; color: #999; padding: 2px 6px; line-height: 1; }
+        .filter-input-wrapper .clear-btn:hover { color: #333; }
+        .test-suite .secondary-actions { margin-top: 8px; }
+        .test-suite .secondary-actions a, .test-suite .secondary-actions button { margin-right: 4px; }
+        /* Test running status */
+        .test-running { background: #fff3cd !important; border-left-color: #ffc107 !important; }
+        .test-running .status { color: #856404 !important; }
     </style>
 </head>
 <body>
@@ -223,101 +240,102 @@
         <div id="testing" class="tab-content">
             <h2>Test Suites</h2>
 
-            <div id="go-tests" class="service loading">
-                <div>
+            <!-- Go API Tests -->
+            <div id="go-tests" class="service loading test-suite">
+                <div class="test-info">
                     <strong>Go API Tests (iznik-server-go)</strong><br>
-                    <small>Test fast v2 API</small><br>
+                    <small>Tests fast v2 API (uses separate iznik_go_test database)</small><br>
                     <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv2</small><br>
                     <span class="status">Waiting for services...</span>
-                    <div class="container-actions" style="margin-top: 8px;">
-                        <button id="runGoTestsBtn" class="action-button">Run Go Tests</button>
-                    </div>
                     <div id="goTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
                     <div id="goTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
-                    <div style="margin-top: 8px;">
-                        <button id="toggleGoLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
+                    <div class="secondary-actions" style="display: none;" id="goSecondaryActions">
+                        <button id="toggleGoLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Show/Hide Logs</button>
                     </div>
+                </div>
+                <div class="test-actions">
+                    <button id="runGoTestsBtn" class="run-test-btn">Run Go Tests</button>
                 </div>
             </div>
 
-            <div id="php-tests" class="service loading">
-                <div>
+            <!-- PHPUnit Tests -->
+            <div id="php-tests" class="service loading test-suite">
+                <div class="test-info">
                     <strong>PHPUnit Tests (iznik-server)</strong><br>
-                    <small>Tests v1 API and background function</small><br>
-                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1</small><br>
+                    <small>Tests v1 API and background functions (uses separate test database)</small><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-apiv1-phpunit</small><br>
                     <span class="status">Waiting for services...</span>
-                    <div class="container-actions" style="margin-top: 8px;">
-                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <button id="runPhpTestsBtn" class="action-button">Run PHP Tests</button>
-                            <input type="text" id="phpTestFilter" placeholder="Filter (e.g. sessionTest)" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #444; background: #fff; color: #000; font-size: 12px; width: 150px;">
-                        </div>
-                    </div>
                     <div id="phpTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
                     <div id="phpTestProgress" style="margin-top: 8px; display: none;">
-                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative;">
-                            <div id="phpTestProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; position: relative;">
+                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; height: 24px; overflow: hidden; position: relative;">
+                            <div id="phpTestProgressBar" style="background: linear-gradient(90deg, #28a745, #20c997); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center;">
                                 <span id="phpTestProgressText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
                             </div>
-                            <span id="phpTestProgressLabel" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #666; font-size: 11px; z-index: 1;"></span>
+                            <span id="phpTestProgressLabel" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #333; font-size: 11px; z-index: 1; font-weight: bold;"></span>
                         </div>
                     </div>
-                    <div style="margin-top: 8px;">
-                        <button id="openPhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Open Full Logs</button>
+                    <div class="secondary-actions" style="display: none;" id="phpSecondaryActions">
+                        <button id="openPhpLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Open Full Logs</button>
+                    </div>
+                </div>
+                <div class="test-actions">
+                    <button id="runPhpTestsBtn" class="run-test-btn">Run PHP Tests</button>
+                    <div class="filter-input-wrapper">
+                        <input type="text" id="phpTestFilter" placeholder="Filter (e.g. sessionTest)">
+                        <button class="clear-btn" onclick="document.getElementById('phpTestFilter').value=''">&times;</button>
                     </div>
                 </div>
             </div>
 
-            <div id="playwright" class="service loading">
-                <div>
+            <!-- Playwright E2E Tests -->
+            <div id="playwright" class="service loading test-suite">
+                <div class="test-info">
                     <strong>Playwright E2E Tests (iznik-nuxt3)</strong><br>
+                    <small>End-to-end browser tests against production build</small><br>
                     <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-playwright</small><br>
                     <span class="status">Loading...</span>
-                    <div class="container-actions" style="margin-top: 8px;">
-                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <button id="runTestsBtn" class="action-button" style="background: #0070f3;">Run Tests</button>
-                            <input id="testFileInput" type="text" placeholder="Optional: specific test file (e.g., test-marketing-consent.spec.js)"
-                                   style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 300px;">
-                            <button id="clearTestFileBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Clear</button>
-                        </div>
-                        <div style="margin-top: 4px; font-size: 10px; color: #666;">
-                            Leave blank to run all tests, or specify a test file name to run only that test.
-                        </div>
-                    </div>
                     <div id="testStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
                     <div id="testProgress" style="margin-top: 8px; display: none;">
                         <div id="testProgressText" style="font-size: 12px; color: #333; margin-bottom: 4px; font-weight: bold;"></div>
                         <div id="currentTestName" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;"></div>
                     </div>
                     <div id="testLogs" class="logs" style="display: none; max-height: 200px;"></div>
-                    <!-- Progress bar within the container -->
                     <div id="inContainerProgress" style="display: none; margin: 8px 0;">
-                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; height: 24px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <div id="inContainerProgressBar" style="background: linear-gradient(90deg, #0070f3, #0056b3); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center;">
+                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; height: 24px; overflow: hidden;">
+                            <div id="inContainerProgressBar" style="background: linear-gradient(90deg, #28a745, #20c997); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center;">
                                 <span id="inContainerProgressText" style="color: white; font-weight: bold; font-size: 12px; margin-left: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></span>
                             </div>
                         </div>
                     </div>
-                    <div style="margin-top: 8px;">
-                        <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; margin-right: 4px; display: none;">Show/Hide Logs</button>
-                        <a id="reportLinkBtn" href="http://localhost:9323" target="_blank" class="action-button" style="background: #17a2b8; font-size: 10px; text-decoration: none;">HTML Report</a>
+                    <div class="secondary-actions">
+                        <button id="toggleLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
+                        <a id="reportLinkBtn" href="http://localhost:9323" target="_blank" class="action-button" style="background: #6c757d; font-size: 10px; text-decoration: none;">HTML Report</a>
+                    </div>
+                </div>
+                <div class="test-actions">
+                    <button id="runTestsBtn" class="run-test-btn">Run Playwright Tests</button>
+                    <div class="filter-input-wrapper" style="width: 220px;">
+                        <input type="text" id="testFileInput" placeholder="Test file (optional)" style="width: 100%;">
+                        <button class="clear-btn" id="clearTestFileBtn">&times;</button>
                     </div>
                 </div>
             </div>
 
-            <div id="laravel-tests" class="service success">
-                <div>
+            <!-- Laravel Tests -->
+            <div id="laravel-tests" class="service loading test-suite">
+                <div class="test-info">
                     <strong>Laravel Tests (iznik-batch)</strong><br>
                     <small>Tests batch processor services (runs in parallel with paratest)</small><br>
                     <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-batch</small><br>
                     <span class="status">Ready to run</span>
-                    <div class="container-actions" style="margin-top: 8px;">
-                        <button id="runLaravelTestsBtn" class="action-button">Run Laravel Tests</button>
-                    </div>
                     <div id="laravelTestStatus" style="margin-top: 8px; font-family: monospace; font-size: 12px;"></div>
                     <div id="laravelTestLogs" class="logs" style="display: none; max-height: 200px;"></div>
-                    <div style="margin-top: 8px;">
-                        <button id="toggleLaravelLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px; display: none;">Show/Hide Logs</button>
+                    <div class="secondary-actions" style="display: none;" id="laravelSecondaryActions">
+                        <button id="toggleLaravelLogsBtn" class="action-button" style="background: #6c757d; font-size: 10px;">Show/Hide Logs</button>
                     </div>
+                </div>
+                <div class="test-actions">
+                    <button id="runLaravelTestsBtn" class="run-test-btn">Run Laravel Tests</button>
                 </div>
             </div>
         </div>
@@ -1173,15 +1191,22 @@
                         }
                     }
 
-                    // PHP tests also depend on API v1 and v2 being ready
+                    // PHP tests use the apiv1-phpunit container which is started on demand.
+                    // They only need the basic infrastructure services (percona, redis, beanstalkd) to be ready.
                     const phpTestsElement = document.getElementById('php-tests');
                     const phpTestBtn = document.getElementById('runPhpTestsBtn');
                     if (phpTestsElement) {
-                        if (basicServicesReady) {
+                        // Check if basic infrastructure is ready (use service IDs, not container names)
+                        const perconaReady = allStatus['percona'] && allStatus['percona'].status === 'success';
+                        const redisReady = allStatus['redis'] && allStatus['redis'].status === 'success';
+                        const beanstalkdReady = allStatus['beanstalkd'] && allStatus['beanstalkd'].status === 'success';
+                        const infraReady = perconaReady && redisReady && beanstalkdReady;
+
+                        if (infraReady) {
                             // Only update class if not currently running tests
                             if (!phpTestsElement.querySelector('#phpTestStatus').textContent.includes('Running')) {
                                 phpTestsElement.className = 'service online';
-                                phpTestsElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Click to run tests</small>';
+                                phpTestsElement.querySelector('.status').innerHTML = 'Ready<br><small style="font-weight: normal; color: #666;">Container starts on demand</small>';
                                 if (phpTestBtn) {
                                     phpTestBtn.disabled = false;
                                     phpTestBtn.style.background = '#17a2b8';
@@ -1190,8 +1215,9 @@
                         } else {
                             phpTestsElement.className = 'service loading';
                             const waitingFor = [];
-                            if (!apiv1Ready) waitingFor.push('API v1');
-                            if (!apiv2Ready) waitingFor.push('API v2');
+                            if (!perconaReady) waitingFor.push('Percona');
+                            if (!redisReady) waitingFor.push('Redis');
+                            if (!beanstalkdReady) waitingFor.push('Beanstalkd');
                             phpTestsElement.querySelector('.status').innerHTML = `Waiting for services...<br><small style="font-weight: normal; color: #666;">Needs: ${waitingFor.join(', ')}</small>`;
                             if (phpTestBtn) {
                                 phpTestBtn.disabled = true;
@@ -1744,14 +1770,14 @@
                 progressLabel.style.color = 'transparent';
             } else {
                 progressText.textContent = '';
-                progressLabel.style.color = '#ccc';
+                progressLabel.style.color = '#333';  // Dark text for readability
             }
 
             // Change color if there are failures
             if (progress.failed > 0) {
                 progressBar.style.background = 'linear-gradient(90deg, #d32f2f, #f44336)';
             } else {
-                progressBar.style.background = 'linear-gradient(90deg, #0070f3, #00a8ff)';
+                progressBar.style.background = 'linear-gradient(90deg, #28a745, #20c997)';  // Green progress
             }
         }
 

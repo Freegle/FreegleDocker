@@ -864,47 +864,53 @@ async function runPlaywrightTests(testFile = null, testName = null) {
       testStatus.logs += `Warning: Failed to restart container: ${restartError.message}\n`;
     }
 
-    // Set up test database - same as CircleCI's setup-test-database command
-    testStatus.message = "Setting up test database...";
-    testStatus.logs += "Setting up test database and environment...\n";
+    // Verify Traefik routes are working before running tests
+    // This ensures Traefik has discovered and can route to all backends
+    // Run from Playwright container which has host network access to .localhost domains
+    testStatus.message = "Verifying Traefik routes...";
+    testStatus.logs += "Verifying Traefik routes are accessible...\n";
 
-    try {
-      // Load database schema (matches CircleCI setup-test-database)
-      execSync(
-        `docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \\
-          sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \\
-          sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \\
-          sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \\
-          sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
-          sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
-          mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \\
-          mysql -h percona -u root -piznik iznik < install/schema.sql && \\
-          mysql -h percona -u root -piznik iznik < install/functions.sql && \\
-          mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \\
-          mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\\" && \\
-          mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"
-        "`,
-        {
-          encoding: "utf8",
-          timeout: 120000,
-        }
-      );
-      testStatus.logs += "Database schema loaded\n";
+    const routesToVerify = [
+      { name: 'freegle-prod', url: 'http://freegle-prod-local.localhost/' },
+      { name: 'apiv2', url: 'http://apiv2.localhost:8192/api/group?id=1' },
+      { name: 'delivery', url: 'http://delivery.localhost/?url=http://freegle-prod-local.localhost/icon.png&w=16&output=png' },
+    ];
 
-      // Run testenv.php to create FreeglePlayground group and test users
-      execSync(
-        'docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"',
-        {
-          encoding: "utf8",
-          timeout: 60000,
+    for (const route of routesToVerify) {
+      let routeVerified = false;
+      const maxAttempts = 5;
+      const retryDelay = 2000;
+
+      for (let attempt = 1; attempt <= maxAttempts && !routeVerified; attempt++) {
+        try {
+          // Run curl from Playwright container which has host network access
+          const curlResult = execSync(
+            `docker exec freegle-playwright curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${route.url}"`,
+            { encoding: 'utf8', timeout: 15000 }
+          ).trim();
+
+          const statusCode = parseInt(curlResult, 10);
+          if (statusCode >= 200 && statusCode < 500) {
+            testStatus.logs += `✓ ${route.name} route verified (HTTP ${statusCode})\n`;
+            routeVerified = true;
+          } else {
+            testStatus.logs += `  ${route.name} attempt ${attempt}/${maxAttempts}: HTTP ${statusCode}\n`;
+          }
+        } catch (curlError) {
+          testStatus.logs += `  ${route.name} attempt ${attempt}/${maxAttempts}: ${curlError.message}\n`;
         }
-      );
-      testStatus.logs += "Test environment set up (FreeglePlayground group, test users)\n";
-    } catch (setupError) {
-      console.warn("Test database setup warning:", setupError.message);
-      testStatus.logs += `Warning: Test database setup issue: ${setupError.message}\n`;
-      // Continue anyway - the database might already be set up
+
+        if (!routeVerified && attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+
+      if (!routeVerified) {
+        testStatus.logs += `⚠ Warning: ${route.name} route not verified after ${maxAttempts} attempts\n`;
+      }
     }
+
+    testStatus.logs += "Route verification complete\n";
 
     testStatus.message = "Executing tests in Playwright container...";
     testStatus.logs += "Playwright container is ready\n";
@@ -1730,7 +1736,7 @@ const httpServer = http.createServer(async (req, res) => {
     try {
       res.writeHead(200, { "Content-Type": "text/plain" });
 
-      // Go tests create their own test data - no testenv.php setup needed
+      // Go tests use a separate iznik_go_test database (same as CircleCI)
       const { spawn } = require("child_process");
       const testProcess = spawn(
         "sh",
@@ -1738,8 +1744,24 @@ const httpServer = http.createServer(async (req, res) => {
           "-c",
           `
         set -e
-        echo "Running Go tests..."
-        docker exec -w /app freegle-apiv2 go test ./test/... -v
+        echo "Setting up Go test database (iznik_go_test)..."
+
+        # Load database schema into separate Go test database (allows parallel execution)
+        docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \\
+          sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \\
+          sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \\
+          sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \\
+          sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
+          sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
+          mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \\
+          mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \\
+          mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \\
+          mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql && \\
+          mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\\" && \\
+          mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"" || echo "Warning: Database setup had issues, continuing..."
+
+        echo "Running Go tests against iznik_go_test database..."
+        docker exec -w /app freegle-apiv2 sh -c "export MYSQL_DBNAME=iznik_go_test && go test ./test/... -v"
       `,
         ],
         {
@@ -1879,13 +1901,87 @@ const httpServer = http.createServer(async (req, res) => {
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("PHP tests started successfully");
 
+        // Start and wait for the apiv1-phpunit container to be healthy
+        testStatus.message = "Starting PHPUnit test container...";
+        testStatus.logs += "Starting freegle-apiv1-phpunit container...\n";
+
+        try {
+          // Start the container if it's stopped (container must be created by docker-compose first)
+          // We use 'docker start' because docker-compose from inside the container has path issues
+          execSync("docker start freegle-apiv1-phpunit", {
+            encoding: "utf8",
+            timeout: 60000,
+          });
+          testStatus.logs += "Container started, waiting for health check...\n";
+
+          // Wait for container to be healthy (up to 2 minutes)
+          const maxWait = 120000;
+          const containerStartTime = Date.now();
+          let healthy = false;
+
+          while (Date.now() - containerStartTime < maxWait) {
+            try {
+              const health = execSync(
+                'docker inspect --format="{{.State.Health.Status}}" freegle-apiv1-phpunit 2>/dev/null || echo "unknown"',
+                { encoding: "utf8" }
+              ).trim();
+
+              if (health === "healthy") {
+                healthy = true;
+                break;
+              }
+
+              testStatus.message = `Waiting for container (${health})...`;
+              testStatus.logs += `Container health: ${health}\n`;
+
+              // Wait 5 seconds before checking again
+              execSync("sleep 5");
+            } catch (err) {
+              // Container might not exist yet
+              execSync("sleep 5");
+            }
+          }
+
+          if (!healthy) {
+            throw new Error("Container failed to become healthy within 2 minutes");
+          }
+
+          testStatus.logs += "Container is healthy!\n";
+        } catch (startError) {
+          console.error("Failed to start PHPUnit container:", startError.message);
+          testStatus.status = "failed";
+          testStatus.message = `Failed to start container: ${startError.message}`;
+          testStatus.logs += `ERROR: ${startError.message}\n`;
+          testStatus.endTime = Date.now();
+          return;
+        }
+
+        // Set up test environment
+        testStatus.message = "Setting up test environment...";
+        testStatus.logs += "Setting up test environment...\n";
+
+        try {
+          execSync(
+            'docker exec freegle-apiv1-phpunit sh -c "cd /var/www/iznik && php install/testenv.php"',
+            {
+              encoding: "utf8",
+              timeout: 60000,
+            }
+          );
+          testStatus.logs += "Test environment set up (FreeglePlayground group, test users)\n";
+        } catch (setupError) {
+          console.warn("Test database setup warning:", setupError.message);
+          testStatus.logs += `Warning: Test database setup issue: ${setupError.message}\n`;
+          // Continue anyway - the database might already be set up
+        }
+
         // Run PHPUnit tests and write output to file
         const { spawn } = require("child_process");
         const outputFile = "/tmp/phpunit-output.log";
 
         // First, clear the output file
         execSync(
-          `docker exec freegle-apiv1 sh -c "rm -f ${outputFile} && touch ${outputFile}"`
+          `docker exec freegle-apiv1-phpunit sh -c "rm -f ${outputFile} && touch ${outputFile}"`
         );
 
         // Don't try to pre-count tests - TeamCity output will give us the correct count
@@ -1906,7 +2002,7 @@ const httpServer = http.createServer(async (req, res) => {
           [
             "-c",
             `
-          docker exec -w /var/www/iznik freegle-apiv1 sh -c "
+          docker exec -w /var/www/iznik freegle-apiv1-phpunit sh -c "
             echo 'Setting up test environment...' | tee ${outputFile} && \\
             php install/testenv.php 2>&1 | tee -a ${outputFile} || echo 'Warning: testenv.php failed but continuing...' | tee -a ${outputFile}; \\
             echo 'Running PHPUnit tests via wrapper script...' | tee -a ${outputFile} && \\
@@ -1931,7 +2027,7 @@ const httpServer = http.createServer(async (req, res) => {
             // This ensures we don't miss tests that run faster than our polling interval
             try {
               const markerCount = execSync(
-                `docker exec freegle-apiv1 sh -c "grep -c '##PHPUNIT_TEST_STARTED##' ${outputFile} 2>/dev/null || echo '0'"`,
+                `docker exec freegle-apiv1-phpunit sh -c "grep -c '##PHPUNIT_TEST_STARTED##' ${outputFile} 2>/dev/null || echo '0'"`,
                 { encoding: "utf8" }
               ).trim();
               const count = parseInt(markerCount) || 0;
@@ -1944,7 +2040,7 @@ const httpServer = http.createServer(async (req, res) => {
 
             // Get the last few lines for status message and other info
             const lastLines = execSync(
-              `docker exec freegle-apiv1 sh -c "tail -n 10 ${outputFile} 2>/dev/null || echo ''"`,
+              `docker exec freegle-apiv1-phpunit sh -c "tail -n 10 ${outputFile} 2>/dev/null || echo ''"`,
               { encoding: "utf8" }
             ).trim();
             if (lastLines) {
@@ -2069,7 +2165,7 @@ const httpServer = http.createServer(async (req, res) => {
           // Get final output
           try {
             const finalOutput = execSync(
-              `docker exec freegle-apiv1 sh -c "cat ${outputFile} 2>/dev/null || echo ''"`,
+              `docker exec freegle-apiv1-phpunit sh -c "cat ${outputFile} 2>/dev/null || echo ''"`,
               { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
             ); // 50MB buffer
             testStatus.logs = finalOutput;
