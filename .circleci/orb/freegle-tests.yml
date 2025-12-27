@@ -1338,6 +1338,23 @@ jobs:
               echo "Configuring PHPUnit to use iznik_phpunit_test..."
               docker exec freegle-apiv1 sh -c "sed -i \"s/'SQLDB', '[^']*'/'SQLDB', 'iznik_phpunit_test'/\" /etc/iznik.conf"
 
+              # Restart background.php so it picks up the new database config
+              # The background.php reads config at startup and keeps DB connections, so we need to restart it
+              echo "Restarting background job processors..."
+              docker exec freegle-apiv1 sh -c "
+                # Kill existing background processors (they read config at startup)
+                pkill -f 'php ./background.php' 2>/dev/null || true
+                pkill -f 'php ./chat_process.php' 2>/dev/null || true
+                # Wait a moment for them to die
+                sleep 2
+                # Start them fresh with new config (running in background)
+                cd /var/www/iznik/scripts/cron
+                nohup php ./background.php >> /tmp/iznik.background.out 2>&1 &
+                nohup php ./chat_process.php >> /tmp/iznik.chat_process.out 2>&1 &
+                sleep 1
+                echo 'Background processors restarted'
+              "
+
               # Run test environment setup
               echo "Running testenv.php..."
               docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php" || echo "Warning: testenv.php had issues but continuing..."
@@ -1373,6 +1390,16 @@ jobs:
 
               # Restore original database config (so container continues to work normally)
               docker exec freegle-apiv1 sh -c "sed -i \"s/'SQLDB', 'iznik_phpunit_test'/'SQLDB', 'iznik'/\" /etc/iznik.conf"
+
+              # Restart background processors with restored config
+              docker exec freegle-apiv1 sh -c "
+                pkill -f 'php ./background.php' 2>/dev/null || true
+                pkill -f 'php ./chat_process.php' 2>/dev/null || true
+                sleep 1
+                cd /var/www/iznik/scripts/cron
+                nohup php ./background.php >> /tmp/iznik.background.out 2>&1 &
+                nohup php ./chat_process.php >> /tmp/iznik.chat_process.out 2>&1 &
+              " 2>/dev/null || true
             ) 2>&1 | sed 's/^/[PHPUnit] /' &
             PHPUNIT_PID=$!
 
