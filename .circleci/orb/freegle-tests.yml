@@ -701,6 +701,10 @@ commands:
             fi
             echo "🧪 << parameters.reason >>..."
 
+            # Clear Laravel caches to prevent stale bootstrap/cache/services.php
+            docker exec freegle-batch php artisan optimize:clear 2>&1 || true
+            docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
+
             # Run tests in parallel with coverage using paratest
             # --cache-directory: Required by PHPUnit 11 for coverage static analysis cache
             echo "Running Laravel tests in parallel with coverage..."
@@ -1259,6 +1263,10 @@ jobs:
             # Start Laravel tests in background (using paratest for parallel execution)
             echo "🧪 Starting Laravel tests in background..."
             (
+              # Clear Laravel caches to prevent stale bootstrap/cache/services.php
+              docker exec freegle-batch php artisan optimize:clear 2>&1 || true
+              docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
+
               if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml; then
                 echo "pass" > /tmp/laravel-result
                 echo "✅ Laravel tests passed!"
