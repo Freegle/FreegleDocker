@@ -1914,8 +1914,9 @@ const httpServer = http.createServer(async (req, res) => {
           });
           testStatus.logs += "Container started, waiting for health check...\n";
 
-          // Wait for container to be healthy (up to 2 minutes)
-          const maxWait = 120000;
+          // Wait for container to be healthy (up to 5 minutes)
+          // Docker healthcheck has start_period: 120s + retries, so we need to wait longer
+          const maxWait = 300000;
           const containerStartTime = Date.now();
           let healthy = false;
 
@@ -1943,7 +1944,7 @@ const httpServer = http.createServer(async (req, res) => {
           }
 
           if (!healthy) {
-            throw new Error("Container failed to become healthy within 2 minutes");
+            throw new Error("Container failed to become healthy within 5 minutes");
           }
 
           testStatus.logs += "Container is healthy!\n";
