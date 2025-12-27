@@ -486,6 +486,7 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
       - SKIP_DB_INIT=${SKIP_DB_INIT:-false}
       - PHEANSTALK_SERVER=beanstalkd
+      - PHEANSTALK_TUBE=phpunit
       - REDIS_CONNECT=redis
       - SQLDB=iznik_phpunit_test
       - IMAGE_DOMAIN=apiv1-phpunit
