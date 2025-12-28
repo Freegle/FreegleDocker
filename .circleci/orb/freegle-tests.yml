@@ -1053,8 +1053,8 @@ commands:
               docker exec freegle-batch bash -c "cd /var/www/html && git config --global --add safe.directory /var/www/html && git init && git config user.email 'circleci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/FreegleDocker.git && git add -A && git commit -m 'CI commit' --allow-empty" 2>/dev/null || true
 
               # Run php-coveralls from within the container
-              # Note: Uses COVERALLS_REPO_TOKEN_IZNIK_BATCH for iznik-batch repo
-              if docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN_IZNIK_BATCH" \
+              # Note: Uses main COVERALLS_REPO_TOKEN since iznik-batch is part of FreegleDocker
+              if docker exec -e COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN" \
                  -e COVERALLS_RUN_LOCALLY=1 \
                  -e CI_NAME=circleci \
                  -e CI_BUILD_NUMBER="$CIRCLE_BUILD_NUM" \
