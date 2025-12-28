@@ -925,11 +925,11 @@ commands:
             COVERAGE_FOUND=false
 
             # Try the standard test path first (used by PR tests)
-            if docker cp freegle-apiv1:/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+            if docker cp freegle-apiv1-phpunit:/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
               COVERAGE_FOUND=true
               echo "Found PHP coverage at /var/www/iznik/test/ut/php/clover.xml"
             # Also try /tmp/phpunit-coverage.xml (used by status service when running via API)
-            elif docker cp freegle-apiv1:/tmp/phpunit-coverage.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+            elif docker cp freegle-apiv1-phpunit:/tmp/phpunit-coverage.xml /tmp/phpunit-clover.xml 2>/dev/null; then
               COVERAGE_FOUND=true
               echo "Found PHP coverage at /tmp/phpunit-coverage.xml"
             fi
@@ -974,9 +974,10 @@ commands:
                 echo "✅ PHP coverage uploaded"
                 echo "PHP_UPLOADED=true" >> $BASH_ENV
               else
-                echo "⚠️ PHP coverage upload failed"
+                echo "❌ PHP coverage upload failed"
                 echo "DEBUG: Checking if php-coveralls exists..."
                 docker exec freegle-apiv1 ls -la /var/www/iznik/composer/vendor/bin/php-coveralls 2>&1 || echo "DEBUG: php-coveralls not found"
+                exit 1
               fi
             else
               echo "ℹ️ No PHP coverage found at either location"
@@ -1394,7 +1395,21 @@ jobs:
                 mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \
                 mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql"
 
-              if docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..."; then
+              # Count total Go tests dynamically using -list flag
+              GO_TEST_COUNT=$(docker exec freegle-apiv2 sh -c "cd /workspace && go test -list=. ./test/... 2>/dev/null | wc -l")
+              echo "$GO_TEST_COUNT" > /tmp/go-total
+              echo "0" > /tmp/go-completed
+              echo "Found $GO_TEST_COUNT Go tests"
+
+              # Run tests and track progress
+              if docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..." | tee /tmp/go-test-output.tmp | while IFS= read -r line; do
+                echo "$line"
+                # Update completed count when a test passes or fails
+                if echo "$line" | grep -q "^--- PASS:\|^--- FAIL:"; then
+                  COMPLETED=$(cat /tmp/go-completed 2>/dev/null || echo 0)
+                  echo $((COMPLETED + 1)) > /tmp/go-completed
+                fi
+              done; then
                 echo "pass" > /tmp/go-result
                 echo "✅ Go tests passed!"
               else
@@ -1495,11 +1510,14 @@ jobs:
               elapsed_min=$((elapsed / 60))
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
+              GO_COMPLETED=$([ -f /tmp/go-completed ] && cat /tmp/go-completed || echo '0')
+              GO_TOTAL=$([ -f /tmp/go-total ] && cat /tmp/go-total || echo '0')
+              GO_DISPLAY=$([ "$GO_STATUS" = "running" ] && echo "$GO_STATUS ($GO_COMPLETED/$GO_TOTAL)" || echo "$GO_STATUS")
               PHP_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
               PHP_COMPLETED=$([ -f /tmp/php-completed ] && cat /tmp/php-completed || echo '0')
               PHP_TOTAL=$([ -f /tmp/php-total ] && cat /tmp/php-total || echo '0')
               PHP_DISPLAY=$([ "$PHP_STATUS" = "running" ] && echo "$PHP_STATUS ($PHP_COMPLETED/$PHP_TOTAL)" || echo "$PHP_STATUS")
-              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | Laravel: $LARAVEL_STATUS | Go: $GO_STATUS | PHPUnit: $PHP_DISPLAY"
+              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | iznik-batch: $LARAVEL_STATUS | iznik-server-go: $GO_DISPLAY | iznik-server: $PHP_DISPLAY"
 
               # Fail-fast: Check if any background test has failed
               if [ "$LARAVEL_STATUS" = "fail" ]; then
