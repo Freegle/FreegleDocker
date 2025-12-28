@@ -1897,23 +1897,22 @@ const httpServer = http.createServer(async (req, res) => {
         "-c",
         `
         set -e
-        echo "Clearing ALL Laravel cache files to force fresh bootstrap..."
+        echo "Clearing Laravel cache files (using sh -c for proper glob expansion inside container)..."
         # Use sh -c to ensure glob expansion happens inside the container
-        # Clear ALL cache files - let each ParaTest worker bootstrap Laravel fresh
         docker exec freegle-batch sh -c 'rm -rf /var/www/html/bootstrap/cache/*.php' 2>&1 || true
         docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/cache/*' 2>&1 || true
         docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/views/*' 2>&1 || true
 
-        # Also clear PHP OPcache to avoid stale bytecode
-        echo "Clearing PHP OPcache..."
-        docker exec freegle-batch php -r "if (function_exists('opcache_reset')) { opcache_reset(); echo 'OPcache cleared'; } else { echo 'OPcache not available'; }" 2>&1 || true
-
         echo "Cache directory after deletion:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
-        # DO NOT pre-generate any cache files - this causes race conditions with ParaTest
-        # Each parallel worker will bootstrap Laravel fresh, which is slower but more reliable
-        echo "NOT pre-generating cache - each worker will bootstrap fresh"
+        echo "Pre-generating cache files to prevent parallel access issues..."
+        # Skip cache:clear and config:clear as they require bootstrap which may fail with corrupted cache
+        docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
+        docker exec freegle-batch php artisan config:cache 2>&1 || true
+
+        echo "Cache directory after regeneration:"
+        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
         echo "Running Laravel tests in parallel with coverage..."
         docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
