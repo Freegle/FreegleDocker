@@ -1404,8 +1404,7 @@ jobs:
       - wait-for-basic-services
       - run-php-tests:
           reason: "Running PHPUnit tests for PR"
-      - upload-coverage:
-          expected: "php"
+      # Coverage uploaded inline by status API
       - collect-artifacts
 
   go-tests:
@@ -1420,8 +1419,7 @@ jobs:
       - wait-for-basic-services
       - run-go-tests:
           reason: "Running Go tests for PR"
-      - upload-coverage:
-          expected: "go"
+      # Coverage uploaded inline by status API
       - collect-artifacts
 
   playwright-tests:
@@ -1438,8 +1436,7 @@ jobs:
       - setup-test-database
       - run-playwright-tests:
           reason: "Running Playwright tests for PR"
-      - upload-coverage:
-          expected: "playwright"
+      # Coverage uploaded inline by status API
       - collect-artifacts
 
   # === FreegleDocker Main Build Job ===
@@ -1575,79 +1572,87 @@ jobs:
             docker logs freegle-batch --tail 50 2>&1 || true
             exit 1
 
-      # Run Laravel, Playwright, Go, and PHPUnit tests in parallel
+      # Run Laravel, Playwright, Go, and PHPUnit tests in parallel via status API
       - run:
           name: Run Laravel, Playwright, Go, and PHPUnit tests in parallel
           command: |
-            echo "🚀 Running all tests in parallel..."
+            echo "🚀 Running all tests in parallel via status API..."
             mkdir -p ~/test-output
             TESTS_KILLED_EARLY=false
 
             # Start Laravel tests in background
             echo "🧪 Starting Laravel tests in background..."
             (
-              echo "🧹 Clearing ALL Laravel cache files to force fresh bootstrap..."
-              # CRITICAL: Must use sh -c for glob expansion inside Docker container
-              docker exec freegle-batch sh -c 'rm -rf /var/www/html/bootstrap/cache/*.php' 2>&1 || true
-              docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/cache/data/*' 2>&1 || true
-              # NOT pre-generating cache - each ParaTest worker will bootstrap fresh
-              # Pre-generating causes race conditions where parallel workers corrupt shared cache files
-              echo "⚠️ NOT pre-generating cache - each worker will bootstrap fresh"
+              # Trigger Laravel tests via status API
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/laravel)
+              http_code="${response: -3}"
 
-              if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml; then
-                # Ensure coverage file is flushed to disk before subprocess exits
-                docker exec freegle-batch sync
-                sleep 1
-                # Copy coverage file out of container immediately after tests finish
-                docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null && \
-                  echo "✅ Copied Laravel coverage file ($(stat -f%z /tmp/laravel-clover.xml 2>/dev/null || stat -c%s /tmp/laravel-clover.xml) bytes)" || \
-                  echo "⚠️  Failed to copy Laravel coverage file"
-                echo "pass" > /tmp/laravel-result
-                echo "✅ Laravel tests passed!"
-              else
+              if [ "$http_code" -ne "200" ]; then
+                echo "❌ Failed to trigger Laravel tests. HTTP code: $http_code"
                 echo "fail" > /tmp/laravel-result
-                echo "❌ Laravel tests failed!"
+                exit 1
               fi
+
+              echo "✅ Laravel tests triggered successfully"
+
+              # Poll for Laravel completion
+              while true; do
+                sleep 10
+                status_response=$(curl -s http://localhost:8081/api/tests/laravel/status || echo '{"status":"error"}')
+                status=$(echo "$status_response" | jq -r '.status // "unknown"')
+
+                if [ "$status" = "completed" ]; then
+                  echo "pass" > /tmp/laravel-result
+                  echo "✅ Laravel tests passed!"
+                  break
+                elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                  echo "fail" > /tmp/laravel-result
+                  echo "❌ Laravel tests failed!"
+                  echo "$status_response" | jq -r '.logs // "No logs"'
+                  break
+                fi
+              done
             ) > ~/test-output/laravel.out 2>&1 &
             LARAVEL_PID=$!
 
-            # Start Go tests in background (uses separate iznik_go_test database)
+            # Start Go tests in background
             echo "🧪 Starting Go tests in background..."
             (
-              # Load database schema into separate Go test database
-              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
-                sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
-                sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
-                sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
-                sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-                sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-                mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \
-                mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \
-                mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \
-                mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql"
+              # Trigger Go tests via status API
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/go)
+              http_code="${response: -3}"
 
-              # Count total Go tests dynamically using -list flag
-              # Note: The container's WORKDIR is /app (not /workspace)
-              GO_TEST_COUNT=$(docker exec freegle-apiv2 sh -c "cd /app && go test -list=. ./test/... 2>/dev/null | wc -l")
-              echo "$GO_TEST_COUNT" > /tmp/go-total
-              echo "0" > /tmp/go-completed
-              echo "Found $GO_TEST_COUNT Go tests"
-
-              # Run tests and track progress
-              if docker exec freegle-apiv2 sh -c "export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./..." | tee /tmp/go-test-output.tmp | while IFS= read -r line; do
-                echo "$line"
-                # Update completed count when a test passes or fails
-                if echo "$line" | grep -q "^--- PASS:\|^--- FAIL:"; then
-                  COMPLETED=$(cat /tmp/go-completed 2>/dev/null || echo 0)
-                  echo $((COMPLETED + 1)) > /tmp/go-completed
-                fi
-              done; then
-                echo "pass" > /tmp/go-result
-                echo "✅ Go tests passed!"
-              else
+              if [ "$http_code" -ne "200" ]; then
+                echo "❌ Failed to trigger Go tests. HTTP code: $http_code"
                 echo "fail" > /tmp/go-result
-                echo "❌ Go tests failed!"
+                exit 1
               fi
+
+              echo "✅ Go tests triggered successfully"
+
+              # Poll for Go completion
+              while true; do
+                sleep 10
+                status_response=$(curl -s http://localhost:8081/api/tests/go/status || echo '{"status":"error"}')
+                status=$(echo "$status_response" | jq -r '.status // "unknown"')
+
+                # Extract progress for display
+                completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+                total=$(echo "$status_response" | jq -r '.progress.total // 0')
+                echo "$completed" > /tmp/go-completed
+                echo "$total" > /tmp/go-total
+
+                if [ "$status" = "completed" ]; then
+                  echo "pass" > /tmp/go-result
+                  echo "✅ Go tests passed!"
+                  break
+                elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                  echo "fail" > /tmp/go-result
+                  echo "❌ Go tests failed!"
+                  echo "$status_response" | jq -r '.logs // "No logs"'
+                  break
+                fi
+              done
             ) > ~/test-output/go.out 2>&1 &
             GO_PID=$!
 
@@ -1887,8 +1892,7 @@ jobs:
           path: ~/test-output
           destination: test-output
 
-      - upload-coverage:
-          expected: "go,php,playwright,laravel"
+      # Coverage is now uploaded inline via status API - no separate step needed
 
       - collect-artifacts
 
