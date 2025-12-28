@@ -122,6 +122,8 @@ commands:
               swapon --show
               echo "--- CPU Load ---"
               uptime
+              echo "--- Disk I/O (iowait% shows disk bottleneck) ---"
+              iostat -x 1 2 | tail -n +3
               echo "--- Top 5 Memory Consumers ---"
               ps aux --sort=-%mem | head -6
               echo "--- Docker Stats ---"
