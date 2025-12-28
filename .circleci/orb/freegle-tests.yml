@@ -1349,31 +1349,25 @@ jobs:
             # Start Laravel tests in background
             echo "🧪 Starting Laravel tests in background..."
             (
-              echo "🧹 Clearing Laravel cache files (using sh -c for proper glob expansion inside container)..."
+              echo "🧹 Clearing ALL Laravel cache files to force fresh bootstrap..."
               # Use sh -c to ensure glob expansion happens inside the container, not the host
-              # Also use absolute paths to avoid any path confusion
+              # Clear ALL cache files - let each ParaTest worker bootstrap Laravel fresh
+              # This avoids race conditions where multiple workers try to read/write shared cache files
               docker exec freegle-batch sh -c 'rm -rf /var/www/html/bootstrap/cache/*.php' 2>&1 || true
               docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/cache/*' 2>&1 || true
               docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/views/*' 2>&1 || true
+
+              # Also clear PHP OPcache to avoid stale bytecode
+              echo "🔄 Clearing PHP OPcache..."
+              docker exec freegle-batch php -r "if (function_exists('opcache_reset')) { opcache_reset(); echo 'OPcache cleared'; } else { echo 'OPcache not available'; }" 2>&1 || true
 
               # List cache directory to verify deletion worked
               echo "📋 Cache directory after deletion:"
               docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
-              echo "📦 Pre-generating cache files to prevent parallel access issues..."
-              # Skip cache:clear and config:clear as they require bootstrap which may fail with corrupted cache
-              # Just run package:discover and config:cache to create fresh cache files
-              docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
-              docker exec freegle-batch php artisan config:cache 2>&1 || true
-
-              # Make cache files read-only to prevent paratest workers from modifying them
-              # This prevents race conditions where multiple workers try to write to config.php simultaneously
-              echo "🔒 Making cache files read-only to prevent worker modifications..."
-              docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/*.php 2>&1 || true
-
-              # Verify cache files were created successfully
-              echo "📋 Cache directory after regeneration:"
-              docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
+              # DO NOT pre-generate any cache files - this causes race conditions with ParaTest
+              # Each parallel worker will bootstrap Laravel fresh, which is slower but more reliable
+              echo "⚠️ NOT pre-generating cache - each worker will bootstrap fresh"
 
               # Count total Laravel tests
               LARAVEL_TEST_COUNT=$(docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --list-tests 2>/dev/null | grep -c "^ - " || echo "0")
