@@ -56,6 +56,17 @@ class EmailTracking extends Model
         ?string $subject = null,
         ?array $metadata = null
     ): self {
+        // Validate that user exists to avoid foreign key constraint failures.
+        // If user doesn't exist, set userId to null.
+        if ($userId !== null && !User::where('id', $userId)->exists()) {
+            $userId = null;
+        }
+
+        // Similarly validate group exists.
+        if ($groupId !== null && !Group::where('id', $groupId)->exists()) {
+            $groupId = null;
+        }
+
         return self::create([
             'tracking_id' => self::generateTrackingId(),
             'email_type' => $emailType,
