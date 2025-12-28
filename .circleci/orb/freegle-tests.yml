@@ -162,6 +162,48 @@ commands:
             echo "Current working directory: $(pwd)"
             ls -la secrets/
 
+      - restore_cache:
+          keys:
+            - nuxt-cache-v1-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
+            - nuxt-cache-v1-freegle-{{ checksum "iznik-nuxt3/package.json" }}
+            - nuxt-cache-v1-freegle-
+      - restore_cache:
+          keys:
+            - nuxt-cache-v1-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}-{{ checksum "iznik-nuxt3-modtools/modtools/nuxt.config.ts" }}
+            - nuxt-cache-v1-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}
+            - nuxt-cache-v1-modtools-
+      - run:
+          name: Restore Nuxt build cache to build contexts
+          command: |
+            echo "=== Restoring Nuxt build cache ==="
+
+            # Restore Freegle cache
+            if [ -d ~/nuxt-cache/freegle/.nuxt ]; then
+              cp -r ~/nuxt-cache/freegle/.nuxt iznik-nuxt3/.nuxt
+              echo "✅ Restored Freegle .nuxt cache ($(du -sh ~/nuxt-cache/freegle/.nuxt | cut -f1))"
+            else
+              echo "ℹ️  No Freegle cache found (first build or cache expired)"
+            fi
+
+            # Restore ModTools cache (parent and modtools directories)
+            if [ -d ~/nuxt-cache/modtools/.nuxt ]; then
+              cp -r ~/nuxt-cache/modtools/.nuxt iznik-nuxt3-modtools/.nuxt
+              echo "✅ Restored ModTools parent .nuxt cache ($(du -sh ~/nuxt-cache/modtools/.nuxt | cut -f1))"
+            else
+              echo "ℹ️  No ModTools parent cache found"
+            fi
+
+            if [ -d ~/nuxt-cache/modtools/modtools/.nuxt ]; then
+              mkdir -p iznik-nuxt3-modtools/modtools
+              cp -r ~/nuxt-cache/modtools/modtools/.nuxt iznik-nuxt3-modtools/modtools/.nuxt
+              echo "✅ Restored ModTools .nuxt cache ($(du -sh ~/nuxt-cache/modtools/modtools/.nuxt | cut -f1))"
+            else
+              echo "ℹ️  No ModTools cache found"
+            fi
+
+      - run:
+          name: Build containers
+          command: |
             # Force rebuild with --pull to get latest base images
             # This ensures we get the most recent freegle-base with updated dependencies
             echo "Building and starting services with fresh base images..."
@@ -200,6 +242,42 @@ commands:
             fi
             echo ""
             echo "✅ All containers verified"
+
+      - run:
+          name: Extract and save Nuxt build cache
+          command: |
+            echo "=== Extracting Nuxt build cache ==="
+
+            # Create cache directories
+            mkdir -p ~/nuxt-cache/freegle
+            mkdir -p ~/nuxt-cache/modtools/modtools
+
+            # Extract Freegle cache
+            if docker inspect freegle-prod-local >/dev/null 2>&1; then
+              docker cp freegle-prod-local:/app/.nuxt ~/nuxt-cache/freegle/.nuxt 2>/dev/null && \
+                echo "✅ Extracted Freegle .nuxt cache ($(du -sh ~/nuxt-cache/freegle/.nuxt | cut -f1))" || \
+                echo "ℹ️  No Freegle .nuxt directory found in container"
+            fi
+
+            # Extract ModTools cache (both parent and modtools directories)
+            if docker inspect modtools-prod-local >/dev/null 2>&1; then
+              docker cp modtools-prod-local:/app/.nuxt ~/nuxt-cache/modtools/.nuxt 2>/dev/null && \
+                echo "✅ Extracted ModTools parent .nuxt cache ($(du -sh ~/nuxt-cache/modtools/.nuxt | cut -f1))" || \
+                echo "ℹ️  No ModTools parent .nuxt directory found"
+
+              docker cp modtools-prod-local:/app/modtools/.nuxt ~/nuxt-cache/modtools/modtools/.nuxt 2>/dev/null && \
+                echo "✅ Extracted ModTools .nuxt cache ($(du -sh ~/nuxt-cache/modtools/modtools/.nuxt | cut -f1))" || \
+                echo "ℹ️  No ModTools .nuxt directory found"
+            fi
+
+      - save_cache:
+          key: nuxt-cache-v1-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
+          paths:
+            - ~/nuxt-cache/freegle
+      - save_cache:
+          key: nuxt-cache-v1-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}-{{ checksum "iznik-nuxt3-modtools/modtools/nuxt.config.ts" }}
+          paths:
+            - ~/nuxt-cache/modtools
 
   clone-freegle-docker:
     description: "Clone FreegleDocker and initialize submodules"
@@ -1355,6 +1433,9 @@ jobs:
               docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
 
               if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml; then
+                # Ensure coverage file is flushed to disk before subprocess exits
+                docker exec freegle-batch sync
+                sleep 1
                 echo "pass" > /tmp/laravel-result
                 echo "✅ Laravel tests passed!"
               else

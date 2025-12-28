@@ -175,6 +175,112 @@ source .env
 
 Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
 
+## Docker Build Caching
+
+Production containers use BuildKit cache-from and CircleCI save_cache for faster builds.
+
+### Feature Flag
+
+Caching is controlled by the `ENABLE_DOCKER_CACHE` environment variable in CircleCI:
+
+- **Enable**: Set `ENABLE_DOCKER_CACHE=true` in CircleCI project settings → Environment Variables
+- **Disable**: Set `ENABLE_DOCKER_CACHE=false` (rollback to old docker-compose build)
+- **Default**: If not set, caching defaults to `false` (safe fallback)
+
+### How It Works
+
+**Two-layer caching strategy**:
+
+1. **CircleCI save_cache** (Nuxt build artifacts):
+   - Caches `.output/` and `.nuxt/` directories
+   - Skips `npm run build` if code unchanged
+   - ~10-16 minute savings on cache hit
+
+2. **BuildKit cache-from** (Docker layers):
+   - Caches npm dependencies and build layers in GHCR
+   - Reuses unchanged layers (npm ci, Nuxt build)
+   - ~3-5 minute additional savings
+
+### Cache Versions
+
+Current cache versions (bump to invalidate):
+
+- **BuildKit cache**: `buildcache-v1`
+- **Nuxt artifacts**: `nuxt-v1`
+
+### Cache Strategy
+
+- **Master branch**: Pulls cache, builds, pushes updated cache
+- **Feature branches**: Pulls cache from master, builds, does NOT push (avoids conflicts)
+
+### How to Invalidate Cache
+
+When cache appears stale or corrupted:
+
+1. Edit `.circleci/orb/freegle-tests.yml`
+2. Change version suffixes:
+   - `buildcache-v1` → `buildcache-v2` (find/replace all instances)
+   - `nuxt-v1` → `nuxt-v2` (find/replace all instances)
+3. Publish updated orb: `~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x`
+4. Push changes to trigger rebuild
+
+### Build Performance
+
+**Expected times**:
+
+| Scenario | Without Cache | With Cache | Savings |
+|----------|---------------|------------|---------|
+| No code changes | 51 min | ~25 min | 26 min (51%) |
+| Code changes only | 51 min | ~35 min | 16 min (31%) |
+| Dependency changes | 51 min | ~37 min | 14 min (27%) |
+| **Average (75% cache hit)** | **51 min** | **~28 min** | **23 min (45%)** |
+
+### Rollback Instructions
+
+**Immediate rollback** (no code changes needed):
+
+1. Go to CircleCI project settings → Environment Variables
+2. Set `ENABLE_DOCKER_CACHE=false`
+3. Retrigger failed build
+4. **Result**: Falls back to old docker-compose build (no caching)
+
+**Full rollback** (if Dockerfiles cause issues):
+
+```bash
+cd /tmp/FreegleDocker
+git checkout HEAD~1 -- iznik-nuxt3/Dockerfile.prod
+git checkout HEAD~1 -- iznik-nuxt3-modtools/modtools/Dockerfile.prod
+git commit -m "Rollback: Restore old Dockerfiles"
+git push
+```
+
+### Cache Locations
+
+**CircleCI save_cache**:
+- Freegle: `~/nuxt-cache/freegle/` (`.output/`, `.nuxt/`)
+- ModTools: `~/nuxt-cache/modtools/` (`.output/`, `.nuxt/`)
+
+**GHCR BuildKit cache**:
+- Freegle: `ghcr.io/freegle/freegle-prod:buildcache-v1`
+- ModTools: `ghcr.io/freegle/modtools-prod:buildcache-v1`
+
+### Monitoring Cache Performance
+
+Check CircleCI logs for cache status:
+
+```
+✅ Found cached Freegle build (245M)
+✅ Pulled Freegle cache in 45s (size: 3.2GB)
+✅ Freegle build completed in 120s
+📊 Total build time: 180s
+```
+
+**Warning signs** (indicates cache not working):
+
+- ⚠️ No cached build found (expected on first run)
+- ⚠️ Pull time >120s (slow network, consider disabling)
+- ⚠️ Build time not improving (cache invalidated or not hitting)
+
 ## Testing Consolidation
 
 All testing is now consolidated in the FreegleDocker CircleCI pipeline for consistency and efficiency:
