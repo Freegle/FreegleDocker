@@ -4,7 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
-return Application::configure(basePath: dirname(__DIR__))
+$app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
@@ -16,3 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();
+
+// ParaTest support: use per-worker bootstrap cache to prevent race conditions.
+// Without this, parallel workers corrupt shared services.php/packages.php files.
+$bootstrapCachePath = getenv('PARATEST_BOOTSTRAP_CACHE');
+if ($bootstrapCachePath && is_dir($bootstrapCachePath)) {
+    $app->useBootstrapPath($bootstrapCachePath);
+}
+
+return $app;
