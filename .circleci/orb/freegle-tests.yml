@@ -1396,7 +1396,8 @@ jobs:
                 mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql"
 
               # Count total Go tests dynamically using -list flag
-              GO_TEST_COUNT=$(docker exec freegle-apiv2 sh -c "cd /workspace && go test -list=. ./test/... 2>/dev/null | wc -l")
+              # Note: The container's WORKDIR is /app (not /workspace)
+              GO_TEST_COUNT=$(docker exec freegle-apiv2 sh -c "cd /app && go test -list=. ./test/... 2>/dev/null | wc -l")
               echo "$GO_TEST_COUNT" > /tmp/go-total
               echo "0" > /tmp/go-completed
               echo "Found $GO_TEST_COUNT Go tests"
