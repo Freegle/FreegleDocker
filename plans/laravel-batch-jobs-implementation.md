@@ -988,6 +988,17 @@ iznik-server-laravel/
             └── UserManagementServiceTest.php
 ```
 
+### PHP Code Cleanup (Completed)
+
+The following PHP code has been removed from iznik-server now that Laravel batch handles these emails:
+
+#### Welcome Email (Generic)
+- **Removed:** `User::welcome()` function from `include/user/User.php`
+- **Removed:** `$u->welcome()` call from `include/mail/MailRouter.php` (email subscription flow)
+- **Removed:** `mailtemplates/mjml/welcome/welcome.mjml` and `mailtemplates/twig/welcome/welcome.html`
+- **Removed:** `scripts/fix/fix_welcome.php`
+- **Kept:** Per-group welcome emails (`Group::sendWelcome()`) - still sent via PHP
+
 ### Remaining Work
 
 1. **Additional Commands**: More commands from the original 127 scripts could be ported (e.g., spam detection, moderator notifications, external integrations).
