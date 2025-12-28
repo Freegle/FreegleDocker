@@ -1441,6 +1441,10 @@ jobs:
                 # Ensure coverage file is flushed to disk before subprocess exits
                 docker exec freegle-batch sync
                 sleep 1
+                # Copy coverage file out of container immediately after tests finish
+                docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null && \
+                  echo "✅ Copied Laravel coverage file ($(stat -f%z /tmp/laravel-clover.xml 2>/dev/null || stat -c%s /tmp/laravel-clover.xml) bytes)" || \
+                  echo "⚠️  Failed to copy Laravel coverage file"
                 echo "pass" > /tmp/laravel-result
                 echo "✅ Laravel tests passed!"
               else
