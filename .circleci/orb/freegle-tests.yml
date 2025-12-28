@@ -1429,10 +1429,13 @@ jobs:
             # Start Laravel tests in background
             echo "🧪 Starting Laravel tests in background..."
             (
-              echo "🧹 Clearing Laravel cache files..."
-              docker exec freegle-batch rm -f bootstrap/cache/*.php 2>&1 || true
-              docker exec freegle-batch rm -rf storage/framework/cache/data/* 2>&1 || true
-              docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
+              echo "🧹 Clearing ALL Laravel cache files to force fresh bootstrap..."
+              # CRITICAL: Must use sh -c for glob expansion inside Docker container
+              docker exec freegle-batch sh -c 'rm -rf /var/www/html/bootstrap/cache/*.php' 2>&1 || true
+              docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/cache/data/*' 2>&1 || true
+              # NOT pre-generating cache - each ParaTest worker will bootstrap fresh
+              # Pre-generating causes race conditions where parallel workers corrupt shared cache files
+              echo "⚠️ NOT pre-generating cache - each worker will bootstrap fresh"
 
               if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml; then
                 # Ensure coverage file is flushed to disk before subprocess exits
