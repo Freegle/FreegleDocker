@@ -1374,22 +1374,8 @@ jobs:
               echo "📋 Cache directory after regeneration:"
               docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
-              # Count total Laravel tests
-              LARAVEL_TEST_COUNT=$(docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --list-tests 2>/dev/null | grep -c "^ - " || echo "0")
-              echo "$LARAVEL_TEST_COUNT" > /tmp/laravel-total
-              echo "0" > /tmp/laravel-completed
-              echo "Found $LARAVEL_TEST_COUNT Laravel tests"
-
-              # Run tests and track progress
-              if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml | tee /tmp/laravel-test-output.tmp | while IFS= read -r line; do
-                echo "$line"
-                # Update completed count when a test passes or fails
-                if echo "$line" | grep -qE "^\s*(✔|✘|OK|FAIL)"; then
-                  COMPLETED=$(cat /tmp/laravel-completed 2>/dev/null || echo "0")
-                  COMPLETED=$((COMPLETED + 1))
-                  echo "$COMPLETED" > /tmp/laravel-completed
-                fi
-              done; [ "${PIPESTATUS[0]}" -eq 0 ]; then
+              # Run Laravel tests
+              if docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml; then
                 echo "pass" > /tmp/laravel-result
                 echo "✅ Laravel tests passed!"
               else
