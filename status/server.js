@@ -1897,16 +1897,22 @@ const httpServer = http.createServer(async (req, res) => {
         "-c",
         `
         set -e
-        echo "Clearing Laravel cache files..."
-        docker exec freegle-batch rm -rf bootstrap/cache/* 2>&1 || true
-        docker exec freegle-batch rm -rf storage/framework/cache/* 2>&1 || true
-        docker exec freegle-batch rm -rf storage/framework/views/* 2>&1 || true
-        docker exec freegle-batch php artisan cache:clear 2>&1 || true
-        docker exec freegle-batch php artisan config:clear 2>&1 || true
+        echo "Clearing Laravel cache files (using sh -c for proper glob expansion inside container)..."
+        # Use sh -c to ensure glob expansion happens inside the container
+        docker exec freegle-batch sh -c 'rm -rf /var/www/html/bootstrap/cache/*.php' 2>&1 || true
+        docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/cache/*' 2>&1 || true
+        docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/views/*' 2>&1 || true
+
+        echo "Cache directory after deletion:"
+        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
         echo "Pre-generating cache files to prevent parallel access issues..."
+        # Skip cache:clear and config:clear as they require bootstrap which may fail with corrupted cache
         docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
         docker exec freegle-batch php artisan config:cache 2>&1 || true
+
+        echo "Cache directory after regeneration:"
+        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
         echo "Running Laravel tests in parallel with coverage..."
         docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
