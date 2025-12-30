@@ -33,6 +33,16 @@ get_mtime() {
     fi
 }
 
+# Function to get file size
+get_size() {
+    local file="$1"
+    if [[ -f "$file" ]]; then
+        stat -c %s "$file" 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
+}
+
 # Function to determine target container
 get_container_info() {
     local file_path="$1"
@@ -98,6 +108,7 @@ do_sync() {
 # Background process to handle settling files
 process_pending_syncs() {
     declare -A PENDING_MTIME
+    declare -A ZERO_LENGTH_WAIT  # Track how long we've waited for zero-length files
 
     while true; do
         sleep 2
@@ -128,6 +139,7 @@ process_pending_syncs() {
             if [[ ! -f "$file_path" ]]; then
                 # File was deleted, remove from pending
                 unset PENDING_MTIME["$file_path"]
+                unset ZERO_LENGTH_WAIT["$file_path"]
                 continue
             fi
 
@@ -135,12 +147,31 @@ process_pending_syncs() {
             local last_mtime="${PENDING_MTIME[$file_path]}"
 
             if [[ "$current_mtime" == "$last_mtime" ]]; then
-                # File hasn't changed in 2 seconds - it's settled, sync it
+                # File hasn't changed in 2 seconds - it's settled
+                local file_size=$(get_size "$file_path")
+
+                if [[ "$file_size" == "0" ]]; then
+                    # Zero-length file - likely still being written
+                    # Wait up to 10 more seconds before giving up
+                    local wait_count="${ZERO_LENGTH_WAIT[$file_path]:-0}"
+                    if (( wait_count < 5 )); then
+                        ZERO_LENGTH_WAIT["$file_path"]=$((wait_count + 1))
+                        echo "[$(date '+%H:%M:%S')] Waiting for content: $(basename "$file_path") (attempt $((wait_count + 1))/5)"
+                        continue
+                    else
+                        # Gave up waiting - sync anyway (might be intentionally empty)
+                        echo "[$(date '+%H:%M:%S')] Warning: Syncing zero-length file after timeout: $(basename "$file_path")"
+                        unset ZERO_LENGTH_WAIT["$file_path"]
+                    fi
+                fi
+
                 do_sync "$file_path"
                 unset PENDING_MTIME["$file_path"]
             else
                 # File changed, update mtime and wait another cycle
                 PENDING_MTIME["$file_path"]=$current_mtime
+                # Reset zero-length wait counter since file is changing
+                unset ZERO_LENGTH_WAIT["$file_path"]
             fi
         done
     done
@@ -167,7 +198,8 @@ if ! command -v inotifywait &> /dev/null; then
 fi
 
 echo "Starting file watcher with settle detection..."
-echo "(Files will sync after 2 seconds of no changes)"
+echo "(Files sync after 2 seconds of no changes)"
+echo "(Zero-length files wait up to 10 extra seconds for content)"
 echo ""
 
 # Initialize queue file
@@ -178,7 +210,9 @@ process_pending_syncs &
 SETTLE_PID=$!
 
 # Monitor file changes - exclude node_modules, .git, build artifacts, and migrations
-inotifywait -m -r -e modify,create,move \
+# IMPORTANT: close_write is essential - it signals when a file is fully written
+# Without it, we might sync files while they're still being written (empty/partial)
+inotifywait -m -r -e modify,create,move,close_write \
     --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|migrations|~|\.tmp|\.swp|\.log)' \
     "$PROJECT_DIR/iznik-nuxt3" \
     "$PROJECT_DIR/iznik-nuxt3-modtools" \
