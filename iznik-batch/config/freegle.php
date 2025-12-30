@@ -39,6 +39,8 @@ return [
         // Email types: Welcome, ChatNotification, etc.
         // If empty, NO emails will be sent (fail-safe default).
         'enabled_types' => env('FREEGLE_MAIL_ENABLED_TYPES', ''),
+        // GeekAlerts email for system alerts and failure notifications.
+        'geek_alerts_addr' => env('FREEGLE_GEEK_ALERTS_ADDR', 'geek-alerts@ilovefreegle.org'),
     ],
 
     'images' => [

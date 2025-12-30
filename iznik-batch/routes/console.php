@@ -22,6 +22,14 @@ Schedule::command('mail:welcome:send --limit=100 --spool')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Fetch UK CPI inflation data from ONS - runs monthly.
+// Used to inflation-adjust the "benefit of reuse" value from the 2011 WRAP report.
+// Sends alert email to GeekAlerts if fetch fails.
+Schedule::command('data:update-cpi')
+    ->monthly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // =============================================================================
 // DISABLED COMMANDS (to be enabled when ready)
 // =============================================================================
