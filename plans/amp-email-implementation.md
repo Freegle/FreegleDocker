@@ -1,5 +1,49 @@
 # AMP Email Implementation Plan
 
+## Current Status (December 2024)
+
+### ✅ Completed
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **Go API - AMP Endpoints** | ✅ Done | `/amp/chat/:id` (GET), `/amp/chat/:id/reply` (POST) |
+| **Go API - Token Validation** | ✅ Done | Read tokens (HMAC), write tokens (one-time DB nonce) |
+| **Go API - CORS Middleware** | ✅ Done | Supports both v1 and v2 AMP CORS flows |
+| **Laravel - AmpEmail Trait** | ✅ Done | Token generation, MIME structure |
+| **Laravel - AmpWriteToken Model** | ✅ Done | One-time use tokens with DB storage |
+| **Laravel - ChatNotification AMP** | ✅ Done | AMP template for chat notifications |
+| **Loki Logging** | ✅ Done | Reply source tracking (amp/email/website) |
+| **Email Header Capture** | ✅ Done | Generic header capture including Reply-To |
+| **Database Migration** | ✅ Done | `amp_write_tokens` table created |
+
+### ⏳ Pending
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **Google Sender Registration** | ❌ Not started | See "Important Note" below |
+| **Yahoo Sender Registration** | ❌ Not started | Same registration form as Google |
+| **Jobs AMP Template** | ❌ Not started | Dynamic job listings in emails |
+| **Digest AMP Support** | ❌ Not started | AMP for digest emails |
+| **Production Rollout** | ❌ Not started | Waiting on sender registration |
+
+### ⚠️ Important Note: Sender Registration Required
+
+**AMP emails will NOT render for end users until we complete sender registration with Google and Yahoo.**
+
+Currently:
+- AMP functionality is fully implemented in code
+- Emails are being sent with AMP MIME parts
+- **However**, Gmail and Yahoo will strip the AMP content and show only the HTML fallback until we are registered
+
+To enable AMP for users, we must:
+1. Complete the [Google AMP for Email Sender Registration](https://docs.google.com/forms/d/e/1FAIpQLSdso95e7UDLk_R-bnpzsAmuUMDQEMUgTErcfGGItBDkghHU2A/viewform)
+2. Meet Google's requirements (SPF/DKIM/DMARC in place for 3+ months, consistent sending history)
+3. Wait for approval (typically 5 working days, up to 2 weeks to take effect)
+
+For **testing purposes**, developers can enable Gmail Developer Mode (see "Testing Before Whitelisting" section).
+
+---
+
 ## Overview
 
 This plan outlines the implementation of AMP (Accelerated Mobile Pages) for Email across Freegle's notification system. AMP enables dynamic, interactive email content that can fetch fresh data when opened and allow inline actions like replying to chats.
@@ -1657,21 +1701,24 @@ func TestAMPTokenExpiry(t *testing.T) {
 
 ## Rollout Plan
 
-### Phase 1: Development & Testing (2-4 weeks)
-- Implement Go API endpoints
-- Implement Laravel AMP traits and templates
-- Unit and integration tests
-- Internal testing with Gmail Developer Mode
+### Phase 1: Development & Testing ✅ COMPLETE
+- ✅ Implement Go API endpoints
+- ✅ Implement Laravel AMP traits and templates
+- ✅ Unit and integration tests
+- ✅ Internal testing with Gmail Developer Mode
+- ✅ Loki logging for reply source analytics
 
-### Phase 2: Limited Rollout (2 weeks)
+### Phase 2: Google/Yahoo Registration ⏳ NOT STARTED
+- Submit registration to Google (single form covers Gmail, Yahoo, Mail.ru)
+- Ensure SPF/DKIM/DMARC requirements are met
+- Await approval (typically 5 working days)
+- Test with real Gmail delivery post-approval
+
+### Phase 3: Limited Rollout
 - Enable for small percentage of users (feature flag)
 - Monitor for errors and issues
 - Gather feedback on UX
-
-### Phase 3: Google Registration (1-2 weeks)
-- Submit registration to Google
-- Await approval
-- Test with real Gmail delivery
+- Review Loki analytics for reply source distribution
 
 ### Phase 4: Full Rollout
 - Enable for all eligible emails
