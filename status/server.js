@@ -2215,6 +2215,17 @@ const httpServer = http.createServer(async (req, res) => {
                       testStatus.progress.total = parseInt(countMatch[1]);
                     }
                   }
+
+                  // Look for paratest progress format: "63 / 801 (  7%)"
+                  const paratestMatch = line.match(/(\d+)\s*\/\s*(\d+)\s*\(/);
+                  if (paratestMatch) {
+                    const completed = parseInt(paratestMatch[1]);
+                    const total = parseInt(paratestMatch[2]);
+                    if (total > 0) {
+                      testStatus.progress.completed = completed;
+                      testStatus.progress.total = total;
+                    }
+                  }
                 }
 
                 // Update status message based on content
