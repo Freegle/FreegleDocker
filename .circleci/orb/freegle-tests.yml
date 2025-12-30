@@ -449,16 +449,16 @@ commands:
                 break
               else
                 elapsed_min=$((elapsed / 60))
-                echo "[${elapsed_min}m] Freegle Prod: $freegle_prod_status | ModTools Prod: $modtools_prod_status - waiting..."
+                echo "[${elapsed_min}m] FD Prod: ${freegle_prod_status} | MT Prod: ${modtools_prod_status} - waiting..."
 
                 # Show container logs if they're having issues
                 if [ "$freegle_prod_status" = "failed" ] || [ "$freegle_prod_status" = "error" ]; then
-                  echo "Freegle Production container logs (last 10 lines):"
+                  echo "FD Production container logs (last 10 lines):"
                   docker logs freegle-prod-local --tail 10 2>&1 || true
                 fi
 
                 if [ "$modtools_prod_status" = "failed" ] || [ "$modtools_prod_status" = "error" ]; then
-                  echo "ModTools Production container logs (last 10 lines):"
+                  echo "MT Production container logs (last 10 lines):"
                   docker logs modtools-prod-local --tail 10 2>&1 || true
                 fi
 
