@@ -1793,6 +1793,9 @@ const httpServer = http.createServer(async (req, res) => {
           mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\\" && \\
           mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"" || echo "Warning: Database setup had issues, continuing..."
 
+        echo "Running Laravel migrations on Go test database..."
+        docker exec -e DB_DATABASE=iznik_go_test freegle-batch php artisan migrate --force || echo "Warning: Laravel migrations had issues, continuing..."
+
         echo "Running Go tests against iznik_go_test database..."
         docker exec -w /app freegle-apiv2 sh -c "${testCmd} 2>&1"
       `,
