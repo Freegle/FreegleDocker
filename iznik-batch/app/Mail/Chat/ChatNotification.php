@@ -3,6 +3,7 @@
 namespace App\Mail\Chat;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\AmpEmail;
 use App\Mail\Traits\LoggableEmail;
 use App\Mail\Traits\TrackableEmail;
 use App\Models\ChatMessage;
@@ -20,6 +21,7 @@ class ChatNotification extends MjmlMailable
 {
     use TrackableEmail;
     use LoggableEmail;
+    use AmpEmail;
 
     public User $recipient;
 
@@ -112,7 +114,7 @@ class ChatNotification extends MjmlMailable
         return new Envelope(
             from: new Address($this->replyToAddress, $this->fromDisplayName),
             replyTo: [new Address($this->replyToAddress, $this->fromDisplayName)],
-            subject: $this->replySubject,
+            subject: $this->getSubject(),
         );
     }
 
@@ -157,7 +159,7 @@ class ChatNotification extends MjmlMailable
             : null;
 
         $this->to($this->recipient->email_preferred, $this->recipient->displayname)
-            ->subject($this->replySubject)
+            ->subject($this->getSubject())
             ->mjmlView('emails.mjml.chat.notification', array_merge([
                 'recipient' => $this->recipient,
                 'recipientName' => $this->recipient->displayname,
@@ -182,6 +184,16 @@ class ChatNotification extends MjmlMailable
                 'jobsUrl' => $this->trackedUrl($this->userSite . '/jobs', 'jobs_link', 'jobs'),
                 'donateUrl' => $this->trackedUrl('https://freegle.in/paypal1510', 'donate_link', 'donate'),
             ], $this->getTrackingData()), 'emails.text.chat.notification');
+
+        // Render AMP version if enabled and this is a User2User chat.
+        if ($this->isAmpEnabled() && $this->chatType === ChatRoom::TYPE_USER2USER && $this->recipient->exists) {
+            $this->renderAmpContent();
+
+            // TEMPORARY: Write AMP HTML to file for validator testing
+            if ($this->ampHtml) {
+                file_put_contents('/tmp/amp-email.html', $this->ampHtml);
+            }
+        }
 
         // Add custom X-Freegle headers and read receipts.
         $this->withSymfonyMessage(function (Email $symfonyMessage) {
@@ -218,6 +230,9 @@ class ChatNotification extends MjmlMailable
                 $headers->addTextHeader('Disposition-Notification-To', $readReceiptAddr);
                 $headers->addTextHeader('Return-Receipt-To', $readReceiptAddr);
             }
+
+            // Apply AMP content if rendered.
+            $this->applyAmpToMessage($symfonyMessage);
         });
 
         // Apply email logging if configured.
@@ -231,7 +246,24 @@ class ChatNotification extends MjmlMailable
      */
     protected function getSubject(): string
     {
-        return $this->replySubject;
+        // TEMPORARY: Add AMP indicator to subject for debugging
+        // Shows conditions that determine if AMP will render
+        $ampEnabled = $this->isAmpEnabled();
+        $isU2U = $this->chatType === ChatRoom::TYPE_USER2USER;
+        $recipientExists = $this->recipient->exists;
+
+        // AMP renders if all conditions pass
+        if ($ampEnabled && $isU2U && $recipientExists) {
+            $ampIndicator = '[AMP-WILL] ';
+        } else {
+            $parts = [];
+            if (!$ampEnabled) $parts[] = 'disabled';
+            if (!$isU2U) $parts[] = 'type:' . $this->chatType;
+            if (!$recipientExists) $parts[] = 'noRecip';
+            $ampIndicator = '[AMP-' . implode(',', $parts) . '] ';
+        }
+
+        return $ampIndicator . $this->replySubject;
     }
 
     /**
@@ -240,20 +272,93 @@ class ChatNotification extends MjmlMailable
     protected function generateSubject(): string
     {
         $senderName = $this->sender?->displayname ?? 'Someone';
+        $snippet = $this->getSubjectSnippet();
 
         if ($this->chatType === ChatRoom::TYPE_USER2MOD) {
             $group = $this->chatRoom->group;
             $groupName = $group?->nameshort ?? 'your local Freegle group';
-            return "Message from {$groupName} volunteers";
+            $base = "Message from {$groupName} volunteers";
+            return $snippet ? "{$base}: {$snippet}" : $base;
         }
 
         if ($this->refMessage) {
             // Use "Regarding:" instead of "Re:" for Validity Certification compliance.
             // Email deliverability standards flag "Re:" as potentially deceptive.
-            return "Regarding: {$this->refMessage->subject}";
+            $base = "Regarding: {$this->refMessage->subject}";
+            return $snippet ? "{$base} - {$snippet}" : $base;
+        }
+
+        // For regular messages, include snippet directly.
+        if ($snippet) {
+            return "{$senderName}: {$snippet}";
         }
 
         return "{$senderName} sent you a message on Freegle";
+    }
+
+    /**
+     * Get a clean snippet of the message for use in subject lines.
+     * Matches the snippet format used in iznik-server ChatRoom::getSnippet().
+     *
+     * @param int $maxLength Maximum length of the snippet
+     */
+    protected function getSubjectSnippet(int $maxLength = 40): string
+    {
+        $text = $this->message->message ?? '';
+
+        // For certain message types, use generic descriptions (matching iznik-server).
+        switch ($this->message->type) {
+            case ChatMessage::TYPE_ADDRESS:
+                return 'Address sent...';
+            case ChatMessage::TYPE_NUDGE:
+                return 'Nudged';
+            case ChatMessage::TYPE_PROMISED:
+                return 'Item promised...';
+            case ChatMessage::TYPE_RENEGED:
+                return 'Promise cancelled...';
+            case ChatMessage::TYPE_COMPLETED:
+                // Match iznik-server: different text for OFFER (TAKEN) vs WANTED (RECEIVED).
+                if ($this->refMessage?->type === Message::TYPE_OFFER) {
+                    if (!empty($text)) {
+                        break; // Use the text below.
+                    }
+                    return 'Item marked as TAKEN';
+                }
+                return 'Item marked as RECEIVED...';
+            case ChatMessage::TYPE_SCHEDULE:
+                return 'Collection time suggested...';
+            case ChatMessage::TYPE_IMAGE:
+                // If there's text with the image, use that; otherwise use generic.
+                if (empty($text)) {
+                    return 'Image...';
+                }
+                break;
+            case ChatMessage::TYPE_INTERESTED:
+                // If there's text, use it; otherwise use generic.
+                if (empty($text)) {
+                    return 'Interested...';
+                }
+                break;
+            // For DEFAULT and MODMAIL, use the actual text.
+        }
+
+        // Decode emoji escape sequences.
+        $text = EmojiUtils::decodeEmojis($text);
+
+        // If empty after processing, return empty.
+        if (empty(trim($text))) {
+            return '';
+        }
+
+        // Clean up the text for a subject line (normalize whitespace, remove newlines).
+        $text = preg_replace('/\s+/', ' ', trim($text));
+
+        // Truncate with ellipsis if needed.
+        if (mb_strlen($text) > $maxLength) {
+            $text = mb_substr($text, 0, $maxLength - 1) . '…';
+        }
+
+        return $text;
     }
 
     /**
@@ -633,5 +738,46 @@ class ChatNotification extends MjmlMailable
         $sourceUrl = "{$imagesDomain}/timg_{$attachment->id}.jpg";
 
         return $this->getDeliveryUrl($sourceUrl, 200);
+    }
+
+    /**
+     * Render the AMP version of the email.
+     *
+     * AMP emails allow dynamic content (fetching new messages) and
+     * inline actions (replying without leaving the email client).
+     */
+    protected function renderAmpContent(): void
+    {
+        // Get the email tracking ID for analytics.
+        $trackingId = $this->tracking?->id;
+
+        // Build AMP API URLs.
+        $ampChatUrl = $this->buildAmpChatUrl(
+            $this->chatRoom->id,
+            $this->recipient->id,
+            $this->message->id, // Exclude the triggering message
+            $this->message->id  // Mark messages newer than this as NEW
+        );
+
+        $ampReplyUrl = $this->buildAmpReplyUrl(
+            $this->chatRoom->id,
+            $this->recipient->id,
+            $trackingId
+        );
+
+        // Prepare the message with display-friendly data.
+        $preparedMessage = $this->prepareMessage($this->message);
+
+        // Render the AMP template.
+        $this->renderAmpTemplate('emails.amp.chat.notification', [
+            'recipient' => $this->recipient,
+            'sender' => $this->sender,
+            'senderName' => $this->sender?->displayname ?? 'Someone',
+            'chatRoom' => $this->chatRoom,
+            'chatMessage' => $preparedMessage,
+            'chatUrl' => $this->chatUrl,
+            'ampChatUrl' => $ampChatUrl,
+            'ampReplyUrl' => $ampReplyUrl,
+        ]);
     }
 }

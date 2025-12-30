@@ -5,6 +5,9 @@ namespace App\Services;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\Part\Multipart\AlternativePart;
+use Symfony\Component\Mime\Part\TextPart;
 
 /**
  * File-based email spooler service.
@@ -57,12 +60,23 @@ class EmailSpoolerService
             }
         }
 
+        // Extract AMP HTML if the mailable uses the AmpEmail trait.
+        $ampHtml = null;
+        if (property_exists($mailable, 'ampHtml') && !empty($mailable->ampHtml)) {
+            $ampHtml = $mailable->ampHtml;
+        }
+
+        // Generate plain text version from HTML.
+        $textContent = $this->htmlToPlainText($rendered);
+
         $data = [
             'id' => $id,
             'to' => is_array($to) ? $to : [$to],
             'bcc' => $bcc,
             'subject' => $envelope->subject,
             'html' => $rendered,
+            'amp_html' => $ampHtml,
+            'text' => $textContent,
             'from' => [
                 'address' => $envelope->from?->address ?? config('mail.from.address'),
                 'name' => $envelope->from?->name ?? config('mail.from.name'),
@@ -83,6 +97,7 @@ class EmailSpoolerService
             'to' => $data['to'],
             'subject' => $data['subject'],
             'type' => $emailType,
+            'has_amp' => !empty($ampHtml),
         ]);
 
         return $id;
@@ -134,17 +149,23 @@ class EmailSpoolerService
             $data['last_attempt'] = now()->toIso8601String();
 
             try {
-                // Send the email.
-                Mail::html($data['html'], function ($message) use ($data) {
-                    $message->to($data['to'])
-                        ->subject($data['subject'])
-                        ->from($data['from']['address'], $data['from']['name']);
+                // Send the email with appropriate MIME structure.
+                if (!empty($data['amp_html'])) {
+                    // Send with AMP: multipart/alternative with text, AMP, and HTML.
+                    $this->sendWithAmp($data);
+                } else {
+                    // Standard HTML email.
+                    Mail::html($data['html'], function ($message) use ($data) {
+                        $message->to($data['to'])
+                            ->subject($data['subject'])
+                            ->from($data['from']['address'], $data['from']['name']);
 
-                    // Apply BCC if present.
-                    if (!empty($data['bcc'])) {
-                        $message->bcc($data['bcc']);
-                    }
-                });
+                        // Apply BCC if present.
+                        if (!empty($data['bcc'])) {
+                            $message->bcc($data['bcc']);
+                        }
+                    });
+                }
 
                 // Move to sent directory.
                 rename($sendingPath, $this->sentDir . '/' . $filename);
@@ -321,5 +342,79 @@ class EmailSpoolerService
         }
 
         return 'healthy';
+    }
+
+    /**
+     * Convert HTML to plain text for email fallback.
+     */
+    protected function htmlToPlainText(string $html): string
+    {
+        // Remove style and script tags and their content.
+        $text = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $html);
+        $text = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $text);
+
+        // Convert <br> and </p> to newlines.
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $text);
+        $text = preg_replace('/<\/p>/i', "\n\n", $text);
+        $text = preg_replace('/<\/div>/i', "\n", $text);
+        $text = preg_replace('/<\/tr>/i', "\n", $text);
+        $text = preg_replace('/<\/li>/i', "\n", $text);
+
+        // Convert links to text with URL.
+        $text = preg_replace('/<a[^>]+href=["\']([^"\']+)["\'][^>]*>([^<]+)<\/a>/i', '$2 ($1)', $text);
+
+        // Remove remaining HTML tags.
+        $text = strip_tags($text);
+
+        // Decode HTML entities.
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Normalize whitespace.
+        $text = preg_replace('/[ \t]+/', ' ', $text);
+        $text = preg_replace('/\n{3,}/', "\n\n", $text);
+        $text = trim($text);
+
+        return $text;
+    }
+
+    /**
+     * Send email with AMP content (multipart/alternative: text, AMP, HTML).
+     */
+    protected function sendWithAmp(array $data): void
+    {
+        // Create text part.
+        $textPart = new TextPart($data['text'] ?? $this->htmlToPlainText($data['html']), 'utf-8', 'plain');
+
+        // Create AMP part with correct MIME type.
+        $ampPart = new TextPart($data['amp_html'], 'utf-8', 'x-amp-html');
+
+        // Create HTML part.
+        $htmlPart = new TextPart($data['html'], 'utf-8', 'html');
+
+        // Create multipart/alternative with all versions.
+        // Order: text, AMP, HTML (AMP must come before HTML for proper fallback).
+        $alternativePart = new AlternativePart($textPart, $ampPart, $htmlPart);
+
+        // Build the email using raw Symfony Mailer.
+        $email = (new Email())
+            ->from(new \Symfony\Component\Mime\Address($data['from']['address'], $data['from']['name']))
+            ->subject($data['subject'])
+            ->setBody($alternativePart);
+
+        // Add recipients.
+        foreach ($data['to'] as $recipient) {
+            $email->addTo($recipient);
+        }
+
+        // Add BCC if present.
+        if (!empty($data['bcc'])) {
+            foreach ($data['bcc'] as $bccRecipient) {
+                $email->addBcc($bccRecipient);
+            }
+        }
+
+        // Send via the transport.
+        $transport = app('mail.manager')->getSymfonyTransport();
+        $transport->send($email, \Symfony\Component\Mailer\Envelope::create($email));
     }
 }

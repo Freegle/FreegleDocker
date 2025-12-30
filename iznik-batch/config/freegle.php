@@ -120,4 +120,35 @@ return [
         'rspamd_port' => env('RSPAMD_PORT', 11334),
         'fail_threshold' => env('SPAM_FAIL_THRESHOLD', 5.0),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AMP for Email
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for AMP (Accelerated Mobile Pages) email support.
+    | AMP emails allow dynamic content and inline actions like replying
+    | to messages directly from the email client.
+    |
+    */
+
+    'amp' => [
+        // Enable/disable AMP email generation
+        'enabled' => env('AMP_EMAIL_ENABLED', true),
+
+        // Secret key for HMAC token generation (read tokens)
+        'secret' => env('AMP_SECRET', env('FREEGLE_AMP_SECRET', '')),
+
+        // API endpoint for AMP requests
+        'api_url' => env('AMP_API_URL', 'https://api.ilovefreegle.org/amp'),
+
+        // Token expiry times
+        'read_token_expiry_hours' => env('AMP_READ_TOKEN_EXPIRY', 168), // 7 days
+        'write_token_expiry_hours' => env('AMP_WRITE_TOKEN_EXPIRY', 168), // 7 days
+
+        // Note: AMP CORS validation checks domain suffix, not specific sender.
+        // Allowed domains are configured in the Go API: @ilovefreegle.org,
+        // @users.ilovefreegle.org, @mail.ilovefreegle.org
+        // Per-recipient FROM addresses like notify-xxx@users.ilovefreegle.org work fine.
+    ],
 ];
