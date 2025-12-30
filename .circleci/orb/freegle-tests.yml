@@ -1541,7 +1541,7 @@ jobs:
 
       - setup-test-database
 
-      # Wait for batch container to be healthy before running Laravel tests
+      # Wait for batch container to be healthy and migrations complete before running tests
       - run:
           name: Wait for batch container to be healthy
           command: |
@@ -1554,7 +1554,7 @@ jobs:
 
               if [ "$STATUS" = "healthy" ]; then
                 echo "✅ Batch container is healthy!"
-                exit 0
+                break
               elif [ "$RUNNING" = "false" ]; then
                 echo "❌ Batch container is not running!"
                 echo "Container logs:"
@@ -1567,9 +1567,31 @@ jobs:
               ELAPSED=$((ELAPSED + 5))
             done
 
-            echo "❌ Timeout waiting for batch container to be healthy"
-            echo "Container logs:"
-            docker logs freegle-batch --tail 50 2>&1 || true
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "❌ Timeout waiting for batch container to be healthy"
+              echo "Container logs:"
+              docker logs freegle-batch --tail 50 2>&1 || true
+              exit 1
+            fi
+
+            # Verify migrations have completed by checking for ready marker file
+            # The entrypoint creates /tmp/laravel-ready AFTER migrations complete
+            echo "⏳ Verifying Laravel migrations are complete..."
+            MIGRATION_TIMEOUT=120
+            MIGRATION_ELAPSED=0
+            while [ $MIGRATION_ELAPSED -lt $MIGRATION_TIMEOUT ]; do
+              if docker exec freegle-batch test -f /tmp/laravel-ready 2>/dev/null; then
+                echo "✅ Laravel ready marker found - migrations complete"
+                exit 0
+              fi
+
+              echo "[$MIGRATION_ELAPSED s] Waiting for /tmp/laravel-ready marker..."
+              sleep 5
+              MIGRATION_ELAPSED=$((MIGRATION_ELAPSED + 5))
+            done
+
+            echo "❌ Timeout waiting for migrations to complete"
+            docker logs freegle-batch --tail 30 2>&1 || true
             exit 1
 
       # Run Laravel, Playwright, Go, and PHPUnit tests in parallel via status API

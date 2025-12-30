@@ -1779,22 +1779,13 @@ const httpServer = http.createServer(async (req, res) => {
         set -e
         echo "Setting up Go test database (iznik_go_test)..."
 
-        # Load database schema into separate Go test database (allows parallel execution)
-        docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \\
-          sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \\
-          sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \\
-          sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \\
-          sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
-          sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \\
-          mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \\
-          mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \\
-          mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \\
-          mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql && \\
+        # Copy schema from main iznik database (which batch container has already migrated)
+        # This ensures Go tests have the exact same schema as production
+        docker exec freegle-apiv1 sh -c "\\
+          mysql -h percona -u root -piznik -e 'DROP DATABASE IF EXISTS iznik_go_test; CREATE DATABASE iznik_go_test;' && \\
+          mysqldump -h percona -u root -piznik --no-data --routines --triggers iznik | mysql -h percona -u root -piznik iznik_go_test && \\
           mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\\" && \\
           mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"" || echo "Warning: Database setup had issues, continuing..."
-
-        echo "Running Laravel migrations on Go test database..."
-        docker exec -e DB_DATABASE=iznik_go_test freegle-batch php artisan migrate --force || echo "Warning: Laravel migrations had issues, continuing..."
 
         echo "Running Go tests against iznik_go_test database..."
         docker exec -w /app freegle-apiv2 sh -c "${testCmd} 2>&1"
