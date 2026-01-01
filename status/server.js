@@ -1922,32 +1922,60 @@ const httpServer = http.createServer(async (req, res) => {
       // Parse paratest/PHPUnit output for progress
       const lines = text.split("\n");
       for (const line of lines) {
-        // Look for test count in paratest output
+        // Look for paratest progress format: "63 / 801 (  7%)" - this is the primary progress indicator
+        const paratestMatch = line.match(/(\d+)\s*\/\s*(\d+)\s*\(/);
+        if (paratestMatch) {
+          const completed = parseInt(paratestMatch[1]);
+          const total = parseInt(paratestMatch[2]);
+          if (total > 0) {
+            testStatuses.laravelTests.progress.completed = completed;
+            testStatuses.laravelTests.progress.total = total;
+            // Paratest doesn't distinguish pass/fail in progress line, assume all passed until we see failures
+            testStatuses.laravelTests.progress.passed = completed - testStatuses.laravelTests.progress.failed;
+          }
+        }
+
+        // Look for test count in final PHPUnit output
         const countMatch = line.match(/(\d+)\s+tests?,\s+(\d+)\s+assertions?/);
         if (countMatch) {
           testStatuses.laravelTests.progress.total = parseInt(countMatch[1]);
         }
-        // Count dots (.) for passes and F for failures
-        const dots = (line.match(/\./g) || []).length;
-        const fails = (line.match(/F/g) || []).length;
-        if (dots > 0 || fails > 0) {
-          testStatuses.laravelTests.progress.passed += dots;
-          testStatuses.laravelTests.progress.failed += fails;
-          testStatuses.laravelTests.progress.completed += dots + fails;
+
+        // Count F for failures in test output (paratest shows F for each failed test)
+        const failMatches = line.match(/\bF\b/g);
+        if (failMatches && !line.includes("Feature") && !line.includes("FAIL")) {
+          // Only count standalone F characters, not F in words like "Feature" or "FAIL"
+          const lineFailCount = (line.match(/^[.F]+$/g) || []).join('').match(/F/g);
+          if (lineFailCount) {
+            testStatuses.laravelTests.progress.failed += lineFailCount.length;
+          }
         }
-        // Look for "OK" or "FAILURES" in output
+
+        // Look for "OK" or "FAILURES" in final output
         if (line.includes("OK (")) {
           const okMatch = line.match(/OK \((\d+) tests?/);
           if (okMatch) {
             testStatuses.laravelTests.progress.passed = parseInt(okMatch[1]);
             testStatuses.laravelTests.progress.completed = parseInt(okMatch[1]);
+            testStatuses.laravelTests.progress.failed = 0;
+          }
+        }
+        if (line.includes("FAILURES!")) {
+          const failMatch = line.match(/Failures:\s*(\d+)/);
+          if (failMatch) {
+            testStatuses.laravelTests.progress.failed = parseInt(failMatch[1]);
           }
         }
       }
 
       // Update message with progress
       const p = testStatuses.laravelTests.progress;
-      testStatuses.laravelTests.message = `Running tests... ${p.passed}✓ ${p.failed}✗`;
+      if (p.total > 0) {
+        const percent = Math.round((p.completed / p.total) * 100);
+        testStatuses.laravelTests.message = `Running tests... ${p.completed}/${p.total} (${percent}%) ${p.failed > 0 ? `- ${p.failed} failed` : ''}`;
+      } else {
+        testStatuses.laravelTests.message = `Running tests... ${p.passed}✓ ${p.failed}✗`;
+      }
     });
 
     testProcess.stderr.on("data", (data) => {
@@ -1959,9 +1987,11 @@ const httpServer = http.createServer(async (req, res) => {
       testStatuses.laravelTests.status = code === 0 ? "completed" : "failed";
       testStatuses.laravelTests.success = code === 0;
       testStatuses.laravelTests.endTime = Date.now();
+      const total = p.total > 0 ? p.total : p.completed;
+      const passed = total - p.failed;
       testStatuses.laravelTests.message = code === 0
-        ? `All tests passed (${p.passed}✓)`
-        : `Tests failed (${p.passed}✓ ${p.failed}✗)`;
+        ? `All ${total} tests passed ✓`
+        : `Tests failed: ${passed}✓ ${p.failed}✗ of ${total}`;
       console.log(`Laravel tests completed with code ${code}`);
     });
 
