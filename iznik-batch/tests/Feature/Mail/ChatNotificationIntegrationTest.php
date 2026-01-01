@@ -29,6 +29,7 @@ class ChatNotificationIntegrationTest extends TestCase
     protected const TEST_ENV_SYMBOLS = [
         "DMARC_POLICY_REJECT" => 2.0,   // Would pass in production with DKIM
         "HFILTER_HOSTNAME_UNKNOWN" => 2.5, // Hostname resolves in production
+        "URL_NO_TLD" => 2.0,             // Test env uses .localhost domains
     ];
 
     protected function setUp(): void

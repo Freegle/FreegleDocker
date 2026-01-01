@@ -90,6 +90,48 @@ class ChatNotificationTest extends TestCase
         $this->assertStringContainsString('/chats/' . $room->id, $mail->chatUrl);
     }
 
+    public function test_chat_notification_returns_recipient_user_id(): void
+    {
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        // Use reflection to call protected getRecipientUserId method.
+        $reflection = new \ReflectionMethod($mail, 'getRecipientUserId');
+        $userId = $reflection->invoke($mail);
+
+        $this->assertEquals($user2->id, $userId, 'getRecipientUserId should return the recipient user ID');
+    }
+
     public function test_chat_notification_build_returns_self(): void
     {
         $user1 = $this->createTestUser();

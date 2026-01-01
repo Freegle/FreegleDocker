@@ -107,6 +107,14 @@ class ChatNotification extends MjmlMailable
     }
 
     /**
+     * Get the recipient's user ID for tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return $this->recipient->id;
+    }
+
+    /**
      * Get the message envelope with custom from/replyTo.
      */
     public function envelope(): Envelope
