@@ -2,7 +2,6 @@
 
 namespace App\Mail\Traits;
 
-use App\Models\AmpWriteToken;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Part\Multipart\AlternativePart;
 use Symfony\Component\Mime\Part\TextPart;
@@ -14,65 +13,63 @@ use Symfony\Component\Mime\Part\TextPart;
  * inline actions (replying without leaving the email client).
  *
  * Security model:
- * - READ tokens: HMAC-SHA256 based, reusable within expiry period
- * - WRITE tokens: Database nonce, one-time use only
- *
- * This protects against email forwarding attacks.
+ * - Single HMAC-SHA256 token for both read and write operations
+ * - Token is reusable within expiry period (default 7 days)
+ * - User must also be a chat member (verified server-side)
  */
 trait AmpEmail
 {
     protected ?string $ampHtml = null;
     protected array $ampData = [];
+    protected ?bool $ampOverride = null;
+
+    /**
+     * Override the AMP enabled setting.
+     * Pass true to force AMP on, false to force AMP off, or null for default config.
+     */
+    public function setAmpOverride(?bool $enabled): static
+    {
+        $this->ampOverride = $enabled;
+        return $this;
+    }
 
     /**
      * Check if AMP email is enabled.
      */
     protected function isAmpEnabled(): bool
     {
+        // If override is set, use it (but still require the secret for actual AMP).
+        if ($this->ampOverride !== null) {
+            return $this->ampOverride && !empty(config('freegle.amp.secret'));
+        }
+
         return config('freegle.amp.enabled', true) && !empty(config('freegle.amp.secret'));
     }
 
     /**
-     * Generate an HMAC-based read token for amp-list.
+     * Generate an HMAC-based token for AMP operations (both read and write).
      *
-     * Read tokens are reusable within their expiry period and allow
-     * fetching dynamic content (like new messages).
+     * Tokens are reusable within their expiry period, allowing users to
+     * view messages and send multiple replies from the same email.
      *
      * @param int $userId The user ID
      * @param int $resourceId The resource ID (e.g., chat ID)
      * @return array{token: string, expiry: int}
      */
-    protected function generateReadToken(int $userId, int $resourceId): array
+    protected function generateToken(int $userId, int $resourceId): array
     {
         $secret = config('freegle.amp.secret');
-        $expiryHours = config('freegle.amp.read_token_expiry_hours', 168);
+        $expiryHours = config('freegle.amp.token_expiry_hours', 168); // 7 days default
         $expiry = time() + ($expiryHours * 3600);
 
-        // Format: "read" + user_id + resource_id + expiry
-        $message = 'read' . $userId . $resourceId . $expiry;
+        // Format: "amp" + user_id + resource_id + expiry
+        $message = 'amp' . $userId . $resourceId . $expiry;
         $token = hash_hmac('sha256', $message, $secret);
 
         return [
             'token' => $token,
             'expiry' => $expiry,
         ];
-    }
-
-    /**
-     * Generate a one-time write token for amp-form.
-     *
-     * Write tokens are stored in the database and can only be used once.
-     * This prevents email forwarding attacks from allowing multiple replies.
-     *
-     * @param int $userId The user ID
-     * @param int $chatId The chat ID
-     * @param int|null $emailTrackingId Optional email tracking ID for analytics
-     * @return string The write token nonce
-     */
-    protected function generateWriteToken(int $userId, int $chatId, ?int $emailTrackingId = null): string
-    {
-        $token = AmpWriteToken::createForChat($userId, $chatId, $emailTrackingId);
-        return $token->nonce;
     }
 
     /**
@@ -91,15 +88,15 @@ trait AmpEmail
         ?int $sinceMessageId = null
     ): string {
         $baseUrl = config('freegle.amp.api_url', 'https://api.ilovefreegle.org/amp');
-        $readToken = $this->generateReadToken($userId, $chatId);
+        $token = $this->generateToken($userId, $chatId);
 
         $url = sprintf(
             '%s/chat/%d?rt=%s&uid=%d&exp=%d',
             $baseUrl,
             $chatId,
-            $readToken['token'],
+            $token['token'],
             $userId,
-            $readToken['expiry']
+            $token['expiry']
         );
 
         if ($excludeMessageId) {
@@ -116,17 +113,32 @@ trait AmpEmail
     /**
      * Build the AMP API URL for posting a reply.
      *
+     * Uses the same HMAC token as read operations, with tracking ID as separate param.
+     *
      * @param int $chatId The chat ID
      * @param int $userId The user ID
      * @param int|null $emailTrackingId Optional email tracking ID for analytics
-     * @return string The full API URL with write token
+     * @return string The full API URL with token
      */
     protected function buildAmpReplyUrl(int $chatId, int $userId, ?int $emailTrackingId = null): string
     {
         $baseUrl = config('freegle.amp.api_url', 'https://api.ilovefreegle.org/amp');
-        $writeToken = $this->generateWriteToken($userId, $chatId, $emailTrackingId);
+        $token = $this->generateToken($userId, $chatId);
 
-        return sprintf('%s/chat/%d/reply?wt=%s', $baseUrl, $chatId, $writeToken);
+        $url = sprintf(
+            '%s/chat/%d/reply?rt=%s&uid=%d&exp=%d',
+            $baseUrl,
+            $chatId,
+            $token['token'],
+            $userId,
+            $token['expiry']
+        );
+
+        if ($emailTrackingId) {
+            $url .= '&tid=' . $emailTrackingId;
+        }
+
+        return $url;
     }
 
     /**

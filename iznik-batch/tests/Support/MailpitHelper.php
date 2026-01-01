@@ -591,4 +591,106 @@ class MailpitHelper
             'html' => $messageId ? $this->getHtmlCheckSummary($messageId) : null,
         ];
     }
+
+    /**
+     * Get the raw MIME message source.
+     *
+     * @param string $messageId
+     * @return string|null
+     */
+    public function getRawMessage(string $messageId): ?string
+    {
+        $response = Http::get("{$this->baseUrl}/api/v1/message/{$messageId}/raw");
+
+        if ($response->failed()) {
+            return null;
+        }
+
+        return $response->body();
+    }
+
+    /**
+     * Check if the raw message contains a specific MIME content type.
+     *
+     * @param string $messageId
+     * @param string $contentType Content type to look for (e.g., 'text/x-amp-html')
+     * @return bool
+     */
+    public function hasMimeContentType(string $messageId, string $contentType): bool
+    {
+        $raw = $this->getRawMessage($messageId);
+        if ($raw === null) {
+            return false;
+        }
+
+        // Look for the content-type header in MIME boundaries.
+        // Content types appear as: Content-Type: text/x-amp-html
+        $pattern = '/Content-Type:\s*' . preg_quote($contentType, '/') . '/i';
+        return (bool) preg_match($pattern, $raw);
+    }
+
+    /**
+     * Check if the message contains an AMP email part (text/x-amp-html).
+     *
+     * @param string $messageId
+     * @return bool
+     */
+    public function hasAmpMimePart(string $messageId): bool
+    {
+        return $this->hasMimeContentType($messageId, 'text/x-amp-html');
+    }
+
+    /**
+     * Extract content of a specific MIME type from the raw message.
+     *
+     * This is a simple extraction that looks for content between MIME boundaries.
+     *
+     * @param string $messageId
+     * @param string $contentType Content type to extract (e.g., 'text/x-amp-html')
+     * @return string|null
+     */
+    public function getMimePartContent(string $messageId, string $contentType): ?string
+    {
+        $raw = $this->getRawMessage($messageId);
+        if ($raw === null) {
+            return null;
+        }
+
+        // Find the boundary from Content-Type header.
+        if (!preg_match('/Content-Type:\s*multipart\/alternative;\s*boundary="?([^"\r\n]+)"?/i', $raw, $boundaryMatch)) {
+            return null;
+        }
+
+        $boundary = trim($boundaryMatch[1], '"');
+
+        // Split by boundary.
+        $parts = explode('--' . $boundary, $raw);
+
+        foreach ($parts as $part) {
+            // Check if this part has the content type we're looking for.
+            if (preg_match('/Content-Type:\s*' . preg_quote($contentType, '/') . '/i', $part)) {
+                // Extract the content after the headers (headers end with double CRLF).
+                $headerBodySplit = preg_split('/\r?\n\r?\n/', $part, 2);
+                if (count($headerBodySplit) === 2) {
+                    $body = trim($headerBodySplit[1]);
+                    // Remove trailing boundary marker if present.
+                    $body = preg_replace('/--$/', '', $body);
+                    return trim($body);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the AMP HTML content from the message.
+     *
+     * @param string $messageId
+     * @return string|null
+     */
+    public function getAmpContent(string $messageId): ?string
+    {
+        return $this->getMimePartContent($messageId, 'text/x-amp-html');
+    }
 }

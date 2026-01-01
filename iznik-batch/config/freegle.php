@@ -138,15 +138,14 @@ return [
         // Enable/disable AMP email generation
         'enabled' => env('AMP_EMAIL_ENABLED', true),
 
-        // Secret key for HMAC token generation (read tokens)
+        // Secret key for HMAC token generation
         'secret' => env('AMP_SECRET', env('FREEGLE_AMP_SECRET', '')),
 
         // API endpoint for AMP requests
         'api_url' => env('AMP_API_URL', 'https://api.ilovefreegle.org/amp'),
 
-        // Token expiry times
-        'read_token_expiry_hours' => env('AMP_READ_TOKEN_EXPIRY', 168), // 7 days
-        'write_token_expiry_hours' => env('AMP_WRITE_TOKEN_EXPIRY', 168), // 7 days
+        // Token expiry (single token used for both read and write)
+        'token_expiry_hours' => env('AMP_TOKEN_EXPIRY', 168), // 7 days
 
         // Note: AMP CORS validation checks domain suffix, not specific sender.
         // Allowed domains are configured in the Go API: @ilovefreegle.org,

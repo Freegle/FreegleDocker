@@ -246,24 +246,7 @@ class ChatNotification extends MjmlMailable
      */
     protected function getSubject(): string
     {
-        // TEMPORARY: Add AMP indicator to subject for debugging
-        // Shows conditions that determine if AMP will render
-        $ampEnabled = $this->isAmpEnabled();
-        $isU2U = $this->chatType === ChatRoom::TYPE_USER2USER;
-        $recipientExists = $this->recipient->exists;
-
-        // AMP renders if all conditions pass
-        if ($ampEnabled && $isU2U && $recipientExists) {
-            $ampIndicator = '[AMP-WILL] ';
-        } else {
-            $parts = [];
-            if (!$ampEnabled) $parts[] = 'disabled';
-            if (!$isU2U) $parts[] = 'type:' . $this->chatType;
-            if (!$recipientExists) $parts[] = 'noRecip';
-            $ampIndicator = '[AMP-' . implode(',', $parts) . '] ';
-        }
-
-        return $ampIndicator . $this->replySubject;
+        return $this->replySubject;
     }
 
     /**
