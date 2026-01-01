@@ -147,6 +147,10 @@ class TestMailCommand extends Command
                 // Use --send-to if provided, otherwise use the mailable's to address.
                 $sendToOverride = $this->option('send-to');
                 if ($sendToOverride) {
+                    // Clear the mailable's existing recipients and set the override.
+                    // This ensures the spooler uses our override address, not the original.
+                    $mailable->to = [];
+                    $mailable->to($sendToOverride);
                     $to = [$sendToOverride];
                     $this->info("Delivering to override address: {$sendToOverride}");
                 } else {
@@ -241,6 +245,9 @@ class TestMailCommand extends Command
                     // Use --send-to if provided, otherwise use the mailable's to address.
                     $sendToOverride = $this->option('send-to');
                     if ($sendToOverride) {
+                        // Clear the mailable's existing recipients and set the override.
+                        $mailable->to = [];
+                        $mailable->to($sendToOverride);
                         $to = [$sendToOverride];
                     } else {
                         $to = collect($mailable->to)->pluck('address')->toArray();

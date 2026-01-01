@@ -2,6 +2,7 @@
 
 namespace App\Mail\Traits;
 
+use InvalidArgumentException;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Part\Multipart\AlternativePart;
 use Symfony\Component\Mime\Part\TextPart;
@@ -22,6 +23,75 @@ trait AmpEmail
     protected ?string $ampHtml = null;
     protected array $ampData = [];
     protected ?bool $ampOverride = null;
+
+    /**
+     * CSS properties and patterns that cause issues in AMP for Email.
+     *
+     * While the AMP spec allows some of these, Gmail and other clients
+     * may reject them in practice. Better to avoid than debug delivery issues.
+     *
+     * @see https://amp.dev/documentation/guides-and-tutorials/learn/email-spec/amp-email-css/
+     */
+    protected static array $forbiddenAmpCssPatterns = [
+        // pointer-events is explicitly forbidden in AMP for Email.
+        '/pointer-events\s*:/i' => 'pointer-events',
+
+        // Filter with url() is forbidden; other filter values may cause issues.
+        '/filter\s*:\s*url\s*\(/i' => 'filter: url()',
+        '/backdrop-filter\s*:/i' => 'backdrop-filter',
+
+        // Clip and mask not reliably supported.
+        '/clip-path\s*:/i' => 'clip-path',
+        '/mask\s*:/i' => 'mask',
+        '/mask-image\s*:/i' => 'mask-image',
+
+        // @import is explicitly forbidden.
+        '/@import\b/i' => '@import',
+
+        // External stylesheets forbidden.
+        '/<link[^>]+rel\s*=\s*["\']?stylesheet/i' => '<link rel="stylesheet">',
+
+        // CSS variables don't work in Gmail even though they pass validation.
+        '/var\s*\(\s*--/i' => 'CSS variables (--var) - not supported in Gmail',
+
+        // Pseudo-elements may not work reliably.
+        '/::before\b/i' => '::before pseudo-element',
+        '/::after\b/i' => '::after pseudo-element',
+        '/:before\b/i' => ':before pseudo-element',
+        '/:after\b/i' => ':after pseudo-element',
+
+        // Expression and behavior (legacy IE hacks, security risk).
+        '/expression\s*\(/i' => 'expression()',
+        '/behavior\s*:/i' => 'behavior',
+    ];
+
+    /**
+     * Validate AMP HTML for forbidden CSS properties.
+     *
+     * Throws an exception if forbidden patterns are found. This catches
+     * issues during testing before emails are sent to users.
+     *
+     * @param string $html The AMP HTML to validate
+     * @throws InvalidArgumentException If forbidden patterns are found
+     */
+    protected function validateAmpCss(string $html): void
+    {
+        $violations = [];
+
+        foreach (self::$forbiddenAmpCssPatterns as $pattern => $description) {
+            if (preg_match($pattern, $html)) {
+                $violations[] = $description;
+            }
+        }
+
+        if (!empty($violations)) {
+            throw new InvalidArgumentException(
+                'AMP email contains forbidden CSS properties that may cause validation failures: ' .
+                implode(', ', $violations) .
+                '. See https://amp.dev/documentation/guides-and-tutorials/learn/email-spec/amp-email-css/'
+            );
+        }
+    }
 
     /**
      * Override the AMP enabled setting.
@@ -194,6 +264,10 @@ trait AmpEmail
         if (!$this->ampHtml || !$this->isAmpEnabled()) {
             return;
         }
+
+        // Validate AMP HTML for forbidden CSS before using it.
+        // This will throw an exception during testing if problems are found.
+        $this->validateAmpCss($this->ampHtml);
 
         $body = $message->getBody();
 

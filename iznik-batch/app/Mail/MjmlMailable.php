@@ -54,16 +54,63 @@ abstract class MjmlMailable extends Mailable
 
     /**
      * Compile MJML to HTML.
+     *
+     * @throws \RuntimeException If MJML compilation fails or produces empty output
      */
     protected function compileMjml(string $mjml): string
     {
+        // Check for empty input - this indicates a template rendering failure.
+        if (empty(trim($mjml))) {
+            // Get the actual file path for additional diagnostics.
+            $templatePath = $this->mjmlTemplate ?? 'unknown';
+            $filePath = null;
+            $fileSize = null;
+
+            if ($templatePath !== 'unknown') {
+                // Convert dot notation to file path.
+                $relativePath = str_replace('.', '/', $templatePath) . '.blade.php';
+                $filePath = resource_path('views/' . $relativePath);
+                $fileSize = file_exists($filePath) ? filesize($filePath) : 'file not found';
+            }
+
+            $error = 'MJML template rendered to empty string - template may be missing or have syntax errors';
+            \Log::error($error, [
+                'mailable' => static::class,
+                'template' => $templatePath,
+                'file_path' => $filePath,
+                'file_size' => $fileSize,
+                'view_exists' => view()->exists($templatePath),
+            ]);
+            throw new \RuntimeException($error . " (template: {$templatePath}, file_size: {$fileSize})");
+        }
+
         try {
             $result = Mjml::new()->toHtml($mjml);
+
+            // Check for empty output - MJML compilation failed silently.
+            if (empty(trim($result))) {
+                $error = 'MJML compilation produced empty HTML output';
+                \Log::error($error, [
+                    'mailable' => static::class,
+                    'template' => $this->mjmlTemplate ?? 'unknown',
+                    'mjml_length' => strlen($mjml),
+                ]);
+                throw new \RuntimeException($error);
+            }
+
             return $result;
+        } catch (\RuntimeException $e) {
+            // Re-throw our own exceptions.
+            throw $e;
         } catch (\Exception $e) {
-            // Fallback to raw MJML if compilation fails.
-            \Log::error('MJML compilation failed: ' . $e->getMessage());
-            return $mjml;
+            // Log and throw on MJML compilation failure - never send broken emails.
+            $error = 'MJML compilation failed: ' . $e->getMessage();
+            \Log::error($error, [
+                'mailable' => static::class,
+                'template' => $this->mjmlTemplate ?? 'unknown',
+                'exception' => $e->getMessage(),
+            ]);
+            throw new \RuntimeException($error, 0, $e);
         }
     }
 
@@ -79,8 +126,30 @@ abstract class MjmlMailable extends Mailable
         $this->mjmlTemplate = $template;
         $this->mjmlData = array_merge($this->getDefaultData(), $data);
 
+        // Check that the view exists before rendering.
+        if (!view()->exists($this->mjmlTemplate)) {
+            $error = "MJML template not found: {$this->mjmlTemplate}";
+            \Log::error($error, [
+                'mailable' => static::class,
+                'template' => $this->mjmlTemplate,
+                'view_paths' => config('view.paths'),
+            ]);
+            throw new \RuntimeException($error);
+        }
+
         // Render the Blade template to get MJML content.
-        $mjmlContent = view($this->mjmlTemplate, $this->mjmlData)->render();
+        try {
+            $mjmlContent = view($this->mjmlTemplate, $this->mjmlData)->render();
+        } catch (\Throwable $e) {
+            $error = "MJML template rendering failed: {$e->getMessage()}";
+            \Log::error($error, [
+                'mailable' => static::class,
+                'template' => $this->mjmlTemplate,
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw new \RuntimeException($error, 0, $e);
+        }
 
         // Compile MJML to HTML.
         $html = $this->compileMjml($mjmlContent);

@@ -158,6 +158,9 @@ class ChatNotification extends MjmlMailable
             ? $this->trackedUrl($this->userSite . '/profile/' . $this->sender->id, 'sender_profile', 'profile')
             : null;
 
+        // Check if AMP will be included (used for footer indicator).
+        $ampIncluded = $this->isAmpEnabled() && $this->chatType === ChatRoom::TYPE_USER2USER && $this->recipient->exists;
+
         $this->to($this->recipient->email_preferred, $this->recipient->displayname)
             ->subject($this->getSubject())
             ->mjmlView('emails.mjml.chat.notification', array_merge([
@@ -183,6 +186,7 @@ class ChatNotification extends MjmlMailable
                 'jobAds' => $jobAds['jobs'],
                 'jobsUrl' => $this->trackedUrl($this->userSite . '/jobs', 'jobs_link', 'jobs'),
                 'donateUrl' => $this->trackedUrl('https://freegle.in/paypal1510', 'donate_link', 'donate'),
+                'ampIncluded' => $ampIncluded,
             ], $this->getTrackingData()), 'emails.text.chat.notification');
 
         // Render AMP version if enabled and this is a User2User chat.

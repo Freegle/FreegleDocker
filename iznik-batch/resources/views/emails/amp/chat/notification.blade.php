@@ -157,7 +157,6 @@
     .reply-form[submit-error] .reply-textarea,
     .reply-form[submit-error] .reply-button {
       opacity: 0.3;
-      pointer-events: none;
     }
     .form-status {
       position: absolute;
@@ -343,23 +342,16 @@
         width="auto"
         height="300"
         layout="fixed-height"
-        items="items"
-        single-item>
+        items="items">
         <template type="amp-mustache">
-          @{{#items}}
           <div class="earlier-message">
             <amp-img class="earlier-avatar" src="@{{fromImage}}" alt="@{{fromUser}}" width="28" height="28" layout="fixed"></amp-img>
             <div class="earlier-content">
               <span class="earlier-sender">@{{fromUser}}</span>
-              <span class="earlier-date"> · @{{date}}</span>
               @{{#isNew}}<span class="new-badge">New</span>@{{/isNew}}
               <div class="earlier-text">@{{message}}</div>
             </div>
           </div>
-          @{{/items}}
-          @{{^items}}
-          <div class="loading">No earlier messages</div>
-          @{{/items}}
         </template>
         <div placeholder>
           <p class="loading">Loading earlier messages...</p>

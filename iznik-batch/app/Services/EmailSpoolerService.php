@@ -57,6 +57,12 @@ class EmailSpoolerService
         $id = $this->generateId();
         $filename = $id . '.json';
 
+        // Normalize $to to array format with address/name structure.
+        $toArray = is_string($to) ? [$to] : $to;
+        $normalizedTo = array_map(function ($addr) {
+            return is_array($addr) ? $addr : ['address' => $addr, 'name' => ''];
+        }, $toArray);
+
         // Ensure recipient is set on the mailable (required for pipeline to work).
         if (empty($mailable->to)) {
             $mailable->to($to);
@@ -67,9 +73,11 @@ class EmailSpoolerService
         $email = $this->captureBuiltMessage($mailable);
 
         // Extract all data from the captured message.
+        // IMPORTANT: Use the $to parameter as authoritative recipient, not the captured email.
+        // This allows callers (like mail:test --send-to) to override the delivery address.
         $data = [
             'id' => $id,
-            'to' => $this->extractAddresses($email->getTo()),
+            'to' => $normalizedTo,
             'from' => $this->extractAddresses($email->getFrom()),
             'cc' => $this->extractAddresses($email->getCc()),
             'bcc' => $this->extractAddresses($email->getBcc()),

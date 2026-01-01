@@ -952,4 +952,142 @@ class ChatNotificationTest extends TestCase
         $this->assertStringContainsString('cancelled', $html);
         $this->assertStringContainsString('promise', $html);
     }
+
+    public function test_chat_notification_shows_amp_indicator_when_enabled(): void
+    {
+        // Set up AMP config.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Footer should indicate AMP was included.
+        $this->assertStringContainsString('sent with AMP', $html);
+    }
+
+    public function test_chat_notification_no_amp_indicator_when_disabled(): void
+    {
+        // Disable AMP.
+        config(['freegle.amp.enabled' => false]);
+        config(['freegle.amp.secret' => null]);
+
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Footer should NOT indicate AMP.
+        $this->assertStringNotContainsString('sent with AMP', $html);
+    }
+
+    public function test_chat_notification_no_amp_indicator_for_user2mod(): void
+    {
+        // Enable AMP.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $user->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user,
+            null,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // AMP is only for User2User chats, so no indicator for User2Mod.
+        $this->assertStringNotContainsString('sent with AMP', $html);
+    }
 }
