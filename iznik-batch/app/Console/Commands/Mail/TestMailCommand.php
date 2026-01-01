@@ -26,12 +26,15 @@ class TestMailCommand extends Command
     protected $signature = 'mail:test
                             {type? : Email type (chat:user2user, chat:user2mod, digest, donations:ask, donations:thank, welcome)}
                             {--user= : User ID to generate email for}
-                            {--to= : Override recipient email address}
+                            {--to= : Find user by this email address (used to build email content)}
+                            {--send-to= : Deliver email to this address instead (for testing with real user data)}
+                            {--from= : Override From header address (for AMP testing - must be registered with Google)}
                             {--chat= : Chat room ID (for chat types)}
                             {--group= : Group ID (for digest)}
                             {--message= : Message ID (for digest)}
                             {--message-type= : Specific chat message type (Default, Interested, Promised, Reneged, Completed, Image, Address, Nudge, Schedule)}
                             {--all-types : Send test emails for all chat message types}
+                            {--amp= : Override AMP email setting (on/off, default uses config)}
                             {--dry-run : Preview email content without sending}
                             {--list : List available email types}';
 
@@ -51,6 +54,20 @@ class TestMailCommand extends Command
         'donations:thank' => 'Donation thank you email',
         'welcome' => 'Welcome email for new users',
     ];
+
+    /**
+     * Get the AMP override value from --amp option.
+     * Returns true for 'on', false for 'off', null for default.
+     */
+    protected function getAmpOverride(): ?bool
+    {
+        $ampOption = $this->option('amp');
+        if ($ampOption === null) {
+            return null;
+        }
+
+        return strtolower($ampOption) === 'on';
+    }
 
     /**
      * Chat message types to test with --all-types.
@@ -109,6 +126,15 @@ class TestMailCommand extends Command
                 return Command::FAILURE;
             }
 
+            // Override From header if specified.
+            // This sets the From header (visible to recipient), not the envelope from (bounce address).
+            // Google AMP validation checks the From header domain against their allowlist.
+            $fromOverride = $this->option('from');
+            if ($fromOverride) {
+                $mailable->from($fromOverride);
+                $this->info("From header overridden to: {$fromOverride}");
+            }
+
             if ($dryRun) {
                 $this->previewEmail($mailable);
             } else {
@@ -117,7 +143,16 @@ class TestMailCommand extends Command
                 $mailable->render();
 
                 $spooler = app(EmailSpoolerService::class);
-                $to = collect($mailable->to)->pluck('address')->toArray();
+
+                // Use --send-to if provided, otherwise use the mailable's to address.
+                $sendToOverride = $this->option('send-to');
+                if ($sendToOverride) {
+                    $to = [$sendToOverride];
+                    $this->info("Delivering to override address: {$sendToOverride}");
+                } else {
+                    $to = collect($mailable->to)->pluck('address')->toArray();
+                }
+
                 $spoolId = $spooler->spool($mailable, $to, class_basename($mailable));
 
                 // Process the spooled email immediately.
@@ -190,13 +225,27 @@ class TestMailCommand extends Command
                     continue;
                 }
 
+                // Override From header if specified.
+                $fromOverride = $this->option('from');
+                if ($fromOverride) {
+                    $mailable->from($fromOverride);
+                }
+
                 if ($dryRun) {
                     $this->previewEmail($mailable);
                 } else {
                     $mailable->render();
 
                     $spooler = app(EmailSpoolerService::class);
-                    $to = collect($mailable->to)->pluck('address')->toArray();
+
+                    // Use --send-to if provided, otherwise use the mailable's to address.
+                    $sendToOverride = $this->option('send-to');
+                    if ($sendToOverride) {
+                        $to = [$sendToOverride];
+                    } else {
+                        $to = collect($mailable->to)->pluck('address')->toArray();
+                    }
+
                     $spoolId = $spooler->spool($mailable, $to, class_basename($mailable));
 
                     $stats = $spooler->processSpool(1);
@@ -251,6 +300,9 @@ class TestMailCommand extends Command
         $this->newLine();
         $this->line('Examples:');
         $this->line('  php artisan mail:test chat:user2user --user=12345 --to=test@example.com');
+        $this->line('  php artisan mail:test chat:user2user --to=test@example.com --amp=on');
+        $this->line('  php artisan mail:test chat:user2user --to=test@example.com --amp=off');
+        $this->line('  php artisan mail:test chat:user2user --to=realuser@example.com --send-to=mytest@example.com');
         $this->line('  php artisan mail:test digest --user=12345 --group=67890 --to=test@example.com');
         $this->line('  php artisan mail:test donations:ask --user=12345 --dry-run');
     }
@@ -348,7 +400,16 @@ class TestMailCommand extends Command
         $latestMessage = $messages->last();
         $previousMessages = $messages->count() > 1 ? $messages->slice(0, -1) : collect();
 
-        return new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
+        $mailable = new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
+
+        // Apply AMP override if specified.
+        $ampOverride = $this->getAmpOverride();
+        if ($ampOverride !== null) {
+            $mailable->setAmpOverride($ampOverride);
+            $this->info("AMP email: " . ($ampOverride ? 'ON' : 'OFF') . " (override)");
+        }
+
+        return $mailable;
     }
 
     /**
@@ -427,7 +488,15 @@ class TestMailCommand extends Command
             ->get()
             ->reverse();
 
-        return new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
+        $mailable = new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
+
+        // Apply AMP override if specified.
+        $ampOverride = $this->getAmpOverride();
+        if ($ampOverride !== null) {
+            $mailable->setAmpOverride($ampOverride);
+        }
+
+        return $mailable;
     }
 
     /**

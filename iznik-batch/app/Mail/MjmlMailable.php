@@ -6,7 +6,9 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Str;
 use Spatie\Mjml\Mjml;
+use Symfony\Component\Mime\Email;
 
 abstract class MjmlMailable extends Mailable
 {
@@ -14,6 +16,23 @@ abstract class MjmlMailable extends Mailable
 
     protected string $mjmlTemplate;
     protected array $mjmlData = [];
+
+    /**
+     * Trace ID for log correlation. Initialized early with default value.
+     */
+    protected string $traceId = '';
+
+    /**
+     * Timestamp when email was created.
+     */
+    protected string $timestamp = '';
+
+    public function __construct()
+    {
+        // Initialize tracking fields immediately to avoid "accessed before initialization" errors.
+        $this->traceId = 'freegle-' . time() . '_' . Str::random(8);
+        $this->timestamp = now()->toIso8601String();
+    }
 
     /**
      * Build the message.
@@ -145,5 +164,53 @@ abstract class MjmlMailable extends Mailable
             'src' => $src,
             'srcset' => implode(', ', $srcsetParts),
         ];
+    }
+
+    /**
+     * Add common tracking headers to the email.
+     *
+     * Called via withSymfonyMessage() callback when the email is built.
+     * traceId and timestamp are initialized in the constructor to ensure
+     * they're available when this callback runs.
+     */
+    protected function addCommonHeaders(Email $message): void
+    {
+        $headers = $message->getHeaders();
+
+        // Trace ID for correlating email with Loki logs.
+        $headers->addTextHeader('X-Freegle-Trace-Id', $this->traceId);
+
+        // Email type for filtering/categorization.
+        $headers->addTextHeader('X-Freegle-Email-Type', class_basename($this));
+
+        // Timestamp when email was created.
+        $headers->addTextHeader('X-Freegle-Timestamp', $this->timestamp);
+
+        // User ID if available (subclasses can override getRecipientUserId).
+        $userId = $this->getRecipientUserId();
+        if ($userId !== null) {
+            $headers->addTextHeader('X-Freegle-User-Id', (string) $userId);
+        }
+    }
+
+    /**
+     * Get the recipient's user ID for tracking.
+     * Override in subclasses to provide user-specific tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return null;
+    }
+
+    /**
+     * Configure the message with common headers.
+     *
+     * Subclasses should call this in their content() method via withSymfonyMessage().
+     */
+    protected function configureMessage(): static
+    {
+        return $this->withSymfonyMessage(function (Email $message) {
+            $this->addCommonHeaders($message);
+        });
     }
 }

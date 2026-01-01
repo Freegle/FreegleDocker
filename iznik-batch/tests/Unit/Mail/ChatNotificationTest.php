@@ -165,8 +165,10 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2USER
         );
 
+        // With a message snippet, format is "SenderName: snippet".
         $this->assertStringContainsString('John Doe', $mail->replySubject);
-        $this->assertStringContainsString('sent you a message', $mail->replySubject);
+        $this->assertStringContainsString('Test message', $mail->replySubject);
+        $this->assertEquals('John Doe: Test message', $mail->replySubject);
     }
 
     public function test_chat_notification_user2mod_subject(): void

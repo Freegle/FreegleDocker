@@ -31,6 +31,8 @@ class DeadlineReached extends MjmlMailable
      */
     public function __construct(Message $message, User $user)
     {
+        parent::__construct();
+
         $this->message = $message;
         $this->user = $user;
         $this->userSite = config('freegle.sites.user');
@@ -76,5 +78,13 @@ class DeadlineReached extends MjmlMailable
     protected function getSubject(): string
     {
         return 'Deadline reached: ' . $this->message->subject;
+    }
+
+    /**
+     * Get the recipient's user ID for common header tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return $this->user->id ?? null;
     }
 }

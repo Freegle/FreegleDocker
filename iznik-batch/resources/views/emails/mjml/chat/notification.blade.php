@@ -13,18 +13,9 @@
     {{-- RSVP banner if reply expected --}}
     @if($replyExpected)
     <mj-section mj-class="bg-danger" padding="12px 20px">
-      <mj-column width="32px" vertical-align="middle">
-        <mj-image
-          src="{{ config('freegle.images.email_assets') }}/clock.svg"
-          width="24px"
-          height="24px"
-          alt=""
-          padding="0"
-        />
-      </mj-column>
-      <mj-column vertical-align="middle">
-        <mj-text font-size="16px" font-weight="bold" color="#ffffff" padding="0">
-          Reply requested - please respond
+      <mj-column>
+        <mj-text font-size="16px" font-weight="bold" color="#ffffff" padding="0" align="center">
+          🔔 Reply requested - please respond
         </mj-text>
       </mj-column>
     </mj-section>

@@ -66,6 +66,7 @@ class LokiService
      * @param string $subject Email subject
      * @param int|null $userId User ID
      * @param int|null $groupId Group ID
+     * @param string|null $traceId Trace ID for log correlation
      * @param array $context Additional context
      */
     public function logEmailSend(
@@ -74,6 +75,7 @@ class LokiService
         string $subject,
         ?int $userId = null,
         ?int $groupId = null,
+        ?string $traceId = null,
         array $context = []
     ): void {
         if (!$this->enabled) {
@@ -84,6 +86,7 @@ class LokiService
             'app' => 'freegle',
             'source' => 'email',
             'email_type' => $type,
+            'event' => 'sent',
         ];
 
         if ($userId) {
@@ -94,6 +97,15 @@ class LokiService
             $labels['groupid'] = (string) $groupId;
         }
 
+        if ($traceId) {
+            $labels['trace_id'] = $traceId;
+        }
+
+        // Add mailable class as label if available in context.
+        if (!empty($context['mailable_class'])) {
+            $labels['mailable_class'] = class_basename($context['mailable_class']);
+        }
+
         $entry = [
             'timestamp' => now()->toIso8601String(),
             'labels' => $labels,
@@ -102,6 +114,7 @@ class LokiService
                 'subject' => $subject,
                 'user_id' => $userId,
                 'group_id' => $groupId,
+                'trace_id' => $traceId,
             ], $context),
         ];
 

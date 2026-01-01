@@ -302,6 +302,117 @@ class AmpEmailSpoolIntegrationTest extends TestCase
     }
 
     /**
+     * Test that AMP email has all envelope addresses after spooling.
+     *
+     * This is a critical test that verifies To, From, CC, BCC, Reply-To
+     * addresses are preserved when AMP emails are spooled and sent.
+     * This test would have caught the bug where setBody() caused the
+     * envelope addresses to be lost.
+     */
+    public function test_amp_email_preserves_all_envelope_addresses(): void
+    {
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
+        }
+
+        $recipientEmail = $this->uniqueEmail('amp_envelope');
+
+        // Create an AMP mailable with explicit recipient and sender.
+        $mailable = $this->createAmpMailable($recipientEmail);
+        $this->spooler->spool($mailable, $recipientEmail);
+        $this->spooler->processSpool();
+
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
+        $messageId = $message['ID'];
+
+        // Get the raw MIME message to verify envelope addresses.
+        $raw = $this->mailpit->getRawMessage($messageId);
+        $this->assertNotNull($raw, 'Should be able to get raw message');
+
+        // Verify To header is present - this is the critical assertion
+        // that would have caught the bug.
+        $this->assertMatchesRegularExpression(
+            '/^To:.*' . preg_quote($recipientEmail, '/') . '/mi',
+            $raw,
+            'AMP email must have To header with recipient address'
+        );
+
+        // Verify From header is present.
+        $this->assertMatchesRegularExpression(
+            '/^From:.*noreply@test\.com/mi',
+            $raw,
+            'AMP email must have From header'
+        );
+
+        // Verify Subject header is present.
+        $this->assertStringContainsString(
+            'Subject:',
+            $raw,
+            'AMP email must have Subject header'
+        );
+    }
+
+    /**
+     * Test that AMP email with CC and BCC preserves those addresses.
+     */
+    public function test_amp_email_preserves_cc_and_bcc(): void
+    {
+        if (!$this->isMailpitAvailable()) {
+            $this->markTestSkipped('Mailpit is not available.');
+        }
+
+        $recipientEmail = $this->uniqueEmail('amp_cc_to');
+        $ccEmail = $this->uniqueEmail('amp_cc_cc');
+
+        // Create a mailable with CC using withSymfonyMessage.
+        $mailable = new class($recipientEmail, $ccEmail) extends Mailable {
+            public function __construct(
+                private string $recipient,
+                private string $ccRecipient
+            ) {
+            }
+
+            public function envelope(): Envelope
+            {
+                return new Envelope(
+                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test'),
+                    subject: 'AMP CC Test',
+                );
+            }
+
+            public function build(): static
+            {
+                $ampHtml = '<!doctype html><html amp4email><head><meta charset="utf-8"><script async src="https://cdn.ampproject.org/v0.js"></script></head><body><p>AMP with CC</p></body></html>';
+
+                return $this->html('<p>HTML with CC</p>')
+                    ->cc($this->ccRecipient)
+                    ->withSymfonyMessage(function (Email $message) use ($ampHtml) {
+                        $textPart = new TextPart('Plain text', 'utf-8', 'plain');
+                        $ampPart = new TextPart($ampHtml, 'utf-8', 'x-amp-html');
+                        $htmlPart = new TextPart('<p>HTML with CC</p>', 'utf-8', 'html');
+                        $alternativePart = new AlternativePart($textPart, $ampPart, $htmlPart);
+                        $message->setBody($alternativePart);
+                    });
+            }
+        };
+
+        $this->spooler->spool($mailable, $recipientEmail);
+        $this->spooler->processSpool();
+
+        // The email should be delivered to both To and CC.
+        $message = $this->mailpit->assertMessageSentTo($recipientEmail);
+        $this->assertNotNull($message, 'Message should be sent to primary recipient');
+
+        // Verify CC header in raw message.
+        $raw = $this->mailpit->getRawMessage($message['ID']);
+        $this->assertMatchesRegularExpression(
+            '/^Cc:.*' . preg_quote($ccEmail, '/') . '/mi',
+            $raw,
+            'AMP email must have Cc header with CC address'
+        );
+    }
+
+    /**
      * Test that non-AMP email does NOT have AMP MIME part.
      *
      * This is a sanity check to ensure our detection is working correctly.

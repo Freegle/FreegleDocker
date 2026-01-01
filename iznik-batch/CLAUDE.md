@@ -62,6 +62,59 @@ docker exec freegle-batch php artisan migrate:generate
 - Email images should be hosted on a CDN or web server and referenced via HTTPS URLs.
 - Configure image URLs in `config/freegle.php` under the `images` key.
 
+## AMP Email Restrictions
+
+AMP for Email has strict validation requirements. When editing AMP templates in `resources/views/emails/amp/`:
+
+- **Forbidden CSS properties**: `pointer-events`, `filter`, `clip-path`, and many others. See [AMP Email CSS spec](https://amp.dev/documentation/guides-and-tutorials/learn/email-spec/amp-email-css/).
+- **No external stylesheets** - All CSS must be inline in `<style amp-custom>`.
+- **No JavaScript** - Only AMP components are allowed.
+- **Image restrictions** - Must use `<amp-img>` not `<img>`.
+- **Form restrictions** - Must use `<amp-form>` with specific action-xhr endpoints.
+
+Validate AMP HTML at: https://amp.gmail.dev/playground/
+
+The `mail:test` command saves AMP HTML to `/tmp/amp-email-*.html` for validation testing.
+
+## Email Tracking Headers
+
+All emails extending `MjmlMailable` automatically include these headers for tracking and debugging:
+
+- **`X-Freegle-Trace-Id`** - Unique ID for correlating email with Loki logs. Format: `freegle-{timestamp}_{random}`.
+- **`X-Freegle-Email-Type`** - The mailable class name (e.g., `ChatNotification`, `WelcomeMail`).
+- **`X-Freegle-Timestamp`** - ISO 8601 timestamp when the email was created.
+- **`X-Freegle-User-Id`** - Recipient's Freegle user ID (if available). Enables support tool lookups.
+
+These headers are also logged when spooling and sending, enabling searches like:
+- Find all emails sent to a specific user (by user ID)
+- Trace an email's journey from creation to delivery (by trace ID)
+- Filter emails by type in dashboards
+
+To add user ID tracking to a new mailable, override `getRecipientUserId()`:
+```php
+protected function getRecipientUserId(): ?int
+{
+    return $this->user->id ?? null;
+}
+```
+
+## Email Spooler
+
+Emails are sent via a file-based spooler (`EmailSpoolerService`) for resilience. The spooler uses a "capturing transport" design that guarantees ALL headers survive spooling:
+
+1. When spooling, the mailable is run through Laravel's complete mail pipeline.
+2. A custom transport intercepts the fully-built Symfony Email (with all headers).
+3. The complete message is serialized to JSON in the spool directory.
+4. When processing the spool, headers are re-applied to the outgoing message.
+
+This means any header added via `withSymfonyMessage()` callbacks automatically survives through the spool - no special handling needed for new headers.
+
+Spool directories:
+- `storage/spool/mail/pending/` - Queued for sending
+- `storage/spool/mail/sending/` - Currently being sent
+- `storage/spool/mail/sent/` - Successfully sent (cleaned up after 7 days)
+- `storage/spool/mail/failed/` - Failed permanently (manual retry available)
+
 ## Reference Material
 
 When implementing services, check the PHPUnit tests in `iznik-server/test/ut/php` for the original business logic and schema usage. This helps understand the intention of the original code.

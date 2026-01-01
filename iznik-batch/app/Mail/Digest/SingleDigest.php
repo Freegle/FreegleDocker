@@ -17,7 +17,17 @@ class SingleDigest extends MjmlMailable
         protected Group $group,
         protected Message $message,
         protected int $frequency
-    ) {}
+    ) {
+        parent::__construct();
+    }
+
+    /**
+     * Get the recipient's user ID for common header tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return $this->user->id ?? null;
+    }
 
     /**
      * Build the message.

@@ -3,8 +3,12 @@
 namespace App\Services;
 
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailer;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mailer\Transport\AbstractTransport;
+use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Part\Multipart\AlternativePart;
 use Symfony\Component\Mime\Part\TextPart;
@@ -14,6 +18,11 @@ use Symfony\Component\Mime\Part\TextPart;
  *
  * Writes emails to a spool directory for asynchronous processing.
  * This provides resilience and backlog monitoring capabilities.
+ *
+ * DESIGN: Uses a "capturing transport" approach to ensure ALL headers survive spooling.
+ * When spooling, we run the mailable through Laravel's complete mail pipeline but
+ * intercept at the transport layer, capturing the fully-built Symfony Email with
+ * all headers applied (including those from withSymfonyMessage callbacks).
  */
 class EmailSpoolerService
 {
@@ -22,65 +31,54 @@ class EmailSpoolerService
     protected string $sendingDir;
     protected string $failedDir;
     protected string $sentDir;
+    protected LokiService $lokiService;
 
-    public function __construct()
+    public function __construct(?LokiService $lokiService = null)
     {
         $this->spoolDir = storage_path('spool/mail');
         $this->pendingDir = $this->spoolDir . '/pending';
         $this->sendingDir = $this->spoolDir . '/sending';
         $this->failedDir = $this->spoolDir . '/failed';
         $this->sentDir = $this->spoolDir . '/sent';
+        $this->lokiService = $lokiService ?? app(LokiService::class);
 
         $this->ensureDirectoriesExist();
     }
 
     /**
      * Spool an email for later sending.
+     *
+     * Uses a capturing transport to build the complete message through Laravel's
+     * mail pipeline, ensuring all withSymfonyMessage callbacks execute and all
+     * headers are captured.
      */
     public function spool(Mailable $mailable, string|array $to, ?string $emailType = null): string
     {
         $id = $this->generateId();
         $filename = $id . '.json';
 
-        // Render the email content now.
-        $rendered = $mailable->render();
-
-        // Get subject from envelope.
-        $envelope = $mailable->envelope();
-
-        // Extract BCC addresses from the mailable.
-        $bcc = [];
-        if (property_exists($mailable, 'bcc') && !empty($mailable->bcc)) {
-            foreach ($mailable->bcc as $bccEntry) {
-                if (is_array($bccEntry) && isset($bccEntry['address'])) {
-                    $bcc[] = $bccEntry['address'];
-                } elseif (is_string($bccEntry)) {
-                    $bcc[] = $bccEntry;
-                }
-            }
+        // Ensure recipient is set on the mailable (required for pipeline to work).
+        if (empty($mailable->to)) {
+            $mailable->to($to);
         }
 
-        // Extract AMP HTML if the mailable uses the AmpEmail trait.
-        $ampHtml = null;
-        if (property_exists($mailable, 'ampHtml') && !empty($mailable->ampHtml)) {
-            $ampHtml = $mailable->ampHtml;
-        }
+        // Build the complete message using a capturing transport.
+        // This runs all withSymfonyMessage callbacks and captures the final message.
+        $email = $this->captureBuiltMessage($mailable);
 
-        // Generate plain text version from HTML.
-        $textContent = $this->htmlToPlainText($rendered);
-
+        // Extract all data from the captured message.
         $data = [
             'id' => $id,
-            'to' => is_array($to) ? $to : [$to],
-            'bcc' => $bcc,
-            'subject' => $envelope->subject,
-            'html' => $rendered,
-            'amp_html' => $ampHtml,
-            'text' => $textContent,
-            'from' => [
-                'address' => $envelope->from?->address ?? config('mail.from.address'),
-                'name' => $envelope->from?->name ?? config('mail.from.name'),
-            ],
+            'to' => $this->extractAddresses($email->getTo()),
+            'from' => $this->extractAddresses($email->getFrom()),
+            'cc' => $this->extractAddresses($email->getCc()),
+            'bcc' => $this->extractAddresses($email->getBcc()),
+            'reply_to' => $this->extractAddresses($email->getReplyTo()),
+            'subject' => $email->getSubject(),
+            'html' => $email->getHtmlBody(),
+            'text' => $email->getTextBody(),
+            'amp_html' => $this->extractAmpContent($email),
+            'headers' => $this->extractCustomHeaders($email),
             'email_type' => $emailType,
             'mailable_class' => get_class($mailable),
             'created_at' => now()->toIso8601String(),
@@ -89,18 +87,140 @@ class EmailSpoolerService
             'last_error' => null,
         ];
 
+        // Generate plain text if not present.
+        if (empty($data['text']) && !empty($data['html'])) {
+            $data['text'] = $this->htmlToPlainText($data['html']);
+        }
+
         $path = $this->pendingDir . '/' . $filename;
         file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT));
 
         Log::info('Email spooled', [
             'id' => $id,
-            'to' => $data['to'],
+            'to' => array_column($data['to'], 'address'),
             'subject' => $data['subject'],
             'type' => $emailType,
-            'has_amp' => !empty($ampHtml),
+            'has_amp' => !empty($data['amp_html']),
+            'headers' => array_keys($data['headers']),
+            // Key fields for Loki correlation and support tools.
+            'trace_id' => $data['headers']['X-Freegle-Trace-Id'] ?? null,
+            'user_id' => $data['headers']['X-Freegle-User-Id'] ?? null,
+            'email_type' => $data['headers']['X-Freegle-Email-Type'] ?? null,
         ]);
 
         return $id;
+    }
+
+    /**
+     * Build the complete message using a capturing transport.
+     *
+     * This sends the mailable through Laravel's complete mail pipeline,
+     * but intercepts at the transport layer to capture the fully-built
+     * Symfony Email with all headers applied.
+     */
+    protected function captureBuiltMessage(Mailable $mailable): Email
+    {
+        // Create a transport that captures instead of sending.
+        $capturedEmail = null;
+
+        $transport = new class($capturedEmail) extends AbstractTransport {
+            private mixed $capturedRef;
+
+            public function __construct(&$captured)
+            {
+                parent::__construct();
+                $this->capturedRef = &$captured;
+            }
+
+            protected function doSend(SentMessage $message): void
+            {
+                $original = $message->getOriginalMessage();
+                if ($original instanceof Email) {
+                    $this->capturedRef = $original;
+                }
+            }
+
+            public function __toString(): string
+            {
+                return 'capture://';
+            }
+        };
+
+        // Create a mailer with our capturing transport.
+        $mailer = new Mailer(
+            'capture',
+            app('view'),
+            $transport,
+            app('events')
+        );
+
+        // Send through the pipeline - this runs all callbacks and builds the complete message.
+        $mailable->send($mailer);
+
+        if (!$capturedEmail instanceof Email) {
+            throw new \RuntimeException('Failed to capture message from mailable');
+        }
+
+        return $capturedEmail;
+    }
+
+    /**
+     * Extract addresses from Symfony Address objects.
+     */
+    protected function extractAddresses(array $addresses): array
+    {
+        return array_map(fn(Address $addr) => [
+            'address' => $addr->getAddress(),
+            'name' => $addr->getName(),
+        ], $addresses);
+    }
+
+    /**
+     * Extract custom headers, excluding standard ones that will be regenerated.
+     */
+    protected function extractCustomHeaders(Email $email): array
+    {
+        $headers = [];
+        $excludeHeaders = [
+            // These are regenerated during send.
+            'date', 'message-id', 'mime-version',
+            'content-type', 'content-transfer-encoding',
+            // These are set from the extracted address/subject fields.
+            'to', 'from', 'cc', 'bcc', 'reply-to', 'subject',
+        ];
+
+        foreach ($email->getHeaders()->all() as $header) {
+            $nameLower = strtolower($header->getName());
+            if (!in_array($nameLower, $excludeHeaders)) {
+                // Use original case for header name.
+                $headers[$header->getName()] = $header->getBodyAsString();
+            }
+        }
+
+        return $headers;
+    }
+
+    /**
+     * Extract AMP HTML content if present in the message body.
+     *
+     * AMP content is stored as a text/x-amp-html part in a multipart/alternative body.
+     */
+    protected function extractAmpContent(Email $email): ?string
+    {
+        $body = $email->getBody();
+
+        if ($body instanceof AlternativePart) {
+            foreach ($body->getParts() as $part) {
+                if ($part instanceof TextPart) {
+                    // AMP content has subtype 'x-amp-html'.
+                    if ($part->getMediaSubtype() === 'x-amp-html') {
+                        return $part->getBody();
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -149,32 +269,74 @@ class EmailSpoolerService
             $data['last_attempt'] = now()->toIso8601String();
 
             try {
-                // Send the email with appropriate MIME structure.
-                if (!empty($data['amp_html'])) {
-                    // Send with AMP: multipart/alternative with text, AMP, and HTML.
-                    $this->sendWithAmp($data);
-                } else {
-                    // Standard HTML email.
-                    Mail::html($data['html'], function ($message) use ($data) {
-                        $message->to($data['to'])
-                            ->subject($data['subject'])
-                            ->from($data['from']['address'], $data['from']['name']);
+                // Build and send the email using a unified approach.
+                // We always work directly with the Symfony Email object to ensure
+                // consistent handling of envelope addresses and body, whether AMP or not.
+                Mail::html($data['html'], function ($message) use ($data) {
+                    $symfonyMessage = $message->getSymfonyMessage();
 
-                        // Apply BCC if present.
-                        if (!empty($data['bcc'])) {
-                            $message->bcc($data['bcc']);
-                        }
-                    });
-                }
+                    // Set envelope addresses directly on Symfony Email.
+                    // This ensures consistent behavior for both AMP and non-AMP emails.
+                    $this->applyRecipientsToSymfonyMessage($symfonyMessage, $data);
+
+                    // Apply custom headers.
+                    $this->applyCustomHeaders($symfonyMessage, $data);
+
+                    // Build the body - either with AMP or standard HTML.
+                    if (!empty($data['amp_html'])) {
+                        // TEMPORARY: Save AMP HTML to /tmp for validation testing.
+                        $ampFile = '/tmp/amp-email-' . ($data['id'] ?? uniqid()) . '.html';
+                        file_put_contents($ampFile, $data['amp_html']);
+                        Log::debug('AMP HTML saved for validation', ['file' => $ampFile]);
+
+                        // AMP emails need multipart/alternative with text, AMP, and HTML parts.
+                        $textPart = new TextPart($data['text'] ?? '', 'utf-8', 'plain');
+                        $ampPart = new TextPart($data['amp_html'], 'utf-8', 'x-amp-html');
+                        $htmlPart = new TextPart($data['html'], 'utf-8', 'html');
+                        $alternativePart = new AlternativePart($textPart, $ampPart, $htmlPart);
+                        $symfonyMessage->setBody($alternativePart);
+                    }
+                    // Non-AMP: Mail::html() has already set the body, no action needed.
+                });
 
                 // Move to sent directory.
                 rename($sendingPath, $this->sentDir . '/' . $filename);
                 $stats['sent']++;
 
+                // Extract tracking data from headers.
+                $traceId = $data['headers']['X-Freegle-Trace-Id'] ?? null;
+                $userId = isset($data['headers']['X-Freegle-User-Id'])
+                    ? (int) $data['headers']['X-Freegle-User-Id']
+                    : null;
+                $emailType = $data['headers']['X-Freegle-Email-Type'] ?? $data['email_type'] ?? 'unknown';
+                $groupId = isset($data['headers']['X-Freegle-Group-Id'])
+                    ? (int) $data['headers']['X-Freegle-Group-Id']
+                    : null;
+
+                // Log to Loki for support tools dashboards.
+                $this->lokiService->logEmailSend(
+                    $emailType,
+                    $data['to'][0]['address'] ?? '',
+                    $data['subject'] ?? '',
+                    $userId,
+                    $groupId,
+                    $traceId,
+                    [
+                        'spool_id' => $data['id'],
+                        'attempts' => $data['attempts'],
+                        'mailable_class' => $data['mailable_class'] ?? null,
+                        'has_amp' => !empty($data['amp_html']),
+                    ]
+                );
+
                 Log::info('Spooled email sent', [
                     'id' => $data['id'],
-                    'to' => $data['to'],
+                    'to' => array_column($data['to'], 'address'),
                     'attempts' => $data['attempts'],
+                    // Key fields for Loki correlation and support tools.
+                    'trace_id' => $traceId,
+                    'user_id' => $userId,
+                    'email_type' => $emailType,
                 ]);
             } catch (\Exception $e) {
                 $data['last_error'] = $e->getMessage();
@@ -197,7 +359,7 @@ class EmailSpoolerService
 
                         Log::error('Email stuck in spool for 5+ minutes - SMTP delivery issue', [
                             'id' => $data['id'],
-                            'to' => $data['to'],
+                            'to' => array_column($data['to'], 'address'),
                             'age_minutes' => $ageMinutes,
                             'attempts' => $data['attempts'],
                             'error' => $e->getMessage(),
@@ -378,43 +540,76 @@ class EmailSpoolerService
     }
 
     /**
-     * Send email with AMP content (multipart/alternative: text, AMP, HTML).
+     * Apply recipients directly to the Symfony Email object.
+     *
+     * This is needed when manipulating the Symfony message directly (e.g., for AMP)
+     * because Laravel's Message wrapper may not sync recipients to the underlying
+     * Symfony Email until after the callback completes.
      */
-    protected function sendWithAmp(array $data): void
+    protected function applyRecipientsToSymfonyMessage(Email $symfonyMessage, array $data): void
     {
-        // Create text part.
-        $textPart = new TextPart($data['text'] ?? $this->htmlToPlainText($data['html']), 'utf-8', 'plain');
-
-        // Create AMP part with correct MIME type.
-        $ampPart = new TextPart($data['amp_html'], 'utf-8', 'x-amp-html');
-
-        // Create HTML part.
-        $htmlPart = new TextPart($data['html'], 'utf-8', 'html');
-
-        // Create multipart/alternative with all versions.
-        // Order: text, AMP, HTML (AMP must come before HTML for proper fallback).
-        $alternativePart = new AlternativePart($textPart, $ampPart, $htmlPart);
-
-        // Build the email using raw Symfony Mailer.
-        $email = (new Email())
-            ->from(new \Symfony\Component\Mime\Address($data['from']['address'], $data['from']['name']))
-            ->subject($data['subject'])
-            ->setBody($alternativePart);
-
-        // Add recipients.
-        foreach ($data['to'] as $recipient) {
-            $email->addTo($recipient);
+        // Set To addresses.
+        if (!empty($data['to'])) {
+            $toAddresses = array_map(
+                fn($addr) => new Address($addr['address'], $addr['name'] ?? ''),
+                $data['to']
+            );
+            $symfonyMessage->to(...$toAddresses);
         }
 
-        // Add BCC if present.
-        if (!empty($data['bcc'])) {
-            foreach ($data['bcc'] as $bccRecipient) {
-                $email->addBcc($bccRecipient);
+        // Set From address.
+        if (!empty($data['from'])) {
+            $from = $data['from'][0] ?? $data['from'];
+            if (is_array($from)) {
+                $symfonyMessage->from(new Address($from['address'], $from['name'] ?? ''));
             }
         }
 
-        // Send via the transport.
-        $transport = app('mail.manager')->getSymfonyTransport();
-        $transport->send($email, \Symfony\Component\Mailer\Envelope::create($email));
+        // Set CC addresses.
+        if (!empty($data['cc'])) {
+            $ccAddresses = array_map(
+                fn($addr) => new Address($addr['address'], $addr['name'] ?? ''),
+                $data['cc']
+            );
+            $symfonyMessage->cc(...$ccAddresses);
+        }
+
+        // Set BCC addresses.
+        if (!empty($data['bcc'])) {
+            $bccAddresses = array_map(
+                fn($addr) => new Address($addr['address'], $addr['name'] ?? ''),
+                $data['bcc']
+            );
+            $symfonyMessage->bcc(...$bccAddresses);
+        }
+
+        // Set Reply-To addresses.
+        if (!empty($data['reply_to'])) {
+            $replyToAddresses = array_map(
+                fn($addr) => new Address($addr['address'], $addr['name'] ?? ''),
+                $data['reply_to']
+            );
+            $symfonyMessage->replyTo(...$replyToAddresses);
+        }
+
+        // Set subject.
+        if (!empty($data['subject'])) {
+            $symfonyMessage->subject($data['subject']);
+        }
+    }
+
+    /**
+     * Apply custom headers to the Symfony Email object.
+     */
+    protected function applyCustomHeaders(Email $symfonyMessage, array $data): void
+    {
+        if (empty($data['headers'])) {
+            return;
+        }
+
+        $headers = $symfonyMessage->getHeaders();
+        foreach ($data['headers'] as $name => $value) {
+            $headers->addTextHeader($name, $value);
+        }
     }
 }

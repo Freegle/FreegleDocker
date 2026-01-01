@@ -121,6 +121,7 @@ class LokiServiceTest extends TestCase
             'Test Subject',
             123,
             456,
+            'freegle-abc123_def456',
             ['extra' => 'data']
         );
 
@@ -133,14 +134,56 @@ class LokiServiceTest extends TestCase
         $this->assertEquals('freegle', $entry['labels']['app']);
         $this->assertEquals('email', $entry['labels']['source']);
         $this->assertEquals('digest', $entry['labels']['email_type']);
+        $this->assertEquals('sent', $entry['labels']['event']);
         $this->assertEquals('123', $entry['labels']['user_id']);
         $this->assertEquals('456', $entry['labels']['groupid']);
+        $this->assertEquals('freegle-abc123_def456', $entry['labels']['trace_id']);
 
         $this->assertEquals('test@example.com', $entry['message']['recipient']);
         $this->assertEquals('Test Subject', $entry['message']['subject']);
         $this->assertEquals(123, $entry['message']['user_id']);
         $this->assertEquals(456, $entry['message']['group_id']);
+        $this->assertEquals('freegle-abc123_def456', $entry['message']['trace_id']);
         $this->assertEquals('data', $entry['message']['extra']);
+    }
+
+    public function test_log_email_send_includes_mailable_class_label(): void
+    {
+        $this->lokiService->logEmailSend(
+            'WelcomeMail',
+            'test@example.com',
+            'Welcome to Freegle!',
+            123,
+            null,
+            'freegle-trace123',
+            ['mailable_class' => 'App\\Mail\\Welcome\\WelcomeMail']
+        );
+
+        $logFile = $this->testLogPath . '/email.log';
+        $content = file_get_contents($logFile);
+        $entry = json_decode(trim($content), true);
+
+        // Should extract just the class basename.
+        $this->assertEquals('WelcomeMail', $entry['labels']['mailable_class']);
+    }
+
+    public function test_log_email_send_omits_trace_id_label_when_null(): void
+    {
+        $this->lokiService->logEmailSend(
+            'digest',
+            'test@example.com',
+            'Test Subject',
+            123,
+            456,
+            null,
+            []
+        );
+
+        $logFile = $this->testLogPath . '/email.log';
+        $content = file_get_contents($logFile);
+        $entry = json_decode(trim($content), true);
+
+        $this->assertArrayNotHasKey('trace_id', $entry['labels']);
     }
 
     public function test_log_email_send_omits_null_user_id_from_labels(): void
@@ -150,7 +193,9 @@ class LokiServiceTest extends TestCase
             'test@example.com',
             'Test Subject',
             null,
-            null
+            null,
+            null,
+            []
         );
 
         $logFile = $this->testLogPath . '/email.log';

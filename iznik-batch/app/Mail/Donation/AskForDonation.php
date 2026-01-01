@@ -25,11 +25,21 @@ class AskForDonation extends MjmlMailable
      */
     public function __construct(User $user, ?string $itemSubject = null)
     {
+        parent::__construct();
+
         $this->user = $user;
         $this->itemSubject = $itemSubject;
         $this->userSite = config('freegle.sites.user');
         $this->target = config('freegle.donation.target', 2500);
         $this->donateUrl = config('freegle.donation.url', 'http://freegle.in/paypal1510');
+    }
+
+    /**
+     * Get the recipient's user ID for common header tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return $this->user->id ?? null;
     }
 
     /**

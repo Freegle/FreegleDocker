@@ -23,6 +23,8 @@ class WelcomeMail extends MjmlMailable
         public ?string $password = NULL,
         public ?int $userId = NULL
     ) {
+        parent::__construct();
+
         if ($this->userId) {
             $this->user = User::find($this->userId);
         }
@@ -34,6 +36,14 @@ class WelcomeMail extends MjmlMailable
             NULL,
             $this->getSubject()
         );
+    }
+
+    /**
+     * Get the recipient's user ID for common header tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return $this->userId;
     }
 
     /**

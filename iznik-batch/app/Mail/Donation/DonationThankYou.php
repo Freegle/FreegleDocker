@@ -19,8 +19,18 @@ class DonationThankYou extends MjmlMailable
      */
     public function __construct(User $user)
     {
+        parent::__construct();
+
         $this->user = $user;
         $this->userSite = config('freegle.sites.user');
+    }
+
+    /**
+     * Get the recipient's user ID for common header tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return $this->user->id ?? null;
     }
 
     /**
