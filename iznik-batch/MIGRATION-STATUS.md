@@ -47,17 +47,75 @@ docker exec freegle-batch php artisan mail:test --list
 # Preview email content without sending (dry-run)
 docker exec freegle-batch php artisan mail:test welcome --user=123 --dry-run
 
-# Send test email to override address
+# Send test email to a specific user
 docker exec freegle-batch php artisan mail:test welcome --user=123 --to=test@example.com
 
-# Test chat notification
-docker exec freegle-batch php artisan mail:test chat:user2user --chat=456 --to=test@example.com
+# Use real user data but deliver to test address (--send-to)
+docker exec freegle-batch php artisan mail:test chat:user2user --to=realuser@example.com --send-to=mytest@example.com
+
+# Test chat notification with AMP enabled
+docker exec freegle-batch php artisan mail:test chat:user2user --to=user@example.com --amp=on
+
+# Test all chat message types
+docker exec freegle-batch php artisan mail:test chat:user2user --to=user@example.com --all-types
+
+# Override From header for AMP testing (must be registered with Google)
+docker exec freegle-batch php artisan mail:test chat:user2user --to=user@example.com --amp=on --from=noreply@ilovefreegle.org
 
 # Test digest email
 docker exec freegle-batch php artisan mail:test digest --group=789 --to=test@example.com
 ```
 
 The command uses database transactions that are rolled back after the email is generated, so no permanent changes are made.
+
+## AMP Email Support
+
+AMP for Email is supported for chat notifications. This enables interactive features like inline replies directly from Gmail.
+
+### Current Status
+
+| Email Type | AMP Support | Status |
+|------------|-------------|--------|
+| Chat notifications (user2user) | Yes | Done |
+| Chat notifications (user2mod) | Yes | Done |
+| Digest emails | No | Not planned |
+| Welcome emails | No | Not planned |
+| Donation emails | No | Not planned |
+
+### AMP Features Implemented
+
+- **Inline reply**: Users can reply to chat messages without leaving Gmail.
+- **Message history**: Shows "Earlier in this conversation" with previous messages.
+- **Profile images**: Displays sender avatars in conversation history.
+- **HMAC token authentication**: Secure, reusable tokens for AMP API calls.
+
+### AMP Token System
+
+AMP emails use HMAC-SHA256 tokens for authentication:
+- Single token used for both read and write operations.
+- Token is computed from user ID, chat ID, and a shared secret.
+- Tokens don't expire (no database storage needed).
+- Go API validates tokens using the same HMAC algorithm.
+
+### Testing AMP Emails
+
+1. Send test email with `--amp=on`:
+   ```bash
+   docker exec freegle-batch php artisan mail:test chat:user2user --to=user@gmail.com --amp=on
+   ```
+
+2. AMP HTML is saved to `/tmp/amp-email-*.html` for validation.
+
+3. Validate AMP HTML at: https://amp.gmail.dev/playground/
+
+4. For Google AMP registration, use `--from=noreply@ilovefreegle.org` (registered sender).
+
+### AMP Configuration
+
+Set in `config/freegle.php`:
+- `freegle.amp.enabled` - Enable/disable AMP emails globally.
+- `freegle.amp.secret` - Shared secret for HMAC token generation.
+- `freegle.sites.apiv2` - Go API endpoint for AMP requests.
 
 ## Scripts Currently In Progress
 
