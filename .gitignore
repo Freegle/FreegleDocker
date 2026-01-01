@@ -36,6 +36,9 @@ package-lock.json
 yesterday/2fa-gateway/node_modules/
 yesterday/api/node_modules/
 
+# Capacitor plugins (local development copies)
+capacitor-push-notifications-cap7/
+
 # Sentry integration database (SQLite)
 sentry-issues.db
 sentry-issues.db-shm

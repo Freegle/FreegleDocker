@@ -22,6 +22,13 @@ Schedule::command('mail:welcome:send --limit=100 --spool')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Chat notifications - run continuously with internal looping.
+// User2User notifications.
+Schedule::command('mail:chat:user2user --max-iterations=60 --spool')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Fetch UK CPI inflation data from ONS - runs monthly.
 // Used to inflation-adjust the "benefit of reuse" value from the 2011 WRAP report.
 // Sends alert email to GeekAlerts if fetch fails.
@@ -68,13 +75,6 @@ Schedule::command('mail:digest 8')
 // Daily digests.
 Schedule::command('mail:digest 24')
     ->dailyAt('08:00')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Chat notifications - run continuously with internal looping.
-// User2User notifications.
-Schedule::command('mail:chat:user2user --max-iterations=60 --spool')
-    ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 
