@@ -192,7 +192,7 @@ Caching is controlled by the `ENABLE_DOCKER_CACHE` environment variable in Circl
 **Two-layer caching strategy**:
 
 1. **CircleCI save_cache** (Nuxt build artifacts):
-   - Caches `.output/` and `.nuxt/` directories
+   - Caches `.output/` directory (production build output)
    - Skips `npm run build` if code unchanged
    - ~10-16 minute savings on cache hit
 
@@ -206,7 +206,7 @@ Caching is controlled by the `ENABLE_DOCKER_CACHE` environment variable in Circl
 Current cache versions (bump to invalidate):
 
 - **BuildKit cache**: `buildcache-v1`
-- **Nuxt artifacts**: `nuxt-v1`
+- **Nuxt artifacts**: `nuxt-output-v2`
 
 ### Cache Strategy
 
