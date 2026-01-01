@@ -238,38 +238,6 @@ commands:
             echo ""
             echo "✅ All containers verified"
 
-      - run:
-          name: Extract and save Nuxt build cache
-          command: |
-            echo "=== Extracting Nuxt build cache (.output) ==="
-
-            # Create cache directories
-            mkdir -p ~/nuxt-cache/freegle
-            mkdir -p ~/nuxt-cache/modtools/modtools
-
-            # Extract Freegle .output cache (the production build output)
-            if docker inspect freegle-prod-local >/dev/null 2>&1; then
-              docker cp freegle-prod-local:/app/.output ~/nuxt-cache/freegle/.output 2>/dev/null && \
-                echo "✅ Extracted Freegle .output cache ($(du -sh ~/nuxt-cache/freegle/.output | cut -f1))" || \
-                echo "ℹ️  No Freegle .output directory found in container"
-            fi
-
-            # Extract ModTools .output cache
-            if docker inspect modtools-prod-local >/dev/null 2>&1; then
-              docker cp modtools-prod-local:/app/modtools/.output ~/nuxt-cache/modtools/modtools/.output 2>/dev/null && \
-                echo "✅ Extracted ModTools .output cache ($(du -sh ~/nuxt-cache/modtools/modtools/.output | cut -f1))" || \
-                echo "ℹ️  No ModTools .output directory found"
-            fi
-
-      - save_cache:
-          key: nuxt-output-v1-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
-          paths:
-            - ~/nuxt-cache/freegle
-      - save_cache:
-          key: nuxt-output-v1-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}-{{ checksum "iznik-nuxt3-modtools/modtools/nuxt.config.ts" }}
-          paths:
-            - ~/nuxt-cache/modtools
-
   clone-freegle-docker:
     description: "Clone FreegleDocker and initialize submodules"
     steps:
@@ -1527,6 +1495,40 @@ jobs:
       - wait-for-basic-services
 
       - wait-for-prod-container
+
+      # Extract and cache Nuxt build output AFTER containers are healthy
+      # This ensures the npm run build has completed inside the containers
+      - run:
+          name: Extract and save Nuxt build cache
+          command: |
+            echo "=== Extracting Nuxt build cache (.output) ==="
+
+            # Create cache directories
+            mkdir -p ~/nuxt-cache/freegle
+            mkdir -p ~/nuxt-cache/modtools/modtools
+
+            # Extract Freegle .output cache (the production build output)
+            if docker inspect freegle-prod-local >/dev/null 2>&1; then
+              docker cp freegle-prod-local:/app/.output ~/nuxt-cache/freegle/.output 2>/dev/null && \
+                echo "✅ Extracted Freegle .output cache ($(du -sh ~/nuxt-cache/freegle/.output | cut -f1))" || \
+                echo "ℹ️  No Freegle .output directory found in container"
+            fi
+
+            # Extract ModTools .output cache
+            if docker inspect modtools-prod-local >/dev/null 2>&1; then
+              docker cp modtools-prod-local:/app/modtools/.output ~/nuxt-cache/modtools/modtools/.output 2>/dev/null && \
+                echo "✅ Extracted ModTools .output cache ($(du -sh ~/nuxt-cache/modtools/modtools/.output | cut -f1))" || \
+                echo "ℹ️  No ModTools .output directory found"
+            fi
+
+      - save_cache:
+          key: nuxt-output-v1-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
+          paths:
+            - ~/nuxt-cache/freegle
+      - save_cache:
+          key: nuxt-output-v1-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}-{{ checksum "iznik-nuxt3-modtools/modtools/nuxt.config.ts" }}
+          paths:
+            - ~/nuxt-cache/modtools
 
       - setup-test-database
 
