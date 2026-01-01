@@ -9,7 +9,7 @@ The CircleCI pipeline:
 - **Runs full integration tests** using the complete Docker Compose stack
 - **Commits successful updates** back to the repository
 - **Responds to webhooks** from submodule repositories for immediate testing
-- **Monitors submodules** every 2 days for updates 
+- **Monitors submodules** every 2 days for updates
 
 ## Workflows
 
