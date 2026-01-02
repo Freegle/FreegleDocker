@@ -1,23 +1,23 @@
-New message from {{ $senderName }}
+New message from {!! $senderName !!}
 @if($replyExpected)
 
 ⏰ Reply requested - please respond
 @endif
 @if($refMessage)
 
-About your post: {{ $refMessage->subject }}
+About your post: {!! $refMessage->subject !!}
 @endif
 
 ----------------------------------------
-{{ $chatMessage['userName'] }}{{ $chatMessage['isFromRecipient'] ? ' (you)' : '' }}:
-{{ $chatMessage['text'] }}
+{!! $chatMessage['userName'] !!}{{ $chatMessage['isFromRecipient'] ? ' (you)' : '' }}:
+{!! $chatMessage['text'] !!}
 @if($chatMessage['imageUrl'])
 [Image: {{ $chatMessage['imageUrl'] }}]
 @endif
 
 ----------------------------------------
 
-Reply to {{ $senderName }}: {{ $chatUrl }}
+Reply to {!! $senderName !!}: {{ $chatUrl }}
 @if($showOutcomeButtons && !empty($outcomeUrls))
 
 Has this item gone?
@@ -28,19 +28,19 @@ Has this item gone?
 
 Earlier in this conversation:
 @foreach($previousMessages as $prevMessage)
-{{ $prevMessage['userName'] }} ({{ $prevMessage['formattedDate'] }}): {{ $prevMessage['text'] }}
+{!! $prevMessage['userName'] !!} ({{ $prevMessage['formattedDate'] }}): {!! $prevMessage['text'] !!}
 @endforeach
 @endif
 @if($sender && $sender->aboutme)
 
-About {{ $senderName }}:
-"{{ $sender->aboutme }}"
+About {!! $senderName !!}:
+"{!! $sender->aboutme !!}"
 @endif
 @if($jobAds->isNotEmpty())
 
 Jobs near you:
 @foreach($jobAds as $job)
-- {{ $job->title }}@if($job->location) ({{ $job->location }})@endif
+- {!! $job->title !!}@if($job->location) ({!! $job->location !!})@endif
   {{ config('freegle.sites.user') }}/job/{{ $job->id }}
 @endforeach
 
