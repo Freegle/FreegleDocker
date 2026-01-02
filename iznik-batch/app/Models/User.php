@@ -343,9 +343,19 @@ class User extends Model
      */
     public function listUnsubscribe(): string
     {
+        return "<{$this->listUnsubscribeUrl()}>";
+    }
+
+    /**
+     * Generate the one-click unsubscribe URL for use in email links.
+     *
+     * @return string The unsubscribe URL
+     */
+    public function listUnsubscribeUrl(): string
+    {
         $key = $this->getUserKey();
         $userSite = config('freegle.sites.user', 'https://www.ilovefreegle.org');
 
-        return "<{$userSite}/one-click-unsubscribe/{$this->id}/{$key}>";
+        return "{$userSite}/one-click-unsubscribe/{$this->id}/{$key}";
     }
 }

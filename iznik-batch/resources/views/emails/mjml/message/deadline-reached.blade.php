@@ -74,6 +74,6 @@
             </mj-column>
         </mj-section>
 
-        @include('emails.mjml.components.footer')
+        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $userSite . '/settings'])
     </mj-body>
 </mjml>

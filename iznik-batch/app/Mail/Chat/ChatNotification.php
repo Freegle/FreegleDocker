@@ -191,6 +191,7 @@ class ChatNotification extends MjmlMailable
                 'outcomeUrls' => $outcomeUrls,
                 'isUser2Mod' => $this->chatType === ChatRoom::TYPE_USER2MOD,
                 'settingsUrl' => $this->trackedUrl($this->userSite . '/settings', 'footer_settings', 'settings'),
+                'unsubscribeUrl' => $this->trackedUrl($this->userSite . '/unsubscribe', 'footer_unsubscribe', 'unsubscribe'),
                 'jobAds' => $jobAds['jobs'],
                 'jobsUrl' => $this->trackedUrl($this->userSite . '/jobs', 'jobs_link', 'jobs'),
                 'donateUrl' => $this->trackedUrl('https://freegle.in/paypal1510', 'donate_link', 'donate'),

@@ -388,7 +388,7 @@
     @endif
 
     {{-- Footer --}}
-    @include('emails.mjml.partials.footer', ['email' => $recipient->email_preferred, 'settingsUrl' => $settingsUrl])
+    @include('emails.mjml.partials.footer', ['email' => $recipient->email_preferred, 'settingsUrl' => $settingsUrl, 'unsubscribeUrl' => $unsubscribeUrl])
 
     {{-- Tracking pixel --}}
     @if(!empty($trackingPixelHtml))
