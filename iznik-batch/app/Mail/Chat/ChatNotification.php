@@ -264,32 +264,72 @@ class ChatNotification extends MjmlMailable
 
     /**
      * Generate the subject line based on context.
+     *
+     * Matches iznik-server logic: use the last "interested in" message in the chat
+     * to get the item subject, since that's the most likely thing they're talking about.
      */
     protected function generateSubject(): string
     {
-        $senderName = $this->sender?->displayname ?? 'Someone';
-        $snippet = $this->getSubjectSnippet();
-
         if ($this->chatType === ChatRoom::TYPE_USER2MOD) {
             $group = $this->chatRoom->group;
             $groupName = $group?->nameshort ?? 'your local Freegle group';
-            $base = "Message from {$groupName} volunteers";
-            return $snippet ? "{$base}: {$snippet}" : $base;
+            return "Your conversation with the {$groupName} volunteers";
         }
 
-        if ($this->refMessage) {
-            // Use "Regarding:" instead of "Re:" for Validity Certification compliance.
-            // Email deliverability standards flag "Re:" as potentially deceptive.
-            $base = "Regarding: {$this->refMessage->subject}";
-            return $snippet ? "{$base} - {$snippet}" : $base;
+        // For USER2USER chats, find the last "interested in" message to get the item subject.
+        // This matches the iznik-server getChatEmailSubject() logic.
+        $interestedInfo = $this->getLastInterestedMessageInfo();
+
+        if ($interestedInfo) {
+            // Format: "Regarding: [GroupName] ItemSubject"
+            // Strip any existing "Regarding:" or "Re:" prefixes from the subject.
+            $subject = $interestedInfo['subject'];
+            $subject = str_replace('Regarding:', '', $subject);
+            $subject = str_replace('Re: ', '', $subject);
+            $subject = trim($subject);
+
+            return "Regarding: [{$interestedInfo['groupName']}] {$subject}";
         }
 
-        // For regular messages, include snippet directly.
-        if ($snippet) {
-            return "{$senderName}: {$snippet}";
+        // Fallback if no interested message found.
+        return "[Freegle] You have a new message";
+    }
+
+    /**
+     * Get the last "interested in" message info for this chat.
+     *
+     * This queries the chat for the most recent TYPE_INTERESTED message and returns
+     * the associated item's subject and group name.
+     *
+     * @return array{subject: string, groupName: string}|null
+     */
+    protected function getLastInterestedMessageInfo(): ?array
+    {
+        // Query for the most recent TYPE_INTERESTED message in this chat.
+        $interestedMessage = ChatMessage::where('chatid', $this->chatRoom->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->whereNotNull('refmsgid')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$interestedMessage) {
+            return NULL;
         }
 
-        return "{$senderName} sent you a message on Freegle";
+        // Get the referenced message with its group.
+        $refMessage = $interestedMessage->refMessage;
+        if (!$refMessage) {
+            return NULL;
+        }
+
+        // Get the group for this message.
+        $group = $refMessage->groups()->first();
+        $groupName = $group?->namefull ?? $group?->nameshort ?? 'Freegle';
+
+        return [
+            'subject' => $refMessage->subject,
+            'groupName' => $groupName,
+        ];
     }
 
     /**

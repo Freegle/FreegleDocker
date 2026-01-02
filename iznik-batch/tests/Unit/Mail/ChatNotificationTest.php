@@ -172,7 +172,7 @@ class ChatNotificationTest extends TestCase
         $this->assertInstanceOf(ChatNotification::class, $result);
     }
 
-    public function test_chat_notification_user2user_subject(): void
+    public function test_chat_notification_user2user_subject_without_interested_message(): void
     {
         $user1 = $this->createTestUser(['fullname' => 'John Doe']);
         $user2 = $this->createTestUser();
@@ -207,10 +207,73 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2USER
         );
 
-        // With a message snippet, format is "SenderName: snippet".
-        $this->assertStringContainsString('John Doe', $mail->replySubject);
-        $this->assertStringContainsString('Test message', $mail->replySubject);
-        $this->assertEquals('John Doe: Test message', $mail->replySubject);
+        // Without an "interested in" message, we get the fallback subject.
+        $this->assertEquals('[Freegle] You have a new message', $mail->replySubject);
+    }
+
+    public function test_chat_notification_user2user_subject_with_interested_message(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'John Doe']);
+        $user2 = $this->createTestUser();
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
+        $this->createMembership($user1, $group);
+
+        $refMessage = $this->createTestMessage($user1, $group, [
+            'subject' => 'OFFER: Double Bed Frame (London)',
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        // Create an "interested in" message first - this is what determines the subject.
+        ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user2->id,
+            'message' => 'Is this still available?',
+            'type' => ChatMessage::TYPE_INTERESTED,
+            'date' => now()->subMinutes(5),
+            'refmsgid' => $refMessage->id,
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Now create a follow-up message.
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Yes it is!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        // Subject should be based on the "interested in" message's referenced item.
+        $this->assertStringStartsWith('Regarding:', $mail->replySubject);
+        $this->assertStringContainsString('[Test Freegle Group]', $mail->replySubject);
+        $this->assertStringContainsString('OFFER: Double Bed Frame (London)', $mail->replySubject);
     }
 
     public function test_chat_notification_user2mod_subject(): void
@@ -248,8 +311,10 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2MOD
         );
 
-        $this->assertStringContainsString('Message from', $mail->replySubject);
+        // USER2MOD subject format: "Your conversation with the {groupName} volunteers"
+        $this->assertStringContainsString('Your conversation with the', $mail->replySubject);
         $this->assertStringContainsString('TestGroup', $mail->replySubject);
+        $this->assertStringContainsString('volunteers', $mail->replySubject);
     }
 
     public function test_chat_notification_no_sender_subject(): void
@@ -287,11 +352,14 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2USER
         );
 
-        $this->assertStringContainsString('Someone', $mail->replySubject);
+        // Without an interested message, subject is the fallback.
+        $this->assertEquals('[Freegle] You have a new message', $mail->replySubject);
     }
 
-    public function test_chat_notification_with_ref_message(): void
+    public function test_chat_notification_with_ref_message_but_no_interested(): void
     {
+        // This test verifies that having a refmsgid on the current message is NOT enough -
+        // we need an actual TYPE_INTERESTED message in the chat to use the item subject.
         $user1 = $this->createTestUser();
         $user2 = $this->createTestUser();
         $group = $this->createTestGroup();
@@ -308,6 +376,7 @@ class ChatNotificationTest extends TestCase
             'created' => now(),
         ]);
 
+        // This is a DEFAULT message with a refmsgid, but NOT a TYPE_INTERESTED message.
         $chatMessage = ChatMessage::create([
             'chatid' => $room->id,
             'userid' => $user1->id,
@@ -332,8 +401,8 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2USER
         );
 
-        $this->assertStringContainsString('Regarding:', $mail->replySubject);
-        $this->assertStringContainsString('OFFER: Test Item', $mail->replySubject);
+        // Without a TYPE_INTERESTED message in the chat, we get the fallback subject.
+        $this->assertEquals('[Freegle] You have a new message', $mail->replySubject);
     }
 
     public function test_chat_notification_envelope_has_subject(): void
@@ -475,7 +544,7 @@ class ChatNotificationTest extends TestCase
     {
         $user1 = $this->createTestUser(['fullname' => 'Alice']);
         $user2 = $this->createTestUser(['fullname' => 'Bob']);
-        $group = $this->createTestGroup();
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
         $this->createMembership($user1, $group);
 
         $refMessage = $this->createTestMessage($user1, $group, [
@@ -512,6 +581,11 @@ class ChatNotificationTest extends TestCase
             $message,
             ChatRoom::TYPE_USER2USER
         );
+
+        // Subject should be based on the interested message.
+        $this->assertStringContainsString('Regarding:', $mail->replySubject);
+        $this->assertStringContainsString('[Test Freegle Group]', $mail->replySubject);
+        $this->assertStringContainsString('OFFER: Test Item', $mail->replySubject);
 
         $mail->build();
         $html = $mail->render();
@@ -790,7 +864,7 @@ class ChatNotificationTest extends TestCase
     {
         $user1 = $this->createTestUser();
         $user2 = $this->createTestUser();
-        $group = $this->createTestGroup();
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
         $this->createMembership($user1, $group);
 
         $refMessage = $this->createTestMessage($user1, $group, [
@@ -804,11 +878,12 @@ class ChatNotificationTest extends TestCase
             'created' => now(),
         ]);
 
+        // Create a TYPE_INTERESTED message - this is required for the "Regarding:" subject.
         $chatMessage = ChatMessage::create([
             'chatid' => $room->id,
             'userid' => $user2->id,
             'message' => 'Interested!',
-            'type' => ChatMessage::TYPE_DEFAULT,
+            'type' => ChatMessage::TYPE_INTERESTED,
             'date' => now(),
             'reviewrequired' => 0,
             'processingrequired' => 0,
@@ -831,6 +906,8 @@ class ChatNotificationTest extends TestCase
         // Verify "Regarding:" is used instead of "Re:".
         $this->assertStringStartsWith('Regarding:', $mail->replySubject);
         $this->assertStringNotContainsString('Re:', $mail->replySubject);
+        // Also verify group name is included.
+        $this->assertStringContainsString('[Test Freegle Group]', $mail->replySubject);
     }
 
     public function test_chat_notification_chat_url_contains_room_id(): void
