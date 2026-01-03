@@ -1,7 +1,9 @@
 - Always restart the status monitor after making changes to its code.
 - Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
-- You don't need to rebuild the Freegle Dev or ModTools Dev containers to pick up code fixes - they run nuxt dev which will do that.
+- You don't need to rebuild the Freegle Dev or ModTools Dev containers to pick up code fixes - the `freegle-host-scripts` container automatically syncs file changes to dev containers.
 - The Freegle Production and ModTools Production containers require a full rebuild to pick up code changes since they run production builds.
+- **File Sync**: The `freegle-host-scripts` container runs `file-sync.sh` which uses inotifywait to monitor file changes in iznik-nuxt3, iznik-nuxt3-modtools, iznik-server, iznik-server-go, and iznik-batch directories. Changes are automatically synced to dev containers via `docker cp`. Check logs with `docker logs freegle-host-scripts --tail 20`.
+- **HMR Caveat**: While file sync works reliably, Nuxt's HMR may not always detect `docker cp` file changes. If changes don't appear after sync, restart the container: `docker restart modtools-dev-live`.
 - The API v2 (Go) container requires a full rebuild to pick up code changes: `docker-compose build apiv2 && docker-compose up -d apiv2`
 - After making changes to the status code, remember to restart the container
 - When running in a docker compose environment and making changes, be careful to copy them to the container.
