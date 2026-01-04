@@ -288,6 +288,21 @@ commands:
             rm -rf << parameters.submodule >>
             cp -r << parameters.source >> << parameters.submodule >>
 
+  build-submodule-container:
+    description: "Build the container for a replaced submodule"
+    parameters:
+      container:
+        type: string
+        description: "Container name to build (apiv2, apiv1, freegle-prod-local, etc.)"
+    steps:
+      - run:
+          name: Build << parameters.container >> container
+          command: |
+            cd "$HOME/FreegleDocker"
+            echo "🔨 Building << parameters.container >> container with updated code..."
+            docker-compose -f docker-compose.yml build << parameters.container >>
+            echo "✅ << parameters.container >> container built successfully"
+
   start-services:
     description: "Create secrets and start Docker services"
     steps:
@@ -1370,6 +1385,8 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-server-go"
+      - build-submodule-container:
+          container: "apiv2"
       - start-services
       - wait-for-basic-services
       - run-go-tests:
