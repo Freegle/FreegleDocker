@@ -4,15 +4,6 @@ This directory contains Claude-generated plans and documentation organised by st
 
 ## Directory Structure
 
-### `completed/` - Implemented Work
-Plans that have been fully implemented. Kept for historical reference.
-- **go-test-refactoring.md** - Go test refactoring to use factory functions
-- **welcome-email-redesign.md** - Mobile-first welcome email with local posts
-- **Donation-Appeals-Research-Review.md** - Donation appeals A/B testing
-- **app-dev-environment.md** - Freegle Dev app for live reload
-- **phpunit-speedups.md** - Parallel PHPUnit execution
-- **migrations.md** - SQL migrations tracking
-
 ### `active/` - Work in Progress
 Plans currently being implemented or partially complete.
 - **laravel-batch-jobs-implementation.md** - Migration of PHP cron jobs to Laravel (Phases 1-3 done)
