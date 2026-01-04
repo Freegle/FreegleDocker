@@ -15,6 +15,8 @@
           Member conversation on {{ $groupShortName ?? 'Freegle' }}
           @elseif($isOwnMessage ?? false)
           Copy of your message to {{ $otherUserName ?? 'the other user' }}
+          @elseif($isUser2Mod ?? false)
+          Reply from {{ $groupName ?? 'Freegle' }} volunteers
           @else
           New message from {{ $senderName }}
           @endif
@@ -27,8 +29,11 @@
     <mj-section background-color="#e8f4fc" padding="12px 20px">
       <mj-column>
         <mj-text font-size="14px" color="#396aa3" align="center" padding="0">
-          <strong>Member:</strong> {{ $memberName ?? 'Unknown' }}
-          @if($member?->email_preferred)
+          Member: <strong>{{ $memberName ?? 'Unknown' }}</strong>
+          @if($member?->id && $chatRoom?->groupid)
+          <a href="{{ config('freegle.sites.mod') }}/members/approved/{{ $chatRoom->groupid }}/{{ $member->id }}" style="color: #396aa3; font-weight: normal;">#{{ $member->id }}</a>
+          @endif
+          @if(!empty($member?->email_preferred))
           ({{ $member->email_preferred }})
           @endif
         </mj-text>
@@ -85,17 +90,20 @@
     </mj-section>
     @endif
 
-    {{-- New message section --}}
+    {{-- New message section label --}}
     <mj-section background-color="#ffffff" padding="20px 20px 10px 20px">
       <mj-column>
         <mj-text font-size="12px" font-weight="bold" mj-class="{{ ($isModerator ?? false) ? 'text-modtools' : 'text-success' }}" text-transform="uppercase" letter-spacing="1px">
           @if($isOwnMessage ?? false)
           Your message
           @elseif($isModerator ?? false)
+            @if($senderIsMember ?? true)
           Message from member
-          @else
-          New message
+            @else
+          Message from volunteer
+            @endif
           @endif
+          {{-- For member User2Mod view, no label needed - header already says "Reply from volunteers" --}}
         </mj-text>
       </mj-column>
     </mj-section>
@@ -240,6 +248,8 @@
           View conversation
           @elseif($isModerator ?? false)
           Reply to member
+          @elseif($isUser2Mod ?? false)
+          Reply to volunteers
           @else
           Reply to {{ $senderName }}
           @endif

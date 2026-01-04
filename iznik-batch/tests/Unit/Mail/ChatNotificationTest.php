@@ -1792,4 +1792,246 @@ class ChatNotificationTest extends TestCase
         // But isModerator should be false.
         $this->assertFalse($mail->isModerator);
     }
+
+    /**
+     * Test User2Mod: when member receives mod reply, FROM name should be "GroupName Volunteers"
+     * not the individual moderator's name.
+     *
+     * This matches iznik-server behavior in processUnmailedMessage() lines 3009-3013:
+     * For User2Mod when notifying member, fromname is always "{group.namedisplay} volunteers"
+     */
+    public function test_user2mod_member_receives_mod_reply_from_name_is_volunteers(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namedisplay' => 'Test Freegle Group']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        // Message from moderator to member.
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $moderator->id,
+            'message' => 'Hello from the volunteers!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Member receives notification (they are user1 in User2Mod chat).
+        $mail = new ChatNotification(
+            $member,     // recipient = member (user1)
+            $moderator,  // sender = moderator
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        $envelope = $mail->envelope();
+
+        // From name should be "TestGroup Volunteers", NOT "Sheila Mod on Freegle".
+        $this->assertStringContainsString('Volunteers', $envelope->from->name);
+        $this->assertStringNotContainsString('Sheila', $envelope->from->name);
+    }
+
+    /**
+     * Test User2Mod: when member receives mod reply, the message content should NOT
+     * show the moderator's individual name - it should show "Volunteers" or similar.
+     *
+     * This matches iznik-server prepareForTwig() lines 1971-1980 which uses group profile
+     * instead of individual mod profile when notifying member.
+     */
+    public function test_user2mod_member_receives_mod_reply_hides_mod_identity_in_message(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namedisplay' => 'Test Freegle Group']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        // Message from moderator.
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $moderator->id,
+            'message' => 'Hello from the volunteers!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $member,
+            $moderator,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // The rendered HTML should NOT contain the moderator's individual name "Sheila".
+        // This is critical for privacy - members should not see which mod replied.
+        $this->assertStringNotContainsString('Sheila', $html);
+
+        // Should show the group name or "Volunteers" somewhere.
+        $this->assertStringContainsString('Volunteers', $html);
+    }
+
+    /**
+     * Test User2Mod: when moderator receives member's message, FROM name should be member's name.
+     */
+    public function test_user2mod_mod_receives_member_message_from_name_is_member(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        // Message from member.
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'I need help!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Moderator receives notification.
+        $mail = new ChatNotification(
+            $moderator,  // recipient = moderator (NOT user1)
+            $member,     // sender = member
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        $envelope = $mail->envelope();
+
+        // From name should include member's name, not "Volunteers".
+        $this->assertStringContainsString('Alice', $envelope->from->name);
+    }
+
+    /**
+     * Test User2Mod: when member views previous messages, member's own messages show
+     * their name, but mod messages show "Volunteers".
+     *
+     * This tests the prepareMessage() logic for previous messages in the thread.
+     */
+    public function test_user2mod_member_previous_messages_show_correct_identity(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namedisplay' => 'Test Freegle Group']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        // Previous message from member.
+        $memberMsg = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Hello from Alice!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now()->subMinutes(10),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Previous message from mod.
+        $modMsg = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $moderator->id,
+            'message' => 'Hi Alice, we can help!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now()->subMinutes(5),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Latest message from mod triggers notification to member.
+        $latestMsg = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $moderator->id,
+            'message' => 'Any update?',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Member receives notification with previous messages.
+        $mail = new ChatNotification(
+            $member,
+            $moderator,
+            $room,
+            $latestMsg,
+            ChatRoom::TYPE_USER2MOD,
+            collect([$memberMsg, $modMsg])  // Previous messages
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Member's own message should show their name "Alice".
+        $this->assertStringContainsString('Alice', $html);
+
+        // Mod messages should NOT show "Sheila" - should show "Volunteers" instead.
+        $this->assertStringNotContainsString('Sheila', $html);
+        $this->assertStringContainsString('Volunteers', $html);
+    }
 }

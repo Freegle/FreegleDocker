@@ -35,6 +35,7 @@ class TestMailCommand extends Command
                             {--message-type= : Specific chat message type (Default, Interested, Promised, Reneged, Completed, Image, Address, Nudge, Schedule)}
                             {--all-types : Send test emails for all chat message types}
                             {--amp= : Override AMP email setting (on/off, default uses config)}
+                            {--as= : For User2Mod chats: "member" or "mod" perspective (default: member)}
                             {--dry-run : Preview email content without sending}
                             {--list : List available email types}';
 
@@ -357,16 +358,41 @@ class TestMailCommand extends Command
 
         $this->info("Found user: {$recipient->displayname} (ID: {$recipient->id})");
 
+        // For User2Mod, check the --as option to determine perspective.
+        $perspective = $this->option('as');
+        if ($chatType === ChatRoom::TYPE_USER2MOD && $perspective) {
+            if (!in_array($perspective, ['member', 'mod'])) {
+                $this->error("Invalid --as option: {$perspective}. Use 'member' or 'mod'.");
+                return null;
+            }
+            $this->info("Testing as: {$perspective}");
+        }
+
         // If a specific message type is requested, use that.
         if ($messageType) {
             return $this->buildChatNotificationForType($chatType, $recipient, $messageType);
         }
 
         // Find a chat room for this user.
-        $chatRoomQuery = ChatRoom::where('chattype', $chatType)
-            ->where(function ($q) use ($recipient) {
+        $chatRoomQuery = ChatRoom::where('chattype', $chatType);
+
+        if ($chatType === ChatRoom::TYPE_USER2MOD && $perspective === 'mod') {
+            // For mod perspective, find a chat where user is NOT user1 (they're a mod).
+            // User2Mod chats have user1 as the member, mods are found via group membership.
+            // We need to find a chat where the user is a mod of the group.
+            $chatRoomQuery->where('user1', '!=', $recipient->id)
+                ->whereHas('group', function ($q) use ($recipient) {
+                    $q->whereHas('memberships', function ($mq) use ($recipient) {
+                        $mq->where('userid', $recipient->id)
+                           ->whereIn('role', ['Moderator', 'Owner']);
+                    });
+                });
+        } else {
+            // Default: find chat where user is a participant.
+            $chatRoomQuery->where(function ($q) use ($recipient) {
                 $q->where('user1', $recipient->id)->orWhere('user2', $recipient->id);
             });
+        }
 
         if ($chatId) {
             $chatRoomQuery->where('id', $chatId);
@@ -377,35 +403,39 @@ class TestMailCommand extends Command
         })->orderBy('id', 'desc')->first();
 
         if (!$chatRoom) {
-            $this->error("No {$chatType} chat with messages found for user {$recipient->id}");
+            $this->error("No {$chatType} chat with messages found for user {$recipient->id}" .
+                ($perspective === 'mod' ? ' as moderator' : ''));
             return null;
         }
 
         $this->info("Using chat room: {$chatRoom->id}");
 
-        // Get sender (the other user).
-        $senderId = ($chatRoom->user1 === $recipient->id) ? $chatRoom->user2 : $chatRoom->user1;
-        $sender = $senderId ? User::find($senderId) : null;
-
-        // Get recent messages from the other user.
-        $messages = ChatMessage::where('chatid', $chatRoom->id)
+        // Get the latest message from someone other than the recipient (this triggers the notification).
+        $latestMessage = ChatMessage::where('chatid', $chatRoom->id)
             ->where('userid', '!=', $recipient->id)
+            ->orderBy('id', 'desc')
+            ->with(['user', 'refMessage'])
+            ->first();
+
+        if (!$latestMessage) {
+            $this->error("No messages from other users found in this chat");
+            return null;
+        }
+
+        // Get sender from the latest message author (for User2Mod, user2 is NULL).
+        $sender = $latestMessage->user;
+
+        // Get ALL previous messages in the chat (including from recipient).
+        // This matches real behavior where the email shows the conversation thread.
+        $previousMessages = ChatMessage::where('chatid', $chatRoom->id)
+            ->where('id', '<', $latestMessage->id)
             ->orderBy('id', 'desc')
             ->limit(5)
             ->with(['user', 'refMessage'])
             ->get()
             ->reverse();
 
-        if ($messages->isEmpty()) {
-            $this->error("No messages from other users found in this chat");
-            return null;
-        }
-
-        $this->info("Found " . $messages->count() . " messages from sender");
-
-        // Get the most recent message and use the rest as previous messages.
-        $latestMessage = $messages->last();
-        $previousMessages = $messages->count() > 1 ? $messages->slice(0, -1) : collect();
+        $this->info("Found latest message from " . ($sender?->displayname ?? 'unknown') . ", plus " . $previousMessages->count() . " previous messages");
 
         $mailable = new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
 
