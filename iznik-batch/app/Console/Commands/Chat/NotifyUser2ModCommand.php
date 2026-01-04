@@ -19,7 +19,7 @@ class NotifyUser2ModCommand extends Command
     protected $signature = 'mail:chat:user2mod
                             {--chat= : Process only a specific chat ID}
                             {--delay=30 : Delay in seconds before sending notification}
-                            {--since=24 : How many hours back to look for messages}
+                            {--since=4 : How many hours back to look for messages}
                             {--force : Force sending even for already mailed messages}
                             {--max-iterations=120 : Maximum iterations before exiting}
                             {--spool : Spool emails instead of sending directly}';

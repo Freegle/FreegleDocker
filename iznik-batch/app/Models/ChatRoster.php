@@ -9,8 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ChatRoster extends Model
 {
     protected $table = 'chat_roster';
-    protected $guarded = ['id'];
+    protected $guarded = ['id', 'isModerator'];
     public $timestamps = FALSE;
+
+    /**
+     * Whether this roster entry represents a moderator (runtime property, not stored in database).
+     */
+    public bool $isModerator = FALSE;
 
     public const STATUS_ONLINE = 'Online';
     public const STATUS_AWAY = 'Away';

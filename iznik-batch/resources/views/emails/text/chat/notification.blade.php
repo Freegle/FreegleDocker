@@ -1,4 +1,11 @@
+@if($isModerator ?? false)
+Member conversation on {!! $groupShortName ?? 'Freegle' !!}
+
+Member: {!! $memberName ?? 'Unknown' !!}@if($member?->email_preferred) ({!! $member->email_preferred !!})@endif
+
+@else
 New message from {!! $senderName !!}
+@endif
 @if($replyExpected)
 
 ⏰ Reply requested - please respond
@@ -17,7 +24,11 @@ About your post: {!! $refMessage->subject !!}
 
 ----------------------------------------
 
+@if($isModerator ?? false)
+Reply to member: {{ $chatUrl }}
+@else
 Reply to {!! $senderName !!}: {{ $chatUrl }}
+@endif
 @if($showOutcomeButtons && !empty($outcomeUrls))
 
 Has this item gone?

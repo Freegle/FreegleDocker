@@ -1,15 +1,19 @@
 <mjml>
-  @if($isOwnMessage ?? false)
+  @if($isModerator ?? false)
+  @include('emails.mjml.partials.head', ['preview' => 'Member conversation with ' . ($memberName ?? 'a member')])
+  @elseif($isOwnMessage ?? false)
   @include('emails.mjml.partials.head', ['preview' => 'Copy of your message to ' . ($otherUserName ?? 'the other user')])
   @else
   @include('emails.mjml.partials.head', ['preview' => $senderName . ' sent you a message'])
   @endif
   <mj-body background-color="#ffffff">
-    {{-- Header --}}
-    <mj-section mj-class="bg-success" padding="20px">
+    {{-- Header - ModTools blue for moderators, Freegle green for members --}}
+    <mj-section mj-class="{{ ($isModerator ?? false) ? 'bg-modtools' : 'bg-success' }}" padding="20px">
       <mj-column>
         <mj-text font-size="24px" font-weight="bold" color="#ffffff" align="center">
-          @if($isOwnMessage ?? false)
+          @if($isModerator ?? false)
+          Member conversation on {{ $groupShortName ?? 'Freegle' }}
+          @elseif($isOwnMessage ?? false)
           Copy of your message to {{ $otherUserName ?? 'the other user' }}
           @else
           New message from {{ $senderName }}
@@ -17,6 +21,20 @@
         </mj-text>
       </mj-column>
     </mj-section>
+
+    {{-- Member info bar for moderators --}}
+    @if($isModerator ?? false)
+    <mj-section background-color="#e8f4fc" padding="12px 20px">
+      <mj-column>
+        <mj-text font-size="14px" color="#396aa3" align="center" padding="0">
+          <strong>Member:</strong> {{ $memberName ?? 'Unknown' }}
+          @if($member?->email_preferred)
+          ({{ $member->email_preferred }})
+          @endif
+        </mj-text>
+      </mj-column>
+    </mj-section>
+    @endif
 
     {{-- RSVP banner if reply expected --}}
     @if($replyExpected)
@@ -70,9 +88,11 @@
     {{-- New message section --}}
     <mj-section background-color="#ffffff" padding="20px 20px 10px 20px">
       <mj-column>
-        <mj-text font-size="12px" font-weight="bold" mj-class="text-success" text-transform="uppercase" letter-spacing="1px">
+        <mj-text font-size="12px" font-weight="bold" mj-class="{{ ($isModerator ?? false) ? 'text-modtools' : 'text-success' }}" text-transform="uppercase" letter-spacing="1px">
           @if($isOwnMessage ?? false)
           Your message
+          @elseif($isModerator ?? false)
+          Message from member
           @else
           New message
           @endif
@@ -80,15 +100,16 @@
       </mj-column>
     </mj-section>
 
+    @php $accentColor = ($isModerator ?? false) ? '#396aa3' : '#338808'; @endphp
     @if($chatMessage['isFromRecipient'])
     {{-- Recipient's own message - profile pic on right --}}
     <mj-section background-color="#ffffff" padding="8px 20px">
       <mj-column vertical-align="top">
         <mj-text padding="0 8px 0 0" line-height="1.6" align="right">
           @if($chatMessage['userPageUrl'])
-          <a href="{{ $chatMessage['userPageUrl'] }}" style="font-weight: 600; color: #338808; font-size: 14px; text-decoration: none;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</a>
+          <a href="{{ $chatMessage['userPageUrl'] }}" style="font-weight: 600; color: {{ $accentColor }}; font-size: 14px; text-decoration: none;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</a>
           @else
-          <span style="font-weight: 600; color: #338808; font-size: 14px;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</span>
+          <span style="font-weight: 600; color: {{ $accentColor }}; font-size: 14px;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</span>
           @endif
           <br/>
           <span style="color: #000000; font-size: 18px; font-weight: 500;">{!! nl2br(e($chatMessage['text'])) !!}</span>
@@ -156,7 +177,7 @@
       </mj-column>
       <mj-column vertical-align="middle" background-color="#f8f9fa" border-radius="0 8px 8px 0" padding="8px 8px 8px 0">
         <mj-text padding="0 0 0 8px" line-height="1.4">
-          <a href="{{ $chatMessage['refMessage']['url'] }}" style="color: #338808; font-weight: 600; font-size: 13px; text-decoration: none;">
+          <a href="{{ $chatMessage['refMessage']['url'] }}" style="color: {{ $accentColor }}; font-weight: 600; font-size: 13px; text-decoration: none;">
             {{ $chatMessage['refMessage']['subject'] }}
           </a>
         </mj-text>
@@ -164,7 +185,7 @@
       @else
       <mj-column vertical-align="middle" background-color="#f8f9fa" border-radius="8px" padding="8px">
         <mj-text padding="0" line-height="1.4">
-          <a href="{{ $chatMessage['refMessage']['url'] }}" style="color: #338808; font-weight: 600; font-size: 13px; text-decoration: none;">
+          <a href="{{ $chatMessage['refMessage']['url'] }}" style="color: {{ $accentColor }}; font-weight: 600; font-size: 13px; text-decoration: none;">
             {{ $chatMessage['refMessage']['subject'] }}
           </a>
         </mj-text>
@@ -197,7 +218,7 @@
       @endif
       <mj-column vertical-align="top">
         <mj-text padding="0 0 0 {{ $chatMessage['isFromRecipient'] ? '0' : '8px' }}" font-size="14px" align="{{ $chatMessage['isFromRecipient'] ? 'right' : 'left' }}">
-          <a href="{{ $chatMessage['mapUrl'] }}" style="color: #338808; text-decoration: none;">
+          <a href="{{ $chatMessage['mapUrl'] }}" style="color: {{ $accentColor }}; text-decoration: none;">
             📍 View in Google Maps
           </a>
         </mj-text>
@@ -214,9 +235,11 @@
     {{-- Reply button --}}
     <mj-section background-color="#ffffff" padding="25px 20px">
       <mj-column>
-        <mj-button href="{{ $chatUrl }}" mj-class="btn-success" font-size="18px" padding="14px 40px">
+        <mj-button href="{{ $chatUrl }}" mj-class="{{ ($isModerator ?? false) ? 'btn-modtools' : 'btn-success' }}" font-size="18px" padding="14px 40px">
           @if($isOwnMessage ?? false)
           View conversation
+          @elseif($isModerator ?? false)
+          Reply to member
           @else
           Reply to {{ $senderName }}
           @endif
@@ -305,7 +328,7 @@
       </mj-column>
       <mj-column vertical-align="middle" background-color="#e9ecef" border-radius="0 6px 6px 0" padding="6px 6px 6px 0">
         <mj-text padding="0 0 0 6px" line-height="1.3">
-          <a href="{{ $prevMessage['refMessage']['url'] }}" style="color: #338808; font-size: 12px; text-decoration: none;">
+          <a href="{{ $prevMessage['refMessage']['url'] }}" style="color: {{ $accentColor }}; font-size: 12px; text-decoration: none;">
             {{ $prevMessage['refMessage']['subject'] }}
           </a>
         </mj-text>
@@ -313,7 +336,7 @@
       @else
       <mj-column vertical-align="middle" background-color="#e9ecef" border-radius="6px" padding="6px">
         <mj-text padding="0" line-height="1.3">
-          <a href="{{ $prevMessage['refMessage']['url'] }}" style="color: #338808; font-size: 12px; text-decoration: none;">
+          <a href="{{ $prevMessage['refMessage']['url'] }}" style="color: {{ $accentColor }}; font-size: 12px; text-decoration: none;">
             {{ $prevMessage['refMessage']['subject'] }}
           </a>
         </mj-text>
@@ -325,7 +348,7 @@
 
     <mj-section mj-class="bg-light" padding="10px 20px 20px 20px">
       <mj-column>
-        <mj-button href="{{ $chatUrl }}" background-color="transparent" mj-class="text-success" font-size="14px" padding="8px 20px" border="1px solid #338808">
+        <mj-button href="{{ $chatUrl }}" background-color="transparent" mj-class="{{ ($isModerator ?? false) ? 'text-modtools' : 'text-success' }}" font-size="14px" padding="8px 20px" border="1px solid {{ $accentColor }}">
           View full conversation
         </mj-button>
       </mj-column>
@@ -372,7 +395,7 @@
       @endif
       <mj-column vertical-align="middle">
         <mj-text font-size="14px" color="#333333" padding="0 0 0 8px" line-height="1.4">
-          <a href="{{ $job->tracked_url }}" style="color: #338808; font-weight: bold; text-decoration: none;">
+          <a href="{{ $job->tracked_url }}" style="color: {{ $accentColor }}; font-weight: bold; text-decoration: none;">
             {{ $job->title }}
           </a>
           @if($job->location)
@@ -391,11 +414,12 @@
     </mj-section>
     <mj-section mj-class="bg-light" padding="0 20px 20px 20px">
       <mj-column width="50%">
-        <mj-button href="{{ $jobsUrl }}" mj-class="btn-secondary" font-size="14px" padding="12px 20px" width="90%">
+        <mj-button href="{{ $jobsUrl }}" mj-class="{{ ($isModerator ?? false) ? 'btn-modtools' : 'btn-secondary' }}" font-size="14px" padding="12px 20px" width="90%">
           View more jobs
         </mj-button>
       </mj-column>
       <mj-column width="50%">
+        {{-- Keep donate button green - it's for Freegle charity --}}
         <mj-button href="{{ $donateUrl }}" mj-class="btn-success" font-size="14px" padding="12px 20px" width="90%">
           Donating helps too!
         </mj-button>

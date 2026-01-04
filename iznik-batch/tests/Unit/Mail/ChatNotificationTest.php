@@ -311,9 +311,11 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2MOD
         );
 
-        // USER2MOD subject format: "Your conversation with the {groupName} volunteers"
+        // USER2MOD subject format: "Your conversation with the {groupNameFull} volunteers"
+        // For member-facing emails, we use the friendly full group name.
         $this->assertStringContainsString('Your conversation with the', $mail->replySubject);
-        $this->assertStringContainsString('TestGroup', $mail->replySubject);
+        // Group name contains the common prefix from namefull.
+        $this->assertStringContainsString('Test Freegle Group', $mail->replySubject);
         $this->assertStringContainsString('volunteers', $mail->replySubject);
     }
 
@@ -1438,5 +1440,356 @@ class ChatNotificationTest extends TestCase
 
         // Should show "Your message" instead of "New message".
         $this->assertStringContainsString('Your message', $html);
+    }
+
+    public function test_user2mod_moderator_notification_uses_modtools_url(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Moderator receives notification.
+        $mail = new ChatNotification(
+            $moderator,
+            $member,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        // Moderator should have isModerator flag set.
+        $this->assertTrue($mail->isModerator);
+
+        // Chat URL should point to ModTools.
+        $this->assertStringContainsString(config('freegle.sites.mod'), $mail->chatUrl);
+    }
+
+    public function test_user2mod_member_notification_uses_user_site_url(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Member receives notification (recipient is user1, the member).
+        $mail = new ChatNotification(
+            $member,
+            null,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        // Member should NOT have isModerator flag set.
+        $this->assertFalse($mail->isModerator);
+
+        // Chat URL should point to user site.
+        $this->assertStringContainsString(config('freegle.sites.user'), $mail->chatUrl);
+    }
+
+    public function test_user2mod_moderator_subject_includes_member_info(): void
+    {
+        $member = $this->createTestUser([
+            'fullname' => 'Alice Member',
+        ]);
+        $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Moderator receives notification.
+        $mail = new ChatNotification(
+            $moderator,
+            $member,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        // Subject should be "Member conversation on {GroupShortName} with {MemberName} ({email})".
+        $this->assertStringContainsString('Member conversation on', $mail->replySubject);
+        $this->assertStringContainsString('TestGroup', $mail->replySubject);
+        $this->assertStringContainsString('Alice', $mail->replySubject);
+        // Email is auto-generated as test{id}@test.com.
+        $this->assertStringContainsString('@test.com', $mail->replySubject);
+    }
+
+    public function test_user2mod_member_subject_mentions_volunteers(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Member receives notification.
+        $mail = new ChatNotification(
+            $member,
+            null,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        // Subject should be "Your conversation with the {groupName} volunteers".
+        $this->assertStringContainsString('Your conversation with the', $mail->replySubject);
+        $this->assertStringContainsString('volunteers', $mail->replySubject);
+    }
+
+    public function test_user2mod_moderator_notification_shows_modtools_styling(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Moderator receives notification.
+        $mail = new ChatNotification(
+            $moderator,
+            $member,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // ModTools blue color should be present.
+        $this->assertStringContainsString('#396aa3', $html);
+        // Should show member info bar.
+        $this->assertStringContainsString('Member:', $html);
+        $this->assertStringContainsString('Alice', $html);
+    }
+
+    public function test_user2mod_moderator_notification_shows_reply_to_member_button(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Moderator receives notification.
+        $mail = new ChatNotification(
+            $moderator,
+            $member,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "Reply to member" button.
+        $this->assertStringContainsString('Reply to member', $html);
+    }
+
+    public function test_user2mod_member_property_set_for_moderators(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Moderator receives notification.
+        $mail = new ChatNotification(
+            $moderator,
+            $member,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        // Member property should be set.
+        $this->assertNotNull($mail->member);
+        $this->assertEquals($member->id, $mail->member->id);
+    }
+
+    public function test_user2mod_member_property_null_for_members(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'Help me please',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Member receives notification.
+        $mail = new ChatNotification(
+            $member,
+            null,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        // Member property should still be set (it's the member in the chat).
+        $this->assertNotNull($mail->member);
+        $this->assertEquals($member->id, $mail->member->id);
+        // But isModerator should be false.
+        $this->assertFalse($mail->isModerator);
     }
 }
