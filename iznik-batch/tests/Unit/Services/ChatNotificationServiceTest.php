@@ -714,4 +714,124 @@ class ChatNotificationServiceTest extends TestCase
         $this->assertNotNull($modRoster, 'Moderator should have roster entry');
         $this->assertNotNull($modRoster->lastmsgemailed, 'Moderator roster should be updated after notification');
     }
+
+    public function test_notify_by_email_user2mod_skips_backup_moderators(): void
+    {
+        $member = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        // Create an active moderator.
+        $activeMod = $this->createTestUser([
+            'fullname' => 'Active Mod',
+        ]);
+
+        // Create a backup moderator (settings['active'] = false).
+        $backupMod = $this->createTestUser([
+            'fullname' => 'Backup Mod',
+        ]);
+
+        // Active mod - no settings means active by default.
+        Membership::create([
+            'userid' => $activeMod->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+            'settings' => null,
+        ]);
+
+        // Backup mod - explicitly marked as inactive.
+        Membership::create([
+            'userid' => $backupMod->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+            'settings' => ['active' => false],
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster for member.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Member sends message.
+        $this->createTestChatMessage($room, $member, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+
+        // Should have sent notification to active mod but not backup mod.
+        $this->assertGreaterThan(0, $count, 'Should have sent notifications');
+
+        // Verify active mod roster entry was created and updated.
+        $activeModRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $activeMod->id)
+            ->first();
+        $this->assertNotNull($activeModRoster, 'Active moderator should have roster entry');
+        $this->assertNotNull($activeModRoster->lastmsgemailed, 'Active moderator should have been notified');
+
+        // Verify backup mod was NOT added to roster (not notified).
+        $backupModRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $backupMod->id)
+            ->first();
+        $this->assertNull($backupModRoster, 'Backup moderator should NOT have roster entry');
+    }
+
+    public function test_notify_by_email_user2mod_includes_explicitly_active_moderators(): void
+    {
+        $member = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        // Create a moderator explicitly marked as active.
+        $activeMod = $this->createTestUser([
+            'fullname' => 'Explicit Active Mod',
+        ]);
+
+        Membership::create([
+            'userid' => $activeMod->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+            'settings' => ['active' => true],
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        $this->createTestChatMessage($room, $member, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+
+        $this->assertGreaterThan(0, $count);
+
+        // Verify explicitly active mod was notified.
+        $modRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $activeMod->id)
+            ->first();
+        $this->assertNotNull($modRoster, 'Explicitly active moderator should have roster entry');
+        $this->assertNotNull($modRoster->lastmsgemailed, 'Explicitly active moderator should have been notified');
+    }
 }

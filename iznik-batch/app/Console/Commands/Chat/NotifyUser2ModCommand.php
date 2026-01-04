@@ -34,14 +34,6 @@ class NotifyUser2ModCommand extends Command
      */
     public function handle(ChatNotificationService $notificationService, EmailSpoolerService $spooler): int
     {
-        // Check if User2Mod notifications are enabled.
-        // This allows safe deployment - test with mail:test first, then enable when ready.
-        if (!config('freegle.chat_notifications.user2mod_enabled', false)) {
-            $this->warn('User2Mod notifications are disabled. Set USER2MOD_NOTIFICATIONS_ENABLED=true to enable.');
-            Log::info('User2Mod notifications disabled by config');
-            return Command::SUCCESS;
-        }
-
         $chatId = $this->option('chat') ? (int) $this->option('chat') : null;
         $delay = (int) $this->option('delay');
         $sinceHours = (int) $this->option('since');

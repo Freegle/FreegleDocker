@@ -225,11 +225,12 @@ class ChatNotificationService
                 }
             }
 
-            // User2Mod: Get all group moderators.
+            // User2Mod: Get active group moderators (not backup mods).
+            // Backup mods have settings['active'] = false and shouldn't receive notifications.
             $group = $chatRoom->group;
             if ($group) {
                 $moderators = $group->memberships()
-                    ->whereIn('role', ['Moderator', 'Owner'])
+                    ->activeModerators()
                     ->get();
 
                 foreach ($moderators as $membership) {

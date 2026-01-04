@@ -155,25 +155,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Chat Notifications
-    |--------------------------------------------------------------------------
-    |
-    | Feature flags for chat notification types. These allow safe deployment
-    | and testing before enabling production sending.
-    |
-    | Test individual notifications with: php artisan mail:test chat:user2mod
-    | Then enable production sending by setting the environment variable.
-    |
-    */
-
-    'chat_notifications' => [
-        // User-to-mod notifications (messages from users to moderators).
-        // Default: false - disabled until tested and ready.
-        'user2mod_enabled' => env('USER2MOD_NOTIFICATIONS_ENABLED', false),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | Git Summary (Weekly Code Review)
     |--------------------------------------------------------------------------
     |
