@@ -199,10 +199,11 @@ commands:
       - run:
           name: Build containers
           command: |
-            # Force rebuild with --pull to get latest base images
-            # This ensures we get the most recent freegle-base with updated dependencies
-            echo "Building and starting services with fresh base images..."
-            docker-compose -f docker-compose.yml build --pull
+            # Force rebuild with --no-cache --pull to get fresh code and latest base images
+            # --no-cache ensures COPY commands pick up submodule changes
+            # --pull ensures we get the most recent freegle-base with updated dependencies
+            echo "Building and starting services with fresh code and base images..."
+            docker-compose -f docker-compose.yml build --no-cache --pull
             docker-compose -f docker-compose.yml up -d
 
             echo "Waiting for basic services to start..."
@@ -237,6 +238,20 @@ commands:
             fi
             echo ""
             echo "✅ All containers verified"
+
+            # Debug: Check test file in container
+            echo ""
+            echo "=== DEBUG: Checking test file in container ==="
+            if docker exec freegle-apiv1-phpunit test -f /var/www/iznik/test/ut/php/include/chatRoomsTest.php 2>/dev/null; then
+              echo "chatRoomsTest.php line count in container:"
+              docker exec freegle-apiv1-phpunit wc -l /var/www/iznik/test/ut/php/include/chatRoomsTest.php
+              echo "Last 5 lines in container:"
+              docker exec freegle-apiv1-phpunit tail -5 /var/www/iznik/test/ut/php/include/chatRoomsTest.php
+              echo "PHP syntax check:"
+              docker exec freegle-apiv1-phpunit php -l /var/www/iznik/test/ut/php/include/chatRoomsTest.php
+            else
+              echo "WARNING: chatRoomsTest.php not found in container"
+            fi
 
   clone-freegle-docker:
     description: "Clone FreegleDocker and initialize submodules"
@@ -275,9 +290,25 @@ commands:
       - run:
           name: Replace << parameters.submodule >> with PR code
           command: |
+            echo "=== DEBUG: Checking source PR code ==="
+            if [ -f "<< parameters.source >>/test/ut/php/include/chatRoomsTest.php" ]; then
+              echo "Source chatRoomsTest.php line count:"
+              wc -l << parameters.source >>/test/ut/php/include/chatRoomsTest.php
+              echo "Last 5 lines:"
+              tail -5 << parameters.source >>/test/ut/php/include/chatRoomsTest.php
+            fi
+
             cd "$HOME/FreegleDocker"
             rm -rf << parameters.submodule >>
             cp -r << parameters.source >> << parameters.submodule >>
+
+            echo "=== DEBUG: After copy ==="
+            if [ -f "<< parameters.submodule >>/test/ut/php/include/chatRoomsTest.php" ]; then
+              echo "Copied chatRoomsTest.php line count:"
+              wc -l << parameters.submodule >>/test/ut/php/include/chatRoomsTest.php
+              echo "Last 5 lines:"
+              tail -5 << parameters.submodule >>/test/ut/php/include/chatRoomsTest.php
+            fi
 
   start-services:
     description: "Create secrets and start Docker services"
@@ -299,6 +330,11 @@ commands:
           name: Start Docker services
           command: |
             cd "$HOME/FreegleDocker"
+
+            # Build containers with fresh code (--no-cache ensures COPY picks up replaced submodule)
+            echo "Building containers with fresh code..."
+            docker-compose -f docker-compose.yml build --no-cache --pull
+
             if ! docker-compose -f docker-compose.yml up -d; then
               echo "❌ Docker Compose failed to start services"
               echo ""
@@ -863,7 +899,7 @@ commands:
             fi
 
             # Copy coverage file from playwright container
-            if docker cp freegle-playwright-local:/workspace/coverage/coverage-final.json /tmp/playwright-coverage.json 2>/dev/null; then
+            if docker cp freegle-playwright:/workspace/coverage/coverage-final.json /tmp/playwright-coverage.json 2>/dev/null; then
               echo "✅ Found Playwright coverage file"
 
               # Install coveralls and lcov
