@@ -155,20 +155,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Chat Notifications
+    | Git Summary (Weekly Code Review)
     |--------------------------------------------------------------------------
     |
-    | Feature flags for chat notification types. These allow safe deployment
-    | and testing before enabling production sending.
-    |
-    | Test individual notifications with: php artisan mail:test chat:user2mod
-    | Then enable production sending by setting the environment variable.
+    | Configuration for AI-powered weekly git summaries sent to Discourse.
+    | Uses Gemini API to summarize code changes across repositories.
     |
     */
 
-    'chat_notifications' => [
-        // User-to-mod notifications (messages from users to moderators).
-        // Default: false - disabled until tested and ready.
-        'user2mod_enabled' => env('USER2MOD_NOTIFICATIONS_ENABLED', false),
+    'git_summary' => [
+        'gemini_api_key' => env('GOOGLE_GEMINI_API_KEY', ''),
+        'repositories' => [
+            '/home/edward/FreegleDockerWSL/iznik-nuxt3',
+            '/home/edward/FreegleDockerWSL/iznik-server',
+            '/home/edward/FreegleDockerWSL/iznik-server-go',
+            '/home/edward/FreegleDockerWSL/iznik-batch',
+        ],
+        'max_days_back' => 7,
+        'discourse_email' => env('FREEGLE_DISCOURSE_TECH_EMAIL', ''),
     ],
+
+    // Note: App release classification (hotfix: detection) is handled directly
+    // in CircleCI via the check-hotfix-promote job. See iznik-nuxt3/.circleci/config.yml
 ];

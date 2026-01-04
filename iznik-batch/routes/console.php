@@ -141,18 +141,8 @@ Schedule::command('mail:spool:process --cleanup --cleanup-days=7')
     ->runInBackground();
 
 // =============================================================================
-// APP RELEASE CLASSIFICATION
+// GIT SUMMARY
 // =============================================================================
-
-// Release classification - hourly check with notification.
-// Checks for hotfix: prefix commits and sends email to geek-alerts if found.
-// This doesn't trigger releases - just notifies about classification.
-// Actual promotion happens via CircleCI weekly schedule (Wednesday 10pm UTC)
-// or manual trigger with run_manual_promote parameter.
-Schedule::command('data:classify-app-release --notify')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
 
 // Git summary - weekly on Wednesday at 6pm UTC.
 // Sends AI-powered summary of code changes to Discourse.
@@ -160,3 +150,8 @@ Schedule::command('data:git-summary')
     ->weeklyOn(3, '18:00')  // Wednesday at 6pm UTC
     ->withoutOverlapping()
     ->runInBackground();
+
+// Note: App release classification is now handled directly in CircleCI.
+// The check-hotfix-promote job runs after beta builds and triggers
+// immediate promotion if the commit message has hotfix: prefix.
+// See iznik-nuxt3/.circleci/config.yml

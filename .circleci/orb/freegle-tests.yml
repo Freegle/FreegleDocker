@@ -199,10 +199,19 @@ commands:
       - run:
           name: Build containers
           command: |
-            # Force rebuild with --pull to get latest base images
-            # This ensures we get the most recent freegle-base with updated dependencies
-            echo "Building and starting services with fresh base images..."
-            docker-compose -f docker-compose.yml build --pull
+            # Pre-pull base image once (avoids multiple registry checks during parallel builds)
+            echo "Pre-pulling base image..."
+            docker pull ghcr.io/freegle/freegle-base:latest
+
+            # Build only containers needed for CI tests (skip dev containers)
+            # This saves ~2-3 minutes by not building freegle-dev-local, modtools-dev-local, ai-support-helper
+            echo "Building CI-required containers..."
+            docker-compose -f docker-compose.yml build \
+              apiv1 apiv1-phpunit apiv2 \
+              freegle-prod-local modtools-prod-local \
+              playwright status batch
+
+            # Start all services
             docker-compose -f docker-compose.yml up -d
 
             echo "Waiting for basic services to start..."
@@ -214,8 +223,8 @@ commands:
             # Verify expected container names exist (fail fast if container_name isn't working)
             echo ""
             echo "=== Verifying container names ==="
-            # All containers that have container_name set in docker-compose.yml
-            ALL_CONTAINERS="freegle-traefik freegle-percona freegle-postgres freegle-phpmyadmin freegle-mailpit freegle-beanstalkd freegle-spamassassin freegle-redis freegle-delivery freegle-tusd freegle-status freegle-host-scripts freegle-apiv1 freegle-apiv1-phpunit freegle-apiv2 freegle-batch freegle-dev-local freegle-prod-local modtools-dev-local modtools-prod-local freegle-playwright"
+            # Containers needed for CI tests (dev containers excluded as they're not used in tests)
+            ALL_CONTAINERS="freegle-traefik freegle-percona freegle-postgres freegle-phpmyadmin freegle-mailpit freegle-beanstalkd freegle-spamassassin freegle-redis freegle-delivery freegle-tusd freegle-status freegle-host-scripts freegle-apiv1 freegle-apiv1-phpunit freegle-apiv2 freegle-batch freegle-prod-local modtools-prod-local freegle-playwright"
             MISSING=""
             for container in $ALL_CONTAINERS; do
               if docker inspect "$container" >/dev/null 2>&1; then

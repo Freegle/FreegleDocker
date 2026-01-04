@@ -137,4 +137,46 @@ class Membership extends Model
         $settings = $this->settings ?? [];
         return $settings[$key] ?? $default;
     }
+
+    /**
+     * Check if this moderator is "active" (not a backup mod).
+     *
+     * Backup mods have settings['active'] = false. Active mods either have
+     * no settings, no 'active' key, or settings['active'] = true.
+     *
+     * Members are always considered active (backup status only applies to mods).
+     */
+    public function isActiveMod(): bool
+    {
+        // Members don't have backup status - they're always "active".
+        if (!$this->isModerator()) {
+            return TRUE;
+        }
+
+        // No settings means active by default.
+        if ($this->settings === NULL) {
+            return TRUE;
+        }
+
+        // No 'active' key means active by default.
+        if (!array_key_exists('active', $this->settings)) {
+            return TRUE;
+        }
+
+        // Explicitly check the active flag.
+        return (bool) $this->settings['active'];
+    }
+
+    /**
+     * Scope to active moderators (not backup mods).
+     */
+    public function scopeActiveModerators(Builder $query): Builder
+    {
+        return $query->whereIn('role', [self::ROLE_MODERATOR, self::ROLE_OWNER])
+            ->where(function ($q) {
+                $q->whereNull('settings')
+                    ->orWhereRaw("JSON_EXTRACT(settings, '$.active') IS NULL")
+                    ->orWhereRaw("JSON_EXTRACT(settings, '$.active') = true");
+            });
+    }
 }
