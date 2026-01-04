@@ -125,7 +125,7 @@ Set in `config/freegle.php`:
 |-----------------|-----------|-----------------|--------|-------|
 | `digest.php` | Every 1-5 min (varies by -i flag) | `mail:digest` | In Progress | Core functionality implemented |
 | `chat_notifyemail_user2user.php` | Every 1 min (0-3,5-23h) | `mail:chat:user2user` | In Progress | User-to-user notifications |
-| `chat_notifyemail_user2mod.php` | Every 1 min (0-3,5-23h) | `mail:chat:user2mod` | In Progress | User-to-mod notifications |
+| `chat_notifyemail_user2mod.php` | Every 1 min (0-3,5-23h) | `mail:chat:user2mod` | Done | User-to-mod notifications |
 | `messages_expired.php` | Every 60 min | `messages:process-expired` | In Progress | Deadline expiry handling |
 | `purge_messages.php` | Daily 03:00 | `purge:messages` | In Progress | Message purging |
 | `purge_chats.php` | Daily 01:00 | `purge:chats` | In Progress | Chat purging |
