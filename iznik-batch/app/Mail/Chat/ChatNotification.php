@@ -260,7 +260,7 @@ class ChatNotification extends MjmlMailable
 
         // Get sender name and profile, hiding mod identity for members.
         $senderName = $shouldHideModIdentity
-            ? $this->groupDisplayName . ' volunteers'
+            ? $this->groupDisplayName . ' Volunteers'
             : ($this->sender?->displayname ?? 'Someone');
         $senderProfileUrl = $shouldHideModIdentity
             ? $this->getGroupProfileUrl()
@@ -310,6 +310,13 @@ class ChatNotification extends MjmlMailable
                 'senderIsMember' => $senderIsMember,
                 'member' => $this->member,
                 'memberName' => $this->member?->displayname ?? 'the member',
+                'memberProfileUrl' => ($this->isModerator && $this->member && $this->chatRoom->groupid)
+                    ? $this->trackedUrl(
+                        $this->modSite . '/members/approved/' . $this->chatRoom->groupid . '/' . $this->member->id,
+                        'member_profile',
+                        'profile'
+                    )
+                    : null,
                 'groupName' => $this->groupDisplayName,
                 'groupShortName' => $this->chatRoom->group?->nameshort ?? 'Freegle',
                 'settingsUrl' => $this->trackedUrl(
@@ -419,7 +426,7 @@ class ChatNotification extends MjmlMailable
 
             // Member subject.
             $groupName = $group?->namefull ?? $group?->nameshort ?? 'your local Freegle group';
-            return "Your conversation with the {$groupName} volunteers";
+            return "Your conversation with the {$groupName} Volunteers";
         }
 
         // For USER2USER chats, find the last "interested in" message to get the item subject.
@@ -507,8 +514,6 @@ class ChatNotification extends MjmlMailable
                     return 'Item marked as TAKEN';
                 }
                 return 'Item marked as RECEIVED...';
-            case ChatMessage::TYPE_SCHEDULE:
-                return 'Collection time suggested...';
             case ChatMessage::TYPE_IMAGE:
                 // If there's text with the image, use that; otherwise use generic.
                 if (empty($text)) {
@@ -614,7 +619,7 @@ class ChatNotification extends MjmlMailable
         // Determine the display name for the message author.
         // For mod messages to members, show "Volunteers" instead of individual name.
         $userName = $shouldHideModIdentity
-            ? $this->groupDisplayName . ' volunteers'
+            ? $this->groupDisplayName . ' Volunteers'
             : ($messageUser?->displayname ?? 'Someone');
 
         return [
@@ -708,13 +713,13 @@ class ChatNotification extends MjmlMailable
                 return "Nudge - please can you reply?";
 
             case ChatMessage::TYPE_MODMAIL:
-                return "Message from volunteers: " . $text;
+                return "Message from Volunteers: " . $text;
+
+            case ChatMessage::TYPE_REPORTEDUSER:
+                return "This member reported another member with the comment: " . $text;
 
             case ChatMessage::TYPE_IMAGE:
                 return $text ?: 'Sent an image';
-
-            case ChatMessage::TYPE_SCHEDULE:
-                return $text ?: 'Suggested a collection time';
 
             default:
                 return $text ?: '(Empty message)';

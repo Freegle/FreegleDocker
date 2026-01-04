@@ -1659,6 +1659,35 @@ jobs:
                 if [ "$status" = "completed" ]; then
                   echo "pass" > /tmp/laravel-result
                   echo "✅ Laravel tests passed!"
+
+                  # Upload Laravel coverage (uses FreegleDocker repo token)
+                  echo "📤 Uploading Laravel coverage..."
+                  if [ -n "${COVERALLS_REPO_TOKEN}" ]; then
+                    if docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
+                      echo "✅ Found Laravel coverage file"
+                      docker cp /tmp/laravel-clover.xml freegle-batch:/var/www/html/clover.xml
+                      docker exec freegle-batch bash -c "cd /var/www/html && echo 'coverage_clover: clover.xml' > .coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> .coveralls.yml && echo 'service_name: circleci' >> .coveralls.yml"
+                      docker exec freegle-batch composer require php-coveralls/php-coveralls --dev 2>&1 || echo "php-coveralls install warning"
+                      docker exec freegle-batch bash -c "cd /var/www/html && git config --global --add safe.directory /var/www/html && git init && git config user.email 'circleci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/FreegleDocker.git && git add -A && git commit -m 'CI commit' --allow-empty" 2>/dev/null || true
+                      if docker exec -e COVERALLS_REPO_TOKEN="${COVERALLS_REPO_TOKEN}" \
+                         -e COVERALLS_RUN_LOCALLY=1 \
+                         -e CI_NAME=circleci \
+                         -e CI_BUILD_NUMBER="${CIRCLE_BUILD_NUM}" \
+                         -e CI_BRANCH="${CIRCLE_BRANCH}" \
+                         -e CI_COMMIT_ID="${CIRCLE_SHA1}" \
+                         freegle-batch bash -c "cd /var/www/html && vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
+                        echo "✅ Laravel coverage uploaded successfully"
+                      else
+                        echo "❌ Laravel coverage upload failed"
+                        echo "fail" > /tmp/laravel-result
+                      fi
+                    else
+                      echo "❌ Laravel coverage file not found"
+                      echo "fail" > /tmp/laravel-result
+                    fi
+                  else
+                    echo "⚠️ COVERALLS_REPO_TOKEN not set - skipping coverage upload"
+                  fi
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/laravel-result
@@ -1673,8 +1702,8 @@ jobs:
             # Start Go tests in background
             echo "🧪 Starting Go tests in background..."
             (
-              # Trigger Go tests via status API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/go)
+              # Trigger Go tests via status API with coverage enabled
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:8081/api/tests/go?coverage=true")
               http_code="${response: -3}"
 
               if [ "$http_code" -ne "200" ]; then
@@ -1700,6 +1729,45 @@ jobs:
                 if [ "$status" = "completed" ]; then
                   echo "pass" > /tmp/go-result
                   echo "✅ Go tests passed!"
+
+                  # Upload Go coverage (uses iznik-server-go repo token)
+                  echo "📤 Uploading Go coverage..."
+                  if [ -n "${COVERALLS_REPO_TOKEN_IZNIK_SERVER_GO}" ]; then
+                    if docker cp freegle-apiv2:/app/coverage.out /tmp/go-coverage.out 2>/dev/null; then
+                      echo "✅ Found Go coverage file"
+                      # Install gcov2lcov and convert coverage
+                      go install github.com/jandelgado/gcov2lcov@latest 2>/dev/null || echo "gcov2lcov install warning"
+                      if command -v gcov2lcov > /dev/null; then
+                        cd /tmp
+                        if gcov2lcov -infile=go-coverage.out -outfile=go-coverage.lcov 2>&1 && [ -s go-coverage.lcov ]; then
+                          npm install -g coveralls 2>/dev/null || true
+                          export COVERALLS_SERVICE_NAME="circleci"
+                          export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+                          if [ -d ~/project/.git ]; then
+                            cp go-coverage.lcov ~/project/
+                            cd ~/project
+                          fi
+                          if cat go-coverage.lcov | COVERALLS_REPO_TOKEN="${COVERALLS_REPO_TOKEN_IZNIK_SERVER_GO}" coveralls 2>&1; then
+                            echo "✅ Go coverage uploaded successfully"
+                          else
+                            echo "❌ Go coverage upload failed"
+                            echo "fail" > /tmp/go-result
+                          fi
+                        else
+                          echo "❌ Failed to convert Go coverage to lcov"
+                          echo "fail" > /tmp/go-result
+                        fi
+                      else
+                        echo "❌ gcov2lcov not available"
+                        echo "fail" > /tmp/go-result
+                      fi
+                    else
+                      echo "❌ Go coverage file not found"
+                      echo "fail" > /tmp/go-result
+                    fi
+                  else
+                    echo "⚠️ COVERALLS_REPO_TOKEN_IZNIK_SERVER_GO not set - skipping coverage upload"
+                  fi
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/go-result
@@ -1747,6 +1815,35 @@ jobs:
                 if [ "$status" = "completed" ]; then
                   echo "pass" > /tmp/php-result
                   echo "✅ PHPUnit tests passed!"
+
+                  # Upload PHPUnit coverage (uses iznik-server repo token)
+                  echo "📤 Uploading PHPUnit coverage..."
+                  if [ -n "${COVERALLS_REPO_TOKEN_IZNIK_SERVER}" ]; then
+                    if docker cp freegle-apiv1-phpunit:/var/www/html/test/ut/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+                      echo "✅ Found PHPUnit coverage file"
+                      docker cp /tmp/phpunit-clover.xml freegle-apiv1-phpunit:/var/www/html/clover.xml
+                      docker exec freegle-apiv1-phpunit bash -c "cd /var/www/html && echo 'coverage_clover: clover.xml' > .coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> .coveralls.yml && echo 'service_name: circleci' >> .coveralls.yml"
+                      docker exec freegle-apiv1-phpunit composer require php-coveralls/php-coveralls --dev 2>&1 || echo "php-coveralls install warning"
+                      docker exec freegle-apiv1-phpunit bash -c "cd /var/www/html && git config --global --add safe.directory /var/www/html && git init && git config user.email 'circleci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/iznik-server.git && git add -A && git commit -m 'CI commit' --allow-empty" 2>/dev/null || true
+                      if docker exec -e COVERALLS_REPO_TOKEN="${COVERALLS_REPO_TOKEN_IZNIK_SERVER}" \
+                         -e COVERALLS_RUN_LOCALLY=1 \
+                         -e CI_NAME=circleci \
+                         -e CI_BUILD_NUMBER="${CIRCLE_BUILD_NUM}" \
+                         -e CI_BRANCH="${CIRCLE_BRANCH}" \
+                         -e CI_COMMIT_ID="${CIRCLE_SHA1}" \
+                         freegle-apiv1-phpunit bash -c "cd /var/www/html && vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
+                        echo "✅ PHPUnit coverage uploaded successfully"
+                      else
+                        echo "❌ PHPUnit coverage upload failed"
+                        echo "fail" > /tmp/php-result
+                      fi
+                    else
+                      echo "❌ PHPUnit coverage file not found"
+                      echo "fail" > /tmp/php-result
+                    fi
+                  else
+                    echo "⚠️ COVERALLS_REPO_TOKEN_IZNIK_SERVER not set - skipping coverage upload"
+                  fi
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/php-result

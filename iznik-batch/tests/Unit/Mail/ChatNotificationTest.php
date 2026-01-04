@@ -311,12 +311,12 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2MOD
         );
 
-        // USER2MOD subject format: "Your conversation with the {groupNameFull} volunteers"
+        // USER2MOD subject format: "Your conversation with the {groupNameFull} Volunteers"
         // For member-facing emails, we use the friendly full group name.
         $this->assertStringContainsString('Your conversation with the', $mail->replySubject);
         // Group name contains the common prefix from namefull.
         $this->assertStringContainsString('Test Freegle Group', $mail->replySubject);
-        $this->assertStringContainsString('volunteers', $mail->replySubject);
+        $this->assertStringContainsString('Volunteers', $mail->replySubject);
     }
 
     public function test_chat_notification_no_sender_subject(): void
@@ -991,47 +991,6 @@ class ChatNotificationTest extends TestCase
         $this->assertStringContainsString('Sent an image', $html);
     }
 
-    public function test_chat_notification_schedule_message_type(): void
-    {
-        $user1 = $this->createTestUser();
-        $user2 = $this->createTestUser();
-
-        $room = ChatRoom::create([
-            'chattype' => ChatRoom::TYPE_USER2USER,
-            'user1' => $user1->id,
-            'user2' => $user2->id,
-            'created' => now(),
-        ]);
-
-        $message = ChatMessage::create([
-            'chatid' => $room->id,
-            'userid' => $user1->id,
-            'message' => '',
-            'type' => ChatMessage::TYPE_SCHEDULE,
-            'date' => now(),
-            'reviewrequired' => 0,
-            'processingrequired' => 0,
-            'processingsuccessful' => 1,
-            'mailedtoall' => 0,
-            'seenbyall' => 0,
-            'reviewrejected' => 0,
-            'platform' => 1,
-        ]);
-
-        $mail = new ChatNotification(
-            $user2,
-            $user1,
-            $room,
-            $message,
-            ChatRoom::TYPE_USER2USER
-        );
-
-        $mail->build();
-        $html = $mail->render();
-
-        $this->assertStringContainsString('Suggested a collection time', $html);
-    }
-
     public function test_chat_notification_reneged_message_type(): void
     {
         $user1 = $this->createTestUser(['fullname' => 'Alice']);
@@ -1612,9 +1571,9 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2MOD
         );
 
-        // Subject should be "Your conversation with the {groupName} volunteers".
+        // Subject should be "Your conversation with the {groupName} Volunteers".
         $this->assertStringContainsString('Your conversation with the', $mail->replySubject);
-        $this->assertStringContainsString('volunteers', $mail->replySubject);
+        $this->assertStringContainsString('Volunteers', $mail->replySubject);
     }
 
     public function test_user2mod_moderator_notification_shows_modtools_styling(): void
@@ -1748,6 +1707,136 @@ class ChatNotificationTest extends TestCase
         // Member property should be set.
         $this->assertNotNull($mail->member);
         $this->assertEquals($member->id, $mail->member->id);
+    }
+
+    public function test_chat_notification_modmail_message_type(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Please be aware of our group rules.',
+            'type' => ChatMessage::TYPE_MODMAIL,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('Message from Volunteers:', $html);
+        $this->assertStringContainsString('Please be aware of our group rules.', $html);
+    }
+
+    public function test_chat_notification_reporteduser_message_type(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'message' => 'This person was rude to me.',
+            'type' => ChatMessage::TYPE_REPORTEDUSER,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Moderator receives notification about the reported user.
+        $mail = new ChatNotification(
+            $moderator,
+            $member,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2MOD
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        $this->assertStringContainsString('This member reported another member', $html);
+        $this->assertStringContainsString('This person was rude to me.', $html);
+    }
+
+    public function test_chat_notification_reminder_message_type(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        // TYPE_REMINDER is used by Tryst for automatic handover reminders.
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => "Automatic reminder: Handover at 2pm. Please confirm that's still ok or let them know if things have changed. Everybody hates a no-show...",
+            'type' => ChatMessage::TYPE_REMINDER,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // TYPE_REMINDER falls through to default, so it should show the handover reminder text.
+        $this->assertStringContainsString('Automatic reminder: Handover at 2pm', $html);
+        $this->assertStringContainsString('Everybody hates a no-show', $html);
     }
 
     public function test_user2mod_member_property_null_for_members(): void

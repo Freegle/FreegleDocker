@@ -30,8 +30,8 @@
       <mj-column>
         <mj-text font-size="14px" color="#396aa3" align="center" padding="0">
           Member: <strong>{{ $memberName ?? 'Unknown' }}</strong>
-          @if($member?->id && $chatRoom?->groupid)
-          <a href="{{ config('freegle.sites.mod') }}/members/approved/{{ $chatRoom->groupid }}/{{ $member->id }}" style="color: #396aa3; font-weight: normal;">#{{ $member->id }}</a>
+          @if($memberProfileUrl)
+          <a href="{{ $memberProfileUrl }}" style="color: #396aa3; font-weight: normal;">#{{ $member->id }}</a>
           @endif
           @if(!empty($member?->email_preferred))
           ({{ $member->email_preferred }})

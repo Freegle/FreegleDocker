@@ -82,7 +82,8 @@ class TestMailCommand extends Command
         ChatMessage::TYPE_IMAGE,
         ChatMessage::TYPE_ADDRESS,
         ChatMessage::TYPE_NUDGE,
-        ChatMessage::TYPE_SCHEDULE,
+        ChatMessage::TYPE_REMINDER,
+        ChatMessage::TYPE_REPORTEDUSER,
     ];
 
     /**

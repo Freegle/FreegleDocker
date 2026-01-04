@@ -23,8 +23,8 @@ class ChatMessage extends Model
     public const TYPE_IMAGE = 'Image';
     public const TYPE_ADDRESS = 'Address';
     public const TYPE_NUDGE = 'Nudge';
-    public const TYPE_SCHEDULE = 'Schedule';
     public const TYPE_REMINDER = 'Reminder';
+    public const TYPE_REPORTEDUSER = 'ReportedUser';
 
     protected $casts = [
         'date' => 'datetime',

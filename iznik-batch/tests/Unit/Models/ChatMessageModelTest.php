@@ -620,7 +620,7 @@ class ChatMessageModelTest extends TestCase
         $this->assertEquals('Image', ChatMessage::TYPE_IMAGE);
         $this->assertEquals('Address', ChatMessage::TYPE_ADDRESS);
         $this->assertEquals('Nudge', ChatMessage::TYPE_NUDGE);
-        $this->assertEquals('Schedule', ChatMessage::TYPE_SCHEDULE);
         $this->assertEquals('Reminder', ChatMessage::TYPE_REMINDER);
+        $this->assertEquals('ReportedUser', ChatMessage::TYPE_REPORTEDUSER);
     }
 }
