@@ -2,6 +2,8 @@
 
 This document tracks progress migrating cron scripts from `iznik-server/scripts/cron/` to Laravel services in this application.
 
+**Before migrating any email:** Read [EMAIL-MIGRATION-GUIDE.md](./EMAIL-MIGRATION-GUIDE.md) for lessons learned from previous migrations.
+
 ## Status Legend
 
 - **Done** - Fully migrated and tested

@@ -58,6 +58,8 @@ docker exec freegle-batch php artisan migrate:generate
 
 ## Email Guidelines
 
+**IMPORTANT:** Before migrating any email from iznik-server, read [EMAIL-MIGRATION-GUIDE.md](./EMAIL-MIGRATION-GUIDE.md) for lessons learned from previous migrations including common mistakes to avoid.
+
 - **Never use base64 data URIs in emails** - Gmail and most email clients strip them for security reasons. Use hosted image URLs instead.
 - Email images should be hosted on a CDN or web server and referenced via HTTPS URLs.
 - Configure image URLs in `config/freegle.php` under the `images` key.

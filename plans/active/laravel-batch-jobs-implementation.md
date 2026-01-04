@@ -4,6 +4,15 @@
 
 This document outlines the plan to migrate the batch/cron jobs from iznik-server (PHP) to a new Laravel-based implementation in `iznik-server-laravel`. The goal is to create idiomatic Laravel code while maintaining complete compatibility with the existing database schema.
 
+## Related Documentation
+
+| Document | Location | Purpose |
+|----------|----------|---------|
+| **Email Migration Guide** | `iznik-batch/EMAIL-MIGRATION-GUIDE.md` | Lessons learned from Welcome and Chat Notification email migrations - **READ BEFORE migrating any email** |
+| **Migration Status** | `iznik-batch/MIGRATION-STATUS.md` | Tracks progress on all cron script migrations |
+| **AMP Email Plan** | `plans/active/amp-email-implementation.md` | AMP email feature implementation details |
+| **iznik-batch CLAUDE.md** | `iznik-batch/CLAUDE.md` | Development guidelines for the Laravel batch processor |
+
 ## Current State Analysis
 
 ### Existing Cron Jobs (127 scripts)
