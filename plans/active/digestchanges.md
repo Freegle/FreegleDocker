@@ -176,17 +176,72 @@ After this change, ModTools will show:
 
 ## Help Section Entry
 
+**Why has my digest email changed?**
+
+We've improved how we send digest emails to give you a better experience:
+
+- **One email instead of many** - You now receive a single Freegle Digest containing posts from all your communities, rather than a separate email for each community. This means fewer emails in your inbox.
+
+- **No more duplicates** - If someone posts the same item to multiple communities, you'll only see it once. Previously you might have seen the same sofa three times if it was posted to three nearby communities.
+
+- **More relevant posts** - We now show you posts based on travel time from your location, not just which community they're in. You'll see things you can actually collect.
+
+- **Simpler settings** - Instead of choosing email settings for each community separately, there's now one simple choice that applies everywhere.
+
+These changes help you find what you need faster, with less inbox clutter.
+
+[Change email settings →]
+
+---
+
 **How are posts chosen for my emails?**
 
 We show you posts within a reasonable travel time from your location. You get one digest with posts from all your communities - no duplicates if something's posted to multiple communities.
 
 [Change email settings →]
 
+---
+
 **Get fewer emails**
 
 You can choose No emails, Basic (daily digest), or Full (immediate). Change this in Settings under 'Mail Settings'.
 
 [Go to Settings →]
+
+---
+
+## Measuring Impact
+
+### Key Metric: Digest Clicks
+
+The simplest way to measure impact is to count clicks from digest emails. Both old and new emails include `?src=digest` in their links, and page views are already logged to Loki with query parameters.
+
+**How it works:**
+- All digest email links include `?src=digest` (e.g., `ilovefreegle.org/message/12345?src=digest`)
+- Page views are logged to Loki with query params via `sentry.client.ts`
+- No code changes needed - we can compare before/after using existing data
+
+### Loki Query
+
+**Daily digest clicks:**
+```
+sum by (day) (
+  count_over_time(
+    {job="freegle"} |= "page_view" | json | query_params_src="digest" [24h]
+  )
+)
+```
+
+**Weekly comparison (run before and after rollout):**
+```
+count_over_time(
+  {job="freegle"} |= "page_view" | json | query_params_src="digest" [7d]
+)
+```
+
+### Success Criteria
+
+The unified digest will be considered successful if digest clicks remain stable or increase after rollout. A significant drop would indicate users are less engaged with the new format.
 
 ---
 
