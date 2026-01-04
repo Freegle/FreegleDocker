@@ -18,9 +18,14 @@ class ChatNotificationService
     use FeatureFlags;
 
     /**
-     * Email type identifier for feature flag checking.
+     * Email type identifier for feature flag checking (User2User chats).
      */
     private const EMAIL_TYPE = 'ChatNotification';
+
+    /**
+     * Email type identifier for User2Mod chats (separate flag for gradual rollout).
+     */
+    private const EMAIL_TYPE_USER2MOD = 'ChatNotificationUser2Mod';
 
     /**
      * Default delay in seconds before notifying about a message.
@@ -60,6 +65,12 @@ class ChatNotificationService
         // Check if ChatNotification emails are enabled.
         if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
             Log::info("ChatNotification emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotification'.");
+            return 0;
+        }
+
+        // User2Mod notifications have a separate feature flag for gradual rollout.
+        if ($chatType === ChatRoom::TYPE_USER2MOD && !self::isEmailTypeEnabled(self::EMAIL_TYPE_USER2MOD)) {
+            Log::info("ChatNotificationUser2Mod emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotificationUser2Mod'.");
             return 0;
         }
 
@@ -152,7 +163,7 @@ class ChatNotificationService
                 }
 
                 // Check if we should notify this user about this message.
-                if (!$this->shouldNotifyUser($sendingTo, $message, $chatRoom, $chatType)) {
+                if (!$this->shouldNotifyUser($sendingTo, $message, $chatRoom, $chatType, $roster->isModerator ?? FALSE)) {
                     continue;
                 }
 
@@ -192,9 +203,57 @@ class ChatNotificationService
 
     /**
      * Get members who need to be notified about a specific message.
+     *
+     * For User2User chats: both users are in the roster, we notify those who haven't been mailed.
+     * For User2Mod chats: we notify the member (user1) from roster, AND all group moderators.
      */
     protected function getMembersToNotify(ChatRoom $chatRoom, ChatMessage $message, bool $forceAll): Collection
     {
+        $results = collect();
+
+        if ($chatRoom->chattype === ChatRoom::TYPE_USER2MOD && $chatRoom->groupid) {
+            // User2Mod: Get member from roster.
+            $memberRoster = ChatRoster::where('chatid', $chatRoom->id)
+                ->where('userid', $chatRoom->user1)
+                ->with('user')
+                ->first();
+
+            if ($memberRoster) {
+                if ($forceAll || is_null($memberRoster->lastmsgemailed) || $memberRoster->lastmsgemailed < $message->id) {
+                    $memberRoster->isModerator = false;
+                    $results->push($memberRoster);
+                }
+            }
+
+            // User2Mod: Get all group moderators.
+            $group = $chatRoom->group;
+            if ($group) {
+                $moderators = $group->memberships()
+                    ->whereIn('role', ['Moderator', 'Owner'])
+                    ->get();
+
+                foreach ($moderators as $membership) {
+                    // Ensure mod is in roster (so we can track what we've mailed).
+                    $roster = ChatRoster::firstOrCreate(
+                        ['chatid' => $chatRoom->id, 'userid' => $membership->userid],
+                        ['lastmsgseen' => null, 'lastmsgemailed' => null]
+                    );
+
+                    // Load the user relationship.
+                    $roster->load('user');
+
+                    // Check if we need to notify this moderator.
+                    if ($forceAll || is_null($roster->lastmsgemailed) || $roster->lastmsgemailed < $message->id) {
+                        $roster->isModerator = true;
+                        $results->push($roster);
+                    }
+                }
+            }
+
+            return $results->unique('userid');
+        }
+
+        // User2User: Use standard roster-based logic.
         $query = ChatRoster::where('chatid', $chatRoom->id)
             ->with('user');
 
@@ -206,13 +265,22 @@ class ChatNotificationService
             });
         }
 
-        return $query->get();
+        return $query->get()->map(function ($roster) {
+            $roster->isModerator = false;
+            return $roster;
+        });
     }
 
     /**
      * Check if a user should be notified about a specific message.
+     *
+     * @param User $user The user to potentially notify
+     * @param ChatMessage $message The message to notify about
+     * @param ChatRoom $chatRoom The chat room
+     * @param string $chatType The chat type (User2User, User2Mod, etc.)
+     * @param bool $isModerator Whether this user is a moderator in this chat context
      */
-    protected function shouldNotifyUser(User $user, ChatMessage $message, ChatRoom $chatRoom, string $chatType): bool
+    protected function shouldNotifyUser(User $user, ChatMessage $message, ChatRoom $chatRoom, string $chatType, bool $isModerator = false): bool
     {
         // Check if this is the user's own message.
         $isOwnMessage = $message->userid === $user->id;
@@ -226,9 +294,20 @@ class ChatNotificationService
             }
         }
 
-        // For User2Mod chats, always notify the member (user1).
-        if ($chatType === ChatRoom::TYPE_USER2MOD && $chatRoom->user1 === $user->id) {
-            return TRUE;
+        // For User2Mod chats:
+        // - Always notify the member (user1)
+        // - Notify moderators based on their notification preferences
+        if ($chatType === ChatRoom::TYPE_USER2MOD) {
+            if ($chatRoom->user1 === $user->id) {
+                // Always notify the member.
+                return TRUE;
+            }
+
+            if ($isModerator) {
+                // Notify moderator based on their email notification preferences.
+                // Mods might have notifications off, in which case we don't bother them.
+                return $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
+            }
         }
 
         // TN users always get notifications.
@@ -237,14 +316,7 @@ class ChatNotificationService
         }
 
         // Check user's notification preferences.
-        $emailNotifs = $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
-
-        // Force mail if this is a user2mod chat and user is the member.
-        if ($chatType === ChatRoom::TYPE_USER2MOD && $chatRoom->user1 === $user->id) {
-            return TRUE;
-        }
-
-        return $emailNotifs;
+        return $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
     }
 
     /**

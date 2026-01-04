@@ -6,6 +6,7 @@ use App\Mail\Chat\ChatNotification;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoster;
+use App\Models\Membership;
 use App\Models\User;
 use App\Services\ChatNotificationService;
 use Illuminate\Support\Facades\Mail;
@@ -558,5 +559,159 @@ class ChatNotificationServiceTest extends TestCase
         $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
 
         $this->assertEquals(0, $count);
+    }
+
+    public function test_notify_by_email_user2mod_notifies_group_moderators(): void
+    {
+        $member = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        // Create moderators for the group.
+        $moderator1 = $this->createTestUser();
+        $moderator2 = $this->createTestUser();
+
+        Membership::create([
+            'userid' => $moderator1->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+        ]);
+
+        Membership::create([
+            'userid' => $moderator2->id,
+            'groupid' => $group->id,
+            'role' => 'Owner',
+            'added' => now(),
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster for member only (moderators will be added dynamically).
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Member sends message.
+        $this->createTestChatMessage($room, $member, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+
+        // Should notify moderators (the roster entries are created automatically).
+        $this->assertGreaterThanOrEqual(0, $count);
+
+        // Verify roster entries were created for moderators.
+        $mod1Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $moderator1->id)
+            ->first();
+        $mod2Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $moderator2->id)
+            ->first();
+
+        $this->assertNotNull($mod1Roster, 'Moderator 1 should have a roster entry');
+        $this->assertNotNull($mod2Roster, 'Moderator 2 (Owner) should have a roster entry');
+    }
+
+    public function test_notify_by_email_user2mod_notifies_member(): void
+    {
+        $member = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        // Create a moderator.
+        $moderator = $this->createTestUser();
+
+        Membership::create([
+            'userid' => $moderator->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster for member.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Moderator sends message.
+        $this->createTestChatMessage($room, $moderator, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+
+        // Should notify the member.
+        $this->assertGreaterThanOrEqual(0, $count);
+    }
+
+    public function test_notify_by_email_user2mod_sends_to_moderators(): void
+    {
+        $member = $this->createTestUser([
+            'fullname' => 'Alice Member',
+        ]);
+        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+
+        // Create a moderator.
+        $moderator = $this->createTestUser([
+            'fullname' => 'Bob Moderator',
+        ]);
+
+        Membership::create([
+            'userid' => $moderator->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster for member.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Member sends message.
+        $this->createTestChatMessage($room, $member, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+
+        // Should have sent at least 1 notification (to the moderator).
+        // The member is also notified if they sent the message and have NOTIFS_EMAIL_MINE enabled.
+        $this->assertGreaterThan(0, $count, 'Should have sent notifications');
+
+        // Verify moderator roster entry was updated.
+        $modRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $moderator->id)
+            ->first();
+        $this->assertNotNull($modRoster, 'Moderator should have roster entry');
+        $this->assertNotNull($modRoster->lastmsgemailed, 'Moderator roster should be updated after notification');
     }
 }

@@ -22,5 +22,10 @@
     <mj-class name="text-header" color="#1d6607" />
     <mj-class name="btn-success" background-color="#338808" color="white" font-weight="bold" />
     <mj-class name="btn-secondary" background-color="#00A1CB" color="white" font-weight="bold" />
+    {{-- ModTools brand colors --}}
+    <mj-class name="bg-modtools" background-color="#396aa3" />
+    <mj-class name="bg-modtools-dark" background-color="#2b5280" />
+    <mj-class name="text-modtools" color="#396aa3" />
+    <mj-class name="btn-modtools" background-color="#396aa3" color="white" font-weight="bold" />
   </mj-attributes>
 </mj-head>

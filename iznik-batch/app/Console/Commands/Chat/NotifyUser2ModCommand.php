@@ -19,7 +19,7 @@ class NotifyUser2ModCommand extends Command
     protected $signature = 'mail:chat:user2mod
                             {--chat= : Process only a specific chat ID}
                             {--delay=30 : Delay in seconds before sending notification}
-                            {--since=24 : How many hours back to look for messages}
+                            {--since=4 : How many hours back to look for messages}
                             {--force : Force sending even for already mailed messages}
                             {--max-iterations=120 : Maximum iterations before exiting}
                             {--spool : Spool emails instead of sending directly}';
@@ -34,6 +34,14 @@ class NotifyUser2ModCommand extends Command
      */
     public function handle(ChatNotificationService $notificationService, EmailSpoolerService $spooler): int
     {
+        // Check if User2Mod notifications are enabled.
+        // This allows safe deployment - test with mail:test first, then enable when ready.
+        if (!config('freegle.chat_notifications.user2mod_enabled', false)) {
+            $this->warn('User2Mod notifications are disabled. Set USER2MOD_NOTIFICATIONS_ENABLED=true to enable.');
+            Log::info('User2Mod notifications disabled by config');
+            return Command::SUCCESS;
+        }
+
         $chatId = $this->option('chat') ? (int) $this->option('chat') : null;
         $delay = (int) $this->option('delay');
         $sinceHours = (int) $this->option('since');

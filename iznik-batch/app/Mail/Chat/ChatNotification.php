@@ -50,11 +50,33 @@ class ChatNotification extends MjmlMailable
      */
     public bool $isOwnMessage;
 
+    /**
+     * Whether the recipient is a moderator (for User2Mod chats).
+     * Moderators see different subject lines, URLs, and styling.
+     */
+    public bool $isModerator = false;
+
+    /**
+     * The member in a User2Mod chat (the non-moderator user).
+     * Used for moderator notifications to show member info in subject.
+     */
+    public ?User $member = null;
+
+    /**
+     * The ModTools site URL.
+     */
+    public string $modSite;
+
     protected string $replyToAddress;
 
     protected string $fromDisplayName;
 
     protected string $userDomain;
+
+    /**
+     * The friendly group name for display (prefers namefull over nameshort).
+     */
+    protected string $groupDisplayName;
 
     /**
      * Create a new message instance.
@@ -74,9 +96,9 @@ class ChatNotification extends MjmlMailable
         $this->chatType = $chatType;
         $this->previousMessages = $previousMessages ?? collect();
         $this->userSite = config('freegle.sites.user');
+        $this->modSite = config('freegle.sites.mod');
         $this->deliveryUrl = config('freegle.delivery.base_url');
         $this->userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
-        $this->chatUrl = $this->userSite . '/chats/' . $chatRoom->id;
 
         // Get referenced message from the chat message.
         $this->refMessage = $message->refMessage;
@@ -85,6 +107,26 @@ class ChatNotification extends MjmlMailable
         // This happens when a user sends a message and has opted to receive copies of their own messages.
         $this->isOwnMessage = $message->userid === $recipient->id;
 
+        // For User2Mod chats, determine if recipient is a moderator or the member.
+        // user1 in the chat is always the member, moderators are checked via group membership.
+        if ($chatType === ChatRoom::TYPE_USER2MOD && $chatRoom->groupid) {
+            $this->member = User::find($chatRoom->user1);
+            // Recipient is a moderator if they're NOT the member (user1)
+            $this->isModerator = $recipient->id !== $chatRoom->user1;
+        }
+
+        // Get the friendly group name (prefer namedisplay/namefull over nameshort).
+        $this->groupDisplayName = $chatRoom->group?->namedisplay
+            ?: $chatRoom->group?->namefull
+            ?: $chatRoom->group?->nameshort
+            ?: 'Freegle';
+
+        // Set chat URL based on whether recipient is a moderator.
+        // Moderators use ModTools, members use the user site.
+        $this->chatUrl = $this->isModerator
+            ? $this->modSite . '/chats/' . $chatRoom->id
+            : $this->userSite . '/chats/' . $chatRoom->id;
+
         // Build the subject line.
         $this->replySubject = $this->generateSubject();
 
@@ -92,10 +134,35 @@ class ChatNotification extends MjmlMailable
         // Format: notify-{chatid}-{userid}@{domain}
         $this->replyToAddress = 'notify-' . $chatRoom->id . '-' . $recipient->id . '@' . $this->userDomain;
 
-        // Build from display name: "SenderName on Freegle".
-        $senderName = $sender?->displayname ?? 'Someone';
+        // Build from display name based on chat type.
+        // For User2Mod chats, we follow iznik-server behavior:
+        // - Member receives: "{GroupName} Volunteers" (hide mod identity)
+        // - Mod receives from member: "{MemberName} via Freegle"
+        // - Mod receives from another mod: "{GroupName} Volunteers"
         $siteName = config('freegle.branding.name', 'Freegle');
-        $this->fromDisplayName = $senderName . ' on ' . $siteName;
+
+        if ($chatType === ChatRoom::TYPE_USER2MOD) {
+            $groupName = $chatRoom->group?->namedisplay ?? $chatRoom->group?->nameshort ?? $siteName;
+
+            if ($this->isModerator) {
+                // Moderator receiving - check if message is from member or another mod.
+                if ($sender && $sender->id === $chatRoom->user1) {
+                    // Message from member - show member's name.
+                    $senderName = $sender->displayname ?? 'A member';
+                    $this->fromDisplayName = $senderName . ' via ' . $siteName;
+                } else {
+                    // Message from another mod - use group volunteers.
+                    $this->fromDisplayName = $groupName . ' Volunteers';
+                }
+            } else {
+                // Member receiving - always show group volunteers, hide mod identity.
+                $this->fromDisplayName = $groupName . ' Volunteers';
+            }
+        } else {
+            // User2User - show sender name.
+            $senderName = $sender?->displayname ?? 'Someone';
+            $this->fromDisplayName = $senderName . ' on ' . $siteName;
+        }
 
         // Initialize email tracking.
         // Only pass user ID if it's a persisted user (exists in database).
@@ -170,10 +237,39 @@ class ChatNotification extends MjmlMailable
         // Get item image URL if there's a referenced message with attachments.
         $refMessageImageUrl = $this->getRefMessageImageUrl();
 
+        // For User2Mod chats when notifying a member, always hide mod identity.
+        // Any message notification to a member is from volunteers (even if sender is NULL).
+        // We don't need to check who the sender is - members always see "Volunteers".
+        $shouldHideModIdentity = $this->chatType === ChatRoom::TYPE_USER2MOD
+            && !$this->isModerator;  // Recipient is a member
+
         // Build sender page URL (for clicking on sender name/image).
-        $senderPageUrl = $this->sender?->id
-            ? $this->trackedUrl($this->userSite . '/profile/' . $this->sender->id, 'sender_profile', 'profile')
-            : null;
+        // Moderators should go to ModTools, members to user site.
+        // For hidden mod identity, link to group explore page.
+        if ($shouldHideModIdentity) {
+            $groupName = $this->chatRoom->group?->nameshort ?? '';
+            $senderPageUrl = $groupName
+                ? $this->trackedUrl($this->userSite . '/explore/' . urlencode($groupName), 'group_profile', 'group')
+                : null;
+        } elseif ($this->sender?->id) {
+            $profileSite = $this->isModerator ? $this->modSite : $this->userSite;
+            $senderPageUrl = $this->trackedUrl($profileSite . '/profile/' . $this->sender->id, 'sender_profile', 'profile');
+        } else {
+            $senderPageUrl = null;
+        }
+
+        // Get sender name and profile, hiding mod identity for members.
+        $senderName = $shouldHideModIdentity
+            ? $this->groupDisplayName . ' Volunteers'
+            : ($this->sender?->displayname ?? 'Someone');
+        $senderProfileUrl = $shouldHideModIdentity
+            ? $this->getGroupProfileUrl()
+            : $this->getSenderProfileUrl();
+
+        // For mod view, determine if the sender is the member or another mod.
+        $senderIsMember = $this->isModerator
+            && $this->sender
+            && $this->sender->id === $this->chatRoom->user1;
 
         // Check if AMP will be included (used for footer indicator).
         $ampIncluded = $this->isAmpEnabled() && $this->chatType === ChatRoom::TYPE_USER2USER && $this->recipient->exists;
@@ -195,8 +291,8 @@ class ChatNotification extends MjmlMailable
                 'recipient' => $this->recipient,
                 'recipientName' => $this->recipient->displayname,
                 'sender' => $this->sender,
-                'senderName' => $this->sender?->displayname ?? 'Someone',
-                'senderProfileUrl' => $this->getSenderProfileUrl(),
+                'senderName' => $senderName,
+                'senderProfileUrl' => $senderProfileUrl,
                 'senderPageUrl' => $senderPageUrl,
                 'chatRoom' => $this->chatRoom,
                 'chatMessage' => $preparedMessage,
@@ -210,8 +306,29 @@ class ChatNotification extends MjmlMailable
                 'showOutcomeButtons' => $showOutcomeButtons,
                 'outcomeUrls' => $outcomeUrls,
                 'isUser2Mod' => $this->chatType === ChatRoom::TYPE_USER2MOD,
-                'settingsUrl' => $this->trackedUrl($this->userSite . '/settings', 'footer_settings', 'settings'),
-                'unsubscribeUrl' => $this->trackedUrl($this->userSite . '/unsubscribe', 'footer_unsubscribe', 'unsubscribe'),
+                'isModerator' => $this->isModerator,
+                'senderIsMember' => $senderIsMember,
+                'member' => $this->member,
+                'memberName' => $this->member?->displayname ?? 'the member',
+                'memberProfileUrl' => ($this->isModerator && $this->member && $this->chatRoom->groupid)
+                    ? $this->trackedUrl(
+                        $this->modSite . '/members/approved/' . $this->chatRoom->groupid . '/' . $this->member->id,
+                        'member_profile',
+                        'profile'
+                    )
+                    : null,
+                'groupName' => $this->groupDisplayName,
+                'groupShortName' => $this->chatRoom->group?->nameshort ?? 'Freegle',
+                'settingsUrl' => $this->trackedUrl(
+                    $this->isModerator ? $this->modSite . '/settings' : $this->userSite . '/settings',
+                    'footer_settings',
+                    'settings'
+                ),
+                'unsubscribeUrl' => $this->trackedUrl(
+                    $this->isModerator ? $this->modSite . '/settings' : $this->userSite . '/unsubscribe',
+                    'footer_unsubscribe',
+                    'unsubscribe'
+                ),
                 'jobAds' => $jobAds['jobs'],
                 'jobsUrl' => $this->trackedUrl($this->userSite . '/jobs', 'jobs_link', 'jobs'),
                 'donateUrl' => $this->trackedUrl('https://freegle.in/paypal1510', 'donate_link', 'donate'),
@@ -289,13 +406,27 @@ class ChatNotification extends MjmlMailable
      *
      * Matches iznik-server logic: use the last "interested in" message in the chat
      * to get the item subject, since that's the most likely thing they're talking about.
+     *
+     * For User2Mod chats:
+     * - Member gets: "Your conversation with the {GroupName} volunteers"
+     * - Moderator gets: "Member conversation on {GroupShortName} with {MemberName} ({email})"
      */
     protected function generateSubject(): string
     {
         if ($this->chatType === ChatRoom::TYPE_USER2MOD) {
             $group = $this->chatRoom->group;
-            $groupName = $group?->nameshort ?? 'your local Freegle group';
-            return "Your conversation with the {$groupName} volunteers";
+
+            if ($this->isModerator) {
+                // Moderator subject - matches iznik-server exactly.
+                $groupName = $group?->nameshort ?? 'Freegle';
+                $memberName = $this->member?->displayname ?? 'A member';
+                $memberEmail = $this->member?->email_preferred ?? '';
+                return "Member conversation on {$groupName} with {$memberName} ({$memberEmail})";
+            }
+
+            // Member subject.
+            $groupName = $group?->namefull ?? $group?->nameshort ?? 'your local Freegle group';
+            return "Your conversation with the {$groupName} Volunteers";
         }
 
         // For USER2USER chats, find the last "interested in" message to get the item subject.
@@ -383,8 +514,6 @@ class ChatNotification extends MjmlMailable
                     return 'Item marked as TAKEN';
                 }
                 return 'Item marked as RECEIVED...';
-            case ChatMessage::TYPE_SCHEDULE:
-                return 'Collection time suggested...';
             case ChatMessage::TYPE_IMAGE:
                 // If there's text with the image, use that; otherwise use generic.
                 if (empty($text)) {
@@ -431,6 +560,10 @@ class ChatNotification extends MjmlMailable
 
     /**
      * Prepare a single message for display.
+     *
+     * For User2Mod chats, we follow iznik-server behavior:
+     * - When notifying a member, mod messages show "Volunteers" and group profile
+     * - When notifying a mod, messages show actual user names/profiles
      */
     protected function prepareMessage(ChatMessage $message): array
     {
@@ -440,8 +573,24 @@ class ChatNotification extends MjmlMailable
         // Get display text based on message type.
         $displayText = $this->getMessageDisplayText($message);
 
+        // Determine if this message is from a moderator (for User2Mod identity handling).
+        // In User2Mod chats, user1 is always the member, anyone else is a mod.
+        $isFromMod = $this->chatType === ChatRoom::TYPE_USER2MOD
+            && $message->userid !== $this->chatRoom->user1;
+
+        // For User2Mod chats when notifying a member, hide mod identity.
+        // This matches iznik-server prepareForTwig() behavior.
+        $shouldHideModIdentity = $this->chatType === ChatRoom::TYPE_USER2MOD
+            && !$this->isModerator  // Recipient is a member
+            && $isFromMod;          // Message is from a mod
+
         // Get profile image URL.
-        $profileUrl = $this->getProfileImageUrl($messageUser);
+        // For mod messages to members, use group profile instead of individual mod profile.
+        if ($shouldHideModIdentity) {
+            $profileUrl = $this->getGroupProfileUrl();
+        } else {
+            $profileUrl = $this->getProfileImageUrl($messageUser);
+        }
 
         // Get image URL if this is an image message.
         $imageUrl = $this->getMessageImageUrl($message);
@@ -450,12 +599,28 @@ class ChatNotification extends MjmlMailable
         $refMessageInfo = $this->getMessageRefInfo($message);
 
         // Get user page URL for clicking on profile.
-        $userPageUrl = $messageUser?->id
-            ? $this->trackedUrl($this->userSite . '/profile/' . $messageUser->id, 'message_profile', 'profile')
-            : null;
+        // Moderators should go to ModTools, members to user site.
+        // For hidden mod identity, link to group explore page.
+        if ($shouldHideModIdentity) {
+            $groupName = $this->chatRoom->group?->nameshort ?? '';
+            $userPageUrl = $groupName
+                ? $this->trackedUrl($this->userSite . '/explore/' . urlencode($groupName), 'group_profile', 'group')
+                : null;
+        } elseif ($messageUser?->id) {
+            $profileSite = $this->isModerator ? $this->modSite : $this->userSite;
+            $userPageUrl = $this->trackedUrl($profileSite . '/profile/' . $messageUser->id, 'message_profile', 'profile');
+        } else {
+            $userPageUrl = null;
+        }
 
         // Get map URL for address messages.
         $mapUrl = $this->getAddressMapUrl($message);
+
+        // Determine the display name for the message author.
+        // For mod messages to members, show "Volunteers" instead of individual name.
+        $userName = $shouldHideModIdentity
+            ? $this->groupDisplayName . ' Volunteers'
+            : ($messageUser?->displayname ?? 'Someone');
 
         return [
             'id' => $message->id,
@@ -464,7 +629,7 @@ class ChatNotification extends MjmlMailable
             'imageUrl' => $imageUrl,
             'profileUrl' => $profileUrl,
             'userPageUrl' => $userPageUrl,
-            'userName' => $messageUser?->displayname ?? 'Someone',
+            'userName' => $userName,
             'date' => $message->date,
             'formattedDate' => $message->date?->format('M j, g:i a') ?? '',
             'isFromRecipient' => $isFromRecipient,
@@ -499,10 +664,12 @@ class ChatNotification extends MjmlMailable
             }
         }
 
+        // Use ModTools for moderators, user site for members.
+        $messageSite = $this->isModerator ? $this->modSite : $this->userSite;
         return [
             'subject' => $refMsg->subject,
             'imageUrl' => $imageUrl,
-            'url' => $this->trackedUrl($this->userSite . '/message/' . $refMsg->id, 'ref_message', 'view_item'),
+            'url' => $this->trackedUrl($messageSite . '/message/' . $refMsg->id, 'ref_message', 'view_item'),
         ];
     }
 
@@ -546,13 +713,13 @@ class ChatNotification extends MjmlMailable
                 return "Nudge - please can you reply?";
 
             case ChatMessage::TYPE_MODMAIL:
-                return "Message from volunteers: " . $text;
+                return "Message from Volunteers: " . $text;
+
+            case ChatMessage::TYPE_REPORTEDUSER:
+                return "This member reported another member with the comment: " . $text;
 
             case ChatMessage::TYPE_IMAGE:
                 return $text ?: 'Sent an image';
-
-            case ChatMessage::TYPE_SCHEDULE:
-                return $text ?: 'Suggested a collection time';
 
             default:
                 return $text ?: '(Empty message)';
@@ -666,6 +833,26 @@ class ChatNotification extends MjmlMailable
     {
         $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
         $sourceUrl = $imagesDomain . '/defaultprofile.png';
+        return $this->getDeliveryUrl($sourceUrl, $width);
+    }
+
+    /**
+     * Get group profile image URL for User2Mod chats.
+     *
+     * This matches iznik-server behavior where mod messages to members
+     * use the group's profile image instead of the individual mod's profile.
+     * Format: gimg_{profile_image_id}.jpg where profile is from groups.profile column
+     */
+    protected function getGroupProfileUrl(int $width = 40): string
+    {
+        $group = $this->chatRoom->group;
+
+        if (!$group || !$group->profile) {
+            return $this->getDefaultProfileUrl($width);
+        }
+
+        $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
+        $sourceUrl = "{$imagesDomain}/gimg_{$group->profile}.jpg";
         return $this->getDeliveryUrl($sourceUrl, $width);
     }
 

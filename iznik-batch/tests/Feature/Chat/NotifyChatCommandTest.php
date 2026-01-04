@@ -55,7 +55,18 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_user2mod_command_runs_successfully(): void
     {
+        // Enable User2Mod notifications for this test.
+        config(['freegle.chat_notifications.user2mod_enabled' => true]);
+
         $this->artisan('mail:chat:user2mod', ['--max-iterations' => 1])
+            ->assertExitCode(0);
+    }
+
+    public function test_user2mod_command_disabled_by_default(): void
+    {
+        // Without enabling, command should warn and exit successfully.
+        $this->artisan('mail:chat:user2mod', ['--max-iterations' => 1])
+            ->expectsOutputToContain('User2Mod notifications are disabled')
             ->assertExitCode(0);
     }
 
@@ -129,6 +140,9 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_user2mod_command_displays_completion_message(): void
     {
+        // Enable User2Mod notifications for this test.
+        config(['freegle.chat_notifications.user2mod_enabled' => true]);
+
         $this->artisan('mail:chat:user2mod', ['--max-iterations' => 1])
             ->expectsOutputToContain('User2Mod notification complete')
             ->assertExitCode(0);
