@@ -4,9 +4,15 @@ namespace App\Console\Commands\Mail;
 
 use App\Services\EmailSpoolerService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class ProcessSpoolCommand extends Command
 {
+    /**
+     * Cache key used to signal restart.
+     */
+    public const RESTART_SIGNAL_KEY = 'mail-spooler:restart';
+
     /**
      * The name and signature of the console command.
      */
@@ -27,6 +33,11 @@ class ProcessSpoolCommand extends Command
      * Flag to indicate shutdown has been requested.
      */
     protected bool $shouldShutdown = false;
+
+    /**
+     * Timestamp when the daemon started (for restart signal comparison).
+     */
+    protected int $startedAt;
 
     /**
      * Execute the console command.
@@ -92,12 +103,21 @@ class ProcessSpoolCommand extends Command
     {
         $limit = (int) $this->option("limit");
 
+        // Record when we started for restart signal comparison.
+        $this->startedAt = time();
+
         // Register signal handlers for graceful shutdown.
         $this->registerSignalHandlers();
 
         $this->info("Running in daemon mode. Press Ctrl+C to stop.");
 
         while (!$this->shouldShutdown) {
+            // Check for restart signal (set by deploy:restart command).
+            if ($this->shouldRestart()) {
+                $this->info("Restart signal received, shutting down...");
+                break;
+            }
+
             $stats = $spooler->processSpool($limit);
 
             if ($stats["processed"] > 0) {
@@ -130,6 +150,16 @@ class ProcessSpoolCommand extends Command
         $this->info("Shutting down gracefully...");
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Check if a restart has been signaled.
+     */
+    protected function shouldRestart(): bool
+    {
+        $restartSignal = Cache::get(self::RESTART_SIGNAL_KEY);
+
+        return $restartSignal && $restartSignal > $this->startedAt;
     }
 
     /**
