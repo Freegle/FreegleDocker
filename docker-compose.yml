@@ -226,9 +226,7 @@ services:
     shm_size: 1gb
     depends_on:
       - tusd
-      - freegle-dev-local
       - freegle-prod-local
-      - modtools-dev-local
       - modtools-prod-local
     extra_hosts:
       - "tusd.localhost:host-gateway"
@@ -901,8 +899,6 @@ services:
       - ENABLE_MONOCART_REPORTER=true
       - COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN:-}
     depends_on:
-      freegle-dev-local:
-        condition: service_started
       freegle-prod-local:
         condition: service_started
       modtools-prod-local:
