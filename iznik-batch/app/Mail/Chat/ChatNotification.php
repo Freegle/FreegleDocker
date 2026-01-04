@@ -45,6 +45,11 @@ class ChatNotification extends MjmlMailable
 
     public ?Message $refMessage;
 
+    /**
+     * Whether this notification is for the sender's own message (copy to self).
+     */
+    public bool $isOwnMessage;
+
     protected string $replyToAddress;
 
     protected string $fromDisplayName;
@@ -75,6 +80,10 @@ class ChatNotification extends MjmlMailable
 
         // Get referenced message from the chat message.
         $this->refMessage = $message->refMessage;
+
+        // Check if this is a copy of the recipient's own message.
+        // This happens when a user sends a message and has opted to receive copies of their own messages.
+        $this->isOwnMessage = $message->userid === $recipient->id;
 
         // Build the subject line.
         $this->replySubject = $this->generateSubject();
@@ -169,6 +178,17 @@ class ChatNotification extends MjmlMailable
         // Check if AMP will be included (used for footer indicator).
         $ampIncluded = $this->isAmpEnabled() && $this->chatType === ChatRoom::TYPE_USER2USER && $this->recipient->exists;
 
+        // For own message notifications, we need the other user's name.
+        // The "other user" is the one in the chat who is NOT the recipient.
+        $otherUserName = null;
+        if ($this->isOwnMessage && $this->chatType === ChatRoom::TYPE_USER2USER) {
+            $otherUserId = $this->chatRoom->user1 === $this->recipient->id
+                ? $this->chatRoom->user2
+                : $this->chatRoom->user1;
+            $otherUser = User::find($otherUserId);
+            $otherUserName = $otherUser?->displayname ?? 'the other user';
+        }
+
         $this->to($this->recipient->email_preferred, $this->recipient->displayname)
             ->subject($this->getSubject())
             ->mjmlView('emails.mjml.chat.notification', array_merge([
@@ -196,6 +216,8 @@ class ChatNotification extends MjmlMailable
                 'jobsUrl' => $this->trackedUrl($this->userSite . '/jobs', 'jobs_link', 'jobs'),
                 'donateUrl' => $this->trackedUrl('https://freegle.in/paypal1510', 'donate_link', 'donate'),
                 'ampIncluded' => $ampIncluded,
+                'isOwnMessage' => $this->isOwnMessage,
+                'otherUserName' => $otherUserName,
             ], $this->getTrackingData()), 'emails.text.chat.notification');
 
         // Render AMP version if enabled and this is a User2User chat.

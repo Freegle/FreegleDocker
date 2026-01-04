@@ -1,11 +1,19 @@
 <mjml>
+  @if($isOwnMessage ?? false)
+  @include('emails.mjml.partials.head', ['preview' => 'Copy of your message to ' . ($otherUserName ?? 'the other user')])
+  @else
   @include('emails.mjml.partials.head', ['preview' => $senderName . ' sent you a message'])
+  @endif
   <mj-body background-color="#ffffff">
     {{-- Header --}}
     <mj-section mj-class="bg-success" padding="20px">
       <mj-column>
         <mj-text font-size="24px" font-weight="bold" color="#ffffff" align="center">
+          @if($isOwnMessage ?? false)
+          Copy of your message to {{ $otherUserName ?? 'the other user' }}
+          @else
           New message from {{ $senderName }}
+          @endif
         </mj-text>
       </mj-column>
     </mj-section>
@@ -63,7 +71,11 @@
     <mj-section background-color="#ffffff" padding="20px 20px 10px 20px">
       <mj-column>
         <mj-text font-size="12px" font-weight="bold" mj-class="text-success" text-transform="uppercase" letter-spacing="1px">
+          @if($isOwnMessage ?? false)
+          Your message
+          @else
           New message
+          @endif
         </mj-text>
       </mj-column>
     </mj-section>
@@ -74,9 +86,9 @@
       <mj-column vertical-align="top">
         <mj-text padding="0 8px 0 0" line-height="1.6" align="right">
           @if($chatMessage['userPageUrl'])
-          <a href="{{ $chatMessage['userPageUrl'] }}" style="font-weight: 600; color: #338808; font-size: 14px; text-decoration: none;">{{ $chatMessage['userName'] }} (you)</a>
+          <a href="{{ $chatMessage['userPageUrl'] }}" style="font-weight: 600; color: #338808; font-size: 14px; text-decoration: none;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</a>
           @else
-          <span style="font-weight: 600; color: #338808; font-size: 14px;">{{ $chatMessage['userName'] }} (you)</span>
+          <span style="font-weight: 600; color: #338808; font-size: 14px;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</span>
           @endif
           <br/>
           <span style="color: #000000; font-size: 18px; font-weight: 500;">{!! nl2br(e($chatMessage['text'])) !!}</span>
@@ -203,7 +215,11 @@
     <mj-section background-color="#ffffff" padding="25px 20px">
       <mj-column>
         <mj-button href="{{ $chatUrl }}" mj-class="btn-success" font-size="18px" padding="14px 40px">
+          @if($isOwnMessage ?? false)
+          View conversation
+          @else
           Reply to {{ $senderName }}
+          @endif
         </mj-button>
       </mj-column>
     </mj-section>
@@ -316,8 +332,8 @@
     </mj-section>
     @endif
 
-    {{-- About sender --}}
-    @if($sender && $sender->aboutme)
+    {{-- About sender - hide for own message notifications --}}
+    @if($sender && $sender->aboutme && !($isOwnMessage ?? false))
     <mj-section background-color="#ffffff" padding="20px" border-top="1px solid #e9ecef">
       <mj-column>
         <mj-text font-size="12px" font-weight="bold" color="#666666" text-transform="uppercase" letter-spacing="1px" padding-bottom="10px">

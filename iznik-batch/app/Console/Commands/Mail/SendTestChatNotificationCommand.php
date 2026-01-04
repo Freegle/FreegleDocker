@@ -14,7 +14,8 @@ class SendTestChatNotificationCommand extends Command
     protected $signature = 'mail:test-chat-notification
         {--chat-id= : Specific chat room ID to use}
         {--to= : Email address to send to (defaults to first message recipient)}
-        {--with-previous : Include previous messages for context}';
+        {--with-previous : Include previous messages for context}
+        {--own-message : Simulate notification for your OWN sent message (copy to self)}';
 
     protected $description = 'Send a test chat notification email for development';
 
@@ -83,9 +84,18 @@ class SendTestChatNotificationCommand extends Command
             $this->info("Found {$previousMessages->count()} previous message(s) for context.");
         }
 
-        // Determine recipient (user who didn't send the message).
-        $recipient = $latestMessage->userid === $user1->id ? $user2 : $user1;
+        // Determine sender and recipient.
         $sender = $latestMessage->userid === $user1->id ? $user1 : $user2;
+
+        // For --own-message, simulate the notification a user gets for their own sent message.
+        // In this case, the recipient IS the sender (they get a copy of their own message).
+        if ($this->option('own-message')) {
+            $recipient = $sender;
+            $this->info("Simulating OWN MESSAGE notification (copy to self).");
+        } else {
+            // Normal case: recipient is the OTHER user in the chat.
+            $recipient = $latestMessage->userid === $user1->id ? $user2 : $user1;
+        }
 
         $toEmail = $this->option('to') ?? $recipient->email_preferred;
 
@@ -94,9 +104,16 @@ class SendTestChatNotificationCommand extends Command
             return 1;
         }
 
+        // Use display names or generate meaningful ones for clarity.
+        $senderDisplayName = $sender->displayname ?: 'User' . $sender->id;
+        $recipientDisplayName = $recipient->displayname ?: 'User' . $recipient->id;
+
         $this->info("Sending test email to: {$toEmail}");
-        $this->info("From: {$sender->displayname}");
-        $this->info("To: {$recipient->displayname}");
+        $this->info("Message sender: {$senderDisplayName}");
+        $this->info("Email recipient: {$recipientDisplayName}");
+        if ($this->option('own-message')) {
+            $this->info("Note: This is a 'copy of your own message' notification.");
+        }
 
         // Create and send the email.
         $mail = new ChatNotification(

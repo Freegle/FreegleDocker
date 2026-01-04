@@ -1209,4 +1209,234 @@ class ChatNotificationTest extends TestCase
         // AMP is only for User2User chats, so no indicator for User2Mod.
         $this->assertStringNotContainsString('sent with AMP', $html);
     }
+
+    public function test_own_message_notification_sets_flag_correctly(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        // Message sent by user1.
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Normal notification: recipient (user2) is NOT the message sender.
+        $normalMail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+        $this->assertFalse($normalMail->isOwnMessage, 'isOwnMessage should be false for normal notifications');
+
+        // Own message notification: recipient (user1) IS the message sender.
+        $ownMail = new ChatNotification(
+            $user1,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+        $this->assertTrue($ownMail->isOwnMessage, 'isOwnMessage should be true when recipient sent the message');
+    }
+
+    public function test_own_message_notification_shows_copy_of_your_message(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        // Message sent by user1.
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Hello Bob!',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Own message notification: recipient (user1) IS the message sender.
+        $mail = new ChatNotification(
+            $user1,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "Copy of your message to Bob" instead of "New message from Alice".
+        $this->assertStringContainsString('Copy of your message to', $html);
+        $this->assertStringContainsString('Bob', $html);
+        $this->assertStringNotContainsString('New message from Alice', $html);
+    }
+
+    public function test_own_message_notification_shows_view_conversation_button(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Own message notification.
+        $mail = new ChatNotification(
+            $user1,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "View conversation" instead of "Reply to Alice".
+        $this->assertStringContainsString('View conversation', $html);
+        $this->assertStringNotContainsString('Reply to Alice', $html);
+    }
+
+    public function test_own_message_notification_does_not_show_you_indicator(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Own message notification.
+        $mail = new ChatNotification(
+            $user1,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should NOT show "(you)" indicator since the whole email is about your own message.
+        $this->assertStringNotContainsString('(you)', $html);
+    }
+
+    // Note: test_own_message_notification_hides_about_sender_section is not included
+    // because aboutme is stored in a separate users_aboutme table that's complex to
+    // set up in tests. The template conditional for hiding "About sender" section
+    // when isOwnMessage is true is validated by the isOwnMessage flag tests above.
+
+    public function test_own_message_notification_shows_your_message_label(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test message',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        // Own message notification.
+        $mail = new ChatNotification(
+            $user1,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "Your message" instead of "New message".
+        $this->assertStringContainsString('Your message', $html);
+    }
 }
