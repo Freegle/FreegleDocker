@@ -6,7 +6,6 @@ use App\Mail\Welcome\WelcomeMail;
 use App\Services\EmailSpoolerService;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Support\Facades\Mail;
 use Symfony\Component\Mime\Email;
 use Tests\TestCase;
 
@@ -142,7 +141,8 @@ class EmailSpoolerServiceTest extends TestCase
 
     public function test_process_spool_sends_email(): void
     {
-        Mail::fake();
+        // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
+        // Array mail driver (phpunit.xml) prevents actual sending.
 
         $email = 'test@example.com';
         $mailable = new WelcomeMail($email);
@@ -165,7 +165,7 @@ class EmailSpoolerServiceTest extends TestCase
 
     public function test_process_spool_respects_limit(): void
     {
-        Mail::fake();
+        // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
 
         $email = 'test@example.com';
         $mailable = new WelcomeMail($email);
@@ -188,7 +188,7 @@ class EmailSpoolerServiceTest extends TestCase
 
     public function test_cleanup_sent_removes_old_files(): void
     {
-        Mail::fake();
+        // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
 
         $email = 'test@example.com';
         $mailable = new WelcomeMail($email);
@@ -371,9 +371,7 @@ class EmailSpoolerServiceTest extends TestCase
             json_encode($data)
         );
 
-        // Track what headers are applied during send.
-        $capturedHeaders = [];
-        Mail::fake();
+        // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
 
         // Process the spool.
         $stats = $this->spooler->processSpool();
@@ -541,7 +539,7 @@ class EmailSpoolerServiceTest extends TestCase
             json_encode($data)
         );
 
-        Mail::fake();
+        // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
 
         // Process the spool.
         $stats = $this->spooler->processSpool();
