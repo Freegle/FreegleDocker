@@ -1629,6 +1629,12 @@ jobs:
                 status_response=$(curl -s http://localhost:8081/api/tests/laravel/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
 
+                # Extract progress for display
+                completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+                total=$(echo "$status_response" | jq -r '.progress.total // 0')
+                echo "$completed" > /tmp/laravel-completed
+                echo "$total" > /tmp/laravel-total
+
                 if [ "$status" = "completed" ]; then
                   echo "pass" > /tmp/laravel-result
                   echo "✅ Laravel tests passed!"
@@ -1755,6 +1761,7 @@ jobs:
             start_time=$(date +%s)
             timeout_duration=2700  # 45 minutes
             PLAYWRIGHT_PASSED=false
+            PLAYWRIGHT_KILLED=false
 
             while true; do
               current_time=$(date +%s)
@@ -1774,6 +1781,9 @@ jobs:
 
               elapsed_min=$((elapsed / 60))
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
+              LARAVEL_COMPLETED=$([ -f /tmp/laravel-completed ] && cat /tmp/laravel-completed || echo '0')
+              LARAVEL_TOTAL=$([ -f /tmp/laravel-total ] && cat /tmp/laravel-total || echo '0')
+              LARAVEL_DISPLAY=$([ "$LARAVEL_STATUS" = "running" ] && echo "$LARAVEL_STATUS ($LARAVEL_COMPLETED/$LARAVEL_TOTAL)" || echo "$LARAVEL_STATUS")
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
               GO_COMPLETED=$([ -f /tmp/go-completed ] && cat /tmp/go-completed || echo '0')
               GO_TOTAL=$([ -f /tmp/go-total ] && cat /tmp/go-total || echo '0')
@@ -1782,7 +1792,7 @@ jobs:
               PHP_COMPLETED=$([ -f /tmp/php-completed ] && cat /tmp/php-completed || echo '0')
               PHP_TOTAL=$([ -f /tmp/php-total ] && cat /tmp/php-total || echo '0')
               PHP_DISPLAY=$([ "$PHP_STATUS" = "running" ] && echo "$PHP_STATUS ($PHP_COMPLETED/$PHP_TOTAL)" || echo "$PHP_STATUS")
-              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | iznik-batch: $LARAVEL_STATUS | iznik-server-go: $GO_DISPLAY | iznik-server: $PHP_DISPLAY"
+              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | iznik-batch: $LARAVEL_DISPLAY | iznik-server-go: $GO_DISPLAY | iznik-server: $PHP_DISPLAY"
 
               # IMPORTANT: Check Playwright completion BEFORE fail-fast checks
               # This ensures we capture Playwright's success/fail status before breaking due to other test failures
@@ -1821,6 +1831,10 @@ jobs:
                 kill $GO_PID 2>/dev/null || true
                 kill $PHPUNIT_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
+                # Mark Playwright as killed if it was still running (not passed or failed)
+                if [ "$PLAYWRIGHT_PASSED" != "true" ]; then
+                  PLAYWRIGHT_KILLED=true
+                fi
                 break
               fi
               if [ "$GO_STATUS" = "fail" ]; then
@@ -1828,6 +1842,10 @@ jobs:
                 kill $LARAVEL_PID 2>/dev/null || true
                 kill $PHPUNIT_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
+                # Mark Playwright as killed if it was still running (not passed or failed)
+                if [ "$PLAYWRIGHT_PASSED" != "true" ]; then
+                  PLAYWRIGHT_KILLED=true
+                fi
                 break
               fi
               if [ "$PHP_STATUS" = "fail" ]; then
@@ -1835,6 +1853,10 @@ jobs:
                 kill $LARAVEL_PID 2>/dev/null || true
                 kill $GO_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
+                # Mark Playwright as killed if it was still running (not passed or failed)
+                if [ "$PLAYWRIGHT_PASSED" != "true" ]; then
+                  PLAYWRIGHT_KILLED=true
+                fi
                 break
               fi
 
@@ -1851,12 +1873,22 @@ jobs:
               LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "killed")
               GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "killed")
               PHP_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "killed")
+
+              # Determine Playwright result: pass > killed > fail
+              if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
+                PLAYWRIGHT_RESULT="pass"
+              elif [ "$PLAYWRIGHT_KILLED" = "true" ]; then
+                PLAYWRIGHT_RESULT="killed"
+              else
+                PLAYWRIGHT_RESULT="fail"
+              fi
+
               echo ""
               echo "=== Parallel Test Results (fail-fast) ==="
               echo "Laravel: $LARAVEL_RESULT"
               echo "Go: $GO_RESULT"
               echo "PHPUnit: $PHP_RESULT"
-              echo "Playwright: $([ "$PLAYWRIGHT_PASSED" = "true" ] && echo "pass" || echo "fail")"
+              echo "Playwright: $PLAYWRIGHT_RESULT"
               echo ""
               echo "LARAVEL_TESTS_PASSED=false" >> $BASH_ENV
               echo "GO_TESTS_PASSED=false" >> $BASH_ENV
@@ -1876,12 +1908,21 @@ jobs:
             GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "fail")
             PHP_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "fail")
 
+            # Determine Playwright result: pass > killed > fail
+            if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
+              PLAYWRIGHT_RESULT="pass"
+            elif [ "$PLAYWRIGHT_KILLED" = "true" ]; then
+              PLAYWRIGHT_RESULT="killed"
+            else
+              PLAYWRIGHT_RESULT="fail"
+            fi
+
             echo ""
             echo "=== Parallel Test Results ==="
             echo "Laravel: $LARAVEL_RESULT"
             echo "Go: $GO_RESULT"
             echo "PHPUnit: $PHP_RESULT"
-            echo "Playwright: $([ "$PLAYWRIGHT_PASSED" = "true" ] && echo "pass" || echo "fail")"
+            echo "Playwright: $PLAYWRIGHT_RESULT"
 
             # Set environment variables for later steps
             if [ "$LARAVEL_RESULT" = "pass" ]; then

@@ -1891,25 +1891,26 @@ const httpServer = http.createServer(async (req, res) => {
         "-c",
         `
         set -e
-        echo "Clearing Laravel cache files (using sh -c for proper glob expansion inside container)..."
-        # Use sh -c to ensure glob expansion happens inside the container
-        docker exec freegle-batch sh -c 'rm -rf /var/www/html/bootstrap/cache/*.php' 2>&1 || true
-        docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/cache/*' 2>&1 || true
-        docker exec freegle-batch sh -c 'rm -rf /var/www/html/storage/framework/views/*' 2>&1 || true
+        echo "Clearing Laravel caches using artisan commands for proper state cleanup..."
 
-        echo "Cache directory after deletion:"
-        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
+        # Step 1: Remove potentially corrupt bootstrap cache files directly
+        # (artisan commands may fail if these are corrupt)
+        docker exec freegle-batch sh -c 'rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php' 2>&1 || true
 
-        echo "Pre-generating package manifest (but NOT config cache - tests need to override DB_DATABASE)..."
-        # Skip cache:clear and config:clear as they require bootstrap which may fail with corrupted cache
-        # IMPORTANT: Do NOT run config:cache here - tests need to dynamically set the database name
-        # in bootstrap.php, which won't work if config is cached with the production DB name.
+        # Step 2: Regenerate package manifest - this creates clean services.php and packages.php
+        echo "Regenerating package manifest..."
         docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
 
-        echo "Pre-compiling Blade views to avoid parallel test race conditions..."
-        # CRITICAL: Pre-compile all views before parallel testing to prevent race conditions.
+        # Step 3: Clear view cache using artisan (clears Laravel's internal state, not just files)
+        # CRITICAL: Using view:clear instead of rm -rf ensures Laravel's internal view state is reset.
+        # Without this, Laravel may still reference stale compiled view paths causing empty renders.
+        echo "Clearing compiled views with artisan view:clear..."
+        docker exec freegle-batch php artisan view:clear --ansi 2>&1 || true
+
+        # Step 4: Pre-compile all views before parallel testing to prevent race conditions
         # Without this, multiple paratest workers may try to compile the same view simultaneously,
         # causing some to get empty/locked files. See: https://github.com/laravel/framework/issues/54029
+        echo "Pre-compiling Blade views to avoid parallel test race conditions..."
         if ! docker exec freegle-batch php artisan view:cache --ansi 2>&1; then
           echo "WARNING: view:cache failed, views will be compiled on-demand"
         fi
@@ -1923,6 +1924,9 @@ const httpServer = http.createServer(async (req, res) => {
 
         echo "Cache directory after regeneration:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
+
+        # IMPORTANT: Do NOT run config:cache here - tests need to dynamically set the database name
+        # in bootstrap.php, which won't work if config is cached with the production DB name.
 
         echo "Running Laravel tests in parallel with coverage..."
         docker exec freegle-batch vendor/bin/paratest --testsuite=Unit,Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
