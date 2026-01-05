@@ -1910,7 +1910,16 @@ const httpServer = http.createServer(async (req, res) => {
         # CRITICAL: Pre-compile all views before parallel testing to prevent race conditions.
         # Without this, multiple paratest workers may try to compile the same view simultaneously,
         # causing some to get empty/locked files. See: https://github.com/laravel/framework/issues/54029
-        docker exec freegle-batch php artisan view:cache --ansi 2>&1 || true
+        if ! docker exec freegle-batch php artisan view:cache --ansi 2>&1; then
+          echo "WARNING: view:cache failed, views will be compiled on-demand"
+        fi
+
+        # Verify views are cached
+        CACHED_VIEWS=$(docker exec freegle-batch sh -c 'ls -1 /var/www/html/storage/framework/views/*.php 2>/dev/null | wc -l')
+        echo "Cached views count: $CACHED_VIEWS"
+        if [ "$CACHED_VIEWS" -lt 10 ]; then
+          echo "WARNING: Very few views cached ($CACHED_VIEWS), this may cause race conditions"
+        fi
 
         echo "Cache directory after regeneration:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true

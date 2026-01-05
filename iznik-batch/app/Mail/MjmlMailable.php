@@ -140,6 +140,17 @@ abstract class MjmlMailable extends Mailable
         // Render the Blade template to get MJML content.
         try {
             $mjmlContent = view($this->mjmlTemplate, $this->mjmlData)->render();
+
+            // Debug logging for empty content
+            if (empty(trim($mjmlContent))) {
+                \Log::warning('MJML template rendered empty', [
+                    'mailable' => static::class,
+                    'template' => $this->mjmlTemplate,
+                    'data_keys' => array_keys($this->mjmlData),
+                    'view_exists' => view()->exists($this->mjmlTemplate),
+                    'compiled_path' => app('view.finder')->find($this->mjmlTemplate),
+                ]);
+            }
         } catch (\Throwable $e) {
             $error = "MJML template rendering failed: {$e->getMessage()}";
             \Log::error($error, [
