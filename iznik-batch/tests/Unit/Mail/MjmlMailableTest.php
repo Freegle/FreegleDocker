@@ -58,7 +58,11 @@ class MjmlMailableTest extends TestCase
         };
 
         // Use a real template that exists in the codebase.
-        $mailable->exposeMjmlView('emails.mjml.donation.thank-you', ['custom' => 'value']);
+        // Provide the required $user variable that the thank-you template expects.
+        $mockUser = new \stdClass();
+        $mockUser->displayname = 'Test User';
+        $mockUser->email_preferred = 'test@example.com';
+        $mailable->exposeMjmlView('emails.mjml.donation.thank-you', ['custom' => 'value', 'user' => $mockUser]);
 
         $this->assertEquals('emails.mjml.donation.thank-you', $mailable->getMjmlTemplate());
         $this->assertArrayHasKey('custom', $mailable->getMjmlData());
@@ -97,7 +101,7 @@ class MjmlMailableTest extends TestCase
         $this->assertEmpty($attachments);
     }
 
-    public function test_compile_mjml_handles_exception(): void
+    public function test_compile_mjml_throws_on_invalid_mjml(): void
     {
         $mailable = new class extends MjmlMailable {
             protected function getSubject(): string
@@ -111,12 +115,13 @@ class MjmlMailableTest extends TestCase
             }
         };
 
-        // Invalid MJML should fall back to returning the raw content.
-        $invalidMjml = '<invalid-mjml-tag>content</invalid-mjml-tag>';
-        $result = $mailable->exposeCompileMjml($invalidMjml);
+        // Invalid MJML should throw a RuntimeException.
+        // The system should fail loudly on broken emails rather than sending malformed content.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('MJML compilation failed');
 
-        // The method should return something (either compiled or raw).
-        $this->assertNotEmpty($result);
+        $invalidMjml = '<invalid-mjml-tag>content</invalid-mjml-tag>';
+        $mailable->exposeCompileMjml($invalidMjml);
     }
 
     public function test_compile_mjml_with_valid_mjml(): void

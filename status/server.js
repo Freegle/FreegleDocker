@@ -1910,7 +1910,7 @@ const httpServer = http.createServer(async (req, res) => {
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
         echo "Running Laravel tests in parallel with coverage..."
-        docker exec freegle-batch vendor/bin/paratest --testsuite=Unit --testsuite=Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+        docker exec freegle-batch vendor/bin/paratest --testsuite=Unit,Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
       `,
       ],
       { stdio: "pipe" }
