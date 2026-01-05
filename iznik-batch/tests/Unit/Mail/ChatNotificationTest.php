@@ -459,11 +459,11 @@ class ChatNotificationTest extends TestCase
             'created' => now(),
         ]);
 
-        // Message with emoji escape sequences (as stored in database).
+        // Message with emoji escape sequences (as stored in database with double backslashes from frontend).
         $message = ChatMessage::create([
             'chatid' => $room->id,
             'userid' => $user1->id,
-            'message' => 'Hello \\u1f600\\u world \\u2764\\u',
+            'message' => 'Hello \\\\u1f600\\\\u world \\\\u2764\\\\u',
             'type' => ChatMessage::TYPE_DEFAULT,
             'date' => now(),
             'reviewrequired' => 0,
@@ -494,8 +494,8 @@ class ChatNotificationTest extends TestCase
         $this->assertStringContainsString('❤', $html);
 
         // Verify the escape sequences are NOT present.
-        $this->assertStringNotContainsString('\\u1f600\\u', $html);
-        $this->assertStringNotContainsString('\\u2764\\u', $html);
+        $this->assertStringNotContainsString('\\\\u1f600\\\\u', $html);
+        $this->assertStringNotContainsString('\\\\u2764\\\\u', $html);
     }
 
     public function test_chat_notification_handles_compound_emojis(): void
@@ -510,11 +510,11 @@ class ChatNotificationTest extends TestCase
             'created' => now(),
         ]);
 
-        // Message with compound emoji (flag emoji with two code points).
+        // Message with compound emoji (flag emoji with two code points, double backslashes from frontend).
         $message = ChatMessage::create([
             'chatid' => $room->id,
             'userid' => $user1->id,
-            'message' => 'From \\u1f1ec-1f1e7\\u with love',
+            'message' => 'From \\\\u1f1ec-1f1e7\\\\u with love',
             'type' => ChatMessage::TYPE_DEFAULT,
             'date' => now(),
             'reviewrequired' => 0,
@@ -539,7 +539,7 @@ class ChatNotificationTest extends TestCase
 
         // Verify flag emoji is decoded (🇬🇧).
         $this->assertStringContainsString('🇬🇧', $html);
-        $this->assertStringNotContainsString('\\u1f1ec-1f1e7\\u', $html);
+        $this->assertStringNotContainsString('\\\\u1f1ec-1f1e7\\\\u', $html);
     }
 
     public function test_chat_notification_interested_message_type(): void

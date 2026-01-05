@@ -29,7 +29,7 @@ class EmojiUtils
         }
 
         return preg_replace_callback(
-            '/\\\\u(.*?)\\\\u/',
+            '/\\\\\\\\u(.*?)\\\\\\\\u/',
             function ($matches) {
                 $codePoints = explode('-', $matches[1]);
                 $emoji = '';
