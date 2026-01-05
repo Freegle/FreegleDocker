@@ -1906,6 +1906,12 @@ const httpServer = http.createServer(async (req, res) => {
         # in bootstrap.php, which won't work if config is cached with the production DB name.
         docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
 
+        echo "Pre-compiling Blade views to avoid parallel test race conditions..."
+        # CRITICAL: Pre-compile all views before parallel testing to prevent race conditions.
+        # Without this, multiple paratest workers may try to compile the same view simultaneously,
+        # causing some to get empty/locked files. See: https://github.com/laravel/framework/issues/54029
+        docker exec freegle-batch php artisan view:cache --ansi 2>&1 || true
+
         echo "Cache directory after regeneration:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
