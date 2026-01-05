@@ -24,7 +24,7 @@ return [
     'branding' => [
         'name' => env('FREEGLE_SITE_NAME', 'Freegle'),
         'logo_url' => env('FREEGLE_LOGO_URL', 'https://www.ilovefreegle.org/icon.png'),
-        'wallpaper_url' => env('FREEGLE_WALLPAPER_URL', 'https://www.ilovefreegle.org/wallpaper.png'),
+        // wallpaper_url removed - emails now use clean solid backgrounds
     ],
 
     'mail' => [
