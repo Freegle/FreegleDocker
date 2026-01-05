@@ -3,6 +3,7 @@
 namespace Tests\Feature\Console;
 
 use App\Models\UserEmail;
+use App\Services\EmailSpoolerService;
 use Tests\TestCase;
 
 class TestMailCommandTest extends TestCase
@@ -13,18 +14,74 @@ class TestMailCommandTest extends TestCase
     {
         parent::setUp();
 
-        $this->spoolDir = storage_path('spool/mail');
+        // Use a unique spool directory for each test to avoid race conditions
+        // when running tests in parallel with ParaTest.
+        $this->spoolDir = storage_path('spool/mail-test-' . uniqid());
 
-        // Clear spool directories before each test.
-        foreach (['pending', 'sending', 'sent', 'failed'] as $subdir) {
-            $dir = $this->spoolDir . '/' . $subdir;
-            if (is_dir($dir)) {
-                array_map('unlink', glob($dir . '/*.json'));
-            }
-        }
+        // Create a spooler with the test-specific directory.
+        $spooler = new EmailSpoolerService();
+
+        // Override the spool directory using reflection.
+        $reflection = new \ReflectionClass($spooler);
+
+        $spoolDirProperty = $reflection->getProperty('spoolDir');
+        $spoolDirProperty->setAccessible(true);
+        $spoolDirProperty->setValue($spooler, $this->spoolDir);
+
+        $pendingDirProperty = $reflection->getProperty('pendingDir');
+        $pendingDirProperty->setAccessible(true);
+        $pendingDirProperty->setValue($spooler, $this->spoolDir . '/pending');
+
+        $sendingDirProperty = $reflection->getProperty('sendingDir');
+        $sendingDirProperty->setAccessible(true);
+        $sendingDirProperty->setValue($spooler, $this->spoolDir . '/sending');
+
+        $failedDirProperty = $reflection->getProperty('failedDir');
+        $failedDirProperty->setAccessible(true);
+        $failedDirProperty->setValue($spooler, $this->spoolDir . '/failed');
+
+        $sentDirProperty = $reflection->getProperty('sentDir');
+        $sentDirProperty->setAccessible(true);
+        $sentDirProperty->setValue($spooler, $this->spoolDir . '/sent');
+
+        // Create directories.
+        $ensureMethod = $reflection->getMethod('ensureDirectoriesExist');
+        $ensureMethod->setAccessible(true);
+        $ensureMethod->invoke($spooler);
+
+        // Bind as singleton so the command uses our test instance.
+        $this->app->instance(EmailSpoolerService::class, $spooler);
 
         // Array mail driver (set in phpunit.xml) prevents actual sending.
         // Don't use Mail::fake() here - it interferes with the spooler's Mail::html() call.
+    }
+
+    protected function tearDown(): void
+    {
+        // Clean up test spool directory.
+        if (is_dir($this->spoolDir)) {
+            $this->recursiveDelete($this->spoolDir);
+        }
+
+        parent::tearDown();
+    }
+
+    protected function recursiveDelete(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $files = array_diff(scandir($dir), ['.', '..']);
+        foreach ($files as $file) {
+            $path = $dir . '/' . $file;
+            if (is_dir($path)) {
+                $this->recursiveDelete($path);
+            } else {
+                unlink($path);
+            }
+        }
+        rmdir($dir);
     }
 
     /**
