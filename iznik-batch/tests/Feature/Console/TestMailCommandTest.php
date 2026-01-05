@@ -3,7 +3,6 @@
 namespace Tests\Feature\Console;
 
 use App\Models\UserEmail;
-use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class TestMailCommandTest extends TestCase
@@ -24,8 +23,8 @@ class TestMailCommandTest extends TestCase
             }
         }
 
-        // Use array mail driver to prevent actual sending.
-        Mail::fake();
+        // Array mail driver (set in phpunit.xml) prevents actual sending.
+        // Don't use Mail::fake() here - it interferes with the spooler's Mail::html() call.
     }
 
     /**
