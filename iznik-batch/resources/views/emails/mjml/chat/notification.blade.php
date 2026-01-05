@@ -1,5 +1,7 @@
 <mjml>
-  @if($isModerator ?? false)
+  @if($isMod2Mod ?? false)
+  @include('emails.mjml.partials.head', ['preview' => $senderName . ' sent a message in Volunteer Chat'])
+  @elseif($isModerator ?? false)
   @include('emails.mjml.partials.head', ['preview' => 'Member conversation with ' . ($memberName ?? 'a member')])
   @elseif($isOwnMessage ?? false)
   @include('emails.mjml.partials.head', ['preview' => 'Copy of your message to ' . ($otherUserName ?? 'the other user')])
@@ -11,7 +13,9 @@
     <mj-section mj-class="{{ ($isModerator ?? false) ? 'bg-modtools' : 'bg-success' }}" padding="20px">
       <mj-column>
         <mj-text font-size="24px" font-weight="bold" color="#ffffff" align="center">
-          @if($isModerator ?? false)
+          @if($isMod2Mod ?? false)
+          Volunteer Chat: {{ $groupShortName ?? 'Freegle' }}
+          @elseif($isModerator ?? false)
           Member conversation on {{ $groupShortName ?? 'Freegle' }}
           @elseif($isOwnMessage ?? false)
           Copy of your message to {{ $otherUserName ?? 'the other user' }}
@@ -24,8 +28,8 @@
       </mj-column>
     </mj-section>
 
-    {{-- Member info bar for moderators --}}
-    @if($isModerator ?? false)
+    {{-- Member info bar for moderators (not for Mod2Mod chats) --}}
+    @if(($isModerator ?? false) && !($isMod2Mod ?? false))
     <mj-section background-color="#e8f4fc" padding="12px 20px">
       <mj-column>
         <mj-text font-size="14px" color="#396aa3" align="center" padding="0">
@@ -96,6 +100,8 @@
         <mj-text font-size="12px" font-weight="bold" mj-class="{{ ($isModerator ?? false) ? 'text-modtools' : 'text-success' }}" text-transform="uppercase" letter-spacing="1px">
           @if($isOwnMessage ?? false)
           Your message
+          @elseif($isMod2Mod ?? false)
+          Message from {{ $senderName }}
           @elseif($isModerator ?? false)
             @if($senderIsMember ?? true)
           Message from member
@@ -246,6 +252,8 @@
         <mj-button href="{{ $chatUrl }}" mj-class="{{ ($isModerator ?? false) ? 'btn-modtools' : 'btn-success' }}" font-size="18px" padding="14px 40px">
           @if($isOwnMessage ?? false)
           View conversation
+          @elseif($isMod2Mod ?? false)
+          Reply to volunteers
           @elseif($isModerator ?? false)
           Reply to member
           @elseif($isUser2Mod ?? false)

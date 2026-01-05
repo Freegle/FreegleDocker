@@ -28,6 +28,11 @@ class ChatNotificationService
     private const EMAIL_TYPE_USER2MOD = 'ChatNotificationUser2Mod';
 
     /**
+     * Email type identifier for Mod2Mod chats (separate flag for gradual rollout).
+     */
+    private const EMAIL_TYPE_MOD2MOD = 'ChatNotificationMod2Mod';
+
+    /**
      * Default delay in seconds before notifying about a message.
      * This allows users to type multiple messages before notification.
      */
@@ -71,6 +76,12 @@ class ChatNotificationService
         // User2Mod notifications have a separate feature flag for gradual rollout.
         if ($chatType === ChatRoom::TYPE_USER2MOD && !self::isEmailTypeEnabled(self::EMAIL_TYPE_USER2MOD)) {
             Log::info("ChatNotificationUser2Mod emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotificationUser2Mod'.");
+            return 0;
+        }
+
+        // Mod2Mod notifications have a separate feature flag for gradual rollout.
+        if ($chatType === ChatRoom::TYPE_MOD2MOD && !self::isEmailTypeEnabled(self::EMAIL_TYPE_MOD2MOD)) {
+            Log::info("ChatNotificationMod2Mod emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotificationMod2Mod'.");
             return 0;
         }
 
@@ -167,8 +178,14 @@ class ChatNotificationService
                     continue;
                 }
 
-                // Get the other user in the conversation.
-                $sendingFrom = $this->getOtherUser($chatRoom, $sendingTo);
+                // Get the sender in the conversation.
+                // For Mod2Mod, the sender is the message author.
+                // For User2User/User2Mod, it's the "other" user in the chat.
+                if ($chatType === ChatRoom::TYPE_MOD2MOD) {
+                    $sendingFrom = $message->user;
+                } else {
+                    $sendingFrom = $this->getOtherUser($chatRoom, $sendingTo);
+                }
 
                 // Send the notification email.
                 $this->sendNotificationEmail(
@@ -206,10 +223,29 @@ class ChatNotificationService
      *
      * For User2User chats: both users are in the roster, we notify those who haven't been mailed.
      * For User2Mod chats: we notify the member (user1) from roster, AND all group moderators.
+     * For Mod2Mod chats: all mods are in the roster, we notify those who haven't been mailed.
      */
     protected function getMembersToNotify(ChatRoom $chatRoom, ChatMessage $message, bool $forceAll): Collection
     {
         $results = collect();
+
+        // Mod2Mod: All mods in the group chat are in the roster.
+        if ($chatRoom->chattype === ChatRoom::TYPE_MOD2MOD && $chatRoom->groupid) {
+            $query = ChatRoster::where('chatid', $chatRoom->id)
+                ->with('user');
+
+            if (!$forceAll) {
+                $query->where(function ($q) use ($message) {
+                    $q->whereNull('lastmsgemailed')
+                        ->orWhere('lastmsgemailed', '<', $message->id);
+                });
+            }
+
+            return $query->get()->map(function ($roster) {
+                $roster->isModerator = TRUE;
+                return $roster;
+            });
+        }
 
         if ($chatRoom->chattype === ChatRoom::TYPE_USER2MOD && $chatRoom->groupid) {
             // User2Mod: Get member from roster.
@@ -309,6 +345,13 @@ class ChatNotificationService
                 // Mods might have notifications off, in which case we don't bother them.
                 return $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
             }
+        }
+
+        // For Mod2Mod chats:
+        // - All participants are moderators
+        // - Notify based on their email notification preferences for the group
+        if ($chatType === ChatRoom::TYPE_MOD2MOD) {
+            return $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
         }
 
         // TN users always get notifications.

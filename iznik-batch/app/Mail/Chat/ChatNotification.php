@@ -115,6 +115,11 @@ class ChatNotification extends MjmlMailable
             $this->isModerator = $recipient->id !== $chatRoom->user1;
         }
 
+        // For Mod2Mod chats, all participants are moderators.
+        if ($chatType === ChatRoom::TYPE_MOD2MOD) {
+            $this->isModerator = TRUE;
+        }
+
         // Get the friendly group name (prefer namedisplay/namefull over nameshort).
         $this->groupDisplayName = $chatRoom->group?->namedisplay
             ?: $chatRoom->group?->namefull
@@ -158,6 +163,11 @@ class ChatNotification extends MjmlMailable
                 // Member receiving - always show group volunteers, hide mod identity.
                 $this->fromDisplayName = $groupName . ' Volunteers';
             }
+        } elseif ($chatType === ChatRoom::TYPE_MOD2MOD) {
+            // Mod2Mod - show sender name, mods can see each other's identities.
+            $groupName = $chatRoom->group?->namedisplay ?? $chatRoom->group?->nameshort ?? $siteName;
+            $senderName = $sender?->displayname ?? 'A volunteer';
+            $this->fromDisplayName = $senderName . ' (' . $groupName . ' Volunteers)';
         } else {
             // User2User - show sender name.
             $senderName = $sender?->displayname ?? 'Someone';
@@ -306,6 +316,7 @@ class ChatNotification extends MjmlMailable
                 'showOutcomeButtons' => $showOutcomeButtons,
                 'outcomeUrls' => $outcomeUrls,
                 'isUser2Mod' => $this->chatType === ChatRoom::TYPE_USER2MOD,
+                'isMod2Mod' => $this->chatType === ChatRoom::TYPE_MOD2MOD,
                 'isModerator' => $this->isModerator,
                 'senderIsMember' => $senderIsMember,
                 'member' => $this->member,
@@ -366,18 +377,21 @@ class ChatNotification extends MjmlMailable
                 $headers->addTextHeader('X-Freegle-Msgids', (string) $this->refMessage->id);
             }
 
-            // Add sender user ID for User2User chats.
-            if ($this->chatType === ChatRoom::TYPE_USER2USER && $this->sender?->id) {
+            // Add sender user ID for User2User and Mod2Mod chats.
+            if (($this->chatType === ChatRoom::TYPE_USER2USER || $this->chatType === ChatRoom::TYPE_MOD2MOD)
+                && $this->sender?->id) {
                 $headers->addTextHeader('X-Freegle-From-UID', (string) $this->sender->id);
             }
 
-            // Add group ID for User2Mod chats.
-            if ($this->chatType === ChatRoom::TYPE_USER2MOD && $this->chatRoom->groupid) {
+            // Add group ID for User2Mod and Mod2Mod chats.
+            if (($this->chatType === ChatRoom::TYPE_USER2MOD || $this->chatType === ChatRoom::TYPE_MOD2MOD)
+                && $this->chatRoom->groupid) {
                 $headers->addTextHeader('X-Freegle-Group-Volunteer', (string) $this->chatRoom->groupid);
             }
 
-            // Add read receipt headers for User2User chats.
-            if ($this->chatType === ChatRoom::TYPE_USER2USER && $this->recipient->exists) {
+            // Add read receipt headers for User2User and Mod2Mod chats.
+            if (($this->chatType === ChatRoom::TYPE_USER2USER || $this->chatType === ChatRoom::TYPE_MOD2MOD)
+                && $this->recipient->exists) {
                 $readReceiptAddr = "readreceipt-{$this->chatRoom->id}-{$this->recipient->id}-{$this->message->id}@{$this->userDomain}";
                 $headers->addTextHeader('Disposition-Notification-To', $readReceiptAddr);
                 $headers->addTextHeader('Return-Receipt-To', $readReceiptAddr);
@@ -410,6 +424,9 @@ class ChatNotification extends MjmlMailable
      * For User2Mod chats:
      * - Member gets: "Your conversation with the {GroupName} volunteers"
      * - Moderator gets: "Member conversation on {GroupShortName} with {MemberName} ({email})"
+     *
+     * For Mod2Mod chats:
+     * - All mods get: "{GroupShortName} Volunteer Chat: {SenderName}"
      */
     protected function generateSubject(): string
     {
@@ -427,6 +444,13 @@ class ChatNotification extends MjmlMailable
             // Member subject.
             $groupName = $group?->namefull ?? $group?->nameshort ?? 'your local Freegle group';
             return "Your conversation with the {$groupName} Volunteers";
+        }
+
+        if ($this->chatType === ChatRoom::TYPE_MOD2MOD) {
+            $group = $this->chatRoom->group;
+            $groupName = $group?->nameshort ?? 'Freegle';
+            $senderName = $this->sender?->displayname ?? 'A volunteer';
+            return "{$groupName} Volunteer Chat: {$senderName}";
         }
 
         // For USER2USER chats, find the last "interested in" message to get the item subject.

@@ -1004,4 +1004,321 @@ class ChatNotificationServiceTest extends TestCase
             ->first();
         $this->assertNull($backupModRoster, 'Backup Mod should NOT have roster entry');
     }
+
+    public function test_notify_by_email_for_mod2mod(): void
+    {
+        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+
+        // Create two moderators.
+        $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
+        $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
+
+        Membership::create([
+            'userid' => $mod1->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+        ]);
+
+        Membership::create([
+            'userid' => $mod2->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+        ]);
+
+        // Create Mod2Mod chat room (user1/user2 are NULL for Mod2Mod).
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_MOD2MOD,
+            'groupid' => $group->id,
+            'user1' => null,
+            'user2' => null,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Add both mods to roster.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $mod1->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $mod2->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Mod1 sends message.
+        $this->createTestChatMessage($room, $mod1, [
+            'date' => now()->subMinutes(5),
+            'message' => 'Hello fellow mods!',
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+
+        // Mod2 should be notified (Mod1 is sender, not notified unless NOTIFS_EMAIL_MINE).
+        $this->assertGreaterThanOrEqual(1, $count, 'Should notify at least one mod');
+    }
+
+    public function test_notify_by_email_mod2mod_notifies_all_roster_members(): void
+    {
+        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+
+        // Create three moderators.
+        $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
+        $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
+        $mod3 = $this->createTestUser(['fullname' => 'Mod Three']);
+
+        foreach ([$mod1, $mod2, $mod3] as $mod) {
+            Membership::create([
+                'userid' => $mod->id,
+                'groupid' => $group->id,
+                'role' => 'Moderator',
+                'added' => now(),
+            ]);
+        }
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_MOD2MOD,
+            'groupid' => $group->id,
+            'user1' => null,
+            'user2' => null,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Add all mods to roster.
+        foreach ([$mod1, $mod2, $mod3] as $mod) {
+            ChatRoster::create([
+                'chatid' => $room->id,
+                'userid' => $mod->id,
+                'lastmsgemailed' => null,
+            ]);
+        }
+
+        // Mod1 sends message.
+        $this->createTestChatMessage($room, $mod1, [
+            'date' => now()->subMinutes(5),
+            'message' => 'Hello fellow mods!',
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+
+        // Mod2 and Mod3 should be notified (Mod1 is sender).
+        $this->assertGreaterThanOrEqual(2, $count, 'Should notify Mod2 and Mod3');
+
+        // Verify Mod2 roster was updated.
+        $mod2Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $mod2->id)
+            ->first();
+        $this->assertNotNull($mod2Roster->lastmsgemailed, 'Mod2 should have been notified');
+
+        // Verify Mod3 roster was updated.
+        $mod3Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $mod3->id)
+            ->first();
+        $this->assertNotNull($mod3Roster->lastmsgemailed, 'Mod3 should have been notified');
+
+        // Verify Mod1 (sender) was NOT notified.
+        $mod1Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $mod1->id)
+            ->first();
+        $this->assertNull($mod1Roster->lastmsgemailed, 'Mod1 (sender) should NOT be notified');
+    }
+
+    public function test_notify_by_email_mod2mod_uses_message_author_as_sender(): void
+    {
+        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+
+        $mod1 = $this->createTestUser(['fullname' => 'Mod Sender']);
+        $mod2 = $this->createTestUser(['fullname' => 'Mod Recipient']);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            Membership::create([
+                'userid' => $mod->id,
+                'groupid' => $group->id,
+                'role' => 'Moderator',
+                'added' => now(),
+            ]);
+        }
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_MOD2MOD,
+            'groupid' => $group->id,
+            'user1' => null,
+            'user2' => null,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            ChatRoster::create([
+                'chatid' => $room->id,
+                'userid' => $mod->id,
+                'lastmsgemailed' => null,
+            ]);
+        }
+
+        // Mod1 sends message.
+        $this->createTestChatMessage($room, $mod1, [
+            'date' => now()->subMinutes(5),
+            'message' => 'Test message',
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+
+        // Verify email was sent.
+        $this->assertGreaterThanOrEqual(1, $count);
+
+        // Verify the email was sent with correct sender info.
+        Mail::assertSent(ChatNotification::class, function ($mail) use ($mod1, $mod2) {
+            // The email should be to mod2.
+            return $mail->recipient->id === $mod2->id
+                && $mail->sender->id === $mod1->id;
+        });
+    }
+
+    public function test_notify_by_email_mod2mod_respects_delay(): void
+    {
+        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+
+        $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
+        $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            Membership::create([
+                'userid' => $mod->id,
+                'groupid' => $group->id,
+                'role' => 'Moderator',
+                'added' => now(),
+            ]);
+        }
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_MOD2MOD,
+            'groupid' => $group->id,
+            'user1' => null,
+            'user2' => null,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            ChatRoster::create([
+                'chatid' => $room->id,
+                'userid' => $mod->id,
+                'lastmsgemailed' => null,
+            ]);
+        }
+
+        // Create a very recent message (within delay period).
+        $this->createTestChatMessage($room, $mod1, [
+            'date' => now()->subSeconds(5),
+            'message' => 'Very recent message',
+        ]);
+
+        // With default 30 second delay, this message should not trigger notification.
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+
+        $this->assertEquals(0, $count);
+        Mail::assertNothingSent();
+    }
+
+    public function test_notify_by_email_mod2mod_skips_already_mailed(): void
+    {
+        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+
+        $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
+        $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            Membership::create([
+                'userid' => $mod->id,
+                'groupid' => $group->id,
+                'role' => 'Moderator',
+                'added' => now(),
+            ]);
+        }
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_MOD2MOD,
+            'groupid' => $group->id,
+            'user1' => null,
+            'user2' => null,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            ChatRoster::create([
+                'chatid' => $room->id,
+                'userid' => $mod->id,
+                'lastmsgemailed' => null,
+            ]);
+        }
+
+        // Create already mailed message.
+        $this->createTestChatMessage($room, $mod1, [
+            'date' => now()->subMinutes(5),
+            'mailedtoall' => 1,
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+
+        $this->assertEquals(0, $count);
+    }
+
+    public function test_notify_by_email_mod2mod_with_force_all(): void
+    {
+        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+
+        $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
+        $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            Membership::create([
+                'userid' => $mod->id,
+                'groupid' => $group->id,
+                'role' => 'Moderator',
+                'added' => now(),
+            ]);
+        }
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_MOD2MOD,
+            'groupid' => $group->id,
+            'user1' => null,
+            'user2' => null,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        foreach ([$mod1, $mod2] as $mod) {
+            ChatRoster::create([
+                'chatid' => $room->id,
+                'userid' => $mod->id,
+                'lastmsgemailed' => null,
+            ]);
+        }
+
+        // Create already mailed message.
+        $this->createTestChatMessage($room, $mod1, [
+            'date' => now()->subMinutes(5),
+            'mailedtoall' => 1,
+            'seenbyall' => 1,
+        ]);
+
+        // With force=true, should still process.
+        $count = $this->service->notifyByEmail(
+            ChatRoom::TYPE_MOD2MOD,
+            null,
+            ChatNotificationService::DEFAULT_DELAY,
+            ChatNotificationService::DEFAULT_SINCE_HOURS,
+            true
+        );
+
+        $this->assertGreaterThanOrEqual(1, $count);
+    }
 }
