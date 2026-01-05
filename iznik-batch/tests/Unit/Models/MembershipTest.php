@@ -155,4 +155,53 @@ class MembershipTest extends TestCase
         $this->assertFalse($activeMods->contains('userid', $backupMod->id));
         $this->assertFalse($activeMods->contains('userid', $member->id));
     }
+
+    public function test_active_moderators_scope_matches_integer_one_as_active(): void
+    {
+        // The database may store active:1 (integer) rather than active:true (boolean).
+        // The scope must match both.
+        $group = $this->createTestGroup();
+
+        // Create a mod with active as integer 1 (as stored in real database).
+        $activeMod = $this->createTestUser();
+        $membership = Membership::create([
+            'userid' => $activeMod->id,
+            'groupid' => $group->id,
+            'role' => Membership::ROLE_OWNER,
+            'added' => now(),
+        ]);
+
+        // Directly set JSON with integer 1 to simulate real database values.
+        \DB::table('memberships')
+            ->where('id', $membership->id)
+            ->update(['settings' => json_encode(['active' => 1])]);
+
+        $activeMods = $group->memberships()->activeModerators()->get();
+
+        $this->assertCount(1, $activeMods);
+        $this->assertTrue($activeMods->contains('userid', $activeMod->id));
+    }
+
+    public function test_active_moderators_scope_excludes_integer_zero_as_inactive(): void
+    {
+        // Ensure active:0 (integer) is treated as inactive.
+        $group = $this->createTestGroup();
+
+        $backupMod = $this->createTestUser();
+        $membership = Membership::create([
+            'userid' => $backupMod->id,
+            'groupid' => $group->id,
+            'role' => Membership::ROLE_MODERATOR,
+            'added' => now(),
+        ]);
+
+        // Directly set JSON with integer 0 to simulate inactive mod.
+        \DB::table('memberships')
+            ->where('id', $membership->id)
+            ->update(['settings' => json_encode(['active' => 0])]);
+
+        $activeMods = $group->memberships()->activeModerators()->get();
+
+        $this->assertCount(0, $activeMods);
+    }
 }

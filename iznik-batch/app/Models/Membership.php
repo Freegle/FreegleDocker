@@ -176,7 +176,8 @@ class Membership extends Model
             ->where(function ($q) {
                 $q->whereNull('settings')
                     ->orWhereRaw("JSON_EXTRACT(settings, '$.active') IS NULL")
-                    ->orWhereRaw("JSON_EXTRACT(settings, '$.active') = true");
+                    ->orWhereRaw("JSON_EXTRACT(settings, '$.active') = true")
+                    ->orWhereRaw("JSON_EXTRACT(settings, '$.active') = 1");
             });
     }
 }
