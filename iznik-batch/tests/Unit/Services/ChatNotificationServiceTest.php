@@ -834,4 +834,174 @@ class ChatNotificationServiceTest extends TestCase
         $this->assertNotNull($modRoster, 'Explicitly active moderator should have roster entry');
         $this->assertNotNull($modRoster->lastmsgemailed, 'Explicitly active moderator should have been notified');
     }
+
+    public function test_notify_by_email_user2mod_mod_message_notifies_other_mods_not_sender(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $group = $this->createTestGroup();
+
+        // Create three moderators.
+        $modA = $this->createTestUser(['fullname' => 'Mod A (sender)']);
+        $modB = $this->createTestUser(['fullname' => 'Mod B']);
+        $modC = $this->createTestUser(['fullname' => 'Mod C']);
+
+        foreach ([$modA, $modB, $modC] as $mod) {
+            Membership::create([
+                'userid' => $mod->id,
+                'groupid' => $group->id,
+                'role' => 'Moderator',
+                'added' => now(),
+                'settings' => null, // Active by default.
+            ]);
+        }
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster for member.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Mod A sends a message.
+        $this->createTestChatMessage($room, $modA, [
+            'date' => now()->subMinutes(5),
+            'message' => 'Hello from Mod A',
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+
+        // Should notify member + Mod B + Mod C = 3 notifications.
+        // Mod A should NOT be notified (own message, no NOTIFS_EMAIL_MINE).
+        $this->assertGreaterThanOrEqual(3, $count, 'Should notify member and other mods');
+
+        // Verify member was notified.
+        $memberRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $member->id)
+            ->first();
+        $this->assertNotNull($memberRoster->lastmsgemailed, 'Member should have been notified');
+
+        // Verify Mod B was notified.
+        $modBRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $modB->id)
+            ->first();
+        $this->assertNotNull($modBRoster, 'Mod B should have roster entry');
+        $this->assertNotNull($modBRoster->lastmsgemailed, 'Mod B should have been notified');
+
+        // Verify Mod C was notified.
+        $modCRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $modC->id)
+            ->first();
+        $this->assertNotNull($modCRoster, 'Mod C should have roster entry');
+        $this->assertNotNull($modCRoster->lastmsgemailed, 'Mod C should have been notified');
+
+        // Verify Mod A (sender) was NOT notified - roster entry exists but lastmsgemailed should not be updated.
+        // (The roster entry is created when we loop through mods, but no email should be sent.)
+        $modARoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $modA->id)
+            ->first();
+        // Mod A's roster entry may exist but they should not have been emailed.
+        if ($modARoster) {
+            $this->assertNull($modARoster->lastmsgemailed, 'Mod A (sender) should NOT have been notified');
+        }
+    }
+
+    public function test_notify_by_email_user2mod_active_mod_reply_notifies_other_active_not_backup(): void
+    {
+        $member = $this->createTestUser(['fullname' => 'Alice Member']);
+        $group = $this->createTestGroup();
+
+        // Create two active mods and one backup mod.
+        $activeMod1 = $this->createTestUser(['fullname' => 'Active Mod 1']);
+        $activeMod2 = $this->createTestUser(['fullname' => 'Active Mod 2']);
+        $backupMod = $this->createTestUser(['fullname' => 'Backup Mod']);
+
+        // Active mod 1 - null settings means active.
+        Membership::create([
+            'userid' => $activeMod1->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+            'settings' => null,
+        ]);
+
+        // Active mod 2 - explicitly active.
+        Membership::create([
+            'userid' => $activeMod2->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+            'settings' => ['active' => true],
+        ]);
+
+        // Backup mod - explicitly inactive.
+        Membership::create([
+            'userid' => $backupMod->id,
+            'groupid' => $group->id,
+            'role' => 'Moderator',
+            'added' => now(),
+            'settings' => ['active' => false],
+        ]);
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2MOD,
+            'user1' => $member->id,
+            'groupid' => $group->id,
+            'created' => now(),
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster for member.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $member->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Active Mod 1 sends a reply to member.
+        $this->createTestChatMessage($room, $activeMod1, [
+            'date' => now()->subMinutes(5),
+            'message' => 'Reply from Active Mod 1',
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+
+        // Should notify: member + Active Mod 2 = 2 notifications.
+        // Should NOT notify: Active Mod 1 (sender), Backup Mod (inactive).
+        $this->assertGreaterThanOrEqual(2, $count, 'Should notify member and other active mod');
+
+        // Verify member was notified.
+        $memberRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $member->id)
+            ->first();
+        $this->assertNotNull($memberRoster->lastmsgemailed, 'Member should have been notified');
+
+        // Verify Active Mod 2 was notified.
+        $activeMod2Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $activeMod2->id)
+            ->first();
+        $this->assertNotNull($activeMod2Roster, 'Active Mod 2 should have roster entry');
+        $this->assertNotNull($activeMod2Roster->lastmsgemailed, 'Active Mod 2 should have been notified');
+
+        // Verify Active Mod 1 (sender) was NOT notified.
+        $activeMod1Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $activeMod1->id)
+            ->first();
+        if ($activeMod1Roster) {
+            $this->assertNull($activeMod1Roster->lastmsgemailed, 'Active Mod 1 (sender) should NOT be notified');
+        }
+
+        // Verify Backup Mod was NOT notified (not even roster entry created).
+        $backupModRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $backupMod->id)
+            ->first();
+        $this->assertNull($backupModRoster, 'Backup Mod should NOT have roster entry');
+    }
 }
