@@ -1900,10 +1900,11 @@ const httpServer = http.createServer(async (req, res) => {
         echo "Cache directory after deletion:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
-        echo "Pre-generating cache files to prevent parallel access issues..."
+        echo "Pre-generating package manifest (but NOT config cache - tests need to override DB_DATABASE)..."
         # Skip cache:clear and config:clear as they require bootstrap which may fail with corrupted cache
+        # IMPORTANT: Do NOT run config:cache here - tests need to dynamically set the database name
+        # in bootstrap.php, which won't work if config is cached with the production DB name.
         docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
-        docker exec freegle-batch php artisan config:cache 2>&1 || true
 
         echo "Cache directory after regeneration:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
