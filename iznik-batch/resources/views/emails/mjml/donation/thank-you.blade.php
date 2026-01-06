@@ -45,7 +45,7 @@
 
         <mj-section background-color="#ffffff" padding="20px">
             <mj-column>
-                <mj-button href="{{ $userSite }}">
+                <mj-button href="{{ $continueUrl }}">
                     Continue Freegling
                 </mj-button>
             </mj-column>
@@ -59,6 +59,10 @@
             </mj-column>
         </mj-section>
 
-        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $userSite . '/settings'])
+        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
+
+        @if(isset($trackingPixelMjml))
+        {!! $trackingPixelMjml !!}
+        @endif
     </mj-body>
 </mjml>

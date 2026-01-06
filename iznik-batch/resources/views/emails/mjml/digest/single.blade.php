@@ -26,23 +26,23 @@
             </mj-column>
         </mj-section>
 
-        @if($message->attachments && $message->attachments->isNotEmpty())
+        @if($imageUrl)
         <mj-section background-color="#ffffff" padding="0 20px">
             <mj-column>
                 <mj-image
                     width="300px"
-                    src="{{ $userSite }}/img/{{ $message->attachments->first()->id }}"
+                    src="{{ $imageUrl }}"
                     alt="Photo"
                 />
             </mj-column>
         </mj-section>
         @endif
 
-        @if($message->textbody)
+        @if($messageText)
         <mj-section background-color="#ffffff" padding="10px 20px">
             <mj-column>
                 <mj-text color="#666666">
-                    {{ \Illuminate\Support\Str::limit($message->textbody, 500) }}
+                    {{ \Illuminate\Support\Str::limit($messageText, 500) }}
                 </mj-text>
             </mj-column>
         </mj-section>
@@ -70,5 +70,9 @@
         </mj-section>
 
         @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
+
+        @if(isset($trackingPixelMjml))
+        {!! $trackingPixelMjml !!}
+        @endif
     </mj-body>
 </mjml>

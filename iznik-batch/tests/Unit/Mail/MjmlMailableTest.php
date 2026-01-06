@@ -58,11 +58,16 @@ class MjmlMailableTest extends TestCase
         };
 
         // Use a real template that exists in the codebase.
-        // Provide the required $user variable that the thank-you template expects.
+        // Provide the required variables that the thank-you template expects.
         $mockUser = new \stdClass();
         $mockUser->displayname = 'Test User';
         $mockUser->email_preferred = 'test@example.com';
-        $mailable->exposeMjmlView('emails.mjml.donation.thank-you', ['custom' => 'value', 'user' => $mockUser]);
+        $mailable->exposeMjmlView('emails.mjml.donation.thank-you', [
+            'custom' => 'value',
+            'user' => $mockUser,
+            'continueUrl' => 'https://example.com/continue',
+            'settingsUrl' => 'https://example.com/settings',
+        ]);
 
         $this->assertEquals('emails.mjml.donation.thank-you', $mailable->getMjmlTemplate());
         $this->assertArrayHasKey('custom', $mailable->getMjmlData());

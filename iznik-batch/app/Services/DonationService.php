@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\Donation\DonationThankYou;
 use App\Mail\Donation\AskForDonation;
+use App\Mail\Traits\FeatureFlags;
 use App\Models\User;
 use App\Models\UserDonation;
 use Illuminate\Support\Collection;
@@ -13,6 +14,10 @@ use Illuminate\Support\Facades\Mail;
 
 class DonationService
 {
+    use FeatureFlags;
+
+    public const EMAIL_TYPE_THANK = 'DonationThank';
+    public const EMAIL_TYPE_ASK = 'DonationAsk';
     /**
      * Excluded payer patterns (test payments, etc.).
      */
@@ -41,6 +46,13 @@ class DonationService
             'emails_sent' => 0,
             'errors' => 0,
         ];
+
+        // Check if this email type is enabled.
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE_THANK)) {
+            Log::info('DonationThank emails disabled via FREEGLE_MAIL_ENABLED_TYPES');
+
+            return $stats;
+        }
 
         $donors = $this->getUnthankedDonors();
 
@@ -119,6 +131,13 @@ class DonationService
             'skipped_recent_ask' => 0,
             'errors' => 0,
         ];
+
+        // Check if this email type is enabled.
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE_ASK)) {
+            Log::info('DonationAsk emails disabled via FREEGLE_MAIL_ENABLED_TYPES');
+
+            return $stats;
+        }
 
         $recipients = $this->getUsersWhoReceivedItems();
 

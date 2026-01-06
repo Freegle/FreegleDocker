@@ -224,6 +224,68 @@ class User extends Model
     public const NOTIFS_PUSH = 'push';
 
     /**
+     * Simple mail setting constants matching iznik-server.
+     *
+     * SIMPLE_MAIL_NONE: Completely disables all emails.
+     * SIMPLE_MAIL_BASIC: Daily digest, chat replies only.
+     * SIMPLE_MAIL_FULL: Immediate notifications, all email types.
+     */
+    public const SIMPLE_MAIL_NONE = 'None';
+    public const SIMPLE_MAIL_BASIC = 'Basic';
+    public const SIMPLE_MAIL_FULL = 'Full';
+
+    /**
+     * Get the user's simple mail setting.
+     *
+     * @return string|null One of SIMPLE_MAIL_* constants or null if not set
+     */
+    public function getSimpleMail(): ?string
+    {
+        $settings = $this->settings ?? [];
+        return $settings['simplemail'] ?? null;
+    }
+
+    /**
+     * Determine if user wants digest emails based on their simplemail setting.
+     * Falls back to checking per-group emailfrequency if simplemail is not set.
+     *
+     * @return bool True if user should receive digest emails
+     */
+    public function wantsDigestEmails(): bool
+    {
+        $simpleMail = $this->getSimpleMail();
+
+        if ($simpleMail !== null) {
+            // User has a simplemail preference.
+            return $simpleMail !== self::SIMPLE_MAIL_NONE;
+        }
+
+        // Fall back to checking if any membership has a non-zero email frequency.
+        return $this->memberships()
+            ->where('emailfrequency', '!=', 0)
+            ->exists();
+    }
+
+    /**
+     * Determine if user wants immediate notifications based on their simplemail setting.
+     *
+     * @return bool True if user should receive immediate notifications
+     */
+    public function wantsImmediateNotifications(): bool
+    {
+        $simpleMail = $this->getSimpleMail();
+
+        if ($simpleMail !== null) {
+            return $simpleMail === self::SIMPLE_MAIL_FULL;
+        }
+
+        // Fall back to checking if any membership has immediate frequency (-1).
+        return $this->memberships()
+            ->where('emailfrequency', -1)
+            ->exists();
+    }
+
+    /**
      * Get user's latitude and longitude from their last location.
      *
      * @return array [lat, lng] or [null, null] if not available

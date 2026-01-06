@@ -1,11 +1,6 @@
 <?php
 
-// Set test database BEFORE loading anything
-$_ENV['DB_DATABASE'] = 'iznik_batch_test';
-$_SERVER['DB_DATABASE'] = 'iznik_batch_test';
-putenv('DB_DATABASE=iznik_batch_test');
-
-// For ParaTest: each worker gets its own bootstrap cache directory to prevent corruption.
+// ParaTest support: each worker gets its own bootstrap cache directory to prevent corruption.
 // When running parallel tests, multiple workers writing to the same services.php causes race conditions.
 $uniqueToken = getenv('UNIQUE_TEST_TOKEN') ?: getenv('TEST_TOKEN') ?: '';
 if ($uniqueToken) {

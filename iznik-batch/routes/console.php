@@ -29,6 +29,18 @@ Schedule::command('mail:chat:user2user --max-iterations=60 --spool')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Mod2Mod notifications.
+Schedule::command('mail:chat:mod2mod --max-iterations=60 --spool')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// User2Mod notifications.
+Schedule::command('mail:chat:user2mod --max-iterations=60 --spool')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Fetch UK CPI inflation data from ONS - runs monthly.
 // Used to inflation-adjust the "benefit of reuse" value from the 2011 WRAP report.
 // Sends alert email to GeekAlerts if fetch fails.
@@ -78,12 +90,6 @@ Schedule::command('mail:digest 24')
     ->withoutOverlapping()
     ->runInBackground();
 
-// User2Mod notifications.
-Schedule::command('mail:chat:user2mod --max-iterations=60 --spool')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->runInBackground();
-
 // Message expiry - run daily.
 Schedule::command('messages:process-expired --spatial')
     ->dailyAt('03:00')
@@ -98,6 +104,19 @@ Schedule::command('purge:chats')
 
 Schedule::command('purge:messages')
     ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Unified digest - replaces per-group digests.
+// Daily mode - sends one digest per user with posts from all their communities.
+Schedule::command('mail:digest:unified --mode=daily')
+    ->dailyAt('08:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Immediate mode - sends notifications for users who want instant alerts.
+Schedule::command('mail:digest:unified --mode=immediate')
+    ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 

@@ -63,12 +63,16 @@
                 <mj-text>
                     Either way, thanks for freegling!
                 </mj-text>
-                <mj-button href="{{ $userSite }}">
+                <mj-button href="{{ $continueUrl }}">
                     Continue Freegling
                 </mj-button>
             </mj-column>
         </mj-section>
 
-        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $userSite . '/settings'])
+        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
+
+        @if(isset($trackingPixelMjml))
+        {!! $trackingPixelMjml !!}
+        @endif
     </mj-body>
 </mjml>

@@ -4,11 +4,13 @@ namespace App\Mail\Donation;
 
 use App\Mail\MjmlMailable;
 use App\Mail\Traits\LoggableEmail;
+use App\Mail\Traits\TrackableEmail;
 use App\Models\User;
 
 class DonationThankYou extends MjmlMailable
 {
     use LoggableEmail;
+    use TrackableEmail;
 
     public User $user;
 
@@ -23,6 +25,17 @@ class DonationThankYou extends MjmlMailable
 
         $this->user = $user;
         $this->userSite = config('freegle.sites.user');
+
+        // Initialize email tracking.
+        $userId = $this->user->exists ? $this->user->id : null;
+
+        $this->initTracking(
+            'DonationThankYou',
+            $this->user->email_preferred,
+            $userId,
+            null,
+            $this->getSubject()
+        );
     }
 
     /**
@@ -40,10 +53,12 @@ class DonationThankYou extends MjmlMailable
     {
         return $this->to($this->user->email_preferred, $this->user->displayname)
             ->subject($this->getSubject())
-            ->mjmlView('emails.mjml.donation.thank-you', [
+            ->mjmlView('emails.mjml.donation.thank-you', array_merge([
                 'user' => $this->user,
                 'userSite' => $this->userSite,
-            ])
+                'continueUrl' => $this->trackedUrl($this->userSite, 'continue_button', 'continue'),
+                'settingsUrl' => $this->trackedUrl($this->userSite . '/settings', 'footer_settings', 'settings'),
+            ], $this->getTrackingData()), 'emails.text.donation.thank-you')
             ->applyLogging('DonationThankYou');
     }
 

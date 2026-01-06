@@ -14,6 +14,7 @@ This guide documents lessons learned from migrating the Welcome Email and Chat N
 8. [Email Tracking](#email-tracking)
 9. [Testing Checklist](#testing-checklist)
 10. [Command Structure](#command-structure)
+11. [Feature Flags for Email Types](#feature-flags-for-email-types)
 
 ---
 
@@ -528,6 +529,65 @@ $ownMessages = $user->notifsOn(User::NOTIFS_EMAIL_MINE);
 
 ---
 
+## Feature Flags for Email Types
+
+All email-sending services must respect the `FREEGLE_MAIL_ENABLED_TYPES` environment variable. This allows gradual rollout and quick disabling of specific email types.
+
+### Implementation Pattern
+
+1. **Add the FeatureFlags trait** to your service:
+```php
+use App\Mail\Traits\FeatureFlags;
+
+class YourEmailService
+{
+    use FeatureFlags;
+
+    public const EMAIL_TYPE = 'YourEmailType';
+```
+
+2. **Check at the start of your send method**:
+```php
+public function sendEmails(): array
+{
+    $stats = ['processed' => 0, 'emails_sent' => 0, 'errors' => 0];
+
+    // Check if this email type is enabled.
+    if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+        Log::info('YourEmailType emails disabled via FREEGLE_MAIL_ENABLED_TYPES');
+        return $stats;
+    }
+
+    // ... rest of implementation
+}
+```
+
+### Configuration
+
+The enabled types are configured via environment variable:
+```env
+FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod,Digest,UnifiedDigest,DonationThank,DonationAsk
+```
+
+### Adding New Email Types
+
+When adding a new email type:
+
+1. Add the FeatureFlags trait and check to your service
+2. Add the new type to `docker-compose.yml` (for the batch container)
+3. Add the new type to `phpunit.xml` (with `force="true"`)
+4. Add the new type to `.env.testing`
+5. Update `tests/Unit/Mail/FeatureFlagsTest.php` to test the new type
+
+### Why This Matters
+
+- **Gradual Rollout**: Enable new email types in staging first
+- **Quick Disable**: Turn off problematic emails without code changes
+- **Testing Control**: Run tests with all types enabled
+- **Fail-Safe**: Unknown types are disabled by default
+
+---
+
 ## Summary: Key Lessons
 
 1. **Copy subject line logic EXACTLY** - don't improvise
@@ -540,3 +600,4 @@ $ownMessages = $user->notifsOn(User::NOTIFS_EMAIL_MINE);
 8. **Test text fallback** - many users don't see HTML
 9. **Validate AMP** - use the playground before deploying
 10. **Write tests first** - based on iznik-server behavior
+11. **Add feature flag check** - respect FREEGLE_MAIL_ENABLED_TYPES setting

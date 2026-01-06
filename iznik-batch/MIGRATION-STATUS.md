@@ -21,10 +21,15 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 |---------|-------------|
 | `mail:chat:user2user` | Send user-to-user chat notifications |
 | `mail:chat:user2mod` | Send user-to-moderator chat notifications |
-| `mail:digest` | Send message digests |
+| `mail:chat:mod2mod` | Send moderator-to-moderator chat notifications |
+| `mail:digest` | Send message digests (per-group, legacy) |
+| `mail:digest:unified` | Send unified Freegle digests (user-centric, replaces mail:digest) |
 | `mail:donations:thank` | Send donation thank-you emails |
 | `mail:donations:ask` | Send donation request emails |
 | `mail:bounced` | Process bounced emails |
+| `mail:welcome:send` | Send pending welcome emails |
+| `mail:welcome:recover` | Recover failed welcome emails |
+| `mail:spool:process` | Process email spool queue |
 | `mail:test` | **Test any email type** without database side effects |
 
 ### Other Commands
@@ -32,11 +37,14 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | Command | Description |
 |---------|-------------|
 | `messages:process-expired` | Process expired messages |
+| `purge:all` | Run all purge operations |
 | `purge:messages` | Purge old messages |
 | `purge:chats` | Purge old chat rooms |
-| `purge:logs` | Purge old log entries |
 | `users:update-kudos` | Update user kudos scores |
 | `users:retention-stats` | Generate retention statistics |
+| `data:update-cpi` | Update CPI data |
+| `data:git-summary` | Generate git summary |
+| `data:classify-app-release` | Classify app release versions |
 
 ## Testing Emails (mail:test)
 
@@ -78,11 +86,13 @@ AMP for Email is supported for chat notifications. This enables interactive feat
 
 | Email Type | AMP Support | Status |
 |------------|-------------|--------|
-| Chat notifications (user2user) | Yes | Done |
-| Chat notifications (user2mod) | Yes | Done |
-| Digest emails | No | Not planned |
-| Welcome emails | No | Not planned |
-| Donation emails | No | Not planned |
+| Chat notifications (user2user) | Yes | **Live** |
+| Chat notifications (user2mod) | Yes | **Live** |
+| Chat notifications (mod2mod) | Yes | Code written |
+| Digest emails | No | Code written |
+| Welcome emails | No | **Live** |
+| Donation thank-you emails | No | Code written |
+| Donation request emails | No | Code written |
 
 ### AMP Features Implemented
 
@@ -119,19 +129,58 @@ Set in `config/freegle.php`:
 - `freegle.amp.secret` - Shared secret for HMAC token generation.
 - `freegle.sites.apiv2` - Go API endpoint for AMP requests.
 
-## Scripts Currently In Progress
+## Scheduled and Running
 
-| Original Script | Frequency | Artisan Command | Status | Notes |
-|-----------------|-----------|-----------------|--------|-------|
-| `digest.php` | Every 1-5 min (varies by -i flag) | `mail:digest` | In Progress | Core functionality implemented |
-| `chat_notifyemail_user2user.php` | Every 1 min (0-3,5-23h) | `mail:chat:user2user` | In Progress | User-to-user notifications |
-| `chat_notifyemail_user2mod.php` | Every 1 min (0-3,5-23h) | `mail:chat:user2mod` | Done | User-to-mod notifications |
-| `messages_expired.php` | Every 60 min | `messages:process-expired` | In Progress | Deadline expiry handling |
-| `purge_messages.php` | Daily 03:00 | `purge:messages` | In Progress | Message purging |
-| `purge_chats.php` | Daily 01:00 | `purge:chats` | In Progress | Chat purging |
-| `purge_logs.php` | Daily 04:00 | `purge:logs` | In Progress | Log purging |
-| `donations_email.php` | Hourly 06:00-22:00 | `mail:donations:ask` | In Progress | Donation reminders |
-| `bounce.php` | Every 2 hours | `mail:bounced` | In Progress | Bounced email handling |
+These commands are active in `routes/console.php` and running in production:
+
+| Original Script | Artisan Command | Schedule | Notes |
+|-----------------|-----------------|----------|-------|
+| `welcome.php` | `mail:welcome:send` | Every minute | Welcome emails (.env: `Welcome`) |
+| `chat_notifyemail_user2user.php` | `mail:chat:user2user` | Every minute | User-to-user notifications (.env: `ChatNotification`) |
+| `chat_notifyemail_mod2mod.php` | `mail:chat:mod2mod` | Every minute | Mod-to-mod notifications (.env: `ChatNotificationMod2Mod` **needs adding**) |
+| `chat_notifyemail_user2mod.php` | `mail:chat:user2mod` | Every minute | User-to-mod notifications (.env: `ChatNotificationUser2Mod`) |
+| - | `data:update-cpi` | Monthly | CPI inflation data from ONS |
+| `spool.php` | `mail:spool:process --cleanup` | Daily 04:00 | Clean up old sent emails |
+| `git_summary_ai.php` | `data:git-summary` | Weekly Wed 18:00 | Git summary for Discourse |
+
+## Code Written (Scheduler Disabled)
+
+These have code implemented but the scheduler entry is commented out in `routes/console.php`:
+
+| Original Script | Artisan Command | Email Type in .env | Notes |
+|-----------------|-----------------|-------------------|-------|
+| `digest.php` | `mail:digest` | - | Message digests (per-group, legacy) |
+| `digest.php` | `mail:digest:unified` | UnifiedDigest | Unified Freegle digests (user-centric) |
+| `donations_email.php` | `mail:donations:ask` | - | Donation reminders |
+| `donations_thank.php` | `mail:donations:thank` | - | Donation thank-you emails |
+| `bounce.php` | `mail:bounced` | - | Bounced email handling |
+| `messages_expired.php` | `messages:process-expired` | - | Deadline expiry handling |
+| `purge_messages.php` | `purge:messages` | - | Message purging |
+| `purge_chats.php` | `purge:chats` | - | Chat purging |
+| `users_kudos.php` | `users:update-kudos` | - | User kudos |
+| `users_retention.php` | `users:retention-stats` | - | User retention stats |
+
+## Code Written - Running via CircleCI (Not Scheduler)
+
+These have artisan commands and are invoked by CircleCI rather than the batch scheduler:
+
+| Original Script | Artisan Command | Status | Notes |
+|-----------------|-----------------|--------|-------|
+| - | `data:classify-app-release` | **Live** | Called by CircleCI for app release promotion decisions |
+
+Note: `data:classify-app-release` is NOT a migration of `get_app_release_versions.php`. They serve different purposes:
+- `get_app_release_versions.php` - Fetches app version info from app stores and stores in database (dashboard display)
+- `data:classify-app-release` - Classifies commits to decide if release should be promoted immediately or batched
+
+---
+
+## Code Written (No Scheduler Entry - Not Yet Migrated)
+
+These original scripts need to be migrated to Laravel artisan commands:
+
+| Original Script | Artisan Command | Notes |
+|-----------------|-----------------|-------|
+| `get_app_release_versions.php` | - | Needs migration - fetches app versions for dashboard display |
 
 ---
 
@@ -140,7 +189,6 @@ Set in `config/freegle.php`:
 | Script | Frequency | Priority | Description |
 |--------|-----------|----------|-------------|
 | `background.php` | Every 1 min | High | Background job processor |
-| `spool.php` | Every 5 min (x20 instances) | High | Outgoing email spool processing |
 | `chat_process.php` | Every 1 min | High | Chat message processing |
 | `admins.php` | Every 1 min | Medium | Admin notifications |
 | `tryst.php` | Every 1 min | Medium | Meeting coordination |
@@ -150,7 +198,6 @@ Set in `config/freegle.php`:
 | `lovejunk.php` | Every 1 min | Medium | LoveJunk integration |
 | `exports.php` | Every 1 min | Low | Data exports |
 | `notification_chaseup.php` | Every 5 min | Medium | Notification reminders |
-| `donations_thank.php` | Every 5 min | Medium | Donation thank-you emails |
 | `previews.php` | Every 5 min | Medium | Link preview generation |
 | `check_cgas.php` | Every 5 min | Low | CGA checking |
 | `message_spatial.php` | Every 5 min | Medium | Spatial index updates |
@@ -188,7 +235,6 @@ Set in `config/freegle.php`:
 | `autoapprove.php` | Every 60 min | Medium | Auto-approve messages |
 | `bounce_users.php` | Every 60 min | Medium | User bounce processing |
 | `chatdups.php` | Every 120 min | Low | Chat duplicates |
-| `get_app_release_versions.php` | Every 60 min | Low | App versions |
 
 ## Daily Scripts - Not Started
 
@@ -205,9 +251,9 @@ Set in `config/freegle.php`:
 | `message_deindex.php` | 01:00 | Low | Message de-indexing |
 | `group_stats.php` | 02:00 | Low | Group statistics |
 | `doogal` | 03:00 | Low | Doogal data import |
-| `users_kudos.php` | 03:00 | Low | User kudos |
 | `engage_update.php` | 03:00 | Low | Engagement update |
 | `purge_sessions.php` | 03:00 | Low | Session purging |
+| `purge_logs.php` | 04:00 | Low | Log purging |
 | `email_validate.php` | 04:00 | Low | Email validation |
 | `messages_popular.php` | 05:00 | Low | Popular messages |
 | `users_remap.php` | 05:00 | Low | User remapping |
@@ -233,7 +279,6 @@ Set in `config/freegle.php`:
 | `groups_closed.php` | Sun 08:00 | Low | Closed groups check |
 | `stories_tocentral.php` | Fri 14:00 | Low | Stories to central |
 | `domains_common.php` | Fri 07:00 | Low | Common domains |
-| `git_summary_ai.php` | Fri 07:38 | Skip | Development tool |
 | `mod_active.php` | Mon 15:00 | Low | Active moderators |
 
 ## Monthly Scripts - Not Started
@@ -241,7 +286,6 @@ Set in `config/freegle.php`:
 | Script | Schedule | Priority | Description |
 |--------|----------|----------|-------------|
 | `stories_newsletter.php` | 12th 23:00 | Low | Stories newsletter |
-| `users_retention.php` | 27th 11:00 | Low | User retention |
 | `lovejunk_tn_invoice.php` | 1st 15:00 | Low | LoveJunk/TN invoice |
 
 ## Scripts to Skip
@@ -252,7 +296,6 @@ Set in `config/freegle.php`:
 | `cron_checker_iznik.php` | Monitoring - external tool |
 | `discourse_checkusers.php` | Discourse integration - separate system |
 | `discourse_not_signed_up.php` | Discourse integration - separate system |
-| `git_summary_ai.php` | Development tool |
 | `locations_pgsql` | PostgreSQL locations - external |
 | `doogal` | External data import script |
 | `eximlogs.php` | Mail server logs - external |

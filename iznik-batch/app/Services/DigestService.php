@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\Digest\MultipleDigest;
 use App\Mail\Digest\SingleDigest;
+use App\Mail\Traits\FeatureFlags;
 use App\Models\Group;
 use App\Models\GroupDigest;
 use App\Models\Membership;
@@ -17,6 +18,10 @@ use Illuminate\Support\Facades\Mail;
 
 class DigestService
 {
+    use FeatureFlags;
+
+    public const EMAIL_TYPE = 'Digest';
+
     /**
      * Send digests for a group at a specific frequency.
      */
@@ -27,6 +32,13 @@ class DigestService
             'emails_sent' => 0,
             'errors' => 0,
         ];
+
+        // Check if this email type is enabled.
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            Log::info('Digest emails disabled via FREEGLE_MAIL_ENABLED_TYPES');
+
+            return $stats;
+        }
 
         // Check if group is closed.
         if ($group->isClosed()) {
