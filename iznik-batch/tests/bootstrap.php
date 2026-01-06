@@ -15,19 +15,6 @@ if ($uniqueToken) {
     if (!is_dir($cacheSubdir)) {
         mkdir($cacheSubdir, 0777, true);
     }
-
-    // Copy pre-generated bootstrap cache files to worker directory.
-    // This prevents workers from regenerating these files which can cause race conditions
-    // and interfere with the view cache that was pre-compiled by view:cache.
-    $mainCacheDir = __DIR__ . '/../bootstrap/cache';
-    foreach (['services.php', 'packages.php'] as $cacheFile) {
-        $src = "{$mainCacheDir}/{$cacheFile}";
-        $dst = "{$cacheSubdir}/{$cacheFile}";
-        if (file_exists($src) && !file_exists($dst)) {
-            copy($src, $dst);
-        }
-    }
-
     // Set environment variable that bootstrap/app.php reads
     putenv("PARATEST_BOOTSTRAP_CACHE={$workerCacheDir}");
 }
