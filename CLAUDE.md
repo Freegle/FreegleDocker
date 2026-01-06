@@ -1,3 +1,7 @@
+**See also: [codingstandards.md](codingstandards.md)** for core coding rules that apply to all development.
+
+**Use the `ralph` skill** for any non-trivial development task. For automated/unattended execution: `./ralph.sh -t "task description"`
+
 - **NEVER skip or make coverage optional in tests.** Coverage is an integral part of testing and must always be collected and uploaded. If coverage upload fails, fix the root cause - never bypass it.
 - Always restart the status monitor after making changes to its code.
 - Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
