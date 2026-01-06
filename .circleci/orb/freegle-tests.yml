@@ -1054,8 +1054,35 @@ commands:
 
             # Collect Playwright test artifacts
             # Copy the entire playwright-report folder to artifacts root so HTML can find its data/ subfolder
-            docker cp freegle-playwright:/app/playwright-report ~/artifacts/ 2>/dev/null || true
-            docker cp freegle-playwright:/app/test-results ~/artifacts/ 2>/dev/null || true
+            echo "=== Collecting Playwright artifacts ==="
+
+            # Check if container is running
+            if docker ps --format '{{.Names}}' | grep -q '^freegle-playwright$'; then
+              echo "✓ Playwright container is running"
+
+              # List what's in the playwright-report directory
+              echo "Contents of /app/playwright-report:"
+              docker exec freegle-playwright ls -la /app/playwright-report 2>&1 || echo "  (directory not accessible)"
+
+              # Copy playwright-report
+              if docker cp freegle-playwright:/app/playwright-report ~/artifacts/ 2>&1; then
+                echo "✓ Copied playwright-report"
+                ls -la ~/artifacts/playwright-report/ 2>&1 | head -10
+              else
+                echo "✗ Failed to copy playwright-report"
+              fi
+
+              # Copy test-results
+              if docker cp freegle-playwright:/app/test-results ~/artifacts/ 2>&1; then
+                echo "✓ Copied test-results"
+              else
+                echo "✗ Failed to copy test-results"
+              fi
+            else
+              echo "✗ Playwright container is not running - cannot collect artifacts"
+              echo "Container status:"
+              docker ps -a --filter "name=playwright" --format "table {{.Names}}\t{{.Status}}"
+            fi
 
             # Build info
             echo "CircleCI Build: $CIRCLE_BUILD_NUM" > ~/artifacts/build-info.txt
