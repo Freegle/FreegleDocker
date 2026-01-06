@@ -1765,183 +1765,146 @@ jobs:
             ) > ~/test-output/phpunit.out 2>&1 &
             PHPUNIT_PID=$!
 
-            # Run Playwright tests in foreground with monitoring
-            echo "🎭 Starting Playwright tests..."
+            # Start Playwright tests in background
+            echo "🎭 Starting Playwright tests in background..."
+            (
+              # Trigger Playwright tests via status API
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
+              http_code="${response: -3}"
 
-            # Trigger Playwright tests via API
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
-            http_code="${response: -3}"
+              if [ "$http_code" -ne "200" ]; then
+                echo "❌ Failed to trigger Playwright tests. HTTP code: $http_code"
+                echo "fail" > /tmp/playwright-result
+                exit 1
+              fi
 
-            if [ "$http_code" -ne "200" ]; then
-              echo "❌ Failed to trigger Playwright tests. HTTP code: $http_code"
-              echo "Response: $response"
-              # Wait for background jobs before exiting
-              wait $LARAVEL_PID 2>/dev/null || true
-              wait $GO_PID 2>/dev/null || true
-              exit 1
-            fi
+              echo "✅ Playwright tests triggered successfully"
 
-            echo "✅ Playwright tests triggered successfully"
+              # Poll for completion
+              while true; do
+                sleep 10
+                status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+                status=$(echo "$status_response" | jq -r '.status // "unknown"')
+                completed=$(echo "$status_response" | jq -r '.completedTests // 0')
+                total=$(echo "$status_response" | jq -r '.totalTests // 0')
 
-            # Monitor Playwright test progress
-            echo "📊 Monitoring test progress..."
+                # Update progress files
+                echo "$completed" > /tmp/playwright-completed
+                echo "$total" > /tmp/playwright-total
+
+                if [ "$status" = "completed" ]; then
+                  success=$(echo "$status_response" | jq -r '.success // false')
+                  if [ "$success" = "true" ]; then
+                    echo "pass" > /tmp/playwright-result
+                  else
+                    echo "fail" > /tmp/playwright-result
+                    # Get the logs for the output file
+                    echo "$status_response" | jq -r '.logs // "No logs"'
+                  fi
+                  break
+                elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
+                  echo "fail" > /tmp/playwright-result
+                  echo "$status_response" | jq -r '.logs // "No logs"'
+                  break
+                fi
+              done
+            ) > ~/test-output/playwright.out 2>&1 &
+            PLAYWRIGHT_PID=$!
+
+            # Unified monitoring loop for all 4 tests
+            echo "📊 Monitoring all tests..."
             start_time=$(date +%s)
             timeout_duration=2700  # 45 minutes
-            PLAYWRIGHT_PASSED=false
-            PLAYWRIGHT_KILLED=false
+            TESTS_KILLED_EARLY=false
 
             while true; do
               current_time=$(date +%s)
               elapsed=$((current_time - start_time))
+              elapsed_min=$((elapsed / 60))
 
               if [ $elapsed -gt $timeout_duration ]; then
-                echo "⏰ Playwright tests timed out after 45 minutes"
+                echo "⏰ Tests timed out after 45 minutes"
+                kill $LARAVEL_PID $GO_PID $PHPUNIT_PID $PLAYWRIGHT_PID 2>/dev/null || true
+                TESTS_KILLED_EARLY=true
                 break
               fi
 
-              sleep 10
-
-              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
-              status=$(echo "$status_response" | jq -r '.status // "unknown"')
-              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-              total=$(echo "$status_response" | jq -r '.totalTests // 0')
-
-              elapsed_min=$((elapsed / 60))
+              # Check status of all 4 tests
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
               LARAVEL_COMPLETED=$([ -f /tmp/laravel-completed ] && cat /tmp/laravel-completed || echo '0')
               LARAVEL_TOTAL=$([ -f /tmp/laravel-total ] && cat /tmp/laravel-total || echo '0')
-              LARAVEL_DISPLAY=$([ "$LARAVEL_STATUS" = "running" ] && echo "$LARAVEL_STATUS ($LARAVEL_COMPLETED/$LARAVEL_TOTAL)" || echo "$LARAVEL_STATUS")
+              LARAVEL_DISPLAY=$([ "$LARAVEL_STATUS" = "running" ] && echo "running ($LARAVEL_COMPLETED/$LARAVEL_TOTAL)" || echo "$LARAVEL_STATUS")
+
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
               GO_COMPLETED=$([ -f /tmp/go-completed ] && cat /tmp/go-completed || echo '0')
               GO_TOTAL=$([ -f /tmp/go-total ] && cat /tmp/go-total || echo '0')
-              GO_DISPLAY=$([ "$GO_STATUS" = "running" ] && echo "$GO_STATUS ($GO_COMPLETED/$GO_TOTAL)" || echo "$GO_STATUS")
+              GO_DISPLAY=$([ "$GO_STATUS" = "running" ] && echo "running ($GO_COMPLETED/$GO_TOTAL)" || echo "$GO_STATUS")
+
               PHP_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
               PHP_COMPLETED=$([ -f /tmp/php-completed ] && cat /tmp/php-completed || echo '0')
               PHP_TOTAL=$([ -f /tmp/php-total ] && cat /tmp/php-total || echo '0')
-              PHP_DISPLAY=$([ "$PHP_STATUS" = "running" ] && echo "$PHP_STATUS ($PHP_COMPLETED/$PHP_TOTAL)" || echo "$PHP_STATUS")
-              echo "[${elapsed_min}m] Playwright: $status ($completed/$total) | iznik-batch: $LARAVEL_DISPLAY | iznik-server-go: $GO_DISPLAY | iznik-server: $PHP_DISPLAY"
+              PHP_DISPLAY=$([ "$PHP_STATUS" = "running" ] && echo "running ($PHP_COMPLETED/$PHP_TOTAL)" || echo "$PHP_STATUS")
 
-              # IMPORTANT: Check Playwright completion BEFORE fail-fast checks
-              # This ensures we capture Playwright's success/fail status before breaking due to other test failures
-              if [ "$status" = "completed" ]; then
-                success=$(echo "$status_response" | jq -r '.success // false')
-                echo "🎉 Playwright tests completed! Success: $success"
+              PLAYWRIGHT_STATUS=$([ -f /tmp/playwright-result ] && cat /tmp/playwright-result || echo 'running')
+              PLAYWRIGHT_COMPLETED=$([ -f /tmp/playwright-completed ] && cat /tmp/playwright-completed || echo '0')
+              PLAYWRIGHT_TOTAL=$([ -f /tmp/playwright-total ] && cat /tmp/playwright-total || echo '0')
+              PLAYWRIGHT_DISPLAY=$([ "$PLAYWRIGHT_STATUS" = "running" ] && echo "running ($PLAYWRIGHT_COMPLETED/$PLAYWRIGHT_TOTAL)" || echo "$PLAYWRIGHT_STATUS")
 
-                if [ "$success" = "true" ]; then
-                  echo "✅ All Playwright tests passed!"
-                  PLAYWRIGHT_PASSED=true
-                else
-                  echo "❌ Some Playwright tests failed!"
-                  echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                  echo "❌ FAIL-FAST: Playwright tests failed - stopping all tests"
-                  kill $LARAVEL_PID 2>/dev/null || true
-                  kill $GO_PID 2>/dev/null || true
-                  kill $PHPUNIT_PID 2>/dev/null || true
-                  TESTS_KILLED_EARLY=true
-                  break
-                fi
-              elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
-                echo "❌ Playwright tests failed to run!"
-                echo "$status_response" | jq -r '.logs // "No logs available"' | tail -30
-                echo "❌ FAIL-FAST: Playwright tests failed to run - stopping all tests"
-                kill $LARAVEL_PID 2>/dev/null || true
-                kill $GO_PID 2>/dev/null || true
-                kill $PHPUNIT_PID 2>/dev/null || true
-                TESTS_KILLED_EARLY=true
-                break
-              fi
+              echo "[${elapsed_min}m] Laravel: $LARAVEL_DISPLAY | Go: $GO_DISPLAY | PHPUnit: $PHP_DISPLAY | Playwright: $PLAYWRIGHT_DISPLAY"
 
-              # Fail-fast: Check if any background test has failed
-              # Note: Playwright completion is checked above, so PLAYWRIGHT_PASSED is already set if it completed
+              # Check for any failures (fail-fast)
               if [ "$LARAVEL_STATUS" = "fail" ]; then
                 echo "❌ FAIL-FAST: Laravel tests failed - stopping all tests"
-                kill $GO_PID 2>/dev/null || true
-                kill $PHPUNIT_PID 2>/dev/null || true
+                kill $GO_PID $PHPUNIT_PID $PLAYWRIGHT_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
-                # Mark Playwright as killed if it was still running (not passed or failed)
-                if [ "$PLAYWRIGHT_PASSED" != "true" ]; then
-                  PLAYWRIGHT_KILLED=true
-                fi
                 break
               fi
               if [ "$GO_STATUS" = "fail" ]; then
                 echo "❌ FAIL-FAST: Go tests failed - stopping all tests"
-                kill $LARAVEL_PID 2>/dev/null || true
-                kill $PHPUNIT_PID 2>/dev/null || true
+                kill $LARAVEL_PID $PHPUNIT_PID $PLAYWRIGHT_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
-                # Mark Playwright as killed if it was still running (not passed or failed)
-                if [ "$PLAYWRIGHT_PASSED" != "true" ]; then
-                  PLAYWRIGHT_KILLED=true
-                fi
                 break
               fi
               if [ "$PHP_STATUS" = "fail" ]; then
                 echo "❌ FAIL-FAST: PHPUnit tests failed - stopping all tests"
-                kill $LARAVEL_PID 2>/dev/null || true
-                kill $GO_PID 2>/dev/null || true
+                kill $LARAVEL_PID $GO_PID $PLAYWRIGHT_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
-                # Mark Playwright as killed if it was still running (not passed or failed)
-                if [ "$PLAYWRIGHT_PASSED" != "true" ]; then
-                  PLAYWRIGHT_KILLED=true
-                fi
+                break
+              fi
+              if [ "$PLAYWRIGHT_STATUS" = "fail" ]; then
+                echo "❌ FAIL-FAST: Playwright tests failed - stopping all tests"
+                kill $LARAVEL_PID $GO_PID $PHPUNIT_PID 2>/dev/null || true
+                TESTS_KILLED_EARLY=true
                 break
               fi
 
-              # If Playwright completed successfully, break the monitoring loop
-              # (We already set PLAYWRIGHT_PASSED above)
-              if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
+              # Check if all tests completed
+              if [ "$LARAVEL_STATUS" != "running" ] && [ "$GO_STATUS" != "running" ] && [ "$PHP_STATUS" != "running" ] && [ "$PLAYWRIGHT_STATUS" != "running" ]; then
+                echo "✅ All tests completed"
                 break
               fi
+
+              sleep 10
             done
 
-            # If tests were killed early due to failure, exit immediately
-            if [ "$TESTS_KILLED_EARLY" = "true" ]; then
-              echo "❌ Tests failed - exiting immediately"
-              LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "killed")
-              GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "killed")
-              PHP_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "killed")
-
-              # Determine Playwright result: pass > killed > fail
-              if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
-                PLAYWRIGHT_RESULT="pass"
-              elif [ "$PLAYWRIGHT_KILLED" = "true" ]; then
-                PLAYWRIGHT_RESULT="killed"
-              else
-                PLAYWRIGHT_RESULT="fail"
-              fi
-
-              echo ""
-              echo "=== Parallel Test Results (fail-fast) ==="
-              echo "Laravel: $LARAVEL_RESULT"
-              echo "Go: $GO_RESULT"
-              echo "PHPUnit: $PHP_RESULT"
-              echo "Playwright: $PLAYWRIGHT_RESULT"
-              echo ""
-              echo "LARAVEL_TESTS_PASSED=false" >> $BASH_ENV
-              echo "GO_TESTS_PASSED=false" >> $BASH_ENV
-              echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
-              echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
-              exit 1
-            fi
-
-            # Wait for background tests to complete (only if no early failure)
-            echo "⏳ Waiting for all background tests to complete..."
+            # Wait for all background processes to finish
             wait $LARAVEL_PID 2>/dev/null || true
             wait $GO_PID 2>/dev/null || true
             wait $PHPUNIT_PID 2>/dev/null || true
+            wait $PLAYWRIGHT_PID 2>/dev/null || true
 
-            # Check results
+            # Check results from files
             LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "fail")
             GO_RESULT=$(cat /tmp/go-result 2>/dev/null || echo "fail")
             PHP_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "fail")
+            PLAYWRIGHT_RESULT=$(cat /tmp/playwright-result 2>/dev/null || echo "fail")
 
-            # Determine Playwright result: pass > killed > fail
-            if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
-              PLAYWRIGHT_RESULT="pass"
-            elif [ "$PLAYWRIGHT_KILLED" = "true" ]; then
-              PLAYWRIGHT_RESULT="killed"
-            else
-              PLAYWRIGHT_RESULT="fail"
+            # Handle killed tests
+            if [ "$TESTS_KILLED_EARLY" = "true" ]; then
+              [ "$LARAVEL_RESULT" = "running" ] && LARAVEL_RESULT="killed"
+              [ "$GO_RESULT" = "running" ] && GO_RESULT="killed"
+              [ "$PHP_RESULT" = "running" ] && PHP_RESULT="killed"
+              [ "$PLAYWRIGHT_RESULT" = "running" ] && PLAYWRIGHT_RESULT="killed"
             fi
 
             echo ""
@@ -1970,14 +1933,14 @@ jobs:
               echo "PHP_TESTS_PASSED=false" >> $BASH_ENV
             fi
 
-            if [ "$PLAYWRIGHT_PASSED" = "true" ]; then
+            if [ "$PLAYWRIGHT_RESULT" = "pass" ]; then
               echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
             else
               echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
             fi
 
             # Fail if any test suite failed
-            if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PHP_RESULT" != "pass" ] || [ "$PLAYWRIGHT_PASSED" != "true" ]; then
+            if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PHP_RESULT" != "pass" ] || [ "$PLAYWRIGHT_RESULT" != "pass" ]; then
               echo "❌ One or more test suites failed"
               # Show failed test output files
               echo ""
