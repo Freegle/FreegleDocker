@@ -47,6 +47,5 @@ sentry-issues.db
 /plans/exploratory-testing-state.json
 /iznik-batch/coverage/
 
-# Ralph state and temp files (session-specific)
-ralph/state/
-ralph/temp-plans/
+# Ralph working directories (session-specific)
+ralph/

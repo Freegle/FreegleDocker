@@ -12,7 +12,7 @@ This is the master tracking table for API migration. Each row is designed as a s
 | 4 | /logo | GET | ✅ Complete | Completed 2025-10-13 |
 | 5 | /microvolunteering | GET | ✅ Complete | Completed 2025-10-14 |
 | 6 | /user/byemail | GET | ✅ Complete | Completed 2025-10-17 |
-| 7 | /authority | GET | 🔄 Partial | FD uses v2 for /authority/{id}/message, v1 for /authority |
+| 7 | /authority | GET | 🔄 Partial | Go backend complete (stats support added), awaiting CI+deploy+client changes |
 | 8 | /address | PATCH, PUT | ⬜ Pending | 5 FD usages, no email |
 | 9 | /isochrone | PUT, POST, PATCH | ⬜ Pending | 2 FD usages, no email |
 | 10 | /newsfeed | POST | ⬜ Pending | 10 FD usages, no email |
@@ -81,9 +81,14 @@ Each migration task should:
 
 ## Migration Procedure
 
-### 1. Implement v2 Go API
+**IMPORTANT**: A migration is NOT complete until BOTH backend AND frontend changes are done.
+Implementing only the Go backend is "Partial" - the v1 API is still being called until client code is updated.
+
+### 1. Implement v2 Go API (Backend)
 - Create handler in `iznik-server-go/{domain}/{domain}.go`
 - Add route in `iznik-server-go/router/routes.go` with Swagger annotations
+- Regenerate Swagger: `./generate-swagger.sh`
+- Verify endpoint appears in Swagger UI at `/swagger/`
 - Ensure proper error handling
 
 ### 2. Add Tests
@@ -91,15 +96,30 @@ Each migration task should:
 - Test all HTTP methods and error cases
 - Run: `docker exec freegle-apiv2 go test ./test/{domain}_test.go ./test/main_test.go ./test/testUtils.go -v`
 
-### 3. Update FD Client Code
+### 3. Wait for CI Verification
+- **CRITICAL**: Local tests passing is NOT sufficient.
+- Push changes and wait for CircleCI pipeline to complete successfully.
+- All four test suites must pass: Go, PHPUnit, Laravel, Playwright.
+- Do NOT proceed until CI is green.
+
+### 4. Wait for Live Deployment
+- **CRITICAL**: Do NOT update client code until v2 is deployed to production.
+- After CI passes, the Go backend will be deployed automatically.
+- Verify deployment by checking Swagger on production: `https://apiv2.ilovefreegle.org/swagger/`
+- Confirm your new endpoint is visible in the live Swagger docs.
+- Mark task status as ⏳ Waiting until deployment is confirmed.
+
+### 5. Update FD Client Code (Frontend)
+- Only after confirming live deployment (step 4).
 - Update API wrapper in `iznik-nuxt3/api/{Domain}API.js`:
   - `$get('/endpoint')` → `$getv2('/endpoint')`
   - `$post('/endpoint')` → `$postv2('/endpoint')`
+- This is when the migration actually takes effect for users.
 
-### 4. Update MT Client Code (if applicable)
+### 6. Update MT Client Code (if applicable)
 - Same process in `iznik-nuxt3-modtools/api/{Domain}API.js`
 
-### 5. Mark v1 PHP as Deprecated
+### 7. Mark v1 PHP as Deprecated
 Add at top of function:
 ```php
 // TODO: DEPRECATED - Migrated to v2 Go API
@@ -107,8 +127,13 @@ Add at top of function:
 // V2 endpoints: <list>
 ```
 
-### 6. Update This Document
-- Change status from ⬜ Pending to ✅ Complete
+### 8. Update This Document
+- Change status from ⬜ Pending to ✅ Complete ONLY when:
+  - Backend is implemented and tested
+  - CI has passed
+  - Backend is deployed to production
+  - Client code has been updated to use v2
+  - v1 code is marked deprecated
 - Add completion date
 
 ---
