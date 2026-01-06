@@ -35,6 +35,9 @@ These rules apply to all development work on the Freegle codebase.
 - Avoid naked `<a>` tags - use ExternalLink component.
 - Avoid curved corners (border-radius).
 - House style: put full stops at end of sentences.
+- When you create new files, add them to git automatically (unless temporary).
+- When removing code, never leave comments about what used to be there.
+- When creating temporary scripts, put them in `/tmp` to avoid cluttering git.
 
 ## Playwright Tests
 

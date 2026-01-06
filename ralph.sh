@@ -278,6 +278,65 @@ check_prerequisites() {
     log SUCCESS "Prerequisites check passed."
 }
 
+check_integrations() {
+    log INFO "Checking integrations and API keys..."
+
+    local has_warnings=false
+
+    # Source .env for tokens
+    if [[ -f "$SCRIPT_DIR/.env" ]]; then
+        source "$SCRIPT_DIR/.env"
+    fi
+
+    # Check CircleCI token
+    if [[ -z "$CIRCLECI_TOKEN" ]]; then
+        log WARN "CIRCLECI_TOKEN not set. Cannot check CI status automatically."
+        has_warnings=true
+    else
+        # Verify token works
+        if curl -s -H "Circle-Token: $CIRCLECI_TOKEN" \
+            "https://circleci.com/api/v2/me" | grep -q '"id"'; then
+            log SUCCESS "CircleCI token is valid."
+        else
+            log WARN "CircleCI token appears invalid. CI status checks will fail."
+            has_warnings=true
+        fi
+    fi
+
+    # Check git authentication (can we push?)
+    if git ls-remote origin &>/dev/null; then
+        log SUCCESS "Git authentication working."
+    else
+        log WARN "Git authentication may have issues. Check your SSH keys or credentials."
+        has_warnings=true
+    fi
+
+    # Check if status container is accessible
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/api/health 2>/dev/null | grep -q "200"; then
+        log SUCCESS "Status container is accessible."
+    else
+        log WARN "Status container not accessible at localhost:8081. Tests may fail."
+        has_warnings=true
+    fi
+
+    # Check Chrome DevTools MCP connection (optional)
+    # This is hard to check programmatically, but we can note it
+    log INFO "Chrome DevTools MCP: Ensure browser is connected for UI validation."
+
+    if $has_warnings; then
+        log WARN "Some integrations have warnings. Review above before proceeding."
+        echo ""
+        read -p "Continue anyway? (y/n): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log INFO "Aborted by user."
+            exit 0
+        fi
+    else
+        log SUCCESS "All integrations check passed."
+    fi
+}
+
 setup_logging() {
     mkdir -p "$LOG_DIR"
     local plan_name=$(basename "$PLAN_FILE" .md)
@@ -581,6 +640,7 @@ main() {
     fi
 
     check_prerequisites
+    check_integrations
 
     # If task mode, create temporary plan before logging setup
     if $TASK_MODE; then
