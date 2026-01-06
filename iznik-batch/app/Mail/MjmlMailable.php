@@ -43,13 +43,49 @@ abstract class MjmlMailable extends Mailable
     public function build(): static
     {
         // Render the Blade template to get MJML content.
-        $mjmlContent = view($this->mjmlTemplate, $this->mjmlData)->render();
+        // Retry once if empty to handle race conditions in parallel testing.
+        $mjmlContent = $this->renderMjmlTemplate();
 
         // Compile MJML to HTML.
         $html = $this->compileMjml($mjmlContent);
 
         // Set the HTML content.
         return $this->html($html);
+    }
+
+    /**
+     * Render the MJML template with retry on empty result.
+     *
+     * Handles race conditions in parallel testing where compiled views
+     * may temporarily be empty or corrupted.
+     */
+    protected function renderMjmlTemplate(): string
+    {
+        $content = view($this->mjmlTemplate, $this->mjmlData)->render();
+
+        // If empty, clear the compiled view and retry once.
+        if (empty(trim($content))) {
+            // Clear the specific compiled view file to force recompilation.
+            $viewFinder = app('view')->getFinder();
+            $viewPath = $viewFinder->find($this->mjmlTemplate);
+            $compiledPath = app('blade.compiler')->getCompiledPath($viewPath);
+
+            if (file_exists($compiledPath)) {
+                @unlink($compiledPath);
+                \Log::warning('Cleared empty compiled view for retry', [
+                    'template' => $this->mjmlTemplate,
+                    'compiled_path' => $compiledPath,
+                ]);
+            }
+
+            // Small delay to allow any concurrent writes to complete.
+            usleep(10000); // 10ms
+
+            // Retry rendering.
+            $content = view($this->mjmlTemplate, $this->mjmlData)->render();
+        }
+
+        return $content;
     }
 
     /**
@@ -137,20 +173,9 @@ abstract class MjmlMailable extends Mailable
             throw new \RuntimeException($error);
         }
 
-        // Render the Blade template to get MJML content.
+        // Render the Blade template to get MJML content with retry on empty.
         try {
-            $mjmlContent = view($this->mjmlTemplate, $this->mjmlData)->render();
-
-            // Debug logging for empty content
-            if (empty(trim($mjmlContent))) {
-                \Log::warning('MJML template rendered empty', [
-                    'mailable' => static::class,
-                    'template' => $this->mjmlTemplate,
-                    'data_keys' => array_keys($this->mjmlData),
-                    'view_exists' => view()->exists($this->mjmlTemplate),
-                    'compiled_path' => app('view.finder')->find($this->mjmlTemplate),
-                ]);
-            }
+            $mjmlContent = $this->renderMjmlTemplate();
         } catch (\Throwable $e) {
             $error = "MJML template rendering failed: {$e->getMessage()}";
             \Log::error($error, [
