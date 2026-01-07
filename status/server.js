@@ -1929,6 +1929,7 @@ const httpServer = http.createServer(async (req, res) => {
         # in bootstrap.php, which won't work if config is cached with the production DB name.
 
         echo "Running Laravel tests in parallel with coverage..."
+        # Time limits configured in phpunit.xml: enforceTimeLimit="true" defaultTimeLimit="30"
         docker exec freegle-batch vendor/bin/paratest --testsuite=Unit,Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
       `,
       ],

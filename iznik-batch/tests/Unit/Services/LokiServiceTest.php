@@ -108,16 +108,17 @@ class LokiServiceTest extends TestCase
         config(['freegle.loki.enabled' => false]);
         $service = new LokiService();
 
-        $service->logEmailSend('digest', 'test@example.com', 'Test Subject');
+        $service->logEmailSend('digest', $this->uniqueEmail('loki'), 'Test Subject');
 
         $this->assertFileDoesNotExist($this->testLogPath . '/email.log');
     }
 
     public function test_log_email_send_writes_to_file_when_enabled(): void
     {
+        $email = $this->uniqueEmail('loki');
         $this->lokiService->logEmailSend(
             'digest',
-            'test@example.com',
+            $email,
             'Test Subject',
             123,
             456,
@@ -139,7 +140,7 @@ class LokiServiceTest extends TestCase
         $this->assertEquals('456', $entry['labels']['groupid']);
         $this->assertEquals('freegle-abc123_def456', $entry['labels']['trace_id']);
 
-        $this->assertEquals('test@example.com', $entry['message']['recipient']);
+        $this->assertEquals($email, $entry['message']['recipient']);
         $this->assertEquals('Test Subject', $entry['message']['subject']);
         $this->assertEquals(123, $entry['message']['user_id']);
         $this->assertEquals(456, $entry['message']['group_id']);
@@ -151,7 +152,7 @@ class LokiServiceTest extends TestCase
     {
         $this->lokiService->logEmailSend(
             'WelcomeMail',
-            'test@example.com',
+            $this->uniqueEmail('loki'),
             'Welcome to Freegle!',
             123,
             null,
@@ -171,7 +172,7 @@ class LokiServiceTest extends TestCase
     {
         $this->lokiService->logEmailSend(
             'digest',
-            'test@example.com',
+            $this->uniqueEmail('loki'),
             'Test Subject',
             123,
             456,
@@ -190,7 +191,7 @@ class LokiServiceTest extends TestCase
     {
         $this->lokiService->logEmailSend(
             'notification',
-            'test@example.com',
+            $this->uniqueEmail('loki'),
             'Test Subject',
             null,
             null,

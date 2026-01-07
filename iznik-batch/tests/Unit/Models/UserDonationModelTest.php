@@ -11,6 +11,7 @@ class UserDonationModelTest extends TestCase
     public function test_donation_can_be_created(): void
     {
         $user = $this->createTestUser();
+        $payerEmail = $this->uniqueEmail('payer');
 
         $donation = UserDonation::create([
             'userid' => $user->id,
@@ -18,7 +19,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test@example.com',
+            'Payer' => $payerEmail,
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -28,6 +29,7 @@ class UserDonationModelTest extends TestCase
     public function test_user_relationship(): void
     {
         $user = $this->createTestUser();
+        $payerEmail = $this->uniqueEmail('payer');
 
         $donation = UserDonation::create([
             'userid' => $user->id,
@@ -35,7 +37,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test@example.com',
+            'Payer' => $payerEmail,
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -52,7 +54,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test1@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
             'giftaidconsent' => false,
         ]);
@@ -63,7 +65,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 20.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test2@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
             'giftaidconsent' => true,
         ]);
@@ -84,7 +86,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test3@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
             'giftaidchaseup' => null,
         ]);
@@ -95,7 +97,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 20.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test4@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
             'giftaidchaseup' => now(),
         ]);
@@ -116,7 +118,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test5@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -126,7 +128,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 20.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test6@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -146,7 +148,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test7@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -156,7 +158,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 20.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test8@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -166,7 +168,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 30.00,
             'type' => 'PayPal',
             'source' => 'DonateWithPayPal',
-            'Payer' => 'test9@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -197,7 +199,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
-            'Payer' => 'test10@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -207,7 +209,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 20.00,
             'type' => 'Stripe',
             'source' => UserDonation::SOURCE_STRIPE,
-            'Payer' => 'test11@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -217,7 +219,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 30.00,
             'type' => 'Other',
             'source' => UserDonation::SOURCE_FACEBOOK,
-            'Payer' => 'test12@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test User',
         ]);
 
@@ -231,6 +233,7 @@ class UserDonationModelTest extends TestCase
     public function test_can_chase_gift_aid_returns_true(): void
     {
         $user = $this->createTestUser();
+        $payerEmail = $this->uniqueEmail('payer');
 
         $donation = UserDonation::create([
             'userid' => $user->id,
@@ -238,7 +241,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
-            'Payer' => 'test13@example.com',
+            'Payer' => $payerEmail,
             'PayerDisplayName' => 'Test User',
             'giftaidconsent' => false,
             'giftaidchaseup' => null,
@@ -250,6 +253,7 @@ class UserDonationModelTest extends TestCase
     public function test_can_chase_gift_aid_returns_false_with_consent(): void
     {
         $user = $this->createTestUser();
+        $payerEmail = $this->uniqueEmail('payer');
 
         $donation = UserDonation::create([
             'userid' => $user->id,
@@ -257,7 +261,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
-            'Payer' => 'test14@example.com',
+            'Payer' => $payerEmail,
             'PayerDisplayName' => 'Test User',
             'giftaidconsent' => true,
             'giftaidchaseup' => null,
@@ -269,6 +273,7 @@ class UserDonationModelTest extends TestCase
     public function test_can_chase_gift_aid_returns_false_if_already_chased(): void
     {
         $user = $this->createTestUser();
+        $payerEmail = $this->uniqueEmail('payer');
 
         $donation = UserDonation::create([
             'userid' => $user->id,
@@ -276,7 +281,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'PayPal',
             'source' => UserDonation::SOURCE_DONATE_WITH_PAYPAL,
-            'Payer' => 'test15@example.com',
+            'Payer' => $payerEmail,
             'PayerDisplayName' => 'Test User',
             'giftaidconsent' => false,
             'giftaidchaseup' => now(),
@@ -288,6 +293,7 @@ class UserDonationModelTest extends TestCase
     public function test_can_chase_gift_aid_returns_false_for_non_payment_provider(): void
     {
         $user = $this->createTestUser();
+        $payerEmail = $this->uniqueEmail('payer');
 
         $donation = UserDonation::create([
             'userid' => $user->id,
@@ -295,7 +301,7 @@ class UserDonationModelTest extends TestCase
             'GrossAmount' => 10.00,
             'type' => 'Other',
             'source' => UserDonation::SOURCE_FACEBOOK,
-            'Payer' => 'test16@example.com',
+            'Payer' => $payerEmail,
             'PayerDisplayName' => 'Test User',
             'giftaidconsent' => false,
             'giftaidchaseup' => null,

@@ -61,7 +61,7 @@ class MjmlMailableTest extends TestCase
         // Provide the required variables that the thank-you template expects.
         $mockUser = new \stdClass();
         $mockUser->displayname = 'Test User';
-        $mockUser->email_preferred = 'test@example.com';
+        $mockUser->email_preferred = $this->uniqueEmail('mjml');
         $mailable->exposeMjmlView('emails.mjml.donation.thank-you', [
             'custom' => 'value',
             'user' => $mockUser,

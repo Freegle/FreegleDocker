@@ -7,83 +7,28 @@ use App\Services\EmailSpoolerService;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Envelope;
 use Symfony\Component\Mime\Email;
+use Tests\Support\IsolatedSpoolDirectory;
 use Tests\TestCase;
 
 class EmailSpoolerServiceTest extends TestCase
 {
-    protected EmailSpoolerService $spooler;
-    protected string $testSpoolDir;
+    use IsolatedSpoolDirectory;
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Use a test-specific spool directory.
-        $this->testSpoolDir = storage_path('spool/mail-test-' . uniqid());
-
-        // Create spooler with test directory.
-        $this->spooler = new EmailSpoolerService();
-
-        // Override the spool directory using reflection.
-        $reflection = new \ReflectionClass($this->spooler);
-        $spoolDirProperty = $reflection->getProperty('spoolDir');
-        $spoolDirProperty->setAccessible(true);
-        $spoolDirProperty->setValue($this->spooler, $this->testSpoolDir);
-
-        // Update subdirectories.
-        $pendingDirProperty = $reflection->getProperty('pendingDir');
-        $pendingDirProperty->setAccessible(true);
-        $pendingDirProperty->setValue($this->spooler, $this->testSpoolDir . '/pending');
-
-        $sendingDirProperty = $reflection->getProperty('sendingDir');
-        $sendingDirProperty->setAccessible(true);
-        $sendingDirProperty->setValue($this->spooler, $this->testSpoolDir . '/sending');
-
-        $failedDirProperty = $reflection->getProperty('failedDir');
-        $failedDirProperty->setAccessible(true);
-        $failedDirProperty->setValue($this->spooler, $this->testSpoolDir . '/failed');
-
-        $sentDirProperty = $reflection->getProperty('sentDir');
-        $sentDirProperty->setAccessible(true);
-        $sentDirProperty->setValue($this->spooler, $this->testSpoolDir . '/sent');
-
-        // Create directories.
-        $ensureMethod = $reflection->getMethod('ensureDirectoriesExist');
-        $ensureMethod->setAccessible(true);
-        $ensureMethod->invoke($this->spooler);
+        $this->setUpIsolatedSpoolDirectory();
     }
 
     protected function tearDown(): void
     {
-        // Clean up test spool directory.
-        if (is_dir($this->testSpoolDir)) {
-            $this->recursiveDelete($this->testSpoolDir);
-        }
-
+        $this->tearDownIsolatedSpoolDirectory();
         parent::tearDown();
-    }
-
-    protected function recursiveDelete(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-
-        $files = array_diff(scandir($dir), ['.', '..']);
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file;
-            if (is_dir($path)) {
-                $this->recursiveDelete($path);
-            } else {
-                unlink($path);
-            }
-        }
-        rmdir($dir);
     }
 
     public function test_spool_creates_pending_file(): void
     {
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('recipient');
         $mailable = new WelcomeMail($email);
 
         $id = $this->spooler->spool($mailable, $email, 'welcome');
@@ -101,7 +46,7 @@ class EmailSpoolerServiceTest extends TestCase
 
     public function test_spool_stores_email_content(): void
     {
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('recipient');
         $mailable = new WelcomeMail($email, 'testpass123');
 
         $id = $this->spooler->spool($mailable, $email);
@@ -126,7 +71,7 @@ class EmailSpoolerServiceTest extends TestCase
 
     public function test_get_backlog_stats_with_pending(): void
     {
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('recipient');
         $mailable = new WelcomeMail($email);
 
         $this->spooler->spool($mailable, $email);
@@ -144,7 +89,7 @@ class EmailSpoolerServiceTest extends TestCase
         // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
         // Array mail driver (phpunit.xml) prevents actual sending.
 
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('recipient');
         $mailable = new WelcomeMail($email);
         $id = $this->spooler->spool($mailable, $email);
 
@@ -167,7 +112,7 @@ class EmailSpoolerServiceTest extends TestCase
     {
         // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
 
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('recipient');
         $mailable = new WelcomeMail($email);
 
         // Spool 5 emails.
@@ -190,7 +135,7 @@ class EmailSpoolerServiceTest extends TestCase
     {
         // Don't use Mail::fake() - it interferes with processSpool()'s Mail::html() call.
 
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('recipient');
         $mailable = new WelcomeMail($email);
 
         // Spool and process an email.
@@ -213,8 +158,8 @@ class EmailSpoolerServiceTest extends TestCase
         $id = 'test_failed_' . uniqid();
         $data = [
             'id' => $id,
-            'to' => [['address' => 'test@example.com', 'name' => '']],
-            'from' => [['address' => 'noreply@test.com', 'name' => 'Test']],
+            'to' => [['address' => $this->uniqueEmail('recipient'), 'name' => '']],
+            'from' => [['address' => $this->uniqueEmail('noreply'), 'name' => 'Test']],
             'subject' => 'Test',
             'html' => '<p>Test</p>',
             'attempts' => 3,
@@ -245,8 +190,8 @@ class EmailSpoolerServiceTest extends TestCase
             $id = 'test_failed_' . $i . '_' . uniqid();
             $data = [
                 'id' => $id,
-                'to' => [['address' => 'test@example.com', 'name' => '']],
-                'from' => [['address' => 'noreply@test.com', 'name' => 'Test']],
+                'to' => [['address' => $this->uniqueEmail('recipient'), 'name' => '']],
+                'from' => [['address' => $this->uniqueEmail('noreply'), 'name' => 'Test']],
                 'subject' => 'Test ' . $i,
                 'html' => '<p>Test</p>',
                 'attempts' => 3,
@@ -277,7 +222,7 @@ class EmailSpoolerServiceTest extends TestCase
             $id = 'test_' . $i . '_' . uniqid();
             $data = [
                 'id' => $id,
-                'to' => [['address' => 'test@example.com', 'name' => '']],
+                'to' => [['address' => $this->uniqueEmail('recipient'), 'name' => '']],
                 'created_at' => now()->toIso8601String(),
             ];
 
@@ -300,16 +245,19 @@ class EmailSpoolerServiceTest extends TestCase
      */
     public function test_custom_headers_survive_spooling(): void
     {
+        $recipientEmail = $this->uniqueEmail('recipient');
+        $fromEmail = $this->uniqueEmail('noreply');
+
         // Create a test mailable that adds custom headers.
-        $mailable = new class('test@example.com') extends Mailable {
-            public function __construct(private string $recipient)
+        $mailable = new class($recipientEmail, $fromEmail) extends Mailable {
+            public function __construct(private string $recipient, private string $fromAddress)
             {
             }
 
             public function envelope(): Envelope
             {
                 return new Envelope(
-                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test Sender'),
+                    from: new \Illuminate\Mail\Mailables\Address($this->fromAddress, 'Test Sender'),
                     subject: 'Test with headers',
                 );
             }
@@ -327,7 +275,7 @@ class EmailSpoolerServiceTest extends TestCase
             }
         };
 
-        $id = $this->spooler->spool($mailable, 'test@example.com');
+        $id = $this->spooler->spool($mailable, $recipientEmail);
 
         // Read the spool file and verify headers are captured.
         $data = json_decode(file_get_contents($this->testSpoolDir . '/pending/' . $id . '.json'), true);
@@ -350,8 +298,8 @@ class EmailSpoolerServiceTest extends TestCase
         $id = 'test_headers_' . uniqid();
         $data = [
             'id' => $id,
-            'to' => [['address' => 'test@example.com', 'name' => 'Test User']],
-            'from' => [['address' => 'noreply@test.com', 'name' => 'Test Sender']],
+            'to' => [['address' => $this->uniqueEmail('recipient'), 'name' => 'Test User']],
+            'from' => [['address' => $this->uniqueEmail('noreply'), 'name' => 'Test Sender']],
             'subject' => 'Test Subject',
             'html' => '<p>Test content</p>',
             'text' => 'Test content',
@@ -359,7 +307,7 @@ class EmailSpoolerServiceTest extends TestCase
                 'X-Custom-Header' => 'custom-value',
                 'List-Unsubscribe' => '<https://example.com/unsubscribe>',
             ],
-            'reply_to' => [['address' => 'reply@test.com', 'name' => 'Reply To']],
+            'reply_to' => [['address' => $this->uniqueEmail('reply'), 'name' => 'Reply To']],
             'cc' => [],
             'bcc' => [],
             'created_at' => now()->toIso8601String(),
@@ -392,16 +340,19 @@ class EmailSpoolerServiceTest extends TestCase
      */
     public function test_amp_content_preserved_in_spool(): void
     {
+        $recipientEmail = $this->uniqueEmail('recipient');
+        $fromEmail = $this->uniqueEmail('noreply');
+
         // Create a test mailable that includes AMP content.
-        $mailable = new class('test@example.com') extends Mailable {
-            public function __construct(private string $recipient)
+        $mailable = new class($recipientEmail, $fromEmail) extends Mailable {
+            public function __construct(private string $recipient, private string $fromAddress)
             {
             }
 
             public function envelope(): Envelope
             {
                 return new Envelope(
-                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test Sender'),
+                    from: new \Illuminate\Mail\Mailables\Address($this->fromAddress, 'Test Sender'),
                     subject: 'Test with AMP',
                 );
             }
@@ -422,7 +373,7 @@ class EmailSpoolerServiceTest extends TestCase
             }
         };
 
-        $id = $this->spooler->spool($mailable, 'test@example.com');
+        $id = $this->spooler->spool($mailable, $recipientEmail);
 
         // Read the spool file and verify AMP content is captured.
         $data = json_decode(file_get_contents($this->testSpoolDir . '/pending/' . $id . '.json'), true);
@@ -438,17 +389,21 @@ class EmailSpoolerServiceTest extends TestCase
      */
     public function test_reply_to_preserved_in_spool(): void
     {
-        $mailable = new class('test@example.com') extends Mailable {
-            public function __construct(private string $recipient)
+        $recipientEmail = $this->uniqueEmail('recipient');
+        $fromEmail = $this->uniqueEmail('noreply');
+        $replyToEmail = $this->uniqueEmail('reply');
+
+        $mailable = new class($recipientEmail, $fromEmail, $replyToEmail) extends Mailable {
+            public function __construct(private string $recipient, private string $fromAddress, private string $replyToAddress)
             {
             }
 
             public function envelope(): Envelope
             {
                 return new Envelope(
-                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test Sender'),
+                    from: new \Illuminate\Mail\Mailables\Address($this->fromAddress, 'Test Sender'),
                     subject: 'Test with Reply-To',
-                    replyTo: [new \Illuminate\Mail\Mailables\Address('reply@example.com', 'Reply Handler')],
+                    replyTo: [new \Illuminate\Mail\Mailables\Address($this->replyToAddress, 'Reply Handler')],
                 );
             }
 
@@ -458,13 +413,13 @@ class EmailSpoolerServiceTest extends TestCase
             }
         };
 
-        $id = $this->spooler->spool($mailable, 'test@example.com');
+        $id = $this->spooler->spool($mailable, $recipientEmail);
 
         $data = json_decode(file_get_contents($this->testSpoolDir . '/pending/' . $id . '.json'), true);
 
         $this->assertArrayHasKey('reply_to', $data);
         $this->assertNotEmpty($data['reply_to']);
-        $this->assertEquals('reply@example.com', $data['reply_to'][0]['address']);
+        $this->assertEquals($replyToEmail, $data['reply_to'][0]['address']);
         $this->assertEquals('Reply Handler', $data['reply_to'][0]['name']);
     }
 
@@ -473,19 +428,28 @@ class EmailSpoolerServiceTest extends TestCase
      */
     public function test_bcc_preserved_in_spool(): void
     {
-        $mailable = new class('test@example.com') extends Mailable {
-            public function __construct(private string $recipient)
-            {
+        $recipientEmail = $this->uniqueEmail('recipient');
+        $fromEmail = $this->uniqueEmail('noreply');
+        $bcc1Email = $this->uniqueEmail('bcc1');
+        $bcc2Email = $this->uniqueEmail('bcc2');
+
+        $mailable = new class($recipientEmail, $fromEmail, $bcc1Email, $bcc2Email) extends Mailable {
+            public function __construct(
+                private string $recipient,
+                private string $fromAddress,
+                private string $bcc1Address,
+                private string $bcc2Address
+            ) {
             }
 
             public function envelope(): Envelope
             {
                 return new Envelope(
-                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test Sender'),
+                    from: new \Illuminate\Mail\Mailables\Address($this->fromAddress, 'Test Sender'),
                     subject: 'Test with BCC',
                     bcc: [
-                        new \Illuminate\Mail\Mailables\Address('bcc1@example.com', 'BCC User 1'),
-                        new \Illuminate\Mail\Mailables\Address('bcc2@example.com', 'BCC User 2'),
+                        new \Illuminate\Mail\Mailables\Address($this->bcc1Address, 'BCC User 1'),
+                        new \Illuminate\Mail\Mailables\Address($this->bcc2Address, 'BCC User 2'),
                     ],
                 );
             }
@@ -496,16 +460,16 @@ class EmailSpoolerServiceTest extends TestCase
             }
         };
 
-        $id = $this->spooler->spool($mailable, 'test@example.com');
+        $id = $this->spooler->spool($mailable, $recipientEmail);
 
         $data = json_decode(file_get_contents($this->testSpoolDir . '/pending/' . $id . '.json'), true);
 
         $this->assertArrayHasKey('bcc', $data);
         $this->assertNotEmpty($data['bcc']);
         $this->assertCount(2, $data['bcc']);
-        $this->assertEquals('bcc1@example.com', $data['bcc'][0]['address']);
+        $this->assertEquals($bcc1Email, $data['bcc'][0]['address']);
         $this->assertEquals('BCC User 1', $data['bcc'][0]['name']);
-        $this->assertEquals('bcc2@example.com', $data['bcc'][1]['address']);
+        $this->assertEquals($bcc2Email, $data['bcc'][1]['address']);
         $this->assertEquals('BCC User 2', $data['bcc'][1]['name']);
     }
 
@@ -518,8 +482,8 @@ class EmailSpoolerServiceTest extends TestCase
         $id = 'test_bcc_send_' . uniqid();
         $data = [
             'id' => $id,
-            'to' => [['address' => 'test@example.com', 'name' => 'Test User']],
-            'from' => [['address' => 'noreply@test.com', 'name' => 'Test Sender']],
+            'to' => [['address' => $this->uniqueEmail('recipient'), 'name' => 'Test User']],
+            'from' => [['address' => $this->uniqueEmail('noreply'), 'name' => 'Test Sender']],
             'subject' => 'Test Subject',
             'html' => '<p>Test content</p>',
             'text' => 'Test content',
@@ -527,8 +491,8 @@ class EmailSpoolerServiceTest extends TestCase
             'reply_to' => [],
             'cc' => [],
             'bcc' => [
-                ['address' => 'bcc1@example.com', 'name' => 'BCC User 1'],
-                ['address' => 'bcc2@example.com', 'name' => 'BCC User 2'],
+                ['address' => $this->uniqueEmail('bcc1'), 'name' => 'BCC User 1'],
+                ['address' => $this->uniqueEmail('bcc2'), 'name' => 'BCC User 2'],
             ],
             'created_at' => now()->toIso8601String(),
             'attempts' => 0,

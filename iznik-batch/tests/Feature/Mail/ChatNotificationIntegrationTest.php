@@ -49,7 +49,8 @@ class ChatNotificationIntegrationTest extends TestCase
         Config::set("freegle.spam_check.rspamd_port", 11334);
 
         $this->mailpit = new MailpitHelper("http://mailpit:8025");
-        $this->mailpit->deleteAllMessages();
+        // Note: Do NOT call deleteAllMessages() here - in parallel test runs,
+        // this would delete emails from other tests.
     }
 
     protected function createUniqueTestUser(string $prefix = "user"): User

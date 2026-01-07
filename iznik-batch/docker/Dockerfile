@@ -34,6 +34,9 @@ RUN pecl install redis xdebug && docker-php-ext-enable redis xdebug
 # Configure Xdebug for coverage mode
 RUN echo "xdebug.mode=coverage" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
 
+# Increase PHP memory limit for ParaTest parallel workers
+RUN echo "memory_limit=512M" >> /usr/local/etc/php/conf.d/memory-limit.ini
+
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 

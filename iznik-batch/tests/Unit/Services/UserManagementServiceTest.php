@@ -105,7 +105,7 @@ class UserManagementServiceTest extends TestCase
 
         UserEmail::create([
             'userid' => $oldUser->id,
-            'email' => 'old@test.com',
+            'email' => $this->uniqueEmail('old'),
             'preferred' => 1,
             'added' => now()->subYears(5),
         ]);

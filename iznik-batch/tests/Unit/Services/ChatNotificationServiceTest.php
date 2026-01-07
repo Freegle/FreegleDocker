@@ -25,7 +25,8 @@ class ChatNotificationServiceTest extends TestCase
 
     public function test_notify_by_email_with_no_rooms(): void
     {
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        // Use a non-existent chat ID to ensure we don't scan all rooms.
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, -1);
 
         $this->assertEquals(0, $count);
         Mail::assertNothingSent();
@@ -58,7 +59,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         // Recipient should be notified.
         $this->assertGreaterThanOrEqual(0, $count);
@@ -124,7 +125,7 @@ class ChatNotificationServiceTest extends TestCase
         ]);
 
         // With default 30 second delay, this message should not trigger notification.
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         $this->assertEquals(0, $count);
         Mail::assertNothingSent();
@@ -156,7 +157,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subDays(2),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         // Old messages should not trigger notification.
         $this->assertEquals(0, $count);
@@ -191,7 +192,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         $this->assertGreaterThanOrEqual(0, $count);
     }
@@ -227,7 +228,7 @@ class ChatNotificationServiceTest extends TestCase
         // With force=true, should still process.
         $count = $this->service->notifyByEmail(
             ChatRoom::TYPE_USER2USER,
-            null,
+            $room->id,
             ChatNotificationService::DEFAULT_DELAY,
             ChatNotificationService::DEFAULT_SINCE_HOURS,
             true
@@ -263,7 +264,7 @@ class ChatNotificationServiceTest extends TestCase
             'reviewrejected' => 1,
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         $this->assertEquals(0, $count);
     }
@@ -300,7 +301,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         // Should not send to user without email.
         Mail::assertNotSent(ChatNotification::class, function ($mail) use ($recipient) {
@@ -333,7 +334,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         // Check if roster was updated.
         $recipientRoster->refresh();
@@ -381,7 +382,7 @@ class ChatNotificationServiceTest extends TestCase
             'mailedtoall' => 1,
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         $this->assertEquals(0, $count);
     }
@@ -413,7 +414,7 @@ class ChatNotificationServiceTest extends TestCase
             'seenbyall' => 1,
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         $this->assertEquals(0, $count);
     }
@@ -447,7 +448,7 @@ class ChatNotificationServiceTest extends TestCase
         // With 10 second delay, this should trigger notification.
         $count = $this->service->notifyByEmail(
             ChatRoom::TYPE_USER2USER,
-            null,
+            $room->id,
             10 // 10 second delay.
         );
 
@@ -481,14 +482,14 @@ class ChatNotificationServiceTest extends TestCase
         ]);
 
         // With 24 hour since limit, this should not trigger notification.
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         $this->assertEquals(0, $count);
 
         // With 48 hour since limit, it should.
         $count = $this->service->notifyByEmail(
             ChatRoom::TYPE_USER2USER,
-            null,
+            $room->id,
             ChatNotificationService::DEFAULT_DELAY,
             48
         );
@@ -523,7 +524,7 @@ class ChatNotificationServiceTest extends TestCase
             'reviewrequired' => 1,
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         $this->assertEquals(0, $count);
     }
@@ -556,7 +557,7 @@ class ChatNotificationServiceTest extends TestCase
             'processingsuccessful' => 0,
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
 
         $this->assertEquals(0, $count);
     }
@@ -604,7 +605,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         // Should notify moderators (the roster entries are created automatically).
         $this->assertGreaterThanOrEqual(0, $count);
@@ -656,7 +657,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         // Should notify the member.
         $this->assertGreaterThanOrEqual(0, $count);
@@ -667,7 +668,7 @@ class ChatNotificationServiceTest extends TestCase
         $member = $this->createTestUser([
             'fullname' => 'Alice Member',
         ]);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         // Create a moderator.
         $moderator = $this->createTestUser([
@@ -701,7 +702,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         // Should have sent at least 1 notification (to the moderator).
         // The member is also notified if they sent the message and have NOTIFS_EMAIL_MINE enabled.
@@ -768,7 +769,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         // Should have sent notification to active mod but not backup mod.
         $this->assertGreaterThan(0, $count, 'Should have sent notifications');
@@ -823,7 +824,7 @@ class ChatNotificationServiceTest extends TestCase
             'date' => now()->subMinutes(5),
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         $this->assertGreaterThan(0, $count);
 
@@ -876,7 +877,7 @@ class ChatNotificationServiceTest extends TestCase
             'message' => 'Hello from Mod A',
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         // Should notify member + Mod B + Mod C = 3 notifications.
         // Mod A should NOT be notified (own message, no NOTIFS_EMAIL_MINE).
@@ -971,7 +972,7 @@ class ChatNotificationServiceTest extends TestCase
             'message' => 'Reply from Active Mod 1',
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2MOD, $room->id);
 
         // Should notify: member + Active Mod 2 = 2 notifications.
         // Should NOT notify: Active Mod 1 (sender), Backup Mod (inactive).
@@ -1007,7 +1008,7 @@ class ChatNotificationServiceTest extends TestCase
 
     public function test_notify_by_email_for_mod2mod(): void
     {
-        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+        $group = $this->createTestGroup();
 
         // Create two moderators.
         $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
@@ -1056,7 +1057,7 @@ class ChatNotificationServiceTest extends TestCase
             'message' => 'Hello fellow mods!',
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD, $room->id);
 
         // Mod2 should be notified (Mod1 is sender, not notified unless NOTIFS_EMAIL_MINE).
         $this->assertGreaterThanOrEqual(1, $count, 'Should notify at least one mod');
@@ -1064,7 +1065,7 @@ class ChatNotificationServiceTest extends TestCase
 
     public function test_notify_by_email_mod2mod_notifies_all_roster_members(): void
     {
-        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+        $group = $this->createTestGroup();
 
         // Create three moderators.
         $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
@@ -1104,7 +1105,7 @@ class ChatNotificationServiceTest extends TestCase
             'message' => 'Hello fellow mods!',
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD, $room->id);
 
         // Mod2 and Mod3 should be notified (Mod1 is sender).
         $this->assertGreaterThanOrEqual(2, $count, 'Should notify Mod2 and Mod3');
@@ -1130,7 +1131,7 @@ class ChatNotificationServiceTest extends TestCase
 
     public function test_notify_by_email_mod2mod_uses_message_author_as_sender(): void
     {
-        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+        $group = $this->createTestGroup();
 
         $mod1 = $this->createTestUser(['fullname' => 'Mod Sender']);
         $mod2 = $this->createTestUser(['fullname' => 'Mod Recipient']);
@@ -1167,7 +1168,7 @@ class ChatNotificationServiceTest extends TestCase
             'message' => 'Test message',
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD, $room->id);
 
         // Verify email was sent.
         $this->assertGreaterThanOrEqual(1, $count);
@@ -1182,7 +1183,7 @@ class ChatNotificationServiceTest extends TestCase
 
     public function test_notify_by_email_mod2mod_respects_delay(): void
     {
-        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+        $group = $this->createTestGroup();
 
         $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
         $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
@@ -1220,7 +1221,7 @@ class ChatNotificationServiceTest extends TestCase
         ]);
 
         // With default 30 second delay, this message should not trigger notification.
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD, $room->id);
 
         $this->assertEquals(0, $count);
         Mail::assertNothingSent();
@@ -1228,7 +1229,7 @@ class ChatNotificationServiceTest extends TestCase
 
     public function test_notify_by_email_mod2mod_skips_already_mailed(): void
     {
-        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+        $group = $this->createTestGroup();
 
         $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
         $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
@@ -1265,14 +1266,14 @@ class ChatNotificationServiceTest extends TestCase
             'mailedtoall' => 1,
         ]);
 
-        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD);
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_MOD2MOD, $room->id);
 
         $this->assertEquals(0, $count);
     }
 
     public function test_notify_by_email_mod2mod_with_force_all(): void
     {
-        $group = $this->createTestGroup(['nameshort' => 'TestModGroup']);
+        $group = $this->createTestGroup();
 
         $mod1 = $this->createTestUser(['fullname' => 'Mod One']);
         $mod2 = $this->createTestUser(['fullname' => 'Mod Two']);
@@ -1313,7 +1314,7 @@ class ChatNotificationServiceTest extends TestCase
         // With force=true, should still process.
         $count = $this->service->notifyByEmail(
             ChatRoom::TYPE_MOD2MOD,
-            null,
+            $room->id,
             ChatNotificationService::DEFAULT_DELAY,
             ChatNotificationService::DEFAULT_SINCE_HOURS,
             true

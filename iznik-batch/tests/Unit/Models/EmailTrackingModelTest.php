@@ -44,14 +44,15 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_create_for_email_works_without_optional_params(): void
     {
+        $email = $this->uniqueEmail('tracking');
         $tracking = EmailTracking::createForEmail(
             'Welcome',
-            'test@example.com'
+            $email
         );
 
         $this->assertNotNull($tracking->id);
         $this->assertEquals('Welcome', $tracking->email_type);
-        $this->assertEquals('test@example.com', $tracking->recipient_email);
+        $this->assertEquals($email, $tracking->recipient_email);
         $this->assertNull($tracking->userid);
         $this->assertNull($tracking->groupid);
         $this->assertNull($tracking->subject);
@@ -77,7 +78,7 @@ class EmailTrackingModelTest extends TestCase
 
         $tracking = EmailTracking::createForEmail(
             'Test',
-            'test@example.com',
+            $this->uniqueEmail('tracking'),
             null,
             $group->id
         );
@@ -87,7 +88,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_clicks_relationship(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         EmailTrackingClick::create([
             'email_tracking_id' => $tracking->id,
@@ -100,7 +101,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_images_relationship(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         EmailTrackingImage::create([
             'email_tracking_id' => $tracking->id,
@@ -113,14 +114,14 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_was_opened_returns_false_when_not_opened(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $this->assertFalse($tracking->wasOpened());
     }
 
     public function test_was_opened_returns_true_when_opened(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
         $tracking->update(['opened_at' => now()]);
         $tracking->refresh();
 
@@ -129,14 +130,14 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_was_clicked_returns_false_when_not_clicked(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $this->assertFalse($tracking->wasClicked());
     }
 
     public function test_was_clicked_returns_true_when_clicked(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
         $tracking->update(['clicked_at' => now()]);
         $tracking->refresh();
 
@@ -145,14 +146,14 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_did_unsubscribe_returns_false_when_not_unsubscribed(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $this->assertFalse($tracking->didUnsubscribe());
     }
 
     public function test_did_unsubscribe_returns_true_when_unsubscribed(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
         $tracking->update(['unsubscribed_at' => now()]);
         $tracking->refresh();
 
@@ -161,7 +162,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_get_pixel_url_returns_correct_format(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $url = $tracking->getPixelUrl();
 
@@ -171,7 +172,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_get_tracked_link_url_returns_correct_format(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $url = $tracking->getTrackedLinkUrl('https://example.com/page');
 
@@ -182,7 +183,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_get_tracked_link_url_includes_position(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $url = $tracking->getTrackedLinkUrl('https://example.com', 'cta_button');
 
@@ -191,7 +192,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_get_tracked_link_url_includes_action(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $url = $tracking->getTrackedLinkUrl('https://example.com', null, 'unsubscribe');
 
@@ -200,7 +201,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_get_tracked_image_url_returns_correct_format(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $url = $tracking->getTrackedImageUrl('https://example.com/image.jpg', 'header');
 
@@ -211,7 +212,7 @@ class EmailTrackingModelTest extends TestCase
 
     public function test_get_tracked_image_url_includes_scroll_percent(): void
     {
-        $tracking = EmailTracking::createForEmail('Test', 'test@example.com');
+        $tracking = EmailTracking::createForEmail('Test', $this->uniqueEmail('tracking'));
 
         $url = $tracking->getTrackedImageUrl('https://example.com/image.jpg', 'footer', 80);
 

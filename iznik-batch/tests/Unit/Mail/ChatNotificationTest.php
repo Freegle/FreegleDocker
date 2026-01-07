@@ -215,7 +215,7 @@ class ChatNotificationTest extends TestCase
     {
         $user1 = $this->createTestUser(['fullname' => 'John Doe']);
         $user2 = $this->createTestUser();
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
+        $group = $this->createTestGroup();
         $this->createMembership($user1, $group);
 
         $refMessage = $this->createTestMessage($user1, $group, [
@@ -272,14 +272,14 @@ class ChatNotificationTest extends TestCase
 
         // Subject should be based on the "interested in" message's referenced item.
         $this->assertStringStartsWith('Regarding:', $mail->replySubject);
-        $this->assertStringContainsString('[Test Freegle Group]', $mail->replySubject);
+        $this->assertStringContainsString('[' . $group->nameshort . ']', $mail->replySubject);
         $this->assertStringContainsString('OFFER: Double Bed Frame (London)', $mail->replySubject);
     }
 
     public function test_chat_notification_user2mod_subject(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -314,8 +314,8 @@ class ChatNotificationTest extends TestCase
         // USER2MOD subject format: "Your conversation with the {groupNameFull} Volunteers"
         // For member-facing emails, we use the friendly full group name.
         $this->assertStringContainsString('Your conversation with the', $mail->replySubject);
-        // Group name contains the common prefix from namefull.
-        $this->assertStringContainsString('Test Freegle Group', $mail->replySubject);
+        // Group name contains the namefull (unique per test).
+        $this->assertStringContainsString($group->namefull, $mail->replySubject);
         $this->assertStringContainsString('Volunteers', $mail->replySubject);
     }
 
@@ -546,7 +546,7 @@ class ChatNotificationTest extends TestCase
     {
         $user1 = $this->createTestUser(['fullname' => 'Alice']);
         $user2 = $this->createTestUser(['fullname' => 'Bob']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
+        $group = $this->createTestGroup();
         $this->createMembership($user1, $group);
 
         $refMessage = $this->createTestMessage($user1, $group, [
@@ -586,7 +586,7 @@ class ChatNotificationTest extends TestCase
 
         // Subject should be based on the interested message.
         $this->assertStringContainsString('Regarding:', $mail->replySubject);
-        $this->assertStringContainsString('[Test Freegle Group]', $mail->replySubject);
+        $this->assertStringContainsString('[' . $group->nameshort . ']', $mail->replySubject);
         $this->assertStringContainsString('OFFER: Test Item', $mail->replySubject);
 
         $mail->build();
@@ -866,7 +866,7 @@ class ChatNotificationTest extends TestCase
     {
         $user1 = $this->createTestUser();
         $user2 = $this->createTestUser();
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
+        $group = $this->createTestGroup();
         $this->createMembership($user1, $group);
 
         $refMessage = $this->createTestMessage($user1, $group, [
@@ -909,7 +909,7 @@ class ChatNotificationTest extends TestCase
         $this->assertStringStartsWith('Regarding:', $mail->replySubject);
         $this->assertStringNotContainsString('Re:', $mail->replySubject);
         // Also verify group name is included.
-        $this->assertStringContainsString('[Test Freegle Group]', $mail->replySubject);
+        $this->assertStringContainsString('[' . $group->nameshort . ']', $mail->replySubject);
     }
 
     public function test_chat_notification_chat_url_contains_room_id(): void
@@ -1405,7 +1405,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1448,7 +1448,7 @@ class ChatNotificationTest extends TestCase
     public function test_user2mod_member_notification_uses_user_site_url(): void
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1494,7 +1494,7 @@ class ChatNotificationTest extends TestCase
             'fullname' => 'Alice Member',
         ]);
         $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1529,7 +1529,7 @@ class ChatNotificationTest extends TestCase
 
         // Subject should be "Member conversation on {GroupShortName} with {MemberName} ({email})".
         $this->assertStringContainsString('Member conversation on', $mail->replySubject);
-        $this->assertStringContainsString('TestGroup', $mail->replySubject);
+        $this->assertStringContainsString($group->nameshort, $mail->replySubject);
         $this->assertStringContainsString('Alice', $mail->replySubject);
         // Email is auto-generated as test{id}@test.com.
         $this->assertStringContainsString('@test.com', $mail->replySubject);
@@ -1538,7 +1538,7 @@ class ChatNotificationTest extends TestCase
     public function test_user2mod_member_subject_mentions_volunteers(): void
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namefull' => 'Test Freegle Group']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1580,7 +1580,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1627,7 +1627,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1671,7 +1671,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1755,7 +1755,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Bob Moderator']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1842,7 +1842,7 @@ class ChatNotificationTest extends TestCase
     public function test_user2mod_member_property_null_for_members(): void
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1893,7 +1893,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namedisplay' => 'Test Freegle Group']);
+        $group = $this->createTestGroup(['namedisplay' => 'Test Freegle Group']);
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1945,7 +1945,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namedisplay' => 'Test Freegle Group']);
+        $group = $this->createTestGroup(['namedisplay' => 'Test Freegle Group']);
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -1996,7 +1996,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
@@ -2046,7 +2046,7 @@ class ChatNotificationTest extends TestCase
     {
         $member = $this->createTestUser(['fullname' => 'Alice Member']);
         $moderator = $this->createTestUser(['fullname' => 'Sheila Mod']);
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup', 'namedisplay' => 'Test Freegle Group']);
+        $group = $this->createTestGroup(['namedisplay' => 'Test Freegle Group']);
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,

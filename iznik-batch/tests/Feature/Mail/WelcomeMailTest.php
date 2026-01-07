@@ -26,7 +26,7 @@ class WelcomeMailTest extends TestCase
     {
         Mail::fake();
 
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('welcome');
         $password = 'testpassword123';
 
         Mail::to($email)->send(new WelcomeMail($email, $password));
@@ -43,7 +43,7 @@ class WelcomeMailTest extends TestCase
     {
         Mail::fake();
 
-        $email = 'newuser@example.com';
+        $email = $this->uniqueEmail('newuser');
 
         Mail::to($email)->send(new WelcomeMail($email));
 
@@ -57,7 +57,7 @@ class WelcomeMailTest extends TestCase
      */
     public function test_welcome_email_has_correct_subject(): void
     {
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('welcome');
         $mail = new WelcomeMail($email);
 
         $envelope = $mail->envelope();
@@ -70,7 +70,7 @@ class WelcomeMailTest extends TestCase
      */
     public function test_welcome_email_has_correct_from_address(): void
     {
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('welcome');
         $mail = new WelcomeMail($email);
 
         $envelope = $mail->envelope();
@@ -84,7 +84,7 @@ class WelcomeMailTest extends TestCase
      */
     public function test_welcome_email_view_data(): void
     {
-        $email = 'user@test.com';
+        $email = $this->uniqueEmail('user');
         $password = 'secret123';
 
         $mail = new WelcomeMail($email, $password);
@@ -98,7 +98,7 @@ class WelcomeMailTest extends TestCase
      */
     public function test_welcome_email_build_renders_html(): void
     {
-        $email = 'user@test.com';
+        $email = $this->uniqueEmail('user');
         $password = 'secret123';
 
         $mail = new WelcomeMail($email, $password);
@@ -112,7 +112,7 @@ class WelcomeMailTest extends TestCase
      */
     public function test_welcome_email_attachments(): void
     {
-        $email = 'user@test.com';
+        $email = $this->uniqueEmail('user');
         $mail = new WelcomeMail($email);
 
         $this->assertEquals([], $mail->attachments());
@@ -125,7 +125,7 @@ class WelcomeMailTest extends TestCase
     {
         Mail::fake();
 
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('welcome');
 
         // Test with a non-existent user ID - should still work, just no nearby offers.
         Mail::to($email)->send(new WelcomeMail($email, NULL, 999999999));
@@ -142,7 +142,7 @@ class WelcomeMailTest extends TestCase
      */
     public function test_welcome_email_has_custom_headers(): void
     {
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('welcome');
         $userId = 12345;
 
         $mail = new WelcomeMail($email, NULL, $userId);
@@ -157,7 +157,7 @@ class WelcomeMailTest extends TestCase
      */
     public function test_welcome_email_has_plain_text_template(): void
     {
-        $email = 'test@example.com';
+        $email = $this->uniqueEmail('welcome');
         $password = 'secret123';
 
         $mail = new WelcomeMail($email, $password);

@@ -28,14 +28,14 @@ class UserModelTest extends TestCase
 
         UserEmail::create([
             'userid' => $user->id,
-            'email' => 'primary@test.com',
+            'email' => $this->uniqueEmail('primary'),
             'preferred' => 1,
             'added' => now(),
         ]);
 
         UserEmail::create([
             'userid' => $user->id,
-            'email' => 'secondary@test.com',
+            'email' => $this->uniqueEmail('secondary'),
             'preferred' => 0,
             'added' => now(),
         ]);
@@ -213,9 +213,10 @@ class UserModelTest extends TestCase
             'added' => now(),
         ]);
 
+        // Use unique prefix but TN domain to test isTN() detection.
         UserEmail::create([
             'userid' => $user->id,
-            'email' => 'user123@user.trashnothing.com',
+            'email' => 'user_' . uniqid('', true) . '@user.trashnothing.com',
             'preferred' => 1,
             'added' => now(),
         ]);

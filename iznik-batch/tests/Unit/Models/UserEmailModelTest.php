@@ -19,7 +19,7 @@ class UserEmailModelTest extends TestCase
 
         $email = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'newtest@example.com',
+            'email' => $this->uniqueEmail('newtest'),
             'preferred' => 1,
             'added' => now(),
         ]);
@@ -50,7 +50,7 @@ class UserEmailModelTest extends TestCase
 
         $email2 = UserEmail::create([
             'userid' => $user2->id,
-            'email' => 'unvalidated@test.com',
+            'email' => $this->uniqueEmail('unvalidated'),
             'preferred' => 1,
             'added' => now(),
             'validated' => null,
@@ -77,7 +77,7 @@ class UserEmailModelTest extends TestCase
 
         $email2 = UserEmail::create([
             'userid' => $user2->id,
-            'email' => 'unvalidated@test.com',
+            'email' => $this->uniqueEmail('unvalidated'),
             'preferred' => 1,
             'added' => now(),
             'validated' => null,
@@ -100,14 +100,14 @@ class UserEmailModelTest extends TestCase
 
         $preferred = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'preferred@test.com',
+            'email' => $this->uniqueEmail('preferred'),
             'preferred' => 1,
             'added' => now(),
         ]);
 
         $notPreferred = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'secondary@test.com',
+            'email' => $this->uniqueEmail('secondary'),
             'preferred' => 0,
             'added' => now(),
         ]);
@@ -129,7 +129,7 @@ class UserEmailModelTest extends TestCase
 
         $notBounced = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'good@test.com',
+            'email' => $this->uniqueEmail('good'),
             'preferred' => 1,
             'added' => now(),
             'bounced' => null,
@@ -137,7 +137,7 @@ class UserEmailModelTest extends TestCase
 
         $bounced = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'bounced@test.com',
+            'email' => $this->uniqueEmail('bounced'),
             'preferred' => 0,
             'added' => now(),
             'bounced' => now(),
@@ -160,7 +160,7 @@ class UserEmailModelTest extends TestCase
 
         $validated = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'validated@test.com',
+            'email' => $this->uniqueEmail('validated'),
             'preferred' => 1,
             'added' => now(),
             'validated' => now(),
@@ -168,7 +168,7 @@ class UserEmailModelTest extends TestCase
 
         $unvalidated = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'unvalidated@test.com',
+            'email' => $this->uniqueEmail('unvalidated'),
             'preferred' => 0,
             'added' => now(),
             'validated' => null,
@@ -187,9 +187,11 @@ class UserEmailModelTest extends TestCase
             'added' => now(),
         ]);
 
+        // Use a unique prefix but fixed domain for testing getDomain().
+        $uniquePrefix = 'test_' . uniqid('', true);
         $email = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'test@example.com',
+            'email' => $uniquePrefix . '@example.com',
             'preferred' => 1,
             'added' => now(),
         ]);
@@ -206,9 +208,10 @@ class UserEmailModelTest extends TestCase
             'added' => now(),
         ]);
 
+        // Use unique string without @ to test invalid email.
         $email = UserEmail::create([
             'userid' => $user->id,
-            'email' => 'nodomainemail',
+            'email' => 'nodomainemail_' . uniqid('', true),
             'preferred' => 1,
             'added' => now(),
         ]);

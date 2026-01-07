@@ -9,19 +9,21 @@ class WelcomeMailTest extends TestCase
 {
     public function test_welcome_mail_can_be_constructed_with_email_only(): void
     {
-        $mail = new WelcomeMail('test@example.com');
+        $email = $this->uniqueEmail('welcome');
+        $mail = new WelcomeMail($email);
 
         $this->assertInstanceOf(WelcomeMail::class, $mail);
-        $this->assertEquals('test@example.com', $mail->recipientEmail);
+        $this->assertEquals($email, $mail->recipientEmail);
         $this->assertNull($mail->password);
         $this->assertNull($mail->userId);
     }
 
     public function test_welcome_mail_can_be_constructed_with_password(): void
     {
-        $mail = new WelcomeMail('test@example.com', 'secretpass123');
+        $email = $this->uniqueEmail('welcome');
+        $mail = new WelcomeMail($email, 'secretpass123');
 
-        $this->assertEquals('test@example.com', $mail->recipientEmail);
+        $this->assertEquals($email, $mail->recipientEmail);
         $this->assertEquals('secretpass123', $mail->password);
     }
 
@@ -36,7 +38,7 @@ class WelcomeMailTest extends TestCase
 
     public function test_welcome_mail_has_correct_subject(): void
     {
-        $mail = new WelcomeMail('test@example.com');
+        $mail = new WelcomeMail($this->uniqueEmail('welcome'));
         $envelope = $mail->envelope();
 
         $this->assertStringContainsString('Welcome', $envelope->subject);
@@ -45,7 +47,7 @@ class WelcomeMailTest extends TestCase
 
     public function test_welcome_mail_has_correct_from_address(): void
     {
-        $mail = new WelcomeMail('test@example.com');
+        $mail = new WelcomeMail($this->uniqueEmail('welcome'));
         $envelope = $mail->envelope();
 
         $this->assertNotNull($envelope->from);
@@ -54,7 +56,7 @@ class WelcomeMailTest extends TestCase
 
     public function test_welcome_mail_build_returns_self(): void
     {
-        $mail = new WelcomeMail('test@example.com');
+        $mail = new WelcomeMail($this->uniqueEmail('welcome'));
         $result = $mail->build();
 
         $this->assertInstanceOf(WelcomeMail::class, $result);
@@ -62,7 +64,7 @@ class WelcomeMailTest extends TestCase
 
     public function test_welcome_mail_has_attachments_method(): void
     {
-        $mail = new WelcomeMail('test@example.com');
+        $mail = new WelcomeMail($this->uniqueEmail('welcome'));
         $attachments = $mail->attachments();
 
         $this->assertIsArray($attachments);

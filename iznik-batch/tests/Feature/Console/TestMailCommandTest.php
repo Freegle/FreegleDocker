@@ -93,8 +93,12 @@ class TestMailCommandTest extends TestCase
         $recipient = $this->createTestUser(['displayname' => 'Test Recipient']);
         $sender = $this->createTestUser(['displayname' => 'Test Sender']);
 
-        // Update recipient's email to a known address.
-        UserEmail::where('userid', $recipient->id)->update(['email' => 'original@example.com']);
+        // Use unique emails for this test to avoid parallel test collisions.
+        $originalEmail = $this->uniqueEmail('original');
+        $overrideEmail = $this->uniqueEmail('override');
+
+        // Update recipient's email to our unique address.
+        UserEmail::where('userid', $recipient->id)->update(['email' => $originalEmail]);
         $recipient = $recipient->fresh();
 
         // Create a chat room.
@@ -108,8 +112,8 @@ class TestMailCommandTest extends TestCase
         // Run the command with --send-to override.
         $this->artisan('mail:test', [
             'type' => 'chat:user2user',
-            '--to' => 'original@example.com',
-            '--send-to' => 'override@example.com',
+            '--to' => $originalEmail,
+            '--send-to' => $overrideEmail,
             '--chat' => $chatRoom->id,
         ])->assertExitCode(0);
 
@@ -121,8 +125,8 @@ class TestMailCommandTest extends TestCase
         $toAddresses = array_column($spoolData['to'], 'address');
 
         // Verify the override address was used, not the original.
-        $this->assertContains('override@example.com', $toAddresses);
-        $this->assertNotContains('original@example.com', $toAddresses);
+        $this->assertContains($overrideEmail, $toAddresses);
+        $this->assertNotContains($originalEmail, $toAddresses);
     }
 
     /**
@@ -134,8 +138,11 @@ class TestMailCommandTest extends TestCase
         $recipient = $this->createTestUser(['displayname' => 'Test Recipient']);
         $sender = $this->createTestUser(['displayname' => 'Test Sender']);
 
-        // Update recipient's email to a known address.
-        UserEmail::where('userid', $recipient->id)->update(['email' => 'original@example.com']);
+        // Use unique email for this test to avoid parallel test collisions.
+        $originalEmail = $this->uniqueEmail('original');
+
+        // Update recipient's email to our unique address.
+        UserEmail::where('userid', $recipient->id)->update(['email' => $originalEmail]);
         $recipient = $recipient->fresh();
 
         // Create a chat room.
@@ -149,7 +156,7 @@ class TestMailCommandTest extends TestCase
         // Run the command WITHOUT --send-to.
         $this->artisan('mail:test', [
             'type' => 'chat:user2user',
-            '--to' => 'original@example.com',
+            '--to' => $originalEmail,
             '--chat' => $chatRoom->id,
         ])->assertExitCode(0);
 
@@ -161,7 +168,7 @@ class TestMailCommandTest extends TestCase
         $toAddresses = array_column($spoolData['to'], 'address');
 
         // Verify the original address was used.
-        $this->assertContains('original@example.com', $toAddresses);
+        $this->assertContains($originalEmail, $toAddresses);
     }
 
     /**
@@ -176,8 +183,12 @@ class TestMailCommandTest extends TestCase
         $recipient = $this->createTestUser(['displayname' => 'Real User']);
         $sender = $this->createTestUser(['displayname' => 'Test Sender']);
 
-        // Update recipient's email to a known address.
-        UserEmail::where('userid', $recipient->id)->update(['email' => 'realuser@example.com']);
+        // Use unique emails for this test to avoid parallel test collisions.
+        $realUserEmail = $this->uniqueEmail('realuser');
+        $testDeliveryEmail = $this->uniqueEmail('testdelivery');
+
+        // Update recipient's email to our unique address.
+        UserEmail::where('userid', $recipient->id)->update(['email' => $realUserEmail]);
         $recipient = $recipient->fresh();
 
         // Create a chat room.
@@ -191,8 +202,8 @@ class TestMailCommandTest extends TestCase
         // Run the command with --send-to to a different address.
         $this->artisan('mail:test', [
             'type' => 'chat:user2user',
-            '--to' => 'realuser@example.com',
-            '--send-to' => 'testdelivery@example.com',
+            '--to' => $realUserEmail,
+            '--send-to' => $testDeliveryEmail,
             '--chat' => $chatRoom->id,
         ])->assertExitCode(0);
 
@@ -204,8 +215,8 @@ class TestMailCommandTest extends TestCase
         $toAddresses = array_column($spoolData['to'], 'address');
 
         // Verify the override address was used.
-        $this->assertContains('testdelivery@example.com', $toAddresses);
-        $this->assertNotContains('realuser@example.com', $toAddresses);
+        $this->assertContains($testDeliveryEmail, $toAddresses);
+        $this->assertNotContains($realUserEmail, $toAddresses);
 
         // Verify the email content still references the real user (not the override).
         // The HTML should contain the sender's name (Test User from createTestUser helper).
