@@ -1928,9 +1928,15 @@ const httpServer = http.createServer(async (req, res) => {
         # IMPORTANT: Do NOT run config:cache here - tests need to dynamically set the database name
         # in bootstrap.php, which won't work if config is cached with the production DB name.
 
-        echo "Running Laravel tests in parallel with coverage..."
-        # Time limits configured in phpunit.xml: enforceTimeLimit="true" defaultTimeLimit="30"
-        docker exec freegle-batch vendor/bin/paratest --testsuite=Unit,Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+        echo "Setting up fresh test database..."
+        # Create test database if it doesn't exist, then run fresh migrations
+        docker exec freegle-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
+        # Must explicitly set DB_DATABASE to avoid touching production database
+        docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
+
+        echo "Running Laravel tests serially with coverage..."
+        # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
+        docker exec freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
       `,
       ],
       { stdio: "pipe" }

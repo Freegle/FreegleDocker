@@ -10,15 +10,14 @@ use App\Models\Message;
 use App\Models\MessageGroup;
 use App\Models\User;
 use App\Models\UserEmail;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
-    // Note: We deliberately do NOT use DatabaseTransactions here.
-    // That trait wraps the entire test in a single long-running transaction,
-    // which causes lock contention when running tests in parallel with ParaTest.
-    // Instead, we use autocommit mode (like iznik-server) where each query
-    // commits immediately and releases locks.
+    // Use DatabaseTransactions for serial PHPUnit execution.
+    // This rolls back each test's changes, ensuring test isolation.
+    use DatabaseTransactions;
 
     /**
      * Create a test user with an email address.

@@ -272,7 +272,7 @@ class ChatNotificationTest extends TestCase
 
         // Subject should be based on the "interested in" message's referenced item.
         $this->assertStringStartsWith('Regarding:', $mail->replySubject);
-        $this->assertStringContainsString('[' . $group->nameshort . ']', $mail->replySubject);
+        $this->assertStringContainsString('[' . $group->namefull . ']', $mail->replySubject);
         $this->assertStringContainsString('OFFER: Double Bed Frame (London)', $mail->replySubject);
     }
 
@@ -586,7 +586,7 @@ class ChatNotificationTest extends TestCase
 
         // Subject should be based on the interested message.
         $this->assertStringContainsString('Regarding:', $mail->replySubject);
-        $this->assertStringContainsString('[' . $group->nameshort . ']', $mail->replySubject);
+        $this->assertStringContainsString('[' . $group->namefull . ']', $mail->replySubject);
         $this->assertStringContainsString('OFFER: Test Item', $mail->replySubject);
 
         $mail->build();
@@ -909,7 +909,7 @@ class ChatNotificationTest extends TestCase
         $this->assertStringStartsWith('Regarding:', $mail->replySubject);
         $this->assertStringNotContainsString('Re:', $mail->replySubject);
         // Also verify group name is included.
-        $this->assertStringContainsString('[' . $group->nameshort . ']', $mail->replySubject);
+        $this->assertStringContainsString('[' . $group->namefull . ']', $mail->replySubject);
     }
 
     public function test_chat_notification_chat_url_contains_room_id(): void
