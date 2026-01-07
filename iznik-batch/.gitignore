@@ -19,6 +19,7 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/framework/scheduler-locks
 /vendor
 /bootstrap/cache/*.php
 Homestead.json

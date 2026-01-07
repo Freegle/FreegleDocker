@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Console\FlockEventMutex;
 use App\Listeners\SpamCheckListener;
 use App\Services\LokiService;
+use Illuminate\Console\Scheduling\EventMutex;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +23,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(LokiService::class, function ($app) {
             return new LokiService();
         });
+
+        // Register FlockEventMutex for process-aware scheduler locks.
+        // Uses OS-level flock() which auto-releases on process death.
+        if (config('cache.lock_store', 'flock') === 'flock') {
+            $this->app->singleton(EventMutex::class, function ($app) {
+                return new FlockEventMutex();
+            });
+        }
     }
 
     /**
