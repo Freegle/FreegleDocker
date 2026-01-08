@@ -279,7 +279,7 @@
     </div>
 
     {{-- The triggering message (static) --}}
-    <div class="message {{ $chatMessage['isFromRecipient'] ? 'message-mine' : '' }}">
+    <div class="message">
       <amp-img class="message-avatar" src="{{ $chatMessage['profileUrl'] }}" alt="{{ $chatMessage['userName'] }}" width="36" height="36" layout="fixed"></amp-img>
       <div class="message-content">
         <div class="message-sender">

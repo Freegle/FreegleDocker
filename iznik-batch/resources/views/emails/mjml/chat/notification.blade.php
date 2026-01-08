@@ -115,34 +115,7 @@
     </mj-section>
 
     @php $accentColor = ($isModerator ?? false) ? '#396aa3' : '#338808'; @endphp
-    @if($chatMessage['isFromRecipient'])
-    {{-- Recipient's own message - profile pic on right --}}
-    <mj-section background-color="#ffffff" padding="8px 20px">
-      <mj-column vertical-align="top">
-        <mj-text padding="0 8px 0 0" line-height="1.6" align="right">
-          @if($chatMessage['userPageUrl'])
-          <a href="{{ $chatMessage['userPageUrl'] }}" style="font-weight: 600; color: {{ $accentColor }}; font-size: 14px; text-decoration: none;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</a>
-          @else
-          <span style="font-weight: 600; color: {{ $accentColor }}; font-size: 14px;">{{ $chatMessage['userName'] }}@if(!($isOwnMessage ?? false)) (you)@endif</span>
-          @endif
-          <br/>
-          <span style="color: #000000; font-size: 18px; font-weight: 500;">{!! nl2br(e($chatMessage['text'])) !!}</span>
-        </mj-text>
-      </mj-column>
-      <mj-column width="44px" vertical-align="top">
-        <mj-image
-          src="{{ $chatMessage['profileUrl'] }}"
-          width="36px"
-          height="36px"
-          border-radius="18px"
-          alt="{{ $chatMessage['userName'] }}"
-          padding="0"
-          href="{{ $chatMessage['userPageUrl'] ?? '' }}"
-        />
-      </mj-column>
-    </mj-section>
-    @else
-    {{-- Other person's message - profile pic on left --}}
+    {{-- Message - always left-justified for consistent layout --}}
     <mj-section background-color="#ffffff" padding="8px 20px">
       <mj-column width="44px" vertical-align="top">
         <mj-image
@@ -167,7 +140,6 @@
         </mj-text>
       </mj-column>
     </mj-section>
-    @endif
 
     {{-- Show referenced item if this message refers to one --}}
     @if(!empty($chatMessage['refMessage']))
