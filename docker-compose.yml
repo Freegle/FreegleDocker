@@ -1027,6 +1027,88 @@ services:
       retries: 10
       start_period: 180s
 
+  # =========================================
+  # MCP Support Tools (Privacy-Preserving Log Analysis)
+  # =========================================
+
+  # Container 0: Query Sanitizer - Frontend-facing, extracts and tokenizes PII
+  mcp-query-sanitizer:
+    container_name: freegle-mcp-sanitizer
+    build:
+      context: ./support-tools/query-sanitizer
+      network: host
+    networks:
+      - default
+    ports:
+      - "8084:8080"
+    environment:
+      - PORT=8080
+      - PSEUDONYMIZER_URL=http://freegle-mcp-pseudonymizer:8080
+    depends_on:
+      mcp-pseudonymizer:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcp-sanitizer.rule=Host(`mcp-sanitizer.localhost`)"
+      - "traefik.http.routers.mcp-sanitizer.entrypoints=web"
+      - "traefik.http.services.mcp-sanitizer.loadbalancer.server.port=8080"
+
+  # Container 2: MCP Interface - Stateless proxy, NO key, forwards to pseudonymizer
+  mcp-interface:
+    container_name: freegle-mcp-interface
+    build:
+      context: ./support-tools/mcp-interface
+      network: host
+    networks:
+      - default
+    environment:
+      - PORT=8080
+      - PSEUDONYMIZER_URL=http://freegle-mcp-pseudonymizer:8080
+    depends_on:
+      mcp-pseudonymizer:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Container 3: Pseudonymizer - Has the key, queries Loki, pseudonymizes results
+  mcp-pseudonymizer:
+    container_name: freegle-mcp-pseudonymizer
+    build:
+      context: ./support-tools/pseudonymizer
+      network: host
+    networks:
+      - default
+    volumes:
+      - mcp-pseudonymizer-data:/data
+      - mcp-audit-logs:/var/log/mcp-audit
+    environment:
+      - PORT=8080
+      - LOKI_URL=http://loki:3100
+      - DATA_DIR=/data
+      - AUDIT_LOG_DIR=/var/log/mcp-audit
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   rebuild-requests:
     driver: local
@@ -1042,6 +1124,10 @@ volumes:
   grafana-data:
     driver: local
   apiv2_logs:
+    driver: local
+  mcp-pseudonymizer-data:
+    driver: local
+  mcp-audit-logs:
     driver: local
 
 networks:
