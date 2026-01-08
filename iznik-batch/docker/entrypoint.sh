@@ -71,15 +71,24 @@ else
     echo "To run migrations manually: docker exec freegle-batch php artisan migrate --force"
 fi
 
-# Clear Laravel application caches
+# CRITICAL: Delete bootstrap cache files BEFORE running any artisan commands.
+# The volume mount may contain corrupted or stale cache files that prevent Laravel
+# from bootstrapping. We must remove them directly (not via artisan) first.
+echo "Cleaning bootstrap cache..."
+rm -f /var/www/html/bootstrap/cache/services.php
+rm -f /var/www/html/bootstrap/cache/packages.php
+rm -f /var/www/html/bootstrap/cache/config.php
+rm -f /var/www/html/bootstrap/cache/routes-v7.php
+rm -f /var/www/html/bootstrap/cache/events.php
+
+# Now regenerate the package manifest - this creates fresh services.php and packages.php
+echo "Regenerating package manifest..."
+php artisan package:discover --ansi
+
+# Clear Laravel application caches (now safe since bootstrap cache is valid)
 echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
-
-# Regenerate package manifest (critical when volume mount overwrites bootstrap/cache)
-# This creates services.php and packages.php which Laravel needs to bootstrap.
-echo "Regenerating package manifest..."
-php artisan package:discover --ansi
 
 # Ensure MJML is installed in spatie package
 if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
