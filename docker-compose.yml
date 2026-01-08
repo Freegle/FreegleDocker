@@ -548,7 +548,7 @@ services:
       - USER_SITE=www.ilovefreegle.org
       - IMAGE_DOMAIN=images.ilovefreegle.org
       - GROUP_DOMAIN=groups.ilovefreegle.org
-      - AMP_SECRET=${AMP_SECRET:-}
+      - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
     volumes:
       - apiv2_logs:/var/log/freegle
     healthcheck:
@@ -1015,7 +1015,7 @@ services:
       - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost:3003
       - FREEGLE_API_BASE_URL=http://localhost:8193
       - FREEGLE_DELIVERY_URL=http://delivery.localhost
-      - AMP_SECRET=${AMP_SECRET:-}
+      - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
       - AMP_API_URL=http://apiv2.localhost/amp
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100

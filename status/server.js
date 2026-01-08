@@ -205,6 +205,26 @@ const services = [
     checkType: "delivery",
     category: "infra",
   },
+
+  // MCP Support Tools (privacy-preserving log analysis)
+  {
+    id: "mcp-sanitizer",
+    container: "freegle-mcp-sanitizer",
+    checkType: "container-only",
+    category: "backend",
+  },
+  {
+    id: "mcp-interface",
+    container: "freegle-mcp-interface",
+    checkType: "container-only",
+    category: "backend",
+  },
+  {
+    id: "mcp-pseudonymizer",
+    container: "freegle-mcp-pseudonymizer",
+    checkType: "container-only",
+    category: "backend",
+  },
 ];
 
 // HTTP Agent with keep-alive for better performance
