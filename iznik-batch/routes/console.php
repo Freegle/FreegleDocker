@@ -14,31 +14,28 @@ use Illuminate\Support\Facades\Schedule;
 // =============================================================================
 
 // Welcome mail processing - check for pending welcome mails every minute.
-// Uses withoutOverlapping() to prevent duplicate runs if processing is slow.
+// Uses PreventsOverlapping trait for flock-based locking (released on process death).
 // Uses runInBackground() so it doesn't block other scheduled commands.
 // Uses --spool to write to file for resilient async processing.
 Schedule::command('mail:welcome:send --limit=100 --spool')
     ->everyMinute()
-    ->withoutOverlapping()
     ->runInBackground();
 
 // Chat notifications - run continuously with internal looping.
+// Uses PreventsOverlapping trait for flock-based locking (released on process death).
 // User2User notifications.
 Schedule::command('mail:chat:user2user --max-iterations=60 --spool')
     ->everyMinute()
-    ->withoutOverlapping()
     ->runInBackground();
 
 // Mod2Mod notifications.
 Schedule::command('mail:chat:mod2mod --max-iterations=60 --spool')
     ->everyMinute()
-    ->withoutOverlapping()
     ->runInBackground();
 
 // User2Mod notifications.
 Schedule::command('mail:chat:user2mod --max-iterations=60 --spool')
     ->everyMinute()
-    ->withoutOverlapping()
     ->runInBackground();
 
 // Fetch UK CPI inflation data from ONS - runs monthly.

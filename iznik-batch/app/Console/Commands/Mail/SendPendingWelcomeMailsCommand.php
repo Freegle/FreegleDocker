@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Mail;
 
+use App\Console\Concerns\PreventsOverlapping;
 use App\Mail\Traits\FeatureFlags;
 use App\Mail\Welcome\WelcomeMail;
 use App\Models\BatchEmailProgress;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Mail;
 class SendPendingWelcomeMailsCommand extends Command
 {
     use FeatureFlags;
+    use PreventsOverlapping;
 
     /**
      * The name and signature of the console command.
@@ -37,6 +39,23 @@ class SendPendingWelcomeMailsCommand extends Command
      * Execute the console command.
      */
     public function handle(EmailSpoolerService $spooler): int
+    {
+        if (!$this->acquireLock()) {
+            $this->info('Already running, exiting.');
+            return Command::SUCCESS;
+        }
+
+        try {
+            return $this->doHandle($spooler);
+        } finally {
+            $this->releaseLock();
+        }
+    }
+
+    /**
+     * The actual command logic.
+     */
+    protected function doHandle(EmailSpoolerService $spooler): int
     {
         // Check if Welcome emails are enabled for this batch system.
         if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
