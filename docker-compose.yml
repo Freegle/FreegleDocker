@@ -401,6 +401,8 @@ services:
         condition: service_started
       spamassassin-app:
         condition: service_started
+      reverse-proxy:
+        condition: service_healthy
     restart: "no"
     environment:
       - MYSQL_HOST=percona

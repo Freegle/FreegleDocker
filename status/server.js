@@ -871,15 +871,20 @@ async function runPlaywrightTests(testFile = null, testName = null) {
     testStatus.message = "Verifying Traefik routes...";
     testStatus.logs += "Verifying Traefik routes are accessible...\n";
 
+    // Routes to verify before tests - critical routes must pass or tests fail early
     const routesToVerify = [
-      { name: 'freegle-prod', url: 'http://freegle-prod-local.localhost/' },
-      { name: 'apiv2', url: 'http://apiv2.localhost:8192/api/group?id=1' },
-      { name: 'delivery', url: 'http://delivery.localhost/?url=http://freegle-prod-local.localhost/icon.png&w=16&output=png' },
+      { name: 'freegle-prod', url: 'http://freegle-prod-local.localhost/', critical: true },
+      { name: 'apiv1', url: 'http://apiv1.localhost/api/config', critical: true },
+      { name: 'apiv2', url: 'http://apiv2.localhost:8192/api/group?id=1', critical: false },
+      { name: 'delivery', url: 'http://delivery.localhost/?url=http://freegle-prod-local.localhost/icon.png&w=16&output=png', critical: false },
     ];
+
+    const failedCriticalRoutes = [];
 
     for (const route of routesToVerify) {
       let routeVerified = false;
-      const maxAttempts = 5;
+      // More attempts for critical routes - Traefik may need time to discover backends
+      const maxAttempts = route.critical ? 15 : 5;
       const retryDelay = 2000;
 
       for (let attempt = 1; attempt <= maxAttempts && !routeVerified; attempt++) {
@@ -907,8 +912,24 @@ async function runPlaywrightTests(testFile = null, testName = null) {
       }
 
       if (!routeVerified) {
-        testStatus.logs += `⚠ Warning: ${route.name} route not verified after ${maxAttempts} attempts\n`;
+        if (route.critical) {
+          testStatus.logs += `✗ CRITICAL: ${route.name} route not verified after ${maxAttempts} attempts\n`;
+          failedCriticalRoutes.push(route.name);
+        } else {
+          testStatus.logs += `⚠ Warning: ${route.name} route not verified after ${maxAttempts} attempts\n`;
+        }
       }
+    }
+
+    // Fail early if critical routes aren't available - tests will definitely fail
+    if (failedCriticalRoutes.length > 0) {
+      const errorMsg = `Critical routes not available: ${failedCriticalRoutes.join(', ')}. Tests cannot proceed.`;
+      testStatus.status = "failed";
+      testStatus.message = errorMsg;
+      testStatus.logs += `\n${errorMsg}\n`;
+      testStatus.logs += "This usually indicates a Traefik routing issue. Check that apiv1 container started before Traefik.\n";
+      testStatus.endTime = new Date();
+      return;
     }
 
     testStatus.logs += "Route verification complete\n";
