@@ -1322,4 +1322,74 @@ class ChatNotificationServiceTest extends TestCase
 
         $this->assertGreaterThanOrEqual(1, $count);
     }
+
+    public function test_notify_by_email_excludes_blocked_users(): void
+    {
+        $sender = $this->createTestUser();
+        $recipient = $this->createTestUser();
+
+        $room = $this->createTestChatRoom($sender, $recipient, [
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster entry for sender (normal status).
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $sender->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Create roster entry for recipient with BLOCKED status.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $recipient->id,
+            'lastmsgemailed' => null,
+            'status' => ChatRoster::STATUS_BLOCKED,
+        ]);
+
+        // Create a message from sender to recipient.
+        $this->createTestChatMessage($room, $sender, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+        // Blocked user should NOT be notified.
+        $this->assertEquals(0, $count);
+        Mail::assertNothingSent();
+    }
+
+    public function test_notify_by_email_includes_non_blocked_users(): void
+    {
+        $sender = $this->createTestUser();
+        $recipient = $this->createTestUser();
+
+        $room = $this->createTestChatRoom($sender, $recipient, [
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster entries with normal (non-blocked) status.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $sender->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $recipient->id,
+            'lastmsgemailed' => null,
+            'status' => ChatRoster::STATUS_ONLINE,
+        ]);
+
+        // Create a message from sender to recipient.
+        $this->createTestChatMessage($room, $sender, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+        // Non-blocked user should be notified.
+        $this->assertGreaterThanOrEqual(1, $count);
+    }
 }
