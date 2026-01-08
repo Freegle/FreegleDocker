@@ -1898,8 +1898,15 @@ const httpServer = http.createServer(async (req, res) => {
         docker exec freegle-batch sh -c 'rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php' 2>&1 || true
 
         # Step 2: Regenerate package manifest - this creates clean services.php and packages.php
+        # CRITICAL: Do NOT use || true here - we must fail if package manifest can't be regenerated
         echo "Regenerating package manifest..."
-        docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
+        docker exec freegle-batch php artisan package:discover --ansi 2>&1
+
+        # Verify the manifest was created - this is what Laravel needs to bootstrap
+        if ! docker exec freegle-batch test -f /var/www/html/bootstrap/cache/services.php; then
+          echo "ERROR: services.php was not created after package:discover"
+          exit 1
+        fi
 
         # Step 3: Clear view cache using artisan (clears Laravel's internal state, not just files)
         # CRITICAL: Using view:clear instead of rm -rf ensures Laravel's internal view state is reset.

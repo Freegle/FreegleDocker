@@ -76,6 +76,11 @@ echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
 
+# Regenerate package manifest (critical when volume mount overwrites bootstrap/cache)
+# This creates services.php and packages.php which Laravel needs to bootstrap.
+echo "Regenerating package manifest..."
+php artisan package:discover --ansi
+
 # Ensure MJML is installed in spatie package
 if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
     echo "Installing MJML in spatie package..."
