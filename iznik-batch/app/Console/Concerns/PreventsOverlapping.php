@@ -27,7 +27,9 @@ trait PreventsOverlapping
     {
         $lockPath = storage_path('framework/command-locks');
         if (!is_dir($lockPath)) {
-            mkdir($lockPath, 0755, true);
+            if (!mkdir($lockPath, 0755, true)) {
+                throw new \RuntimeException("Failed to create lock directory: {$lockPath}");
+            }
         }
 
         $lockName = str_replace([':', '\\'], '-', static::class);
@@ -35,7 +37,7 @@ trait PreventsOverlapping
 
         $this->lockHandle = fopen($this->lockFile, 'c');
         if (!$this->lockHandle) {
-            return false;
+            throw new \RuntimeException("Failed to open lock file: {$this->lockFile}");
         }
 
         // Non-blocking exclusive lock.

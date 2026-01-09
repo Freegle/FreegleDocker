@@ -71,6 +71,13 @@ else
     echo "To run migrations manually: docker exec freegle-batch php artisan migrate --force"
 fi
 
+# Ensure storage directories exist with correct permissions
+echo "Ensuring storage directories exist..."
+mkdir -p /var/www/html/storage/framework/{cache,sessions,views,command-locks,scheduler-locks}
+mkdir -p /var/www/html/storage/logs
+mkdir -p /var/www/html/storage/spool/mail/{pending,sending,sent,failed}
+chmod -R 777 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
+
 # CRITICAL: Delete bootstrap cache files BEFORE running any artisan commands.
 # The volume mount may contain corrupted or stale cache files that prevent Laravel
 # from bootstrapping. We must remove them directly (not via artisan) first.
