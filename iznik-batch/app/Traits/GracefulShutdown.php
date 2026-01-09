@@ -15,7 +15,8 @@ trait GracefulShutdown
     {
         // Skip signal handlers in testing to avoid PHPUnit risky test warnings
         // and interference with expectsOutputToContain() assertions.
-        if (app()->environment('testing')) {
+        // Use native getenv() to avoid requiring Laravel's application container.
+        if (getenv('APP_ENV') === 'testing' || (defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING)) {
             return;
         }
 
