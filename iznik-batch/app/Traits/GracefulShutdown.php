@@ -9,9 +9,16 @@ trait GracefulShutdown
 
     /**
      * Set up signal handlers for graceful shutdown.
+     * Skipped in testing environment to avoid interfering with PHPUnit's output capture.
      */
     protected function setupSignalHandlers(): void
     {
+        // Skip signal handlers in testing to avoid PHPUnit risky test warnings
+        // and interference with expectsOutputToContain() assertions.
+        if (app()->environment('testing')) {
+            return;
+        }
+
         if (extension_loaded('pcntl')) {
             pcntl_async_signals(TRUE);
             pcntl_signal(SIGTERM, fn() => $this->shouldStop = TRUE);
