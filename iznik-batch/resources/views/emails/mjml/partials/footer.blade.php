@@ -1,7 +1,8 @@
+<!-- freegle-email-footer-start -->
 <mj-section background-color="#f5f5f5" padding="20px">
   <mj-column>
     <mj-text font-size="12px" color="#666666" align="center" line-height="1.6">
-      This email was sent{{ !empty($ampIncluded) ? ' with AMP' : '' }} to {{ $email }}<br/>
+      This email was sent{{ !empty($ampIncluded) ? ' with AMP' : '' }} to {{ $email ?? 'you' }}<br/>
       <a href="{{ $settingsUrl ?? config('freegle.sites.user') . '/settings' }}" style="color: #338808;">Change your email settings</a> &bull;
       <a href="{{ $unsubscribeUrl ?? config('freegle.sites.user') . '/unsubscribe' }}" style="color: #338808;">Unsubscribe</a>
     </mj-text>
@@ -12,3 +13,4 @@
     </mj-text>
   </mj-column>
 </mj-section>
+<!-- freegle-email-footer-end -->
