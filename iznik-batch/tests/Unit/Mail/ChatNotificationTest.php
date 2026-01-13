@@ -1039,8 +1039,18 @@ class ChatNotificationTest extends TestCase
         config(['freegle.amp.enabled' => true]);
         config(['freegle.amp.secret' => 'test-secret-key']);
 
+        // Debug: Verify config was set correctly.
+        $configEnabled = config('freegle.amp.enabled');
+        $configSecret = config('freegle.amp.secret');
+
         $user1 = $this->createTestUser();
         $user2 = $this->createTestUser();
+
+        // Debug: Check user state.
+        $user2Exists = $user2->exists;
+        $user2Id = $user2->id;
+        $user2Fresh = $user2->fresh();
+        $user2FreshExists = $user2Fresh ? $user2Fresh->exists : 'fresh() returned null';
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2USER,
@@ -1072,11 +1082,44 @@ class ChatNotificationTest extends TestCase
             ChatRoom::TYPE_USER2USER
         );
 
+        // Debug: Check mail object state before build.
+        $recipientExists = $mail->recipient->exists;
+        $chatType = $mail->chatType;
+
         $mail->build();
         $html = $mail->render();
 
+        // Debug: Extract footer section to see what was rendered.
+        $footerMatch = [];
+        preg_match('/This email was sent[^<]*/', $html, $footerMatch);
+        $footerText = $footerMatch[0] ?? 'FOOTER NOT FOUND';
+
+        // Build debug message for assertion failure.
+        $debug = sprintf(
+            "\n=== DEBUG INFO ===\n" .
+            "config('freegle.amp.enabled'): %s\n" .
+            "config('freegle.amp.secret'): %s\n" .
+            "user2->exists: %s\n" .
+            "user2->id: %s\n" .
+            "user2->fresh()->exists: %s\n" .
+            "mail->recipient->exists: %s\n" .
+            "mail->chatType: %s\n" .
+            "ChatRoom::TYPE_USER2USER: %s\n" .
+            "Footer text found: %s\n" .
+            "==================\n",
+            var_export($configEnabled, true),
+            var_export($configSecret, true),
+            var_export($user2Exists, true),
+            var_export($user2Id, true),
+            var_export($user2FreshExists, true),
+            var_export($recipientExists, true),
+            var_export($chatType, true),
+            var_export(ChatRoom::TYPE_USER2USER, true),
+            $footerText
+        );
+
         // Footer should indicate AMP was included.
-        $this->assertStringContainsString('sent with AMP', $html);
+        $this->assertStringContainsString('sent with AMP', $html, "Expected 'sent with AMP' in HTML but not found." . $debug);
     }
 
     public function test_chat_notification_no_amp_indicator_when_disabled(): void
