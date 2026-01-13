@@ -264,6 +264,37 @@
       border-top: 1px solid #e9ecef;
       margin: 0;
     }
+
+    /* Footer */
+    .footer {
+      background-color: #f5f5f5;
+      padding: 20px;
+      text-align: center;
+    }
+    .footer-text {
+      font-size: 12px;
+      color: #666666;
+      line-height: 1.6;
+      margin: 0 0 10px 0;
+    }
+    .footer-links {
+      font-size: 12px;
+      margin: 0 0 15px 0;
+    }
+    .footer-links a {
+      color: #338808;
+      text-decoration: none;
+    }
+    .footer-divider {
+      border-top: 1px solid #dddddd;
+      margin: 15px 40px;
+    }
+    .footer-charity {
+      font-size: 11px;
+      color: #666666;
+      line-height: 1.5;
+      margin: 0;
+    }
   </style>
 </head>
 <body>
@@ -279,7 +310,7 @@
     </div>
 
     {{-- The triggering message (static) --}}
-    <div class="message">
+    <div class="message {{ $chatMessage['isFromRecipient'] ? 'message-mine' : '' }}">
       <amp-img class="message-avatar" src="{{ $chatMessage['profileUrl'] }}" alt="{{ $chatMessage['userName'] }}" width="36" height="36" layout="fixed"></amp-img>
       <div class="message-content">
         <div class="message-sender">
@@ -367,6 +398,20 @@
     {{-- Fallback button --}}
     <div class="fallback-section">
       <a href="{{ $chatUrl }}" class="fallback-link">View full conversation on Freegle →</a>
+    </div>
+
+    {{-- Footer --}}
+    <div class="footer">
+      <p class="footer-text">This email was sent with AMP to {{ $recipient->email_preferred }}</p>
+      <p class="footer-links">
+        <a href="{{ $userSite }}/settings">Change your email settings</a> &bull;
+        <a href="{{ $userSite }}/unsubscribe">Unsubscribe</a>
+      </p>
+      <div class="footer-divider"></div>
+      <p class="footer-charity">
+        {{ $siteName }} is registered as a charity with HMRC (ref. XT32865) and is run by volunteers. Which is nice.<br>
+        Registered address: Weaver's Field, Loud Bridge, Chipping PR3 2NX
+      </p>
     </div>
   </div>
 </body>
