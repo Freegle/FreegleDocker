@@ -655,6 +655,12 @@ This is the critical point: **Gmail and Yahoo classify emails based on recipient
 
 Chat notifications are in a grey area: they're triggered by user action (someone messaged you), but they're also encouraging re-engagement with the platform, which is a promotional purpose.
 
+## Freegle's Approach
+
+Freegle **conservatively adds one-click unsubscribe headers to all emails**, including chat notifications that could be classified as transactional. This is implemented in `iznik-server/include/misc/Mail.php` and `iznik-batch/app/Mail/Chat/ChatNotification.php`.
+
+This conservative approach assumes the worst case: that Gmail/Yahoo may classify any of our emails as marketing based on recipient behaviour. By including one-click unsubscribe on everything, Freegle ensures compliance regardless of how providers classify the emails.
+
 ## Impact on Email Deliverability
 
 ### Unsubscribes vs Spam Reports
@@ -669,13 +675,50 @@ This is counterintuitive but important: **making unsubscribe easy actually prote
 > "By offering a straightforward unsubscribe path, you significantly reduce the likelihood of recipients marking your emails as spam."
 > — [Suped Email Deliverability Guide](https://www.suped.com/knowledge/email-deliverability/sender-reputation/do-unsubscribe-links-and-rates-affect-email-deliverability-and-spam-filtering)
 
+### Difficult Unsubscribe → Spam Reports
+
+Research shows a direct link between difficult unsubscribe processes and spam complaints:
+
+| Finding | Source |
+|---------|--------|
+| **47%** of users will mark as spam if they can't find an unsubscribe link | [Mailmend](https://mailmend.io/blogs/spam-complaint-statistics) |
+| **~20%** of consumers mark emails as spam rather than unsubscribing | [Mailmend](https://mailmend.io/blogs/spam-complaint-statistics) |
+| **20%** of deliverability issues are caused by high spam complaints | [ZeroBounce](https://www.zerobounce.net/email-statistics-report/) |
+
+> "People will normally take the route of least resistance – if it's easier to complain than to unsubscribe, then that's what will happen."
+> — [GlockApps](https://glockapps.com/blog/definitive-guide-about-spam-complaints/)
+
+Users often resort to the spam button out of frustration when faced with:
+- Hidden unsubscribe links at the bottom of long emails
+- Multi-step unsubscribe processes requiring form submissions
+- Feeling that senders are "being sneaky" about opt-outs
+
+> "Every click beyond two to unsubscribe makes the ruthless efficiency of the one-click report spam button look more appealing."
+> — [Campaign Cleaner](https://campaigncleaner.com/blog/when-to-mark-email-spam-vs-delete-unsubscribe.html)
+
 ### Spam Complaint Thresholds
 
 Gmail requires spam complaint rates below:
-- **0.3%** - maximum acceptable
+- **0.3%** - maximum acceptable (enforcement starts)
 - **0.1%** - recommended target
 
-Exceeding these thresholds leads to deliverability problems.
+Exceeding these thresholds leads to:
+- Emails going to spam/junk folder
+- Temporary delivery delays
+- Permanent rejections (as of Nov 2025)
+- Long-term reputation damage that can take months to recover
+
+> "A high spam complaint rate results in long-term deliverability issues that can take months to correct."
+> — [Mailgun](https://www.mailgun.com/blog/deliverability/spam-complaint-rate/)
+
+### The Deliverability Paradox
+
+Senders who implement proper one-click unsubscribe see **lower** spam complaint rates:
+
+> "Data shows that senders including [one-click unsubscribe] header recorded complaint rates below 0.1%, while those without it faced higher spam feedback loops."
+> — [MailReach](https://www.mailreach.co/blog/email-deliverability-statistics)
+
+This creates a paradox for Freegle: the one-click unsubscribe header is good for deliverability, but the current implementation (account deletion) may not match user expectations, potentially leading to support issues or user frustration rather than spam complaints.
 
 ## The Expectation Mismatch Problem
 
@@ -736,4 +779,4 @@ It is not mentioned in the confirmation modal before deletion.
 ---
 
 *Document generated: 2026-01-13*
-*Updated: 2026-01-13 - Added one-click unsubscribe requirements and deliverability section*
+*Updated: 2026-01-13 - Added one-click unsubscribe requirements, deliverability research, and spam complaint evidence*
