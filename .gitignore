@@ -46,3 +46,6 @@ sentry-issues.db-wal
 sentry-issues.db
 /plans/exploratory-testing-state.json
 /iznik-batch/coverage/
+
+# Ralph working directories (session-specific)
+ralph/

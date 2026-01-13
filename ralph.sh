@@ -6,13 +6,13 @@
 # prompt in a continuous loop, allowing it to iteratively improve its work.
 #
 # Usage:
-#   ./ralph.sh <plan-file> [max-hours]     - Execute a plan file
-#   ./ralph.sh -t "task description" [max-hours]  - Execute an explicit task
+#   ./ralph.sh <plan-file> [max-iterations]     - Execute a plan file
+#   ./ralph.sh -t "task description" [max-iterations]  - Execute an explicit task
 #
 # Examples:
-#   ./ralph.sh plans/active/my-feature.md 4      # Run for max 4 hours
-#   ./ralph.sh -t "Fix failing CircleCI tests" 2  # Run for max 2 hours
-#   ./ralph.sh -t "Add unit tests for UserController"  # Default 8 hours
+#   ./ralph.sh plans/active/my-feature.md 10
+#   ./ralph.sh -t "Fix failing CircleCI tests" 5
+#   ./ralph.sh -t "Add unit tests for UserController"
 #
 
 set -e
@@ -28,10 +28,8 @@ TEMP_PLANS_DIR="$SCRIPT_DIR/ralph/temp-plans"
 IN_PROGRESS_DIR="$SCRIPT_DIR/plans/in-progress"
 PROGRESS_FILE=""
 STATE_FILE=""
-MAX_ELAPSED_SECONDS=28800  # 8 hours default
-MAX_HOURS=8
+MAX_ITERATIONS=10
 ITERATION=0
-START_TIME=""
 PLAN_FILE=""
 TASK_MODE=false
 TASK_STRING=""
@@ -40,7 +38,6 @@ CODING_STANDARDS_HASH=""
 CODING_STANDARDS_CHANGED=false
 
 # Context window management - limit turns to prevent context overflow
-# This forces Claude to checkpoint and return control to Ralph periodically
 MAX_TURNS=50
 
 # Parse arguments
@@ -48,12 +45,11 @@ parse_args() {
     if [[ "$1" == "-t" || "$1" == "--task" ]]; then
         TASK_MODE=true
         TASK_STRING="$2"
-        MAX_HOURS=${3:-8}
+        MAX_ITERATIONS=${3:-10}
     else
         PLAN_FILE="$1"
-        MAX_HOURS=${2:-8}
+        MAX_ITERATIONS=${2:-10}
     fi
-    MAX_ELAPSED_SECONDS=$((MAX_HOURS * 3600))
 }
 
 # Create a temporary plan from a task string
@@ -967,7 +963,7 @@ setup_logging() {
 
     log INFO "Progress file: $PROGRESS_FILE"
     log INFO "Plan: $PLAN_FILE"
-    log INFO "Max runtime: $MAX_HOURS hours"
+    log INFO "Max iterations: $MAX_ITERATIONS"
 }
 
 check_git_status() {
@@ -1085,12 +1081,8 @@ build_prompt() {
     local ci_failures=$(get_circleci_failures)
     local code_quality=$(get_code_quality_issues)
 
-    local elapsed=$(($(date +%s) - START_TIME))
-    local elapsed_mins=$((elapsed / 60))
-    local remaining_mins=$(((MAX_ELAPSED_SECONDS - elapsed) / 60))
-
     cat << PROMPT_EOF
-# Task: Execute Plan (Iteration $ITERATION, ${elapsed_mins}m elapsed, ${remaining_mins}m remaining)
+# Task: Execute Plan (Iteration $ITERATION of $MAX_ITERATIONS)
 
 You are executing a plan iteratively using the Ralph approach. Each iteration
 builds on the previous work. Review what has been done and continue progressing.
@@ -1180,45 +1172,15 @@ $(load_coding_standards)
 - NEVER mark a plan complete until CI has verified the changes (local tests are NOT sufficient).
 - Leave the codebase in a clean state for the next iteration.
 
-## Git Workflow - MUST USE PRs
-
-**CRITICAL**: Never push directly to master. Always use feature branches and PRs:
-
-1. **Create feature branch** in each submodule with changes:
-   \`\`\`bash
-   cd iznik-nuxt3 && git checkout -b feature/descriptive-name
-   \`\`\`
-
-2. **Commit changes** to the feature branch (not master).
-
-3. **Push and create PR** using gh CLI:
-   \`\`\`bash
-   git push -u origin feature/descriptive-name
-   gh pr create --title "Brief description" --body "Details of changes"
-   \`\`\`
-
-4. **Update the plan file** with the PR URL in the "Associated PRs" section.
-
-5. **Update FreegleDocker submodule** to point to your branch:
-   \`\`\`bash
-   cd /home/edward/FreegleDockerWSL
-   git add iznik-nuxt3  # (or whichever submodule changed)
-   git commit -m "Update submodule for PR"
-   git push
-   \`\`\`
-
-6. **Wait for CI** to pass on the PR before marking complete.
-
 ## Completion Requirements
 
 Before outputting PLAN_COMPLETE_MARKER_12345, ensure ALL of these are true:
 
 1. **All tasks in the plan are complete** - Check the status table.
 2. **Local tests pass** - Run all test suites via status container.
-3. **Changes are on feature branches** - NOT on master.
-4. **PRs are created** - Use \`gh pr create\` in each submodule with changes.
-5. **Plan file updated** - PR URLs added to "Associated PRs" section.
-6. **CI has passed** - Wait for CircleCI pipeline to complete successfully on the PRs.
+3. **Changes are committed** - No uncommitted changes.
+4. **Changes are pushed** - Push to trigger CI.
+5. **CI has passed** - Wait for CircleCI pipeline to complete successfully.
 
 If any of these are not met, continue working on the plan. Output the completion marker ONLY when all criteria are satisfied.
 
@@ -1233,7 +1195,6 @@ NEEDS_USER_INPUT_MARKER_12345
 ## Important Reminders
 
 - Each iteration should make meaningful progress on ONE item.
-- **NEVER push to master** - always use feature branches and PRs.
 - Keep CI green - don't commit broken code.
 - Run local tests before any commits.
 - Check the plan's success criteria to know when you're done.
@@ -1242,9 +1203,7 @@ PROMPT_EOF
 
 run_iteration() {
     ITERATION=$((ITERATION + 1))
-    local elapsed=$(($(date +%s) - START_TIME))
-    local elapsed_mins=$((elapsed / 60))
-    log INFO "========== Starting iteration $ITERATION (${elapsed_mins}m elapsed) =========="
+    log INFO "========== Starting iteration $ITERATION of $MAX_ITERATIONS =========="
 
     # Record coding standards hash at start of iteration
     CODING_STANDARDS_HASH=$(get_coding_standards_hash)
@@ -1369,13 +1328,6 @@ verify_and_commit() {
 }
 
 show_summary() {
-    local elapsed=0
-    if [[ -n "$START_TIME" ]]; then
-        elapsed=$(($(date +%s) - START_TIME))
-    fi
-    local elapsed_hours=$((elapsed / 3600))
-    local elapsed_mins=$(((elapsed % 3600) / 60))
-
     echo ""
     echo "=========================================="
     echo "              Ralph Summary              "
@@ -1383,14 +1335,13 @@ show_summary() {
     echo ""
     echo "Plan file: $PLAN_FILE"
     echo "Iterations run: $ITERATION"
-    echo "Elapsed time: ${elapsed_hours}h ${elapsed_mins}m"
     echo "Progress file: $PROGRESS_FILE"
     echo ""
     echo "To review progress:"
     echo "  cat $PROGRESS_FILE"
     echo ""
     echo "To continue from where we left off:"
-    echo "  $0 $PLAN_FILE $MAX_HOURS"
+    echo "  $0 $PLAN_FILE $MAX_ITERATIONS"
     echo ""
 }
 
@@ -1410,13 +1361,13 @@ main() {
     # Show usage if no input provided
     if [[ -z "$PLAN_FILE" && -z "$TASK_STRING" ]]; then
         echo "Usage:"
-        echo "  $0 <plan-file> [max-hours]           - Execute a plan file"
-        echo "  $0 -t \"task description\" [max-hours] - Execute an explicit task"
+        echo "  $0 <plan-file> [max-iterations]           - Execute a plan file"
+        echo "  $0 -t \"task description\" [max-iterations] - Execute an explicit task"
         echo ""
         echo "Examples:"
-        echo "  $0 plans/active/my-feature.md 4       # Run for max 4 hours"
-        echo "  $0 -t \"Fix failing CircleCI tests\" 2  # Run for max 2 hours"
-        echo "  $0 -t \"Add unit tests for UserController\"  # Default 8 hours"
+        echo "  $0 plans/active/my-feature.md 10"
+        echo "  $0 -t \"Fix failing CircleCI tests\" 5"
+        echo "  $0 -t \"Add unit tests for UserController\""
         echo ""
         echo "Available plans:"
         find "$SCRIPT_DIR/plans" -name "*.md" -type f 2>/dev/null | head -20
@@ -1455,29 +1406,15 @@ main() {
     fi
 
     log INFO "Starting Ralph loop..."
-    START_TIME=$(date +%s)
 
-    while true; do
-        # Check elapsed time
-        local elapsed=$(($(date +%s) - START_TIME))
-        if [[ $elapsed -ge $MAX_ELAPSED_SECONDS ]]; then
-            local elapsed_hours=$((elapsed / 3600))
-            local elapsed_mins=$(((elapsed % 3600) / 60))
-            log WARN "Elapsed time limit reached (${elapsed_hours}h ${elapsed_mins}m)."
-            log INFO "Plan may not be complete. Review progress and run again if needed."
-            show_summary
-            exit 0
-        fi
-
+    while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         run_iteration
         local result=$?
 
         case $result in
             0)
                 # Normal completion, continue to next iteration
-                local elapsed=$(($(date +%s) - START_TIME))
-                local elapsed_mins=$((elapsed / 60))
-                log INFO "Iteration $ITERATION completed (${elapsed_mins}m elapsed). Continuing..."
+                log INFO "Iteration $ITERATION completed. Continuing..."
                 sleep 2
                 ;;
             1)
@@ -1501,6 +1438,10 @@ main() {
                 ;;
         esac
     done
+
+    log WARN "Reached maximum iterations ($MAX_ITERATIONS)."
+    log INFO "Plan may not be complete. Review progress and run again if needed."
+    show_summary
 }
 
 main "$@"

@@ -1,3 +1,7 @@
+**See also: [codingstandards.md](codingstandards.md)** for core coding rules that apply to all development.
+
+**Use the `ralph` skill** for any non-trivial development task. For automated/unattended execution: `./ralph.sh -t "task description"`
+
 - **NEVER skip or make coverage optional in tests.** Coverage is an integral part of testing and must always be collected and uploaded. If coverage upload fails, fix the root cause - never bypass it.
 - **NEVER dismiss test failures as "pre-existing flaky tests" or "unrelated to my changes".** If a test fails during your work, you must investigate and fix it. Period. It does not matter whether you think the failure is related to your changes or not. The tests must pass. While it's possible some tests have underlying reliability issues, if they passed before and now fail, the change since the last successful build is usually the cause. Compare with the last successful build, find what changed, and fix it. Even if the root cause turns out to be a pre-existing issue, it still needs to be fixed - don't use "flaky" as an excuse to avoid investigation.
 - Always restart the status monitor after making changes to its code.
@@ -84,14 +88,9 @@ Test URLs work properly:
 - `http://freegle-prod-local.localhost/` - Production Freegle build (optimized, tested by Playwright)
 - `http://apiv2.localhost:8192/` - API v2 access  
 - `http://delivery.localhost/?url=http://freegle-prod.localhost/icon.png&w=116&output=png` - Image delivery
-- When you create new files, add them to git automatically unless they are temporary for testing.
-- Never add specific IP addresses in as extra_hosts in docker-compose config.  That will not work when a rebuild happens.
-- Remember if that if you make changes directly to a container, they will be lost on restarte..  Any container changes miust aalso be make locally.
-- Don't use simple delays in Playwright tests - these are prone to failure on slow runs.  It's ok to have a wait as a fallback.
-- If debugging Playwright test failures, check the Freegle container for logs triggering a reload.  Those will break tests.  Add anything shown to the pre-optimization in nuxt.config.js and rebuild the container to pick it up.
-- Never fix Playwright tests by direct navigation - we need to simular user behaviour via clicks.  Similarly never bypass Playwright's checks by doing native Javascript click.
-- In Playwright tests, always use type() not fill() where possible to simulate user behaviour.
-Fix Withdraw issue.
+- Never add specific IP addresses in as extra_hosts in docker-compose config. That will not work when a rebuild happens.
+- Remember that if you make changes directly to a container, they will be lost on restart. Any container changes must also be made locally.
+- If debugging Playwright test failures, check the Freegle container for logs triggering a reload. Those will break tests. Add anything shown to the pre-optimization in nuxt.config.js and rebuild the container to pick it up.
 
 ## CircleCI Submodule Integration
 
@@ -313,13 +312,8 @@ When all tests pass successfully in CircleCI, the system automatically:
 - **PHPUnit Tests**: `curl -X POST http://localhost:8081/api/tests/php`
 - **Playwright Tests**: `curl -X POST http://localhost:8081/api/tests/playwright`
 
-- When removing code, never leave comments about what used to be there, or "this is now" stuff - the code should reflect the current behaviour.
-- When creating temporary scripts to run, put them in /tmp.  That way they won't clutter up git.
-- When making app changes, remember to update README-APP.md
-- When you make changes to Go code, you need to rebuild the v2 API container and check it starts successfully.
-- Never add Claude Code to commit messages
-- Don't commit unless you've been told to - you're committing code with bugs in before testing.
-- Remember that when working on the yesterday system you need to make sure you don't break local dev and CircleCI.  We have a docker override file to help with this.
+- When making app changes, remember to update README-APP.md.
+- Remember that when working on the yesterday system you need to make sure you don't break local dev and CircleCI. We have a docker override file to help with this.
 - Never merge the whole of the app-ci-fd branch into master.
 
 ## Sentry Auto-Fix Integration
@@ -344,12 +338,7 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - API endpoints: `/api/sentry/status`, `/api/sentry/poll`, `/api/sentry/clear`
 - Integration invokes `claude` CLI with `--dangerously-skip-permissions` for automation
 - Each Sentry issue analysis uses your Claude Code quota (no additional costs)
-- When making changes to the tests, don't forget to update the orb
-- We should always create plans/ md files in FreegleDocker, never in submodules
+- When making changes to the tests, don't forget to update the orb.
+- We should always create plans/ md files in FreegleDocker, never in submodules.
 - When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
-- Avoid naked <a> tags - check ExternalLink
-- Avoid curved corners
-- Don't push unless I give you explicit instructions to do so.
-- Never commit or push to github unless explicitly told to by the user
-- House style - put full stops at end of sentences.
 - **Browser Testing**: See `BROWSER-TESTING.md` for Chrome DevTools MCP usage, login flow, debugging computed styles, and injecting CSS fixes.

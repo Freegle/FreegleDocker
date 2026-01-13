@@ -1635,6 +1635,26 @@ jobs:
             mkdir -p ~/test-output
             TESTS_KILLED_EARLY=false
 
+            # === WATCHDOG TIMEOUT ===
+            # Start a watchdog that will force-stop tests after 48 minutes
+            # This leaves ~12 minutes for artifact collection before CircleCI's 60-min hard limit
+            WATCHDOG_TIMEOUT_MINUTES=48
+            echo "⏱️ Starting watchdog timer (${WATCHDOG_TIMEOUT_MINUTES} minutes)..."
+            (
+              sleep $((WATCHDOG_TIMEOUT_MINUTES * 60))
+              echo "⏰ WATCHDOG: ${WATCHDOG_TIMEOUT_MINUTES}-minute timeout reached!"
+              echo "timeout" > /tmp/watchdog-triggered
+              # Kill all background test processes
+              pkill -f "curl.*localhost:8081/api/tests" 2>/dev/null || true
+              # Signal the main process to check the marker
+              kill -USR1 $$ 2>/dev/null || true
+            ) &
+            WATCHDOG_PID=$!
+            echo "WATCHDOG_PID=$WATCHDOG_PID" > /tmp/watchdog-pid
+
+            # Trap to check watchdog on signal
+            trap 'if [ -f /tmp/watchdog-triggered ]; then echo "⏰ Tests terminated by watchdog timeout"; fi' USR1
+
             # Start iznik-batch tests in background
             echo "🧪 Starting iznik-batch tests in background..."
             (
@@ -1829,7 +1849,25 @@ jobs:
                 break
               fi
 
-              # Check status of all 4 tests
+              # Check if watchdog triggered (overall job timeout approaching)
+              if [ -f /tmp/watchdog-triggered ]; then
+                echo "⏰ WATCHDOG: Overall job timeout - stopping tests to collect artifacts"
+                echo "timeout" > /tmp/playwright-result
+                kill $LARAVEL_PID 2>/dev/null || true
+                kill $GO_PID 2>/dev/null || true
+                kill $PHPUNIT_PID 2>/dev/null || true
+                TESTS_KILLED_EARLY=true
+                break
+              fi
+
+              sleep 10
+
+              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+              status=$(echo "$status_response" | jq -r '.status // "unknown"')
+              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
+              total=$(echo "$status_response" | jq -r '.totalTests // 0')
+
+              elapsed_min=$((elapsed / 60))
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
               LARAVEL_COMPLETED=$([ -f /tmp/laravel-completed ] && cat /tmp/laravel-completed || echo '0')
               LARAVEL_TOTAL=$([ -f /tmp/laravel-total ] && cat /tmp/laravel-total || echo '0')
@@ -1937,6 +1975,28 @@ jobs:
               echo "PLAYWRIGHT_TESTS_PASSED=true" >> $BASH_ENV
             else
               echo "PLAYWRIGHT_TESTS_PASSED=false" >> $BASH_ENV
+            fi
+
+            # === WATCHDOG CLEANUP ===
+            # Kill the watchdog since tests completed (either pass or fail)
+            if [ -f /tmp/watchdog-pid ]; then
+              WATCHDOG_PID=$(cat /tmp/watchdog-pid)
+              kill $WATCHDOG_PID 2>/dev/null || true
+              echo "🛑 Watchdog timer stopped"
+            fi
+
+            # Check if we hit the watchdog timeout
+            if [ -f /tmp/watchdog-triggered ]; then
+              echo ""
+              echo "⏰ =============================================="
+              echo "⏰ TESTS TERMINATED BY WATCHDOG TIMEOUT"
+              echo "⏰ The overall job timeout (48 min) was reached."
+              echo "⏰ This may indicate tests are hanging or too slow."
+              echo "⏰ Artifacts will be collected for debugging."
+              echo "⏰ =============================================="
+              echo ""
+              # Don't exit 1 here - let artifacts be collected
+              # The test results will show as failed anyway
             fi
 
             # Fail if any test suite failed

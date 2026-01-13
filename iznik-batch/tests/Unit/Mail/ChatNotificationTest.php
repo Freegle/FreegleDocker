@@ -1085,6 +1085,10 @@ class ChatNotificationTest extends TestCase
         // Debug: Check mail object state before build.
         $recipientExists = $mail->recipient->exists;
         $chatType = $mail->chatType;
+        $recipientEmail = $mail->recipient->email_preferred;
+
+        // Debug: Check if footer partial view exists.
+        $footerViewExists = view()->exists('emails.mjml.partials.footer');
 
         $mail->build();
         $html = $mail->render();
@@ -1093,6 +1097,14 @@ class ChatNotificationTest extends TestCase
         $footerMatch = [];
         preg_match('/This email was sent[^<]*/', $html, $footerMatch);
         $footerText = $footerMatch[0] ?? 'FOOTER NOT FOUND';
+
+        // Debug: Check for any mj-section with footer color.
+        $hasFooterColor = strpos($html, '#f5f5f5') !== false;
+        $htmlLength = strlen($html);
+
+        // Debug: Look for any footer-like content.
+        $hasCharityRef = strpos($html, 'XT32865') !== false;
+        $hasWeaversField = strpos($html, 'Weaver') !== false;
 
         // Build debug message for assertion failure.
         $debug = sprintf(
@@ -1103,8 +1115,14 @@ class ChatNotificationTest extends TestCase
             "user2->id: %s\n" .
             "user2->fresh()->exists: %s\n" .
             "mail->recipient->exists: %s\n" .
+            "mail->recipient->email_preferred: %s\n" .
             "mail->chatType: %s\n" .
             "ChatRoom::TYPE_USER2USER: %s\n" .
+            "footer view exists: %s\n" .
+            "HTML length: %d\n" .
+            "Has footer bg color (#f5f5f5): %s\n" .
+            "Has charity ref (XT32865): %s\n" .
+            "Has Weavers Field address: %s\n" .
             "Footer text found: %s\n" .
             "==================\n",
             var_export($configEnabled, true),
@@ -1113,8 +1131,14 @@ class ChatNotificationTest extends TestCase
             var_export($user2Id, true),
             var_export($user2FreshExists, true),
             var_export($recipientExists, true),
+            var_export($recipientEmail, true),
             var_export($chatType, true),
             var_export(ChatRoom::TYPE_USER2USER, true),
+            var_export($footerViewExists, true),
+            $htmlLength,
+            var_export($hasFooterColor, true),
+            var_export($hasCharityRef, true),
+            var_export($hasWeaversField, true),
             $footerText
         );
 
