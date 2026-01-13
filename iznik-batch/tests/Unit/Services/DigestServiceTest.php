@@ -158,10 +158,10 @@ class DigestServiceTest extends TestCase
         // Create Freegle group.
         $freegleGroup = $this->createTestGroup();
 
-        // Create non-Freegle group.
-        Group::create([
-            'nameshort' => 'NonFreegleGroup',
-            'namefull' => 'Non Freegle Group',
+        // Create non-Freegle group with unique name.
+        $nonFreegle = Group::create([
+            'nameshort' => 'NonFreegleGroup_' . uniqid(),
+            'namefull' => 'Non Freegle Group_' . uniqid(),
             'type' => 'Other',
             'region' => 'TestRegion',
             'lat' => 51.5074,
@@ -170,7 +170,8 @@ class DigestServiceTest extends TestCase
 
         $activeGroups = $this->service->getActiveGroups();
 
-        // Should only contain Freegle group.
+        // Should contain Freegle group but not the non-Freegle one.
         $this->assertTrue($activeGroups->contains('id', $freegleGroup->id));
+        $this->assertFalse($activeGroups->contains('id', $nonFreegle->id));
     }
 }

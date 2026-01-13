@@ -11,6 +11,18 @@ class EmailTracking extends Model
 {
     protected $table = 'email_tracking';
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Auto-generate tracking_id if not provided.
+        static::creating(function ($model) {
+            if (empty($model->tracking_id)) {
+                $model->tracking_id = self::generateTrackingId();
+            }
+        });
+    }
+
     protected $fillable = [
         'tracking_id',
         'email_type',

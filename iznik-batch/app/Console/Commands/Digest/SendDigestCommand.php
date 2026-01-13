@@ -62,20 +62,19 @@ class SendDigestCommand extends Command
         ];
 
         // Get groups to process.
-        $groupsQuery = $digestService->getActiveGroups();
-
-        // Apply sharding if specified.
-        if ($this->mod > 1) {
-            $groupsQuery = $groupsQuery->filter(function ($group) {
-                return $group->id % $this->mod === $this->val;
-            });
-        }
-
-        // Filter to specific group if specified.
+        // If a specific group is specified, query only that group to avoid loading all groups into memory.
         if ($groupId) {
-            $groupsQuery = $groupsQuery->filter(function ($group) use ($groupId) {
-                return $group->id === (int) $groupId;
-            });
+            $group = \App\Models\Group::activeFreegle()->where('id', (int) $groupId)->first();
+            $groupsQuery = $group ? collect([$group]) : collect();
+        } else {
+            $groupsQuery = $digestService->getActiveGroups();
+
+            // Apply sharding if specified.
+            if ($this->mod > 1) {
+                $groupsQuery = $groupsQuery->filter(function ($group) {
+                    return $group->id % $this->mod === $this->val;
+                });
+            }
         }
 
         foreach ($groupsQuery as $group) {

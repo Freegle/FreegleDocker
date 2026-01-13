@@ -82,7 +82,8 @@ class ChatMessageModelTest extends TestCase
             'platform' => 1,
         ]);
 
-        $visibleMessages = ChatMessage::visible()->get();
+        // Filter to just our test room to avoid interference from parallel tests.
+        $visibleMessages = ChatMessage::visible()->where('chatid', $room->id)->get();
 
         $this->assertTrue($visibleMessages->contains('id', $visible->id));
         $this->assertEquals(1, $visibleMessages->count());

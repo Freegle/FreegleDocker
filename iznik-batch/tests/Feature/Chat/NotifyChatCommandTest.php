@@ -49,13 +49,15 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_user2user_command_runs_successfully(): void
     {
-        $this->artisan('mail:chat:user2user', ['--max-iterations' => 1])
+        // Use a non-existent chat ID to avoid scanning all chats.
+        $this->artisan('mail:chat:user2user', ['--chat' => -1, '--max-iterations' => 1])
             ->assertExitCode(0);
     }
 
     public function test_user2mod_command_runs_successfully(): void
     {
-        $this->artisan('mail:chat:user2mod', ['--max-iterations' => 1])
+        // Use a non-existent chat ID to avoid scanning all chats.
+        $this->artisan('mail:chat:user2mod', ['--chat' => -1, '--max-iterations' => 1])
             ->assertExitCode(0);
     }
 
@@ -76,7 +78,9 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_command_accepts_delay_option(): void
     {
+        // Use a non-existent chat ID to avoid scanning all chats.
         $this->artisan('mail:chat:user2user', [
+            '--chat' => -1,
             '--delay' => 60,
             '--max-iterations' => 1,
         ])->assertExitCode(0);
@@ -84,7 +88,9 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_command_accepts_since_option(): void
     {
+        // Use a non-existent chat ID to avoid scanning all chats.
         $this->artisan('mail:chat:user2user', [
+            '--chat' => -1,
             '--since' => 48,
             '--max-iterations' => 1,
         ])->assertExitCode(0);
@@ -115,6 +121,7 @@ class NotifyChatCommandTest extends TestCase
         ]);
 
         $this->artisan('mail:chat:user2user', [
+            '--chat' => $room->id,
             '--force' => true,
             '--max-iterations' => 1,
         ])->assertExitCode(0);
@@ -122,14 +129,16 @@ class NotifyChatCommandTest extends TestCase
 
     public function test_command_displays_completion_message(): void
     {
-        $this->artisan('mail:chat:user2user', ['--max-iterations' => 1])
+        // Use a non-existent chat ID to avoid scanning all chats.
+        $this->artisan('mail:chat:user2user', ['--chat' => -1, '--max-iterations' => 1])
             ->expectsOutputToContain('User2User notification complete')
             ->assertExitCode(0);
     }
 
     public function test_user2mod_command_displays_completion_message(): void
     {
-        $this->artisan('mail:chat:user2mod', ['--max-iterations' => 1])
+        // Use a non-existent chat ID to avoid scanning all chats.
+        $this->artisan('mail:chat:user2mod', ['--chat' => -1, '--max-iterations' => 1])
             ->expectsOutputToContain('User2Mod notification complete')
             ->assertExitCode(0);
     }

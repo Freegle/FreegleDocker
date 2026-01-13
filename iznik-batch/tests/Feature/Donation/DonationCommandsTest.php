@@ -36,7 +36,7 @@ class DonationCommandsTest extends TestCase
 
         UserDonation::create([
             'userid' => $user->id,
-            'Payer' => 'test@example.com',
+            'Payer' => $this->uniqueEmail('payer'),
             'PayerDisplayName' => 'Test Donor',
             'timestamp' => now(),
             'TransactionType' => 'Donation',

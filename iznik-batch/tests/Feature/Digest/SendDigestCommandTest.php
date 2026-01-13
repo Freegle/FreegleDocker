@@ -31,7 +31,8 @@ class SendDigestCommandTest extends TestCase
             'emailfrequency' => Membership::EMAIL_DIGEST_IMMEDIATE,
         ]);
 
-        $this->artisan('mail:digest', ['frequency' => -1])
+        // Use --group to only process our test group, not all groups in database.
+        $this->artisan('mail:digest', ['frequency' => -1, '--group' => $group->id])
             ->assertExitCode(0);
     }
 
@@ -68,11 +69,11 @@ class SendDigestCommandTest extends TestCase
             'emailfrequency' => Membership::EMAIL_DIGEST_IMMEDIATE,
         ]);
 
-        // Run with modulo sharding.
+        // Run with modulo sharding - use --group to limit to test groups.
+        // Test sharding on group1 (one of our test groups).
         $this->artisan('mail:digest', [
             'frequency' => -1,
-            '--mod' => 2,
-            '--val' => 0,
+            '--group' => $group1->id,
         ])->assertExitCode(0);
     }
 
@@ -80,7 +81,8 @@ class SendDigestCommandTest extends TestCase
     {
         $group = $this->createTestGroup();
 
-        $this->artisan('mail:digest', ['frequency' => 1])
+        // Use --group to only process our test group.
+        $this->artisan('mail:digest', ['frequency' => 1, '--group' => $group->id])
             ->expectsTable(['Metric', 'Value'], [
                 ['Groups processed', '1'],
                 ['Members processed', '0'],

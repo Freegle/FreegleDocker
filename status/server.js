@@ -205,6 +205,26 @@ const services = [
     checkType: "delivery",
     category: "infra",
   },
+
+  // MCP Support Tools (privacy-preserving log analysis)
+  {
+    id: "mcp-sanitizer",
+    container: "freegle-mcp-sanitizer",
+    checkType: "container-only",
+    category: "backend",
+  },
+  {
+    id: "mcp-interface",
+    container: "freegle-mcp-interface",
+    checkType: "container-only",
+    category: "backend",
+  },
+  {
+    id: "mcp-pseudonymizer",
+    container: "freegle-mcp-pseudonymizer",
+    checkType: "container-only",
+    category: "backend",
+  },
 ];
 
 // HTTP Agent with keep-alive for better performance
@@ -871,15 +891,20 @@ async function runPlaywrightTests(testFile = null, testName = null) {
     testStatus.message = "Verifying Traefik routes...";
     testStatus.logs += "Verifying Traefik routes are accessible...\n";
 
+    // Routes to verify before tests - critical routes must pass or tests fail early
     const routesToVerify = [
-      { name: 'freegle-prod', url: 'http://freegle-prod-local.localhost/' },
-      { name: 'apiv2', url: 'http://apiv2.localhost:8192/api/group?id=1' },
-      { name: 'delivery', url: 'http://delivery.localhost/?url=http://freegle-prod-local.localhost/icon.png&w=16&output=png' },
+      { name: 'freegle-prod', url: 'http://freegle-prod-local.localhost/', critical: true },
+      { name: 'apiv1', url: 'http://apiv1.localhost/api/config', critical: true },
+      { name: 'apiv2', url: 'http://apiv2.localhost:8192/api/group?id=1', critical: false },
+      { name: 'delivery', url: 'http://delivery.localhost/?url=http://freegle-prod-local.localhost/icon.png&w=16&output=png', critical: false },
     ];
+
+    const failedCriticalRoutes = [];
 
     for (const route of routesToVerify) {
       let routeVerified = false;
-      const maxAttempts = 5;
+      // More attempts for critical routes - Traefik may need time to discover backends
+      const maxAttempts = route.critical ? 15 : 5;
       const retryDelay = 2000;
 
       for (let attempt = 1; attempt <= maxAttempts && !routeVerified; attempt++) {
@@ -907,8 +932,24 @@ async function runPlaywrightTests(testFile = null, testName = null) {
       }
 
       if (!routeVerified) {
-        testStatus.logs += `⚠ Warning: ${route.name} route not verified after ${maxAttempts} attempts\n`;
+        if (route.critical) {
+          testStatus.logs += `✗ CRITICAL: ${route.name} route not verified after ${maxAttempts} attempts\n`;
+          failedCriticalRoutes.push(route.name);
+        } else {
+          testStatus.logs += `⚠ Warning: ${route.name} route not verified after ${maxAttempts} attempts\n`;
+        }
       }
+    }
+
+    // Fail early if critical routes aren't available - tests will definitely fail
+    if (failedCriticalRoutes.length > 0) {
+      const errorMsg = `Critical routes not available: ${failedCriticalRoutes.join(', ')}. Tests cannot proceed.`;
+      testStatus.status = "failed";
+      testStatus.message = errorMsg;
+      testStatus.logs += `\n${errorMsg}\n`;
+      testStatus.logs += "This usually indicates a Traefik routing issue. Check that apiv1 container started before Traefik.\n";
+      testStatus.endTime = new Date();
+      return;
     }
 
     testStatus.logs += "Route verification complete\n";
@@ -1898,8 +1939,15 @@ const httpServer = http.createServer(async (req, res) => {
         docker exec freegle-batch sh -c 'rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php' 2>&1 || true
 
         # Step 2: Regenerate package manifest - this creates clean services.php and packages.php
+        # CRITICAL: Do NOT use || true here - we must fail if package manifest can't be regenerated
         echo "Regenerating package manifest..."
-        docker exec freegle-batch php artisan package:discover --ansi 2>&1 || true
+        docker exec freegle-batch php artisan package:discover --ansi 2>&1
+
+        # Verify the manifest was created - this is what Laravel needs to bootstrap
+        if ! docker exec freegle-batch test -f /var/www/html/bootstrap/cache/services.php; then
+          echo "ERROR: services.php was not created after package:discover"
+          exit 1
+        fi
 
         # Step 3: Clear view cache using artisan (clears Laravel's internal state, not just files)
         # CRITICAL: Using view:clear instead of rm -rf ensures Laravel's internal view state is reset.
@@ -1928,8 +1976,15 @@ const httpServer = http.createServer(async (req, res) => {
         # IMPORTANT: Do NOT run config:cache here - tests need to dynamically set the database name
         # in bootstrap.php, which won't work if config is cached with the production DB name.
 
-        echo "Running Laravel tests in parallel with coverage..."
-        docker exec freegle-batch vendor/bin/paratest --testsuite=Unit,Feature -c phpunit.xml --cache-directory=/tmp/phpunit-cache --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+        echo "Setting up fresh test database..."
+        # Create test database if it doesn't exist, then run fresh migrations
+        docker exec freegle-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
+        # Must explicitly set DB_DATABASE to avoid touching production database
+        docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
+
+        echo "Running Laravel tests serially with coverage..."
+        # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
+        docker exec freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
       `,
       ],
       { stdio: "pipe" }

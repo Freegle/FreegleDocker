@@ -191,6 +191,34 @@
                     <span class="status">Loading...</span>
                 </div>
             </div>
+
+            <h3 style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #e0e0e0;">MCP Support Tools</h3>
+            <small style="color: #666; display: block; margin-bottom: 15px;">Privacy-preserving AI log analysis - see <code>support-tools/README.md</code></small>
+
+            <div id="mcp-sanitizer" class="service loading">
+                <div>
+                    <strong>Query Sanitizer</strong> - Tokenizes PII in user queries<br>
+                    <span class="url">http://mcp-sanitizer.localhost</span><br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-mcp-sanitizer</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="mcp-interface" class="service loading">
+                <div>
+                    <strong>MCP Interface</strong> - Stateless proxy (no key)<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-mcp-interface</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
+
+            <div id="mcp-pseudonymizer" class="service loading">
+                <div>
+                    <strong>Pseudonymizer</strong> - Queries Loki, pseudonymizes results<br>
+                    <small class="container-name" style="color: #999; font-family: monospace;">Container: freegle-mcp-pseudonymizer</small><br>
+                    <span class="status">Loading...</span>
+                </div>
+            </div>
         </div>
 
         <!-- Dev Tools Tab -->
@@ -556,7 +584,10 @@
             { id: 'rspamd', container: 'freegle-rspamd' },
             { id: 'traefik', container: 'freegle-traefik' },
             { id: 'tusd', container: 'freegle-tusd' },
-            { id: 'delivery', container: 'freegle-delivery' }
+            { id: 'delivery', container: 'freegle-delivery' },
+            { id: 'mcp-sanitizer', container: 'freegle-mcp-sanitizer' },
+            { id: 'mcp-interface', container: 'freegle-mcp-interface' },
+            { id: 'mcp-pseudonymizer', container: 'freegle-mcp-pseudonymizer' }
         ];
 
         // Tab switching
@@ -587,7 +618,7 @@
             const tabServices = {
                 'freegle': ['freegle-dev-local', 'freegle-prod-local'],
                 'modtools': ['modtools-dev-local', 'modtools-prod-local'],
-                'backend': ['apiv1', 'apiv2', 'batch'],
+                'backend': ['apiv1', 'apiv2', 'batch', 'mcp-sanitizer', 'mcp-interface', 'mcp-pseudonymizer'],
                 'devtools': ['phpmyadmin', 'mailpit'],
                 'testing': ['playwright', 'batch'],
                 'infra': ['traefik', 'percona', 'postgres', 'redis', 'tusd', 'beanstalkd', 'spamassassin', 'rspamd', 'delivery'],

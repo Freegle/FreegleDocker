@@ -30,7 +30,7 @@ class UserCommandsTest extends TestCase
         // Add a bounced email.
         UserEmail::create([
             'userid' => $user->id,
-            'email' => 'bounced@example.com',
+            'email' => $this->uniqueEmail('bounced'),
             'bounced' => now()->subDays(1),
             'added' => now()->subDays(30),
         ]);
@@ -69,7 +69,7 @@ class UserCommandsTest extends TestCase
 
         UserEmail::create([
             'userid' => $user->id,
-            'email' => 'active@test.com',
+            'email' => $this->uniqueEmail('active'),
             'preferred' => 1,
             'added' => now(),
         ]);

@@ -19,6 +19,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Scheduler Lock Store
+    |--------------------------------------------------------------------------
+    |
+    | This option controls the lock mechanism used for scheduler mutexes.
+    | 'flock' uses OS-level file locks that auto-release on process death.
+    | 'cache' uses Laravel's default cache-based locks with TTL expiry.
+    |
+    */
+
+    'lock_store' => env('LOCK_STORE', 'flock'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Cache Stores
     |--------------------------------------------------------------------------
     |

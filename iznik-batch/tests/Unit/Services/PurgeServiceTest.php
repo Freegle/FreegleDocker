@@ -100,7 +100,8 @@ class PurgeServiceTest extends TestCase
 
         $count = $this->service->purgeEmptyChatRooms();
 
-        $this->assertEquals(1, $count);
+        // In parallel tests, other tests may create empty rooms too, so check at least our room was purged.
+        $this->assertGreaterThanOrEqual(1, $count);
         $this->assertDatabaseMissing('chat_rooms', ['id' => $emptyRoom->id]);
         $this->assertDatabaseHas('chat_rooms', ['id' => $roomWithMessages->id]);
     }
@@ -114,7 +115,8 @@ class PurgeServiceTest extends TestCase
 
         $count = $this->service->purgeOrphanedChatImages();
 
-        $this->assertEquals(1, $count);
+        // In parallel tests, other tests may create orphaned images too, so check at least our image was purged.
+        $this->assertGreaterThanOrEqual(1, $count);
         $this->assertDatabaseMissing('chat_images', ['id' => $orphanedImage->id]);
     }
 
@@ -197,14 +199,14 @@ class PurgeServiceTest extends TestCase
     {
         // Create old unvalidated email.
         DB::table('users_emails')->insert([
-            'email' => 'unvalidated@example.com',
+            'email' => $this->uniqueEmail('unvalidated'),
             'userid' => null,
             'added' => now()->subDays(10),
         ]);
 
         // Create recent unvalidated email.
         DB::table('users_emails')->insert([
-            'email' => 'recent@example.com',
+            'email' => $this->uniqueEmail('recent'),
             'userid' => null,
             'added' => now()->subDays(1),
         ]);
@@ -285,7 +287,7 @@ class PurgeServiceTest extends TestCase
         $oldTracking = EmailTracking::create([
             'tracking_id' => EmailTracking::generateTrackingId(),
             'email_type' => 'Test',
-            'recipient_email' => 'old@example.com',
+            'recipient_email' => $this->uniqueEmail('old'),
             'sent_at' => now()->subDays(100),
         ]);
 
@@ -306,7 +308,7 @@ class PurgeServiceTest extends TestCase
         $recentTracking = EmailTracking::create([
             'tracking_id' => EmailTracking::generateTrackingId(),
             'email_type' => 'Test',
-            'recipient_email' => 'recent@example.com',
+            'recipient_email' => $this->uniqueEmail('recent'),
             'sent_at' => now()->subDays(10),
         ]);
 

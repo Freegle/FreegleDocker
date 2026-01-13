@@ -15,6 +15,8 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+    // Use DatabaseTransactions for serial PHPUnit execution.
+    // This rolls back each test's changes, ensuring test isolation.
     use DatabaseTransactions;
 
     /**
@@ -42,13 +44,33 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
-     * Create a test Freegle group.
+     * Create a test Freegle group with auto-generated unique name.
+     *
+     * IMPORTANT: Do NOT pass 'nameshort' or 'namefull' - these are auto-generated
+     * to ensure uniqueness in parallel test runs. Use $group->nameshort in assertions.
+     *
+     * @throws \InvalidArgumentException if nameshort or namefull is provided
      */
     protected function createTestGroup(array $attributes = []): Group
     {
-        $uniqueId = uniqid();
+        // Fail fast if caller tries to use hardcoded names - these cause collisions in parallel tests.
+        if (isset($attributes['nameshort'])) {
+            throw new \InvalidArgumentException(
+                "Do not pass 'nameshort' to createTestGroup() - it causes collisions in parallel tests. " .
+                "Use the auto-generated name and reference \$group->nameshort in assertions."
+            );
+        }
+        if (isset($attributes['namefull'])) {
+            throw new \InvalidArgumentException(
+                "Do not pass 'namefull' to createTestGroup() - it causes collisions in parallel tests. " .
+                "Use the auto-generated name and reference \$group->namefull in assertions."
+            );
+        }
+
+        $uniqueId = uniqid('', true);
+
         return Group::create(array_merge([
-            'nameshort' => 'TestGroup' . $uniqueId,
+            'nameshort' => 'TestGroup_' . $uniqueId,
             'namefull' => 'Test Freegle Group ' . $uniqueId,
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
@@ -148,6 +170,44 @@ abstract class TestCase extends BaseTestCase
             'seenbyall' => 0,
             'reviewrejected' => 0,
             'platform' => 1,
+        ], $attributes));
+    }
+
+    /**
+     * Generate a unique email address for testing.
+     *
+     * Use this instead of hardcoding email addresses which cause collisions in parallel tests.
+     *
+     * @param string $prefix Optional prefix for the email (e.g., 'bounced', 'validated')
+     * @param string $domain Optional domain for the email (default: 'test.com')
+     * @return string A unique email address
+     */
+    protected function uniqueEmail(string $prefix = 'test', string $domain = 'test.com'): string
+    {
+        return $prefix . '_' . uniqid('', true) . '@' . $domain;
+    }
+
+    /**
+     * Create a UserEmail record with a unique email address.
+     *
+     * IMPORTANT: Do NOT pass 'email' - use the returned object's email property.
+     *
+     * @throws \InvalidArgumentException if email is provided
+     */
+    protected function createTestUserEmail(User $user, array $attributes = []): UserEmail
+    {
+        if (isset($attributes['email'])) {
+            throw new \InvalidArgumentException(
+                "Do not pass 'email' to createTestUserEmail() - it causes collisions in parallel tests. " .
+                "Use the auto-generated email and reference \$userEmail->email in assertions."
+            );
+        }
+
+        return UserEmail::create(array_merge([
+            'userid' => $user->id,
+            'email' => $this->uniqueEmail(),
+            'preferred' => 0,
+            'added' => now(),
         ], $attributes));
     }
 }

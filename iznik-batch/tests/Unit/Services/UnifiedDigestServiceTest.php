@@ -128,14 +128,14 @@ class UnifiedDigestServiceTest extends TestCase
 
     public function test_format_posted_to_multiple_groups(): void
     {
-        $group1 = $this->createTestGroup(['nameshort' => 'GroupA']);
-        $group2 = $this->createTestGroup(['nameshort' => 'GroupB']);
+        $group1 = $this->createTestGroup();
+        $group2 = $this->createTestGroup();
 
         $result = $this->service->formatPostedTo([$group1->id, $group2->id]);
 
         $this->assertStringContainsString('Posted to:', $result);
-        $this->assertStringContainsString('GroupA', $result);
-        $this->assertStringContainsString('GroupB', $result);
+        $this->assertStringContainsString($group1->nameshort, $result);
+        $this->assertStringContainsString($group2->nameshort, $result);
     }
 
     public function test_format_posted_to_single_group_returns_empty(): void

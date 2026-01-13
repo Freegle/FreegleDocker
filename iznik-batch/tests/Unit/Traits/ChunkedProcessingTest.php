@@ -117,20 +117,24 @@ class ChunkedProcessingTest extends TestCase
 
     public function test_process_in_chunks_logs_at_interval(): void
     {
-        // Create test users.
+        // Create test users with a unique marker.
+        $marker = 'Interval_' . uniqid('', true);
+        $userIds = [];
         for ($i = 0; $i < 5; $i++) {
-            User::create([
+            $user = User::create([
                 'firstname' => 'Test',
-                'lastname' => 'Interval' . $i,
-                'fullname' => 'Test Interval' . $i,
+                'lastname' => $marker . $i,
+                'fullname' => 'Test ' . $marker . $i,
                 'added' => now(),
             ]);
+            $userIds[] = $user->id;
         }
 
         $this->infoMessages = [];
         $this->setLogInterval(2);
 
-        $count = $this->processInChunks(User::query(), function ($user) {
+        // Only process the users we created, not all users in the database.
+        $count = $this->processInChunks(User::whereIn('id', $userIds), function ($user) {
             // Process the user.
         });
 
@@ -140,20 +144,24 @@ class ChunkedProcessingTest extends TestCase
 
     public function test_process_and_delete_logs_at_interval(): void
     {
-        // Create users that will be deleted.
+        // Create users that will be deleted, with a unique marker.
+        $marker = 'DeleteLog_' . uniqid('', true);
+        $userIds = [];
         for ($i = 0; $i < 4; $i++) {
-            User::create([
+            $user = User::create([
                 'firstname' => 'Delete',
-                'lastname' => 'Log' . $i,
-                'fullname' => 'Delete Log' . $i,
+                'lastname' => $marker . $i,
+                'fullname' => 'Delete ' . $marker . $i,
                 'added' => now(),
             ]);
+            $userIds[] = $user->id;
         }
 
         $this->infoMessages = [];
         $this->setLogInterval(2);
 
-        $count = $this->processAndDelete(User::query(), function ($user) {
+        // Only delete the users we created, not all users in the database.
+        $count = $this->processAndDelete(User::whereIn('id', $userIds), function ($user) {
             // Process the user.
         });
 

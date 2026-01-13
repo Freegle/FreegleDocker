@@ -80,26 +80,26 @@ class DigestMailTest extends TestCase
     public function test_multiple_digest_subject_single_message(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
         $this->createMembership($user, $group);
         $messages = collect([$this->createTestMessage($user, $group)]);
 
         $mail = new MultipleDigest($user, $group, $messages, 24);
         $envelope = $mail->envelope();
 
-        $this->assertEquals('1 new post on TestGroup', $envelope->subject);
+        $this->assertEquals("1 new post on {$group->nameshort}", $envelope->subject);
     }
 
     public function test_multiple_digest_subject_multiple_messages(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup(['nameshort' => 'TestGroup']);
+        $group = $this->createTestGroup();
         $this->createMembership($user, $group);
         $messages = collect($this->createTestMessages($user, $group, 5));
 
         $mail = new MultipleDigest($user, $group, $messages, 24);
         $envelope = $mail->envelope();
 
-        $this->assertEquals('5 new posts on TestGroup', $envelope->subject);
+        $this->assertEquals("5 new posts on {$group->nameshort}", $envelope->subject);
     }
 }

@@ -224,6 +224,8 @@ class ChatNotificationService
      * For User2User chats: both users are in the roster, we notify those who haven't been mailed.
      * For User2Mod chats: we notify the member (user1) from roster, AND all group moderators.
      * For Mod2Mod chats: all mods are in the roster, we notify those who haven't been mailed.
+     *
+     * Users who have blocked the chat (status = 'Blocked') are excluded from notifications.
      */
     protected function getMembersToNotify(ChatRoom $chatRoom, ChatMessage $message, bool $forceAll): Collection
     {
@@ -232,6 +234,7 @@ class ChatNotificationService
         // Mod2Mod: All mods in the group chat are in the roster.
         if ($chatRoom->chattype === ChatRoom::TYPE_MOD2MOD && $chatRoom->groupid) {
             $query = ChatRoster::where('chatid', $chatRoom->id)
+                ->notBlocked()
                 ->with('user');
 
             if (!$forceAll) {
@@ -251,6 +254,7 @@ class ChatNotificationService
             // User2Mod: Get member from roster.
             $memberRoster = ChatRoster::where('chatid', $chatRoom->id)
                 ->where('userid', $chatRoom->user1)
+                ->notBlocked()
                 ->with('user')
                 ->first();
 
@@ -292,6 +296,7 @@ class ChatNotificationService
 
         // User2User: Use standard roster-based logic.
         $query = ChatRoster::where('chatid', $chatRoom->id)
+            ->notBlocked()
             ->with('user');
 
         if (!$forceAll) {

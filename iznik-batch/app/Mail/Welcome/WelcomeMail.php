@@ -95,7 +95,8 @@ class WelcomeMail extends MjmlMailable
                 'ruleSafeImage' => $this->responsiveImage(config('freegle.images.rule_safe')),
             ], $this->getTrackingData()),
             'emails.text.welcome.welcome'
-        )->applyLogging('Welcome');
+        )->to($this->recipientEmail)
+            ->applyLogging('Welcome');
     }
 
 }

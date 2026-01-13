@@ -8,22 +8,31 @@ use Tests\TestCase;
 
 class GroupModelTest extends TestCase
 {
+    /**
+     * Generate a unique group name for parallel test safety.
+     */
+    private function uniqueName(string $prefix): string
+    {
+        return $prefix . '_' . uniqid();
+    }
+
     public function test_freegle_scope_filters_freegle_groups(): void
     {
         // Create Freegle group.
         $freegleGroup = $this->createTestGroup();
 
-        // Create non-Freegle group.
-        Group::create([
-            'nameshort' => 'NonFreegle',
-            'namefull' => 'Non Freegle Group',
+        // Create non-Freegle group with unique name.
+        $nonFreegle = Group::create([
+            'nameshort' => $this->uniqueName('NonFreegle'),
+            'namefull' => $this->uniqueName('Non Freegle Group'),
             'type' => 'Other',
             'region' => 'TestRegion',
             'lat' => 51.5,
             'lng' => -0.1,
         ]);
 
-        $freegleGroups = Group::freegle()->get();
+        // Filter to just our test groups to avoid interference from other parallel tests.
+        $freegleGroups = Group::freegle()->whereIn('id', [$freegleGroup->id, $nonFreegle->id])->get();
 
         $this->assertEquals(1, $freegleGroups->count());
         $this->assertEquals($freegleGroup->id, $freegleGroups->first()->id);
@@ -32,8 +41,8 @@ class GroupModelTest extends TestCase
     public function test_is_closed_detects_closed_groups(): void
     {
         $closedGroup = Group::create([
-            'nameshort' => 'ClosedGroup',
-            'namefull' => 'Closed Group',
+            'nameshort' => $this->uniqueName('ClosedGroup'),
+            'namefull' => $this->uniqueName('Closed Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -53,9 +62,9 @@ class GroupModelTest extends TestCase
         $openGroup = $this->createTestGroup();
 
         // Create closed group.
-        Group::create([
-            'nameshort' => 'ClosedGroup',
-            'namefull' => 'Closed Group',
+        $closedGroup = Group::create([
+            'nameshort' => $this->uniqueName('ClosedGroup'),
+            'namefull' => $this->uniqueName('Closed Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -65,7 +74,8 @@ class GroupModelTest extends TestCase
             'settings' => ['closed' => true],
         ]);
 
-        $activeGroups = Group::activeFreegle()->get();
+        // Filter to just our test groups to avoid interference from other parallel tests.
+        $activeGroups = Group::activeFreegle()->whereIn('id', [$openGroup->id, $closedGroup->id])->get();
 
         // Only open group should be returned.
         $this->assertEquals(1, $activeGroups->count());
@@ -84,8 +94,8 @@ class GroupModelTest extends TestCase
     public function test_group_settings_are_json_cast(): void
     {
         $group = Group::create([
-            'nameshort' => 'TestGroup',
-            'namefull' => 'Test Group',
+            'nameshort' => $this->uniqueName('TestGroup'),
+            'namefull' => $this->uniqueName('Test Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -103,8 +113,8 @@ class GroupModelTest extends TestCase
     public function test_on_here_scope(): void
     {
         $onHere = Group::create([
-            'nameshort' => 'OnHereGroup',
-            'namefull' => 'On Here Group',
+            'nameshort' => $this->uniqueName('OnHereGroup'),
+            'namefull' => $this->uniqueName('On Here Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -113,8 +123,8 @@ class GroupModelTest extends TestCase
         ]);
 
         $notOnHere = Group::create([
-            'nameshort' => 'NotOnHereGroup',
-            'namefull' => 'Not On Here Group',
+            'nameshort' => $this->uniqueName('NotOnHereGroup'),
+            'namefull' => $this->uniqueName('Not On Here Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -122,7 +132,8 @@ class GroupModelTest extends TestCase
             'onhere' => 0,
         ]);
 
-        $results = Group::onHere()->get();
+        // Filter to just our test groups to avoid interference from other parallel tests.
+        $results = Group::onHere()->whereIn('id', [$onHere->id, $notOnHere->id])->get();
 
         $this->assertTrue($results->contains('id', $onHere->id));
         $this->assertFalse($results->contains('id', $notOnHere->id));
@@ -131,8 +142,8 @@ class GroupModelTest extends TestCase
     public function test_published_scope(): void
     {
         $published = Group::create([
-            'nameshort' => 'PublishedGroup',
-            'namefull' => 'Published Group',
+            'nameshort' => $this->uniqueName('PublishedGroup'),
+            'namefull' => $this->uniqueName('Published Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -141,8 +152,8 @@ class GroupModelTest extends TestCase
         ]);
 
         $notPublished = Group::create([
-            'nameshort' => 'NotPublishedGroup',
-            'namefull' => 'Not Published Group',
+            'nameshort' => $this->uniqueName('NotPublishedGroup'),
+            'namefull' => $this->uniqueName('Not Published Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -150,7 +161,8 @@ class GroupModelTest extends TestCase
             'publish' => 0,
         ]);
 
-        $results = Group::published()->get();
+        // Filter to just our test groups to avoid interference from other parallel tests.
+        $results = Group::published()->whereIn('id', [$published->id, $notPublished->id])->get();
 
         $this->assertTrue($results->contains('id', $published->id));
         $this->assertFalse($results->contains('id', $notPublished->id));
@@ -159,8 +171,8 @@ class GroupModelTest extends TestCase
     public function test_not_closed_scope(): void
     {
         $open = Group::create([
-            'nameshort' => 'OpenGroup',
-            'namefull' => 'Open Group',
+            'nameshort' => $this->uniqueName('OpenGroup'),
+            'namefull' => $this->uniqueName('Open Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -168,8 +180,8 @@ class GroupModelTest extends TestCase
         ]);
 
         $closed = Group::create([
-            'nameshort' => 'ClosedGroup2',
-            'namefull' => 'Closed Group',
+            'nameshort' => $this->uniqueName('ClosedGroup2'),
+            'namefull' => $this->uniqueName('Closed Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -177,7 +189,8 @@ class GroupModelTest extends TestCase
             'settings' => ['closed' => true],
         ]);
 
-        $results = Group::notClosed()->get();
+        // Filter to just our test groups to avoid interference from other parallel tests.
+        $results = Group::notClosed()->whereIn('id', [$open->id, $closed->id])->get();
 
         $this->assertTrue($results->contains('id', $open->id));
         $this->assertFalse($results->contains('id', $closed->id));
@@ -186,8 +199,8 @@ class GroupModelTest extends TestCase
     public function test_get_setting_returns_value(): void
     {
         $group = Group::create([
-            'nameshort' => 'SettingsGroup',
-            'namefull' => 'Settings Group',
+            'nameshort' => $this->uniqueName('SettingsGroup'),
+            'namefull' => $this->uniqueName('Settings Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,
@@ -202,8 +215,8 @@ class GroupModelTest extends TestCase
     public function test_get_setting_returns_default_for_missing(): void
     {
         $group = Group::create([
-            'nameshort' => 'NoSettingsGroup',
-            'namefull' => 'No Settings Group',
+            'nameshort' => $this->uniqueName('NoSettingsGroup'),
+            'namefull' => $this->uniqueName('No Settings Group'),
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5,

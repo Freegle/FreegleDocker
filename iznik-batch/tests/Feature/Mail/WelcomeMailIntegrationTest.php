@@ -45,8 +45,9 @@ class WelcomeMailIntegrationTest extends TestCase
         // Set up Mailpit helper with docker network URL.
         $this->mailpit = new MailpitHelper('http://mailpit:8025');
 
-        // Clear all messages before each test.
-        $this->mailpit->deleteAllMessages();
+        // Note: Do NOT call deleteAllMessages() here - in parallel test runs,
+        // this would delete emails from other tests. Each test uses unique
+        // email addresses via uniqueEmail(), so no cleanup is needed.
     }
 
     protected function tearDown(): void
@@ -58,9 +59,9 @@ class WelcomeMailIntegrationTest extends TestCase
     /**
      * Generate unique email address for this test.
      */
-    protected function uniqueEmail(string $prefix = 'test'): string
+    protected function uniqueEmail(string $prefix = 'test', string $domain = 'example.com'): string
     {
-        return "{$prefix}_{$this->testRunId}@example.com";
+        return "{$prefix}_{$this->testRunId}@{$domain}";
     }
 
     /**

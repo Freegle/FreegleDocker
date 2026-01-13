@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Config;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Part\Multipart\AlternativePart;
 use Symfony\Component\Mime\Part\TextPart;
+use Tests\Support\IsolatedSpoolDirectory;
 use Tests\Support\MailpitHelper;
 use Tests\TestCase;
 
@@ -25,9 +26,9 @@ use Tests\TestCase;
  */
 class AmpEmailSpoolIntegrationTest extends TestCase
 {
+    use IsolatedSpoolDirectory;
+
     protected MailpitHelper $mailpit;
-    protected EmailSpoolerService $spooler;
-    protected string $testSpoolDir;
     protected string $testRunId;
 
     protected function setUp(): void
@@ -42,67 +43,29 @@ class AmpEmailSpoolIntegrationTest extends TestCase
         Config::set('mail.mailers.smtp.host', 'mailpit');
         Config::set('mail.mailers.smtp.port', 1025);
 
-        // Set up test spool directory.
-        $this->testSpoolDir = storage_path('spool/mail-test-' . $this->testRunId);
-        mkdir($this->testSpoolDir . '/pending', 0755, true);
-        mkdir($this->testSpoolDir . '/sending', 0755, true);
-        mkdir($this->testSpoolDir . '/sent', 0755, true);
-        mkdir($this->testSpoolDir . '/failed', 0755, true);
-
-        // Create spooler with test directory.
-        $this->spooler = new class($this->testSpoolDir) extends EmailSpoolerService {
-            public function __construct(string $testDir)
-            {
-                $this->spoolDir = $testDir;
-                $this->pendingDir = $testDir . '/pending';
-                $this->sendingDir = $testDir . '/sending';
-                $this->failedDir = $testDir . '/failed';
-                $this->sentDir = $testDir . '/sent';
-                $this->lokiService = app(\App\Services\LokiService::class);
-            }
-        };
+        // Set up isolated spool directory (binds to container).
+        $this->setUpIsolatedSpoolDirectory();
 
         // Set up Mailpit helper.
         $this->mailpit = new MailpitHelper('http://mailpit:8025');
 
-        // Clear all messages before each test.
-        $this->mailpit->deleteAllMessages();
+        // Note: Do NOT call deleteAllMessages() here - in parallel test runs,
+        // this would delete emails from other tests. Each test uses unique
+        // email addresses via uniqueEmail(), so no cleanup is needed.
     }
 
     protected function tearDown(): void
     {
-        // Clean up test spool directory.
-        if (is_dir($this->testSpoolDir)) {
-            $this->recursiveDelete($this->testSpoolDir);
-        }
-
+        $this->tearDownIsolatedSpoolDirectory();
         parent::tearDown();
-    }
-
-    protected function recursiveDelete(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-
-        $files = array_diff(scandir($dir), ['.', '..']);
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file;
-            if (is_dir($path)) {
-                $this->recursiveDelete($path);
-            } else {
-                unlink($path);
-            }
-        }
-        rmdir($dir);
     }
 
     /**
      * Generate unique email address for this test.
      */
-    protected function uniqueEmail(string $prefix = 'test'): string
+    protected function uniqueEmail(string $prefix = 'test', string $domain = 'example.com'): string
     {
-        return "{$prefix}_{$this->testRunId}@example.com";
+        return "{$prefix}_{$this->testRunId}@{$domain}";
     }
 
     /**
@@ -128,17 +91,21 @@ class AmpEmailSpoolIntegrationTest extends TestCase
     /**
      * Create a test mailable with AMP content.
      */
-    protected function createAmpMailable(string $recipient): Mailable
+    protected function createAmpMailable(string $recipient, ?string $fromEmail = null): Mailable
     {
-        return new class($recipient) extends Mailable {
-            public function __construct(private string $recipient)
-            {
+        $fromEmail = $fromEmail ?? $this->uniqueEmail('noreply');
+
+        return new class($recipient, $fromEmail) extends Mailable {
+            public function __construct(
+                private string $recipient,
+                private string $fromEmail
+            ) {
             }
 
             public function envelope(): Envelope
             {
                 return new Envelope(
-                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test Sender'),
+                    from: new \Illuminate\Mail\Mailables\Address($this->fromEmail, 'Test Sender'),
                     subject: 'AMP Test Email - ' . date('Y-m-d H:i:s'),
                 );
             }
@@ -316,9 +283,10 @@ class AmpEmailSpoolIntegrationTest extends TestCase
         }
 
         $recipientEmail = $this->uniqueEmail('amp_envelope');
+        $fromEmail = $this->uniqueEmail('noreply');
 
         // Create an AMP mailable with explicit recipient and sender.
-        $mailable = $this->createAmpMailable($recipientEmail);
+        $mailable = $this->createAmpMailable($recipientEmail, $fromEmail);
         $this->spooler->spool($mailable, $recipientEmail);
         $this->spooler->processSpool();
 
@@ -339,7 +307,7 @@ class AmpEmailSpoolIntegrationTest extends TestCase
 
         // Verify From header is present.
         $this->assertMatchesRegularExpression(
-            '/^From:.*noreply@test\.com/mi',
+            '/^From:.*' . preg_quote($fromEmail, '/') . '/mi',
             $raw,
             'AMP email must have From header'
         );
@@ -363,19 +331,21 @@ class AmpEmailSpoolIntegrationTest extends TestCase
 
         $recipientEmail = $this->uniqueEmail('amp_cc_to');
         $ccEmail = $this->uniqueEmail('amp_cc_cc');
+        $fromEmail = $this->uniqueEmail('noreply');
 
         // Create a mailable with CC using withSymfonyMessage.
-        $mailable = new class($recipientEmail, $ccEmail) extends Mailable {
+        $mailable = new class($recipientEmail, $ccEmail, $fromEmail) extends Mailable {
             public function __construct(
                 private string $recipient,
-                private string $ccRecipient
+                private string $ccRecipient,
+                private string $fromEmail
             ) {
             }
 
             public function envelope(): Envelope
             {
                 return new Envelope(
-                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test'),
+                    from: new \Illuminate\Mail\Mailables\Address($this->fromEmail, 'Test'),
                     subject: 'AMP CC Test',
                 );
             }
@@ -424,17 +394,20 @@ class AmpEmailSpoolIntegrationTest extends TestCase
         }
 
         $recipientEmail = $this->uniqueEmail('no_amp');
+        $fromEmail = $this->uniqueEmail('noreply');
 
         // Create a simple mailable without AMP content.
-        $mailable = new class($recipientEmail) extends Mailable {
-            public function __construct(private string $recipient)
-            {
+        $mailable = new class($recipientEmail, $fromEmail) extends Mailable {
+            public function __construct(
+                private string $recipient,
+                private string $fromEmail
+            ) {
             }
 
             public function envelope(): Envelope
             {
                 return new Envelope(
-                    from: new \Illuminate\Mail\Mailables\Address('noreply@test.com', 'Test'),
+                    from: new \Illuminate\Mail\Mailables\Address($this->fromEmail, 'Test'),
                     subject: 'Non-AMP Test',
                 );
             }
