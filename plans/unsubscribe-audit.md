@@ -720,6 +720,28 @@ Senders who implement proper one-click unsubscribe see **lower** spam complaint 
 
 This creates a paradox for Freegle: the one-click unsubscribe header is good for deliverability, but the current implementation (account deletion) may not match user expectations, potentially leading to support issues or user frustration rather than spam complaints.
 
+## Rationale for Account Deletion
+
+The claimed rationale for using complete account deletion as the one-click unsubscribe action is:
+
+**Emails going to spam is a bigger problem than user complaints.**
+
+Specifically:
+- If Freegle's spam reputation is damaged, emails stop reaching users entirely - this affects everyone
+- User complaints about accidental unsubscription or inability to unsubscribe are individual issues
+- The 14-day recovery window mitigates accidental deletion
+- A user who clicks "Unsubscribe" has expressed a clear intent to stop receiving emails
+
+Therefore, the approach prioritises protecting spam reputation over minimising user confusion. The risk calculus is:
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Spam reputation damage | All users stop receiving emails | One-click unsubscribe compliance |
+| User accidentally deletes account | Individual user loses access | 14-day recovery window |
+| User confused by deletion | Support request / frustration | Clear messaging on success page |
+
+This approach accepts that some users may be surprised by account deletion in exchange for ensuring Freegle maintains good email deliverability for all users.
+
 ## The Expectation Mismatch Problem
 
 When a user clicks "Unsubscribe" in their email client, their mental model may vary:
