@@ -776,7 +776,3 @@ The 14-day retention period is communicated:
 
 It is not mentioned in the confirmation modal before deletion.
 
----
-
-*Document generated: 2026-01-13*
-*Updated: 2026-01-13 - Added one-click unsubscribe requirements, deliverability research, and spam complaint evidence*
