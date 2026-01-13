@@ -600,6 +600,116 @@ Different email types show different footer content:
 
 ---
 
+# One-Click Unsubscribe: Requirements and Implications
+
+## Provider Requirements
+
+Since February 2024, major email providers require RFC 8058 one-click unsubscribe for bulk senders:
+
+| Provider | Requirement | Threshold | Enforcement |
+|----------|-------------|-----------|-------------|
+| Gmail | One-click unsubscribe header | 5,000+ emails/day to Gmail addresses | Nov 2025: permanent rejections |
+| Yahoo | One-click unsubscribe header | 5,000+ emails/day | June 2024 onwards |
+| Microsoft | One-click unsubscribe header | Bulk senders | May 2025: junk folder or rejection |
+
+**Processing requirement:** Unsubscribe requests must be honoured within 48 hours.
+
+Sources: [Google Email Sender Guidelines](https://support.google.com/a/answer/81126), [Mailgun RFC 8058 Guide](https://www.mailgun.com/blog/deliverability/what-is-rfc-8058/)
+
+## Marketing vs Transactional Emails
+
+The one-click unsubscribe requirement applies **only to marketing/promotional emails**, not transactional emails.
+
+### What counts as transactional (exempt):
+- Password resets
+- Purchase receipts
+- Shipping confirmations
+- One-time passwords (OTPs)
+- Account security alerts
+
+### What counts as marketing (requires one-click unsubscribe):
+- Newsletters
+- Promotional offers
+- Marketing campaigns
+- **Subscription messages** - any email users can unsubscribe from
+
+### The grey area - notification emails:
+
+> "The distinction between promotional and transactional messages can vary depending on industry and applicable regulations. **Message recipients, not Google, determine the nature of the messages they receive.**"
+> — [Google Email Sender Guidelines FAQ](https://support.google.com/a/answer/14229414)
+
+This is the critical point: **Gmail and Yahoo classify emails based on recipient behaviour and content analysis, not sender intent.** An email that a sender considers "transactional" may still be classified as promotional if:
+- It's sent to many people at once (bulk distribution)
+- Recipients treat it as promotional (low engagement, frequent unsubscribes)
+- It contains any promotional content
+
+### Where do Freegle emails fall?
+
+| Email Type | Sender Intent | Possible Classification | Notes |
+|------------|---------------|------------------------|-------|
+| Chat notifications | Transactional (reply to user action) | Ambiguous | Triggered by another user's message |
+| Digests | Marketing (summary of activity) | Marketing | Regular bulk distribution |
+| Newsletters | Marketing | Marketing | Clearly promotional |
+| Welcome emails | Transactional | Transactional | One-time, triggered by signup |
+| Password resets | Transactional | Transactional | Clearly transactional |
+
+Chat notifications are in a grey area: they're triggered by user action (someone messaged you), but they're also encouraging re-engagement with the platform, which is a promotional purpose.
+
+## Impact on Email Deliverability
+
+### Unsubscribes vs Spam Reports
+
+| Action | Impact on Sender Reputation |
+|--------|----------------------------|
+| User clicks unsubscribe | **Neutral** - no negative impact |
+| User marks as spam | **Very damaging** - harms domain/IP reputation |
+
+This is counterintuitive but important: **making unsubscribe easy actually protects sender reputation.** When users can't easily unsubscribe, they're more likely to mark emails as spam instead, which is far more damaging.
+
+> "By offering a straightforward unsubscribe path, you significantly reduce the likelihood of recipients marking your emails as spam."
+> — [Suped Email Deliverability Guide](https://www.suped.com/knowledge/email-deliverability/sender-reputation/do-unsubscribe-links-and-rates-affect-email-deliverability-and-spam-filtering)
+
+### Spam Complaint Thresholds
+
+Gmail requires spam complaint rates below:
+- **0.3%** - maximum acceptable
+- **0.1%** - recommended target
+
+Exceeding these thresholds leads to deliverability problems.
+
+## The Expectation Mismatch Problem
+
+When a user clicks "Unsubscribe" in their email client, their mental model may vary:
+
+| User's Mental Model | What They Expect |
+|--------------------|------------------|
+| "This is marketing email" | Stop receiving marketing, keep account |
+| "This is from a mailing list" | Leave this particular list |
+| "I don't want these notifications" | Stop this type of notification |
+| "Stop all email from this sender" | Stop all email, but keep account |
+| "I'm done with this service" | Delete account entirely |
+
+Freegle's one-click unsubscribe performs **complete account deletion**, which matches the last mental model but not the others.
+
+### Industry Context
+
+Most email marketing platforms implement one-click unsubscribe to:
+- Remove the user from that specific mailing list, OR
+- Stop that type of email (e.g., promotional but not transactional)
+
+Very few use one-click unsubscribe to delete the user's entire account.
+
+### Potential Issue
+
+A user who receives a Freegle chat notification and clicks "Unsubscribe" in Gmail may expect to stop receiving chat notifications (or at worst, stop all Freegle emails). Instead, their entire account is deleted.
+
+This could be particularly surprising because:
+1. Chat notifications feel transactional (someone messaged me)
+2. The user may have active posts or ongoing conversations
+3. Other platforms don't typically delete accounts via one-click unsubscribe
+
+---
+
 # Observations
 
 ### One-Click Unsubscribe Behaviour
@@ -626,3 +736,4 @@ It is not mentioned in the confirmation modal before deletion.
 ---
 
 *Document generated: 2026-01-13*
+*Updated: 2026-01-13 - Added one-click unsubscribe requirements and deliverability section*
