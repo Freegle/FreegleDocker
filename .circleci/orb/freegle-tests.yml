@@ -1627,28 +1627,28 @@ jobs:
             docker logs freegle-batch --tail 30 2>&1 || true
             exit 1
 
-      # Run Laravel, Playwright, Go, and PHPUnit tests in parallel via status API
+      # Run iznik-batch, Playwright, Go, and iznik-server tests in parallel via status API
       - run:
-          name: Run Laravel, Playwright, Go, and PHPUnit tests in parallel
+          name: Run iznik-batch, Playwright, Go, and iznik-server tests in parallel
           command: |
             echo "🚀 Running all tests in parallel via status API..."
             mkdir -p ~/test-output
             TESTS_KILLED_EARLY=false
 
-            # Start Laravel tests in background
-            echo "🧪 Starting Laravel tests in background..."
+            # Start iznik-batch tests in background
+            echo "🧪 Starting iznik-batch tests in background..."
             (
               # Trigger Laravel tests via status API
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/laravel)
               http_code="${response: -3}"
 
               if [ "$http_code" -ne "200" ]; then
-                echo "❌ Failed to trigger Laravel tests. HTTP code: $http_code"
+                echo "❌ Failed to trigger iznik-batch tests. HTTP code: $http_code"
                 echo "fail" > /tmp/laravel-result
                 exit 1
               fi
 
-              echo "✅ Laravel tests triggered successfully"
+              echo "✅ iznik-batch tests triggered successfully"
 
               # Poll for Laravel completion
               while true; do
@@ -1664,11 +1664,11 @@ jobs:
 
                 if [ "$status" = "completed" ]; then
                   echo "pass" > /tmp/laravel-result
-                  echo "✅ Laravel tests passed!"
+                  echo "✅ iznik-batch tests passed!"
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/laravel-result
-                  echo "❌ Laravel tests failed!"
+                  echo "❌ iznik-batch tests failed!"
                   echo "$status_response" | jq -r '.logs // "No logs"'
                   break
                 fi
@@ -1717,8 +1717,8 @@ jobs:
             ) > ~/test-output/go.out 2>&1 &
             GO_PID=$!
 
-            # Start PHPUnit tests in background (uses separate iznik_phpunit_test database)
-            echo "🧪 Starting PHPUnit tests in background..."
+            # Start iznik-server tests in background (uses separate iznik_phpunit_test database)
+            echo "🧪 Starting iznik-server tests in background..."
             (
               # Restore GeoIP database from cache if available
               if [ -f ~/geoip-cache/GeoLite2-Country.mmdb ]; then
@@ -1752,11 +1752,11 @@ jobs:
 
                 if [ "$status" = "completed" ]; then
                   echo "pass" > /tmp/php-result
-                  echo "✅ PHPUnit tests passed!"
+                  echo "✅ iznik-server tests passed!"
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/php-result
-                  echo "❌ PHPUnit tests failed!"
+                  echo "❌ iznik-server tests failed!"
                   # Get the logs for the output file
                   echo "$status_response" | jq -r '.logs // "No logs"'
                   break
@@ -1850,11 +1850,11 @@ jobs:
               PLAYWRIGHT_TOTAL=$([ -f /tmp/playwright-total ] && cat /tmp/playwright-total || echo '0')
               PLAYWRIGHT_DISPLAY=$([ "$PLAYWRIGHT_STATUS" = "running" ] && echo "running ($PLAYWRIGHT_COMPLETED/$PLAYWRIGHT_TOTAL)" || echo "$PLAYWRIGHT_STATUS")
 
-              echo "[${elapsed_min}m] Laravel: $LARAVEL_DISPLAY | Go: $GO_DISPLAY | PHPUnit: $PHP_DISPLAY | Playwright: $PLAYWRIGHT_DISPLAY"
+              echo "[${elapsed_min}m] iznik-batch: $LARAVEL_DISPLAY | Go: $GO_DISPLAY | iznik-server: $PHP_DISPLAY | Playwright: $PLAYWRIGHT_DISPLAY"
 
               # Check for any failures (fail-fast)
               if [ "$LARAVEL_STATUS" = "fail" ]; then
-                echo "❌ FAIL-FAST: Laravel tests failed - stopping all tests"
+                echo "❌ FAIL-FAST: iznik-batch tests failed - stopping all tests"
                 kill $GO_PID $PHPUNIT_PID $PLAYWRIGHT_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
                 break
@@ -1866,7 +1866,7 @@ jobs:
                 break
               fi
               if [ "$PHP_STATUS" = "fail" ]; then
-                echo "❌ FAIL-FAST: PHPUnit tests failed - stopping all tests"
+                echo "❌ FAIL-FAST: iznik-server tests failed - stopping all tests"
                 kill $LARAVEL_PID $GO_PID $PLAYWRIGHT_PID 2>/dev/null || true
                 TESTS_KILLED_EARLY=true
                 break
@@ -1909,9 +1909,9 @@ jobs:
 
             echo ""
             echo "=== Parallel Test Results ==="
-            echo "Laravel: $LARAVEL_RESULT"
+            echo "iznik-batch: $LARAVEL_RESULT"
             echo "Go: $GO_RESULT"
-            echo "PHPUnit: $PHP_RESULT"
+            echo "iznik-server: $PHP_RESULT"
             echo "Playwright: $PLAYWRIGHT_RESULT"
 
             # Set environment variables for later steps

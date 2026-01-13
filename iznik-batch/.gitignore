@@ -20,6 +20,7 @@
 /storage/*.key
 /storage/pail
 /storage/framework/scheduler-locks
+/storage/framework/command-locks
 /vendor
 /bootstrap/cache/*.php
 Homestead.json

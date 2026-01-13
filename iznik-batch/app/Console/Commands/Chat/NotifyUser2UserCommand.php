@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Chat;
 
+use App\Console\Concerns\PreventsOverlapping;
 use App\Models\ChatRoom;
 use App\Services\ChatNotificationService;
 use App\Services\EmailSpoolerService;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 class NotifyUser2UserCommand extends Command
 {
     use GracefulShutdown;
+    use PreventsOverlapping;
 
     /**
      * The name and signature of the console command.
@@ -39,6 +41,23 @@ class NotifyUser2UserCommand extends Command
      * Execute the console command.
      */
     public function handle(ChatNotificationService $notificationService, EmailSpoolerService $spooler): int
+    {
+        if (!$this->acquireLock()) {
+            $this->info('Already running, exiting.');
+            return Command::SUCCESS;
+        }
+
+        try {
+            return $this->doHandle($notificationService, $spooler);
+        } finally {
+            $this->releaseLock();
+        }
+    }
+
+    /**
+     * The actual command logic.
+     */
+    protected function doHandle(ChatNotificationService $notificationService, EmailSpoolerService $spooler): int
     {
         $chatId = $this->option('chat') ? (int) $this->option('chat') : null;
         $delay = (int) $this->option('delay');

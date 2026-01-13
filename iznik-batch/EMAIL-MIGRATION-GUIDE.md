@@ -300,6 +300,33 @@ To change your notification settings: {!! $unsubscribeUrl !!}
    // Returns: ['src' => '...', 'srcset' => '...200w, ...400w, ...600w']
    ```
 
+### Footer Requirements
+
+**All email templates must include a footer.** This applies to MJML, text, AND AMP templates.
+
+The footer must contain:
+1. **Recipient email address** - "This email was sent to {email}"
+2. **Settings link** - Link to `/settings` for email preferences
+3. **Unsubscribe link** - Link to `/unsubscribe` for account deletion
+4. **Charity information** - HMRC reference and registered address
+
+Example footer elements:
+```
+This email was sent to user@example.com
+
+Change your email settings: https://www.ilovefreegle.org/settings
+Unsubscribe: https://www.ilovefreegle.org/unsubscribe
+
+Freegle is registered as a charity with HMRC (ref. XT32865) and is run by volunteers.
+Registered address: Weaver's Field, Loud Bridge, Chipping PR3 2NX
+```
+
+**Checklist when creating new email templates:**
+- [ ] MJML template has footer section
+- [ ] Text template has footer section
+- [ ] AMP template has footer section (if AMP version exists)
+- [ ] All three versions have consistent content
+
 ---
 
 ## AMP Email Implementation
@@ -601,3 +628,4 @@ When adding a new email type:
 9. **Validate AMP** - use the playground before deploying
 10. **Write tests first** - based on iznik-server behavior
 11. **Add feature flag check** - respect FREEGLE_MAIL_ENABLED_TYPES setting
+12. **Include footer in ALL templates** - MJML, text, AND AMP must have consistent footers
