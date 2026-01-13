@@ -1,20 +1,5 @@
 <?php
 
-// Validate bootstrap cache files before loading Laravel.
-// If services.php is empty or corrupted (returns non-array), delete it.
-// Laravel will regenerate it on bootstrap.
-// This fixes issues where services.php becomes empty and require returns 1 (integer).
-$servicesPath = __DIR__.'/../bootstrap/cache/services.php';
-if (file_exists($servicesPath)) {
-    $content = file_get_contents($servicesPath);
-    // If file is empty, very small, or doesn't contain 'return array', it's corrupt.
-    if (strlen($content) < 100 || strpos($content, 'return array') === false) {
-        echo "WARNING: Clearing corrupt services.php (size: ".strlen($content)." bytes)\n";
-        @unlink($servicesPath);
-        @unlink(__DIR__.'/../bootstrap/cache/packages.php');
-    }
-}
-
 // ParaTest support: each worker gets its own bootstrap cache directory to prevent corruption.
 // When running parallel tests, multiple workers writing to the same services.php causes race conditions.
 $uniqueToken = getenv('UNIQUE_TEST_TOKEN') ?: getenv('TEST_TOKEN') ?: '';
