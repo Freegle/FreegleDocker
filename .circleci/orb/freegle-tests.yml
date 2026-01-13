@@ -886,38 +886,38 @@ commands:
               exit 0
             fi
 
-            # Copy coverage file from playwright container
-            if docker cp freegle-playwright-local:/workspace/coverage/coverage-final.json /tmp/playwright-coverage.json 2>/dev/null; then
-              echo "✅ Found Playwright coverage file"
+            # Copy coverage file from playwright container (check multiple paths)
+            LCOV_PATH=""
+            if docker cp freegle-playwright:/app/monocart-report/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+              LCOV_PATH="/tmp/playwright-coverage.lcov"
+              echo "✅ Found Playwright coverage at /app/monocart-report/coverage/lcov.info"
+            elif docker cp freegle-playwright:/app/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+              LCOV_PATH="/tmp/playwright-coverage.lcov"
+              echo "✅ Found Playwright coverage at /app/coverage/lcov.info"
+            fi
 
-              # Install coveralls and lcov
-              npm install -g coveralls lcov
+            if [ -n "$LCOV_PATH" ]; then
+              # Install coveralls
+              npm install -g coveralls
 
-              # Convert JSON coverage to lcov format
-              cd iznik-nuxt3
-              npx nyc report --reporter=lcov --temp-dir=/tmp --report-dir=/tmp/playwright-coverage-lcov
+              # Copy to original checkout if needed
+              if [ -d ~/project/.git ]; then
+                cp "$LCOV_PATH" ~/project/coverage.lcov
+                cd ~/project
+              fi
 
-              if [ -f /tmp/playwright-coverage-lcov/lcov.info ]; then
-                # Copy to original checkout if needed
-                if [ -d ~/project/.git ]; then
-                  cp /tmp/playwright-coverage-lcov/lcov.info ~/project/
-                  cd ~/project
-                fi
-
-                export COVERALLS_SERVICE_NAME="circleci"
-                export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
-                if cat /tmp/playwright-coverage-lcov/lcov.info | coveralls; then
-                  echo "✅ Playwright coverage uploaded successfully"
-                else
-                  echo "❌ Playwright coverage upload failed"
-                  exit 1
-                fi
+              export COVERALLS_SERVICE_NAME="circleci"
+              export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+              if cat "$LCOV_PATH" | coveralls; then
+                echo "✅ Playwright coverage uploaded successfully"
               else
-                echo "❌ Failed to convert Playwright coverage to lcov format"
+                echo "❌ Playwright coverage upload failed"
                 exit 1
               fi
             else
               echo "❌ Playwright coverage file not found"
+              echo "Checking container for coverage files..."
+              docker exec freegle-playwright find /app -name "*.lcov" -o -name "lcov.info" -o -name "coverage*" 2>/dev/null | head -20 || true
               exit 1
             fi
           no_output_timeout: 50m
