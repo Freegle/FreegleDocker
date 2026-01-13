@@ -137,13 +137,16 @@ These endpoints can be safely migrated to Go as they don't send emails.
 
 ### Migration Status Summary
 
-**Fully Migrated (No v1 usage in FD or MT):**
+**Fully Migrated (No v1 usage in FD):**
 - ✅ ~~`/job`~~ - GET, POST - Completed 2025-09-30
 - ✅ ~~`/donations`~~ - GET - Completed 2025-10-01
+- ✅ ~~`/logo`~~ - GET - Completed 2025-10-13
+- ✅ ~~`/config`~~ - GET - Completed 2026-01-13 (FD fully on v2, MT still uses v1 for PATCH)
+- ✅ ~~`/notification`~~ - GET (count, list), POST (seen, allseen) - Completed 2026-01-13
+- ✅ ~~`/systemlogs`~~ - GET - New endpoint, v2 only - Added 2026-01-13
 
 **Partially Migrated (FD uses v2, MT still uses v1):**
 - 🔄 `/chat` (chatrooms) - FD uses v2 for GET, MT still uses v1 for all operations
-- 🔄 `/config` - FD uses v2 for GET, MT still uses v1 for PATCH
 - 🔄 `/location` (locations) - FD uses v2 for GET, MT still uses v1 for GET/PUT/PATCH/POST
 - 🔄 `/story` (stories) - FD uses v2 for GET, MT still uses v1 for GET/PUT/POST
 
