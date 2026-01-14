@@ -515,4 +515,110 @@ class EmailSpoolerServiceTest extends TestCase
         $this->assertEquals($id, $sentData['id']);
         $this->assertCount(2, $sentData['bcc']);
     }
+
+    /**
+     * Test that plain text body is included in non-AMP emails when processing spool.
+     *
+     * This is critical for email clients like TrashNothing that parse the plain text
+     * body of chat notification emails.
+     */
+    public function test_plain_text_body_included_in_non_amp_emails(): void
+    {
+        // Create a spool file with both HTML and text content (no AMP).
+        $id = 'test_text_body_' . uniqid();
+        $plainText = "New message from Test User\n\nHello, this is a test message.\n\nReply: https://example.com/chat/123";
+        $htmlContent = '<p>New message from Test User</p><p>Hello, this is a test message.</p><a href="https://example.com/chat/123">Reply</a>';
+
+        $data = [
+            'id' => $id,
+            'to' => [['address' => $this->uniqueEmail('recipient'), 'name' => 'Test User']],
+            'from' => [['address' => $this->uniqueEmail('noreply'), 'name' => 'Test Sender']],
+            'subject' => 'Test Subject',
+            'html' => $htmlContent,
+            'text' => $plainText,
+            'amp_html' => null,  // No AMP content.
+            'headers' => [],
+            'reply_to' => [],
+            'cc' => [],
+            'bcc' => [],
+            'created_at' => now()->toIso8601String(),
+            'attempts' => 0,
+        ];
+
+        file_put_contents(
+            $this->testSpoolDir . '/pending/' . $id . '.json',
+            json_encode($data)
+        );
+
+        // Capture the sent message to verify the body structure.
+        $capturedMessage = null;
+
+        // Use a custom mailer transport to capture the message.
+        \Illuminate\Support\Facades\Mail::extend('capture', function () use (&$capturedMessage) {
+            return new class($capturedMessage) extends \Symfony\Component\Mailer\Transport\AbstractTransport {
+                private mixed $capturedRef;
+
+                public function __construct(&$captured)
+                {
+                    parent::__construct();
+                    $this->capturedRef = &$captured;
+                }
+
+                protected function doSend(\Symfony\Component\Mailer\SentMessage $message): void
+                {
+                    $this->capturedRef = $message->getOriginalMessage();
+                }
+
+                public function __toString(): string
+                {
+                    return 'capture://';
+                }
+            };
+        });
+
+        // Temporarily switch to capture transport.
+        $originalDriver = config('mail.default');
+        config(['mail.default' => 'capture']);
+
+        // Process the spool.
+        $stats = $this->spooler->processSpool();
+
+        // Restore original driver.
+        config(['mail.default' => $originalDriver]);
+
+        $this->assertEquals(1, $stats['sent']);
+
+        // Verify the message was captured and has the correct body structure.
+        $this->assertNotNull($capturedMessage, 'Message should have been captured');
+        $this->assertInstanceOf(Email::class, $capturedMessage);
+
+        // The body should be multipart/alternative with text and HTML parts.
+        $body = $capturedMessage->getBody();
+        $this->assertInstanceOf(
+            \Symfony\Component\Mime\Part\Multipart\AlternativePart::class,
+            $body,
+            'Email body should be multipart/alternative to include both text and HTML'
+        );
+
+        // Verify both parts are present.
+        $parts = $body->getParts();
+        $this->assertGreaterThanOrEqual(2, count($parts), 'Should have at least text and HTML parts');
+
+        // Find text and HTML parts.
+        $hasTextPart = false;
+        $hasHtmlPart = false;
+        foreach ($parts as $part) {
+            if ($part instanceof \Symfony\Component\Mime\Part\TextPart) {
+                if ($part->getMediaSubtype() === 'plain') {
+                    $hasTextPart = true;
+                    $this->assertStringContainsString('Hello, this is a test message', $part->getBody());
+                } elseif ($part->getMediaSubtype() === 'html') {
+                    $hasHtmlPart = true;
+                }
+            }
+        }
+
+        $this->assertTrue($hasTextPart, 'Email should have a text/plain part');
+        $this->assertTrue($hasHtmlPart, 'Email should have a text/html part');
+    }
 }

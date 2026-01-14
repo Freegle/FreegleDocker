@@ -290,7 +290,7 @@ class EmailSpoolerService
                     // Apply custom headers.
                     $this->applyCustomHeaders($symfonyMessage, $data);
 
-                    // Build the body - either with AMP or standard HTML.
+                    // Build the body - either with AMP or standard multipart/alternative.
                     if (!empty($data['amp_html'])) {
                         // TEMPORARY: Save AMP HTML to /tmp for validation testing.
                         $ampFile = '/tmp/amp-email-' . ($data['id'] ?? uniqid()) . '.html';
@@ -303,8 +303,16 @@ class EmailSpoolerService
                         $htmlPart = new TextPart($data['html'], 'utf-8', 'html');
                         $alternativePart = new AlternativePart($textPart, $ampPart, $htmlPart);
                         $symfonyMessage->setBody($alternativePart);
+                    } elseif (!empty($data['text'])) {
+                        // Non-AMP: Build multipart/alternative with text and HTML parts.
+                        // This ensures the plain text body is included for email clients
+                        // that prefer or require it (e.g., TrashNothing parsing).
+                        $textPart = new TextPart($data['text'], 'utf-8', 'plain');
+                        $htmlPart = new TextPart($data['html'], 'utf-8', 'html');
+                        $alternativePart = new AlternativePart($textPart, $htmlPart);
+                        $symfonyMessage->setBody($alternativePart);
                     }
-                    // Non-AMP: Mail::html() has already set the body, no action needed.
+                    // If no text body, Mail::html() has already set HTML-only body.
                 });
 
                 // Move to sent directory.
