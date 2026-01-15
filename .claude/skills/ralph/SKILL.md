@@ -152,4 +152,120 @@ If you need user input or are blocked:
 - Clearly explain what you need
 - Wait for user response before continuing
 
+## 8. Database Migration Strategy
+
+Freegle uses a specific migration approach:
+
+### Development/CI Environment
+- **Laravel migrations** in `iznik-batch/database/migrations/` are the source of truth
+- CircleCI runs migrations automatically via `php artisan migrate`
+- Always create Laravel migrations for schema changes
+
+### Production Environment
+- **Manual SQL execution required** - Laravel migrations are NOT run automatically on production
+- Store production SQL in relevant `*_migration.sql` files (e.g., `iznik-server-go/emailtracking/live_migration.sql`)
+- SQL must be **idempotent** - safe to run multiple times
+- Use `INFORMATION_SCHEMA.COLUMNS` checks before `ALTER TABLE`
+
+### Migration Checklist
+When adding database columns:
+1. Create Laravel migration in `iznik-batch/database/migrations/`
+2. Update any Go models that reference the table
+3. Provide idempotent SQL for production deployment
+4. Document the SQL in the relevant `*_migration.sql` file
+5. Tell the user they need to run the SQL on production
+
+### Example Idempotent Column Addition
+```sql
+SET @dbname = DATABASE();
+SET @tablename = 'table_name';
+SET @columnname = 'new_column';
+SET @preparedStatement = (SELECT IF(
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+   WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = @columnname) > 0,
+  'SELECT 1',
+  'ALTER TABLE table_name ADD COLUMN new_column VARCHAR(50) NULL'
+));
+PREPARE alterIfNotExists FROM @preparedStatement;
+EXECUTE alterIfNotExists;
+DEALLOCATE PREPARE alterIfNotExists;
+```
+
+## 9. Parallel Work / Multi-PR Workflow
+
+When working on multiple PRs or branches simultaneously:
+
+### 9.1 PR Prioritization (CRITICAL)
+**Complete PRs in order rather than making partial progress on many:**
+
+- Process PRs by ID order (lowest first): PR #8 before PR #15 before PR #16
+- Focus on getting ONE PR fully passing CI and ready to merge before moving to the next
+- Only switch to another PR if blocked or waiting for CI
+
+**Rationale**: Completing one PR is more valuable than partial progress on many. Context switching has overhead and incomplete PRs accumulate.
+
+### 9.2 Branch Switching Protocol (CRITICAL)
+**ALWAYS merge master when switching to a branch:**
+
+```bash
+# 1. Verify current branch has no uncommitted changes
+git status
+
+# 2. Switch to target branch
+git checkout [branch-name]
+
+# 3. Merge master to get latest changes (including Ralph skill updates)
+git merge origin/master
+
+# 4. Verify you're on the correct branch
+git branch --show-current
+
+# 5. Push the merge if successful
+git push
+```
+
+**Why merge master?** The Ralph skill itself is updated on master. Merging ensures you always have the latest skill improvements when working on any PR.
+
+### 9.3 Branch Safety Checks
+**ALWAYS verify the current branch before making ANY changes:**
+
+```bash
+# Check current branch BEFORE any edit
+git branch --show-current
+```
+
+- **NEVER assume** you're on the correct branch
+- **ALWAYS run** `git branch --show-current` before editing files
+- If on the wrong branch, switch BEFORE making changes
+
+### 9.4 Enhanced Status Table for Parallel Work
+
+Track which branch each task belongs to:
+
+```markdown
+## Task Status
+
+| # | Task | Branch | Status | Notes |
+|---|------|--------|--------|-------|
+| 1 | Fix migration safety | fix/migration-safety | 🔄 In Progress | PR #8 |
+| 2 | Fix mail driver | fix/test-mail-driver-config | ⬜ Pending | PR #15 |
+| 3 | Fix worker pools | feature/worker-pools | ⬜ Pending | PR #16 |
+```
+
+### 9.5 Parallel CI Monitoring
+
+When monitoring CI for multiple PRs:
+
+1. **Read-only operations are safe in parallel**:
+   - Checking CI status
+   - Reading CircleCI logs
+   - Viewing PR status
+
+2. **Write operations require branch verification**:
+   - Editing files
+   - Committing changes
+   - Pushing to remote
+
+3. **Use clear indicators** when reporting which PR/branch you're discussing
+
 Now analyse the user's request and create your status table to begin work.
