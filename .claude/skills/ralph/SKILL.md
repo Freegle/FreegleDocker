@@ -238,21 +238,64 @@ git branch --show-current
 - **ALWAYS run** `git branch --show-current` before editing files
 - If on the wrong branch, switch BEFORE making changes
 
-### 9.4 Enhanced Status Table for Parallel Work
+### 9.4 Stuck Prevention (Circuit Breaker Pattern)
 
-Track which branch each task belongs to:
+To avoid getting stuck on one PR indefinitely:
 
-```markdown
-## Task Status
+**Attempt Limits:**
+- Maximum 3 fix attempts per PR before moving to the next
+- An "attempt" = push changes and wait for CI result
+- Track attempts: `PR #8: attempt 2/3`
 
-| # | Task | Branch | Status | Notes |
-|---|------|--------|--------|-------|
-| 1 | Fix migration safety | fix/migration-safety | 🔄 In Progress | PR #8 |
-| 2 | Fix mail driver | fix/test-mail-driver-config | ⬜ Pending | PR #15 |
-| 3 | Fix worker pools | feature/worker-pools | ⬜ Pending | PR #16 |
+**When to move on:**
+- After 3 failed attempts
+- When blocked waiting for external input
+- When the fix requires investigation that could take >1 hour
+
+**Escalation:**
+- After max attempts, add comment to PR: "Needs investigation - moving to next PR"
+- Mark PR as ❌ Blocked in dashboard
+- Return to it after completing other PRs, or flag for human review
+
+**Example flow:**
+```
+PR #8: attempt 1 → failed → attempt 2 → failed → attempt 3 → failed → MOVE ON
+PR #15: attempt 1 → success → READY TO MERGE
+Return to PR #8 with fresh perspective
 ```
 
-### 9.5 Parallel CI Monitoring
+### 9.5 Context Management (Two-Level Tracking)
+
+**Problem**: Detailed task tracking for multiple PRs clutters context.
+
+**Solution**: Use two-level tracking:
+
+**Level 1: PR Dashboard (always visible, minimal)**
+```markdown
+## PR Dashboard
+| PR | Branch | Attempts | Status |
+|----|--------|----------|--------|
+| #8 | fix/migration-safety | 1/3 | 🔄 CI Running |
+| #15 | fix/test-mail-driver | 0/3 | ⬜ Pending |
+| #16 | feature/worker-pools | 0/3 | ⬜ Pending |
+```
+
+**Level 2: Current PR Tasks (detailed, reset on switch)**
+```markdown
+## Current: PR #8 (fix/migration-safety)
+| # | Task | Status |
+|---|------|--------|
+| 1 | Merge master | ✅ Complete |
+| 2 | Run CI | 🔄 In Progress |
+| 3 | Fix any failures | ⬜ Pending |
+```
+
+**When switching PRs:**
+- Update PR Dashboard status
+- Clear Level 2 task table
+- Create new Level 2 tasks for the new PR
+
+### 9.6 Parallel CI Monitoring
 
 When monitoring CI for multiple PRs:
 
