@@ -19,6 +19,20 @@ abstract class TestCase extends BaseTestCase
     // This rolls back each test's changes, ensuring test isolation.
     use DatabaseTransactions;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Force mail driver to 'array' for testing.
+        // Laravel's TestCase creates a fresh application for each test via refreshApplication().
+        // Even though bootstrap.php clears the config cache, Laravel reads config from env vars
+        // which in Docker include MAIL_MAILER=smtp from docker-compose.yml.
+        // phpunit.xml sets MAIL_MAILER=array but only affects the process environment, not
+        // the docker-compose environment variables that Laravel reads.
+        config(['mail.default' => 'array']);
+        \Illuminate\Support\Facades\Mail::forgetMailers();
+    }
+
     /**
      * Create a test user with an email address.
      */
