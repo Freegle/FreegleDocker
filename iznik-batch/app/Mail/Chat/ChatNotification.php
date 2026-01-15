@@ -202,11 +202,18 @@ class ChatNotification extends MjmlMailable
 
     /**
      * Get the message envelope with custom from/replyTo.
+     *
+     * Uses noreply@ilovefreegle.org as the From address because it's whitelisted
+     * for AMP email sending. The notify address is preserved as Reply-To so that
+     * replies still route correctly through the chat system.
      */
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address($this->replyToAddress, $this->fromDisplayName),
+            from: new Address(
+                config('freegle.mail.noreply_addr'),
+                $this->fromDisplayName
+            ),
             replyTo: [new Address($this->replyToAddress, $this->fromDisplayName)],
             subject: $this->getSubject(),
         );

@@ -804,6 +804,69 @@ class ChatNotificationTest extends TestCase
         $this->assertStringContainsString('on', $envelope->from->name);
     }
 
+    /**
+     * Test that From address uses noreply@ilovefreegle.org for AMP email whitelisting,
+     * while Reply-To uses the notify address for routing replies.
+     *
+     * This is required because noreply@ilovefreegle.org is whitelisted for sending
+     * AMP emails, but we still need replies to route through the chat system.
+     */
+    public function test_chat_notification_from_uses_noreply_reply_to_uses_notify(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice Smith']);
+        $user2 = $this->createTestUser();
+
+        $room = ChatRoom::create([
+            'chattype' => ChatRoom::TYPE_USER2USER,
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'created' => now(),
+        ]);
+
+        $message = ChatMessage::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'message' => 'Test',
+            'type' => ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $envelope = $mail->envelope();
+
+        // From address should be noreply@ilovefreegle.org (for AMP whitelisting).
+        $this->assertEquals(
+            config('freegle.mail.noreply_addr'),
+            $envelope->from->address,
+            'From address should be noreply for AMP email whitelisting'
+        );
+
+        // From name should still be the sender's display name.
+        $this->assertStringContainsString('Alice Smith', $envelope->from->name);
+
+        // Reply-To should be the notify address for routing replies through the chat system.
+        $this->assertNotEmpty($envelope->replyTo);
+        $this->assertStringContainsString(
+            'notify-' . $room->id . '-' . $user2->id,
+            $envelope->replyTo[0]->address,
+            'Reply-To should be the notify address for chat routing'
+        );
+    }
+
     public function test_chat_notification_with_previous_messages(): void
     {
         $user1 = $this->createTestUser();
