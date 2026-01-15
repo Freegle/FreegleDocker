@@ -7,6 +7,18 @@ description: "MUST use for any non-trivial development task in FreegleDocker - i
 
 You are now using the Ralph approach for this task. This is MANDATORY for the Freegle codebase.
 
+## 0. Read Coding Standards First
+
+**BEFORE starting any development work, read `codingstandards.md` in the project root.**
+
+This file contains Freegle-specific coding rules that MUST be followed:
+- Code style and naming conventions
+- Testing requirements
+- Architecture patterns
+- Common pitfalls to avoid
+
+Run: `Read codingstandards.md` at the start of each session.
+
 ## 1. Break Down the Task
 
 First, analyse the request and break it into discrete subtasks. Create a status table:
