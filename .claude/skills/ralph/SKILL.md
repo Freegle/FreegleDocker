@@ -7,18 +7,6 @@ description: "MUST use for any non-trivial development task in FreegleDocker - i
 
 You are now using the Ralph approach for this task. This is MANDATORY for the Freegle codebase.
 
-## 0. Read Coding Standards First
-
-**BEFORE starting any development work, read `codingstandards.md` in the project root.**
-
-This file contains Freegle-specific coding rules that MUST be followed:
-- Code style and naming conventions
-- Testing requirements
-- Architecture patterns
-- Common pitfalls to avoid
-
-Run: `Read codingstandards.md` at the start of each session.
-
 ## 1. Break Down the Task
 
 First, analyse the request and break it into discrete subtasks. Create a status table:
@@ -181,11 +169,11 @@ Freegle uses a specific migration approach:
 
 ### Migration Checklist
 When adding database columns:
-1. Create Laravel migration in `iznik-batch/database/migrations/`
-2. Update any Go models that reference the table
-3. Provide idempotent SQL for production deployment
-4. Document the SQL in the relevant `*_migration.sql` file
-5. Tell the user they need to run the SQL on production
+1. ✅ Create Laravel migration in `iznik-batch/database/migrations/`
+2. ✅ Update any Go models that reference the table
+3. ✅ Provide idempotent SQL for production deployment
+4. ✅ Document the SQL in the relevant `*_migration.sql` file
+5. ✅ Tell the user they need to run the SQL on production
 
 ### Example Idempotent Column Addition
 ```sql
@@ -205,59 +193,9 @@ DEALLOCATE PREPARE alterIfNotExists;
 
 ## 9. Parallel Work / Multi-PR Workflow
 
-When working on multiple PRs or branches simultaneously:
+When working on multiple PRs or branches simultaneously (e.g., monitoring CI while fixing another PR):
 
-### 9.1 PR Ownership (CRITICAL)
-**Only work on PRs that YOU created. Do NOT interfere with other developers' work.**
-
-Before working on any PR, check ownership:
-```bash
-gh pr view [PR_NUMBER] --json author --jq '.author.login'
-```
-
-**Rules:**
-- If author is the current user → OK to fix tests and iterate
-- If author is someone else → DO NOT touch unless explicitly asked
-- WIP PRs from others → NEVER touch, they're work in progress
-- If unsure → Ask before making changes
-
-**Why this matters:**
-- Other developers may be actively working on their PRs
-- "Fixing" someone else's tests could conflict with their work
-- Respect boundaries and avoid stepping on toes
-
-### 9.2 PR Prioritization (CRITICAL)
-**Complete PRs in order rather than making partial progress on many:**
-
-- Process PRs by ID order (lowest first): PR #8 before PR #15 before PR #16
-- Focus on getting ONE PR fully passing CI and ready to merge before moving to the next
-- Only switch to another PR if blocked or waiting for CI
-
-**Rationale**: Completing one PR is more valuable than partial progress on many. Context switching has overhead and incomplete PRs accumulate.
-
-### 9.3 Branch Switching Protocol (CRITICAL)
-**ALWAYS merge master when switching to a branch:**
-
-```bash
-# 1. Verify current branch has no uncommitted changes
-git status
-
-# 2. Switch to target branch
-git checkout [branch-name]
-
-# 3. Merge master to get latest changes (including Ralph skill updates)
-git merge origin/master
-
-# 4. Verify you're on the correct branch
-git branch --show-current
-
-# 5. Push the merge if successful
-git push
-```
-
-**Why merge master?** The Ralph skill itself is updated on master. Merging ensures you always have the latest skill improvements when working on any PR.
-
-### 9.4 Branch Safety Checks
+### 9.1 Branch Safety Checks (CRITICAL)
 **ALWAYS verify the current branch before making ANY changes:**
 
 ```bash
@@ -269,64 +207,31 @@ git branch --show-current
 - **ALWAYS run** `git branch --show-current` before editing files
 - If on the wrong branch, switch BEFORE making changes
 
-### 9.5 Stuck Prevention (Circuit Breaker Pattern)
+### 9.2 Enhanced Status Table for Parallel Work
 
-To avoid getting stuck on one PR indefinitely:
+Track which branch each task belongs to:
 
-**Attempt Limits:**
-- Maximum 3 fix attempts per PR before moving to the next
-- An "attempt" = push changes and wait for CI result
-- Track attempts: `PR #8: attempt 2/3`
-
-**When to move on:**
-- After 3 failed attempts
-- When blocked waiting for external input
-- When the fix requires investigation that could take >1 hour
-
-**Escalation:**
-- After max attempts, add comment to PR: "Needs investigation - moving to next PR"
-- Mark PR as ❌ Blocked in dashboard
-- Return to it after completing other PRs, or flag for human review
-
-**Example flow:**
-```
-PR #8: attempt 1 → failed → attempt 2 → failed → attempt 3 → failed → MOVE ON
-PR #15: attempt 1 → success → READY TO MERGE
-Return to PR #8 with fresh perspective
-```
-
-### 9.6 Context Management (Two-Level Tracking)
-
-**Problem**: Detailed task tracking for multiple PRs clutters context.
-
-**Solution**: Use two-level tracking:
-
-**Level 1: PR Dashboard (always visible, minimal)**
 ```markdown
-## PR Dashboard
-| PR | Branch | Attempts | Status |
-|----|--------|----------|--------|
-| #8 | fix/migration-safety | 1/3 | 🔄 CI Running |
-| #15 | fix/test-mail-driver | 0/3 | ⬜ Pending |
-| #16 | feature/worker-pools | 0/3 | ⬜ Pending |
+## Task Status
+
+| # | Task | Branch | Status | Notes |
+|---|------|--------|--------|-------|
+| 1 | Fix AMP tracking | feature/amp-email-tracking | ✅ Complete | PR #17 |
+| 2 | Fix WorkerPool tests | feature/worker-pools | 🔄 In Progress | PR #16 |
+| 3 | Review Debug Markers | fix/amp-footer | ⬜ Pending | PR #9 |
 ```
 
-**Level 2: Current PR Tasks (detailed, reset on switch)**
-```markdown
-## Current: PR #8 (fix/migration-safety)
-| # | Task | Status |
-|---|------|--------|
-| 1 | Merge master | ✅ Complete |
-| 2 | Run CI | 🔄 In Progress |
-| 3 | Fix any failures | ⬜ Pending |
-```
+### 9.3 Branch Switching Protocol
 
-**When switching PRs:**
-- Update PR Dashboard status
-- Clear Level 2 task table
-- Create new Level 2 tasks for the new PR
+When switching between tasks on different branches:
 
-### 9.7 Parallel CI Monitoring
+1. **Verify no uncommitted changes**: `git status`
+2. **Stash if needed**: `git stash push -m "WIP: [task description]"`
+3. **Switch branch**: `git checkout [branch-name]`
+4. **Verify branch**: `git branch --show-current`
+5. **Pop stash if returning**: `git stash pop`
+
+### 9.4 Parallel CI Monitoring
 
 When monitoring CI for multiple PRs:
 
@@ -341,46 +246,5 @@ When monitoring CI for multiple PRs:
    - Pushing to remote
 
 3. **Use clear indicators** when reporting which PR/branch you're discussing
-
-### 9.8 Foreground vs Background Commands (CRITICAL)
-
-**Problem**: Polling loops in foreground block all other work.
-
-**Rule**: Use background commands for any operation that waits or polls.
-
-**Foreground (blocking) - use for:**
-- Quick one-shot status checks
-- Commands that complete in <5 seconds
-- Commands where you need the result immediately
-
-```bash
-# Good: Quick status check
-source .env && curl -s "https://circleci.com/api/v2/workflow/$id" | jq '.status'
-```
-
-**Background (non-blocking) - use for:**
-- Polling loops (waiting for CI)
-- Long-running builds
-- Any command with `sleep` or loops
-
-```bash
-# Good: Background polling - use run_in_background parameter
-# Then continue working and check output file later
-```
-
-**Anti-pattern to AVOID:**
-```bash
-# BAD: Foreground polling blocks everything
-for i in {1..10}; do
-  curl ...
-  sleep 30  # Blocks for 5 minutes!
-done
-```
-
-**Correct pattern:**
-1. Start CI check in background
-2. Continue working on other tasks (read-only operations, planning)
-3. Periodically check background output file
-4. When CI completes, act on the result
 
 Now analyse the user's request and create your status table to begin work.
