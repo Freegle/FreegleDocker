@@ -10,10 +10,24 @@ use Tests\TestCase;
 
 class ChatNotificationTest extends TestCase
 {
-    public function test_chat_notification_can_be_constructed(): void
+    /**
+     * Create a standard User2User chat setup for testing.
+     *
+     * Returns an array with users, room, message, and mail objects ready to use.
+     * This reduces the ~20 lines of boilerplate repeated in most tests.
+     *
+     * @param array $options Optional overrides:
+     *   - user1_attrs: array of attributes for user1
+     *   - user2_attrs: array of attributes for user2
+     *   - message_text: string message content
+     *   - message_type: ChatMessage type constant
+     *   - message_attrs: array of additional message attributes
+     * @return array{user1: User, user2: User, room: ChatRoom, message: ChatMessage, mail: ChatNotification}
+     */
+    protected function createUser2UserChatSetup(array $options = []): array
     {
-        $user1 = $this->createTestUser();
-        $user2 = $this->createTestUser();
+        $user1 = $this->createTestUser($options['user1_attrs'] ?? []);
+        $user2 = $this->createTestUser($options['user2_attrs'] ?? []);
 
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2USER,
@@ -22,9 +36,43 @@ class ChatNotificationTest extends TestCase
             'created' => now(),
         ]);
 
-        $message = ChatMessage::create([
+        $messageAttrs = array_merge([
             'chatid' => $room->id,
             'userid' => $user1->id,
+            'message' => $options['message_text'] ?? 'Test message',
+            'type' => $options['message_type'] ?? ChatMessage::TYPE_DEFAULT,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+            'mailedtoall' => 0,
+            'seenbyall' => 0,
+            'reviewrejected' => 0,
+            'platform' => 1,
+        ], $options['message_attrs'] ?? []);
+
+        $message = ChatMessage::create($messageAttrs);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        return compact('user1', 'user2', 'room', 'message', 'mail');
+    }
+
+    /**
+     * Create a standard ChatMessage with sensible defaults.
+     * Use this when you need to create additional messages in a room.
+     */
+    protected function createChatMessage(ChatRoom $room, User $sender, array $overrides = []): ChatMessage
+    {
+        return ChatMessage::create(array_merge([
+            'chatid' => $room->id,
+            'userid' => $sender->id,
             'message' => 'Test message',
             'type' => ChatMessage::TYPE_DEFAULT,
             'date' => now(),
@@ -35,53 +83,19 @@ class ChatNotificationTest extends TestCase
             'seenbyall' => 0,
             'reviewrejected' => 0,
             'platform' => 1,
-        ]);
+        ], $overrides));
+    }
 
-        $mail = new ChatNotification(
-            $user2,
-            $user1,
-            $room,
-            $message,
-            ChatRoom::TYPE_USER2USER
-        );
+    public function test_chat_notification_can_be_constructed(): void
+    {
+        ['mail' => $mail] = $this->createUser2UserChatSetup();
 
         $this->assertInstanceOf(ChatNotification::class, $mail);
     }
 
     public function test_chat_notification_has_properties(): void
     {
-        $user1 = $this->createTestUser();
-        $user2 = $this->createTestUser();
-
-        $room = ChatRoom::create([
-            'chattype' => ChatRoom::TYPE_USER2USER,
-            'user1' => $user1->id,
-            'user2' => $user2->id,
-            'created' => now(),
-        ]);
-
-        $message = ChatMessage::create([
-            'chatid' => $room->id,
-            'userid' => $user1->id,
-            'message' => 'Test message',
-            'type' => ChatMessage::TYPE_DEFAULT,
-            'date' => now(),
-            'reviewrequired' => 0,
-            'processingrequired' => 0,
-            'processingsuccessful' => 1,
-            'mailedtoall' => 0,
-            'seenbyall' => 0,
-            'reviewrejected' => 0,
-            'platform' => 1,
-        ]);
-
-        $mail = new ChatNotification(
-            $user2,
-            $user1,
-            $room,
-            $message,
-            ChatRoom::TYPE_USER2USER
-        );
+        ['user1' => $user1, 'user2' => $user2, 'room' => $room, 'mail' => $mail] = $this->createUser2UserChatSetup();
 
         $this->assertEquals($user2->id, $mail->recipient->id);
         $this->assertEquals($user1->id, $mail->sender->id);
@@ -92,38 +106,7 @@ class ChatNotificationTest extends TestCase
 
     public function test_chat_notification_returns_recipient_user_id(): void
     {
-        $user1 = $this->createTestUser();
-        $user2 = $this->createTestUser();
-
-        $room = ChatRoom::create([
-            'chattype' => ChatRoom::TYPE_USER2USER,
-            'user1' => $user1->id,
-            'user2' => $user2->id,
-            'created' => now(),
-        ]);
-
-        $message = ChatMessage::create([
-            'chatid' => $room->id,
-            'userid' => $user1->id,
-            'message' => 'Test message',
-            'type' => ChatMessage::TYPE_DEFAULT,
-            'date' => now(),
-            'reviewrequired' => 0,
-            'processingrequired' => 0,
-            'processingsuccessful' => 1,
-            'mailedtoall' => 0,
-            'seenbyall' => 0,
-            'reviewrejected' => 0,
-            'platform' => 1,
-        ]);
-
-        $mail = new ChatNotification(
-            $user2,
-            $user1,
-            $room,
-            $message,
-            ChatRoom::TYPE_USER2USER
-        );
+        ['user2' => $user2, 'mail' => $mail] = $this->createUser2UserChatSetup();
 
         // Use reflection to call protected getRecipientUserId method.
         $reflection = new \ReflectionMethod($mail, 'getRecipientUserId');
@@ -134,38 +117,7 @@ class ChatNotificationTest extends TestCase
 
     public function test_chat_notification_build_returns_self(): void
     {
-        $user1 = $this->createTestUser();
-        $user2 = $this->createTestUser();
-
-        $room = ChatRoom::create([
-            'chattype' => ChatRoom::TYPE_USER2USER,
-            'user1' => $user1->id,
-            'user2' => $user2->id,
-            'created' => now(),
-        ]);
-
-        $message = ChatMessage::create([
-            'chatid' => $room->id,
-            'userid' => $user1->id,
-            'message' => 'Test message',
-            'type' => ChatMessage::TYPE_DEFAULT,
-            'date' => now(),
-            'reviewrequired' => 0,
-            'processingrequired' => 0,
-            'processingsuccessful' => 1,
-            'mailedtoall' => 0,
-            'seenbyall' => 0,
-            'reviewrejected' => 0,
-            'platform' => 1,
-        ]);
-
-        $mail = new ChatNotification(
-            $user2,
-            $user1,
-            $room,
-            $message,
-            ChatRoom::TYPE_USER2USER
-        );
+        ['mail' => $mail] = $this->createUser2UserChatSetup();
 
         $result = $mail->build();
 
@@ -174,38 +126,9 @@ class ChatNotificationTest extends TestCase
 
     public function test_chat_notification_user2user_subject_without_interested_message(): void
     {
-        $user1 = $this->createTestUser(['fullname' => 'John Doe']);
-        $user2 = $this->createTestUser();
-
-        $room = ChatRoom::create([
-            'chattype' => ChatRoom::TYPE_USER2USER,
-            'user1' => $user1->id,
-            'user2' => $user2->id,
-            'created' => now(),
+        ['mail' => $mail] = $this->createUser2UserChatSetup([
+            'user1_attrs' => ['fullname' => 'John Doe'],
         ]);
-
-        $message = ChatMessage::create([
-            'chatid' => $room->id,
-            'userid' => $user1->id,
-            'message' => 'Test message',
-            'type' => ChatMessage::TYPE_DEFAULT,
-            'date' => now(),
-            'reviewrequired' => 0,
-            'processingrequired' => 0,
-            'processingsuccessful' => 1,
-            'mailedtoall' => 0,
-            'seenbyall' => 0,
-            'reviewrejected' => 0,
-            'platform' => 1,
-        ]);
-
-        $mail = new ChatNotification(
-            $user2,
-            $user1,
-            $room,
-            $message,
-            ChatRoom::TYPE_USER2USER
-        );
 
         // Without an "interested in" message, we get the fallback subject.
         $this->assertEquals('[Freegle] You have a new message', $mail->replySubject);
