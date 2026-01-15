@@ -98,12 +98,23 @@ NC='\033[0m' # No Colour
 # =============================================================================
 
 CODING_STANDARDS_FILE="$SCRIPT_DIR/codingstandards.md"
+RALPH_SKILL_FILE="$SCRIPT_DIR/.claude/skills/ralph/SKILL.md"
 
 load_coding_standards() {
     if [[ -f "$CODING_STANDARDS_FILE" ]]; then
         cat "$CODING_STANDARDS_FILE"
     else
         echo "WARNING: codingstandards.md not found at $CODING_STANDARDS_FILE"
+    fi
+}
+
+load_ralph_skill() {
+    # Load the Ralph skill methodology, stripping YAML frontmatter
+    if [[ -f "$RALPH_SKILL_FILE" ]]; then
+        # Skip first 4 lines (YAML frontmatter: ---, name, description, ---)
+        tail -n +5 "$RALPH_SKILL_FILE"
+    else
+        echo "WARNING: Ralph skill not found at $RALPH_SKILL_FILE"
     fi
 }
 
@@ -1086,6 +1097,10 @@ build_prompt() {
 
 You are executing a plan iteratively using the Ralph approach. Each iteration
 builds on the previous work. Review what has been done and continue progressing.
+
+## Ralph Methodology (Single Source of Truth)
+
+$(load_ralph_skill)
 
 ## The Plan
 

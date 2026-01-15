@@ -7,6 +7,18 @@ description: "MUST use for any non-trivial development task in FreegleDocker - i
 
 You are now using the Ralph approach for this task. This is MANDATORY for the Freegle codebase.
 
+## 0. Read Coding Standards First
+
+**BEFORE starting any development work, read `codingstandards.md` in the project root.**
+
+This file contains Freegle-specific coding rules that MUST be followed:
+- Code style and naming conventions
+- Testing requirements
+- Architecture patterns
+- Common pitfalls to avoid
+
+Run: `Read codingstandards.md` at the start of each session.
+
 ## 1. Break Down the Task
 
 First, analyse the request and break it into discrete subtasks. Create a status table:
@@ -195,7 +207,26 @@ DEALLOCATE PREPARE alterIfNotExists;
 
 When working on multiple PRs or branches simultaneously:
 
-### 9.1 PR Prioritization (CRITICAL)
+### 9.1 PR Ownership (CRITICAL)
+**Only work on PRs that YOU created. Do NOT interfere with other developers' work.**
+
+Before working on any PR, check ownership:
+```bash
+gh pr view [PR_NUMBER] --json author --jq '.author.login'
+```
+
+**Rules:**
+- If author is the current user → OK to fix tests and iterate
+- If author is someone else → DO NOT touch unless explicitly asked
+- WIP PRs from others → NEVER touch, they're work in progress
+- If unsure → Ask before making changes
+
+**Why this matters:**
+- Other developers may be actively working on their PRs
+- "Fixing" someone else's tests could conflict with their work
+- Respect boundaries and avoid stepping on toes
+
+### 9.2 PR Prioritization (CRITICAL)
 **Complete PRs in order rather than making partial progress on many:**
 
 - Process PRs by ID order (lowest first): PR #8 before PR #15 before PR #16
@@ -204,7 +235,7 @@ When working on multiple PRs or branches simultaneously:
 
 **Rationale**: Completing one PR is more valuable than partial progress on many. Context switching has overhead and incomplete PRs accumulate.
 
-### 9.2 Branch Switching Protocol (CRITICAL)
+### 9.3 Branch Switching Protocol (CRITICAL)
 **ALWAYS merge master when switching to a branch:**
 
 ```bash
@@ -226,7 +257,7 @@ git push
 
 **Why merge master?** The Ralph skill itself is updated on master. Merging ensures you always have the latest skill improvements when working on any PR.
 
-### 9.3 Branch Safety Checks
+### 9.4 Branch Safety Checks
 **ALWAYS verify the current branch before making ANY changes:**
 
 ```bash
@@ -238,7 +269,7 @@ git branch --show-current
 - **ALWAYS run** `git branch --show-current` before editing files
 - If on the wrong branch, switch BEFORE making changes
 
-### 9.4 Stuck Prevention (Circuit Breaker Pattern)
+### 9.5 Stuck Prevention (Circuit Breaker Pattern)
 
 To avoid getting stuck on one PR indefinitely:
 
@@ -264,7 +295,7 @@ PR #15: attempt 1 → success → READY TO MERGE
 Return to PR #8 with fresh perspective
 ```
 
-### 9.5 Context Management (Two-Level Tracking)
+### 9.6 Context Management (Two-Level Tracking)
 
 **Problem**: Detailed task tracking for multiple PRs clutters context.
 
@@ -295,7 +326,7 @@ Return to PR #8 with fresh perspective
 - Clear Level 2 task table
 - Create new Level 2 tasks for the new PR
 
-### 9.6 Parallel CI Monitoring
+### 9.7 Parallel CI Monitoring
 
 When monitoring CI for multiple PRs:
 
@@ -311,7 +342,7 @@ When monitoring CI for multiple PRs:
 
 3. **Use clear indicators** when reporting which PR/branch you're discussing
 
-### 9.7 Foreground vs Background Commands (CRITICAL)
+### 9.8 Foreground vs Background Commands (CRITICAL)
 
 **Problem**: Polling loops in foreground block all other work.
 
