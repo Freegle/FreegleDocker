@@ -1,0 +1,56 @@
+name: Update Version File
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update version file
+        run: |
+          # Get current timestamp and commit info
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_SHORT=$(echo "$COMMIT_SHA" | cut -c1-7)
+
+          # Read current version number or start at 1
+          if [ -f version.txt ]; then
+            CURRENT_VERSION=$(head -n1 version.txt | grep -oP '^\d+' || echo "0")
+          else
+            CURRENT_VERSION=0
+          fi
+
+          # Increment version
+          NEW_VERSION=$((CURRENT_VERSION + 1))
+
+          # Write version file
+          cat > version.txt << EOF
+          ${NEW_VERSION}
+          commit: ${COMMIT_SHORT}
+          sha: ${COMMIT_SHA}
+          timestamp: ${TIMESTAMP}
+          EOF
+
+          echo "Updated version to ${NEW_VERSION} (commit ${COMMIT_SHORT})"
+
+      - name: Commit version file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Only commit if there are changes
+          if git diff --quiet version.txt 2>/dev/null; then
+            echo "No changes to version.txt"
+          else
+            git add version.txt
+            git commit -m "Update version file [skip ci]"
+            git push
+          fi

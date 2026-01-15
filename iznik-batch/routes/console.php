@@ -13,6 +13,14 @@ use Illuminate\Support\Facades\Schedule;
 // ACTIVE SCHEDULED COMMANDS
 // =============================================================================
 
+// Deployment watch - detect code updates and auto-refresh application.
+// Checks version.txt every minute; triggers deploy:refresh when version changes
+// and file is at least 5 minutes old (to ensure upload is complete).
+Schedule::command('deploy:watch')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Welcome mail processing - check for pending welcome mails every minute.
 // Uses PreventsOverlapping trait for flock-based locking (released on process death).
 // Uses runInBackground() so it doesn't block other scheduled commands.

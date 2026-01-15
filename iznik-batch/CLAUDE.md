@@ -151,3 +151,39 @@ docker logs freegle-batch
 # Run artisan commands
 docker exec freegle-batch php artisan <command>
 ```
+
+## Deployment Commands
+
+The application includes automatic deployment detection for environments where code is uploaded via SFTP/SCP rather than git.
+
+### How It Works
+
+1. **Version File**: A `version.txt` file is updated on each commit via GitHub Actions, containing an incrementing version number and commit info.
+
+2. **Automatic Detection**: The `deploy:watch` command runs every minute via the scheduler. It compares the current `version.txt` to the last deployed version stored in cache.
+
+3. **Settle Time**: When a version change is detected, the system waits 5 minutes to ensure file uploads are complete before triggering a refresh.
+
+4. **Graceful Restart**: Daemons use signal handlers (SIGTERM/SIGINT) to shut down gracefully at safe points in their processing loops.
+
+### Commands
+
+```bash
+# Manually refresh the application after deployment
+docker exec freegle-batch php artisan deploy:refresh
+
+# Force a refresh check (bypass version comparison)
+docker exec freegle-batch php artisan deploy:watch --force
+
+# Check deployment status
+docker exec freegle-batch php artisan deploy:watch
+```
+
+### Adding New Daemons
+
+When adding new supervisor-managed daemons:
+
+1. Add the program name to the `$supervisorPrograms` array in `RefreshCommand.php`
+2. Use the `GracefulShutdown` trait in your command for graceful shutdown support
+3. Call `$this->registerShutdownHandlers()` at the start of your daemon loop
+4. Check `$this->shouldStop()` at safe points in your loop
