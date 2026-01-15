@@ -17,18 +17,12 @@ class NotifyUser2UserCommand extends Command
 
     /**
      * The name and signature of the console command.
-     *
-     * For manual testing, use:
-     *   php artisan mail:chat:user2user --chat=123 --delay=0 --force --once
-     *
-     * This will send notifications for chat 123 immediately, even if already sent.
      */
     protected $signature = 'mail:chat:user2user
                             {--chat= : Process only a specific chat ID}
-                            {--delay=30 : Delay in seconds before sending notification (use 0 for immediate)}
-                            {--since=24 : How many hours back to look for messages}
+                            {--delay=30 : Delay in seconds before sending notification}
+                            {--since=4 : How many hours back to look for messages}
                             {--force : Force sending even for already mailed messages}
-                            {--once : Run once and exit (for manual testing)}
                             {--max-iterations=120 : Maximum iterations before exiting}
                             {--spool : Spool emails instead of sending directly}';
 
@@ -63,8 +57,7 @@ class NotifyUser2UserCommand extends Command
         $delay = (int) $this->option('delay');
         $sinceHours = (int) $this->option('since');
         $forceAll = (bool) $this->option('force');
-        $runOnce = (bool) $this->option('once');
-        $maxIterations = $runOnce ? 1 : (int) $this->option('max-iterations');
+        $maxIterations = (int) $this->option('max-iterations');
         $spool = (bool) $this->option('spool');
 
         // Inject spooler if spooling is enabled.
@@ -79,14 +72,10 @@ class NotifyUser2UserCommand extends Command
             'delay' => $delay,
             'since_hours' => $sinceHours,
             'force' => $forceAll,
-            'once' => $runOnce,
             'spool' => $spool,
         ]);
 
         $this->info('Processing User2User chat notifications...');
-        if ($runOnce) {
-            $this->info('Running once (manual test mode).');
-        }
         $totalNotified = 0;
         $iteration = 0;
 
@@ -113,12 +102,8 @@ class NotifyUser2UserCommand extends Command
             if ($count > 0) {
                 $this->info("Sent {$count} notifications.");
             } else {
-                if ($runOnce) {
-                    $this->info("No messages to notify.");
-                } else {
-                    // No messages to process, sleep before next iteration.
-                    sleep(1);
-                }
+                // No messages to process, sleep before next iteration.
+                sleep(1);
             }
         } while ($iteration < $maxIterations);
 
