@@ -1934,6 +1934,12 @@ const httpServer = http.createServer(async (req, res) => {
         set -e
         echo "Clearing Laravel caches using artisan commands for proper state cleanup..."
 
+        # Step 0: Stop all supervisor-managed workers to prevent them from corrupting
+        # the bootstrap cache while we regenerate it. The scheduler, queue workers,
+        # and mail spooler all bootstrap Laravel, which can race with our cache rebuild.
+        echo "Stopping supervisor workers to prevent cache corruption..."
+        docker exec freegle-batch supervisorctl stop all 2>&1 || true
+
         # Step 1: Remove potentially corrupt bootstrap cache files directly
         # (artisan commands may fail if these are corrupt)
         docker exec freegle-batch sh -c 'rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php' 2>&1 || true
@@ -2068,6 +2074,17 @@ const httpServer = http.createServer(async (req, res) => {
         ? `All ${total} tests passed ✓`
         : `Tests failed: ${passed}✓ ${p.failed}✗ of ${total}`;
       console.log(`Laravel tests completed with code ${code}`);
+
+      // Restart supervisor workers that were stopped before tests
+      try {
+        execSync("docker exec freegle-batch supervisorctl start all 2>&1 || true", {
+          encoding: "utf8",
+          timeout: 30000,
+        });
+        console.log("Restarted supervisor workers after Laravel tests");
+      } catch (e) {
+        console.log("Warning: Failed to restart supervisor workers:", e.message);
+      }
     });
 
     testProcess.on("error", (error) => {
