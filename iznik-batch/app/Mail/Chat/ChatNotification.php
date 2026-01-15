@@ -178,6 +178,12 @@ class ChatNotification extends MjmlMailable
         // Only pass user ID if it's a persisted user (exists in database).
         $userId = $this->recipient->exists ? $this->recipient->id : null;
 
+        // Determine if this email will include AMP content.
+        // This must match the logic in build() that decides whether to render AMP.
+        $hasAmp = $this->isAmpEnabled()
+            && $this->chatType === ChatRoom::TYPE_USER2USER
+            && $this->recipient->exists;
+
         $this->initTracking(
             'ChatNotification',
             $this->recipient->email_preferred,
@@ -188,7 +194,8 @@ class ChatNotification extends MjmlMailable
                 'chat_id' => $chatRoom->id,
                 'sender_id' => $sender?->id,
                 'message_id' => $message->id,
-            ]
+            ],
+            $hasAmp
         );
     }
 
