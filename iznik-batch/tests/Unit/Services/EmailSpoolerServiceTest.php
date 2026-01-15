@@ -576,9 +576,14 @@ class EmailSpoolerServiceTest extends TestCase
             };
         });
 
-        // Temporarily switch to capture transport.
+        // Configure the capture mailer and switch to it.
         $originalDriver = config('mail.default');
+        config(['mail.mailers.capture' => ['transport' => 'capture']]);
         config(['mail.default' => 'capture']);
+
+        // Clear ALL cached mailers so the new default config takes effect.
+        // purge('capture') only clears that specific mailer, not the default.
+        \Illuminate\Support\Facades\Mail::forgetMailers();
 
         // Process the spool.
         $stats = $this->spooler->processSpool();
