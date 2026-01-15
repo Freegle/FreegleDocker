@@ -311,4 +311,45 @@ When monitoring CI for multiple PRs:
 
 3. **Use clear indicators** when reporting which PR/branch you're discussing
 
+### 9.7 Foreground vs Background Commands (CRITICAL)
+
+**Problem**: Polling loops in foreground block all other work.
+
+**Rule**: Use background commands for any operation that waits or polls.
+
+**Foreground (blocking) - use for:**
+- Quick one-shot status checks
+- Commands that complete in <5 seconds
+- Commands where you need the result immediately
+
+```bash
+# Good: Quick status check
+source .env && curl -s "https://circleci.com/api/v2/workflow/$id" | jq '.status'
+```
+
+**Background (non-blocking) - use for:**
+- Polling loops (waiting for CI)
+- Long-running builds
+- Any command with `sleep` or loops
+
+```bash
+# Good: Background polling - use run_in_background parameter
+# Then continue working and check output file later
+```
+
+**Anti-pattern to AVOID:**
+```bash
+# BAD: Foreground polling blocks everything
+for i in {1..10}; do
+  curl ...
+  sleep 30  # Blocks for 5 minutes!
+done
+```
+
+**Correct pattern:**
+1. Start CI check in background
+2. Continue working on other tasks (read-only operations, planning)
+3. Periodically check background output file
+4. When CI completes, act on the result
+
 Now analyse the user's request and create your status table to begin work.
