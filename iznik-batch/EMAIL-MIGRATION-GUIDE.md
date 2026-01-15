@@ -541,13 +541,35 @@ const TYPE_COMPLETED = 'Completed';
 // etc.
 ```
 
-### 4. Reply-To Format
+### 4. From Address (IMPORTANT for AMP)
 ```php
-// Standard format from iznik-server
+// ALWAYS use noreply as From address - required for AMP email whitelisting
+public function envelope(): Envelope
+{
+    return new Envelope(
+        from: new Address(
+            config('freegle.mail.noreply_addr'),  // noreply@ilovefreegle.org
+            $this->fromDisplayName                 // Sender's display name
+        ),
+        replyTo: [new Address($this->replyToAddress, $this->fromDisplayName)],
+        subject: $this->getSubject(),
+    );
+}
+```
+
+**Why noreply@ilovefreegle.org?**
+- This address is whitelisted with Gmail/Yahoo for sending AMP emails
+- Using any other From address (like notify-xxx@users.ilovefreegle.org) breaks AMP delivery
+- The sender's name still appears to recipients (via display name)
+- Replies still work correctly (via Reply-To header)
+
+### 5. Reply-To Format
+```php
+// Standard format from iznik-server - used for routing replies
 $replyTo = 'notify-' . $chatId . '-' . $userId . '@' . USER_DOMAIN;
 ```
 
-### 5. Notification Preference Checks
+### 6. Notification Preference Checks
 ```php
 // Check if user wants email notifications
 $emailNotifs = $user->notifsOn(User::NOTIFS_EMAIL);
@@ -629,3 +651,4 @@ When adding a new email type:
 10. **Write tests first** - based on iznik-server behavior
 11. **Add feature flag check** - respect FREEGLE_MAIL_ENABLED_TYPES setting
 12. **Include footer in ALL templates** - MJML, text, AND AMP must have consistent footers
+13. **Use noreply as From address** - required for AMP email whitelisting; use Reply-To for routing
