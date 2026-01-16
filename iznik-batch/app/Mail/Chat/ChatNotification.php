@@ -1039,7 +1039,8 @@ class ChatNotification extends MjmlMailable
             $this->chatRoom->id,
             $this->recipient->id,
             $this->message->id, // Exclude the triggering message
-            $this->message->id  // Mark messages newer than this as NEW
+            $this->message->id, // Mark messages newer than this as NEW
+            $trackingId         // Track AMP render when amp-list fetches messages
         );
 
         $ampReplyUrl = $this->buildAmpReplyUrl(
