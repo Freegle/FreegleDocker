@@ -206,10 +206,33 @@ commands:
             # Build only containers needed for CI tests (skip dev containers)
             # This saves ~2-3 minutes by not building freegle-dev-local, modtools-dev-local, ai-support-helper
             echo "Building CI-required containers..."
-            docker-compose -f docker-compose.yml build \
-              apiv1 apiv1-phpunit apiv2 \
-              freegle-prod-local modtools-prod-local \
-              playwright status batch
+
+            # Retry logic for transient network errors (ECONNRESET, etc.) during npm install
+            MAX_RETRIES=3
+            RETRY_DELAY=30
+
+            for attempt in $(seq 1 $MAX_RETRIES); do
+              echo "Build attempt $attempt of $MAX_RETRIES..."
+
+              if docker-compose -f docker-compose.yml build \
+                apiv1 apiv1-phpunit apiv2 \
+                freegle-prod-local modtools-prod-local \
+                playwright status batch; then
+                echo "✅ Build succeeded on attempt $attempt"
+                break
+              else
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⚠️ Build failed on attempt $attempt, retrying in ${RETRY_DELAY}s..."
+                  # Clean up any partial builds
+                  docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+                  docker system prune -f 2>/dev/null || true
+                  sleep $RETRY_DELAY
+                else
+                  echo "❌ Build failed after $MAX_RETRIES attempts"
+                  exit 1
+                fi
+              fi
+            done
 
             # Start all services
             docker-compose -f docker-compose.yml up -d
