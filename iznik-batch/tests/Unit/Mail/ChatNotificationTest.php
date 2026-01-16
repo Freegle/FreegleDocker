@@ -667,24 +667,62 @@ class ChatNotificationTest extends TestCase
         preg_match('/This email was sent[^<]*/', $html, $footerMatch);
         $footerText = $footerMatch[0] ?? 'FOOTER NOT FOUND';
 
+        // Additional diagnostics - check for ANY footer content.
+        $hasUnsubscribe = str_contains($html, 'Unsubscribe');
+        $hasSettings = str_contains($html, 'Change your email settings');
+        $hasHmrc = str_contains($html, 'HMRC');
+        $hasCharityText = str_contains($html, 'registered as a charity');
+        $hasF5F5F5 = str_contains($html, '#f5f5f5'); // Footer background color
+
+        // Check if tracking pixel is present (rendered after footer).
+        $hasTrackingPixel = str_contains($html, 'width="1" height="1"');
+
+        // Check for "Reply to" button (rendered before footer).
+        $hasReplyButton = str_contains($html, 'Reply to');
+
+        // Look for the last few sections of HTML to see structure.
+        $lastSection = '';
+        if (preg_match('/(?:Reply to[^<]+<\/a>)(.{0,500})/s', $html, $afterReplyMatch)) {
+            $lastSection = substr($afterReplyMatch[1], 0, 200);
+        }
+
         // Build debug message for assertion failure.
         $debug = sprintf(
             "\n=== DEBUG INFO ===\n" .
             "config('freegle.amp.enabled'): %s\n" .
+            "config('freegle.branding.name'): %s\n" .
             "mail->recipient->exists: %s\n" .
             "mail->recipient->email_preferred: %s\n" .
             "mail->chatType: %s\n" .
             "footer view exists: %s\n" .
             "HTML length: %d\n" .
-            "Footer text found: %s\n" .
+            "Footer text 'This email was sent...': %s\n" .
+            "--- Footer content checks ---\n" .
+            "Has 'Unsubscribe': %s\n" .
+            "Has 'Change your email settings': %s\n" .
+            "Has 'HMRC': %s\n" .
+            "Has 'registered as a charity': %s\n" .
+            "Has footer bg color #f5f5f5: %s\n" .
+            "Has Reply button: %s\n" .
+            "Has tracking pixel: %s\n" .
+            "--- Content after Reply button (first 200 chars) ---\n%s\n" .
             "==================\n",
             var_export(config('freegle.amp.enabled'), true),
+            var_export(config('freegle.branding.name'), true),
             var_export($recipientExists, true),
             var_export($recipientEmail, true),
             var_export($chatType, true),
             var_export($footerViewExists, true),
             strlen($html),
-            $footerText
+            $footerText,
+            $hasUnsubscribe ? 'YES' : 'NO',
+            $hasSettings ? 'YES' : 'NO',
+            $hasHmrc ? 'YES' : 'NO',
+            $hasCharityText ? 'YES' : 'NO',
+            $hasF5F5F5 ? 'YES' : 'NO',
+            $hasReplyButton ? 'YES' : 'NO',
+            $hasTrackingPixel ? 'YES' : 'NO',
+            $lastSection
         );
 
         // Footer should indicate AMP was included.
