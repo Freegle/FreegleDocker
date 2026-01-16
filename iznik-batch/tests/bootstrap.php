@@ -37,12 +37,27 @@ if ($uniqueToken) {
     }
     // Set environment variable that bootstrap/app.php reads
     putenv("PARATEST_BOOTSTRAP_CACHE={$workerCacheDir}");
+
+    // Also isolate the view cache per worker to prevent compiled Blade template race conditions.
+    // Multiple workers compiling the same view (e.g., a shared partial like footer.blade.php)
+    // can cause one worker to read a partially-written or deleted compiled file.
+    $viewCacheDir = "/tmp/laravel-views-{$uniqueToken}";
+    if (!is_dir($viewCacheDir)) {
+        mkdir($viewCacheDir, 0777, true);
+    }
+    putenv("PARATEST_VIEW_CACHE={$viewCacheDir}");
 }
 
 require __DIR__.'/../vendor/autoload.php';
 
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+// If PARATEST_VIEW_CACHE is set, also configure it via config() to ensure it takes effect.
+// putenv() alone may not be sufficient as Laravel's env() may read from $_ENV.
+if ($uniqueToken && isset($viewCacheDir)) {
+    config(['view.compiled' => $viewCacheDir]);
+}
 
 // Force config to use test database
 config(['database.connections.mysql.database' => 'iznik_batch_test']);

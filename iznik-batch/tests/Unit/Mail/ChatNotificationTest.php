@@ -659,6 +659,20 @@ class ChatNotificationTest extends TestCase
         $recipientEmail = $mail->recipient->email_preferred;
         $footerViewExists = view()->exists('emails.mjml.partials.footer');
 
+        // Try rendering the footer template directly to see if it works.
+        $directFooterRender = '';
+        $directFooterError = null;
+        try {
+            $directFooterRender = view('emails.mjml.partials.footer', [
+                'email' => $recipientEmail,
+                'settingsUrl' => 'http://test.com/settings',
+                'unsubscribeUrl' => 'http://test.com/unsubscribe',
+                'ampIncluded' => true,
+            ])->render();
+        } catch (\Throwable $e) {
+            $directFooterError = $e->getMessage();
+        }
+
         $mail->build();
         $html = $mail->render();
 
@@ -691,13 +705,18 @@ class ChatNotificationTest extends TestCase
             "\n=== DEBUG INFO ===\n" .
             "config('freegle.amp.enabled'): %s\n" .
             "config('freegle.branding.name'): %s\n" .
+            "config('view.compiled'): %s\n" .
             "mail->recipient->exists: %s\n" .
             "mail->recipient->email_preferred: %s\n" .
             "mail->chatType: %s\n" .
             "footer view exists: %s\n" .
             "HTML length: %d\n" .
             "Footer text 'This email was sent...': %s\n" .
-            "--- Footer content checks ---\n" .
+            "--- Direct footer render test ---\n" .
+            "Direct footer render length: %d\n" .
+            "Direct footer render error: %s\n" .
+            "Direct footer has 'This email was sent': %s\n" .
+            "--- Footer content checks in mail HTML ---\n" .
             "Has 'Unsubscribe': %s\n" .
             "Has 'Change your email settings': %s\n" .
             "Has 'HMRC': %s\n" .
@@ -709,12 +728,16 @@ class ChatNotificationTest extends TestCase
             "==================\n",
             var_export(config('freegle.amp.enabled'), true),
             var_export(config('freegle.branding.name'), true),
+            var_export(config('view.compiled'), true),
             var_export($recipientExists, true),
             var_export($recipientEmail, true),
             var_export($chatType, true),
             var_export($footerViewExists, true),
             strlen($html),
             $footerText,
+            strlen($directFooterRender),
+            $directFooterError ?? 'none',
+            str_contains($directFooterRender, 'This email was sent') ? 'YES' : 'NO',
             $hasUnsubscribe ? 'YES' : 'NO',
             $hasSettings ? 'YES' : 'NO',
             $hasHmrc ? 'YES' : 'NO',
