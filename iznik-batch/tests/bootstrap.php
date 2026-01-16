@@ -1,5 +1,15 @@
 <?php
 
+// Clear config cache before loading Laravel.
+// When running tests, we need phpunit.xml env vars to take effect.
+// If config is cached, Laravel ignores env vars and uses the cached values.
+// The cached config has MAIL_MAILER=smtp (from docker-compose), which breaks
+// tests that expect the array driver from phpunit.xml.
+$configCachePath = __DIR__.'/../bootstrap/cache/config.php';
+if (file_exists($configCachePath)) {
+    @unlink($configCachePath);
+}
+
 // Validate bootstrap cache files before loading Laravel.
 // If services.php is empty or corrupted (returns non-array), delete it.
 // Laravel will regenerate it on bootstrap.
@@ -36,6 +46,9 @@ $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 // Force config to use test database
 config(['database.connections.mysql.database' => 'iznik_batch_test']);
+
+// Note: Mail driver is set via phpunit.xml <env name="MAIL_MAILER" value="array" force="true"/>
+// This works because we clear the config cache above, so Laravel reads from env vars.
 
 // Ensure test database exists
 $pdo = new PDO('mysql:host='.env('DB_HOST'), env('DB_USERNAME'), env('DB_PASSWORD'));
