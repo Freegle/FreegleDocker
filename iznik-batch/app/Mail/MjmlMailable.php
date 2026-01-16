@@ -15,7 +15,6 @@ abstract class MjmlMailable extends Mailable
     use Queueable, SerializesModels;
 
     protected string $mjmlTemplate;
-
     protected array $mjmlData = [];
 
     /**
@@ -31,7 +30,7 @@ abstract class MjmlMailable extends Mailable
     public function __construct()
     {
         // Initialize tracking fields immediately to avoid "accessed before initialization" errors.
-        $this->traceId = 'freegle-'.time().'_'.Str::random(8);
+        $this->traceId = 'freegle-' . time() . '_' . Str::random(8);
         $this->timestamp = now()->toIso8601String();
     }
 
@@ -64,87 +63,29 @@ abstract class MjmlMailable extends Mailable
     {
         $content = view($this->mjmlTemplate, $this->mjmlData)->render();
 
-        // Check if content needs retry - either empty or missing expected partials.
-        $needsRetry = empty(trim($content)) || $this->isMissingExpectedContent($content);
+        // If empty, clear the compiled view and retry once.
+        if (empty(trim($content))) {
+            // Clear the specific compiled view file to force recompilation.
+            $viewFinder = app('view')->getFinder();
+            $viewPath = $viewFinder->find($this->mjmlTemplate);
+            $compiledPath = app('blade.compiler')->getCompiledPath($viewPath);
 
-        if ($needsRetry) {
-            $this->clearCompiledViewsAndRetry();
+            if (file_exists($compiledPath)) {
+                @unlink($compiledPath);
+                \Log::warning('Cleared empty compiled view for retry', [
+                    'template' => $this->mjmlTemplate,
+                    'compiled_path' => $compiledPath,
+                ]);
+            }
+
+            // Small delay to allow any concurrent writes to complete.
+            usleep(10000); // 10ms
 
             // Retry rendering.
             $content = view($this->mjmlTemplate, $this->mjmlData)->render();
         }
 
         return $content;
-    }
-
-    /**
-     * Check if rendered content is missing expected partial content.
-     *
-     * When @include partials fail to render (empty compiled views), the main
-     * template may still render but be missing critical sections like the footer.
-     */
-    protected function isMissingExpectedContent(string $content): bool
-    {
-        // Check for footer content marker - "HMRC" is unique to the footer partial
-        // and should always be present in emails that use the standard footer.
-        if (str_contains($this->mjmlTemplate, 'chat') || str_contains($this->mjmlTemplate, 'notification')) {
-            // These templates include the footer partial.
-            if (! str_contains($content, 'HMRC')) {
-                \Log::warning('Template missing footer content, will retry', [
-                    'template' => $this->mjmlTemplate,
-                    'content_length' => strlen($content),
-                ]);
-
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Clear compiled views (main template and partials) and wait for recompilation.
-     */
-    protected function clearCompiledViewsAndRetry(): void
-    {
-        $viewFinder = app('view')->getFinder();
-        $compiler = app('blade.compiler');
-
-        // Clear the main template compiled view.
-        try {
-            $viewPath = $viewFinder->find($this->mjmlTemplate);
-            $compiledPath = $compiler->getCompiledPath($viewPath);
-
-            if (file_exists($compiledPath)) {
-                @unlink($compiledPath);
-                \Log::warning('Cleared compiled view for retry', [
-                    'template' => $this->mjmlTemplate,
-                    'compiled_path' => $compiledPath,
-                ]);
-            }
-        } catch (\InvalidArgumentException $e) {
-            // View not found - will be caught later.
-        }
-
-        // Clear ALL partial compiled views in the emails/mjml/partials directory.
-        // This handles cases where @include partials render empty.
-        $partialsDir = resource_path('views/emails/mjml/partials');
-        if (is_dir($partialsDir)) {
-            $partialFiles = glob($partialsDir.'/*.blade.php');
-            foreach ($partialFiles as $partialFile) {
-                $partialCompiledPath = $compiler->getCompiledPath($partialFile);
-                if (file_exists($partialCompiledPath)) {
-                    @unlink($partialCompiledPath);
-                    \Log::warning('Cleared partial compiled view for retry', [
-                        'partial' => basename($partialFile),
-                        'compiled_path' => $partialCompiledPath,
-                    ]);
-                }
-            }
-        }
-
-        // Small delay to allow any concurrent writes to complete.
-        usleep(10000); // 10ms
     }
 
     /**
@@ -163,8 +104,8 @@ abstract class MjmlMailable extends Mailable
 
             if ($templatePath !== 'unknown') {
                 // Convert dot notation to file path.
-                $relativePath = str_replace('.', '/', $templatePath).'.blade.php';
-                $filePath = resource_path('views/'.$relativePath);
+                $relativePath = str_replace('.', '/', $templatePath) . '.blade.php';
+                $filePath = resource_path('views/' . $relativePath);
                 $fileSize = file_exists($filePath) ? filesize($filePath) : 'file not found';
             }
 
@@ -176,7 +117,7 @@ abstract class MjmlMailable extends Mailable
                 'file_size' => $fileSize,
                 'view_exists' => view()->exists($templatePath),
             ]);
-            throw new \RuntimeException($error." (template: {$templatePath}, file_size: {$fileSize})");
+            throw new \RuntimeException($error . " (template: {$templatePath}, file_size: {$fileSize})");
         }
 
         try {
@@ -199,7 +140,7 @@ abstract class MjmlMailable extends Mailable
             throw $e;
         } catch (\Exception $e) {
             // Log and throw on MJML compilation failure - never send broken emails.
-            $error = 'MJML compilation failed: '.$e->getMessage();
+            $error = 'MJML compilation failed: ' . $e->getMessage();
             \Log::error($error, [
                 'mailable' => static::class,
                 'template' => $this->mjmlTemplate ?? 'unknown',
@@ -212,17 +153,17 @@ abstract class MjmlMailable extends Mailable
     /**
      * Set the MJML template and render it.
      *
-     * @param  string  $template  MJML template path (e.g., 'emails.mjml.welcome.welcome')
-     * @param  array  $data  Data to pass to templates
-     * @param  string|null  $textTemplate  Optional plain text template path
+     * @param string $template MJML template path (e.g., 'emails.mjml.welcome.welcome')
+     * @param array $data Data to pass to templates
+     * @param string|null $textTemplate Optional plain text template path
      */
-    protected function mjmlView(string $template, array $data = [], ?string $textTemplate = null): static
+    protected function mjmlView(string $template, array $data = [], ?string $textTemplate = NULL): static
     {
         $this->mjmlTemplate = $template;
         $this->mjmlData = array_merge($this->getDefaultData(), $data);
 
         // Check that the view exists before rendering.
-        if (! view()->exists($this->mjmlTemplate)) {
+        if (!view()->exists($this->mjmlTemplate)) {
             $error = "MJML template not found: {$this->mjmlTemplate}";
             \Log::error($error, [
                 'mailable' => static::class,
@@ -304,9 +245,9 @@ abstract class MjmlMailable extends Mailable
      * Uses the image delivery service (weserv/images) to create
      * multiple sizes for responsive srcset.
      *
-     * @param  string  $sourceUrl  The source image URL
-     * @param  array  $widths  Array of widths to generate (default: [80, 160, 240])
-     * @param  int  $defaultWidth  The default width for src attribute
+     * @param string $sourceUrl The source image URL
+     * @param array $widths Array of widths to generate (default: [80, 160, 240])
+     * @param int $defaultWidth The default width for src attribute
      * @return array{src: string, srcset: string}
      */
     protected function responsiveImage(string $sourceUrl, array $widths = [80, 160, 240], int $defaultWidth = 80): array
@@ -317,12 +258,12 @@ abstract class MjmlMailable extends Mailable
         // Use &amp; for MJML/XML compatibility - will be decoded to & in final HTML.
         $srcsetParts = [];
         foreach ($widths as $width) {
-            $resizedUrl = "{$deliveryBase}/?url=".urlencode($sourceUrl)."&amp;w={$width}";
+            $resizedUrl = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&amp;w={$width}";
             $srcsetParts[] = "{$resizedUrl} {$width}w";
         }
 
         // Generate default src.
-        $src = "{$deliveryBase}/?url=".urlencode($sourceUrl)."&amp;w={$defaultWidth}";
+        $src = "{$deliveryBase}/?url=" . urlencode($sourceUrl) . "&amp;w={$defaultWidth}";
 
         return [
             'src' => $src,
