@@ -30,27 +30,30 @@ LOCAL DEVELOPMENT                    CIRCLECI
 +---------------------------+
 
 
-LIVE FOREGROUND SERVERS              LIVE BACKGROUND SERVER
+LIVE API SERVERS                     LIVE BACKGROUND SERVER
 (external Nginx, external DB)        --profile batch (external DB)
 
 +---------------------------+        +---------------------------+
 | APPLICATIONS              |        | BATCH PROCESSING          |
-| freegle-prod   apiv1      |        | batch                     |
-| modtools-prod  apiv2      |        +---------------------------+
-| status                    |        | INFRASTRUCTURE            |
-+---------------------------+        | redis        mjml         |
-| INFRASTRUCTURE            |        | spamassassin rspamd       |
-| redis        beanstalkd   |        +---------------------------+
-| loki                      |
-| delivery     tusd         |        Notes:
-+---------------------------+        - Uses external MySQL
-                                     - Sends email via smarthost
-Notes:                               - MJML for email templates
-- External Nginx (no traefik)        - Redis for worker pool queues
-- External MySQL database            - Spam checking (inbound+outbound)
-- No mailpit (real SMTP)
+| apiv1        apiv2        |        | batch                     |
+| status                    |        +---------------------------+
++---------------------------+        | INFRASTRUCTURE            |
+| INFRASTRUCTURE            |        | redis        mjml         |
+| redis        beanstalkd   |        | spamassassin rspamd       |
+| loki                      |        +---------------------------+
+| delivery     tusd         |
++---------------------------+        Notes:
+                                     - Uses external MySQL
+Notes:                               - Sends email via smarthost
+- External Nginx (no traefik)        - MJML for email templates
+- External MySQL database            - Redis for worker pool queues
+- No mailpit (real SMTP)             - Spam checking (inbound+outbound)
 - No dev containers
 - No spam/mjml (background only)
+
+IMPORTANT: Freegle and ModTools frontends are deployed via NETLIFY,
+not Docker containers. The freegle-prod and modtools-prod containers
+are for local development and CI testing ONLY.
 
 
 PROFILE QUICK REFERENCE
@@ -147,7 +150,8 @@ mcp           ✓           -          -           -                    -
 | **CircleCI** | Automated testing | (none) | ci + infra-db profiles, prod containers |
 | **Yesterday** | Backup/restore testing | docker-compose.override.yesterday.yml | Dev containers only, external image delivery |
 | **Production (bulk3)** | Batch processing | docker-compose.batch.yml | batch profile only, external MySQL |
-| **Production (front)** | User-facing sites | TBD | No traefik (external Nginx), external DBs |
+| **Production (API)** | API servers | TBD | apiv1, apiv2, delivery, tusd - external Nginx |
+| **Netlify** | Freegle/ModTools frontends | N/A | Static deployment - NOT Docker |
 
 ### Profile Assignments
 
@@ -268,12 +272,15 @@ docker-compose --profile batch up -d
 # Containers: batch, mjml, redis
 ```
 
-### Production: Front-Facing Servers
+### Production: API Servers
 ```bash
 docker-compose up -d
 # External: percona, redis
-# Containers: traefik, apiv1, apiv2, freegle-prod, modtools-prod, delivery
+# Containers: apiv1, apiv2, delivery, tusd, status
 ```
+
+**Note**: Freegle and ModTools frontends are deployed via **Netlify** (JAMstack architecture).
+The freegle-prod and modtools-prod Docker containers are for local dev/CI testing only.
 
 ## Migration Phases
 

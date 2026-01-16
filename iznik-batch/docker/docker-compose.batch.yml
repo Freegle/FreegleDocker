@@ -12,6 +12,18 @@
 #   3. Auto-merge to production branch
 #   4. git-sync container pulls changes
 #   5. deploy:watch detects version change and triggers refresh
+#
+# Bulk3 deployment notes:
+#   - Uses extra_hosts for internal network routing (10.220.0.0/22)
+#   - Logs mounted to host paths for Alloy + logrotate
+#   - Email via smarthost (bulk2-internal), not local Postfix
+#   - Database via internal network (db2-internal)
+#
+# Prerequisites on host:
+#   1. Create /etc/docker/daemon.json with log rotation (see conf/docker-daemon.json)
+#   2. Create /etc/logrotate.d/freegle-docker (see conf/logrotate-freegle-docker)
+#   3. Create log directories: mkdir -p /var/log/freegle /var/www/iznik-batch-docker/storage/logs
+#   4. Test network: docker run --rm alpine ping -c1 10.220.0.150
 
 services:
   # Redis for worker pool semaphores and caching
@@ -72,11 +84,26 @@ services:
         condition: service_healthy
       mjml:
         condition: service_healthy
+    # Internal network access for database, email smarthost, and Loki
+    extra_hosts:
+      - "db1-internal:10.220.0.22"
+      - "db2-internal:10.220.0.150"
+      - "db3-internal:10.220.0.47"
+      - "bulk2-internal:10.220.0.217"
+      - "docker-internal:10.220.0.103"
     volumes:
       - code:/app:ro
       - spool-data:/app/storage/spool
-      - batch-logs:/app/storage/logs
+      # Host-mounted logs for Alloy + logrotate
+      - ${HOST_LOG_PATH:-/var/www/iznik-batch-docker/storage/logs}:/app/storage/logs
+      - ${HOST_FREEGLE_LOG_PATH:-/var/log/freegle}:/var/log/freegle
       - sqlite-dbs:/app/storage/databases
+    # Docker container log rotation
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     environment:
       # Redis configuration
       - REDIS_HOST=redis
@@ -117,6 +144,10 @@ services:
       - APP_ENV=production
       - APP_DEBUG=false
       - APP_KEY=${APP_KEY}
+
+      # Logging - daily rotation
+      - LOG_CHANNEL=daily
+      - LOG_DAILY_DAYS=14
     restart: unless-stopped
     networks:
       - batch-internal
@@ -130,11 +161,22 @@ services:
     command: php artisan schedule:work
     depends_on:
       - batch
+    extra_hosts:
+      - "db1-internal:10.220.0.22"
+      - "db2-internal:10.220.0.150"
+      - "db3-internal:10.220.0.47"
+      - "bulk2-internal:10.220.0.217"
     volumes:
       - code:/app:ro
       - spool-data:/app/storage/spool
-      - batch-logs:/app/storage/logs
+      - ${HOST_LOG_PATH:-/var/www/iznik-batch-docker/storage/logs}:/app/storage/logs
+      - ${HOST_FREEGLE_LOG_PATH:-/var/log/freegle}:/var/log/freegle
       - sqlite-dbs:/app/storage/databases
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     environment:
       - REDIS_HOST=redis
       - MJML_MODE=http
@@ -145,6 +187,8 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - APP_ENV=production
       - APP_KEY=${APP_KEY}
+      - LOG_CHANNEL=daily
+      - LOG_DAILY_DAYS=14
     restart: unless-stopped
     networks:
       - batch-internal
@@ -158,10 +202,21 @@ services:
     command: php artisan mail:spool:process --daemon
     depends_on:
       - batch
+    extra_hosts:
+      - "db1-internal:10.220.0.22"
+      - "db2-internal:10.220.0.150"
+      - "db3-internal:10.220.0.47"
+      - "bulk2-internal:10.220.0.217"
     volumes:
       - code:/app:ro
       - spool-data:/app/storage/spool
-      - batch-logs:/app/storage/logs
+      - ${HOST_LOG_PATH:-/var/www/iznik-batch-docker/storage/logs}:/app/storage/logs
+      - ${HOST_FREEGLE_LOG_PATH:-/var/log/freegle}:/var/log/freegle
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     environment:
       - REDIS_HOST=redis
       - DB_HOST=${DB_HOST}
@@ -175,6 +230,8 @@ services:
       - MAIL_PASSWORD=${MAIL_PASSWORD}
       - APP_ENV=production
       - APP_KEY=${APP_KEY}
+      - LOG_CHANNEL=daily
+      - LOG_DAILY_DAYS=14
     restart: unless-stopped
     networks:
       - batch-internal
@@ -189,11 +246,11 @@ volumes:
   # Mail spool - HIGH PRIORITY for backup (pending emails)
   spool-data:
 
-  # Application logs
-  batch-logs:
-
   # SQLite databases (Sentry tracking, etc.)
   sqlite-dbs:
+
+  # Note: Application logs now use host-mounted volumes for Alloy + logrotate
+  # See HOST_LOG_PATH and HOST_FREEGLE_LOG_PATH environment variables
 
 networks:
   batch-internal:

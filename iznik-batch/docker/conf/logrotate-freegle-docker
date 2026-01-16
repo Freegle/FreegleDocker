@@ -1,0 +1,30 @@
+# Logrotate configuration for Freegle batch container logs
+# Install: sudo cp logrotate-freegle-docker /etc/logrotate.d/freegle-docker
+
+# JSON-formatted logs (for Loki/Alloy ingestion)
+/var/log/freegle/*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0644 www-data www-data
+    copytruncate
+}
+
+# Laravel application logs
+/var/www/iznik-batch-docker/storage/logs/*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0644 www-data www-data
+    copytruncate
+}
+
+# Note: copytruncate is essential because containerized processes
+# cannot be signaled to reopen log files. This method truncates
+# the original file in place after creating a copy.
