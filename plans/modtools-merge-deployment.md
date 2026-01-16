@@ -6,12 +6,18 @@ This plan covers the safe deployment of the merged modtools branch to production
 
 | Phase | Status | Date | Notes |
 |-------|--------|------|-------|
-| Phase 1: CircleCI | ✅ PASSED | 2026-01-14 | Build 1395 succeeded, auto-merged to production |
-| Phase 2: Freegle Site | ⏳ Pending | | |
-| Phase 3: ModTools Netlify Site | ⏳ Pending | | |
-| Phase 4: ModTools Verification | ⏳ Pending | | |
-| Phase 5: HA Proxy Update | ⏳ Pending | | |
-| Phase 6: Cleanup | ⏳ Pending | | |
+| Phase 1: CircleCI | ✅ COMPLETE | 2026-01-14 | Build 1395 succeeded, auto-merged to production |
+| Phase 2: Freegle Site | ✅ COMPLETE | 2026-01-16 | Freegle site confirmed working |
+| Phase 3: ModTools Netlify Site | ✅ COMPLETE | 2026-01-16 | New site: modtools-org.netlify.app, uses modtools-netlify.toml |
+| Phase 4: ModTools Verification | ✅ COMPLETE | 2026-01-16 | ModTools loads and functions correctly |
+| Phase 5: HA Proxy Update | ✅ COMPLETE | 2026-01-16 | modtools.org now points to modtools-org.netlify.app |
+| Phase 6: Cleanup | ✅ COMPLETE | 2026-01-16 | Removed iznik-nuxt3-modtools submodule, disabled old branch deploy |
+
+## DEPLOYMENT COMPLETE 🎉
+
+Both Freegle and ModTools now deploy from the `production` branch of `iznik-nuxt3`:
+- **Freegle**: golden-caramel-d2c3a7.netlify.app → www.ilovefreegle.org (uses root netlify.toml)
+- **ModTools**: modtools-org.netlify.app → modtools.org (uses modtools-netlify.toml)
 
 ### Phase 1 Details
 - **Build**: CircleCI #1395
