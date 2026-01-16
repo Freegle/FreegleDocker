@@ -2,6 +2,7 @@
 
 **Use the `ralph` skill** for any non-trivial development task. For automated/unattended execution: `./ralph.sh -t "task description"`
 
+- **NEVER merge PRs.** Only humans merge PRs. Claude may create PRs, push to branches, and report when CI passes, but NEVER run `gh pr merge` or any equivalent command. Always stop at "PR is ready for merge" and let the user decide.
 - **NEVER skip or make coverage optional in tests.** Coverage is an integral part of testing and must always be collected and uploaded. If coverage upload fails, fix the root cause - never bypass it.
 - **NEVER dismiss test failures as "pre-existing flaky tests" or "unrelated to my changes".** If a test fails during your work, you must investigate and fix it. Period. It does not matter whether you think the failure is related to your changes or not. The tests must pass. While it's possible some tests have underlying reliability issues, if they passed before and now fail, the change since the last successful build is usually the cause. Compare with the last successful build, find what changed, and fix it. Even if the root cause turns out to be a pre-existing issue, it still needs to be fixed - don't use "flaky" as an excuse to avoid investigation.
 - Always restart the status monitor after making changes to its code.

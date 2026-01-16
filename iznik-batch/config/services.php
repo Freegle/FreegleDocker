@@ -35,15 +35,4 @@ return [
         ],
     ],
 
-    'mjml' => [
-        // Compilation mode: 'local' (Spatie/MJML) or 'http' (external server)
-        'mode' => env('MJML_MODE', 'local'),
-
-        // MJML server URL for HTTP mode
-        'url' => env('MJML_URL', 'http://mjml:3000/v1/render'),
-
-        // HTTP request timeout in seconds
-        'http_timeout' => env('MJML_HTTP_TIMEOUT', 30),
-    ],
-
 ];
