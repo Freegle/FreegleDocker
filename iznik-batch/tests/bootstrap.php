@@ -25,25 +25,6 @@ if (file_exists($servicesPath)) {
     }
 }
 
-// ParaTest support: each worker gets its own bootstrap cache directory to prevent corruption.
-// When running parallel tests, multiple workers writing to the same services.php causes race conditions.
-$uniqueToken = getenv('UNIQUE_TEST_TOKEN') ?: getenv('TEST_TOKEN') ?: '';
-if ($uniqueToken) {
-    $workerCacheDir = "/tmp/laravel-worker-cache-{$uniqueToken}";
-    // Must create both the bootstrap path and its cache subdirectory
-    $cacheSubdir = "{$workerCacheDir}/cache";
-    if (!is_dir($cacheSubdir)) {
-        mkdir($cacheSubdir, 0777, true);
-    }
-    // Set environment variable that bootstrap/app.php reads
-    putenv("PARATEST_BOOTSTRAP_CACHE={$workerCacheDir}");
-
-    // Note: View cache isolation is NOT needed because:
-    // 1. Views are precompiled before tests via `view:cache`
-    // 2. VIEW_CHECK_TIMESTAMPS=false disables recompilation checks
-    // This prevents race conditions without redirecting to empty directories.
-}
-
 require __DIR__.'/../vendor/autoload.php';
 
 $app = require __DIR__.'/../bootstrap/app.php';
