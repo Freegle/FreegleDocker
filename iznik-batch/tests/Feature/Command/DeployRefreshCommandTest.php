@@ -12,7 +12,7 @@ class DeployRefreshCommandTest extends TestCase
     {
         $this->artisan('deploy:refresh')
             ->expectsOutput('Refreshing application after deployment...')
-            ->expectsOutput('Clearing and rebuilding caches...')
+            ->expectsOutput('Clearing environment-specific caches...')
             ->assertSuccessful();
     }
 
