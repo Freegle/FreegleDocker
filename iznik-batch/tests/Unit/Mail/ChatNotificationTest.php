@@ -706,6 +706,7 @@ class ChatNotificationTest extends TestCase
             "config('freegle.amp.enabled'): %s\n" .
             "config('freegle.branding.name'): %s\n" .
             "config('view.compiled'): %s\n" .
+            "config('view.check_cache_timestamps'): %s\n" .
             "mail->recipient->exists: %s\n" .
             "mail->recipient->email_preferred: %s\n" .
             "mail->chatType: %s\n" .
@@ -729,6 +730,7 @@ class ChatNotificationTest extends TestCase
             var_export(config('freegle.amp.enabled'), true),
             var_export(config('freegle.branding.name'), true),
             var_export(config('view.compiled'), true),
+            var_export(config('view.check_cache_timestamps'), true),
             var_export($recipientExists, true),
             var_export($recipientEmail, true),
             var_export($chatType, true),

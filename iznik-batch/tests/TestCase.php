@@ -31,6 +31,12 @@ abstract class TestCase extends BaseTestCase
         // the docker-compose environment variables that Laravel reads.
         config(['mail.default' => 'array']);
         \Illuminate\Support\Facades\Mail::forgetMailers();
+
+        // Disable view timestamp checking to use precompiled views unconditionally.
+        // Views are precompiled before tests run via `php artisan view:cache`.
+        // Without this, Laravel may try to recompile views mid-test if timestamps match,
+        // causing race conditions that result in empty view renders.
+        config(['view.check_cache_timestamps' => false]);
     }
 
     /**
