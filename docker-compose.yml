@@ -738,7 +738,7 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
+      dockerfile: ./iznik-nuxt3/modtools/Dockerfile
       network: host
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
@@ -792,7 +792,7 @@ services:
       - "0.0.0.0:3006:3000"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
+      dockerfile: ./iznik-nuxt3/modtools/Dockerfile
       network: host
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
@@ -833,7 +833,7 @@ services:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
     build:
-      context: ./iznik-nuxt3-modtools
+      context: ./iznik-nuxt3
       dockerfile: modtools/Dockerfile.prod
       network: host
       args:

@@ -48,11 +48,13 @@ get_container_info() {
     local file_path="$1"
     local relative_path="${file_path#$PROJECT_DIR/}"
 
-    if [[ "$relative_path" == iznik-nuxt3-modtools/* ]]; then
-        local targets="modtools-dev-local /app/${relative_path#iznik-nuxt3-modtools/} ModTools-Dev-Local"
+    # ModTools is now inside iznik-nuxt3/modtools - check this first before generic iznik-nuxt3
+    if [[ "$relative_path" == iznik-nuxt3/modtools/* ]]; then
+        # Strip iznik-nuxt3/ prefix, keep modtools/ for the container path
+        local targets="modtools-dev-local /app/${relative_path#iznik-nuxt3/} ModTools-Dev-Local"
         # Only include dev-live if the container is running
         if docker ps --format '{{.Names}}' | grep -q '^modtools-dev-live$'; then
-            targets="$targets"$'\n'"modtools-dev-live /app/${relative_path#iznik-nuxt3-modtools/} ModTools-Dev-Live"
+            targets="$targets"$'\n'"modtools-dev-live /app/${relative_path#iznik-nuxt3/} ModTools-Dev-Live"
         fi
         echo "$targets"
     elif [[ "$relative_path" == iznik-nuxt3/* ]]; then
@@ -215,7 +217,6 @@ SETTLE_PID=$!
 inotifywait -m -r -e modify,create,move,close_write \
     --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|migrations|~|\.tmp|\.swp|\.log)' \
     "$PROJECT_DIR/iznik-nuxt3" \
-    "$PROJECT_DIR/iznik-nuxt3-modtools" \
     "$PROJECT_DIR/iznik-server" \
     "$PROJECT_DIR/iznik-server-go" \
     "$PROJECT_DIR/iznik-batch" \
