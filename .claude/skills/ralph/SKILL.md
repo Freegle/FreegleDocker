@@ -1,11 +1,53 @@
 ---
 name: ralph
-description: "MUST use for any non-trivial development task in FreegleDocker - implements iterative development with status tracking, validation, and one-task-at-a-time approach. Use when implementing features, fixing bugs, refactoring, or any task requiring more than a single simple change."
+description: "MUST use for any non-trivial development task in FreegleDocker - implements iterative development with status tracking, session logging, validation, and one-task-at-a-time approach. Use when implementing features, fixing bugs, refactoring, or any task requiring more than a single simple change."
 ---
 
 # Ralph Iterative Development Approach
 
 You are now using the Ralph approach for this task. This is MANDATORY for the Freegle codebase.
+
+## 0. Session Logging (CRITICAL for Continuity)
+
+**Before starting any work, check for and update the session log.**
+
+Session logs preserve context across conversation restarts and context compaction. This is essential for long-running tasks.
+
+### Session Log Location
+claude.md -> "Session Log" section (at end of file)
+
+### On Session Start
+1. Read `claude.md` to check for existing session log
+2. If resuming work, review the last session's state
+3. Add a new dated entry showing you're continuing
+
+### During Work
+After completing each subtask or making significant progress:
+```markdown
+### YYYY-MM-DD HH:MM - [Brief description]
+- **Status**: [Current task status table snapshot]
+- **Completed**: [What was just finished]
+- **Next**: [What's planned next]
+- **Blockers**: [Any issues encountered]
+- **Key Decisions**: [Important choices made and why]
+```
+
+### On Session End / Before Context Compaction
+Update the session log with:
+- Current state of all tasks
+- Any uncommitted changes
+- Commands that were running (e.g., CI builds in progress)
+- Exact next steps for continuation
+
+### Example Session Log Entry
+```markdown
+### 2026-01-16 14:30 - Implemented email tracking
+- **Status**: Tasks 1-3 ✅, Task 4 🔄 (CI running), Tasks 5-6 ⬜
+- **Completed**: Added AMP pixel tracking to email templates
+- **Next**: Wait for CI, then verify in MailPit
+- **Blockers**: None
+- **Key Decisions**: Used existing envelope() pattern for consistency
+```
 
 ## 1. Break Down the Task
 
