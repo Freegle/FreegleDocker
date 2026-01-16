@@ -37,8 +37,8 @@
         .container-actions { position: absolute; right: 130px; bottom: 10px; }
 
         /* Tab styles */
-        .tabs { display: flex; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; flex-wrap: wrap; }
-        .tab { padding: 12px 20px; cursor: pointer; border: none; background: none; font-size: 14px; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+        .tabs { display: flex; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; flex-wrap: wrap; gap: 2px; }
+        .tab { padding: 8px 12px; cursor: pointer; border: none; background: none; font-size: 12px; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; white-space: nowrap; }
         .tab:hover { color: #333; background: #f8f9fa; }
         .tab.active { color: #007bff; border-bottom-color: #007bff; font-weight: bold; }
         .tab.warning { color: #dc3545; }
@@ -79,6 +79,46 @@
         /* Test running status */
         .test-running { background: #fff3cd !important; border-left-color: #ffc107 !important; }
         .test-running .status { color: #856404 !important; }
+
+        /* Architecture tab styles */
+        .profile-selector { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 15px; }
+        .profile-btn { padding: 6px 10px; border: 1px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.2s; }
+        .profile-btn:hover { border-color: #007bff; background: #f8f9fa; }
+        .profile-btn.active { border-color: #007bff; background: #007bff; color: white; }
+        .profile-description { background: #f8f9fa; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #007bff; }
+        .profile-description h4 { margin: 0 0 5px 0; color: #333; font-size: 14px; }
+        .profile-description p { margin: 0; color: #666; font-size: 12px; }
+        .architecture-diagram { background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; min-height: 200px; overflow-x: auto; }
+        .architecture-diagram svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+        .diagram-loading { text-align: center; padding: 40px; color: #666; }
+        .markdown-link { display: inline-block; margin-top: 15px; padding: 8px 16px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; color: #007bff; text-decoration: none; font-size: 13px; }
+        .markdown-link:hover { background: #e9ecef; }
+        .architecture-legend { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px; }
+        .architecture-legend h4 { margin: 0 0 10px 0; font-size: 14px; }
+        .legend-item { display: inline-flex; align-items: center; margin-right: 20px; margin-bottom: 8px; font-size: 13px; }
+        .legend-color { width: 20px; height: 20px; border-radius: 4px; margin-right: 8px; }
+        .legend-color.users { background: #b0bec5; border: 2px solid #546e7a; }
+        .legend-color.external { background: #fff59d; border: 2px solid #fbc02d; }
+        .legend-color.docker { background: #90caf9; border: 2px solid #1976d2; }
+        .legend-color.infra { background: #ef9a9a; border: 2px solid #c62828; }
+        .legend-color.background { background: #ce93d8; border: 2px solid #7b1fa2; }
+        /* Component detail panel */
+        .component-detail { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 1000; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .component-detail.active { display: block; }
+        .component-detail-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; }
+        .component-detail-overlay.active { display: block; }
+        .component-detail-header { padding: 15px 20px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; }
+        .component-detail-header h3 { margin: 0; font-size: 18px; }
+        .component-detail-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
+        .component-detail-body { padding: 20px; }
+        .component-detail-body p { margin: 0 0 12px 0; font-size: 14px; line-height: 1.5; }
+        .component-detail-body h4 { margin: 15px 0 8px 0; font-size: 13px; color: #666; text-transform: uppercase; }
+        .component-detail-body ul { margin: 0; padding-left: 20px; font-size: 13px; }
+        .component-detail-body li { margin-bottom: 4px; }
+        .component-detail-body code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+        .architecture-diagram .node { cursor: pointer; }
+        .architecture-diagram .node:hover rect, .architecture-diagram .node:hover polygon { filter: brightness(0.95); }
+        .click-hint { font-size: 11px; color: #888; margin-top: 10px; text-align: center; }
     </style>
 </head>
 <body>
@@ -101,6 +141,7 @@
             <button class="tab" data-tab="testing"><span class="tab-light grey" id="tab-light-testing"></span>Testing</button>
             <button class="tab" data-tab="infrastructure"><span class="tab-light grey" id="tab-light-infra"></span>Infrastructure</button>
             <button class="tab warning" data-tab="production"><span class="tab-light grey" id="tab-light-production"></span>Production <span class="tab-badge">LIVE</span></button>
+            <button class="tab" data-tab="architecture"><span class="tab-light grey" id="tab-light-arch"></span>Architecture</button>
         </div>
 
         <!-- Freegle Tab -->
@@ -549,9 +590,74 @@
                 </div>
             </div>
         </div>
+
+        <!-- Architecture Tab -->
+        <div id="architecture" class="tab-content">
+            <h2>System Architecture</h2>
+            <p style="background: #fff3cd; border: 1px solid #ffc107; padding: 8px 12px; border-radius: 4px; margin-bottom: 15px;">
+                <strong>⚠️ Work in Progress:</strong> These diagrams are speculative and not fully tested. Architecture details may change.
+            </p>
+            <p style="color: #666; margin-bottom: 20px;">
+                Visual representation of the Freegle Docker environment. Select a deployment profile to see its architecture.
+            </p>
+
+            <div class="profile-selector">
+                <button class="profile-btn active" data-profile="dev" onclick="selectProfile('dev')">🖥️ Dev</button>
+                <button class="profile-btn" data-profile="circleci" onclick="selectProfile('circleci')">🔄 CircleCI</button>
+                <button class="profile-btn" data-profile="live" onclick="selectProfile('live')">🌐 Live</button>
+            </div>
+
+            <div id="profile-description" class="profile-description">
+                <h4>Local Development</h4>
+                <p>Full development stack with hot-reload, local databases, and all testing tools.</p>
+            </div>
+
+            <div id="architecture-diagram" class="architecture-diagram">
+                <div class="diagram-loading">Loading architecture diagram...</div>
+            </div>
+            <div class="click-hint">💡 Click any component to see details</div>
+
+            <div class="architecture-legend">
+                <h4>Legend</h4>
+                <span class="legend-item"><span class="legend-color users"></span>External Users</span>
+                <span class="legend-item"><span class="legend-color external"></span>External Services</span>
+                <span class="legend-item"><span class="legend-color docker"></span>Docker/Applications</span>
+                <span class="legend-item"><span class="legend-color background"></span>Background Processes</span>
+                <span class="legend-item"><span class="legend-color infra"></span>Infrastructure</span>
+            </div>
+
+            <a href="https://github.com/Freegle/FreegleDocker/blob/master/plans/modular-docker-compose-design.md" target="_blank" class="markdown-link">
+                📄 View Full Design Document (Markdown)
+            </a>
+        </div>
     </div>
 
+    <!-- Component Detail Modal -->
+    <div id="component-overlay" class="component-detail-overlay" onclick="closeComponentDetail()"></div>
+    <div id="component-detail" class="component-detail">
+        <div class="component-detail-header">
+            <h3 id="component-title">Component</h3>
+            <button class="component-detail-close" onclick="closeComponentDetail()">&times;</button>
+        </div>
+        <div class="component-detail-body" id="component-body"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
+        // Initialize Mermaid with ELK layout for better edge routing
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: {
+                defaultRenderer: 'elk',
+                curve: 'basis',
+                padding: 15,
+                nodeSpacing: 50,
+                rankSpacing: 50
+            }
+        });
+
         let countdownSeconds = 10;
 
         function updateCountdown() {
@@ -608,8 +714,351 @@
                     // Show target tab content
                     const targetId = tab.dataset.tab;
                     document.getElementById(targetId).classList.add('active');
+
+                    // Load architecture diagram when Architecture tab is shown
+                    if (targetId === 'architecture') {
+                        loadArchitectureDiagram();
+                    }
                 });
             });
+        }
+
+        // Architecture diagram profiles
+        const architectureProfiles = {
+            'dev': {
+                name: 'Local Development',
+                description: 'Full development stack with hot-reload, local databases, all testing tools, and observability.',
+                diagram: `flowchart TB
+    subgraph USERS[Developer]
+        DEV((Developer))
+    end
+    subgraph DOCKER[Docker Environment]
+        subgraph FE[Frontends]
+            F[freegle-dev]
+            M[modtools-dev]
+        end
+        subgraph BE[Backend APIs]
+            A1[apiv1 PHP]
+            A2[apiv2 Go]
+        end
+        subgraph BG[Background]
+            B[batch]
+            MJ[MJML]
+        end
+        subgraph INFRA[Infrastructure]
+            MY[(MySQL)]
+            RD[(Redis)]
+            PG[(Postgres)]
+            BN[Beanstalkd]
+            LK[Loki]
+            ML[Mailpit]
+            SA[SpamAssassin]
+            RS[Rspamd]
+        end
+    end
+    DEV --> F
+    DEV --> M
+    F --> A1
+    M --> A1
+    A1 --> MY
+    A2 --> MY
+    A1 --> RD
+    A2 --> RD
+    A1 --> BN
+    B --> MY
+    B --> MJ
+    B --> ML
+    B --> RD
+    A1 -.-> LK
+    B -.-> LK
+    B --> SA
+    style USERS fill:#b0bec5,stroke:#546e7a
+    style DOCKER fill:#90caf9,stroke:#1976d2
+    style FE fill:#90caf9,stroke:#1976d2
+    style BE fill:#90caf9,stroke:#1976d2
+    style BG fill:#ce93d8,stroke:#7b1fa2
+    style INFRA fill:#ef9a9a,stroke:#c62828`
+            },
+            'circleci': {
+                name: 'CircleCI Testing',
+                description: 'Automated CI/CD testing with 4 test suites: PHPUnit (apiv1), Go Tests (apiv2), Batch Tests, and Playwright E2E.',
+                diagram: `flowchart TB
+    subgraph EXT[External Services]
+        CC[CircleCI]
+        GH[GitHub]
+        CV[Codecov]
+    end
+    subgraph DOCKER[Docker Environment]
+        subgraph TS[Test Suites]
+            PH[PHPUnit]
+            GT[Go Tests]
+            BT[Batch]
+            PW[Playwright]
+        end
+        subgraph AP[Applications]
+            FP[freegle-prod]
+            MP[modtools-prod]
+            A1[apiv1]
+            A2[apiv2]
+            BA[batch]
+        end
+        subgraph INFRA[Infrastructure]
+            MY[(MySQL)]
+            RD[(Redis)]
+            LK[Loki]
+            ML[Mailpit]
+            MJ[MJML]
+        end
+    end
+    CC --> DOCKER
+    GH --> CC
+    PH --> A1
+    GT --> A2
+    BT --> BA
+    PW --> FP
+    FP --> A1
+    MP --> A1
+    A1 --> MY
+    A2 --> MY
+    BA --> MY
+    A1 --> RD
+    BA --> RD
+    BA --> MJ
+    BA --> ML
+    PH -.-> CV
+    GT -.-> CV
+    BT -.-> CV
+    A1 -.-> LK
+    style EXT fill:#fff59d,stroke:#fbc02d
+    style DOCKER fill:#90caf9,stroke:#1976d2
+    style TS fill:#90caf9,stroke:#1976d2
+    style AP fill:#90caf9,stroke:#1976d2
+    style INFRA fill:#ef9a9a,stroke:#c62828`
+            },
+            'live': {
+                name: 'Live Production',
+                description: 'Production architecture: Netlify CDN, API servers, bulk servers for batch/mail, MySQL cluster.',
+                diagram: `flowchart TB
+    subgraph USERS[External Users]
+        U([Users])
+        MOD((Mods))
+        EMAIL((Email))
+    end
+    subgraph EXT[External Services]
+        FE[Freegle via Netlify]
+        MT[ModTools via Netlify]
+        GM[Email Providers]
+    end
+    subgraph DOCKER[API Servers]
+        NG[Nginx]
+        A1[apiv1]
+        A2[apiv2]
+        DL[Delivery]
+    end
+    subgraph BG[Background - bulk2/3/4]
+        BA[batch]
+        MJ[MJML]
+        LK[Loki]
+        SP[spooler]
+        SM[Smarthost]
+        MX[MX]
+        SA[SpamAssassin]
+    end
+    subgraph INFRA[Infrastructure]
+        DB[(Database)]
+        RD[(Redis)]
+        GEO[Routing & Maps]
+    end
+    %% User flows
+    U --> FE
+    MOD --> MT
+    EMAIL --> MX
+    %% Frontend to API - use junction
+    FE --> J1(( ))
+    MT --> J1
+    J1 --> NG
+    %% Nginx to APIs
+    NG --> A1
+    NG --> A2
+    %% All services to DB - use junction
+    A1 --> J2(( ))
+    A2 --> J2
+    BA --> J2
+    J2 --> DB
+    %% Batch processing
+    BA --> MJ
+    BA --> SP --> SM --> GM
+    BA -.-> LK
+    %% Inbound mail
+    MX --> SA --> A1
+    %% Frontend to geo services
+    FE --> GEO
+    %% Style junctions as small dots
+    classDef junction fill:#666,stroke:#666,width:8px,height:8px
+    class J1,J2 junction`
+            }
+        };
+
+        // Component details for click-to-zoom
+        const componentDetails = {
+            'F': { name: 'freegle-dev', title: 'Freegle Development', desc: 'Nuxt 3 frontend with hot-reload for the main user-facing site.', tech: 'Nuxt 3, Vue 3, Vuetify', port: '3000', container: 'freegle-dev-local', connects: ['apiv1', 'apiv2'], repo: 'iznik-nuxt3' },
+            'M': { name: 'modtools-dev', title: 'ModTools Development', desc: 'Moderator tools interface with hot-reload.', tech: 'Nuxt 3, Vue 3, Vuetify', port: '3001', container: 'modtools-dev-local', connects: ['apiv1', 'apiv2'], repo: 'iznik-nuxt3-modtools' },
+            'FP': { name: 'freegle-prod', title: 'Freegle Production Build', desc: 'Production-optimized build used for CI testing and local production simulation.', tech: 'Nuxt 3 (SSR)', port: '3012', container: 'freegle-prod-local', connects: ['apiv1', 'apiv2'], repo: 'iznik-nuxt3' },
+            'A1': { name: 'apiv1', title: 'API v1 (PHP)', desc: 'Legacy PHP API handling most backend operations including messages, users, groups.', tech: 'PHP 8.3, Apache', port: '8181', container: 'freegle-apiv1', connects: ['MySQL', 'Redis', 'Beanstalkd'], repo: 'iznik-server' },
+            'A2': { name: 'apiv2', title: 'API v2 (Go)', desc: 'High-performance Go API for read-heavy endpoints. Significantly faster than v1.', tech: 'Go 1.21, Gin', port: '8193', container: 'freegle-apiv2', connects: ['MySQL', 'Redis'], repo: 'iznik-server-go' },
+            'B': { name: 'batch', title: 'Batch Processor', desc: 'Laravel-based background job processor for digests, notifications, cleanup tasks.', tech: 'Laravel 12, PHP 8.3', port: 'N/A', container: 'freegle-batch', connects: ['MySQL', 'Redis', 'MJML', 'SMTP'], repo: 'iznik-batch' },
+            'BA': { name: 'batch', title: 'Batch (Production)', desc: 'Production batch processor on bulk3 server handling all background tasks.', tech: 'Laravel 12, PHP 8.3', port: 'N/A', container: 'batch-app', connects: ['MySQL Cluster', 'Smarthost'], repo: 'iznik-batch' },
+            'MY': { name: 'MySQL', title: 'MySQL Database', desc: 'Percona MySQL 8.0 storing all Freegle data.', tech: 'Percona 8.0', port: '3306', container: 'freegle-percona', connects: [], notes: 'Production uses 3-node cluster (db1/db2/db3)' },
+            'RD': { name: 'Redis', title: 'Redis Cache', desc: 'In-memory cache for sessions, worker pools, and frequently accessed data.', tech: 'Redis 7 Alpine', port: '6379', container: 'freegle-redis', connects: [] },
+            'ML': { name: 'Mailpit', title: 'Mailpit (Dev)', desc: 'Email testing tool that catches all outgoing mail in development.', tech: 'Mailpit', port: '8025 (UI), 1025 (SMTP)', container: 'freegle-mailpit', connects: [], url: 'http://mailpit.localhost' },
+            'PH': { name: 'PHPUnit', title: 'PHPUnit Tests', desc: 'Automated PHP test suite for API v1 backend.', tech: 'PHPUnit 11', port: 'N/A', container: 'freegle-apiv1-phpunit', connects: ['apiv1', 'MySQL'] },
+            'PW': { name: 'Playwright', title: 'Playwright E2E', desc: 'End-to-end browser tests against production builds.', tech: 'Playwright, Node.js', port: 'N/A', container: 'freegle-playwright', connects: ['freegle-prod'], url: 'http://status.localhost/playwright/' },
+            'FE': { name: 'ilovefreegle.org', title: 'Freegle (Netlify)', desc: 'Production frontend deployed as static site via Netlify CDN.', tech: 'Nuxt 3 Static', port: '443', container: 'N/A (Netlify)', connects: ['api.ilovefreegle.org'], url: 'https://www.ilovefreegle.org' },
+            'MT': { name: 'modtools.org', title: 'ModTools (Netlify)', desc: 'Moderator tools deployed as static site via Netlify CDN.', tech: 'Nuxt 3 Static', port: '443', container: 'N/A (Netlify)', connects: ['api.ilovefreegle.org'], url: 'https://modtools.org' },
+            'U': { name: 'Users', title: 'End Users', desc: 'Freegle members accessing the platform via web browsers.', tech: 'Web Browser', port: 'N/A', container: 'N/A', connects: ['Netlify'] },
+            'EMAIL': { name: 'Email Users', title: 'Email Users', desc: 'Users who interact with Freegle via email replies and notifications.', tech: 'Email Client', port: 'N/A', container: 'N/A', connects: ['MX Handler'] },
+            'MX': { name: 'MX Handler', title: 'Incoming Mail (bulk4)', desc: 'Handles incoming email on bulk4 server. Receives replies to notifications and email-based interactions.', tech: 'Postfix, Custom PHP handlers', port: '25', container: 'N/A (bulk4 VM)', connects: ['SpamAssassin', 'apiv1'] },
+            'SA': { name: 'SpamAssassin', title: 'SpamAssassin', desc: 'Spam filtering for incoming and outgoing mail.', tech: 'SpamAssassin', port: '783', container: 'freegle-spamassassin (dev) / VM (prod)', connects: ['apiv1'] },
+            'SP': { name: 'mail-spooler', title: 'Mail Spooler (bulk2)', desc: 'Queues and sends outgoing email on bulk2 server. Handles digests, notifications, and chat messages.', tech: 'Laravel Queue Worker', port: 'N/A', container: 'N/A (bulk2 VM)', connects: ['Smarthost'] },
+            'SM': { name: 'Smarthost', title: 'Smarthost (Hetzner)', desc: 'Outbound SMTP relay hosted at Hetzner for reliable email delivery with proper SPF/DKIM.', tech: 'Postfix', port: '25', container: 'N/A (Hetzner)', connects: ['Gmail/Email Providers'] },
+            'GM': { name: 'Email Providers', title: 'Email Providers', desc: 'External email services (Gmail, Outlook, Yahoo, etc.) receiving Freegle notifications.', tech: 'SMTP', port: '25', container: 'N/A (External)', connects: [] },
+            'MAP': { name: 'OpenRouteService', title: 'OpenRouteService', desc: 'Self-hosted routing service for finding distances between users and items.', tech: 'OpenRouteService', port: '8080', container: 'N/A (Separate VM)', connects: [], url: 'https://openrouteservice.org' },
+            'TILE': { name: 'Tile Server', title: 'Tile Server', desc: 'Serves map tiles for displaying locations.', tech: 'OpenMapTiles', port: '8080', container: 'N/A (Separate VM)', connects: [] },
+            'NG': { name: 'Nginx', title: 'Nginx Reverse Proxy', desc: 'Load balancer and reverse proxy on front/front2 servers. Routes traffic to appropriate backend services.', tech: 'Nginx', port: '80, 443', container: 'N/A (Native install)', connects: ['apiv1', 'apiv2', 'Delivery', 'TUSD'] },
+            'DL': { name: 'Delivery', title: 'Image Delivery', desc: 'Image resizing and delivery service using weserv/images.', tech: 'weserv/images', port: '8095', container: 'freegle-delivery', connects: [] },
+            'TU': { name: 'TUSD', title: 'TUSD Upload', desc: 'Resumable file upload server using tus protocol.', tech: 'TUSD', port: '1080', container: 'freegle-tusd', connects: [] },
+            'LK': { name: 'Loki', title: 'Loki Logging', desc: 'Log aggregation system collecting logs from all services for observability.', tech: 'Grafana Loki', port: '3100', container: 'freegle-loki', connects: [] },
+            'MJ': { name: 'MJML', title: 'MJML Service', desc: 'Converts MJML templates to responsive HTML emails.', tech: 'MJML HTTP Server', port: '8889', container: 'freegle-mjml', connects: [] },
+            'BN': { name: 'Beanstalkd', title: 'Beanstalkd Queue', desc: 'Job queue for background tasks in API v1.', tech: 'Beanstalkd', port: '11300', container: 'freegle-beanstalkd', connects: [] },
+            'PG': { name: 'Postgres', title: 'PostgreSQL', desc: 'Database for Loki and other services requiring PostgreSQL.', tech: 'PostgreSQL 14', port: '5432', container: 'freegle-postgres', connects: [] },
+            'RS': { name: 'Rspamd', title: 'Rspamd', desc: 'Alternative spam filter with web UI for spam analysis.', tech: 'Rspamd', port: '11334', container: 'freegle-rspamd', connects: [], url: 'http://rspamd.localhost' },
+            'CC': { name: 'CircleCI', title: 'CircleCI', desc: 'CI/CD platform running automated tests on every push.', tech: 'CircleCI', port: 'N/A', container: 'N/A (SaaS)', connects: ['GitHub', 'Docker'], url: 'https://app.circleci.com' },
+            'GH': { name: 'GitHub', title: 'GitHub', desc: 'Source code hosting and collaboration.', tech: 'GitHub', port: 'N/A', container: 'N/A (SaaS)', connects: ['CircleCI'], url: 'https://github.com/Freegle' },
+            'CV': { name: 'Codecov', title: 'Codecov', desc: 'Code coverage tracking and reporting.', tech: 'Codecov', port: 'N/A', container: 'N/A (SaaS)', connects: [], url: 'https://codecov.io' },
+            'GT': { name: 'Go Tests', title: 'Go Tests', desc: 'Automated test suite for API v2 (Go).', tech: 'Go testing', port: 'N/A', container: 'freegle-apiv2', connects: ['MySQL', 'Redis'] },
+            'MP': { name: 'modtools-prod', title: 'ModTools Production Build', desc: 'Production build of moderator tools for CI testing.', tech: 'Nuxt 3 (SSR)', port: '3013', container: 'modtools-prod-local', connects: ['apiv1'], repo: 'iznik-nuxt3-modtools' },
+            'DEV': { name: 'Developer', title: 'Developer', desc: 'Local development workstation running Docker Compose.', tech: 'Docker Desktop / WSL2', port: 'N/A', container: 'N/A', connects: ['Docker Environment'] },
+            'DB1': { name: 'db1', title: 'MySQL Primary (db1)', desc: 'Primary MySQL server in the production cluster.', tech: 'Percona 8.0', port: '3306', container: 'N/A (VM)', connects: ['db2', 'db3'], notes: 'Galera cluster replication' },
+            'DB2': { name: 'db2', title: 'MySQL Replica (db2)', desc: 'MySQL replica in the production cluster.', tech: 'Percona 8.0', port: '3306', container: 'N/A (VM)', connects: [] },
+            'DB3': { name: 'db3', title: 'MySQL Replica (db3)', desc: 'MySQL replica in the production cluster.', tech: 'Percona 8.0', port: '3306', container: 'N/A (VM)', connects: [] },
+            'RD2': { name: 'Redis (bulk3)', title: 'Redis (bulk3)', desc: 'Redis instance on bulk3 for worker pool back-pressure.', tech: 'Redis', port: '6379', container: 'freegle-redis', connects: [] }
+        };
+
+        let currentProfile = 'dev';
+        let diagramLoaded = false;
+
+        function showComponentDetail(componentId) {
+            const comp = componentDetails[componentId];
+            if (!comp) return;
+
+            document.getElementById('component-title').textContent = comp.title;
+            let html = `<p>${comp.desc}</p>`;
+            html += `<h4>Technology</h4><p><code>${comp.tech}</code></p>`;
+            if (comp.port !== 'N/A') html += `<h4>Port</h4><p><code>${comp.port}</code></p>`;
+            if (comp.container !== 'N/A') html += `<h4>Container</h4><p><code>${comp.container}</code></p>`;
+            if (comp.connects && comp.connects.length) html += `<h4>Connects To</h4><ul>${comp.connects.map(c => '<li>' + c + '</li>').join('')}</ul>`;
+            if (comp.repo) html += `<h4>Repository</h4><p><a href="https://github.com/Freegle/${comp.repo}" target="_blank">${comp.repo}</a></p>`;
+            if (comp.url) html += `<h4>URL</h4><p><a href="${comp.url}" target="_blank">${comp.url}</a></p>`;
+            if (comp.notes) html += `<h4>Notes</h4><p>${comp.notes}</p>`;
+
+            document.getElementById('component-body').innerHTML = html;
+            document.getElementById('component-overlay').classList.add('active');
+            document.getElementById('component-detail').classList.add('active');
+        }
+
+        function closeComponentDetail() {
+            document.getElementById('component-overlay').classList.remove('active');
+            document.getElementById('component-detail').classList.remove('active');
+        }
+
+        async function selectProfile(profileId) {
+            currentProfile = profileId;
+
+            // Update button states
+            document.querySelectorAll('.profile-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.profile === profileId);
+            });
+
+            // Update description
+            const profile = architectureProfiles[profileId];
+            document.getElementById('profile-description').innerHTML = `
+                <h4>${profile.name}</h4>
+                <p>${profile.description}</p>
+            `;
+
+            // Render diagram
+            await renderDiagram(profileId);
+        }
+
+        async function renderDiagram(profileId) {
+            const container = document.getElementById('architecture-diagram');
+            const profile = architectureProfiles[profileId];
+
+            try {
+                container.innerHTML = '<div class="diagram-loading">Rendering diagram...</div>';
+
+                // Generate unique ID for this render
+                const id = 'mermaid-' + Date.now();
+
+                // Render the mermaid diagram
+                const { svg } = await mermaid.render(id, profile.diagram);
+                container.innerHTML = svg;
+
+                // Apply subgraph colors via JavaScript (Mermaid's style directive is unreliable)
+                const subgraphColors = {
+                    'USERS': { fill: '#b0bec5', stroke: '#546e7a' },
+                    'EXT': { fill: '#fff59d', stroke: '#fbc02d' },
+                    'DOCKER': { fill: '#90caf9', stroke: '#1976d2' },
+                    'FE': { fill: '#90caf9', stroke: '#1976d2' },
+                    'BE': { fill: '#90caf9', stroke: '#1976d2' },
+                    'TS': { fill: '#90caf9', stroke: '#1976d2' },
+                    'AP': { fill: '#90caf9', stroke: '#1976d2' },
+                    'BG': { fill: '#ce93d8', stroke: '#7b1fa2' },
+                    'INFRA': { fill: '#ef9a9a', stroke: '#c62828' }
+                };
+                // Mermaid v10 structure: .subgraphs > .subgraph > (rect.subgraph + .label > g[id^="flowchart-"])
+                const subgraphsContainer = container.querySelector('.subgraphs');
+                if (subgraphsContainer) {
+                    subgraphsContainer.querySelectorAll(':scope > .subgraph').forEach(sg => {
+                        const rect = sg.querySelector('rect.subgraph');
+                        const flowchartEl = sg.querySelector('g[id^="flowchart-"]');
+                        if (rect && flowchartEl) {
+                            const flowchartId = flowchartEl.id; // e.g., "flowchart-EXT-220"
+                            for (const [subgraphId, colors] of Object.entries(subgraphColors)) {
+                                if (flowchartId.includes(`-${subgraphId}-`)) {
+                                    // Use setProperty with !important to override Mermaid CSS
+                                    rect.style.setProperty('fill', colors.fill, 'important');
+                                    rect.style.setProperty('stroke', colors.stroke, 'important');
+                                    rect.style.setProperty('stroke-width', '2px', 'important');
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Add click handlers to nodes
+                container.querySelectorAll('.node').forEach(node => {
+                    const nodeId = node.id.replace(/^flowchart-/, '').replace(/-\d+$/, '');
+                    if (componentDetails[nodeId]) {
+                        node.style.cursor = 'pointer';
+                        node.addEventListener('click', () => showComponentDetail(nodeId));
+                    }
+                });
+            } catch (error) {
+                console.error('Mermaid render error:', error);
+                container.innerHTML = `<div class="diagram-loading" style="color: #dc3545;">
+                    Error rendering diagram: ${error.message}<br>
+                    <small>Check console for details</small>
+                </div>`;
+            }
+        }
+
+        function loadArchitectureDiagram() {
+            if (!diagramLoaded) {
+                diagramLoaded = true;
+                selectProfile('dev');
+            }
         }
 
         // Update tab traffic lights based on service status
