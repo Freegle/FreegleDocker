@@ -32,6 +32,7 @@ trait TrackableEmail
      * @param int|null $groupId Group ID if applicable
      * @param string|null $subject Email subject line
      * @param array|null $metadata Additional context (message_id, etc.)
+     * @param bool $hasAmp Whether this email includes AMP content
      */
     protected function initTracking(
         string $emailType,
@@ -39,7 +40,8 @@ trait TrackableEmail
         ?int $userId = null,
         ?int $groupId = null,
         ?string $subject = null,
-        ?array $metadata = null
+        ?array $metadata = null,
+        bool $hasAmp = false
     ): void {
         $this->tracking = EmailTracking::createForEmail(
             $emailType,
@@ -47,7 +49,8 @@ trait TrackableEmail
             $userId,
             $groupId,
             $subject,
-            $metadata
+            $metadata,
+            $hasAmp
         );
     }
 

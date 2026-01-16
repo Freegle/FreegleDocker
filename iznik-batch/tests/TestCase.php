@@ -34,6 +34,32 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
+     * Ensure tests are run via the status container, not directly.
+     *
+     * This prevents Claude from accidentally running tests directly with
+     * `docker exec freegle-batch php artisan test` instead of via the
+     * status container API which manages test isolation and reporting.
+     */
+    public static function setUpBeforeClass(): void
+    {
+        parent::setUpBeforeClass();
+
+        if (!env('VIA_STATUS_CONTAINER')) {
+            fwrite(STDERR, "\n\n");
+            fwrite(STDERR, "╔════════════════════════════════════════════════════════════════╗\n");
+            fwrite(STDERR, "║  ERROR: Tests must be run via the status container!            ║\n");
+            fwrite(STDERR, "║                                                                ║\n");
+            fwrite(STDERR, "║  Use: curl -X POST http://localhost:8081/api/tests/php         ║\n");
+            fwrite(STDERR, "║  Or:  curl -X POST http://localhost:8081/api/tests/laravel     ║\n");
+            fwrite(STDERR, "║                                                                ║\n");
+            fwrite(STDERR, "║  DO NOT run: docker exec freegle-batch php artisan test        ║\n");
+            fwrite(STDERR, "╚════════════════════════════════════════════════════════════════╝\n");
+            fwrite(STDERR, "\n");
+            exit(1);
+        }
+    }
+
+    /**
      * Create a test user with an email address.
      */
     protected function createTestUser(array $attributes = []): User

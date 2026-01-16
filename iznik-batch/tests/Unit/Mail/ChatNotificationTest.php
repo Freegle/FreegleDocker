@@ -721,6 +721,51 @@ class ChatNotificationTest extends TestCase
         $this->assertStringNotContainsString('sent with AMP', $html);
     }
 
+    public function test_chat_notification_tracking_has_amp_true_when_amp_enabled(): void
+    {
+        // Set up AMP config.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        ['mail' => $mail] = $this->createUser2UserChatSetup();
+
+        // Get the tracking record.
+        $tracking = $mail->getTracking();
+
+        $this->assertNotNull($tracking);
+        $this->assertTrue((bool) $tracking->has_amp, 'has_amp should be true for User2User chat with AMP enabled');
+    }
+
+    public function test_chat_notification_tracking_has_amp_false_when_amp_disabled(): void
+    {
+        // Disable AMP.
+        config(['freegle.amp.enabled' => false]);
+        config(['freegle.amp.secret' => null]);
+
+        ['mail' => $mail] = $this->createUser2UserChatSetup();
+
+        // Get the tracking record.
+        $tracking = $mail->getTracking();
+
+        $this->assertNotNull($tracking);
+        $this->assertFalse((bool) $tracking->has_amp, 'has_amp should be false when AMP is disabled');
+    }
+
+    public function test_chat_notification_tracking_has_amp_false_for_user2mod(): void
+    {
+        // Enable AMP globally, but User2Mod should still have has_amp=false.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        ['mail' => $mail] = $this->createUser2ModChatSetup();
+
+        // Get the tracking record.
+        $tracking = $mail->getTracking();
+
+        $this->assertNotNull($tracking);
+        $this->assertFalse((bool) $tracking->has_amp, 'has_amp should be false for User2Mod chat (AMP only for User2User)');
+    }
+
     public function test_own_message_notification_sets_flag_correctly(): void
     {
         ['user1' => $user1, 'user2' => $user2, 'room' => $room, 'message' => $message, 'mail' => $normalMail] =

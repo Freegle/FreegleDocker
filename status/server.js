@@ -1990,7 +1990,8 @@ const httpServer = http.createServer(async (req, res) => {
 
         echo "Running Laravel tests serially with coverage..."
         # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
-        docker exec freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+        # VIA_STATUS_CONTAINER ensures tests can only run through this API, not directly
+        docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
       `,
       ],
       { stdio: "pipe" }

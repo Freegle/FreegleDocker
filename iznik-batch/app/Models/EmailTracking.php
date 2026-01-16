@@ -37,6 +37,7 @@ class EmailTracking extends Model
         'opened_at',
         'clicked_at',
         'unsubscribed_at',
+        'has_amp',
     ];
 
     protected $casts = [
@@ -66,7 +67,8 @@ class EmailTracking extends Model
         ?int $userId = null,
         ?int $groupId = null,
         ?string $subject = null,
-        ?array $metadata = null
+        ?array $metadata = null,
+        bool $hasAmp = false
     ): self {
         // Validate that user exists to avoid foreign key constraint failures.
         // If user doesn't exist, set userId to null.
@@ -88,6 +90,7 @@ class EmailTracking extends Model
             'subject' => $subject,
             'metadata' => $metadata,
             'sent_at' => now(),
+            'has_amp' => $hasAmp,
         ]);
     }
 
