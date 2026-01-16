@@ -10,7 +10,7 @@ class RefreshCommand extends Command
 {
     protected $signature = 'deploy:refresh';
 
-    protected $description = 'Refresh application after deployment: clear caches, optimize, restart workers and daemons';
+    protected $description = 'Refresh application after deployment: clear environment caches, restart workers and daemons';
 
     /**
      * Cache key for storing last deployed version.
@@ -42,22 +42,48 @@ class RefreshCommand extends Command
 
     protected function clearAndOptimize(): void
     {
-        $this->info('Clearing and rebuilding caches...');
+        $this->info('Clearing environment-specific caches...');
 
-        // Clear all optimization caches first.
+        // IMPORTANT: Do NOT use optimize:clear or optimize!
+        // services.php and packages.php are committed to git and must not be regenerated
+        // at runtime - doing so causes race conditions when multiple processes bootstrap
+        // Laravel simultaneously. See: https://github.com/orchestral/testbench/issues/202
+        //
+        // Only clear environment-specific caches (config, routes, events, views).
+
         try {
-            Artisan::call('optimize:clear');
-            $this->line('  <info>✓</info> Cleared optimization caches');
+            Artisan::call('config:clear');
+            $this->line('  <info>✓</info> Cleared config cache');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> Clear failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> Config clear failed: ' . $e->getMessage());
         }
 
-        // Rebuild optimized caches for production.
         try {
-            Artisan::call('optimize');
-            $this->line('  <info>✓</info> Rebuilt optimization caches');
+            Artisan::call('route:clear');
+            $this->line('  <info>✓</info> Cleared route cache');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> Optimize failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> Route clear failed: ' . $e->getMessage());
+        }
+
+        try {
+            Artisan::call('event:clear');
+            $this->line('  <info>✓</info> Cleared event cache');
+        } catch (\Exception $e) {
+            $this->line('  <comment>⚠</comment> Event clear failed: ' . $e->getMessage());
+        }
+
+        try {
+            Artisan::call('view:clear');
+            $this->line('  <info>✓</info> Cleared view cache');
+        } catch (\Exception $e) {
+            $this->line('  <comment>⚠</comment> View clear failed: ' . $e->getMessage());
+        }
+
+        try {
+            Artisan::call('cache:clear');
+            $this->line('  <info>✓</info> Cleared application cache');
+        } catch (\Exception $e) {
+            $this->line('  <comment>⚠</comment> Cache clear failed: ' . $e->getMessage());
         }
     }
 

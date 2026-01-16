@@ -78,19 +78,22 @@ mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/storage/spool/mail/{pending,sending,sent,failed}
 chmod -R 777 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 
-# CRITICAL: Delete bootstrap cache files BEFORE running any artisan commands.
-# The volume mount may contain corrupted or stale cache files that prevent Laravel
-# from bootstrapping. We must remove them directly (not via artisan) first.
-echo "Cleaning bootstrap cache..."
-rm -f /var/www/html/bootstrap/cache/services.php
-rm -f /var/www/html/bootstrap/cache/packages.php
+# Clean environment-specific bootstrap cache files.
+# services.php and packages.php are COMMITTED to git (deterministic, based on composer.lock)
+# so we don't delete or regenerate them - this prevents race conditions when multiple
+# processes bootstrap Laravel simultaneously. See: https://github.com/orchestral/testbench/issues/202
+echo "Cleaning environment-specific bootstrap cache..."
 rm -f /var/www/html/bootstrap/cache/config.php
 rm -f /var/www/html/bootstrap/cache/routes-v7.php
 rm -f /var/www/html/bootstrap/cache/events.php
 
-# Now regenerate the package manifest - this creates fresh services.php and packages.php
-echo "Regenerating package manifest..."
-php artisan package:discover --ansi
+# Only regenerate package manifest if files don't exist (e.g., fresh clone without cache files)
+if [ ! -f /var/www/html/bootstrap/cache/services.php ] || [ ! -f /var/www/html/bootstrap/cache/packages.php ]; then
+    echo "Regenerating package manifest (files not found)..."
+    php artisan package:discover --ansi
+else
+    echo "Using committed services.php and packages.php"
+fi
 
 # Clear Laravel application caches (now safe since bootstrap cache is valid)
 echo "Clearing application caches..."
