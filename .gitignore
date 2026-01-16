@@ -49,3 +49,6 @@ sentry-issues.db
 
 # Ralph working directories (session-specific)
 ralph/
+
+# Local Netlify folder
+.netlify
