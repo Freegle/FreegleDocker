@@ -26,15 +26,23 @@ return [
     | stored for your application. Typically, this is within the storage
     | directory. However, as usual, you are free to change this value.
     |
-    | For parallel test execution (ParaTest), each worker can have its own
-    | compiled view cache to prevent race conditions where multiple workers
-    | try to compile the same view simultaneously.
+    */
+
+    'compiled' => env('VIEW_COMPILED_PATH', realpath(storage_path('framework/views'))),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache Timestamp Checking
+    |--------------------------------------------------------------------------
+    |
+    | When views are precompiled (via artisan view:cache), we can skip
+    | timestamp checking entirely. This prevents race conditions where
+    | equal timestamps cause unnecessary recompilation attempts.
+    |
+    | Set to false in phpunit.xml for tests since views are precompiled.
     |
     */
 
-    'compiled' => env(
-        'PARATEST_VIEW_CACHE',
-        env('VIEW_COMPILED_PATH', realpath(storage_path('framework/views')))
-    ),
+    'check_cache_timestamps' => env('VIEW_CHECK_TIMESTAMPS', true),
 
 ];

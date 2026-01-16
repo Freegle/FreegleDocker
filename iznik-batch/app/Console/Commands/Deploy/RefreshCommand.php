@@ -73,10 +73,12 @@ class RefreshCommand extends Command
         }
 
         try {
-            Artisan::call('view:clear');
-            $this->line('  <info>✓</info> Cleared view cache');
+            // view:cache clears then precompiles all views.
+            // Precompilation prevents race conditions during view compilation.
+            Artisan::call('view:cache');
+            $this->line('  <info>✓</info> Precompiled views');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> View clear failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> View cache failed: ' . $e->getMessage());
         }
 
         try {
