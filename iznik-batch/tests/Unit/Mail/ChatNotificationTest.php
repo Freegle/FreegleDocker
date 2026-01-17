@@ -651,7 +651,10 @@ class ChatNotificationTest extends TestCase
         config(['freegle.amp.enabled' => true]);
         config(['freegle.amp.secret' => 'test-secret-key']);
 
-        ['user2' => $user2, 'mail' => $mail] = $this->createUser2UserChatSetup();
+        // Use Gmail for the recipient so AMP is supported (AMP is domain-restricted)
+        ['user2' => $user2, 'mail' => $mail] = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'testuser@gmail.com'],
+        ]);
 
         // Debug: Check mail object state before build.
         $recipientExists = $mail->recipient->exists;
@@ -790,7 +793,10 @@ class ChatNotificationTest extends TestCase
         config(['freegle.amp.enabled' => true]);
         config(['freegle.amp.secret' => 'test-secret-key']);
 
-        ['mail' => $mail] = $this->createUser2UserChatSetup();
+        // Use Gmail for the recipient so AMP is supported (AMP is domain-restricted)
+        ['mail' => $mail] = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'testuser@gmail.com'],
+        ]);
 
         // Get the tracking record.
         $tracking = $mail->getTracking();

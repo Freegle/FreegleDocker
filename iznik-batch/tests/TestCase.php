@@ -85,9 +85,17 @@ abstract class TestCase extends BaseTestCase
 
     /**
      * Create a test user with an email address.
+     *
+     * @param array $attributes User attributes. Can include:
+     *   - email_preferred: Custom email address (default: test{id}@test.com)
+     *   - Any other User model attributes
      */
     protected function createTestUser(array $attributes = []): User
     {
+        // Extract email_preferred if provided (not a User model attribute)
+        $customEmail = $attributes['email_preferred'] ?? null;
+        unset($attributes['email_preferred']);
+
         $user = User::create(array_merge([
             'firstname' => 'Test',
             'lastname' => 'User',
@@ -95,8 +103,8 @@ abstract class TestCase extends BaseTestCase
             'added' => now(),
         ], $attributes));
 
-        // Create email for user.
-        $email = 'test'.$user->id.'@test.com';
+        // Create email for user - use custom email if provided.
+        $email = $customEmail ?? 'test'.$user->id.'@test.com';
         UserEmail::create([
             'userid' => $user->id,
             'email' => $email,
