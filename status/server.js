@@ -2032,13 +2032,25 @@ const httpServer = http.createServer(async (req, res) => {
         # Must explicitly set DB_DATABASE to avoid touching production database
         docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
 
-        # Check for empty compiled views AFTER migrate:fresh
-        # If any became empty during migration, it indicates a race condition during Laravel bootstrap
+        # Check for empty compiled views AFTER migrate:fresh and repair if needed
+        # The migrate:fresh command can trigger view recompilation in some edge cases,
+        # leading to race conditions that create empty view files.
         EMPTY_AFTER=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
         echo "Empty compiled view files after migrate:fresh: $EMPTY_AFTER"
         if [ "$EMPTY_AFTER" -gt 0 ]; then
-          echo "WARNING: Compiled views became empty during migrate:fresh!"
+          echo "WARNING: $EMPTY_AFTER compiled views became empty during migrate:fresh - repairing..."
           docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty'
+          echo "Re-running view:cache to fix empty views..."
+          docker exec freegle-batch php artisan view:clear --ansi 2>&1 || true
+          docker exec freegle-batch php artisan view:cache --ansi 2>&1 || true
+          # Verify repair succeeded
+          EMPTY_REPAIR=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
+          echo "Empty compiled view files after repair: $EMPTY_REPAIR"
+          if [ "$EMPTY_REPAIR" -gt 0 ]; then
+            echo "ERROR: Some views are still empty after repair attempt!"
+          else
+            echo "View repair successful - all views now have content"
+          fi
         fi
 
         # Show timestamps of a sample of compiled view files to track when they were modified
