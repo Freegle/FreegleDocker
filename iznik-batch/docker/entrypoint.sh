@@ -87,18 +87,58 @@ rm -f /var/www/html/bootstrap/cache/config.php
 rm -f /var/www/html/bootstrap/cache/routes-v7.php
 rm -f /var/www/html/bootstrap/cache/events.php
 
-# Only regenerate package manifest if files don't exist (e.g., fresh clone without cache files)
-if [ ! -f /var/www/html/bootstrap/cache/services.php ] || [ ! -f /var/www/html/bootstrap/cache/packages.php ]; then
-    echo "Regenerating package manifest (files not found)..."
+# Validate and regenerate package manifest if files are missing or empty
+# Use -s to check file exists AND has size > 0 (not just -f which only checks existence)
+SERVICES_FILE=/var/www/html/bootstrap/cache/services.php
+PACKAGES_FILE=/var/www/html/bootstrap/cache/packages.php
+
+if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
+    echo "Bootstrap cache files missing or empty, regenerating..."
+
+    # If files exist but are empty/corrupt, remove them first
+    if [ -f "$SERVICES_FILE" ] && [ ! -s "$SERVICES_FILE" ]; then
+        echo "WARNING: services.php exists but is empty, removing..."
+        rm -f "$SERVICES_FILE"
+    fi
+    if [ -f "$PACKAGES_FILE" ] && [ ! -s "$PACKAGES_FILE" ]; then
+        echo "WARNING: packages.php exists but is empty, removing..."
+        rm -f "$PACKAGES_FILE"
+    fi
+
+    echo "Running package:discover to regenerate bootstrap cache..."
     php artisan package:discover --ansi
+
+    # Verify regeneration succeeded
+    if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
+        echo "ERROR: Bootstrap cache files still missing or empty after regeneration!"
+        ls -la /var/www/html/bootstrap/cache/
+        exit 1
+    fi
+    echo "Bootstrap cache files regenerated successfully"
 else
-    echo "Using committed services.php and packages.php"
+    echo "Using existing services.php ($(wc -c < "$SERVICES_FILE") bytes) and packages.php ($(wc -c < "$PACKAGES_FILE") bytes)"
 fi
 
 # Clear Laravel application caches (now safe since bootstrap cache is valid)
 echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
+
+# Verify bootstrap cache files weren't corrupted by cache commands
+# This is a safety check to catch any bugs in Laravel's cache:clear/config:clear
+if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
+    echo "ERROR: Bootstrap cache files corrupted after clearing application caches!"
+    echo "services.php: $(ls -la $SERVICES_FILE 2>&1)"
+    echo "packages.php: $(ls -la $PACKAGES_FILE 2>&1)"
+    echo "Attempting recovery by regenerating..."
+    rm -f "$SERVICES_FILE" "$PACKAGES_FILE"
+    php artisan package:discover --ansi
+    if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
+        echo "FATAL: Cannot recover bootstrap cache files!"
+        exit 1
+    fi
+    echo "Recovery successful"
+fi
 
 # Ensure MJML is installed in spatie package
 if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then

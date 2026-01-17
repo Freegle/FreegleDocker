@@ -1940,15 +1940,36 @@ const httpServer = http.createServer(async (req, res) => {
         echo "Stopping supervisor workers to prevent cache corruption..."
         docker exec freegle-batch supervisorctl stop all 2>&1 || true
 
-        # Step 1: Verify bootstrap cache files exist (they're committed to git)
-        # DO NOT delete these files - they're pre-committed to avoid race conditions during
-        # parallel Laravel bootstrapping. See: https://github.com/orchestral/testbench/issues/202
-        # If they're missing or corrupt, package:discover will regenerate them.
-        echo "Checking bootstrap cache files..."
+        # Step 1: Validate and repair bootstrap cache files before any artisan commands
+        # These files are committed to git but can become corrupt (0 bytes) due to various issues.
+        # If empty, we must delete and regenerate them before running any artisan command.
+        echo "Validating bootstrap cache files..."
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
+        # Check if services.php is empty (0 bytes) and repair if needed
+        SERVICES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/services.php 2>/dev/null || echo "0")
+        PACKAGES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/packages.php 2>/dev/null || echo "0")
+        echo "services.php size: $SERVICES_SIZE bytes, packages.php size: $PACKAGES_SIZE bytes"
+
+        if [ "$SERVICES_SIZE" = "0" ] || [ "$PACKAGES_SIZE" = "0" ]; then
+          echo "WARNING: Bootstrap cache files are empty or missing! Repairing..."
+          # Delete corrupt files
+          docker exec freegle-batch rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php 2>&1 || true
+          # Regenerate them
+          docker exec freegle-batch php artisan package:discover --ansi 2>&1
+          # Verify repair succeeded
+          SERVICES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/services.php 2>/dev/null || echo "0")
+          PACKAGES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/packages.php 2>/dev/null || echo "0")
+          echo "After repair - services.php size: $SERVICES_SIZE bytes, packages.php size: $PACKAGES_SIZE bytes"
+          if [ "$SERVICES_SIZE" = "0" ] || [ "$PACKAGES_SIZE" = "0" ]; then
+            echo "ERROR: Failed to repair bootstrap cache files!"
+            exit 1
+          fi
+          echo "Bootstrap cache files repaired successfully"
+        fi
+
         # Step 2: Run package:discover to ensure packages.php is in sync with composer.lock
-        # This is safe to run even if files exist - it just updates packages.php
+        # This is safe to run since we've validated the bootstrap cache files above
         echo "Ensuring package manifest is current..."
         docker exec freegle-batch php artisan package:discover --ansi 2>&1
 
