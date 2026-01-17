@@ -20,9 +20,9 @@ use Symfony\Component\Mime\Email;
 
 class ChatNotification extends MjmlMailable
 {
-    use TrackableEmail;
-    use LoggableEmail;
     use AmpEmail;
+    use LoggableEmail;
+    use TrackableEmail;
 
     public User $recipient;
 
@@ -88,7 +88,7 @@ class ChatNotification extends MjmlMailable
         ChatRoom $chatRoom,
         ChatMessage $message,
         string $chatType,
-        ?Collection $previousMessages = NULL
+        ?Collection $previousMessages = null
     ) {
         $this->recipient = $recipient;
         $this->sender = $sender;
@@ -118,7 +118,7 @@ class ChatNotification extends MjmlMailable
 
         // For Mod2Mod chats, all participants are moderators.
         if ($chatType === ChatRoom::TYPE_MOD2MOD) {
-            $this->isModerator = TRUE;
+            $this->isModerator = true;
         }
 
         // Get the friendly group name (prefer namedisplay/namefull over nameshort).
@@ -130,15 +130,14 @@ class ChatNotification extends MjmlMailable
         // Set chat URL based on whether recipient is a moderator.
         // Moderators use ModTools, members use the user site.
         $this->chatUrl = $this->isModerator
-            ? $this->modSite . '/chats/' . $chatRoom->id
-            : $this->userSite . '/chats/' . $chatRoom->id;
+            ? $this->modSite.'/chats/'.$chatRoom->id
+            : $this->userSite.'/chats/'.$chatRoom->id;
 
         // Build the subject line.
         $this->replySubject = $this->generateSubject();
 
-        // Build reply-to address for chat routing.
-        // Format: notify-{chatid}-{userid}@{domain}
-        $this->replyToAddress = 'notify-' . $chatRoom->id . '-' . $recipient->id . '@' . $this->userDomain;
+        // Reply-to address is built after initTracking() to include tracking ID.
+        // See buildReplyToAddress() method called at the end of the constructor.
 
         // Build from display name based on chat type.
         // For User2Mod chats, we follow iznik-server behavior:
@@ -155,24 +154,24 @@ class ChatNotification extends MjmlMailable
                 if ($sender && $sender->id === $chatRoom->user1) {
                     // Message from member - show member's name.
                     $senderName = $sender->displayname ?? 'A member';
-                    $this->fromDisplayName = $senderName . ' via ' . $siteName;
+                    $this->fromDisplayName = $senderName.' via '.$siteName;
                 } else {
                     // Message from another mod - use group volunteers.
-                    $this->fromDisplayName = $groupName . ' Volunteers';
+                    $this->fromDisplayName = $groupName.' Volunteers';
                 }
             } else {
                 // Member receiving - always show group volunteers, hide mod identity.
-                $this->fromDisplayName = $groupName . ' Volunteers';
+                $this->fromDisplayName = $groupName.' Volunteers';
             }
         } elseif ($chatType === ChatRoom::TYPE_MOD2MOD) {
             // Mod2Mod - show sender name, mods can see each other's identities.
             $groupName = $chatRoom->group?->namedisplay ?? $chatRoom->group?->nameshort ?? $siteName;
             $senderName = $sender?->displayname ?? 'A volunteer';
-            $this->fromDisplayName = $senderName . ' (' . $groupName . ' Volunteers)';
+            $this->fromDisplayName = $senderName.' ('.$groupName.' Volunteers)';
         } else {
             // User2User - show sender name.
             $senderName = $sender?->displayname ?? 'Someone';
-            $this->fromDisplayName = $senderName . ' on ' . $siteName;
+            $this->fromDisplayName = $senderName.' on '.$siteName;
         }
 
         // Initialize email tracking.
@@ -191,7 +190,7 @@ class ChatNotification extends MjmlMailable
             'ChatNotification',
             $this->recipient->email_preferred,
             $userId,
-            NULL,
+            null,
             $this->replySubject,
             [
                 'chat_id' => $chatRoom->id,
@@ -200,6 +199,30 @@ class ChatNotification extends MjmlMailable
             ],
             $hasAmp
         );
+
+        // Build reply-to address now that tracking is initialized.
+        // Format: notify-{chatid}-{userid}-{trackingid}@{domain}
+        // The tracking ID allows us to track email replies for analytics.
+        $this->buildReplyToAddress();
+    }
+
+    /**
+     * Build the reply-to address with tracking ID.
+     *
+     * Format: notify-{chatid}-{userid}-{trackingid}@{domain}
+     * This allows iznik-server to track email replies for analytics comparison.
+     */
+    protected function buildReplyToAddress(): void
+    {
+        $trackingId = $this->tracking?->id;
+
+        if ($trackingId) {
+            // New format with tracking ID for analytics.
+            $this->replyToAddress = 'notify-'.$this->chatRoom->id.'-'.$this->recipient->id.'-'.$trackingId.'@'.$this->userDomain;
+        } else {
+            // Fallback to old format if tracking not available.
+            $this->replyToAddress = 'notify-'.$this->chatRoom->id.'-'.$this->recipient->id.'@'.$this->userDomain;
+        }
     }
 
     /**
@@ -243,17 +266,17 @@ class ChatNotification extends MjmlMailable
         $outcomeUrls = $showOutcomeButtons ? $this->getOutcomeUrls() : [];
 
         // Check if reply is expected.
-        $replyExpected = $this->message->replyexpected ?? FALSE;
+        $replyExpected = $this->message->replyexpected ?? false;
 
         // Get job ads for the recipient and add tracked URLs.
         $jobAds = $this->recipient->getJobAds();
         $jobCount = count($jobAds['jobs']);
         foreach ($jobAds['jobs'] as $index => $job) {
             $job->tracked_url = $this->trackedUrl(
-                config('freegle.sites.user') . '/job/' . $job->id .
-                '?source=email&campaign=chat_notification&position=' . $index .
-                '&list_length=' . $jobCount,
-                'job_ad_' . $index,
+                config('freegle.sites.user').'/job/'.$job->id.
+                '?source=email&campaign=chat_notification&position='.$index.
+                '&list_length='.$jobCount,
+                'job_ad_'.$index,
                 'job_click'
             );
         }
@@ -268,7 +291,7 @@ class ChatNotification extends MjmlMailable
         // Any message notification to a member is from volunteers (even if sender is NULL).
         // We don't need to check who the sender is - members always see "Volunteers".
         $shouldHideModIdentity = $this->chatType === ChatRoom::TYPE_USER2MOD
-            && !$this->isModerator;  // Recipient is a member
+            && ! $this->isModerator;  // Recipient is a member
 
         // Build sender page URL (for clicking on sender name/image).
         // Moderators should go to ModTools, members to user site.
@@ -276,18 +299,18 @@ class ChatNotification extends MjmlMailable
         if ($shouldHideModIdentity) {
             $groupName = $this->chatRoom->group?->nameshort ?? '';
             $senderPageUrl = $groupName
-                ? $this->trackedUrl($this->userSite . '/explore/' . urlencode($groupName), 'group_profile', 'group')
+                ? $this->trackedUrl($this->userSite.'/explore/'.urlencode($groupName), 'group_profile', 'group')
                 : null;
         } elseif ($this->sender?->id) {
             $profileSite = $this->isModerator ? $this->modSite : $this->userSite;
-            $senderPageUrl = $this->trackedUrl($profileSite . '/profile/' . $this->sender->id, 'sender_profile', 'profile');
+            $senderPageUrl = $this->trackedUrl($profileSite.'/profile/'.$this->sender->id, 'sender_profile', 'profile');
         } else {
             $senderPageUrl = null;
         }
 
         // Get sender name and profile, hiding mod identity for members.
         $senderName = $shouldHideModIdentity
-            ? $this->groupDisplayName . ' Volunteers'
+            ? $this->groupDisplayName.' Volunteers'
             : ($this->sender?->displayname ?? 'Someone');
         $senderProfileUrl = $shouldHideModIdentity
             ? $this->getGroupProfileUrl()
@@ -344,7 +367,7 @@ class ChatNotification extends MjmlMailable
                 'memberName' => $this->member?->displayname ?? 'the member',
                 'memberProfileUrl' => ($this->isModerator && $this->member && $this->chatRoom->groupid)
                     ? $this->trackedUrl(
-                        $this->modSite . '/members/approved/' . $this->chatRoom->groupid . '/' . $this->member->id,
+                        $this->modSite.'/members/approved/'.$this->chatRoom->groupid.'/'.$this->member->id,
                         'member_profile',
                         'profile'
                     )
@@ -352,17 +375,17 @@ class ChatNotification extends MjmlMailable
                 'groupName' => $this->groupDisplayName,
                 'groupShortName' => $this->chatRoom->group?->nameshort ?? 'Freegle',
                 'settingsUrl' => $this->trackedUrl(
-                    $this->isModerator ? $this->modSite . '/settings' : $this->userSite . '/settings',
+                    $this->isModerator ? $this->modSite.'/settings' : $this->userSite.'/settings',
                     'footer_settings',
                     'settings'
                 ),
                 'unsubscribeUrl' => $this->trackedUrl(
-                    $this->isModerator ? $this->modSite . '/settings' : $this->userSite . '/unsubscribe',
+                    $this->isModerator ? $this->modSite.'/settings' : $this->userSite.'/unsubscribe',
                     'footer_unsubscribe',
                     'unsubscribe'
                 ),
                 'jobAds' => $jobAds['jobs'],
-                'jobsUrl' => $this->trackedUrl($this->userSite . '/jobs', 'jobs_link', 'jobs'),
+                'jobsUrl' => $this->trackedUrl($this->userSite.'/jobs', 'jobs_link', 'jobs'),
                 'donateUrl' => $this->trackedUrl('https://freegle.in/paypal1510', 'donate_link', 'donate'),
                 'ampIncluded' => $ampIncluded,
                 'isOwnMessage' => $this->isOwnMessage,
@@ -457,11 +480,13 @@ class ChatNotification extends MjmlMailable
                 $groupName = $group?->nameshort ?? 'Freegle';
                 $memberName = $this->member?->displayname ?? 'A member';
                 $memberEmail = $this->member?->email_preferred ?? '';
+
                 return "Member conversation on {$groupName} with {$memberName} ({$memberEmail})";
             }
 
             // Member subject.
             $groupName = $group?->namefull ?? $group?->nameshort ?? 'your local Freegle group';
+
             return "Your conversation with the {$groupName} Volunteers";
         }
 
@@ -469,6 +494,7 @@ class ChatNotification extends MjmlMailable
             $group = $this->chatRoom->group;
             $groupName = $group?->nameshort ?? 'Freegle';
             $senderName = $this->sender?->displayname ?? 'A volunteer';
+
             return "{$groupName} Volunteer Chat: {$senderName}";
         }
 
@@ -488,7 +514,7 @@ class ChatNotification extends MjmlMailable
         }
 
         // Fallback if no interested message found.
-        return "[Freegle] You have a new message";
+        return '[Freegle] You have a new message';
     }
 
     /**
@@ -508,14 +534,14 @@ class ChatNotification extends MjmlMailable
             ->orderByDesc('id')
             ->first();
 
-        if (!$interestedMessage) {
-            return NULL;
+        if (! $interestedMessage) {
+            return null;
         }
 
         // Get the referenced message with its group.
         $refMessage = $interestedMessage->refMessage;
-        if (!$refMessage) {
-            return NULL;
+        if (! $refMessage) {
+            return null;
         }
 
         // Get the group for this message.
@@ -532,7 +558,7 @@ class ChatNotification extends MjmlMailable
      * Get a clean snippet of the message for use in subject lines.
      * Matches the snippet format used in iznik-server ChatRoom::getSnippet().
      *
-     * @param int $maxLength Maximum length of the snippet
+     * @param  int  $maxLength  Maximum length of the snippet
      */
     protected function getSubjectSnippet(int $maxLength = 40): string
     {
@@ -551,11 +577,13 @@ class ChatNotification extends MjmlMailable
             case ChatMessage::TYPE_COMPLETED:
                 // Match iznik-server: different text for OFFER (TAKEN) vs WANTED (RECEIVED).
                 if ($this->refMessage?->type === Message::TYPE_OFFER) {
-                    if (!empty($text)) {
+                    if (! empty($text)) {
                         break; // Use the text below.
                     }
+
                     return 'Item marked as TAKEN';
                 }
+
                 return 'Item marked as RECEIVED...';
             case ChatMessage::TYPE_IMAGE:
                 // If there's text with the image, use that; otherwise use generic.
@@ -569,7 +597,7 @@ class ChatNotification extends MjmlMailable
                     return 'Interested...';
                 }
                 break;
-            // For DEFAULT and MODMAIL, use the actual text.
+                // For DEFAULT and MODMAIL, use the actual text.
         }
 
         // Decode emoji escape sequences.
@@ -585,7 +613,7 @@ class ChatNotification extends MjmlMailable
 
         // Truncate with ellipsis if needed.
         if (mb_strlen($text) > $maxLength) {
-            $text = mb_substr($text, 0, $maxLength - 1) . '…';
+            $text = mb_substr($text, 0, $maxLength - 1).'…';
         }
 
         return $text;
@@ -624,7 +652,7 @@ class ChatNotification extends MjmlMailable
         // For User2Mod chats when notifying a member, hide mod identity.
         // This matches iznik-server prepareForTwig() behavior.
         $shouldHideModIdentity = $this->chatType === ChatRoom::TYPE_USER2MOD
-            && !$this->isModerator  // Recipient is a member
+            && ! $this->isModerator  // Recipient is a member
             && $isFromMod;          // Message is from a mod
 
         // Get profile image URL.
@@ -647,11 +675,11 @@ class ChatNotification extends MjmlMailable
         if ($shouldHideModIdentity) {
             $groupName = $this->chatRoom->group?->nameshort ?? '';
             $userPageUrl = $groupName
-                ? $this->trackedUrl($this->userSite . '/explore/' . urlencode($groupName), 'group_profile', 'group')
+                ? $this->trackedUrl($this->userSite.'/explore/'.urlencode($groupName), 'group_profile', 'group')
                 : null;
         } elseif ($messageUser?->id) {
             $profileSite = $this->isModerator ? $this->modSite : $this->userSite;
-            $userPageUrl = $this->trackedUrl($profileSite . '/profile/' . $messageUser->id, 'message_profile', 'profile');
+            $userPageUrl = $this->trackedUrl($profileSite.'/profile/'.$messageUser->id, 'message_profile', 'profile');
         } else {
             $userPageUrl = null;
         }
@@ -662,7 +690,7 @@ class ChatNotification extends MjmlMailable
         // Determine the display name for the message author.
         // For mod messages to members, show "Volunteers" instead of individual name.
         $userName = $shouldHideModIdentity
-            ? $this->groupDisplayName . ' Volunteers'
+            ? $this->groupDisplayName.' Volunteers'
             : ($messageUser?->displayname ?? 'Someone');
 
         return [
@@ -676,7 +704,7 @@ class ChatNotification extends MjmlMailable
             'date' => $message->date,
             'formattedDate' => $message->date?->format('M j, g:i a') ?? '',
             'isFromRecipient' => $isFromRecipient,
-            'replyExpected' => $message->replyexpected ?? FALSE,
+            'replyExpected' => $message->replyexpected ?? false,
             'refMessage' => $refMessageInfo,
             'mapUrl' => $mapUrl,
         ];
@@ -688,7 +716,7 @@ class ChatNotification extends MjmlMailable
     protected function getMessageRefInfo(ChatMessage $message): ?array
     {
         $refMsg = $message->refMessage;
-        if (!$refMsg) {
+        if (! $refMsg) {
             return null;
         }
 
@@ -699,7 +727,7 @@ class ChatNotification extends MjmlMailable
 
         $imageUrl = null;
         if ($attachment) {
-            if (!empty($attachment->externalurl)) {
+            if (! empty($attachment->externalurl)) {
                 $imageUrl = $this->getDeliveryUrl($attachment->externalurl, 75);
             } else {
                 $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
@@ -709,10 +737,11 @@ class ChatNotification extends MjmlMailable
 
         // Use ModTools for moderators, user site for members.
         $messageSite = $this->isModerator ? $this->modSite : $this->userSite;
+
         return [
             'subject' => $refMsg->subject,
             'imageUrl' => $imageUrl,
-            'url' => $this->trackedUrl($messageSite . '/message/' . $refMsg->id, 'ref_message', 'view_item'),
+            'url' => $this->trackedUrl($messageSite.'/message/'.$refMsg->id, 'ref_message', 'view_item'),
         ];
     }
 
@@ -734,32 +763,35 @@ class ChatNotification extends MjmlMailable
                 if ($message->userid === $this->recipient->id) {
                     return "You promised this to {$otherUser}:";
                 }
+
                 return "{$otherUser} promised this to you:";
 
             case ChatMessage::TYPE_RENEGED:
                 $otherUser = $this->sender?->displayname ?? 'Someone';
                 if ($message->userid === $this->recipient->id) {
-                    return "You cancelled your promise for:";
+                    return 'You cancelled your promise for:';
                 }
+
                 return "{$otherUser} cancelled their promise for:";
 
             case ChatMessage::TYPE_COMPLETED:
-                return "This item is no longer available:";
+                return 'This item is no longer available:';
 
             case ChatMessage::TYPE_ADDRESS:
                 return $this->getAddressDisplayText($message);
 
             case ChatMessage::TYPE_NUDGE:
                 if ($message->userid === $this->recipient->id) {
-                    return "You sent a nudge - please can you reply?";
+                    return 'You sent a nudge - please can you reply?';
                 }
-                return "Nudge - please can you reply?";
+
+                return 'Nudge - please can you reply?';
 
             case ChatMessage::TYPE_MODMAIL:
-                return "Message from Volunteers: " . $text;
+                return 'Message from Volunteers: '.$text;
 
             case ChatMessage::TYPE_REPORTEDUSER:
-                return "This member reported another member with the comment: " . $text;
+                return 'This member reported another member with the comment: '.$text;
 
             case ChatMessage::TYPE_IMAGE:
                 return $text ?: 'Sent an image';
@@ -785,28 +817,28 @@ class ChatNotification extends MjmlMailable
 
         // The message field contains the address ID.
         $addressId = intval($message->message);
-        if (!$addressId) {
+        if (! $addressId) {
             return $intro;
         }
 
         // Look up the address.
         $userAddress = UserAddress::find($addressId);
-        if (!$userAddress) {
+        if (! $userAddress) {
             return $intro;
         }
 
         // Get the formatted multiline address.
         $formattedAddress = $userAddress->getMultiLine();
-        if (!$formattedAddress) {
+        if (! $formattedAddress) {
             return $intro;
         }
 
         // Build the full text with the address.
-        $result = $intro . "\n\n" . $formattedAddress;
+        $result = $intro."\n\n".$formattedAddress;
 
         // Add collection instructions if present.
-        if (!empty($userAddress->instructions)) {
-            $result .= "\n\n" . $userAddress->instructions;
+        if (! empty($userAddress->instructions)) {
+            $result .= "\n\n".$userAddress->instructions;
         }
 
         return $result;
@@ -823,19 +855,19 @@ class ChatNotification extends MjmlMailable
 
         // The message field contains the address ID.
         $addressId = intval($message->message);
-        if (!$addressId) {
+        if (! $addressId) {
             return null;
         }
 
         // Look up the address.
         $userAddress = UserAddress::find($addressId);
-        if (!$userAddress) {
+        if (! $userAddress) {
             return null;
         }
 
         // Get coordinates (falls back to postcode if needed).
         [$lat, $lng] = $userAddress->getCoordinates();
-        if (!$lat || !$lng) {
+        if (! $lat || ! $lng) {
             return null;
         }
 
@@ -848,21 +880,21 @@ class ChatNotification extends MjmlMailable
     /**
      * Get profile image URL for a user, optimized via delivery service.
      *
-     * @param User|null $user The user
-     * @param int $width The desired width (default 40px for message avatars)
+     * @param  User|null  $user  The user
+     * @param  int  $width  The desired width (default 40px for message avatars)
      */
     protected function getProfileImageUrl(?User $user, int $width = 40): string
     {
         // Check both for a user ID and that the user exists in the database.
         // Mock/test users may have IDs but exists=false.
-        if (!$user || !$user->id || !$user->exists) {
+        if (! $user || ! $user->id || ! $user->exists) {
             return $this->getDefaultProfileUrl($width);
         }
 
         // Get the user's profile image URL from their users_images record.
-        $sourceUrl = $user->getProfileImageUrl(TRUE);
+        $sourceUrl = $user->getProfileImageUrl(true);
 
-        if (!$sourceUrl) {
+        if (! $sourceUrl) {
             return $this->getDefaultProfileUrl($width);
         }
 
@@ -875,7 +907,8 @@ class ChatNotification extends MjmlMailable
     protected function getDefaultProfileUrl(int $width = 40): string
     {
         $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
-        $sourceUrl = $imagesDomain . '/defaultprofile.png';
+        $sourceUrl = $imagesDomain.'/defaultprofile.png';
+
         return $this->getDeliveryUrl($sourceUrl, $width);
     }
 
@@ -890,12 +923,13 @@ class ChatNotification extends MjmlMailable
     {
         $group = $this->chatRoom->group;
 
-        if (!$group || !$group->profile) {
+        if (! $group || ! $group->profile) {
             return $this->getDefaultProfileUrl($width);
         }
 
         $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
         $sourceUrl = "{$imagesDomain}/gimg_{$group->profile}.jpg";
+
         return $this->getDeliveryUrl($sourceUrl, $width);
     }
 
@@ -910,16 +944,16 @@ class ChatNotification extends MjmlMailable
     /**
      * Get a URL via the delivery service for image resizing/optimization.
      *
-     * @param string $sourceUrl The source image URL
-     * @param int $width The desired width
+     * @param  string  $sourceUrl  The source image URL
+     * @param  int  $width  The desired width
      */
     protected function getDeliveryUrl(string $sourceUrl, int $width): string
     {
-        if (!$this->deliveryUrl) {
+        if (! $this->deliveryUrl) {
             return $sourceUrl;
         }
 
-        return $this->deliveryUrl . '/?url=' . urlencode($sourceUrl) . '&w=' . $width;
+        return $this->deliveryUrl.'/?url='.urlencode($sourceUrl).'&w='.$width;
     }
 
     /**
@@ -928,7 +962,7 @@ class ChatNotification extends MjmlMailable
     protected function getMessageImageUrl(ChatMessage $message): ?string
     {
         if ($message->type !== ChatMessage::TYPE_IMAGE) {
-            return NULL;
+            return null;
         }
 
         $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
@@ -936,6 +970,7 @@ class ChatNotification extends MjmlMailable
         // Chat message images use mimg_{id}.jpg format (m = message/chat).
         if ($message->imageid) {
             $sourceUrl = "{$imagesDomain}/mimg_{$message->imageid}.jpg";
+
             return $this->getDeliveryUrl($sourceUrl, 200);
         }
 
@@ -943,10 +978,11 @@ class ChatNotification extends MjmlMailable
         $image = $message->images()->first();
         if ($image) {
             $sourceUrl = "{$imagesDomain}/mimg_{$image->id}.jpg";
+
             return $this->getDeliveryUrl($sourceUrl, 200);
         }
 
-        return NULL;
+        return null;
     }
 
     /**
@@ -955,18 +991,18 @@ class ChatNotification extends MjmlMailable
      */
     protected function shouldShowOutcomeButtons(): bool
     {
-        if (!$this->refMessage) {
-            return FALSE;
+        if (! $this->refMessage) {
+            return false;
         }
 
         // Only for OFFER items.
         if ($this->refMessage->type !== Message::TYPE_OFFER) {
-            return FALSE;
+            return false;
         }
 
         // Only if recipient is the poster.
         if ($this->refMessage->fromuser !== $this->recipient->id) {
-            return FALSE;
+            return false;
         }
 
         // Only if this is an Interested message.
@@ -978,7 +1014,7 @@ class ChatNotification extends MjmlMailable
      */
     protected function getOutcomeUrls(): array
     {
-        if (!$this->refMessage) {
+        if (! $this->refMessage) {
             return [];
         }
 
@@ -986,12 +1022,12 @@ class ChatNotification extends MjmlMailable
 
         return [
             'taken' => $this->trackedUrl(
-                $this->userSite . '/message/' . $msgId . '?outcome=Taken',
+                $this->userSite.'/message/'.$msgId.'?outcome=Taken',
                 'outcome_taken',
                 'outcome'
             ),
             'withdrawn' => $this->trackedUrl(
-                $this->userSite . '/message/' . $msgId . '?outcome=Withdrawn',
+                $this->userSite.'/message/'.$msgId.'?outcome=Withdrawn',
                 'outcome_withdrawn',
                 'outcome'
             ),
@@ -1003,7 +1039,7 @@ class ChatNotification extends MjmlMailable
      */
     protected function getRefMessageImageUrl(): ?string
     {
-        if (!$this->refMessage) {
+        if (! $this->refMessage) {
             return null;
         }
 
@@ -1012,12 +1048,12 @@ class ChatNotification extends MjmlMailable
             ->orderByDesc('primary')
             ->first();
 
-        if (!$attachment) {
+        if (! $attachment) {
             return null;
         }
 
         // If there's an external URL, use it directly.
-        if (!empty($attachment->externalurl)) {
+        if (! empty($attachment->externalurl)) {
             return $this->getDeliveryUrl($attachment->externalurl, 200);
         }
 
