@@ -217,6 +217,20 @@ services:
       retries: 5
       start_period: 10s
 
+  # MJML email template compilation server (used by batch for worker pool back pressure)
+  mjml:
+    container_name: freegle-mjml
+    networks:
+      - default
+    image: adrianrudnik/mjml-server:latest
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   delivery:
     container_name: freegle-delivery
     networks:

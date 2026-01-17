@@ -176,6 +176,12 @@ const services = [
     category: "infra",
   },
   {
+    id: "mjml",
+    container: "freegle-mjml",
+    checkType: "mjml",
+    category: "infra",
+  },
+  {
     id: "beanstalkd",
     container: "freegle-beanstalkd",
     checkType: "beanstalkd",
@@ -2911,6 +2917,9 @@ const httpServer = http.createServer(async (req, res) => {
             break;
           case "redis":
             testDescription = "Redis PING command response test";
+            break;
+          case "mjml":
+            testDescription = "MJML compilation server health endpoint";
             break;
           case "beanstalkd":
             testDescription = "Beanstalkd port 11300 connection test";
