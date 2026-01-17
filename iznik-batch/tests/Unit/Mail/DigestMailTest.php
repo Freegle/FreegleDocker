@@ -103,4 +103,3 @@ class DigestMailTest extends TestCase
         $this->assertEquals("5 new posts on {$group->nameshort}", $envelope->subject);
     }
 }
-# Trigger rebuild
