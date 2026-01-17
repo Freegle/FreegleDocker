@@ -32,19 +32,8 @@ abstract class TestCase extends BaseTestCase
         config(['mail.default' => 'array']);
         \Illuminate\Support\Facades\Mail::forgetMailers();
 
-        // Disable view timestamp checking to use precompiled views unconditionally.
-        // Views are precompiled before tests run via `php artisan view:cache`.
-        // Without this, Laravel may try to recompile views mid-test if timestamps match,
-        // causing race conditions that result in empty view renders.
-        //
-        // IMPORTANT: Setting config() here is too late - the BladeCompiler singleton is
-        // already created during application bootstrap with the old value. We must use
-        // reflection to modify the protected $shouldCheckTimestamps property directly.
-        $compiler = $this->app->make('blade.compiler');
-        $reflection = new \ReflectionClass($compiler);
-        $property = $reflection->getProperty('shouldCheckTimestamps');
-        $property->setAccessible(true);
-        $property->setValue($compiler, false);
+        // View timestamp checking is now disabled in config/view.php when APP_ENV=testing.
+        // This uses precompiled views unconditionally, preventing race conditions.
     }
 
     /**

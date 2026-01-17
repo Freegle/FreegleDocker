@@ -43,6 +43,10 @@ return [
     |
     */
 
-    'check_cache_timestamps' => env('VIEW_CHECK_TIMESTAMPS', true),
+    // Disable timestamp checking in testing environment to use precompiled views unconditionally.
+    // Views are precompiled before tests run via `php artisan view:cache`.
+    // This prevents race conditions where equal timestamps cause recompilation attempts
+    // that can result in empty view renders.
+    'check_cache_timestamps' => env('VIEW_CHECK_TIMESTAMPS', env('APP_ENV') !== 'testing'),
 
 ];
