@@ -32,8 +32,27 @@ abstract class TestCase extends BaseTestCase
         config(['mail.default' => 'array']);
         \Illuminate\Support\Facades\Mail::forgetMailers();
 
-        // View timestamp checking is now disabled in config/view.php when APP_ENV=testing.
-        // This uses precompiled views unconditionally, preventing race conditions.
+        // Force BladeCompiler to never check timestamps for view recompilation.
+        // This prevents race conditions where equal timestamps cause recompilation attempts
+        // that result in empty view renders. Views should be precompiled before tests run.
+        // We use reflection because the BladeCompiler singleton is already created during
+        // app bootstrap, and config changes don't affect the already-instantiated singleton.
+        $this->disableViewTimestampChecking();
+    }
+
+    /**
+     * Disable view timestamp checking via reflection.
+     *
+     * This forces the BladeCompiler to always use precompiled views without
+     * checking if the source file has changed. Prevents race conditions.
+     */
+    private function disableViewTimestampChecking(): void
+    {
+        $bladeCompiler = $this->app->make('blade.compiler');
+        $reflection = new \ReflectionClass($bladeCompiler);
+        $property = $reflection->getProperty('shouldCheckTimestamps');
+        $property->setAccessible(true);
+        $property->setValue($bladeCompiler, false);
     }
 
     /**

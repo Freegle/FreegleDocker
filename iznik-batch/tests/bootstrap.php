@@ -30,6 +30,16 @@ require __DIR__.'/../vendor/autoload.php';
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
+// Disable view timestamp checking to prevent race conditions with precompiled views.
+// The config in config/view.php should set this, but we also force it here to ensure
+// the BladeCompiler singleton has the correct setting after Laravel bootstrap.
+// This prevents empty view renders that occur when views are recompiled during tests.
+$bladeCompiler = $app->make('blade.compiler');
+$reflection = new \ReflectionClass($bladeCompiler);
+$property = $reflection->getProperty('shouldCheckTimestamps');
+$property->setAccessible(true);
+$property->setValue($bladeCompiler, false);
+
 // Force config to use test database
 config(['database.connections.mysql.database' => 'iznik_batch_test']);
 
