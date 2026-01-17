@@ -16,6 +16,26 @@ class DeployRefreshCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_verifies_bootstrap_cache_files(): void
+    {
+        // Ensure bootstrap cache files exist (they should be committed to git)
+        $servicesPath = base_path('bootstrap/cache/services.php');
+        $packagesPath = base_path('bootstrap/cache/packages.php');
+
+        $this->assertFileExists($servicesPath, 'services.php should be committed to git');
+        $this->assertFileExists($packagesPath, 'packages.php should be committed to git');
+
+        // Run deploy:refresh and verify it checks the bootstrap cache
+        $this->artisan('deploy:refresh')
+            ->assertSuccessful();
+
+        // Verify files still exist and have content after refresh
+        $this->assertFileExists($servicesPath);
+        $this->assertFileExists($packagesPath);
+        $this->assertGreaterThan(0, filesize($servicesPath), 'services.php should not be empty');
+        $this->assertGreaterThan(0, filesize($packagesPath), 'packages.php should not be empty');
+    }
+
     public function test_restarts_queue_workers(): void
     {
         $this->artisan('deploy:refresh')

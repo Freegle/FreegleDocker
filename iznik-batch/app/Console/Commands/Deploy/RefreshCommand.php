@@ -44,32 +44,38 @@ class RefreshCommand extends Command
     {
         $this->info('Clearing environment-specific caches...');
 
-        // IMPORTANT: Do NOT use optimize:clear or optimize!
-        // services.php and packages.php are committed to git and must not be regenerated
+        // IMPORTANT: Do NOT use optimize:clear or optimize to regenerate services.php!
+        // services.php and packages.php are committed to git and must not be deleted
         // at runtime - doing so causes race conditions when multiple processes bootstrap
         // Laravel simultaneously. See: https://github.com/orchestral/testbench/issues/202
         //
-        // Only clear environment-specific caches (config, routes, events, views).
+        // However, we DO run package:discover to ensure packages.php is in sync with
+        // composer.lock after deployment (in case new packages were added).
+
+        // Step 1: Verify bootstrap cache files exist and run package:discover
+        $this->verifyBootstrapCache();
+
+        // Step 2: Clear environment-specific caches (config, routes, events, views).
 
         try {
             Artisan::call('config:clear');
             $this->line('  <info>✓</info> Cleared config cache');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> Config clear failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> Config clear failed: '.$e->getMessage());
         }
 
         try {
             Artisan::call('route:clear');
             $this->line('  <info>✓</info> Cleared route cache');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> Route clear failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> Route clear failed: '.$e->getMessage());
         }
 
         try {
             Artisan::call('event:clear');
             $this->line('  <info>✓</info> Cleared event cache');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> Event clear failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> Event clear failed: '.$e->getMessage());
         }
 
         try {
@@ -78,14 +84,43 @@ class RefreshCommand extends Command
             Artisan::call('view:cache');
             $this->line('  <info>✓</info> Precompiled views');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> View cache failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> View cache failed: '.$e->getMessage());
         }
 
         try {
             Artisan::call('cache:clear');
             $this->line('  <info>✓</info> Cleared application cache');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> Cache clear failed: ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> Cache clear failed: '.$e->getMessage());
+        }
+    }
+
+    protected function verifyBootstrapCache(): void
+    {
+        $servicesPath = base_path('bootstrap/cache/services.php');
+        $packagesPath = base_path('bootstrap/cache/packages.php');
+
+        // Check services.php exists and has content
+        if (! file_exists($servicesPath) || filesize($servicesPath) === 0) {
+            $this->line('  <comment>⚠</comment> services.php missing or empty - this should be committed to git');
+        } else {
+            $this->line('  <info>✓</info> services.php verified');
+        }
+
+        // Run package:discover to ensure packages.php is current
+        // This is safe even if the file exists - it just updates it
+        try {
+            Artisan::call('package:discover');
+            $this->line('  <info>✓</info> Package manifest updated');
+        } catch (\Exception $e) {
+            $this->line('  <comment>⚠</comment> Package discover failed: '.$e->getMessage());
+        }
+
+        // Verify packages.php now exists and has content
+        if (! file_exists($packagesPath) || filesize($packagesPath) === 0) {
+            $this->error('  packages.php is missing or empty after package:discover');
+        } else {
+            $this->line('  <info>✓</info> packages.php verified');
         }
     }
 
@@ -98,7 +133,7 @@ class RefreshCommand extends Command
             Artisan::call('queue:restart');
             $this->line('  <info>✓</info> Queue workers signaled');
         } catch (\Exception $e) {
-            $this->line('  <comment>⚠</comment> ' . $e->getMessage());
+            $this->line('  <comment>⚠</comment> '.$e->getMessage());
         }
     }
 
@@ -127,7 +162,7 @@ class RefreshCommand extends Command
         if ($returnCode === 0) {
             $this->line("  <info>✓</info> {$program}");
         } else {
-            $this->line("  <comment>⚠</comment> {$program}: " . implode(' ', $output));
+            $this->line("  <comment>⚠</comment> {$program}: ".implode(' ', $output));
         }
     }
 
