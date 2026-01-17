@@ -47,6 +47,13 @@ return [
     // Views are precompiled before tests run via `php artisan view:cache`.
     // This prevents race conditions where equal timestamps cause recompilation attempts
     // that can result in empty view renders.
-    'check_cache_timestamps' => env('VIEW_CHECK_TIMESTAMPS', env('APP_ENV') !== 'testing'),
+    //
+    // Note: PHPUnit sets env vars as strings ("false" not false), so we explicitly cast to bool.
+    // The ?? operator ensures we get a sensible default if env returns null.
+    'check_cache_timestamps' => filter_var(
+        env('VIEW_CHECK_TIMESTAMPS', env('APP_ENV') !== 'testing'),
+        FILTER_VALIDATE_BOOLEAN,
+        FILTER_NULL_ON_FAILURE
+    ) ?? (env('APP_ENV') !== 'testing'),
 
 ];

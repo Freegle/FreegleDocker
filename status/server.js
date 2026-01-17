@@ -1978,12 +1978,26 @@ const httpServer = http.createServer(async (req, res) => {
           echo "WARNING: view:cache failed, views will be compiled on-demand"
         fi
 
-        # Verify views are cached
+        # Verify views are cached and have content
         CACHED_VIEWS=$(docker exec freegle-batch sh -c 'ls -1 /var/www/html/storage/framework/views/*.php 2>/dev/null | wc -l')
         echo "Cached views count: $CACHED_VIEWS"
         if [ "$CACHED_VIEWS" -lt 10 ]; then
           echo "WARNING: Very few views cached ($CACHED_VIEWS), this may cause race conditions"
         fi
+
+        # Check for empty compiled view files - these cause the MJML rendering issue
+        EMPTY_VIEWS=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
+        echo "Empty compiled view files: $EMPTY_VIEWS"
+        if [ "$EMPTY_VIEWS" -gt 0 ]; then
+          echo "ERROR: Found $EMPTY_VIEWS empty compiled view files after view:cache!"
+          echo "Empty files:"
+          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty -exec echo {} \;'
+          echo "This indicates view:cache is not working correctly."
+        fi
+
+        # Show a sample of compiled view sizes to verify they have content
+        echo "Sample of compiled view file sizes (first 5 non-empty):"
+        docker exec freegle-batch sh -c 'ls -la /var/www/html/storage/framework/views/*.php 2>/dev/null | head -5'
 
         echo "Cache directory after regeneration:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
