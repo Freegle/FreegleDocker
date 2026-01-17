@@ -61,7 +61,30 @@ abstract class MjmlMailable extends Mailable
      */
     protected function renderMjmlTemplate(): string
     {
-        return view($this->mjmlTemplate, $this->mjmlData)->render();
+        $viewInstance = view($this->mjmlTemplate, $this->mjmlData);
+        $result = $viewInstance->render();
+
+        // If render returns empty, log diagnostics to help debug.
+        if (empty(trim($result))) {
+            $bladeCompiler = app('blade.compiler');
+            $viewPath = $viewInstance->getPath();
+            $compiledPath = $bladeCompiler->getCompiledPath($viewPath);
+
+            \Log::error('View render returned empty', [
+                'template' => $this->mjmlTemplate,
+                'view_path' => $viewPath,
+                'view_exists' => file_exists($viewPath),
+                'view_size' => file_exists($viewPath) ? filesize($viewPath) : 'N/A',
+                'compiled_path' => $compiledPath,
+                'compiled_exists' => file_exists($compiledPath),
+                'compiled_size' => file_exists($compiledPath) ? filesize($compiledPath) : 'N/A',
+                'compiled_preview' => file_exists($compiledPath) ? substr(file_get_contents($compiledPath), 0, 500) : 'N/A',
+                'data_keys' => array_keys($this->mjmlData),
+                'check_timestamps' => config('view.check_cache_timestamps'),
+            ]);
+        }
+
+        return $result;
     }
 
     /**
