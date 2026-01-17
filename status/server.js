@@ -1940,20 +1940,29 @@ const httpServer = http.createServer(async (req, res) => {
         echo "Stopping supervisor workers to prevent cache corruption..."
         docker exec freegle-batch supervisorctl stop all 2>&1 || true
 
-        # Step 1: Remove potentially corrupt bootstrap cache files directly
-        # (artisan commands may fail if these are corrupt)
-        docker exec freegle-batch sh -c 'rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php' 2>&1 || true
+        # Step 1: Verify bootstrap cache files exist (they're committed to git)
+        # DO NOT delete these files - they're pre-committed to avoid race conditions during
+        # parallel Laravel bootstrapping. See: https://github.com/orchestral/testbench/issues/202
+        # If they're missing or corrupt, package:discover will regenerate them.
+        echo "Checking bootstrap cache files..."
+        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
 
-        # Step 2: Regenerate package manifest - this creates clean services.php and packages.php
-        # CRITICAL: Do NOT use || true here - we must fail if package manifest can't be regenerated
-        echo "Regenerating package manifest..."
+        # Step 2: Run package:discover to ensure packages.php is in sync with composer.lock
+        # This is safe to run even if files exist - it just updates packages.php
+        echo "Ensuring package manifest is current..."
         docker exec freegle-batch php artisan package:discover --ansi 2>&1
 
-        # Verify the manifest was created - this is what Laravel needs to bootstrap
-        if ! docker exec freegle-batch test -f /var/www/html/bootstrap/cache/services.php; then
-          echo "ERROR: services.php was not created after package:discover"
+        # Verify BOTH files exist and have content - both are required for Laravel bootstrap
+        echo "Verifying bootstrap cache files..."
+        if ! docker exec freegle-batch test -s /var/www/html/bootstrap/cache/services.php; then
+          echo "ERROR: services.php is missing or empty"
           exit 1
         fi
+        if ! docker exec freegle-batch test -s /var/www/html/bootstrap/cache/packages.php; then
+          echo "ERROR: packages.php is missing or empty"
+          exit 1
+        fi
+        echo "Bootstrap cache files verified"
 
         # Step 3: Clear view cache using artisan (clears Laravel's internal state, not just files)
         # CRITICAL: Using view:clear instead of rm -rf ensures Laravel's internal view state is reset.
