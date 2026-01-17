@@ -2011,6 +2011,28 @@ const httpServer = http.createServer(async (req, res) => {
         # Must explicitly set DB_DATABASE to avoid touching production database
         docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
 
+        # Check for empty compiled views AFTER migrate:fresh
+        # If any became empty during migration, it indicates a race condition during Laravel bootstrap
+        EMPTY_AFTER=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
+        echo "Empty compiled view files after migrate:fresh: $EMPTY_AFTER"
+        if [ "$EMPTY_AFTER" -gt 0 ]; then
+          echo "WARNING: Compiled views became empty during migrate:fresh!"
+          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty'
+        fi
+
+        # Show timestamps of a sample of compiled view files to track when they were modified
+        echo "Compiled view file timestamps (sample):"
+        docker exec freegle-batch sh -c 'ls -la --time-style=full-iso /var/www/html/storage/framework/views/*.php 2>/dev/null | head -10'
+
+        # Final sanity check right before tests
+        echo "=== FINAL PRE-TEST VERIFICATION ==="
+        EMPTY_BEFORE_TEST=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
+        echo "Empty compiled view files before tests: $EMPTY_BEFORE_TEST"
+        if [ "$EMPTY_BEFORE_TEST" -gt 0 ]; then
+          echo "ERROR: Some compiled views are already empty BEFORE tests start!"
+          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty -exec ls -la {} \;'
+        fi
+
         echo "Running Laravel tests serially with coverage..."
         # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
         # VIA_STATUS_CONTAINER ensures tests can only run through this API, not directly
