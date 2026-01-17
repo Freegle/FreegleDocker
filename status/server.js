@@ -2075,6 +2075,13 @@ const httpServer = http.createServer(async (req, res) => {
         echo "Bootstrap cache files are now read-only:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php
 
+        # Start inotifywait in background to monitor bootstrap cache file changes
+        # This helps debug any unexpected file modifications during tests
+        echo "Starting inotify monitoring for bootstrap cache files..."
+        docker exec freegle-batch sh -c 'which inotifywait >/dev/null 2>&1 || apt-get update -qq && apt-get install -y -qq inotify-tools >/dev/null 2>&1'
+        docker exec -d freegle-batch sh -c 'inotifywait -m -e modify,create,delete,attrib /var/www/html/bootstrap/cache/ 2>&1 | while read line; do echo "[INOTIFY $(date +%H:%M:%S)] $line"; done >> /tmp/bootstrap-cache-monitor.log'
+        echo "inotify monitoring started - will log any changes to /tmp/bootstrap-cache-monitor.log"
+
         echo "Running Laravel tests serially with coverage..."
         # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
         # VIA_STATUS_CONTAINER ensures tests can only run through this API, not directly
@@ -2162,6 +2169,29 @@ const httpServer = http.createServer(async (req, res) => {
         ? `All ${total} tests passed ✓`
         : `Tests failed: ${passed}✓ ${p.failed}✗ of ${total}`;
       console.log(`Laravel tests completed with code ${code}`);
+
+      // Collect the inotify monitoring log for artifacts
+      try {
+        const inotifyLog = execSync(
+          "docker exec freegle-batch cat /tmp/bootstrap-cache-monitor.log 2>/dev/null || echo 'No inotify events recorded'",
+          { encoding: "utf8", timeout: 10000 }
+        );
+        const inotifyArtifactPath = "/tmp/laravel-bootstrap-cache-monitor.log";
+        fs.writeFileSync(inotifyArtifactPath,
+          `=== Bootstrap Cache inotify Monitor Log ===\n` +
+          `Time: ${new Date().toISOString()}\n` +
+          `Test Exit Code: ${code}\n\n` +
+          inotifyLog
+        );
+        console.log(`Saved inotify log to ${inotifyArtifactPath}`);
+
+        // Also append to test logs for visibility
+        if (inotifyLog && inotifyLog.trim() !== 'No inotify events recorded') {
+          testStatuses.laravelTests.logs += `\n\n=== Bootstrap Cache inotify Events ===\n${inotifyLog}`;
+        }
+      } catch (e) {
+        console.log("Warning: Failed to collect inotify log:", e.message);
+      }
 
       // Restart supervisor workers that were stopped before tests
       try {

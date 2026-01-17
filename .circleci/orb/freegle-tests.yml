@@ -1063,6 +1063,12 @@ commands:
             docker cp freegle-apiv1-phpunit:/tmp/phpunit-output.log ~/artifacts/phpunit/ 2>/dev/null || true
             docker cp freegle-apiv1-phpunit:/tmp/phpunit-debug.log ~/artifacts/phpunit/ 2>/dev/null || true
 
+            # Collect Laravel (batch) test output and monitoring logs
+            mkdir -p ~/artifacts/laravel
+            docker cp freegle-status:/tmp/laravel-bootstrap-cache-monitor.log ~/artifacts/laravel/ 2>/dev/null || true
+            docker cp freegle-batch:/tmp/bootstrap-cache-monitor.log ~/artifacts/laravel/inotify-raw.log 2>/dev/null || true
+            docker cp freegle-batch:/tmp/laravel-coverage.xml ~/artifacts/laravel/ 2>/dev/null || true
+
             # Collect Go test coverage
             mkdir -p ~/artifacts/go
             docker cp freegle-apiv2:/app/coverage.out ~/artifacts/go/ 2>/dev/null || true
