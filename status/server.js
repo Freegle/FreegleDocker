@@ -2063,8 +2063,17 @@ const httpServer = http.createServer(async (req, res) => {
         echo "Empty compiled view files before tests: $EMPTY_BEFORE_TEST"
         if [ "$EMPTY_BEFORE_TEST" -gt 0 ]; then
           echo "ERROR: Some compiled views are already empty BEFORE tests start!"
-          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty -exec ls -la {} \;'
+          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty -exec ls -la {} \\;'
         fi
+
+        # Make bootstrap cache files read-only during tests to prevent corruption
+        # Laravel artisan commands sometimes try to regenerate services.php during tests,
+        # which can cause race conditions. Making them read-only prevents this.
+        echo "Making bootstrap cache files read-only to prevent corruption during tests..."
+        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/services.php
+        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/packages.php
+        echo "Bootstrap cache files are now read-only:"
+        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php
 
         echo "Running Laravel tests serially with coverage..."
         # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
