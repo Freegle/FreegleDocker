@@ -1336,4 +1336,109 @@ class ChatNotificationTest extends TestCase
         $this->assertStringNotContainsString('Sheila', $html);
         $this->assertStringContainsString('Volunteers', $html);
     }
+
+    /**
+     * Test that has_amp tracking flag is only set for AMP-supported email domains.
+     *
+     * AMP email is only supported by Gmail, Yahoo, AOL, Mail.ru, and Yandex.
+     * Emails to other providers (Hotmail, Outlook, iCloud, etc.) should not
+     * have has_amp=true in tracking, even if AMP is enabled globally.
+     */
+    public function test_has_amp_only_set_for_supported_domains(): void
+    {
+        // Ensure AMP is enabled for this test.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        // Test with Gmail - should have AMP.
+        $setup = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@gmail.com'],
+        ]);
+        $mail = $setup['mail'];
+        $mail->build();
+
+        // Access protected tracking property via reflection.
+        $reflection = new \ReflectionClass($mail);
+        $trackingProp = $reflection->getProperty('tracking');
+        $trackingProp->setAccessible(true);
+        $tracking = $trackingProp->getValue($mail);
+
+        $this->assertTrue($tracking->has_amp, 'Gmail should have has_amp=true');
+
+        // Test with Yahoo - should have AMP.
+        $setup2 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@yahoo.co.uk'],
+        ]);
+        $mail2 = $setup2['mail'];
+        $mail2->build();
+
+        $tracking2 = $trackingProp->getValue($mail2);
+        $this->assertTrue($tracking2->has_amp, 'Yahoo should have has_amp=true');
+
+        // Test with Hotmail - should NOT have AMP.
+        $setup3 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@hotmail.com'],
+        ]);
+        $mail3 = $setup3['mail'];
+        $mail3->build();
+
+        $tracking3 = $trackingProp->getValue($mail3);
+        $this->assertFalse($tracking3->has_amp, 'Hotmail should have has_amp=false');
+
+        // Test with Outlook - should NOT have AMP.
+        $setup4 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@outlook.com'],
+        ]);
+        $mail4 = $setup4['mail'];
+        $mail4->build();
+
+        $tracking4 = $trackingProp->getValue($mail4);
+        $this->assertFalse($tracking4->has_amp, 'Outlook should have has_amp=false');
+
+        // Test with iCloud - should NOT have AMP.
+        $setup5 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@icloud.com'],
+        ]);
+        $mail5 = $setup5['mail'];
+        $mail5->build();
+
+        $tracking5 = $trackingProp->getValue($mail5);
+        $this->assertFalse($tracking5->has_amp, 'iCloud should have has_amp=false');
+    }
+
+    /**
+     * Test that AMP content is not rendered for non-AMP-supported domains.
+     */
+    public function test_amp_content_not_rendered_for_unsupported_domains(): void
+    {
+        // Ensure AMP is enabled for this test.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        // Test with Hotmail - AMP content should not be rendered.
+        $setup = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@hotmail.com'],
+        ]);
+        $mail = $setup['mail'];
+        $mail->build();
+
+        // Access protected ampHtml property via reflection.
+        $reflection = new \ReflectionClass($mail);
+        $ampHtmlProp = $reflection->getProperty('ampHtml');
+        $ampHtmlProp->setAccessible(true);
+        $ampHtml = $ampHtmlProp->getValue($mail);
+
+        $this->assertNull($ampHtml, 'Hotmail should not have AMP HTML rendered');
+
+        // Test with Gmail - AMP content should be rendered.
+        $setup2 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@gmail.com'],
+        ]);
+        $mail2 = $setup2['mail'];
+        $mail2->build();
+
+        $ampHtml2 = $ampHtmlProp->getValue($mail2);
+        $this->assertNotNull($ampHtml2, 'Gmail should have AMP HTML rendered');
+        $this->assertStringContainsString('<!doctype html>', $ampHtml2);
+    }
 }

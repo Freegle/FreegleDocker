@@ -11,6 +11,7 @@ use App\Models\ChatRoom;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\UserAddress;
+use App\Support\AmpEmailSupport;
 use App\Support\EmojiUtils;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
@@ -180,9 +181,11 @@ class ChatNotification extends MjmlMailable
 
         // Determine if this email will include AMP content.
         // This must match the logic in build() that decides whether to render AMP.
+        // Only mark has_amp=true if the recipient's email domain actually supports AMP.
         $hasAmp = $this->isAmpEnabled()
             && $this->chatType === ChatRoom::TYPE_USER2USER
-            && $this->recipient->exists;
+            && $this->recipient->exists
+            && AmpEmailSupport::isSupported($this->recipient->email_preferred);
 
         $this->initTracking(
             'ChatNotification',
@@ -296,7 +299,11 @@ class ChatNotification extends MjmlMailable
             && $this->sender->id === $this->chatRoom->user1;
 
         // Check if AMP will be included (used for footer indicator).
-        $ampIncluded = $this->isAmpEnabled() && $this->chatType === ChatRoom::TYPE_USER2USER && $this->recipient->exists;
+        // Must check domain support - AMP only works for Gmail, Yahoo, etc.
+        $ampIncluded = $this->isAmpEnabled()
+            && $this->chatType === ChatRoom::TYPE_USER2USER
+            && $this->recipient->exists
+            && AmpEmailSupport::isSupported($this->recipient->email_preferred);
 
         // For own message notifications, we need the other user's name.
         // The "other user" is the one in the chat who is NOT the recipient.
@@ -362,14 +369,12 @@ class ChatNotification extends MjmlMailable
                 'otherUserName' => $otherUserName,
             ], $this->getTrackingData()), 'emails.text.chat.notification');
 
-        // Render AMP version if enabled and this is a User2User chat.
-        if ($this->isAmpEnabled() && $this->chatType === ChatRoom::TYPE_USER2USER && $this->recipient->exists) {
+        // Render AMP version if enabled, User2User chat, and recipient's domain supports AMP.
+        if ($this->isAmpEnabled()
+            && $this->chatType === ChatRoom::TYPE_USER2USER
+            && $this->recipient->exists
+            && AmpEmailSupport::isSupported($this->recipient->email_preferred)) {
             $this->renderAmpContent();
-
-            // TEMPORARY: Write AMP HTML to file for validator testing
-            if ($this->ampHtml) {
-                file_put_contents('/tmp/amp-email.html', $this->ampHtml);
-            }
         }
 
         // Add custom X-Freegle headers and read receipts.
