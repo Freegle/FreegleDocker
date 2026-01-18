@@ -2,21 +2,16 @@
 
 namespace Tests\Feature\Command;
 
-use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 class ClearAllCachesCommandTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        // Mock Artisan::call() to prevent actual cache operations.
-        // clear:all delegates to deploy:refresh which clears views and caches.
-        Artisan::shouldReceive('call')
-            ->andReturn(0); // Success
-    }
-
+    /**
+     * Test that clear:all shows the deprecation warning.
+     *
+     * Note: We don't mock Artisan::call() as it causes "removed error handlers"
+     * warnings affecting all tests. The actual cache operations run, which is safe.
+     */
     public function test_shows_deprecation_warning(): void
     {
         $this->artisan('clear:all')
