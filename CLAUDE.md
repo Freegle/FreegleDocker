@@ -345,9 +345,13 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 ## Session Log
 
-### 2026-01-18 - services.php corruption fix (RESOLVED)
-- **Root Cause**: file-sync.sh was syncing bootstrap/cache/*.php from host to container every 2 seconds
-- **Effect**: When Laravel regenerated services.php during tests, file-sync would overwrite it with stale/corrupted version
-- **Fix**: Added exclusion in file-sync.sh for `iznik-batch/bootstrap/cache/*` files
-- **Key Insight**: Bootstrap cache files are generated at runtime and should never be synced between host and container
-- **Related**: Earlier attempt to skip supervisor in CI mode was incomplete - file-sync was the real culprit
+### 2026-01-18 11:45 - services.php corruption fix (RESOLVED)
+- **Root Cause**: file-sync.sh was syncing bootstrap/cache/*.php from host to container every 2 seconds in CI
+- **Effect**: When Laravel regenerated services.php during tests, file-sync would overwrite it with corrupted partial writes
+- **Fix Applied**:
+  1. Disabled file-sync entirely in CI mode (exit early if CI=true)
+  2. Added CI env var to host-scripts container in docker-compose.yml
+  3. Kept bootstrap/cache exclusion as defense-in-depth for local dev
+- **Key Insight**: file-sync is only needed for local dev (syncing WSL→Docker). In CI, code is already in containers from Docker build
+- **Additional Fix**: Added verbose output for MJML npm installation (tests failing with "MJML template rendered to empty string")
+- **CI Status**: Builds 1533 (file-sync fix) and 1534 (MJML verbose) running
