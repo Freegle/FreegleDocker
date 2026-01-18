@@ -342,3 +342,12 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - We should always create plans/ md files in FreegleDocker, never in submodules.
 - When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
 - **Browser Testing**: See `BROWSER-TESTING.md` for Chrome DevTools MCP usage, login flow, debugging computed styles, and injecting CSS fixes.
+
+## Session Log
+
+### 2026-01-18 - services.php corruption fix (RESOLVED)
+- **Root Cause**: file-sync.sh was syncing bootstrap/cache/*.php from host to container every 2 seconds
+- **Effect**: When Laravel regenerated services.php during tests, file-sync would overwrite it with stale/corrupted version
+- **Fix**: Added exclusion in file-sync.sh for `iznik-batch/bootstrap/cache/*` files
+- **Key Insight**: Bootstrap cache files are generated at runtime and should never be synced between host and container
+- **Related**: Earlier attempt to skip supervisor in CI mode was incomplete - file-sync was the real culprit
