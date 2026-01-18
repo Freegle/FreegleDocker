@@ -1,0 +1,58 @@
+# MCP Log Analysis - Development Additions
+#
+# This file adds development-only services for testing the MCP system
+# against the live Loki server via SSH tunnel.
+#
+# Profiles:
+#   mcp-dev  - SSH tunnel to live Loki (for testing with real log data)
+#
+# Usage:
+#   # Start SSH tunnel to live Loki
+#   docker-compose -f docker-compose.yml -f docker-compose.mcp.yml --profile mcp-dev up -d mcp-loki-tunnel
+#
+#   # Then update MCP to use tunneled Loki:
+#   # Set LOKI_URL=http://mcp-loki-tunnel:3100 in environment
+#
+# Note: The main MCP services (mcp-interface, mcp-pseudonymizer, mcp-query-sanitizer)
+# are defined in the main docker-compose.yml. This file only adds the SSH tunnel.
+
+services:
+  # SSH Tunnel to Live Loki (Dev only)
+  # Connects to the existing Loki instance on docker-internal for testing
+  mcp-loki-tunnel:
+    image: alpine:latest
+    container_name: freegle-mcp-loki-tunnel
+    profiles: ["mcp-dev"]
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache openssh-client autossh netcat-openbsd
+        mkdir -p /root/.ssh
+        cp /ssh/id_ed25519 /root/.ssh/id_ed25519
+        chmod 600 /root/.ssh/id_ed25519
+        echo "Starting SSH tunnel to live Loki at $${SSH_HOST}..."
+        autossh -M 0 -N -v \
+          -o StrictHostKeyChecking=no \
+          -o ServerAliveInterval=30 \
+          -o ServerAliveCountMax=3 \
+          -o UserKnownHostsFile=/dev/null \
+          -L 0.0.0.0:3100:localhost:3100 \
+          -i /root/.ssh/id_ed25519 \
+          $${SSH_USER}@$${SSH_HOST}
+    environment:
+      - SSH_USER=${SSH_USER:-root}
+      - SSH_HOST=${SSH_HOST:-docker-internal.ilovefreegle.org}
+    volumes:
+      - ${SSH_KEY_PATH:-~/.ssh/id_ed25519}:/ssh/id_ed25519:ro
+    networks:
+      - default
+    ports:
+      - "3101:3100"  # Expose on 3101 to avoid conflict with local Loki
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3100"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: "no"

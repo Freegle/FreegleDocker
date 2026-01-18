@@ -347,6 +347,24 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-18 - MCP Log Analysis Phase 1 (Issue #25)
+- **Status**: 🔄 In Progress - SSH tunnel service implemented, needs key authorization
+- **Branch**: `feature/mcp-log-analysis`
+- **Completed**:
+  - Discovered existing MCP implementation in `support-tools/` (already working)
+  - Created `docker-compose.mcp.yml` with SSH tunnel service for live Loki access
+  - Added Loki config template and key generation script
+  - SSH tunnel service works but needs SSH key authorized on docker-internal
+- **Files Added**:
+  - `docker-compose.mcp.yml` - SSH tunnel service with mcp-dev profile
+  - `loki-config.yaml` - Loki config template for Phase 2 migration
+  - `scripts/generate-pseudo-key.sh` - Pseudonymization key generator
+- **Next**: Authorize SSH key on docker-internal, then test MCP with live Loki data
+- **Blockers**: SSH key not authorized on docker-internal.ilovefreegle.org
+- **Key Decisions**:
+  - Reused existing MCP containers from `support-tools/` instead of creating duplicates
+  - SSH tunnel exposes live Loki on port 3101 to avoid conflict with local Loki
+
 ### 2026-01-18 - services.php Corruption Fix (CircleCI)
 - **Status**: Fix pushed, monitoring CI
 - **Root Cause Analysis**:

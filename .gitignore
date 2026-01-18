@@ -52,3 +52,6 @@ ralph/
 
 # Local Netlify folder
 .netlify
+
+# MCP secrets
+secrets/pseudo_key.txt

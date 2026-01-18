@@ -2,7 +2,9 @@
 
 ## Overview
 
-Design for a privacy-preserving AI log analysis system that allows Claude to query Loki logs without exposing PII, using cryptographic pseudonymization with defense-in-depth container isolation.
+Design for a privacy-preserving AI log analysis system that allows Claude to query Loki logs without exposing PII, using cryptographic pseudonymization with two-container isolation.
+
+**Key security principle**: Claude must never run on a machine that has the pseudonymization key. This ensures that even if the MCP container is compromised, the key remains protected.
 
 ## Background Research
 
@@ -70,100 +72,53 @@ The existing AI support tool in ModTools (`iznik-nuxt3-modtools/components/ModSu
 - Nation-state level attacks
 - Zero-day container escapes combined with network pivoting
 
-## Architecture: Three-Tier Container Isolation
+## Architecture: Two-Container Isolation
+
+The architecture uses two containers to maintain separation between Claude and the pseudonymization key:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  Loki Server Host                                                            │
+│  Docker Compose Environment                                                  │
 │                                                                              │
-│  ┌────────────────────┐   ┌────────────────────┐   ┌────────────────────┐  │
-│  │   Container 1      │   │   Container 2      │   │   Container 3      │  │
-│  │   CLAUDE CODE      │   │   MCP INTERFACE    │   │   PSEUDONYMIZER    │  │
-│  │                    │   │                    │   │                    │  │
-│  │ - Sandboxed        │──▶│ - Stateless proxy  │──▶│ - Has the key      │  │
-│  │ - No Bash          │   │ - NO key           │   │ - Queries Loki     │  │
-│  │ - No network tools │   │ - Validates format │   │ - Pseudonymizes    │  │
-│  │ - Read-only FS     │   │ - Forwards only    │   │ - Returns to C2    │  │
-│  │                    │   │                    │   │                    │  │
-│  │ network: isolated  │   │ network: middle    │   │ network: backend   │  │
-│  │ can reach: C2 only │   │ can reach: C3 only │   │ can reach: Loki    │  │
-│  └────────────────────┘   └────────────────────┘   └────────────────────┘  │
-│           │                        │                        │              │
-│           │                        │                        ▼              │
-│           │                        │               ┌────────────────┐      │
-│           │                        │               │     LOKI       │      │
-│           │                        │               │  (port 3100)   │      │
-│           │                        │               └────────────────┘      │
-│           │                        │                                       │
-│           ▼                        │                                       │
-│  ┌────────────────────┐           │                                       │
-│  │   External API     │◀──────────┘                                       │
-│  │   (questions in,   │                                                   │
-│  │   answers out)     │                                                   │
-│  └────────────────────┘                                                   │
-│           │                                                                │
-└───────────┼────────────────────────────────────────────────────────────────┘
-            │
-            ▼
-     ┌──────────────┐
-     │   Browser    │
-     │  (ModTools)  │
-     └──────────────┘
+│  ┌────────────────────────────────┐   ┌────────────────────────────────┐   │
+│  │   Container 1: MCP Interface   │   │   Container 2: Pseudonymizer   │   │
+│  │                                │   │                                │   │
+│  │ - Exposes MCP tools to Claude  │──▶│ - Has the pseudonymization key │   │
+│  │ - NO key access                │   │ - Queries Loki                 │   │
+│  │ - Validates requests           │   │ - Pseudonymizes PII            │   │
+│  │ - Cannot reach Loki directly   │   │ - Returns sanitized data       │   │
+│  │                                │   │                                │   │
+│  │ network: mcp-frontend          │   │ network: mcp-frontend          │   │
+│  │                                │   │ network: mcp-backend           │   │
+│  └────────────────────────────────┘   └───────────────┬────────────────┘   │
+│              ▲                                        │                     │
+│              │ MCP Protocol (stdio)                   │                     │
+│              │                                        ▼                     │
+│  ┌───────────┴────────────┐               ┌────────────────────┐           │
+│  │   Claude Code          │               │       Loki         │           │
+│  │   (external session)   │               │   (port 3100)      │           │
+│  └────────────────────────┘               └────────────────────┘           │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Container 1: Claude Code (Sandboxed)
+**Why two containers, not three?**
 
-**Purpose**: Run Claude Code with MCP tools only
+Claude interacts via the MCP protocol (stdio), which only allows calling defined tool functions. It cannot:
+- Execute arbitrary code in the MCP container
+- Access the filesystem
+- Make network requests directly
 
-**Security measures**:
-```yaml
-# docker-compose.yml
-claude-sandbox:
-  image: anthropic/claude-code:latest  # or custom image
-  read_only: true
-  security_opt:
-    - no-new-privileges:true
-    - seccomp:seccomp-claude.json
-  cap_drop:
-    - ALL
-  networks:
-    - claude-isolated
-  environment:
-    - CLAUDE_ALLOWED_TOOLS=mcp_loki_query  # Only MCP tools
-    - CLAUDE_DISALLOWED_TOOLS=Bash,Read,Write,Glob,Grep,WebFetch,WebSearch
-  tmpfs:
-    - /tmp:noexec,nosuid,size=100m
-```
+The risk is that if Claude ran on a machine with the key, a sophisticated attack could potentially access it. By keeping the key in a separate container (Container 2), even complete compromise of Container 1 yields only pseudonymized data.
 
-**Network isolation**:
-```yaml
-networks:
-  claude-isolated:
-    internal: true  # No external access
-    driver_opts:
-      com.docker.network.bridge.enable_ip_masquerade: "false"
-```
+### Container 1: MCP Interface (No Key)
 
-**What Claude CAN do**:
-- Use MCP tools to query logs (pseudonymized)
-- Think and respond
-
-**What Claude CANNOT do**:
-- Run bash commands
-- Read/write files
-- Make network requests (curl, wget, etc.)
-- Access the internet
-- Reach any container except Container 2
-
-### Container 2: MCP Interface (No Key)
-
-**Purpose**: Stateless proxy that validates and forwards requests
+**Purpose**: Expose MCP tools to Claude, validate requests, forward to Pseudonymizer
 
 **Security measures**:
 - No pseudonymization key
 - No direct Loki access
 - Only accepts well-formed MCP requests
-- Only forwards to Container 3
+- Only forwards to Container 2
 
 ```python
 # mcp_interface/server.py
@@ -172,7 +127,7 @@ import httpx
 
 app = FastAPI()
 
-PSEUDONYMIZER_URL = "http://pseudonymizer:8080"
+PSEUDONYMIZER_URL = "http://mcp-pseudonymizer:8080"
 
 @app.post("/mcp/loki/query")
 async def query_loki(request: LokiQueryRequest):
@@ -180,14 +135,12 @@ async def query_loki(request: LokiQueryRequest):
     Validate request format and forward to pseudonymizer.
     We have NO key here - can't reverse anything.
     """
-    # Validate request structure
     if not is_valid_logql(request.query):
         raise HTTPException(400, "Invalid LogQL query")
 
     if request.limit > 1000:
         raise HTTPException(400, "Limit too high")
 
-    # Forward to pseudonymizer (which has the key and Loki access)
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{PSEUDONYMIZER_URL}/query",
@@ -195,18 +148,10 @@ async def query_loki(request: LokiQueryRequest):
             timeout=30.0
         )
 
-    # Return already-pseudonymized results
     return response.json()
 ```
 
-**Network**:
-```yaml
-networks:
-  claude-isolated:  # Receives from Claude
-  middle-tier:      # Sends to pseudonymizer
-```
-
-### Container 3: Pseudonymizer (Has Key)
+### Container 2: Pseudonymizer (Has Key)
 
 **Purpose**: Query Loki, pseudonymize results, return safe data
 
@@ -330,47 +275,36 @@ async def query_and_pseudonymize(request: LokiQueryRequest):
 **Network**:
 ```yaml
 networks:
-  middle-tier:  # Receives from MCP interface
-  backend:      # Sends to Loki
+  mcp-frontend:  # Receives from MCP interface
+  mcp-backend:   # Sends to Loki
 ```
 
 ## Escape Analysis
 
-### If Claude escapes Container 1
+### If Claude compromises Container 1 (MCP Interface)
 
-**Can reach**: Container 2 (MCP Interface)
-**Cannot reach**: Container 3, Loki, Internet
+**Can reach**: Container 2 (Pseudonymizer) API only
+**Cannot reach**: Loki directly, Internet, filesystem
 
-**Container 2 has**:
-- No key
-- No Loki access
+**Container 1 has**:
+- No pseudonymization key
+- No direct Loki access
 - No useful credentials
 
 **Result**: Dead end. Can only send queries that return pseudonymized data.
 
-### If Claude compromises Container 2
-
-**Can reach**: Container 3 API (but only via HTTP)
-**Cannot reach**: Container 3 filesystem, Loki directly
-
-**Container 3 validates**:
-- Request format
-- Query structure
-- Returns only pseudonymized data
-
-**Result**: Still can only get pseudonymized data. Key is in Container 3's environment, not filesystem, and not accessible via API.
-
-### If Claude compromises Container 3
+### If Claude compromises Container 2 (Pseudonymizer)
 
 This requires:
-1. Escaping Container 1 sandbox
-2. Pivoting through Container 2
-3. Exploiting Container 3
+1. Escaping the MCP protocol constraints
+2. Gaining code execution in Container 1
+3. Pivoting to Container 2
 
 At this point, the attacker has demonstrated sophisticated capabilities beyond our threat model. However:
 - Key is in environment variable, not file
 - Key rotates regularly
 - Audit logs would show the breach
+- Still requires network pivot which is blocked by Docker network isolation
 
 ## MCP Tool Definition
 
@@ -415,7 +349,7 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 
 ### Key Storage
 
-- **NOT in any file** in Container 3
+- **NOT in any file** in Pseudonymizer container
 - Injected via environment variable at container start
 - Stored in Docker secrets or HashiCorp Vault
 - Rotated monthly (old mappings archived)
@@ -450,66 +384,115 @@ async function askLogQuestion(question: string): Promise<string> {
 
 ## Docker Compose Configuration
 
+### Profiles
+
+The MCP containers use Docker Compose profiles for different environments:
+
+| Profile | Environment | Loki Access | Use Case |
+|---------|-------------|-------------|----------|
+| `mcp-dev` | Local development | Via SSH tunnel to live Loki | Testing MCP before Loki migration |
+| `mcp` | Production | Direct to Loki in same compose | Full production deployment |
+| `logging` | Production | N/A | Loki + Alloy stack only |
+
+### docker-compose.mcp.yml
+
 ```yaml
 version: '3.8'
 
 services:
-  # Container 1: Claude Code (Sandboxed)
-  claude-sandbox:
-    build: ./claude-sandbox
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    networks:
-      - claude-to-mcp
-    environment:
-      - MCP_SERVER_URL=http://mcp-interface:8080
-    depends_on:
-      - mcp-interface
-
-  # Container 2: MCP Interface (No Key)
+  # Container 1: MCP Interface (No Key)
   mcp-interface:
     build: ./mcp-interface
+    profiles: ["mcp-dev", "mcp"]
     networks:
-      - claude-to-mcp
-      - mcp-to-pseudo
+      - mcp-frontend
     environment:
-      - PSEUDONYMIZER_URL=http://pseudonymizer:8080
+      - PSEUDONYMIZER_URL=http://mcp-pseudonymizer:8080
     depends_on:
-      - pseudonymizer
+      - mcp-pseudonymizer
+    # Claude connects via stdio - no ports exposed
 
-  # Container 3: Pseudonymizer (Has Key)
-  pseudonymizer:
-    build: ./pseudonymizer
+  # Container 2: Pseudonymizer (Has Key)
+  mcp-pseudonymizer:
+    build: ./mcp-pseudonymizer
+    profiles: ["mcp-dev", "mcp"]
     networks:
-      - mcp-to-pseudo
-      - pseudo-to-loki
+      - mcp-frontend
+      - mcp-backend
     environment:
-      - PSEUDONYMIZATION_KEY=${PSEUDO_KEY}  # From .env or secrets
-      - LOKI_URL=http://loki:3100
+      - PSEUDONYMIZATION_KEY=${PSEUDO_KEY}
+      - LOKI_URL=${LOKI_URL:-http://loki:3100}
+    secrets:
+      - pseudo_key
     depends_on:
-      - loki
+      mcp-loki-tunnel:
+        condition: service_healthy
+        required: false  # Only in mcp-dev profile
 
-  # Loki
+  # SSH Tunnel to Live Loki (Dev only)
+  mcp-loki-tunnel:
+    image: alpine:latest
+    profiles: ["mcp-dev"]  # Only starts in dev
+    command: >
+      sh -c "apk add --no-cache openssh-client autossh &&
+             autossh -M 0 -N -o StrictHostKeyChecking=no
+             -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+             -L 0.0.0.0:3100:localhost:3100
+             -i /ssh/id_rsa
+             ${SSH_USER:-root}@docker-internal.ilovefreegle.org"
+    volumes:
+      - ${SSH_KEY_PATH:-~/.ssh/id_rsa}:/ssh/id_rsa:ro
+    networks:
+      - mcp-backend
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3100"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Loki (Production - migrated from standalone)
   loki:
     image: grafana/loki:2.9.0
-    networks:
-      - pseudo-to-loki
+    profiles: ["mcp", "logging"]
+    command: -config.file=/etc/loki/config.yaml
     volumes:
       - loki-data:/loki
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+    ports:
+      - "3100:3100"  # Exposed for Alloy agents
+    networks:
+      - mcp-backend
+    extra_hosts:
+      # Allow Alloy agents from internal network
+      - "bulk2-internal:10.220.0.217"
+      - "bulk3-internal:10.220.0.90"
 
 networks:
-  claude-to-mcp:
-    internal: true
-  mcp-to-pseudo:
-    internal: true
-  pseudo-to-loki:
-    internal: true
+  mcp-frontend:
+    internal: true  # No external access
+  mcp-backend:
+    internal: true  # Pseudonymizer ↔ Loki only
+
+secrets:
+  pseudo_key:
+    file: ./secrets/pseudo_key.txt
 
 volumes:
   loki-data:
+```
+
+### Usage
+
+```bash
+# Local development (connects to live Loki via SSH tunnel)
+docker-compose -f docker-compose.yml -f docker-compose.mcp.yml --profile mcp-dev up -d
+
+# Production (Loki in same compose stack)
+docker-compose -f docker-compose.yml -f docker-compose.mcp.yml --profile mcp up -d
+
+# Loki only (for migration testing)
+docker-compose -f docker-compose.yml -f docker-compose.mcp.yml --profile logging up -d
 ```
 
 ## Comparison with Previous Approach
@@ -518,37 +501,159 @@ volumes:
 |--------|---------------------|-------------|
 | Data access | Predefined fact queries only | Full LogQL queries |
 | Pseudonymization | Browser-side, session-scoped | Server-side, cryptographic |
-| Key security | N/A (no reversible mapping) | Three-tier isolation |
+| Key security | N/A (no reversible mapping) | Two-container isolation |
 | Flexibility | Low (77 fixed queries) | High (any LogQL) |
 | Claude sandbox | N/A (API-based) | Container + network isolation |
 | Escape resistance | Browser trust model | Defense in depth |
 
-## Implementation Steps
+## Phased Deployment
 
-1. **Phase 1: Pseudonymizer service**
-   - Implement Container 3 with Loki access
-   - Test pseudonymization logic
-   - Key injection via environment
+### Phase 1: Local Development with Live Loki
 
-2. **Phase 2: MCP Interface**
-   - Implement Container 2 as stateless proxy
-   - Request validation
-   - Network isolation from Loki
+**Goal**: Test MCP containers locally, connected to the existing live Loki server via SSH tunnel.
 
-3. **Phase 3: Claude Sandbox**
-   - Configure Claude Code with MCP-only tools
-   - Test sandbox restrictions
-   - Network isolation testing
+**Current state**: Loki runs on `docker-internal` (10.220.0.103) as a standalone container, NOT part of FreegleDocker's docker-compose.yml.
 
-4. **Phase 4: Integration**
-   - Connect all containers
-   - End-to-end testing
-   - Escape attempt testing
+**Tasks**:
+1. Create `mcp-interface/` container source
+2. Create `mcp-pseudonymizer/` container source
+3. Create `docker-compose.mcp.yml` with profiles
+4. Test SSH tunnel connectivity to live Loki
+5. Test pseudonymization with real log data
+6. Verify PII is properly masked (spot check emails, user IDs)
 
-5. **Phase 5: Browser Integration**
-   - Add UI to ModTools
-   - Authentication flow
-   - Result display
+**Success criteria**:
+- [ ] SSH tunnel container connects to live Loki
+- [ ] Pseudonymizer can query Loki and return sanitized results
+- [ ] MCP Interface exposes tools that Claude can call
+- [ ] PII is properly pseudonymized
+- [ ] Claude can answer questions about logs without seeing real PII
+
+**Start command**:
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.mcp.yml --profile mcp-dev up -d
+```
+
+---
+
+### Phase 2: Migrate Loki into Docker Compose
+
+**Goal**: Move the existing Loki container into our Docker Compose environment, preserving all historical log data.
+
+**Prerequisites**: Phase 1 tested and working
+
+**Tasks**:
+1. Document current Loki setup on docker-internal (version, config, data size)
+2. Add Loki service to docker-compose.mcp.yml
+3. Create loki-config.yaml matching current configuration
+4. Backup existing Loki data volume
+5. Migrate data to new compose-managed volume
+6. Update Alloy agents on all servers to point to new Loki endpoint
+7. Verify historical logs accessible
+8. Decommission old standalone Loki container
+
+**Migration strategy** (Volume Copy):
+```bash
+# On docker-internal (old host):
+docker stop loki
+docker run --rm -v loki-data:/source -v /backup:/backup alpine \
+  tar czf /backup/loki-data-backup.tar.gz -C /source .
+
+# Transfer to new host
+scp /backup/loki-data-backup.tar.gz bulk3:/backup/
+
+# On new host:
+docker volume create loki-data
+docker run --rm -v loki-data:/target -v /backup:/backup alpine \
+  tar xzf /backup/loki-data-backup.tar.gz -C /target
+
+# Start Loki in compose
+docker-compose -f docker-compose.yml -f docker-compose.mcp.yml --profile logging up -d loki
+```
+
+**Alloy agent update** (each server):
+```hcl
+# /etc/alloy/config.alloy
+loki.write "default" {
+  endpoint {
+    url = "http://NEW_HOST:3100/loki/api/v1/push"
+  }
+}
+```
+
+**Success criteria**:
+- [ ] Loki running in Docker Compose with migrated data
+- [ ] Historical logs accessible and queryable
+- [ ] All Alloy agents pushing to new Loki endpoint
+- [ ] No log gaps during migration
+- [ ] MCP containers work with internal Loki (no tunnel needed)
+
+**Production command**:
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.mcp.yml --profile mcp up -d
+```
+
+---
+
+### Phase 3: Deploy MCP for Support
+
+**Goal**: Enable support volunteers to use Claude-assisted log analysis.
+
+**Prerequisites**: Phase 2 complete, Loki running in compose
+
+**Tasks**:
+1. Document access method (SSH tunnel for support volunteers)
+2. Create MCP server wrapper for Claude Code configuration
+3. Define and document MCP tools for common support scenarios
+4. Create support volunteer setup guide
+5. Test with real support scenarios
+6. Train support volunteers on usage
+
+**Access method** (SSH tunnel):
+```bash
+# Support volunteer runs:
+ssh -L 8080:localhost:8080 bulk3.ilovefreegle.org
+```
+
+**Claude Code MCP configuration** (~/.claude.json):
+```json
+{
+  "mcpServers": {
+    "freegle-logs": {
+      "command": "ssh",
+      "args": [
+        "-L", "8080:localhost:8080",
+        "bulk3.ilovefreegle.org",
+        "docker", "exec", "-i", "mcp-interface", "/app/mcp-server"
+      ]
+    }
+  }
+}
+```
+
+**Test scenarios**:
+1. "User reports they can't log in" → Find auth errors for timeframe
+2. "Emails not arriving" → Check mail spool logs
+3. "Site was slow yesterday" → Find performance issues
+4. "User sees error message" → Find stack trace from error ID
+
+**Success criteria**:
+- [ ] Support volunteers can connect Claude to MCP
+- [ ] Claude can answer support questions using logs
+- [ ] PII remains pseudonymized throughout
+- [ ] Access restricted to authorized volunteers (SSH key required)
+- [ ] Documentation enables self-service setup
+
+---
+
+### Timeline Estimate
+
+| Phase | Duration | Dependencies |
+|-------|----------|--------------|
+| Phase 1: Local Dev | 1-2 weeks | None |
+| Phase 2: Loki Migration | 1 week | Phase 1 tested |
+| Phase 3: Support Deployment | 1 week | Phase 2 complete |
+| **Total** | **3-4 weeks** |
 
 ## Open Questions
 
