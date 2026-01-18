@@ -106,12 +106,17 @@ export const useStatusStore = defineStore('status', {
       }
     },
 
-    async rebuildContainer(containerId: string) {
+    async rebuildContainer(containerId: string, serviceId?: string) {
       try {
         await $fetch('/api/container/rebuild', {
           method: 'POST',
-          body: { container: containerId },
+          body: {
+            container: containerId,
+            service: serviceId || containerId,
+          },
         })
+        // Refresh status periodically while rebuild is in progress
+        setTimeout(() => this.refreshStatus(), 30000)
       }
       catch (err) {
         console.error('Rebuild error:', err)
