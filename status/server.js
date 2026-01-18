@@ -1985,6 +1985,16 @@ const httpServer = http.createServer(async (req, res) => {
         fi
         echo "Bootstrap cache files verified"
 
+        # CRITICAL: Make bootstrap cache files read-only IMMEDIATELY after verification
+        # This must happen BEFORE any other artisan commands (view:clear, view:cache, migrate:fresh)
+        # because those commands bootstrap Laravel and can trigger services.php regeneration
+        # race conditions that corrupt the file. See: https://github.com/orchestral/testbench/issues/202
+        echo "Making bootstrap cache files read-only to prevent corruption..."
+        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/services.php
+        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/packages.php
+        echo "Bootstrap cache files are now read-only:"
+        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php
+
         # Step 3: Clear view cache using artisan (clears Laravel's internal state, not just files)
         # CRITICAL: Using view:clear instead of rm -rf ensures Laravel's internal view state is reset.
         # Without this, Laravel may still reference stale compiled view paths causing empty renders.
@@ -2066,14 +2076,18 @@ const httpServer = http.createServer(async (req, res) => {
           docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty -exec ls -la {} \\;'
         fi
 
-        # Make bootstrap cache files read-only during tests to prevent corruption
-        # Laravel artisan commands sometimes try to regenerate services.php during tests,
-        # which can cause race conditions. Making them read-only prevents this.
-        echo "Making bootstrap cache files read-only to prevent corruption during tests..."
-        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/services.php
-        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/packages.php
-        echo "Bootstrap cache files are now read-only:"
+        # Verify bootstrap cache files are still read-only and have content
+        # (Files were made read-only earlier, this is a final sanity check)
+        echo "Final bootstrap cache verification:"
         docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php
+        SERVICES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/services.php 2>/dev/null || echo "0")
+        PACKAGES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/packages.php 2>/dev/null || echo "0")
+        if [ "$SERVICES_SIZE" = "0" ] || [ "$PACKAGES_SIZE" = "0" ]; then
+          echo "FATAL: Bootstrap cache files became empty despite read-only protection!"
+          echo "services.php: $SERVICES_SIZE bytes, packages.php: $PACKAGES_SIZE bytes"
+          exit 1
+        fi
+        echo "Bootstrap cache files still valid: services.php=$SERVICES_SIZE bytes, packages.php=$PACKAGES_SIZE bytes"
 
         # Start inotifywait in background to monitor bootstrap cache file changes
         # This helps debug any unexpected file modifications during tests
