@@ -20,72 +20,108 @@ const cpu = computed(() => {
   return statusStore.getCpuUsage(props.service.id)
 })
 
-// For now, assume we can manage containers (local Docker environment)
-const canManage = ref(true)
+const statusClass = computed(() => {
+  switch (state.value.status) {
+    case 'online': return 'online'
+    case 'offline': return 'offline'
+    case 'loading': return 'loading'
+    default: return 'unknown'
+  }
+})
 
-const handleRestart = async (serviceId: string) => {
+const cpuLevel = computed(() => {
+  const usage = cpu.value
+  if (usage === undefined) return null
+  if (usage > 80) return 'high'
+  if (usage > 50) return 'medium'
+  return ''
+})
+
+const isRestarting = ref(false)
+const isRebuilding = ref(false)
+
+const handleRestart = async () => {
+  isRestarting.value = true
   try {
-    await statusStore.restartContainer(props.service.container || serviceId)
+    await statusStore.restartContainer(props.service.container || props.service.id)
   }
   catch (err) {
     console.error('Restart failed:', err)
   }
+  finally {
+    isRestarting.value = false
+  }
 }
 
-const handleRebuild = async (serviceId: string) => {
+const handleRebuild = async () => {
+  isRebuilding.value = true
   try {
-    await statusStore.rebuildContainer(props.service.container || serviceId)
+    await statusStore.rebuildContainer(props.service.container || props.service.id)
   }
   catch (err) {
     console.error('Rebuild failed:', err)
   }
+  finally {
+    isRebuilding.value = false
+  }
 }
 
-const handleLogs = (serviceId: string) => {
-  // Navigate to logs page
-  navigateTo(`/logs/${props.service.container || serviceId}`)
+const handleLogs = () => {
+  navigateTo(`/logs/${props.service.container || props.service.id}`)
 }
 </script>
 
 <template>
-  <BCard class="service-card h-100">
-    <template #header>
-      <div class="d-flex justify-content-between align-items-center">
-        <span class="fw-bold">{{ service.name }}</span>
-        <ServiceCpu :cpu="cpu" />
+  <div :class="['service', statusClass]">
+    <!-- CPU indicator in top right -->
+    <div v-if="cpu !== undefined" class="cpu-indicator">
+      <div :class="['cpu-bar', cpuLevel]" :style="{ width: cpu + '%' }" />
+      <span class="cpu-text">{{ cpu.toFixed(0) }}% CPU</span>
+    </div>
+
+    <div class="service-info">
+      <div class="service-title">{{ service.name }}</div>
+      <div v-if="service.description" class="service-description">
+        {{ service.description }}
       </div>
-    </template>
+      <div v-if="service.url" class="service-url">
+        <a :href="service.url" target="_blank">{{ service.url }}</a>
+      </div>
+      <div v-if="service.credentials" class="service-credentials">
+        User: {{ service.credentials.username }} / Pass: {{ service.credentials.password }}
+      </div>
+      <div v-if="service.container" class="service-container">
+        Container: {{ service.container }}
+        <a href="#" class="logs-link" @click.prevent="handleLogs">[logs]</a>
+      </div>
+      <div class="service-status">
+        {{ state.status === 'online' ? 'Online' : state.status === 'offline' ? 'Offline' : state.status === 'loading' ? 'Loading...' : 'Unknown' }}
+      </div>
+      <div v-if="state.uptime" class="service-uptime">
+        Uptime: {{ state.uptime }}
+      </div>
+    </div>
 
-    <BCardText class="text-muted small mb-2">
-      {{ service.description }}
-    </BCardText>
-
-    <div v-if="service.url" class="mb-2">
-      <a :href="service.url" target="_blank" class="small text-break">
-        {{ service.url }}
+    <div class="service-actions">
+      <a v-if="service.url" :href="service.url" target="_blank" class="visit-button">
+        Visit
       </a>
-    </div>
-
-    <div v-if="service.credentials" class="credentials-display mb-2">
-      <span class="label">User:</span>{{ service.credentials.username }}
-      <span class="label ms-2">Pass:</span>{{ service.credentials.password }}
-    </div>
-
-    <div v-if="state.uptime" class="small text-muted mb-2">
-      Uptime: {{ state.uptime }}
-    </div>
-
-    <template #footer>
-      <div class="d-flex justify-content-between align-items-center">
-        <ServiceStatus :status="state.status" :message="state.message" />
-        <ServiceActions
-          :service="service"
-          :can-manage="canManage"
-          @restart="handleRestart"
-          @rebuild="handleRebuild"
-          @logs="handleLogs"
-        />
+      <div v-if="service.container" class="container-actions">
+        <button
+          class="action-button"
+          :disabled="isRestarting"
+          @click="handleRestart"
+        >
+          {{ isRestarting ? 'Restarting...' : 'Restart' }}
+        </button>
+        <button
+          class="action-button danger"
+          :disabled="isRebuilding"
+          @click="handleRebuild"
+        >
+          {{ isRebuilding ? 'Rebuilding...' : 'Rebuild' }}
+        </button>
       </div>
-    </template>
-  </BCard>
+    </div>
+  </div>
 </template>

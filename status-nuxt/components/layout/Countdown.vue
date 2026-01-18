@@ -29,15 +29,8 @@ const refreshNow = () => {
 </script>
 
 <template>
-  <div class="countdown-timer d-flex align-items-center gap-2">
-    <span>Next refresh in</span>
-    <span class="countdown-value">{{ secondsUntilRefresh }}s</span>
-    <button
-      class="btn btn-sm btn-outline-light"
-      title="Refresh now"
-      @click="refreshNow"
-    >
-      🔄
-    </button>
+  <div class="text-muted">
+    Next refresh in {{ secondsUntilRefresh }} seconds
+    <a href="#" @click.prevent="refreshNow">[refresh now]</a>
   </div>
 </template>

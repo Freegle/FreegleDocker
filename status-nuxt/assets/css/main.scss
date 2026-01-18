@@ -1,19 +1,16 @@
-// Status-specific colors
+// Status colors matching original design
 $status-online: #28a745;
 $status-offline: #dc3545;
 $status-loading: #ffc107;
 $status-unknown: #6c757d;
 
-// Freegle brand colors (match existing sites)
-$primary: #338808;
-$secondary: #DCDCDC;
+// Freegle brand colors
+$primary: #007bff;
+$secondary: #6c757d;
 $info: #17a2b8;
 $success: $status-online;
 $danger: $status-offline;
 $warning: $status-loading;
-
-// Disable rounded corners for consistency with Freegle style
-$enable-rounded: false;
 
 // Import Bootstrap
 @import "bootstrap/scss/bootstrap";
@@ -21,174 +18,463 @@ $enable-rounded: false;
 // Import Bootstrap Vue Next styles
 @import 'bootstrap-vue-next/dist/bootstrap-vue-next.css';
 
-// Status-specific styles
-.service-card {
-  transition: box-shadow 0.2s ease-in-out;
+// Base page styles matching original
+body {
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
+}
 
-  &:hover {
-    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+.container-main {
+  max-width: 900px;
+  margin: 0 auto;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+// Header styles
+.status-header {
+  text-align: center;
+  margin-bottom: 20px;
+
+  .logo {
+    height: 60px;
+    margin-bottom: 10px;
   }
 
-  .card-header {
-    background-color: $light;
-    border-bottom: 1px solid $border-color;
-  }
-
-  .card-footer {
-    background-color: $white;
-    border-top: 1px solid $border-color;
+  h1 {
+    color: #333;
   }
 }
 
-// Status indicators
-.status-indicator {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
+// Single circle status indicator (like original)
+.status-circle {
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
-  margin-right: 0.5rem;
+  margin: 0 auto 10px;
+  border: 3px solid #333;
+  transition: background-color 0.3s ease;
+
+  &.green {
+    background-color: $status-online;
+    box-shadow: 0 0 20px $status-online;
+  }
+
+  &.amber {
+    background-color: $status-loading;
+    box-shadow: 0 0 20px $status-loading;
+  }
+
+  &.red {
+    background-color: $status-offline;
+    box-shadow: 0 0 20px $status-offline;
+  }
+}
+
+// Countdown/refresh text
+.refresh-info {
+  text-align: center;
+  margin: 20px 0;
+}
+
+// Tab navigation matching original
+.status-tabs {
+  display: flex;
+  border-bottom: 2px solid #dee2e6;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  background: transparent;
+
+  .nav-item {
+    margin-bottom: -2px;
+  }
+
+  .nav-link {
+    padding: 12px 20px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #666;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    border-radius: 0;
+
+    &:hover {
+      color: #333;
+      background: #f8f9fa;
+    }
+
+    &.active {
+      color: #007bff;
+      border-bottom-color: #007bff;
+      font-weight: bold;
+      background: transparent;
+    }
+
+    &.warning {
+      color: #dc3545;
+
+      &.active {
+        border-bottom-color: #dc3545;
+      }
+    }
+  }
+}
+
+// Tab status light (small dot)
+.tab-light {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  border: 1px solid #999;
+
+  &.green {
+    background: $status-online;
+    box-shadow: 0 0 4px $status-online;
+    border-color: $status-online;
+  }
+
+  &.amber {
+    background: $status-loading;
+    box-shadow: 0 0 4px $status-loading;
+    border-color: $status-loading;
+  }
+
+  &.red {
+    background: $status-offline;
+    box-shadow: 0 0 4px $status-offline;
+    border-color: $status-offline;
+  }
+
+  &.grey {
+    background: #6c757d;
+    border-color: #6c757d;
+  }
+}
+
+// Live badge
+.live-badge {
+  background: #dc3545;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  margin-left: 5px;
+}
+
+// WIP badge
+.wip-badge {
+  background: #ffc107;
+  color: #333;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  margin-left: 5px;
+  font-weight: bold;
+}
+
+// Service card matching original design
+.service {
+  margin: 10px 0;
+  padding: 15px;
+  border-radius: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  position: relative;
 
   &.online {
-    background-color: $status-online;
-    box-shadow: 0 0 4px $status-online;
+    background: #d4edda;
+    border-left: 4px solid $status-online;
   }
 
   &.offline {
-    background-color: $status-offline;
-    box-shadow: 0 0 4px $status-offline;
+    background: #f8d7da;
+    border-left: 4px solid $status-offline;
   }
 
   &.loading {
-    background-color: $status-loading;
-    animation: pulse 1.5s infinite;
+    background: #fff3cd;
+    border-left: 4px solid $status-loading;
   }
 
   &.unknown {
-    background-color: $status-unknown;
+    background: #e2e3e5;
+    border-left: 4px solid $status-unknown;
   }
-}
 
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
+  .service-info {
+    flex: 1;
+
+    .service-title {
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .service-description {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .service-url {
+      font-family: monospace;
+      color: #666;
+      font-size: 13px;
+
+      a {
+        color: #007bff;
+        text-decoration: none;
+
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+    }
+
+    .service-credentials {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .service-container {
+      font-family: monospace;
+      font-size: 11px;
+      color: #999;
+
+      .logs-link {
+        color: #007bff;
+        text-decoration: none;
+        font-size: 11px;
+        margin-left: 5px;
+
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+    }
+
+    .service-status {
+      font-weight: bold;
+      margin-top: 4px;
+    }
+
+    .service-uptime {
+      font-size: 12px;
+      color: #666;
+    }
   }
-  50% {
-    opacity: 0.5;
-  }
-}
 
-// Traffic light indicator
-.traffic-light {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px;
-  background: #333;
-  border-radius: 8px;
+  .service-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    min-width: 140px;
 
-  .light {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    opacity: 0.3;
-    transition: opacity 0.3s;
+    .visit-button {
+      background: #007bff;
+      color: white;
+      padding: 8px 16px;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
 
-    &.red { background-color: $status-offline; }
-    &.yellow { background-color: $status-loading; }
-    &.green { background-color: $status-online; }
+      &:hover {
+        background: #0056b3;
+        color: white;
+      }
+    }
 
-    &.active {
-      opacity: 1;
-      box-shadow: 0 0 8px currentColor;
+    .container-actions {
+      display: flex;
+      gap: 4px;
     }
   }
 }
 
-// CPU usage indicator
-.cpu-indicator {
-  font-size: 0.875rem;
-  font-weight: 500;
+// Action buttons
+.action-button {
+  background: #17a2b8;
+  color: white;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
 
-  &.low { color: $status-online; }
-  &.medium { color: $status-loading; }
-  &.high { color: $status-offline; }
-}
-
-// Test runner styles
-.test-runner {
-  .progress {
-    height: 1.5rem;
+  &:hover {
+    background: #138496;
   }
 
-  .test-logs {
-    max-height: 400px;
-    overflow-y: auto;
-    font-family: monospace;
-    font-size: 0.8rem;
-    background-color: #1e1e1e;
-    color: #d4d4d4;
-    padding: 1rem;
+  &.danger {
+    background: #dc3545;
+
+    &:hover {
+      background: #c82333;
+    }
+  }
+
+  &:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+  }
+}
+
+// CPU indicator
+.cpu-indicator {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 70px;
+  height: 20px;
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  overflow: hidden;
+
+  .cpu-bar {
+    height: 100%;
+    background: $status-online;
+    transition: all 0.3s ease;
+
+    &.medium {
+      background: $status-loading;
+    }
+
+    &.high {
+      background: $status-offline;
+    }
+  }
+
+  .cpu-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 9px;
+    color: #000;
+    font-weight: bold;
+    text-shadow: 0 0 2px rgba(255,255,255,0.8);
+    z-index: 10;
+    white-space: nowrap;
+  }
+}
+
+// Test suite styles
+.test-suite {
+  position: relative;
+  padding-right: 180px !important;
+  min-height: 100px;
+
+  .test-info {
+    flex: 1;
+  }
+
+  .test-actions {
+    position: absolute;
+    right: 15px;
+    top: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .run-test-btn {
+    background: $status-online;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    min-width: 150px;
     border-radius: 4px;
 
-    .log-line {
-      white-space: pre-wrap;
-      word-break: break-all;
+    &:hover {
+      background: darken($status-online, 10%);
+    }
 
-      &.error { color: #f48771; }
-      &.success { color: #89d185; }
-      &.info { color: #6796e6; }
+    &:disabled {
+      background: $status-loading;
+      color: #333;
+      cursor: wait;
+    }
+  }
+
+  .filter-input {
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    font-size: 12px;
+    width: 140px;
+    border-radius: 3px;
+  }
+
+  &.running {
+    background: #fff3cd !important;
+    border-left-color: $status-loading !important;
+
+    .service-status {
+      color: #856404 !important;
     }
   }
 }
 
-// Credentials display
-.credentials-display {
+// Progress bar for tests
+.test-progress {
+  margin-top: 10px;
+
+  .progress {
+    height: 20px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+  }
+}
+
+// Test logs
+.test-logs {
+  max-height: 400px;
+  overflow-y: auto;
   font-family: monospace;
-  font-size: 0.875rem;
-  background-color: $light;
-  padding: 0.5rem;
+  font-size: 12px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 10px;
   border-radius: 4px;
-
-  .label {
-    color: $text-muted;
-    margin-right: 0.5rem;
-  }
+  margin-top: 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
-// Tab navigation
-.status-tabs {
-  .nav-link {
-    color: $dark;
-
-    &.active {
-      background-color: $primary;
-      color: $white;
-    }
-  }
+// Section heading
+.section-heading {
+  margin-top: 25px;
+  padding-top: 15px;
+  border-top: 1px solid #e0e0e0;
 }
 
-// Countdown timer
-.countdown-timer {
-  font-size: 0.875rem;
-  color: $text-muted;
-
-  .countdown-value {
-    font-weight: 600;
-    color: $primary;
-  }
-}
-
-// Log viewer modal
-.log-viewer {
-  .modal-body {
-    max-height: 70vh;
-    overflow-y: auto;
-  }
-
-  pre {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
-    font-size: 0.8rem;
-  }
+// Footer
+.status-footer {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-size: 12px;
+  border-top: 1px solid #e0e0e0;
+  margin-top: 20px;
 }

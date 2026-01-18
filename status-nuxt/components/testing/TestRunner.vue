@@ -14,12 +14,12 @@ const state = computed(() => testStore.getTestState(props.testType))
 const filter = ref('')
 const showLogs = ref(false)
 
-const statusVariant = computed(() => {
+const statusClass = computed(() => {
   switch (state.value.status) {
-    case 'running': return 'primary'
-    case 'completed': return 'success'
-    case 'failed': return 'danger'
-    default: return 'secondary'
+    case 'running': return 'running'
+    case 'completed': return 'online'
+    case 'failed': return 'offline'
+    default: return 'unknown'
   }
 })
 
@@ -31,8 +31,8 @@ const progressPercent = computed(() => {
 
 const progressVariant = computed(() => {
   const { failed } = state.value.progress
-  if (failed > 0) return 'danger'
-  return 'success'
+  if (failed > 0) return 'bg-danger'
+  return 'bg-success'
 })
 
 const handleRun = () => {
@@ -48,84 +48,75 @@ const openReport = () => {
 </script>
 
 <template>
-  <BCard class="test-runner">
-    <template #header>
-      <div class="d-flex justify-content-between align-items-center">
-        <span class="fw-bold">{{ config.name }}</span>
-        <BBadge :variant="statusVariant">{{ state.status }}</BBadge>
+  <div :class="['service', 'test-suite', statusClass]">
+    <div class="test-info">
+      <div class="service-title">{{ config.name }}</div>
+      <div class="service-description">{{ config.description }}</div>
+
+      <div class="service-status">
+        {{ state.status === 'running' ? 'Running...' : state.status === 'completed' ? 'Passed' : state.status === 'failed' ? 'Failed' : 'Ready' }}
       </div>
-    </template>
 
-    <BCardText class="text-muted small mb-3">
-      {{ config.description }}
-    </BCardText>
-
-    <!-- Filter input -->
-    <BFormGroup label="Filter (optional)" label-class="small" class="mb-3">
-      <BFormInput
-        v-model="filter"
-        :placeholder="config.filterPlaceholder"
-        :disabled="state.status === 'running'"
-        size="sm"
-      />
-    </BFormGroup>
-
-    <!-- Progress bar -->
-    <div v-if="state.status === 'running'" class="mb-3">
-      <div class="d-flex justify-content-between small mb-1">
-        <span>Progress</span>
-        <span>
-          {{ state.progress.completed }}/{{ state.progress.total }}
-          ({{ state.progress.passed }} passed, {{ state.progress.failed }} failed)
-        </span>
+      <!-- Progress bar when running -->
+      <div v-if="state.status === 'running'" class="test-progress">
+        <div class="progress">
+          <div
+            :class="['progress-bar', progressVariant]"
+            role="progressbar"
+            :style="{ width: progressPercent + '%' }"
+          >
+            {{ state.progress.completed }}/{{ state.progress.total }}
+            ({{ state.progress.passed }} passed, {{ state.progress.failed }} failed)
+          </div>
+        </div>
+        <div v-if="state.progress.current" class="small text-muted mt-1">
+          Running: {{ state.progress.current }}
+        </div>
       </div>
-      <BProgress :max="100" height="1.5rem">
-        <BProgressBar :value="progressPercent" :variant="progressVariant">
-          {{ progressPercent }}%
-        </BProgressBar>
-      </BProgress>
-      <div v-if="state.progress.current" class="small text-muted mt-1">
-        Running: {{ state.progress.current }}
+
+      <!-- Logs viewer -->
+      <div v-if="showLogs" class="test-logs">
+        <pre v-if="state.logs">{{ state.logs }}</pre>
+        <div v-else class="text-muted">No logs yet</div>
+      </div>
+
+      <!-- Status message -->
+      <div v-if="state.message" class="small mt-2" :class="state.status === 'failed' ? 'text-danger' : 'text-muted'">
+        {{ state.message }}
       </div>
     </div>
 
-    <!-- Action buttons -->
-    <div class="d-flex gap-2">
-      <BButton
-        :variant="state.status === 'running' ? 'secondary' : 'primary'"
+    <div class="test-actions">
+      <button
+        class="run-test-btn"
         :disabled="state.status === 'running'"
         @click="handleRun"
       >
         {{ state.status === 'running' ? 'Running...' : 'Run Tests' }}
-      </BButton>
+      </button>
 
-      <BButton
+      <input
+        v-model="filter"
+        type="text"
+        class="filter-input"
+        :placeholder="config.filterPlaceholder"
+        :disabled="state.status === 'running'"
+      >
+
+      <button
         v-if="config.hasReport && state.reportUrl"
-        variant="outline-secondary"
+        class="action-button"
         @click="openReport"
       >
         View Report
-      </BButton>
+      </button>
 
-      <BButton
-        variant="outline-secondary"
+      <button
+        class="action-button"
         @click="showLogs = !showLogs"
       >
-        {{ showLogs ? 'Hide' : 'Show' }} Logs
-      </BButton>
+        {{ showLogs ? 'Hide Logs' : 'Show Logs' }}
+      </button>
     </div>
-
-    <!-- Logs viewer -->
-    <BCollapse v-model="showLogs" class="mt-3">
-      <div class="test-logs">
-        <pre v-if="state.logs">{{ state.logs }}</pre>
-        <div v-else class="text-muted">No logs yet</div>
-      </div>
-    </BCollapse>
-
-    <!-- Status message -->
-    <div v-if="state.message" class="mt-3 small" :class="state.status === 'failed' ? 'text-danger' : 'text-muted'">
-      {{ state.message }}
-    </div>
-  </BCard>
+  </div>
 </template>
