@@ -258,6 +258,12 @@ services:
     deploy:
       replicas: 0
 
+  playwright:
+    # DISABLED: Playwright tests run in CircleCI, not on Yesterday
+    # Must be in prod profile since it depends on prod containers
+    profiles:
+      - prod
+
 volumes:
   freegle_db:
     # Mark as external - this volume is populated by the restore script
