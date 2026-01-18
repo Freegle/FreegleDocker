@@ -94,9 +94,9 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     setTestState('playwright', { message: 'Running Playwright tests...' })
     appendTestLogs('playwright', `Running: ${testCmd}\n`)
 
-    // Run tests
+    // Run tests - NODE_PATH needed so require('@playwright/test') finds global install
     const testProcess = spawn('sh', ['-c', `
-      docker exec freegle-playwright sh -c "${testCmd} 2>&1"
+      docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
     `], { stdio: 'pipe' })
 
     testProcess.stdout.on('data', (data) => {
