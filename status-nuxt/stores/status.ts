@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { api } from '~/api'
 import type { ServiceState, ServiceStatus } from '~/types/service'
 
 interface StatusStoreState {
@@ -58,7 +59,7 @@ export const useStatusStore = defineStore('status', {
       this.error = null
 
       try {
-        const response = await $fetch<Record<string, any>>('/api/status')
+        const response = await api().status.fetchStatus()
 
         // Update service states
         this.serviceStates.clear()
@@ -93,10 +94,7 @@ export const useStatusStore = defineStore('status', {
 
     async restartContainer(containerId: string) {
       try {
-        await $fetch('/api/container/restart', {
-          method: 'POST',
-          body: { container: containerId },
-        })
+        await api().status.restartContainer(containerId)
         // Refresh status after restart
         setTimeout(() => this.refreshStatus(), 2000)
       }
@@ -108,18 +106,34 @@ export const useStatusStore = defineStore('status', {
 
     async rebuildContainer(containerId: string, serviceId?: string) {
       try {
-        await $fetch('/api/container/rebuild', {
-          method: 'POST',
-          body: {
-            container: containerId,
-            service: serviceId || containerId,
-          },
-        })
+        await api().status.rebuildContainer(containerId, serviceId)
         // Refresh status periodically while rebuild is in progress
         setTimeout(() => this.refreshStatus(), 30000)
       }
       catch (err) {
         console.error('Rebuild error:', err)
+        throw err
+      }
+    },
+
+    async startLive() {
+      try {
+        await api().status.startLive()
+        setTimeout(() => this.refreshStatus(), 5000)
+      }
+      catch (err) {
+        console.error('Start live error:', err)
+        throw err
+      }
+    },
+
+    async startModToolsLive() {
+      try {
+        await api().status.startModToolsLive()
+        setTimeout(() => this.refreshStatus(), 5000)
+      }
+      catch (err) {
+        console.error('Start ModTools live error:', err)
         throw err
       }
     },
