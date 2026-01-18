@@ -4,6 +4,17 @@ import { useStatusStore } from '~/stores/status'
 const route = useRoute()
 const statusStore = useStatusStore()
 
+// Service IDs grouped by tab/category
+const tabServices: Record<string, string[]> = {
+  freegle: ['freegle-dev-local', 'freegle-dev-live', 'freegle-prod-local'],
+  modtools: ['modtools-dev-local', 'modtools-dev-live', 'modtools-prod-local'],
+  backend: ['apiv1', 'apiv2', 'batch', 'host-scripts'],
+  devtools: ['phpmyadmin', 'mailpit', 'loki', 'grafana', 'playwright', 'status'],
+  testing: [], // Testing tab shows test runners, not services
+  infrastructure: ['percona', 'postgres', 'redis', 'beanstalkd', 'spamassassin', 'traefik', 'tusd', 'delivery'],
+  production: ['freegle-dev-live', 'modtools-dev-live'], // Live/production services
+}
+
 const tabs = [
   { name: 'Freegle', path: '/freegle', id: 'freegle' },
   { name: 'ModTools', path: '/modtools', id: 'modtools' },
@@ -11,6 +22,7 @@ const tabs = [
   { name: 'Dev Tools', path: '/devtools', id: 'devtools' },
   { name: 'Testing', path: '/testing', id: 'testing' },
   { name: 'Infrastructure', path: '/infrastructure', id: 'infrastructure' },
+  { name: 'Production', path: '/production', id: 'production', badge: 'LIVE' },
 ]
 
 const currentTab = computed(() => {
@@ -27,11 +39,31 @@ const overallStatus = computed(() => {
   return 'amber'
 })
 
-// Get tab status color
+// Get tab status color based on services in that category
 const getTabStatus = (tabId: string): string => {
-  // This would need to be computed based on services in each category
-  // For now return grey as default
-  return 'grey'
+  const serviceIds = tabServices[tabId] || []
+  if (serviceIds.length === 0) {
+    // For testing tab with no services, return green
+    return 'green'
+  }
+
+  let online = 0
+  let offline = 0
+  let total = 0
+
+  for (const id of serviceIds) {
+    const state = statusStore.getServiceState(id)
+    if (state) {
+      total++
+      if (state.status === 'online') online++
+      else if (state.status === 'offline') offline++
+    }
+  }
+
+  if (total === 0) return 'grey'
+  if (online === total) return 'green'
+  if (offline === total) return 'red'
+  return 'amber'
 }
 </script>
 
@@ -46,7 +78,7 @@ const getTabStatus = (tabId: string): string => {
           class="logo"
         >
         <div :class="['status-circle', overallStatus]" />
-        <h1>Freegle Environment Status</h1>
+        <h1>Freegle Status</h1>
       </div>
 
       <!-- Countdown -->
@@ -65,6 +97,7 @@ const getTabStatus = (tabId: string): string => {
         >
           <span :class="['tab-light', getTabStatus(tab.id)]" />
           {{ tab.name }}
+          <span v-if="tab.badge" class="live-badge">{{ tab.badge }}</span>
         </NuxtLink>
       </nav>
 

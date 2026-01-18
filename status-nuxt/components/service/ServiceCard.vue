@@ -69,6 +69,14 @@ const handleRebuild = async () => {
 const handleLogs = () => {
   navigateTo(`/logs/${props.service.container || props.service.id}`)
 }
+
+// Compute a short name for the Visit button
+const visitLabel = computed(() => {
+  // Extract a short name from the service name
+  const name = props.service.name
+  // Remove common prefixes/suffixes for cleaner button text
+  return `Visit ${name.replace(/\s*\(Local\)|\s*\(Live\)/gi, '').trim()}`
+})
 </script>
 
 <template>
@@ -104,7 +112,7 @@ const handleLogs = () => {
 
     <div class="service-actions">
       <a v-if="service.url" :href="service.url" target="_blank" class="visit-button">
-        Visit
+        {{ visitLabel }}
       </a>
       <div v-if="service.container" class="container-actions">
         <button
