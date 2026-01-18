@@ -1,0 +1,194 @@
+// Status-specific colors
+$status-online: #28a745;
+$status-offline: #dc3545;
+$status-loading: #ffc107;
+$status-unknown: #6c757d;
+
+// Freegle brand colors (match existing sites)
+$primary: #338808;
+$secondary: #DCDCDC;
+$info: #17a2b8;
+$success: $status-online;
+$danger: $status-offline;
+$warning: $status-loading;
+
+// Disable rounded corners for consistency with Freegle style
+$enable-rounded: false;
+
+// Import Bootstrap
+@import "bootstrap/scss/bootstrap";
+
+// Import Bootstrap Vue Next styles
+@import 'bootstrap-vue-next/dist/bootstrap-vue-next.css';
+
+// Status-specific styles
+.service-card {
+  transition: box-shadow 0.2s ease-in-out;
+
+  &:hover {
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+  }
+
+  .card-header {
+    background-color: $light;
+    border-bottom: 1px solid $border-color;
+  }
+
+  .card-footer {
+    background-color: $white;
+    border-top: 1px solid $border-color;
+  }
+}
+
+// Status indicators
+.status-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+
+  &.online {
+    background-color: $status-online;
+    box-shadow: 0 0 4px $status-online;
+  }
+
+  &.offline {
+    background-color: $status-offline;
+    box-shadow: 0 0 4px $status-offline;
+  }
+
+  &.loading {
+    background-color: $status-loading;
+    animation: pulse 1.5s infinite;
+  }
+
+  &.unknown {
+    background-color: $status-unknown;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+// Traffic light indicator
+.traffic-light {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #333;
+  border-radius: 8px;
+
+  .light {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    opacity: 0.3;
+    transition: opacity 0.3s;
+
+    &.red { background-color: $status-offline; }
+    &.yellow { background-color: $status-loading; }
+    &.green { background-color: $status-online; }
+
+    &.active {
+      opacity: 1;
+      box-shadow: 0 0 8px currentColor;
+    }
+  }
+}
+
+// CPU usage indicator
+.cpu-indicator {
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  &.low { color: $status-online; }
+  &.medium { color: $status-loading; }
+  &.high { color: $status-offline; }
+}
+
+// Test runner styles
+.test-runner {
+  .progress {
+    height: 1.5rem;
+  }
+
+  .test-logs {
+    max-height: 400px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.8rem;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 1rem;
+    border-radius: 4px;
+
+    .log-line {
+      white-space: pre-wrap;
+      word-break: break-all;
+
+      &.error { color: #f48771; }
+      &.success { color: #89d185; }
+      &.info { color: #6796e6; }
+    }
+  }
+}
+
+// Credentials display
+.credentials-display {
+  font-family: monospace;
+  font-size: 0.875rem;
+  background-color: $light;
+  padding: 0.5rem;
+  border-radius: 4px;
+
+  .label {
+    color: $text-muted;
+    margin-right: 0.5rem;
+  }
+}
+
+// Tab navigation
+.status-tabs {
+  .nav-link {
+    color: $dark;
+
+    &.active {
+      background-color: $primary;
+      color: $white;
+    }
+  }
+}
+
+// Countdown timer
+.countdown-timer {
+  font-size: 0.875rem;
+  color: $text-muted;
+
+  .countdown-value {
+    font-weight: 600;
+    color: $primary;
+  }
+}
+
+// Log viewer modal
+.log-viewer {
+  .modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 0.8rem;
+  }
+}
