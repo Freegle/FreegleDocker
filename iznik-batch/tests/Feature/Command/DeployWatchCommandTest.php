@@ -3,6 +3,7 @@
 namespace Tests\Feature\Command;
 
 use App\Console\Commands\Deploy\RefreshCommand;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
@@ -57,6 +58,11 @@ class DeployWatchCommandTest extends TestCase
 
     public function test_force_triggers_refresh(): void
     {
+        // Mock Artisan::call() to prevent actual cache operations when deploy:refresh runs.
+        // The --force flag triggers deploy:refresh which would clear views and caches.
+        Artisan::shouldReceive('call')
+            ->andReturn(0);
+
         $this->artisan('deploy:watch --force')
             ->expectsOutput('Forcing deployment refresh...')
             ->expectsOutput('Refreshing application after deployment...')
