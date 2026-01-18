@@ -178,6 +178,11 @@ services:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
       - TUS_UPLOADER=https://uploads.ilovefreegle.org/
 
+  batch:
+    # Override database password for Yesterday's restored production database
+    environment:
+      - DB_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
+
   freegle-dev-local:
     # Routed through Traefik for SSL termination on port 3002
     # No direct port binding - Traefik handles HTTPS and proxies to container
