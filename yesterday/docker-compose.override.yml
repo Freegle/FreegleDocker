@@ -54,7 +54,7 @@ services:
       - "0.0.0.0:3012:3012"
       - "0.0.0.0:3013:3013"
       - "0.0.0.0:8095:8095"
-      # Ports 8181/8193 (APIs), 8086 (phpmyadmin) and 8025 (mailhog) removed - access via 2FA gateway only
+      # Ports 8181/8193 (APIs), 8086 (phpmyadmin) and 8025 (mailpit) removed - access via 2FA gateway only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/traefik/secrets/gcloud-dns-key.json:/secrets/gcloud-dns-key.json:ro
@@ -130,8 +130,8 @@ services:
     labels:
       - "traefik.enable=false"
 
-  mailhog:
-    # Accessed via 2FA gateway at /mailhog (Admin only)
+  mailpit:
+    # Accessed via 2FA gateway at /mailpit (Admin only)
     # No direct external access - only through yesterday-2fa gateway
     # Basic auth disabled - authentication handled by 2FA gateway
     ports: !reset []
