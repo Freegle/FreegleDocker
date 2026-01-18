@@ -203,9 +203,6 @@ services:
     # DISABLED: We only use dev containers on Yesterday
     # Reason: Dev containers start in seconds, prod containers take 10+ minutes to build
     # Production containers are disabled to save resources and startup time
-    # Use profiles to prevent build attempts - only included with --profile prod
-    profiles:
-      - prod
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle-prod.rule=Host(`${YESTERDAY_HOSTNAME}`)"
@@ -243,9 +240,6 @@ services:
     # DISABLED: We only use dev containers on Yesterday
     # Reason: Dev containers start in seconds, prod containers take 10+ minutes to build
     # Production containers are disabled to save resources and startup time
-    # Use profiles to prevent build attempts - only included with --profile prod
-    profiles:
-      - prod
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools-prod.rule=Host(`${YESTERDAY_HOSTNAME}`)"
