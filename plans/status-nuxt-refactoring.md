@@ -1,5 +1,41 @@
 # Status Container Nuxt Refactoring Plan
 
+## Current Progress (Updated 2026-01-18)
+
+### ✅ Phase 1: Foundation - COMPLETE
+- Nuxt 3 scaffolding with proper project structure
+- Bootstrap 5 + bootstrap-vue-next integration
+- Type definitions for services, status, and tests
+- Service configuration in `server/utils/services.ts`
+- Nitro API routes (all endpoints ported from server.js)
+- Pinia stores for status and test state management
+- All UI components (ServiceCard, ServiceGrid, TestRunner, etc.)
+- All 7 tabs implemented: Freegle, ModTools, Backend, Dev Tools, Testing, Infrastructure, Production
+- Tab status indicators showing actual service health (colored dots)
+- Responsive tab navigation (compact, non-wrapping)
+- "Recreate Test Users" button on Freegle page
+- Visit buttons include service name (e.g., "Visit Freegle Dev")
+- Production tab with LIVE badge and warning message
+- API layer following Freegle Nuxt patterns (BaseAPI, StatusAPI, api/index.ts)
+
+### 🔄 Phase 2: Polish & Improvements - IN PROGRESS
+- ✅ Visual design matching original status page
+- ✅ Tab status dots showing actual service health
+- ✅ Responsive layout (tabs don't overflow)
+- ⬜ Loading skeletons (not yet implemented)
+- ⬜ Toast notifications for actions (using alert() currently)
+- ⬜ Dark mode support (not yet implemented)
+
+### ⬜ Phase 3: Production Monitoring - PLANNED
+See "Future: Live Site Monitoring" section below.
+
+### ⬜ Phase 4: Migration - PENDING
+- Switch new status to port 8081 (replace old container)
+- Update documentation
+- Remove old status container code
+
+---
+
 ## Overview
 
 Refactor the status container from hand-coded JavaScript (3,300 line `server.js` + 29k char `index.html`) to a well-structured Nuxt 3 application with proper component architecture.
@@ -565,6 +601,97 @@ CMD ["node", ".output/server/index.mjs"]
 3. Remove old status container
 4. Deploy to production
 
+---
+
+## Future: Live Site Monitoring
+
+### Vision
+
+Extend the status page to monitor the **production Freegle and ModTools sites** (ilovefreegle.org, modtools.org) in addition to the local Docker development environment. This creates a single dashboard for both development and production health.
+
+### Architecture
+
+The existing `HealthProvider` interface (see "Health Check Abstraction" section above) is designed to support this:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Status Dashboard                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │ Local Docker │  │ Production   │  │ Production       │   │
+│  │ Services     │  │ Freegle      │  │ ModTools         │   │
+│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘   │
+│         │                 │                    │             │
+│         ▼                 ▼                    ▼             │
+│  DockerSocket       HttpHealth           HttpHealth          │
+│  Provider           Provider             Provider            │
+│  (full control)     (read-only)          (read-only)         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Plan
+
+1. **HttpHealthProvider**: Polls remote `/api/health` or similar endpoints
+   - Read-only (no container management)
+   - Handles network errors gracefully
+   - Configurable timeout and retry
+
+2. **Health Endpoints on Production**:
+   - Add `/api/health` endpoint to iznik-server returning service status
+   - Include database connectivity, cache status, queue health
+   - Return response times and basic metrics
+
+3. **Configuration**:
+   ```typescript
+   // Example: services.ts addition for production
+   {
+     id: 'freegle-prod',
+     name: 'Freegle Production',
+     category: 'production',
+     url: 'https://www.ilovefreegle.org/',
+     healthCheck: {
+       type: 'http',
+       path: '/api/health',
+       timeout: 10000
+     },
+     actions: ['visit'],  // No restart/rebuild for production
+     description: 'Live user site',
+     production: true
+   }
+   ```
+
+4. **UI Considerations**:
+   - Clear visual separation between local and production
+   - Warning banners for production services
+   - No destructive actions (restart/rebuild) available for production
+   - Real-time latency display
+
+### Security Considerations
+
+- Health endpoints should not expose sensitive information
+- Consider authentication for detailed health data
+- Rate limiting on health endpoints
+- No write operations from status dashboard to production
+
+### Metrics to Display
+
+| Metric | Source | Display |
+|--------|--------|---------|
+| Site availability | HTTP check | Green/Red indicator |
+| Response time | HTTP timing | Latency in ms |
+| API health | `/api/health` | Component status |
+| Database | Health endpoint | Connected/Disconnected |
+| Queue depth | Health endpoint | Backlog count |
+| Error rate | Optional: Sentry | Errors/hour |
+
+### Not In Scope (Initially)
+
+- Log viewing for production (security concern)
+- Container management for production (dangerous)
+- Test execution against production (separate concern)
+- Alerting/notifications (use existing tools)
+
+---
+
 ## Testing Strategy
 
 - Manual testing against existing status container (feature comparison)
@@ -592,9 +719,11 @@ CMD ["node", ".output/server/index.mjs"]
 
 ## Open Questions
 
-1. Should we use WebSockets for real-time status updates instead of polling?
-2. Do we want to add any new features during refactoring (e.g., service grouping, search)?
-3. Should the Sentry integration move to this new status app?
+1. ~~Should we use WebSockets for real-time status updates instead of polling?~~ **Decision: Stick with polling for now.** Polling is simpler and the 30-second refresh is adequate for status monitoring.
+2. ~~Do we want to add any new features during refactoring (e.g., service grouping, search)?~~ **Decision: Minimal new features.** Added Production tab with LIVE badge, but keeping scope tight for Phase 1.
+3. Should the Sentry integration move to this new status app? **Still open** - the current Sentry integration uses Claude CLI which works in the old status container.
+4. **NEW**: Should we add real-time latency monitoring for production sites?
+5. **NEW**: What authentication/authorization should the production health endpoints use?
 
 ## References
 

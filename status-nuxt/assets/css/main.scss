@@ -83,23 +83,25 @@ body {
   display: flex;
   border-bottom: 2px solid #dee2e6;
   margin-bottom: 20px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   background: transparent;
+  overflow-x: auto;
 
   .nav-item {
     margin-bottom: -2px;
   }
 
   .nav-link {
-    padding: 12px 20px;
+    padding: 10px 12px;
     cursor: pointer;
     border: none;
     background: none;
-    font-size: 14px;
+    font-size: 13px;
     color: #666;
     border-bottom: 3px solid transparent;
     transition: all 0.2s;
     border-radius: 0;
+    white-space: nowrap;
 
     &:hover {
       color: #333;
@@ -119,6 +121,14 @@ body {
       &.active {
         border-bottom-color: #dc3545;
       }
+    }
+  }
+
+  // Responsive: even smaller on mobile
+  @media (max-width: 768px) {
+    .nav-link {
+      padding: 8px 8px;
+      font-size: 12px;
     }
   }
 }
