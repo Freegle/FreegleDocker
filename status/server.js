@@ -1932,173 +1932,20 @@ const httpServer = http.createServer(async (req, res) => {
         "-c",
         `
         set -e
-        echo "Clearing Laravel caches using artisan commands for proper state cleanup..."
+        echo "Setting up Laravel test environment..."
 
-        # Step 0: Stop all supervisor-managed workers to prevent them from corrupting
-        # the bootstrap cache while we regenerate it. The scheduler, queue workers,
-        # and mail spooler all bootstrap Laravel, which can race with our cache rebuild.
-        echo "Stopping supervisor workers to prevent cache corruption..."
+        # Stop supervisor workers before running tests.
+        # In CI, supervisor isn't running (CI=true skips it in entrypoint.sh).
+        # In local dev, this stops background workers to prevent interference.
+        echo "Stopping supervisor workers..."
         docker exec freegle-batch supervisorctl stop all 2>&1 || true
 
-        # Step 1: Validate and repair bootstrap cache files before any artisan commands
-        # These files are committed to git but can become corrupt (0 bytes) due to various issues.
-        # If empty, we must delete and regenerate them before running any artisan command.
-        echo "Validating bootstrap cache files..."
-        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
-
-        # Check if services.php is empty (0 bytes) and repair if needed
-        SERVICES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/services.php 2>/dev/null || echo "0")
-        PACKAGES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/packages.php 2>/dev/null || echo "0")
-        echo "services.php size: $SERVICES_SIZE bytes, packages.php size: $PACKAGES_SIZE bytes"
-
-        if [ "$SERVICES_SIZE" = "0" ] || [ "$PACKAGES_SIZE" = "0" ]; then
-          echo "WARNING: Bootstrap cache files are empty or missing! Repairing..."
-          # Delete corrupt files
-          docker exec freegle-batch rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php 2>&1 || true
-          # Regenerate them
-          docker exec freegle-batch php artisan package:discover --ansi 2>&1
-          # Verify repair succeeded
-          SERVICES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/services.php 2>/dev/null || echo "0")
-          PACKAGES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/packages.php 2>/dev/null || echo "0")
-          echo "After repair - services.php size: $SERVICES_SIZE bytes, packages.php size: $PACKAGES_SIZE bytes"
-          if [ "$SERVICES_SIZE" = "0" ] || [ "$PACKAGES_SIZE" = "0" ]; then
-            echo "ERROR: Failed to repair bootstrap cache files!"
-            exit 1
-          fi
-          echo "Bootstrap cache files repaired successfully"
-        fi
-
-        # Step 2: Run package:discover to ensure packages.php is in sync with composer.lock
-        # This is safe to run since we've validated the bootstrap cache files above
-        echo "Ensuring package manifest is current..."
-        docker exec freegle-batch php artisan package:discover --ansi 2>&1
-
-        # Verify BOTH files exist and have content - both are required for Laravel bootstrap
-        echo "Verifying bootstrap cache files..."
-        if ! docker exec freegle-batch test -s /var/www/html/bootstrap/cache/services.php; then
-          echo "ERROR: services.php is missing or empty"
-          exit 1
-        fi
-        if ! docker exec freegle-batch test -s /var/www/html/bootstrap/cache/packages.php; then
-          echo "ERROR: packages.php is missing or empty"
-          exit 1
-        fi
-        echo "Bootstrap cache files verified"
-
-        # CRITICAL: Make bootstrap cache files read-only IMMEDIATELY after verification
-        # This must happen BEFORE any other artisan commands (view:clear, view:cache, migrate:fresh)
-        # because those commands bootstrap Laravel and can trigger services.php regeneration
-        # race conditions that corrupt the file. See: https://github.com/orchestral/testbench/issues/202
-        echo "Making bootstrap cache files read-only to prevent corruption..."
-        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/services.php
-        docker exec freegle-batch chmod 444 /var/www/html/bootstrap/cache/packages.php
-        echo "Bootstrap cache files are now read-only:"
-        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php
-
-        # Step 3: Clear view cache using artisan (clears Laravel's internal state, not just files)
-        # CRITICAL: Using view:clear instead of rm -rf ensures Laravel's internal view state is reset.
-        # Without this, Laravel may still reference stale compiled view paths causing empty renders.
-        echo "Clearing compiled views with artisan view:clear..."
-        docker exec freegle-batch php artisan view:clear --ansi 2>&1 || true
-
-        # Step 4: Pre-compile all views before parallel testing to prevent race conditions
-        # Without this, multiple paratest workers may try to compile the same view simultaneously,
-        # causing some to get empty/locked files. See: https://github.com/laravel/framework/issues/54029
-        echo "Pre-compiling Blade views to avoid parallel test race conditions..."
-        if ! docker exec freegle-batch php artisan view:cache --ansi 2>&1; then
-          echo "WARNING: view:cache failed, views will be compiled on-demand"
-        fi
-
-        # Verify views are cached and have content
-        CACHED_VIEWS=$(docker exec freegle-batch sh -c 'ls -1 /var/www/html/storage/framework/views/*.php 2>/dev/null | wc -l')
-        echo "Cached views count: $CACHED_VIEWS"
-        if [ "$CACHED_VIEWS" -lt 10 ]; then
-          echo "WARNING: Very few views cached ($CACHED_VIEWS), this may cause race conditions"
-        fi
-
-        # Check for empty compiled view files - these cause the MJML rendering issue
-        EMPTY_VIEWS=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
-        echo "Empty compiled view files: $EMPTY_VIEWS"
-        if [ "$EMPTY_VIEWS" -gt 0 ]; then
-          echo "ERROR: Found $EMPTY_VIEWS empty compiled view files after view:cache!"
-          echo "Empty files:"
-          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty -exec echo {} \;'
-          echo "This indicates view:cache is not working correctly."
-        fi
-
-        # Show a sample of compiled view sizes to verify they have content
-        echo "Sample of compiled view file sizes (first 5 non-empty):"
-        docker exec freegle-batch sh -c 'ls -la /var/www/html/storage/framework/views/*.php 2>/dev/null | head -5'
-
-        echo "Cache directory after regeneration:"
-        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
-
-        # IMPORTANT: Do NOT run config:cache here - tests need to dynamically set the database name
-        # in bootstrap.php, which won't work if config is cached with the production DB name.
-
+        # Set up fresh test database
         echo "Setting up fresh test database..."
-        # Create test database if it doesn't exist, then run fresh migrations
         docker exec freegle-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
-        # Must explicitly set DB_DATABASE to avoid touching production database
         docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
 
-        # Check for empty compiled views AFTER migrate:fresh and repair if needed
-        # The migrate:fresh command can trigger view recompilation in some edge cases,
-        # leading to race conditions that create empty view files.
-        EMPTY_AFTER=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
-        echo "Empty compiled view files after migrate:fresh: $EMPTY_AFTER"
-        if [ "$EMPTY_AFTER" -gt 0 ]; then
-          echo "WARNING: $EMPTY_AFTER compiled views became empty during migrate:fresh - repairing..."
-          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty'
-          echo "Re-running view:cache to fix empty views..."
-          docker exec freegle-batch php artisan view:clear --ansi 2>&1 || true
-          docker exec freegle-batch php artisan view:cache --ansi 2>&1 || true
-          # Verify repair succeeded
-          EMPTY_REPAIR=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
-          echo "Empty compiled view files after repair: $EMPTY_REPAIR"
-          if [ "$EMPTY_REPAIR" -gt 0 ]; then
-            echo "ERROR: Some views are still empty after repair attempt!"
-          else
-            echo "View repair successful - all views now have content"
-          fi
-        fi
-
-        # Show timestamps of a sample of compiled view files to track when they were modified
-        echo "Compiled view file timestamps (sample):"
-        docker exec freegle-batch sh -c 'ls -la --time-style=full-iso /var/www/html/storage/framework/views/*.php 2>/dev/null | head -10'
-
-        # Final sanity check right before tests
-        echo "=== FINAL PRE-TEST VERIFICATION ==="
-        EMPTY_BEFORE_TEST=$(docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty | wc -l')
-        echo "Empty compiled view files before tests: $EMPTY_BEFORE_TEST"
-        if [ "$EMPTY_BEFORE_TEST" -gt 0 ]; then
-          echo "ERROR: Some compiled views are already empty BEFORE tests start!"
-          docker exec freegle-batch sh -c 'find /var/www/html/storage/framework/views -name "*.php" -empty -exec ls -la {} \\;'
-        fi
-
-        # Verify bootstrap cache files are still read-only and have content
-        # (Files were made read-only earlier, this is a final sanity check)
-        echo "Final bootstrap cache verification:"
-        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php
-        SERVICES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/services.php 2>/dev/null || echo "0")
-        PACKAGES_SIZE=$(docker exec freegle-batch stat -c%s /var/www/html/bootstrap/cache/packages.php 2>/dev/null || echo "0")
-        if [ "$SERVICES_SIZE" = "0" ] || [ "$PACKAGES_SIZE" = "0" ]; then
-          echo "FATAL: Bootstrap cache files became empty despite read-only protection!"
-          echo "services.php: $SERVICES_SIZE bytes, packages.php: $PACKAGES_SIZE bytes"
-          exit 1
-        fi
-        echo "Bootstrap cache files still valid: services.php=$SERVICES_SIZE bytes, packages.php=$PACKAGES_SIZE bytes"
-
-        # Start inotifywait in background to monitor bootstrap cache file changes
-        # This helps debug any unexpected file modifications during tests
-        echo "Starting inotify monitoring for bootstrap cache files..."
-        docker exec freegle-batch sh -c 'which inotifywait >/dev/null 2>&1 || apt-get update -qq && apt-get install -y -qq inotify-tools >/dev/null 2>&1'
-        docker exec -d freegle-batch sh -c 'inotifywait -m -e modify,create,delete,attrib /var/www/html/bootstrap/cache/ 2>&1 | while read line; do echo "[INOTIFY $(date +%H:%M:%S)] $line"; done >> /tmp/bootstrap-cache-monitor.log'
-        echo "inotify monitoring started - will log any changes to /tmp/bootstrap-cache-monitor.log"
-
-        echo "Running Laravel tests serially with coverage..."
-        # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
-        # VIA_STATUS_CONTAINER ensures tests can only run through this API, not directly
+        echo "Running Laravel tests with coverage..."
         docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
       `,
       ],

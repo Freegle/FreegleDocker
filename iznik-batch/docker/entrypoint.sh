@@ -78,67 +78,18 @@ mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/storage/spool/mail/{pending,sending,sent,failed}
 chmod -R 777 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 
-# Clean environment-specific bootstrap cache files.
-# services.php and packages.php are COMMITTED to git (deterministic, based on composer.lock)
-# so we don't delete or regenerate them - this prevents race conditions when multiple
-# processes bootstrap Laravel simultaneously. See: https://github.com/orchestral/testbench/issues/202
+# Clear environment-specific bootstrap cache files.
+# These contain resolved paths/env values that differ between environments.
+# services.php and packages.php are committed to git and should not be cleared.
 echo "Cleaning environment-specific bootstrap cache..."
 rm -f /var/www/html/bootstrap/cache/config.php
 rm -f /var/www/html/bootstrap/cache/routes-v7.php
 rm -f /var/www/html/bootstrap/cache/events.php
 
-# Validate and regenerate package manifest if files are missing or empty
-# Use -s to check file exists AND has size > 0 (not just -f which only checks existence)
-SERVICES_FILE=/var/www/html/bootstrap/cache/services.php
-PACKAGES_FILE=/var/www/html/bootstrap/cache/packages.php
-
-if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
-    echo "Bootstrap cache files missing or empty, regenerating..."
-
-    # If files exist but are empty/corrupt, remove them first
-    if [ -f "$SERVICES_FILE" ] && [ ! -s "$SERVICES_FILE" ]; then
-        echo "WARNING: services.php exists but is empty, removing..."
-        rm -f "$SERVICES_FILE"
-    fi
-    if [ -f "$PACKAGES_FILE" ] && [ ! -s "$PACKAGES_FILE" ]; then
-        echo "WARNING: packages.php exists but is empty, removing..."
-        rm -f "$PACKAGES_FILE"
-    fi
-
-    echo "Running package:discover to regenerate bootstrap cache..."
-    php artisan package:discover --ansi
-
-    # Verify regeneration succeeded
-    if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
-        echo "ERROR: Bootstrap cache files still missing or empty after regeneration!"
-        ls -la /var/www/html/bootstrap/cache/
-        exit 1
-    fi
-    echo "Bootstrap cache files regenerated successfully"
-else
-    echo "Using existing services.php ($(wc -c < "$SERVICES_FILE") bytes) and packages.php ($(wc -c < "$PACKAGES_FILE") bytes)"
-fi
-
-# Clear Laravel application caches (now safe since bootstrap cache is valid)
+# Clear application caches
 echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
-
-# Verify bootstrap cache files weren't corrupted by cache commands
-# This is a safety check to catch any bugs in Laravel's cache:clear/config:clear
-if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
-    echo "ERROR: Bootstrap cache files corrupted after clearing application caches!"
-    echo "services.php: $(ls -la $SERVICES_FILE 2>&1)"
-    echo "packages.php: $(ls -la $PACKAGES_FILE 2>&1)"
-    echo "Attempting recovery by regenerating..."
-    rm -f "$SERVICES_FILE" "$PACKAGES_FILE"
-    php artisan package:discover --ansi
-    if [ ! -s "$SERVICES_FILE" ] || [ ! -s "$PACKAGES_FILE" ]; then
-        echo "FATAL: Cannot recover bootstrap cache files!"
-        exit 1
-    fi
-    echo "Recovery successful"
-fi
 
 # Ensure MJML is installed in spatie package
 if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
@@ -147,9 +98,19 @@ if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/ve
     cd /var/www/html
 fi
 
-echo "=== Starting Laravel batch job processor ==="
+echo "=== Laravel batch container ready ==="
 
 # Create ready marker file to signal healthcheck that startup is complete
 touch /tmp/laravel-ready
+
+# In CI mode, don't start supervisor.
+# Supervisor launches multiple processes (scheduler, queue workers, mail spooler) that all
+# bootstrap Laravel simultaneously. If services.php needs regeneration, multiple processes
+# writing to it at once corrupts the file. See: https://github.com/orchestral/testbench/issues/202
+# By skipping supervisor in CI, we eliminate this race condition entirely.
+if [ "${CI:-false}" = "true" ]; then
+    echo "CI mode: skipping supervisor to prevent Laravel bootstrap race conditions"
+    exec sleep infinity
+fi
 
 exec "$@"

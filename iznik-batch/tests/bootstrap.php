@@ -3,42 +3,15 @@
 // Clear config cache before loading Laravel.
 // When running tests, we need phpunit.xml env vars to take effect.
 // If config is cached, Laravel ignores env vars and uses the cached values.
-// The cached config has MAIL_MAILER=smtp (from docker-compose), which breaks
-// tests that expect the array driver from phpunit.xml.
 $configCachePath = __DIR__.'/../bootstrap/cache/config.php';
 if (file_exists($configCachePath)) {
     @unlink($configCachePath);
-}
-
-// Validate bootstrap cache files before loading Laravel.
-// If services.php is empty or corrupted (returns non-array), delete it.
-// Laravel will regenerate it on bootstrap.
-// This fixes issues where services.php becomes empty and require returns 1 (integer).
-$servicesPath = __DIR__.'/../bootstrap/cache/services.php';
-if (file_exists($servicesPath)) {
-    $content = file_get_contents($servicesPath);
-    // If file is empty, very small, or doesn't contain 'return array', it's corrupt.
-    if (strlen($content) < 100 || strpos($content, 'return array') === false) {
-        echo "WARNING: Clearing corrupt services.php (size: ".strlen($content)." bytes)\n";
-        @unlink($servicesPath);
-        @unlink(__DIR__.'/../bootstrap/cache/packages.php');
-    }
 }
 
 require __DIR__.'/../vendor/autoload.php';
 
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-
-// Disable view timestamp checking to prevent race conditions with precompiled views.
-// The config in config/view.php should set this, but we also force it here to ensure
-// the BladeCompiler singleton has the correct setting after Laravel bootstrap.
-// This prevents empty view renders that occur when views are recompiled during tests.
-$bladeCompiler = $app->make('blade.compiler');
-$reflection = new \ReflectionClass($bladeCompiler);
-$property = $reflection->getProperty('shouldCheckTimestamps');
-$property->setAccessible(true);
-$property->setValue($bladeCompiler, false);
 
 // Force config to use test database
 config(['database.connections.mysql.database' => 'iznik_batch_test']);

@@ -1020,6 +1020,9 @@ services:
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod,Digest,UnifiedDigest,DonationThank,DonationAsk
+      # CI=true skips supervisor startup to prevent Laravel bootstrap race conditions.
+      # Multiple supervisor workers bootstrapping Laravel simultaneously can corrupt services.php.
+      - CI=${CI:-false}
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/laravel-ready || exit 1"]
       interval: 10s
