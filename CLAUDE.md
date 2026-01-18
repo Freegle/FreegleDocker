@@ -345,13 +345,56 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 ## Session Log
 
-### 2026-01-18 11:45 - services.php corruption fix (RESOLVED)
-- **Root Cause**: file-sync.sh was syncing bootstrap/cache/*.php from host to container every 2 seconds in CI
-- **Effect**: When Laravel regenerated services.php during tests, file-sync would overwrite it with corrupted partial writes
-- **Fix Applied**:
-  1. Disabled file-sync entirely in CI mode (exit early if CI=true)
-  2. Added CI env var to host-scripts container in docker-compose.yml
-  3. Kept bootstrap/cache exclusion as defense-in-depth for local dev
-- **Key Insight**: file-sync is only needed for local dev (syncing WSL→Docker). In CI, code is already in containers from Docker build
-- **Additional Fix**: Added verbose output for MJML npm installation (tests failing with "MJML template rendered to empty string")
-- **CI Status**: Builds 1533 (file-sync fix) and 1534 (MJML verbose) running
+**Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
+
+### 2026-01-18 - services.php Corruption Fix (CircleCI)
+- **Status**: Fix pushed, monitoring CI
+- **Root Cause Analysis**:
+  - **CI vs Production difference identified**: Production generates services.php once at deploy time, then only reads it. CI has supervisor starting multiple workers simultaneously.
+  - **Actual cause**: Supervisor launches scheduler, 2 queue workers, and mail spooler - all bootstrap Laravel at startup. If services.php needs regeneration (e.g., after migrate:fresh), multiple processes write to it concurrently → corruption (0 bytes).
+  - **Reference**: testbench issue #202 documents this as a testing-specific issue.
+- **Solution**:
+  - Added `CI=${CI:-false}` env var passthrough to batch container in docker-compose.yml
+  - In CI mode, entrypoint.sh skips supervisor entirely (`exec sleep infinity`)
+  - Tests don't need background workers - they run synchronously
+  - Local dev: supervisor runs normally, stopped by status API before tests
+- **Removed Defensive Code** (-268 lines):
+  - services.php validation/repair in entrypoint.sh
+  - View timestamp checking hack in TestCase.php
+  - Bootstrap cache validation/repair in server.js
+  - inotify monitoring for bootstrap cache corruption
+- **Commits**: 4e61f25 pushed to master
+- **Next**: Monitor CircleCI run at https://app.circleci.com/pipelines/github/Freegle/FreegleDocker
+- **Blockers**: None
+- **Key Principle**: Before making any fix, understand the difference between CircleCI and a live server. This was a testing-specific race condition, not a production issue.
+
+### 2026-01-18 - AI Decline on Edit (Issue #23)
+- **Status**: All tasks ✅ Complete, PR created, waiting for CI
+- **Completed**:
+  - Created `feature/ai-decline-on-edit` branch in iznik-server
+  - TDD: Wrote failing tests first, verified they failed for expected reason
+  - Modified `Message::replaceAttachments()` to record AI decline when AI attachment is removed
+  - Uses INSERT IGNORE into `messages_ai_declined` table
+  - All local tests pass (2 new tests)
+- **PR**: https://github.com/Freegle/iznik-server/pull/42
+- **Next**: Wait for CircleCI
+- **Blockers**: None
+- **Key Decisions**:
+  - Used strict `=== TRUE` comparison for AI flag check
+  - Same INSERT IGNORE pattern as existing code in message.php:706
+
+### 2026-01-17 23:10 - Email Reply Tracking (Issue #22)
+- **Status**: All tasks ✅ Complete, PR created, waiting for CI
+- **Completed**:
+  - Created `feature/email-reply-tracking` branch in iznik-server
+  - Updated MailRouter.php regex to parse optional tracking ID from notify- addresses
+  - Added email_tracking table update when reply received with tracking ID
+  - TDD approach: wrote failing tests first, then implemented fix
+  - All local tests pass (chatRoomsTest: 19 tests, MailRouterTest: 61 tests)
+- **PR**: https://github.com/Freegle/iznik-server/pull/41
+- **Next**: Wait for CircleCI (triggered when PR merges to master)
+- **Blockers**: None
+- **Key Decisions**:
+  - Used `\d+` regex for strict numeric matching (safer than `.*`)
+  - Used `replied_at IS NULL` in UPDATE to prevent overwriting existing replies
+  - Database ID (not tracking_id string) used in reply-to address for simpler lookup

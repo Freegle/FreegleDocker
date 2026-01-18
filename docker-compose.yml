@@ -278,28 +278,52 @@ services:
       - "traefik.http.services.tusd.loadbalancer.server.port=8080"
       - "traefik.http.middlewares.tusd-cors-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Authorization, Origin, X-Requested-With, X-Request-ID, X-HTTP-Method-Override, Content-Type, Upload-Length, Upload-Offset, Tus-Resumable, Upload-Metadata, Upload-Defer-Length, Upload-Concat, Upload-Complete, Upload-Draft-Interop-Version, x-token, baggage, sentry-trace"
 
+  # Old status container - replaced by status-nuxt (2026-01-18)
+  # Keeping commented out for reference during transition
+  # status:
+  #   build:
+  #     context: ./status
+  #     network: host
+  #   container_name: freegle-status
+  #   networks:
+  #     - default
+  #   ports:
+  #     - "8081:80"
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.status.rule=Host(`status.localhost`)"
+  #     - "traefik.http.routers.status.entrypoints=web"
+  #     - "traefik.http.services.status.loadbalancer.server.port=80"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./status/index.html:/app/index.html:ro
+  #     - ./status/logs.html:/app/logs.html:ro
+  #     - ./status/server.js:/app/server.js:ro
+  #     - ./ssl/certs:/app/ssl:ro
+  #     - .:/project:ro
+  #     - ./status/data:/app/data:rw
+  #     - rebuild-requests:/rebuild-requests
+  #   environment:
+  #     - DOCKER_HOST=unix:///var/run/docker.sock
+
   status:
     build:
-      context: ./status
+      context: ./status-nuxt
       network: host
     container_name: freegle-status
     networks:
       - default
     ports:
-      - "8081:80"
+      - "8081:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.status.rule=Host(`status.localhost`)"
       - "traefik.http.routers.status.entrypoints=web"
-      - "traefik.http.services.status.loadbalancer.server.port=80"
+      - "traefik.http.services.status.loadbalancer.server.port=3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./status/index.html:/app/index.html:ro
-      - ./status/logs.html:/app/logs.html:ro
-      - ./status/server.js:/app/server.js:ro
       - ./ssl/certs:/app/ssl:ro
       - .:/project:ro
-      - ./status/data:/app/data:rw
       - rebuild-requests:/rebuild-requests
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
