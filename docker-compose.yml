@@ -332,6 +332,8 @@ services:
   host-scripts:
     image: alpine:latest
     container_name: freegle-host-scripts
+    environment:
+      - CI=${CI:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/workspace

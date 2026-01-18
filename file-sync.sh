@@ -3,6 +3,12 @@
 # Monitors WSL filesystem changes and syncs to Docker containers
 # Uses a "settle" pattern - waits for files to stop changing before syncing
 
+# Skip file-sync in CI - not needed since code is in containers from Docker build
+if [ "${CI:-false}" = "true" ]; then
+    echo "CI mode: file-sync disabled (code is already in containers from build)"
+    exit 0
+fi
+
 # Use the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
