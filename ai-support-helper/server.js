@@ -440,10 +440,12 @@ app.post('/api/log-analysis', async (req, res) => {
   try {
     // Build the prompt for Claude Code (token-optimized)
     // CLAUDE.md provides detailed guidelines; keep system context minimal
+    // For user-specific queries, mention MCP tools for data access
+    // For general/codebase queries, let Claude use its built-in tools
     const systemContext = isNewSession
       ? userId
-        ? `Investigating Freegle user ${userId}. Use MCP query_logs tool (pseudonymized). Question: `
-        : `General Freegle query (no specific user). Use MCP query_logs tool (pseudonymized). Question: `
+        ? `Investigating Freegle user ${userId}. Use MCP tools for user data (query_database, query_logs). Question: `
+        : ''
       : ''
 
     const fullPrompt = systemContext + query

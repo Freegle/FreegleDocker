@@ -48,7 +48,15 @@ export default defineEventHandler(async (event) => {
 
     approveQuery(id)
 
-    // Execute the query
+    // For DB queries, the db-query endpoint handles execution - just approve
+    if (query.type === 'db') {
+      return {
+        status: 'approved_query',
+        message: 'Database query approved for execution',
+      }
+    }
+
+    // For log queries, execute against Loki pseudonymizer
     try {
       const pseudonymizerUrl = 'http://freegle-mcp-pseudonymizer:8080/query'
 

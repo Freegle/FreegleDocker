@@ -1,10 +1,25 @@
-# Pseudonymized Log Analysis MCP
+# Pseudonymized Log & Database Analysis MCP
 
-Privacy-preserving AI log analysis system for Freegle support staff and volunteers.
+Privacy-preserving AI analysis system for Freegle support staff and volunteers.
 
 ## Overview
 
-This system allows support volunteers to query logs using natural language while ensuring no PII (Personally Identifiable Information) is ever sent to Anthropic/Claude. The architecture uses pseudonymization tokens that are meaningless without the key, which is kept securely within Freegle's infrastructure.
+This system allows support volunteers to query logs and database records using natural language while ensuring no PII (Personally Identifiable Information) is ever sent to the AI. The architecture uses pseudonymization tokens that are meaningless without the key, which is kept securely within Freegle's infrastructure.
+
+## What Gets Pseudonymized
+
+The following PII is automatically detected and replaced with tokens:
+
+| Data Type | Pattern | Token Format |
+|-----------|---------|--------------|
+| Email addresses | `user@domain.com` | `user_abc123@gmail.com` (preserves common domains) |
+| IP addresses | `192.168.1.1` | `10.0.x.x` (internal IP format) |
+| Phone numbers | `07700 123456` | `07700xxxxxx` |
+| UK postcodes | `SW1A 1AA` | `ZZxx 9ZZ` |
+| User IDs | 6+ digit numbers | Numeric (9999xxxxxx range) |
+| Names | In log context | `User_abc123`, `Person_def456` |
+
+**Note:** User IDs (6+ digits) are pseudonymized to prevent cross-referencing with external data while maintaining numeric format for correlation within the session.
 
 ## Architecture
 
@@ -207,6 +222,40 @@ All MCP queries are logged to `/var/log/mcp-audit/YYYY-MM-DD.jsonl`:
   "durationMs": 245
 }
 ```
+
+## Example Queries
+
+The AI Support Helper can answer three types of questions:
+
+### 1. Database Queries (User Information)
+
+Questions about specific users use the MCP database tool with pseudonymized results.
+
+**Example:** "When did this user last log in?"
+
+Response: "This user last logged in today (January 19th, 2026) at around 10:09 PM. So they've been active very recently."
+
+The AI queries the database with SQL like `SELECT lastaccess FROM users WHERE id = ?` and translates the timestamp into a friendly response.
+
+### 2. Log Queries (System Errors)
+
+Questions about system behaviour query Loki logs with automatic pseudonymization.
+
+**Example:** "Are there any errors in the system logs?"
+
+Response: "I found some errors around the time this user was trying to send messages. This looks like a temporary glitch that's now resolved - they should be able to send messages normally now."
+
+**Note:** Log queries require Alloy to be shipping logs to Loki. In local development without logs configured, the AI will explain logs aren't available and suggest alternative approaches.
+
+### 3. Codebase Queries (Technical Questions)
+
+General questions about how Freegle works use built-in code search tools.
+
+**Example:** "Where is the User model defined?"
+
+Response: "The User model is defined in `/app/codebase/iznik-server/include/user/User.php`. There's also a User API endpoint at `/app/codebase/iznik-server/http/api/user.php`."
+
+Codebase queries don't require a specific user to be selected and don't involve the MCP approval flow.
 
 ## Docker Compose
 

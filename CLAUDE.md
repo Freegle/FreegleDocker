@@ -347,23 +347,86 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-01-18 - MCP Log Analysis Phase 1 (Issue #25)
-- **Status**: 🔄 In Progress - SSH tunnel service implemented, needs key authorization
+### 2026-01-19 - AI Support Helper Testing & Bug Fixes
+- **Status**: ✅ All query types working
 - **Branch**: `feature/mcp-log-analysis`
 - **Completed**:
-  - Discovered existing MCP implementation in `support-tools/` (already working)
-  - Created `docker-compose.mcp.yml` with SSH tunnel service for live Loki access
-  - Added Loki config template and key generation script
-  - SSH tunnel service works but needs SSH key authorized on docker-internal
-- **Files Added**:
-  - `docker-compose.mcp.yml` - SSH tunnel service with mcp-dev profile
-  - `loki-config.yaml` - Loki config template for Phase 2 migration
-  - `scripts/generate-pseudo-key.sh` - Pseudonymization key generator
-- **Next**: Authorize SSH key on docker-internal, then test MCP with live Loki data
-- **Blockers**: SSH key not authorized on docker-internal.ilovefreegle.org
-- **Key Decisions**:
-  - Reused existing MCP containers from `support-tools/` instead of creating duplicates
-  - SSH tunnel exposes live Loki on port 3101 to avoid conflict with local Loki
+  - Fixed DB query approval bug (was calling Loki instead of just approving)
+  - Fixed prompt construction (was forcing MCP tools for codebase queries)
+  - Simplified UI: "New Chat" button now clears all state (user + conversation)
+  - Removed redundant "Change User" button
+  - Added example queries to support-tools/README.md
+- **Tested End-to-End**:
+  - **Database query**: "When did user last log in?" → Returns friendly timestamp response
+  - **Codebase query**: "Where is the User model?" → Returns file paths
+  - **Log query**: Works but returns empty (Alloy not shipping logs yet)
+- **Files Modified**:
+  - `status-nuxt/server/api/mcp/approve/[id].post.ts` - Fixed DB query approval
+  - `ai-support-helper/server.js` - Improved prompt construction
+  - `iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue` - Simplified New Chat
+  - `support-tools/README.md` - Added 3 example queries
+
+### 2026-01-19 - MCP Database Access + Log Whitelist Design
+- **Status**: ✅ Implementation complete
+- **Branch**: `feature/mcp-log-analysis`
+- **Completed**:
+  - **Database Query MCP Tool**:
+    - Created `db-schema.ts` - field-level whitelist (PUBLIC/SENSITIVE/BLOCKED)
+    - Created `sql-validator.ts` - validates SELECT-only, whitelisted tables/columns
+    - Created `db-pseudonymizer.ts` - type-aware tokenization
+    - Created `db-query.post.ts` - API endpoint for database queries
+    - Created `mcp-db-server.js` - MCP server for Claude to query database
+  - **AI Response Guidelines**: Updated CLAUDE.md in ai-support-helper for less technical responses
+  - **Log Pseudonymization Fix**: Added user ID pseudonymization (was defined but never used)
+  - **Whitelist Design for Logs**: Added design for field-level whitelist with unknown field flagging
+- **Files Added/Modified**:
+  - `status-nuxt/server/utils/db-schema.ts` - Database field whitelist
+  - `status-nuxt/server/utils/sql-validator.ts` - SQL validation
+  - `status-nuxt/server/utils/db-pseudonymizer.ts` - Result pseudonymization
+  - `status-nuxt/server/utils/database.ts` - MySQL connection utility
+  - `status-nuxt/server/api/mcp/db-query.post.ts` - Database query API
+  - `status-nuxt/package.json` - Added mysql2 and uuid dependencies
+  - `ai-support-helper/mcp-db-server.js` - MCP server for database queries
+  - `ai-support-helper/CLAUDE.md` - Updated for non-technical responses
+  - `support-tools/pseudonymizer/server.js` - Fixed user ID pseudonymization
+  - `support-tools/README.md` - Updated documentation
+  - `plans/mcp-database-access-design.md` - Full design document
+- **Key Design Decisions**:
+  - **Whitelist approach**: Only explicitly listed fields are returned; others blocked
+  - **Conservative default**: Unknown fields are pseudonymized and flagged for review
+  - **Type-aware tokens**: Emails look like emails, IDs stay numeric
+  - **Read-only**: Only SELECT queries allowed, max 500 rows
+- **Next**: Run `npm install` in status container, rebuild, test
+- **Blockers**: None
+
+### 2026-01-19 - MCP Log Analysis Phase 2 (Issue #25)
+- **Status**: ✅ Web UI integration complete, ready for testing
+- **Branch**: `feature/mcp-log-analysis`
+- **Completed**:
+  - Added `/api/log-analysis` endpoint to ai-support-helper (server.js)
+  - Replaced `ModSupportAIAssistant` with `ModSupportLogAnalysis` in ModTools support page
+  - Tested end-to-end: pseudonymizer → Claude analysis → response
+  - Verified services accessible via Traefik: mcp-sanitizer.localhost, ai-support-helper.localhost
+- **Files Modified**:
+  - `ai-support-helper/server.js` - Added Anthropic client and `/api/log-analysis` endpoint
+  - `iznik-nuxt3/modtools/pages/support/[[id]].vue` - Changed to use ModSupportLogAnalysis
+- **Architecture**:
+  - Frontend (ModSupportLogAnalysis) → mcp-sanitizer.localhost (PII tokenization)
+  - Frontend → ai-support-helper.localhost/api/log-analysis (Claude analysis)
+  - ai-support-helper → mcp-pseudonymizer (Loki query + pseudonymization)
+  - Response de-tokenized in browser using local mapping
+- **To Test**: Open ModTools → Support → Logs → "AI Log Analysis" tab
+- **Next**: Test via browser, handle any CORS or connectivity issues
+- **Blockers**: None
+
+### 2026-01-18 - MCP Log Analysis Phase 1 (Issue #25)
+- **Status**: ✅ Local architecture working
+- **Branch**: `feature/mcp-log-analysis`
+- **Completed**:
+  - Discovered existing MCP implementation in `support-tools/` (3 containers)
+  - Created `docker-compose.mcp-live.yml` for live Loki SSH tunnel
+  - Added MCP API endpoints to status-nuxt (`/api/mcp/status`, `/api/mcp/query`)
+  - Tested end-to-end with local Loki: Pseudonymization working correctly
 
 ### 2026-01-18 - services.php Corruption Fix (CircleCI)
 - **Status**: Fix pushed, monitoring CI
