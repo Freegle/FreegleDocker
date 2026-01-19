@@ -6,8 +6,8 @@ const statusStore = useStatusStore()
 
 // Service IDs grouped by tab/category
 const tabServices: Record<string, string[]> = {
-  freegle: ['freegle-dev-local', 'freegle-dev-live', 'freegle-prod-local'],
-  modtools: ['modtools-dev-local', 'modtools-dev-live', 'modtools-prod-local'],
+  freegle: ['freegle-dev-local', 'freegle-prod-local'],
+  modtools: ['modtools-dev-local', 'modtools-prod-local'],
   backend: ['apiv1', 'apiv2', 'batch', 'host-scripts'],
   devtools: ['phpmyadmin', 'mailpit', 'loki', 'grafana', 'playwright', 'status'],
   testing: [], // Testing tab shows test runners, not services
