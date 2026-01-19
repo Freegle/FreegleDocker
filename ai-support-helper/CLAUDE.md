@@ -13,9 +13,11 @@ You have two MCP tools to investigate issues:
    - Chat messages: `SELECT id, date, type FROM chat_messages WHERE chatid = ?`
 
 2. **Activity logs** - Use `mcp__freegle-logs__query_logs` for system logs (logins, errors)
-   - Note: Local development may not have logs - use database queries instead
+   - Query with LogQL syntax: `{app="freegle"}` for all logs
+   - Filter by level: `{app="freegle"} | level="error"`
+   - Filter by user: `{app="freegle"} |= "user_id":123`
 
-**IMPORTANT**: Always try database queries first - they're more reliable. Use logs only for error investigation.
+**IMPORTANT**: Use BOTH database queries AND log queries for a full picture. Database queries show stored user data, while logs show recent activity and any errors.
 
 All personal information is automatically hidden for privacy - you'll see codes like `USER_abc123` instead of real names or emails.
 
