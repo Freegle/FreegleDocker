@@ -347,7 +347,31 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-01-19 - AI Support Helper Testing & Bug Fixes
+### 2026-01-19 - AI Support Helper Testing & Bug Fixes (Session 2)
+- **Status**: 🔄 Loki queries working, MCP server timeout issue identified
+- **Branch**: `feature/mcp-log-analysis` + `master` (for entrypoint fix)
+- **Completed**:
+  - **CI Fix (master)**: Fixed ai-support-helper entrypoint.sh to not exit when ANTHROPIC_API_KEY missing
+  - **Loki Queries Working**: Verified MCP /api/mcp/query endpoint returns logs from Loki
+  - **MCP Config Fix**: Disabled REQUIRE_APPROVAL for automated MCP server usage
+  - **CI Passed**: Pipeline 1388 succeeded after entrypoint fix
+- **Identified Issue**:
+  - Claude CLI with --mcp-config times out when initializing MCP servers
+  - Without MCP config, Claude responds fast (~3 seconds)
+  - With MCP config, Claude hangs (>2 minutes)
+  - Root cause likely MCP server initialization latency
+- **Loki Data Available**:
+  - `api`: 2581 entries (API request logs)
+  - `api_headers`: 2844 entries
+  - `client`: 18 entries (browser logs)
+  - `email`: 3 entries
+  - `logs_table`: 1 entry (PHP system logs - sparse in dev)
+- **Files Modified**:
+  - `ai-support-helper/entrypoint.sh` - Allow startup without API key (master)
+  - `ai-support-helper/mcp-config.json` - Set REQUIRE_APPROVAL=false
+- **Next**: Debug MCP server initialization timeout
+
+### 2026-01-19 - AI Support Helper Testing & Bug Fixes (Session 1)
 - **Status**: ✅ All query types working
 - **Branch**: `feature/mcp-log-analysis`
 - **Completed**:
