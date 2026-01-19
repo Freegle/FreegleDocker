@@ -4,14 +4,16 @@
       "command": "node",
       "args": ["/app/mcp-log-server.js"],
       "env": {
-        "MCP_QUERY_URL": "http://freegle-status:3000/api/mcp/query"
+        "MCP_QUERY_URL": "http://freegle-status:3000/api/mcp/query",
+        "REQUIRE_APPROVAL": "false"
       }
     },
     "freegle-db": {
       "command": "node",
       "args": ["/app/mcp-db-server.js"],
       "env": {
-        "STATUS_URL": "http://freegle-status:3000"
+        "STATUS_URL": "http://freegle-status:3000",
+        "REQUIRE_APPROVAL": "false"
       }
     }
   },
