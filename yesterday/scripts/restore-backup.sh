@@ -82,7 +82,13 @@ fi
 
 echo "Stopping all Docker containers..."
 update_status "stopping" "Stopping containers..."
-docker compose down
+# Aggressive shutdown - we're restoring from backup so don't need to preserve anything
+docker compose down --timeout 10 --remove-orphans 2>/dev/null || true
+# Force stop any remaining containers (in case compose down didn't get everything)
+docker stop $(docker ps -q) 2>/dev/null || true
+# Remove all containers to prevent name conflicts
+docker rm -f $(docker ps -aq) 2>/dev/null || true
+echo "✅ All containers stopped and removed"
 
 echo "Getting volume path..."
 VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}' 2>/dev/null || echo "")
