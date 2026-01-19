@@ -47,6 +47,13 @@ limits_config:
   # Enable volume for Grafana Logs Drilldown
   volume_enabled: true
 
+  # Query limits - generous for support tools
+  max_query_parallelism: 32
+  max_query_series: 5000
+  max_query_lookback: 744h  # Full 31 days
+  query_timeout: 300s  # 5 minutes
+  max_entries_limit_per_query: 10000
+
   # Default retention: 31 days (744h)
   retention_period: 744h
 

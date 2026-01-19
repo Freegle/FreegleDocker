@@ -69,9 +69,42 @@ setInterval(() => {
   stmts.cleanExpiredSessions.run()
 }, 60000)
 
+// Counter for generating unique numeric IDs
+let numericIdCounter = 9999000000
+
+// Common email domains to preserve
+const COMMON_EMAIL_DOMAINS = [
+  'gmail.com', 'googlemail.com',
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'yahoo.com', 'yahoo.co.uk',
+  'icloud.com', 'me.com', 'mac.com',
+  'aol.com',
+  'protonmail.com', 'proton.me',
+  'btinternet.com', 'btopenworld.com',
+  'sky.com',
+  'virginmedia.com',
+  'talktalk.net',
+  'ntlworld.com',
+]
+
+/**
+ * Extract and normalize email domain for pseudonymization.
+ * Common providers keep their domain, others become 'other.com'
+ */
+function extractEmailDomain(email) {
+  const domain = email.split('@')[1]?.toLowerCase()
+  if (!domain) return 'other.com'
+
+  if (COMMON_EMAIL_DOMAINS.includes(domain)) {
+    return domain
+  }
+  return 'other.com'
+}
+
 /**
  * Get or create a persistent token for a value.
  * Same value always maps to same token for cross-session correlation.
+ * Tokens maintain the same type as the original value.
  */
 function getOrCreateToken(value, fieldType) {
   const normalizedValue = value.toLowerCase().trim()
@@ -82,10 +115,39 @@ function getOrCreateToken(value, fieldType) {
     return existing.token
   }
 
-  // Create new token
-  const token = `${fieldType}_${uuidv4().slice(0, 8)}`
-  stmts.insertToken.run(token, normalizedValue, fieldType)
+  // Create new token that maintains the same type as original
+  let token
+  const shortId = uuidv4().slice(0, 6)
 
+  switch (fieldType) {
+    case 'USER':
+      // Keep user IDs numeric
+      numericIdCounter++
+      token = numericIdCounter.toString()
+      break
+    case 'EMAIL':
+      // Make it look like an email, preserving the domain type
+      const emailDomain = extractEmailDomain(value)
+      token = `user_${shortId}@${emailDomain}`
+      break
+    case 'IP':
+      // Make it look like an internal IP
+      token = `10.0.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
+      break
+    case 'PHONE':
+      // Make it look like a phone number
+      token = `07700${Math.floor(100000 + Math.random() * 900000)}`
+      break
+    case 'POSTCODE':
+      // Keep postcode format
+      token = `ZZ${shortId.slice(0, 2).toUpperCase()} 9ZZ`
+      break
+    default:
+      // Default format with prefix
+      token = `${fieldType}_${shortId}`
+  }
+
+  stmts.insertToken.run(token, normalizedValue, fieldType)
   return token
 }
 
@@ -165,6 +227,17 @@ function pseudonymizeText(text) {
     const token = getOrCreateToken(postcode, 'POSTCODE')
     tokensUsed.add(token)
     result = result.replace(new RegExp(escapeRegex(postcode), 'gi'), token)
+  }
+
+  // Replace user IDs (6+ digit numbers) - do this AFTER other patterns
+  // to avoid replacing parts of emails, IPs, etc.
+  const userIds = result.match(PII_PATTERNS.userId) || []
+  for (const userId of userIds) {
+    // Skip if it looks like part of an IP (already replaced) or timestamp
+    if (userId.length > 13) continue // Skip timestamps (13+ digits)
+    const token = getOrCreateToken(userId, 'USER')
+    tokensUsed.add(token)
+    result = result.replace(new RegExp(`\\b${escapeRegex(userId)}\\b`, 'g'), token)
   }
 
   // Round coordinates to ~1km precision for privacy

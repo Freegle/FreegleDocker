@@ -138,10 +138,10 @@ Follow the browser authentication flow.
 
 ### Docker Container
 
-- `claude-agent-sdk/Dockerfile` - Container setup
-- `claude-agent-sdk/package.json` - Dependencies
-- `claude-agent-sdk/server.js` - HTTP polling server
-- `claude-agent-sdk/agent.js` - Claude Agent SDK wrapper
+- `ai-support-helper/Dockerfile` - Container setup
+- `ai-support-helper/package.json` - Dependencies
+- `ai-support-helper/server.js` - HTTP polling server
+- `ai-support-helper/agent.js` - Claude Agent SDK wrapper
 
 ### ModTools Component
 
@@ -154,7 +154,7 @@ The ai-support-helper service is defined in `docker-compose.yml`:
 ```yaml
 ai-support-helper:
   build:
-    context: ./claude-agent-sdk
+    context: ./ai-support-helper
   container_name: freegle-ai-support-helper
   ports:
     - "8083:3000"

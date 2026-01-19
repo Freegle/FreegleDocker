@@ -37,6 +37,17 @@ export default defineEventHandler(async () => {
       results.push(`testmod@test.com: Failed - ${error.message}`)
     }
 
+    // Grant Support role to testmod@test.com
+    try {
+      execSync(
+        `docker exec freegle-percona mysql -u root -piznik iznik -e "UPDATE users SET systemrole = 'Support' WHERE id = (SELECT userid FROM users_emails WHERE email = 'testmod@test.com')"`,
+        { encoding: 'utf8', timeout: 10000 }
+      )
+      results.push('testmod@test.com: Granted Support role')
+    } catch (error: any) {
+      results.push(`testmod@test.com: Failed to grant Support role - ${error.message}`)
+    }
+
     return {
       success: true,
       message: 'Users recreated successfully',

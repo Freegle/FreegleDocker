@@ -18,7 +18,9 @@
     "pinia": "^2.2.0",
     "bootstrap": "^5.3.3",
     "bootstrap-vue-next": "^0.24.23",
-    "@bootstrap-vue-next/nuxt": "^0.24.23"
+    "@bootstrap-vue-next/nuxt": "^0.24.23",
+    "mysql2": "^3.11.0",
+    "uuid": "^11.0.0"
   },
   "devDependencies": {
     "@nuxt/devtools": "^1.6.0",

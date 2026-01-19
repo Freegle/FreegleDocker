@@ -13,9 +13,16 @@
  */
 
 const express = require('express')
+const cors = require('cors')
 const { v4: uuidv4 } = require('uuid')
 
 const app = express()
+app.use(cors({
+  origin: true, // Allow all origins (*.localhost domains)
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage'],
+}))
 app.use(express.json())
 
 const PSEUDONYMIZER_URL = process.env.PSEUDONYMIZER_URL || 'http://pseudonymizer:8080'
@@ -24,8 +31,45 @@ const PSEUDONYMIZER_URL = process.env.PSEUDONYMIZER_URL || 'http://pseudonymizer
 // Real persistence is in Container 3's SQLite database
 const tokenCache = new Map()
 
+// Counter for generating unique numeric IDs
+let numericIdCounter = 9999000000
+
+// Common email domains to preserve
+const COMMON_EMAIL_DOMAINS = [
+  'gmail.com', 'googlemail.com',
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'yahoo.com', 'yahoo.co.uk',
+  'icloud.com', 'me.com', 'mac.com',
+  'aol.com',
+  'protonmail.com', 'proton.me',
+  'btinternet.com', 'btopenworld.com',
+  'sky.com',
+  'virginmedia.com',
+  'talktalk.net',
+  'ntlworld.com',
+]
+
+/**
+ * Extract and normalize email domain for pseudonymization.
+ * Common providers keep their domain, others become 'other.com'
+ */
+function extractEmailDomain(email) {
+  const domain = email.split('@')[1]?.toLowerCase()
+  if (!domain) return 'other.com'
+
+  if (COMMON_EMAIL_DOMAINS.includes(domain)) {
+    return domain
+  }
+  return 'other.com'
+}
+
 /**
  * Generate or retrieve a consistent token for a value.
+ * Tokens maintain the same type as the original value:
+ * - USER IDs -> numeric (e.g., 9999000001)
+ * - EMAILS -> email-like (e.g., user_abc123@example.pseudonym)
+ * - IPs -> IP-like (e.g., 10.0.0.xxx)
+ * - Others -> prefixed tokens
  */
 function getOrCreateToken(value, fieldType) {
   const key = `${fieldType}:${value.toLowerCase().trim()}`
@@ -34,9 +78,38 @@ function getOrCreateToken(value, fieldType) {
     return tokenCache.get(key)
   }
 
-  const token = `${fieldType}_${uuidv4().slice(0, 8)}`
-  tokenCache.set(key, token)
+  let token
+  const shortId = uuidv4().slice(0, 6)
 
+  switch (fieldType) {
+    case 'USER':
+      // Keep user IDs numeric - use high numbers unlikely to be real
+      numericIdCounter++
+      token = numericIdCounter.toString()
+      break
+    case 'EMAIL':
+      // Make it look like an email, preserving the domain type
+      const emailDomain = extractEmailDomain(value)
+      token = `user_${shortId}@${emailDomain}`
+      break
+    case 'IP':
+      // Make it look like an internal IP
+      token = `10.0.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
+      break
+    case 'PHONE':
+      // Make it look like a phone number
+      token = `07700${Math.floor(100000 + Math.random() * 900000)}`
+      break
+    case 'POSTCODE':
+      // Keep postcode format
+      token = `ZZ${shortId.slice(0, 2).toUpperCase()} 9ZZ`
+      break
+    default:
+      // Default format with prefix
+      token = `${fieldType}_${shortId}`
+  }
+
+  tokenCache.set(key, token)
   return token
 }
 
