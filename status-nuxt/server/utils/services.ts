@@ -173,6 +173,15 @@ export const services: ServiceConfig[] = [
     description: 'Log aggregation service',
   },
   {
+    id: 'alloy',
+    name: 'Alloy',
+    category: 'devtools',
+    container: 'freegle-alloy',
+    healthCheck: { type: 'docker', timeout: 3000 },
+    actions: ['restart', 'logs'],
+    description: 'Log shipper (ships API logs to Loki)',
+  },
+  {
     id: 'grafana',
     name: 'Grafana',
     category: 'devtools',

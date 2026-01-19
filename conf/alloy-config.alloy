@@ -1,0 +1,87 @@
+// Grafana Alloy configuration for Docker development
+// Ships JSON logs from Go API to Loki
+
+// Discovery for JSON log files from all API containers
+// Each container writes to its own subdirectory
+local.file_match "freegle_logs" {
+  path_targets = [
+    { __path__ = "/var/log/freegle/apiv1/*.log" },
+    { __path__ = "/var/log/freegle/apiv2/*.log" },
+    { __path__ = "/var/log/freegle/batch/*.log" },
+  ]
+}
+
+// JSON log file source
+loki.source.file "freegle_json_logs" {
+  targets    = local.file_match.freegle_logs.targets
+  forward_to = [loki.process.freegle_process.receiver]
+  tail_from_end = true
+}
+
+// Process logs - extract JSON and add labels
+loki.process "freegle_process" {
+  forward_to = [loki.write.loki_local.receiver]
+
+  stage.json {
+    expressions = {
+      timestamp = "timestamp",
+      labels    = "labels",
+      message   = "message",
+    }
+  }
+
+  stage.json {
+    source     = "labels"
+    expressions = {
+      app         = "app",
+      source      = "source",
+      level       = "level",
+      event_type  = "event_type",
+      api_version = "api_version",
+      method      = "method",
+      status_code = "status_code",
+      type        = "type",
+      subtype     = "subtype",
+      user_id     = "user_id",
+      reply_source = "reply_source",
+    }
+  }
+
+  stage.static_labels {
+    values = {
+      hostname = "docker-dev",
+    }
+  }
+
+  stage.labels {
+    values = {
+      app         = "app",
+      source      = "source",
+      level       = "level",
+      event_type  = "event_type",
+      api_version = "api_version",
+      method      = "method",
+      status_code = "status_code",
+      type        = "type",
+      subtype     = "subtype",
+      user_id     = "user_id",
+      reply_source = "reply_source",
+    }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339"
+  }
+
+  stage.output {
+    source = "message"
+  }
+}
+
+// Write to local Loki container
+loki.write "loki_local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

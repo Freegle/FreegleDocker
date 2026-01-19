@@ -330,7 +330,7 @@ services:
 
   ai-support-helper:
     build:
-      context: ./claude-agent-sdk
+      context: ./ai-support-helper
       network: host
     container_name: freegle-ai-support-helper
     networks:
@@ -457,8 +457,10 @@ services:
       - MAXMIND_KEY=${MAXMIND_KEY:-}
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
+      - LOKI_JSON_PATH=/var/log/freegle
     volumes:
       - geoip_data:/var/lib/GeoIP
+      - apiv1_logs:/var/log/freegle
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/api/config || exit 1"]
       interval: 10s
@@ -969,6 +971,23 @@ services:
       - "traefik.http.routers.loki.entrypoints=web"
       - "traefik.http.services.loki.loadbalancer.server.port=3100"
 
+  # Alloy - Log shipper (ships JSON logs from all API containers to Loki)
+  alloy:
+    container_name: freegle-alloy
+    image: grafana/alloy:v1.4.2
+    networks:
+      - default
+    volumes:
+      - apiv1_logs:/var/log/freegle/apiv1:ro
+      - apiv2_logs:/var/log/freegle/apiv2:ro
+      - batch_logs:/var/log/freegle/batch:ro
+      - ./conf/alloy-config.alloy:/etc/alloy/config.alloy:ro
+    command: run /etc/alloy/config.alloy
+    restart: "no"
+    depends_on:
+      loki:
+        condition: service_healthy
+
   # Grafana - Log visualization (optional, depends on Loki)
   grafana:
     container_name: freegle-grafana
@@ -1005,6 +1024,7 @@ services:
     volumes:
       - ./iznik-batch:/var/www/html
       - ./iznik-server:/var/www/iznik:ro
+      - batch_logs:/var/log/freegle
     depends_on:
       percona:
         condition: service_healthy
@@ -1045,6 +1065,7 @@ services:
       - AMP_API_URL=http://apiv2.localhost/amp
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
+      - LOKI_JSON_PATH=/var/log/freegle
       - FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod,Digest,UnifiedDigest,DonationThank,DonationAsk
       # CI=true skips supervisor startup to prevent Laravel bootstrap race conditions.
       # Multiple supervisor workers bootstrapping Laravel simultaneously can corrupt services.php.
@@ -1152,7 +1173,11 @@ volumes:
     driver: local
   grafana-data:
     driver: local
+  apiv1_logs:
+    driver: local
   apiv2_logs:
+    driver: local
+  batch_logs:
     driver: local
   mcp-pseudonymizer-data:
     driver: local

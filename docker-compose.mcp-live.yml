@@ -1,0 +1,18 @@
+# MCP with Live Loki (via user's SSH tunnel)
+#
+# Usage:
+#   1. Start SSH tunnel in a terminal:
+#      ssh -L 3101:localhost:3100 docker-internal.ilovefreegle.org
+#
+#   2. Start MCP with this override:
+#      docker-compose -f docker-compose.yml -f docker-compose.mcp-live.yml up -d mcp-pseudonymizer mcp-interface mcp-query-sanitizer
+#
+# This connects the MCP system to live Loki logs instead of local Loki.
+
+services:
+  mcp-pseudonymizer:
+    environment:
+      - LOKI_URL=http://host.docker.internal:3101
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on: []  # Remove dependency on local loki

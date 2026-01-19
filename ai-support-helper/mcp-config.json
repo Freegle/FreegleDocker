@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "freegle-logs": {
+      "command": "node",
+      "args": ["/app/mcp-log-server.js"],
+      "env": {
+        "MCP_QUERY_URL": "http://freegle-status:3000/api/mcp/query"
+      }
+    },
+    "freegle-db": {
+      "command": "node",
+      "args": ["/app/mcp-db-server.js"],
+      "env": {
+        "STATUS_URL": "http://freegle-status:3000"
+      }
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Read(/app/codebase/**)",
+      "Glob(/app/codebase/**)",
+      "Grep(/app/codebase/**)",
+      "mcp__freegle-logs__query_logs",
+      "mcp__freegle-db__query_database"
+    ],
+    "deny": [
+      "Bash",
+      "Write",
+      "Edit",
+      "WebFetch",
+      "WebSearch",
+      "Task"
+    ]
+  }
+}
