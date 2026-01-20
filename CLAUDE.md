@@ -347,22 +347,27 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-01-20 - AI Support Helper Privacy Review Removal
+### 2026-01-20 - AI Support Helper Debug Modal Replacement
 - **Status**: ✅ Complete
 - **Branch**: `feature/mcp-log-analysis`
-- **Changes Made**:
-  - Removed Privacy Review toggle from UI
-  - Removed all human-in-the-loop approval modals (Privacy Review, MCP Query/Results, DB Query/Results)
-  - Removed ~280 lines of approval-related code (data properties, methods, styles)
-  - Updated debug panel styling: light background with colored outline borders
-  - Renamed debug panel labels for clarity:
-    - "Debug: Data Flow" → "AI Data Access Log"
-    - Entry labels now show "→ AI Requested" and "← Data Sent to AI"
-    - Token section: "PII tokens (real values hidden from AI)"
+- **Changes Made (Session 2)**:
+  - Replaced inline debug panel with summary modal popup
+  - Debug toggle checkbox → Debug button that opens modal
+  - New "MCP Data Sent to AI" modal shows:
+    - Unique values sent to AI from MCP tools (not user queries)
+    - Frequency count for each value
+    - Pseudonymized status (✓ green badge) or PII warning (⚠ red badge)
+    - "Real Value" column when "Show PII" toggle is on
+  - Added `mcpDataSummary` computed property to aggregate token data
+  - Cleaned up unused methods: `formatDebugData`, `formatStreamLabels`, `formatLogTimestamp`
+  - Removed ~70 lines of old debug panel styles
+- **Changes Made (Session 1)**:
+  - Removed Privacy Review toggle and all human-in-the-loop approval modals
+  - Removed ~280 lines of approval-related code
 - **Files Modified**:
   - `iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue`
-- **Verified**: Privacy Review toggle gone, debug panel shows light styling with clear labels
-- **Next**: Commit and push changes
+- **Verified**: Debug button opens modal, shows empty state correctly, legend displays
+- **Commit**: 51dcc765 pushed to feature/mcp-log-analysis
 
 ### 2026-01-18 - services.php Corruption Fix (CircleCI)
 - **Status**: Fix pushed, monitoring CI
