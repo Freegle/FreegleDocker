@@ -347,6 +347,23 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-20 - AI Support Helper Privacy Review Removal
+- **Status**: ✅ Complete
+- **Branch**: `feature/mcp-log-analysis`
+- **Changes Made**:
+  - Removed Privacy Review toggle from UI
+  - Removed all human-in-the-loop approval modals (Privacy Review, MCP Query/Results, DB Query/Results)
+  - Removed ~280 lines of approval-related code (data properties, methods, styles)
+  - Updated debug panel styling: light background with colored outline borders
+  - Renamed debug panel labels for clarity:
+    - "Debug: Data Flow" → "AI Data Access Log"
+    - Entry labels now show "→ AI Requested" and "← Data Sent to AI"
+    - Token section: "PII tokens (real values hidden from AI)"
+- **Files Modified**:
+  - `iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue`
+- **Verified**: Privacy Review toggle gone, debug panel shows light styling with clear labels
+- **Next**: Commit and push changes
+
 ### 2026-01-18 - services.php Corruption Fix (CircleCI)
 - **Status**: Fix pushed, monitoring CI
 - **Root Cause Analysis**:
