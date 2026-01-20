@@ -110,33 +110,25 @@ export const services: ServiceConfig[] = [
 
   // ============================================
   // MCP Tools (Privacy-preserving log analysis)
+  // Consolidated 2-container design
   // ============================================
   {
     id: 'mcp-sanitizer',
     name: 'MCP Sanitizer',
     category: 'mcp',
     container: 'freegle-mcp-sanitizer',
-    healthCheck: { type: 'docker', timeout: 3000 },
-    actions: ['restart', 'logs'],
-    description: 'Log sanitization service',
+    healthCheck: { type: 'http', path: '/health', timeout: 3000 },
+    actions: ['restart', 'rebuild', 'logs'],
+    description: 'Sanitization, pseudonymization, token storage, Loki queries',
   },
   {
-    id: 'mcp-interface',
-    name: 'MCP Interface',
+    id: 'ai-support-helper',
+    name: 'AI Support Helper',
     category: 'mcp',
-    container: 'freegle-mcp-interface',
-    healthCheck: { type: 'docker', timeout: 3000 },
-    actions: ['restart', 'logs'],
-    description: 'MCP interface service',
-  },
-  {
-    id: 'mcp-pseudonymizer',
-    name: 'MCP Pseudonymizer',
-    category: 'mcp',
-    container: 'freegle-mcp-pseudonymizer',
-    healthCheck: { type: 'docker', timeout: 3000 },
-    actions: ['restart', 'logs'],
-    description: 'Data pseudonymization service',
+    container: 'freegle-ai-support-helper',
+    healthCheck: { type: 'http', path: '/health', timeout: 3000 },
+    actions: ['restart', 'rebuild', 'logs'],
+    description: 'Claude-powered AI analysis for support staff',
   },
 
   // ============================================
