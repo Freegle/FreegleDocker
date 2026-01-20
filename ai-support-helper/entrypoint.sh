@@ -4,14 +4,13 @@ set -e
 echo "=== AI Support Helper Container Starting ==="
 echo "Running as user: $(whoami)"
 
-# Check for Anthropic API key (required for new SDK)
+# Check for Anthropic API key (optional - server handles missing key gracefully)
 if [ -z "$ANTHROPIC_API_KEY" ]; then
-  echo "ERROR: ANTHROPIC_API_KEY not set"
-  echo "Add ANTHROPIC_API_KEY to your .env file"
-  exit 1
+  echo "WARNING: ANTHROPIC_API_KEY not set - AI features will be disabled"
+  echo "Add ANTHROPIC_API_KEY to your .env file to enable AI support"
+else
+  echo "Anthropic API key configured"
 fi
-
-echo "Anthropic API key configured"
 
 echo "=== Starting Node.js server ==="
 exec node server.js

@@ -195,6 +195,7 @@ services:
       - "traefik.http.routers.freegle-dev.entrypoints=freegle-dev"
       - "traefik.http.routers.freegle-dev.tls.certresolver=letsencrypt"
       - "traefik.http.routers.freegle-dev.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.freegle-dev.service=freegle-dev"
       - "traefik.http.services.freegle-dev.loadbalancer.server.port=3002"
     environment:
       - IZNIK_API_V1=https://${YESTERDAY_HOSTNAME}:8181/api
@@ -214,6 +215,7 @@ services:
       - "traefik.http.routers.freegle-prod.entrypoints=freegle-prod"
       - "traefik.http.routers.freegle-prod.tls.certresolver=letsencrypt"
       - "traefik.http.routers.freegle-prod.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.freegle-prod.service=freegle-prod"
       - "traefik.http.services.freegle-prod.loadbalancer.server.port=3000"
     environment:
       - USER_SITE=https://${YESTERDAY_HOSTNAME}:3012
@@ -232,6 +234,7 @@ services:
       - "traefik.http.routers.modtools-dev.entrypoints=modtools-dev"
       - "traefik.http.routers.modtools-dev.tls.certresolver=letsencrypt"
       - "traefik.http.routers.modtools-dev.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.modtools-dev.service=modtools-dev"
       - "traefik.http.services.modtools-dev.loadbalancer.server.port=3000"
     environment:
       - IZNIK_API_V1=https://${YESTERDAY_HOSTNAME}:8181/api
@@ -251,6 +254,7 @@ services:
       - "traefik.http.routers.modtools-prod.entrypoints=modtools-prod"
       - "traefik.http.routers.modtools-prod.tls.certresolver=letsencrypt"
       - "traefik.http.routers.modtools-prod.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.modtools-prod.service=modtools-prod"
       - "traefik.http.services.modtools-prod.loadbalancer.server.port=3000"
     environment:
       - USER_SITE=https://${YESTERDAY_HOSTNAME}:3013
