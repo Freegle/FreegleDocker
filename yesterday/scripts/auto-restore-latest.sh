@@ -89,7 +89,7 @@ echo "Starting automatic restoration via API..."
 echo ""
 
 # Trigger restoration via API so progress is tracked
-API_RESPONSE=$(curl -s -X POST http://localhost:8081/api/backups/${LATEST_DATE}/load)
+API_RESPONSE=$(curl -s -X POST http://localhost:8082/api/backups/${LATEST_DATE}/load)
 echo "API Response: $API_RESPONSE"
 
 # Check if API accepted the request
@@ -100,7 +100,7 @@ if echo "$API_RESPONSE" | grep -q "Started loading"; then
 
     # Poll for completion
     while true; do
-        PROGRESS=$(curl -s http://localhost:8081/api/backups/${LATEST_DATE}/progress)
+        PROGRESS=$(curl -s http://localhost:8082/api/backups/${LATEST_DATE}/progress)
         STATUS=$(echo "$PROGRESS" | jq -r '.status')
         PERCENT=$(echo "$PROGRESS" | jq -r '.progress')
         MESSAGE=$(echo "$PROGRESS" | jq -r '.message')
