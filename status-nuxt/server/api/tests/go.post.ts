@@ -4,7 +4,7 @@ import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../..
 export default defineEventHandler(async (event) => {
   console.log('Starting Go tests...')
 
-  const query = getQuery(event)
+  const query = getQuery(event) || {}
   const withCoverage = query.coverage === 'true'
 
   // Check if already running

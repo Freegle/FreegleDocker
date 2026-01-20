@@ -2,7 +2,7 @@ import { spawn, execSync } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
 export default defineEventHandler(async (event) => {
-  const query = getQuery(event)
+  const query = getQuery(event) || {}
   const body = await readBody(event).catch(() => ({}))
 
   // Get test file and name from query params or body
