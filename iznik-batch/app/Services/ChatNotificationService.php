@@ -336,9 +336,7 @@ class ChatNotificationService
 
         if ($isOwnMessage) {
             // Only send copy of own messages if user has this preference enabled.
-            // TN users always get their own messages.
-            $wantsCopy = $user->notifsOn(User::NOTIFS_EMAIL_MINE) || $user->isTN();
-            if (! $wantsCopy) {
+            if (! $user->notifsOn(User::NOTIFS_EMAIL_MINE)) {
                 return false;
             }
         }
