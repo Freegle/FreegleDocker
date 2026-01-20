@@ -202,8 +202,8 @@ async function executeWithModel(modelIndex, prompt, claudeSessionId, mcpConfigPa
     const command = `script -qc "${claudeCommand.replace(/"/g, '\\"')}" /dev/null`
 
     console.log(`[ClaudeRunner] Executing with ${model.id}...`)
-    if (frontendSessionId) {
-      console.log(`[ClaudeRunner]   Frontend session: ${frontendSessionId}`)
+    if (mcpOptions.frontendSessionId) {
+      console.log(`[ClaudeRunner]   Frontend session: ${mcpOptions.frontendSessionId}`)
     }
     const startTime = Date.now()
 
