@@ -25,6 +25,12 @@ const MCP_POLL_URL = `${STATUS_URL}/api/mcp/poll`
 // Whether to require human approval for queries (default: true for safety)
 const REQUIRE_APPROVAL = process.env.REQUIRE_APPROVAL !== 'false'
 
+// Frontend session ID for filtering queries (passed from ai-support-helper)
+const FRONTEND_SESSION_ID = process.env.FRONTEND_SESSION_ID || null
+
+// Custom Loki URL for SSH tunnels to live servers (optional)
+const LOKI_URL = process.env.LOKI_URL || null
+
 /**
  * Normalize time range - accepts any valid duration format
  */
@@ -83,11 +89,27 @@ async function executeQueryDirect(queryPayload, maxRetries = 2) {
 async function executeQueryWithApproval(query, timeRange, limit) {
   // Step 1: Register query for approval
   process.stderr.write(`Registering query for approval: ${query}\n`)
+  if (FRONTEND_SESSION_ID) {
+    process.stderr.write(`  Frontend session: ${FRONTEND_SESSION_ID}\n`)
+  }
+  if (LOKI_URL) {
+    process.stderr.write(`  Custom Loki URL: ${LOKI_URL}\n`)
+  }
+
+  const requestPayload = {
+    query,
+    timeRange,
+    limit,
+    frontendSessionId: FRONTEND_SESSION_ID, // For filtering in frontend
+  }
+  if (LOKI_URL) {
+    requestPayload.lokiUrl = LOKI_URL
+  }
 
   const registerResponse = await fetch(MCP_REQUEST_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, timeRange, limit }),
+    body: JSON.stringify(requestPayload),
   })
 
   if (!registerResponse.ok) {
@@ -210,6 +232,20 @@ rl.on('line', async (line) => {
           const limit = args.limit || 100
 
           process.stderr.write(`Executing query: ${args.query} (range: ${timeRange}, limit: ${limit}, approval: ${REQUIRE_APPROVAL})\n`)
+          if (LOKI_URL) {
+            process.stderr.write(`Using custom Loki URL: ${LOKI_URL}\n`)
+          }
+
+          // Build query payload with optional custom Loki URL
+          const queryPayload = {
+            query: args.query,
+            start: timeRange,
+            limit,
+            debug: false, // IMPORTANT: Never include mapping for AI
+          }
+          if (LOKI_URL) {
+            queryPayload.lokiUrl = LOKI_URL
+          }
 
           let data
           if (REQUIRE_APPROVAL) {
@@ -217,12 +253,7 @@ rl.on('line', async (line) => {
             data = await executeQueryWithApproval(args.query, timeRange, limit)
           } else {
             // Direct execution (no approval)
-            data = await executeQueryDirect({
-              query: args.query,
-              start: timeRange,
-              limit,
-              debug: false, // IMPORTANT: Never include mapping for AI
-            })
+            data = await executeQueryDirect(queryPayload)
           }
 
           // Format results for AI - include sessionId but NOT the mapping

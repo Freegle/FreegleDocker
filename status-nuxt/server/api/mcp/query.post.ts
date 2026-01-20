@@ -19,6 +19,7 @@ interface QueryRequest {
   end?: string
   limit?: number
   debug?: boolean
+  lokiUrl?: string // Optional custom Loki URL (for SSH tunnel to live servers)
 }
 
 export default defineEventHandler(async (event) => {
@@ -48,12 +49,17 @@ export default defineEventHandler(async (event) => {
 
     const pseudonymizerUrl = 'http://freegle-mcp-pseudonymizer:8080/query'
 
-    const queryPayload = {
+    const queryPayload: any = {
       sessionId,
       query: body.query,
       start: body.start || '1h',
       end: body.end,
       limit: body.limit || 100,
+    }
+
+    // Pass custom Loki URL if provided (for SSH tunnels to live servers)
+    if (body.lokiUrl) {
+      queryPayload.lokiUrl = body.lokiUrl
     }
 
     debugInfo.steps.push({
