@@ -624,6 +624,14 @@ app.get('/api/restore-status', (req, res) => {
     proxyReq.end();
 });
 
+// CORS preflight for current-backup endpoint
+app.options('/api/current-backup', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, sentry-trace, baggage');
+    res.status(204).end();
+});
+
 // Public current-backup endpoint - no auth required
 // Also used by ModTools dashboard
 app.get('/api/current-backup', (req, res) => {
