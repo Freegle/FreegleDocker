@@ -647,6 +647,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle-dev-local.rule=Host(`freegle-dev-local.localhost`)"
       - "traefik.http.routers.freegle-dev-local.entrypoints=web"
+      - "traefik.http.routers.freegle-dev-local.service=freegle-dev-local"
       - "traefik.http.services.freegle-dev-local.loadbalancer.server.port=3002"
 
   # Development build with LIVE/PRODUCTION APIs - for mobile dev and testing with real data
@@ -745,6 +746,7 @@ services:
       - "traefik.http.routers.freegle-prod-local.rule=Host(`freegle-prod-local.localhost`)"
       - "traefik.http.routers.freegle-prod-local.entrypoints=web"
       - "traefik.http.routers.freegle-prod-local.middlewares=retry-prod"
+      - "traefik.http.routers.freegle-prod-local.service=freegle-prod-local"
       - "traefik.http.services.freegle-prod-local.loadbalancer.server.port=3003"
       # Retry middleware for connection resilience under parallel load
       - "traefik.http.middlewares.retry-prod.retry.attempts=3"
@@ -798,6 +800,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools-dev-local.rule=Host(`modtools-dev-local.localhost`)"
       - "traefik.http.routers.modtools-dev-local.entrypoints=web"
+      - "traefik.http.routers.modtools-dev-local.service=modtools-dev-local"
       - "traefik.http.services.modtools-dev-local.loadbalancer.server.port=3000"
 
   # Development mode with LIVE/Production APIs - ModTools
@@ -895,6 +898,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools-prod-local.rule=Host(`modtools-prod-local.localhost`)"
       - "traefik.http.routers.modtools-prod-local.entrypoints=web"
+      - "traefik.http.routers.modtools-prod-local.service=modtools-prod-local"
       - "traefik.http.services.modtools-prod-local.loadbalancer.server.port=3001"
 
   playwright:
