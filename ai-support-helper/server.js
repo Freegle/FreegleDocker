@@ -404,12 +404,10 @@ async function processQuestion(session) {
  *   userId: number,          // User being investigated
  *   claudeSessionId?: string // For conversation continuity (omit for new session)
  * }
- * Returns: { analysis: string, claudeSessionId: string, toolsUsed?: string[] }
+ * Returns: { analysis: string, claudeSessionId: string, model: string, escalated: boolean }
  *
- * Uses Claude Code CLI which has:
- * - MCP tool for querying logs (with pseudonymization)
- * - Built-in codebase search (Glob, Grep, Read)
- * - Session persistence for multi-turn conversations
+ * Uses model escalation: Haiku (cheap) -> Sonnet -> Opus (expensive)
+ * Automatically escalates if the cheaper model can't answer adequately.
  */
 app.post('/api/log-analysis', async (req, res) => {
   // Re-check auth before processing
@@ -422,137 +420,108 @@ app.post('/api/log-analysis', async (req, res) => {
     })
   }
 
-  const { query, userId, claudeSessionId } = req.body
+  const { query, userId, claudeSessionId, privacyReviewMode, frontendSessionId, lokiUrl, sqlUrl } = req.body
 
   if (!query) {
     return res.status(400).json({ error: 'query is required' })
   }
 
-  // Generate or reuse Claude Code session ID
+  // Track whether this is a new session for logging
   const isNewSession = !claudeSessionId
-  const sessionId = claudeSessionId || uuidv4()
+  const requestId = uuidv4().substring(0, 8) // Short ID for logging
 
-  console.log(`[${sessionId}] Log analysis request:`)
+  console.log(`[${requestId}] Log analysis request:`)
   console.log(`  User ID: ${userId}`)
   console.log(`  New session: ${isNewSession}`)
+  console.log(`  Claude session: ${claudeSessionId || '(new)'}`)
+  console.log(`  Privacy review mode: ${privacyReviewMode ? 'YES' : 'NO'}`)
+  console.log(`  Frontend session: ${frontendSessionId || '(none)'}`)
+  console.log(`  Loki URL: ${lokiUrl || '(default)'}`)
+  console.log(`  SQL URL: ${sqlUrl || '(default)'}`)
   console.log(`  Query: ${query.substring(0, 100)}...`)
 
   try {
-    // Build the prompt for Claude Code (token-optimized)
-    // CLAUDE.md provides detailed guidelines; keep system context minimal
-    // For user-specific queries, mention MCP tools for data access
-    // For general/codebase queries, let Claude use its built-in tools
-    const systemContext = isNewSession
-      ? userId
-        ? `Investigating Freegle user ${userId}. Use MCP tools for user data (query_database, query_logs). Question: `
-        : ''
-      : ''
+    // Use ClaudeRunner with model escalation
+    const { runQuery } = require('./claude-runner')
 
-    const fullPrompt = systemContext + query
+    // Pass Claude CLI's session ID directly (null for new session)
+    // Claude CLI returns its own session_id which we'll return to the frontend
+    const result = await runQuery(query, userId, claudeSessionId || null, {
+      requireApproval: !!privacyReviewMode,
+      frontendSessionId: frontendSessionId || null,
+      lokiUrl: lokiUrl || null,
+      sqlUrl: sqlUrl || null,
+    })
 
-    // Build Claude Code command with JSON output for cost tracking
-    // IMPORTANT: --mcp-config must come before --print, and prompt must be last
-    const claudeArgs = [
-      '--mcp-config', '/app/mcp-config.json',
-      '--dangerously-skip-permissions',
-      '--output-format', 'json',
-    ]
+    // Use Claude CLI's returned session_id for conversation continuity
+    const returnedSessionId = result.claudeSessionId
 
-    if (isNewSession) {
-      claudeArgs.push('--session-id', sessionId)
-    } else {
-      claudeArgs.push('--resume', sessionId)
-    }
-
-    // --print comes after other flags
-    claudeArgs.push('--print')
-
-    // Escape the prompt for shell
-    const escapedPrompt = fullPrompt.replace(/'/g, "'\\''")
-
-    // Prompt is appended last
-    const command = `cd /app/codebase && timeout 120 claude ${claudeArgs.join(' ')} '${escapedPrompt}'`
-
-    console.log(`[${sessionId}] Executing Claude Code...`)
-
-    const { execSync } = require('child_process')
-    const rawOutput = execSync(command, {
-      encoding: 'utf8',
-      timeout: 130000, // 130s timeout (slightly more than the 120s in command)
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large responses
-    }).trim()
-
-    // Parse JSON output to extract result and cost
-    let analysis = rawOutput
-    let costUsd = null
-    let usage = null
-
-    try {
-      const jsonResult = JSON.parse(rawOutput)
-      analysis = jsonResult.result || rawOutput
-      costUsd = jsonResult.total_cost_usd || null
-      usage = {
-        inputTokens: jsonResult.usage?.input_tokens,
-        outputTokens: jsonResult.usage?.output_tokens,
-        cacheReadTokens: jsonResult.usage?.cache_read_input_tokens,
-        cacheCreationTokens: jsonResult.usage?.cache_creation_input_tokens,
-      }
-      console.log(`[${sessionId}] Analysis complete (${analysis.length} chars, cost: $${costUsd?.toFixed(4) || 'unknown'})`)
-    } catch {
-      // If JSON parsing fails, use raw output as text
-      console.log(`[${sessionId}] Analysis complete (${analysis.length} chars, cost: unknown - non-JSON output)`)
-    }
+    console.log(`[${requestId}] Analysis complete:`)
+    console.log(`  Model: ${result.model}`)
+    console.log(`  Escalated: ${result.escalated}`)
+    console.log(`  Claude session: ${returnedSessionId || '(not returned)'}`)
+    console.log(`  Cost: $${result.costUsd?.toFixed(4) || 'unknown'}`)
+    console.log(`  Response: ${result.analysis.length} chars`)
 
     // SECURITY: Scan output for potential PII leaks
-    const piiFindings = scanForPII(analysis)
+    const piiFindings = scanForPII(result.analysis)
     if (piiFindings.length > 0) {
-      logPIIAlert(sessionId, piiFindings)
-      // Continue to return the response - the PII is already pseudonymized
-      // from the user's perspective, but we've logged the alert for investigation
+      logPIIAlert(requestId, piiFindings)
     }
 
     return res.json({
-      analysis,
-      claudeSessionId: sessionId,
+      analysis: result.analysis,
+      // Return Claude CLI's actual session ID for conversation continuity
+      claudeSessionId: returnedSessionId,
       isNewSession,
-      costUsd,
-      usage,
-      // Include full PII scan result for user to investigate
-      // User is trusted - they can see the leaked values to debug
+      model: result.model,
+      escalated: result.escalated,
+      escalationHistory: result.escalationHistory,
+      costUsd: result.costUsd,
+      usage: result.usage,
       piiScanResult: piiFindings.length > 0 ? {
         warning: 'Potential PII patterns detected in response - please investigate',
-        findings: piiFindings, // Includes samples for user investigation
+        findings: piiFindings,
       } : null,
     })
   } catch (error) {
-    console.error(`[${sessionId}] Log analysis error:`, error.message)
+    console.error(`[${requestId}] Log analysis error:`, error.message)
 
     // Check for timeout
     if (error.killed || error.signal === 'SIGTERM') {
       return res.status(504).json({
         error: 'TIMEOUT',
         message: 'Analysis took too long. Try a more specific question.',
-        claudeSessionId: sessionId,
+        claudeSessionId: null,
       })
     }
 
-    // Check for expired/missing session - provide helpful message
+    // Check for expired/missing session
     const errorOutput = error.stderr || error.message || ''
     if (errorOutput.includes('No conversation found with session ID')) {
-      console.log(`[${sessionId}] Session expired or not found, prompting new session`)
+      console.log(`[${requestId}] Session expired or not found, prompting new session`)
       return res.status(410).json({
         error: 'SESSION_EXPIRED',
         message: 'Your previous session has expired. Please start a new conversation.',
-        claudeSessionId: null, // Clear the session so frontend starts fresh
+        claudeSessionId: null,
       })
     }
 
     return res.status(500).json({
       error: 'ANALYSIS_FAILED',
       message: error.message || 'Failed to analyze',
-      claudeSessionId: sessionId,
+      claudeSessionId: null,
     })
   }
+})
+
+/**
+ * Get available models and their costs.
+ * GET /api/models
+ */
+app.get('/api/models', (req, res) => {
+  const { getModels } = require('./claude-runner')
+  res.json({ models: getModels() })
 })
 
 const PORT = process.env.PORT || 3000
