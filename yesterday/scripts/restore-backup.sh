@@ -61,6 +61,10 @@ fi
 
 echo "Selected backup: $BACKUP_FILE"
 
+# Extract backup time from filename (iznik-YYYY-MM-DD-HH-MM.xbstream -> HH:MM)
+BACKUP_TIME=$(basename "$BACKUP_FILE" | grep -oP '\d{4}-\d{2}-\d{2}-\K\d{2}-\d{2}' | tr '-' ':')
+echo "Backup time: $BACKUP_TIME"
+
 BACKUP_SIZE=$(gsutil ls -l "$BACKUP_FILE" | grep -v TOTAL | awk '{print $1}')
 BACKUP_SIZE_GB=$((BACKUP_SIZE / 1024 / 1024 / 1024))
 echo "Backup size: ${BACKUP_SIZE_GB}GB (compressed)"
@@ -434,8 +438,8 @@ else
     exit 1
 fi
 
-# Update current backup tracker
-/var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
+# Update current backup tracker with date and time
+/var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}" "${BACKUP_TIME}"
 
 echo ""
 if systemctl list-units --full --all | grep -q "docker-compose@freegle.service"; then
