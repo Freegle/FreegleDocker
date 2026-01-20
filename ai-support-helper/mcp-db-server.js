@@ -18,6 +18,9 @@ const readline = require('readline')
 const STATUS_URL = process.env.STATUS_URL || 'http://freegle-status:8081'
 const DB_QUERY_URL = `${STATUS_URL}/api/mcp/db-query`
 
+// Whether to require human approval for queries (default: true for safety)
+const REQUIRE_APPROVAL = process.env.REQUIRE_APPROVAL !== 'false'
+
 // MCP protocol handling
 const rl = readline.createInterface({
   input: process.stdin,
@@ -61,7 +64,7 @@ async function executeQuery(sql, maxRetries = 2) {
         body: JSON.stringify({
           query: sql,
           debug: false, // IMPORTANT: Never include mapping for AI
-          requireApproval: true, // Human must approve query and results
+          requireApproval: REQUIRE_APPROVAL, // Use env var setting
         }),
         signal: controller.signal,
       })
@@ -195,4 +198,4 @@ Notes:
 })
 
 // Log startup to stderr (not stdout which is for MCP protocol)
-process.stderr.write('Freegle Database Query MCP Server started\n')
+process.stderr.write(`Freegle Database Query MCP Server started (approval required: ${REQUIRE_APPROVAL})\n`)

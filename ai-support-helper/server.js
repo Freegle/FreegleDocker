@@ -451,11 +451,11 @@ app.post('/api/log-analysis', async (req, res) => {
     const fullPrompt = systemContext + query
 
     // Build Claude Code command with JSON output for cost tracking
+    // IMPORTANT: --mcp-config must come before --print, and prompt must be last
     const claudeArgs = [
-      '--print',
-      '--output-format', 'json',
-      '--dangerously-skip-permissions',
       '--mcp-config', '/app/mcp-config.json',
+      '--dangerously-skip-permissions',
+      '--output-format', 'json',
     ]
 
     if (isNewSession) {
@@ -464,9 +464,13 @@ app.post('/api/log-analysis', async (req, res) => {
       claudeArgs.push('--resume', sessionId)
     }
 
+    // --print comes after other flags
+    claudeArgs.push('--print')
+
     // Escape the prompt for shell
     const escapedPrompt = fullPrompt.replace(/'/g, "'\\''")
 
+    // Prompt is appended last
     const command = `cd /app/codebase && timeout 120 claude ${claudeArgs.join(' ')} '${escapedPrompt}'`
 
     console.log(`[${sessionId}] Executing Claude Code...`)

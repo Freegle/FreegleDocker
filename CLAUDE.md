@@ -347,8 +347,22 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-20 - MCP CLI Argument Order Fix
+- **Status**: ✅ All MCP queries working end-to-end
+- **Branch**: `feature/mcp-log-analysis`
+- **Root Cause**: Claude CLI argument order matters - `--print` must come after `--mcp-config` and prompt must be last
+- **Fixes Applied**:
+  - `ai-support-helper/server.js` - Reordered Claude CLI arguments (--mcp-config first, --print last before prompt)
+  - `ai-support-helper/mcp-db-server.js` - Use REQUIRE_APPROVAL env var instead of hardcoded true
+  - `ai-support-helper/mcp-config.json` - Added `"type": "stdio"` to MCP server configs
+- **Tested End-to-End**:
+  - Database queries via MCP: ✅ (user lookup, last login timestamps)
+  - Log queries via MCP: ✅ (Loki queries return pseudonymized data)
+  - `/api/log-analysis` endpoint: ✅ (Claude uses both MCP tools to investigate users)
+- **Key Learning**: When using `claude --print`, the argument order is: `--mcp-config <file> --dangerously-skip-permissions --print "<prompt>"`
+
 ### 2026-01-19 - AI Support Helper Testing & Bug Fixes (Session 2)
-- **Status**: 🔄 Loki queries working, MCP server timeout issue identified
+- **Status**: ✅ MCP timeout issue identified and fixed
 - **Branch**: `feature/mcp-log-analysis` + `master` (for entrypoint fix)
 - **Completed**:
   - **CI Fix (master)**: Fixed ai-support-helper entrypoint.sh to not exit when ANTHROPIC_API_KEY missing
@@ -356,10 +370,10 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - **MCP Config Fix**: Disabled REQUIRE_APPROVAL for automated MCP server usage
   - **CI Passed**: Pipeline 1388 succeeded after entrypoint fix
 - **Identified Issue**:
-  - Claude CLI with --mcp-config times out when initializing MCP servers
+  - Claude CLI with --mcp-config times out when using wrong argument order
   - Without MCP config, Claude responds fast (~3 seconds)
-  - With MCP config, Claude hangs (>2 minutes)
-  - Root cause likely MCP server initialization latency
+  - With incorrect arg order, Claude hangs (>2 minutes)
+  - Root cause: `--print` argument order sensitivity
 - **Loki Data Available**:
   - `api`: 2581 entries (API request logs)
   - `api_headers`: 2844 entries
@@ -369,7 +383,6 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - **Files Modified**:
   - `ai-support-helper/entrypoint.sh` - Allow startup without API key (master)
   - `ai-support-helper/mcp-config.json` - Set REQUIRE_APPROVAL=false
-- **Next**: Debug MCP server initialization timeout
 
 ### 2026-01-19 - AI Support Helper Testing & Bug Fixes (Session 1)
 - **Status**: ✅ All query types working

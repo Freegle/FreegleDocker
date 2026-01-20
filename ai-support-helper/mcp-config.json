@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "freegle-logs": {
+      "type": "stdio",
       "command": "node",
       "args": ["/app/mcp-log-server.js"],
       "env": {
@@ -9,6 +10,7 @@
       }
     },
     "freegle-db": {
+      "type": "stdio",
       "command": "node",
       "args": ["/app/mcp-db-server.js"],
       "env": {
