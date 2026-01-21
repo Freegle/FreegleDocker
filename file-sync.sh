@@ -68,9 +68,9 @@ get_container_info() {
             echo "$targets"
         fi
     elif [[ "$relative_path" == iznik-server-go/* ]]; then
-        echo "apiv2 /app/${relative_path#iznik-server-go/} API-v2"
+        echo "freegle-apiv2 /app/${relative_path#iznik-server-go/} API-v2"
     elif [[ "$relative_path" == iznik-server/* ]]; then
-        echo "apiv1 /var/www/iznik/${relative_path#iznik-server/} API-v1"
+        echo "freegle-apiv1 /var/www/iznik/${relative_path#iznik-server/} API-v1"
     elif [[ "$relative_path" == iznik-batch/* ]]; then
         echo "freegle-batch /var/www/html/${relative_path#iznik-batch/} Batch"
     fi
@@ -96,10 +96,11 @@ do_sync() {
             read -r container target_path service <<< "$line"
             echo "[$timestamp] $service: $filename"
 
-            if docker cp "$file_path" "$container:$target_path" 2>/dev/null; then
+            local cp_error
+            if cp_error=$(docker cp "$file_path" "$container:$target_path" 2>&1); then
                 echo "  ✓ Synced to $container"
             else
-                echo "  ✗ Failed to sync to $container"
+                echo "  ✗ Failed to sync to $container: $cp_error"
             fi
         fi
     done <<< "$container_info"
