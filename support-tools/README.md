@@ -21,71 +21,65 @@ The following PII is automatically detected and replaced with tokens:
 
 **Note:** User IDs (6+ digits) are pseudonymized to prevent cross-referencing with external data while maintaining numeric format for correlation within the session.
 
-## Architecture
+## Architecture (2-Container Design)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  Frontend (Browser)                                                          │
+│  Frontend (Browser - ModTools)                                               │
 │  - User selects a Freegler to investigate                                   │
 │  - User enters natural language query                                       │
-│  - Receives response with real PII (de-tokenized)                           │
+│  - Sends query to AI Support Helper                                         │
+│  - Receives response with real PII (de-tokenized locally)                   │
 └────────────────────────────────┬────────────────────────────────────────────┘
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  Container 0: Query Sanitizer (port 8084)                                   │
-│  - Extracts PII from user query                                             │
-│  - Creates consistent tokens (EMAIL_a8f3c2)                                 │
-│  - Sends mapping to Pseudonymizer                                           │
-│  - Returns pseudonymized query + mapping to frontend                        │
+│  Container 1: AI Support Helper (ai-support-helper.localhost)               │
+│  - Receives natural language queries from frontend                          │
+│  - Runs Claude CLI with MCP tools for logs and database                     │
+│  - Returns AI-generated responses (pseudonymized)                           │
+│  - NEVER sees the token mapping                                             │
 └────────────────────────────────┬────────────────────────────────────────────┘
                                  │
-          ┌──────────────────────┼──────────────────────┐
-          │                      │                      │
-          ▼                      ▼                      ▼
-┌─────────────────┐   ┌───────────────────┐   ┌────────────────────────┐
-│ Claude (API)    │   │ Pseudonymized     │   │ Mapping to             │
-│                 │   │ query to Claude   │   │ Pseudonymizer (direct) │
-│ Only sees tokens│   │                   │   │                        │
-│ Never real PII  │   │                   │   │                        │
-└────────┬────────┘   └───────────────────┘   └────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  Container 2: MCP Interface (internal only)                                 │
-│  - Stateless proxy (NO key, NO mapping)                                     │
-│  - Forwards tool calls to Pseudonymizer                                     │
-│  - If compromised: can only issue pseudonymized queries                     │
-└────────────────────────────────┬────────────────────────────────────────────┘
+              MCP Tools: query_logs, query_database
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  Container 3: Pseudonymizer + Loki Access                                   │
-│  - HAS the key (token → real value mapping)                                 │
-│  - Translates tokens to real values for Loki queries                        │
-│  - Pseudonymizes Loki results before returning                              │
-│  - Writes audit log of all queries                                          │
+│  Container 2: AI Sanitizer (ai-sanitizer.localhost, port 8084)              │
+│  - Combined service for ALL sanitization and data access                    │
+│  - PII tokenization (/scan, /sanitize)                                      │
+│  - Loki log queries (/query) with pseudonymization                          │
+│  - Database queries (/api/mcp/db-query) with SQL validation                 │
+│  - Token mapping storage (SQLite, persistent)                               │
+│  - Audit logging of all queries                                             │
 └────────────────────────────────┬────────────────────────────────────────────┘
                                  │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  Loki                                                                        │
-│  - Existing log aggregation service                                          │
-│  - Contains real PII in logs                                                 │
-└─────────────────────────────────────────────────────────────────────────────┘
+              ┌──────────────────┴──────────────────┐
+              ▼                                     ▼
+┌─────────────────────────┐             ┌─────────────────────────┐
+│  Loki                   │             │  MySQL (Percona)        │
+│  - Log aggregation      │             │  - Freegle database     │
+│  - Contains real PII    │             │  - Contains real PII    │
+└─────────────────────────┘             └─────────────────────────┘
 ```
 
 ## Container Security Summary
 
-| Container | Has Key? | Has Mapping? | Can Reach | If Compromised |
-|-----------|----------|--------------|-----------|----------------|
-| 0: Query Sanitizer | No | Creates it | C3 | Can see user queries (trusted staff only) |
-| 2: MCP Interface | No | No | C3 only | Can only issue pseudonymized queries |
-| 3: Pseudonymizer | Yes | Yes | Loki only | Full access - requires multiple escapes |
+| Container | Has Token Mapping? | Can Reach | If Compromised |
+|-----------|-------------------|-----------|----------------|
+| AI Support Helper | No | AI Sanitizer only | Can only issue pseudonymized queries |
+| AI Sanitizer | Yes (SQLite) | Loki, MySQL | Full access - requires container escape |
+
+The AI (Claude) **never** sees real PII - it only receives pseudonymized tokens. The mapping is stored in the AI Sanitizer container and used for:
+1. Translating tokens to real values when querying Loki/MySQL
+2. Pseudonymizing results before returning to Claude
+3. Providing the frontend with mapping for de-tokenization
 
 ## MCP Tools
 
-### loki_query
+The AI Support Helper runs Claude with two MCP tools:
+
+### query_logs
 
 Query application logs from Loki. Returns pseudonymized log entries.
 
@@ -94,37 +88,57 @@ Query application logs from Loki. Returns pseudonymized log entries.
 {
   "type": "object",
   "properties": {
-    "sessionId": {
-      "type": "string",
-      "description": "Session ID from query sanitization. Required."
-    },
     "query": {
       "type": "string",
-      "description": "LogQL query (e.g., {app=\"freegle\"} |= \"error\")"
+      "description": "LogQL query (e.g., {job=\"freegle\"} |= \"error\")"
     },
-    "start": {
+    "time_range": {
       "type": "string",
-      "description": "Start time - relative (1h, 24h, 7d) or ISO 8601. Default: 1h"
-    },
-    "end": {
-      "type": "string",
-      "description": "End time. Default: now"
+      "description": "Time range (e.g., \"1h\", \"24h\", \"7d\")"
     },
     "limit": {
       "type": "integer",
       "description": "Maximum results. Default: 100"
     }
   },
-  "required": ["sessionId", "query"]
+  "required": ["query"]
 }
 ```
 
+### query_database
+
+Query the Freegle database with SQL. Returns pseudonymized results.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "SQL SELECT query (e.g., \"SELECT id, fullname FROM users WHERE id = 12345\")"
+    }
+  },
+  "required": ["query"]
+}
+```
+
+**Allowed Tables:** users, messages, groups, memberships, chat_messages, logs
+
+**Security:** Only SELECT queries allowed, max 500 results, field-level whitelist enforced.
+
 ## API Endpoints
 
-### Query Sanitizer (Container 0)
+### AI Sanitizer (Container 2)
+
+**GET /health**
+Health check with database and Loki connectivity status.
+
+**POST /scan**
+Scan text for PII without tokenizing (for preview/warning).
 
 **POST /sanitize**
-Sanitize a user query by extracting and tokenizing PII.
+Sanitize text by extracting and tokenizing PII.
 
 Request:
 ```json
@@ -134,55 +148,43 @@ Request:
     "email": "john.smith@gmail.com",
     "displayname": "John Smith",
     "userid": 12345
-  },
-  "userId": 12345
+  }
 }
 ```
 
 Response:
 ```json
 {
-  "pseudonymizedQuery": "Why is EMAIL_a8f3c2 getting errors?",
+  "pseudonymizedQuery": "Why is user_abc123@gmail.com getting errors?",
   "sessionId": "sess_7f3d2a",
   "localMapping": {
-    "EMAIL_a8f3c2": "john.smith@gmail.com"
-  },
-  "detectedPii": null
+    "user_abc123@gmail.com": "john.smith@gmail.com"
+  }
 }
 ```
 
-**POST /scan**
-Scan query for PII without sanitizing (for preview/warning).
-
-### MCP Interface (Container 2)
-
-**GET /tools**
-List available MCP tools.
-
-**POST /tools/loki_query**
-Execute a Loki query (with pseudonymization).
-
-### Pseudonymizer (Container 3)
-
 **POST /register-mapping**
-Register token mappings for a session (called by Container 0).
+Register token mappings for a session.
 
 **POST /query**
 Execute a Loki query with token translation and result pseudonymization.
+
+**POST /api/mcp/db-query**
+Execute a database query with SQL validation and result pseudonymization.
 
 **GET /mapping/:sessionId**
 Get the reverse mapping for frontend de-tokenization.
 
 ## Token Persistence
 
-Tokens are persistent across sessions to enable correlation:
+Tokens are persistent across sessions (stored in SQLite) to enable correlation:
 
 ```
 Session 1 (Monday):
-  "john.smith@gmail.com" → EMAIL_a8f3c2
+  "john.smith@gmail.com" → user_abc123@gmail.com
 
 Session 2 (Tuesday):
-  "john.smith@gmail.com" → EMAIL_a8f3c2 (same token!)
+  "john.smith@gmail.com" → user_abc123@gmail.com (same token!)
 
 Claude can correlate across sessions because the token is consistent.
 ```
@@ -207,7 +209,7 @@ All MCP queries are logged to `/var/log/mcp-audit/YYYY-MM-DD.jsonl`:
   "sessionId": "sess_7f3d2a",
   "operation": "loki_query",
   "request": {
-    "query": "{app=\"freegle\"} | json | email=\"EMAIL_a8f3c2\"",
+    "query": "{app=\"freegle\"} | json | email=\"user_abc123@gmail.com\"",
     "start": "1h",
     "limit": 100
   },
@@ -217,7 +219,7 @@ All MCP queries are logged to `/var/log/mcp-audit/YYYY-MM-DD.jsonl`:
   },
   "response": {
     "pseudonymizedEntries": 5,
-    "tokensUsed": ["EMAIL_a8f3c2", "IP_7d3f2a"]
+    "tokensUsed": ["user_abc123@gmail.com", "10.0.1.1"]
   },
   "durationMs": 245
 }
@@ -261,8 +263,48 @@ Codebase queries don't require a specific user to be selected and don't involve 
 
 Services are defined in `docker-compose.yml`:
 
-- `mcp-query-sanitizer` (port 8084, `mcp-sanitizer.localhost`)
-- `mcp-interface` (internal only)
-- `mcp-pseudonymizer` (internal only)
+- `ai-support-helper` (port 3020, `ai-support-helper.localhost`)
+- `ai-sanitizer` (port 8084, `ai-sanitizer.localhost`, also aliased as `mcp-sanitizer.localhost` for backwards compatibility)
 
-Isolated networks prevent direct container-to-container access except through defined paths.
+Data persistence:
+- `ai-sanitizer-data` - SQLite token database
+- `ai-sanitizer-audit-logs` - Audit logs
+
+## Development
+
+### Rebuilding Containers
+
+```bash
+# Rebuild AI Sanitizer after code changes
+docker-compose build ai-sanitizer && docker-compose up -d ai-sanitizer
+
+# Rebuild AI Support Helper
+docker-compose build ai-support-helper && docker-compose up -d ai-support-helper
+```
+
+### Testing Endpoints
+
+```bash
+# Health check
+curl http://ai-sanitizer.localhost/health
+
+# Scan for PII
+curl -X POST http://ai-sanitizer.localhost/scan \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Email john@example.com about issue"}'
+
+# Sanitize text
+curl -X POST http://ai-sanitizer.localhost/sanitize \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Why is john@example.com having problems?", "knownPii": {"email": "john@example.com"}}'
+
+# Database query
+curl -X POST http://ai-sanitizer.localhost/api/mcp/db-query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT id, fullname FROM users LIMIT 5"}'
+
+# Loki query
+curl -X POST http://ai-sanitizer.localhost/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{job=\"freegle\"}", "start": "1h", "limit": 10}'
+```

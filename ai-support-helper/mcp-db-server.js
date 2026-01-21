@@ -14,9 +14,9 @@
 
 const readline = require('readline')
 
-// Status container endpoint for database queries
-const STATUS_URL = process.env.STATUS_URL || 'http://freegle-status:8081'
-const DB_QUERY_URL = `${STATUS_URL}/api/mcp/db-query`
+// AI Sanitizer endpoint for database queries (combined service)
+const AI_SANITIZER_URL = process.env.AI_SANITIZER_URL || 'http://freegle-ai-sanitizer:8080'
+const DB_QUERY_URL = `${AI_SANITIZER_URL}/api/mcp/db-query`
 
 // Whether to require human approval for queries (default: true for safety)
 const REQUIRE_APPROVAL = process.env.REQUIRE_APPROVAL !== 'false'
@@ -110,31 +110,37 @@ rl.on('line', async (line) => {
       sendResponse(id, {
         tools: [
           {
+            name: 'describe_schema',
+            description: 'Get database schema including available tables, columns, and JOIN examples. CALL THIS FIRST before writing any queries to understand the data model.',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+              required: [],
+            },
+          },
+          {
             name: 'query_database',
             description: `Query Freegle database. Returns pseudonymized data - names, emails, IPs are replaced with tokens for GDPR compliance.
 
-Available tables and example queries:
+IMPORTANT: Email addresses are stored in users_emails table, NOT the users table!
+To look up a user by email, you MUST JOIN: users u INNER JOIN users_emails ue ON u.id = ue.userid WHERE ue.email = ?
+
+Common queries:
+
+LOOK UP USER BY EMAIL:
+- SELECT u.id, u.fullname, u.lastaccess FROM users u INNER JOIN users_emails ue ON u.id = ue.userid WHERE ue.email = "user@example.com"
 
 USERS:
 - SELECT id, fullname, lastaccess, engagement FROM users WHERE id = ?
-- SELECT COUNT(*) FROM users WHERE engagement = 'Active'
 
 MESSAGES (Posts):
 - SELECT id, subject, type, arrival FROM messages WHERE fromuser = ?
-- SELECT type, COUNT(*) as count FROM messages GROUP BY type
 
 GROUPS:
 - SELECT id, nameshort, membercount FROM groups
-- SELECT nameshort, membercount FROM groups ORDER BY membercount DESC LIMIT 10
 
 MEMBERSHIPS:
-- SELECT groupid, role, added FROM memberships WHERE userid = ?
-
-CHAT MESSAGES:
-- SELECT id, date, type FROM chat_messages WHERE chatid = ?
-
-LOGS:
-- SELECT timestamp, type, subtype FROM logs WHERE user = ? ORDER BY timestamp DESC
+- SELECT g.nameshort, m.role FROM memberships m INNER JOIN groups g ON m.groupid = g.id WHERE m.userid = ?
 
 Notes:
 - Only SELECT queries allowed
@@ -145,7 +151,7 @@ Notes:
               properties: {
                 query: {
                   type: 'string',
-                  description: 'SQL SELECT query (e.g., "SELECT id, subject FROM messages WHERE fromuser = 12345")',
+                  description: 'SQL SELECT query',
                 },
               },
               required: ['query'],
@@ -156,7 +162,30 @@ Notes:
     } else if (method === 'tools/call') {
       const { name, arguments: args } = params
 
-      if (name === 'query_database') {
+      if (name === 'describe_schema') {
+        try {
+          process.stderr.write('Fetching database schema\n')
+
+          const response = await fetch(`${AI_SANITIZER_URL}/api/mcp/schema`)
+          if (!response.ok) {
+            throw new Error(`Schema fetch failed: ${response.status}`)
+          }
+          const schema = await response.json()
+
+          const resultText = JSON.stringify(schema, null, 2)
+          process.stderr.write(`Schema returned with ${Object.keys(schema.tables || {}).length} tables\n`)
+
+          sendResponse(id, {
+            content: [{ type: 'text', text: resultText }],
+          })
+        } catch (err) {
+          process.stderr.write(`Schema fetch failed: ${err.message}\n`)
+          sendResponse(id, {
+            content: [{ type: 'text', text: `Schema error: ${err.message}` }],
+            isError: true,
+          })
+        }
+      } else if (name === 'query_database') {
         try {
           process.stderr.write(`Executing database query: ${args.query}\n`)
 

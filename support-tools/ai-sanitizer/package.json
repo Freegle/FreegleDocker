@@ -1,0 +1,23 @@
+{
+  "name": "freegle-ai-sanitizer",
+  "version": "1.0.0",
+  "description": "Combined sanitizer service for AI Support: PII tokenization, Loki queries, database queries",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "mysql2": "^3.6.5",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
