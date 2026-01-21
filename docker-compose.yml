@@ -728,6 +728,14 @@ services:
       apiv2:
         condition: service_started
     restart: "no"
+    healthcheck:
+      # Health check for production container - verifies nginx is responding
+      # Long start_period because npm run build runs inside container on first start
+      test: ["CMD-SHELL", "curl -f http://localhost:3003/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 900s  # 15 minutes for npm run build
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
@@ -881,6 +889,14 @@ services:
       apiv2:
         condition: service_started
     restart: "no"
+    healthcheck:
+      # Health check for ModTools production container - verifies nginx is responding
+      # Long start_period because npm run build runs inside container on first start
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 900s  # 15 minutes for npm run build
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
