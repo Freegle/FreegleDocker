@@ -347,6 +347,27 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-21 - Fix Double-Tokenization and PII Highlight Bugs
+- **Status**: ✅ All fixes applied and tested
+- **Branch**: `feature/mcp-log-analysis`
+- **Root Causes Identified**:
+  1. Double-tokenization: Sanitizer was re-tokenizing already-pseudonymized tokens (e.g., `user_xxx@other.com`)
+  2. HTML corruption: Vue's `highlightPii()` was replacing text inside HTML title attributes
+  3. Missing token translation: db-query endpoint wasn't translating tokens before querying MySQL
+- **Fixes Applied**:
+  - `support-tools/ai-sanitizer/server.js`:
+    - Added `isAlreadyPseudonymized()` function to detect tokens
+    - Added checks to skip already-tokenized values in all PII processing loops
+    - Added `translateQuery()` call to db-query endpoint
+  - `iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue`:
+    - Rewrote `highlightPii()` to avoid nested replacements
+    - Use `data-token` attribute instead of title with real value
+    - Sort replacements by length to prevent partial matches
+- **Tested End-to-End**:
+  - Sanitize email: ✅ Single token mapping (no double-tokenization)
+  - DB query with token: ✅ Translates token and finds user
+  - Full log-analysis: ✅ Returns clean response "logged in on January 20th"
+
 ### 2026-01-20 - MCP CLI Argument Order Fix
 - **Status**: ✅ All MCP queries working end-to-end
 - **Branch**: `feature/mcp-log-analysis`
