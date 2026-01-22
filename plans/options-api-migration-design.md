@@ -1890,6 +1890,58 @@ For components that need Nuxt features, consider either:
 - Refactoring to accept data as props (more testable)
 - Using the full `@nuxt/test-utils` setup with careful configuration
 
+### Store Resolution for ModTools Components
+
+ModTools components import stores from `~/stores/<name>` but some stores only exist in `modtools/stores/` (not in root `stores/`). Nuxt resolves this at runtime through its auto-import/layer system, but Vitest doesn't have access to this.
+
+**Solution**: The vitest.config.mts dynamically generates aliases for modtools-only stores:
+
+```javascript
+// Build explicit aliases for modtools stores that don't exist in root stores/
+const modtoolsStores = fs.readdirSync(path.join(rootDir, 'modtools/stores'))
+const rootStores = fs.readdirSync(path.join(rootDir, 'stores'))
+const modtoolsOnlyStores = modtoolsStores.filter((s) => !rootStores.includes(s))
+
+// Create aliases for modtools-only stores
+const storeAliases = {}
+for (const store of modtoolsOnlyStores) {
+  const storeName = store.replace('.js', '')
+  storeAliases[`~/stores/${storeName}`] = path.join(rootDir, 'modtools/stores', store)
+}
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      ...storeAliases,  // Must come before generic ~ alias
+      '~': rootDir,
+      '@': rootDir,
+    },
+  },
+})
+```
+
+**Store Mocking Pattern**:
+
+```javascript
+// tests/unit/mocks/stores.js
+import { vi } from 'vitest'
+
+export function createMockMemberStore(overrides = {}) {
+  return {
+    members: [],
+    update: vi.fn().mockResolvedValue({}),
+    fetch: vi.fn().mockResolvedValue({}),
+    ...overrides,
+  }
+}
+
+// In test file
+const mockMemberStore = createMockMemberStore()
+vi.mock('~/stores/member', () => ({
+  useMemberStore: () => mockMemberStore,
+}))
+```
+
 ## References
 
 - [Vue Test Utils Documentation](https://test-utils.vuejs.org/)
