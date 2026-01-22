@@ -490,6 +490,35 @@ commands:
 
   # === Test Execution Commands ===
 
+  run-unit-tests:
+    description: "Run Vitest unit tests for iznik-nuxt3 components"
+    parameters:
+      reason:
+        type: string
+        default: "Running unit tests"
+    steps:
+      - run:
+          name: Run Vitest unit tests
+          command: |
+            echo "🧪 << parameters.reason >>..."
+
+            # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
+            if [ -d "$HOME/FreegleDocker" ]; then
+              cd "$HOME/FreegleDocker"
+            fi
+
+            cd iznik-nuxt3
+
+            # Install dependencies
+            echo "📦 Installing dependencies..."
+            npm ci
+
+            # Run unit tests
+            echo "🧪 Running Vitest unit tests..."
+            npm run test:unit -- --reporter=verbose
+
+            echo "✅ Unit tests passed!"
+
   run-go-tests:
     description: "Run Go tests via the status service API and upload coverage"
     parameters:
@@ -1569,6 +1598,9 @@ jobs:
             ls -la iznik-nuxt3/modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
 
       - setup-dependencies
+
+      - run-unit-tests:
+          reason: "Running unit tests (fast feedback)"
 
       - start-docker-services:
           reason: "Starting all Docker services"
