@@ -57,6 +57,42 @@ class EmailTrackingModelTest extends TestCase
         $this->assertNull($tracking->groupid);
         $this->assertNull($tracking->subject);
         $this->assertNull($tracking->metadata);
+        $this->assertFalse((bool) $tracking->has_amp);
+    }
+
+    public function test_create_for_email_with_amp_enabled(): void
+    {
+        $email = $this->uniqueEmail('tracking');
+        $tracking = EmailTracking::createForEmail(
+            'ChatNotification',
+            $email,
+            null,
+            null,
+            'Test Subject',
+            null,
+            true // hasAmp = true
+        );
+
+        $this->assertNotNull($tracking->id);
+        $this->assertEquals('ChatNotification', $tracking->email_type);
+        $this->assertTrue((bool) $tracking->has_amp);
+    }
+
+    public function test_create_for_email_with_amp_disabled(): void
+    {
+        $email = $this->uniqueEmail('tracking');
+        $tracking = EmailTracking::createForEmail(
+            'ChatNotification',
+            $email,
+            null,
+            null,
+            'Test Subject',
+            null,
+            false // hasAmp = false
+        );
+
+        $this->assertNotNull($tracking->id);
+        $this->assertFalse((bool) $tracking->has_amp);
     }
 
     public function test_user_relationship(): void

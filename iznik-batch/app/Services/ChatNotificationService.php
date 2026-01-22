@@ -8,7 +8,6 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoster;
 use App\Models\User;
-use App\Services\EmailSpoolerService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -68,20 +67,23 @@ class ChatNotificationService
         bool $forceAll = false
     ): int {
         // Check if ChatNotification emails are enabled.
-        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+        if (! self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
             Log::info("ChatNotification emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotification'.");
+
             return 0;
         }
 
         // User2Mod notifications have a separate feature flag for gradual rollout.
-        if ($chatType === ChatRoom::TYPE_USER2MOD && !self::isEmailTypeEnabled(self::EMAIL_TYPE_USER2MOD)) {
+        if ($chatType === ChatRoom::TYPE_USER2MOD && ! self::isEmailTypeEnabled(self::EMAIL_TYPE_USER2MOD)) {
             Log::info("ChatNotificationUser2Mod emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotificationUser2Mod'.");
+
             return 0;
         }
 
         // Mod2Mod notifications have a separate feature flag for gradual rollout.
-        if ($chatType === ChatRoom::TYPE_MOD2MOD && !self::isEmailTypeEnabled(self::EMAIL_TYPE_MOD2MOD)) {
+        if ($chatType === ChatRoom::TYPE_MOD2MOD && ! self::isEmailTypeEnabled(self::EMAIL_TYPE_MOD2MOD)) {
             Log::info("ChatNotificationMod2Mod emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'ChatNotificationMod2Mod'.");
+
             return 0;
         }
 
@@ -100,7 +102,7 @@ class ChatNotificationService
             try {
                 $notified += $this->processMessage($message, $chatType, $forceAll);
             } catch (\Exception $e) {
-                Log::error("Error processing chat message {$message->id}: " . $e->getMessage());
+                Log::error("Error processing chat message {$message->id}: ".$e->getMessage());
             }
         }
 
@@ -136,7 +138,7 @@ class ChatNotificationService
                 ->where('chat_messages.processingsuccessful', 1);
         }
 
-        if (!$forceAll) {
+        if (! $forceAll) {
             $query->where('chat_messages.mailedtoall', 0)
                 ->where('chat_messages.seenbyall', 0)
                 ->where('chat_messages.reviewrejected', 0);
@@ -159,7 +161,7 @@ class ChatNotificationService
         $notified = 0;
         $chatRoom = $message->chatRoom;
 
-        if (!$chatRoom) {
+        if (! $chatRoom) {
             return 0;
         }
 
@@ -169,12 +171,12 @@ class ChatNotificationService
         foreach ($membersToNotify as $roster) {
             try {
                 $sendingTo = $roster->user;
-                if (!$sendingTo || !$sendingTo->email_preferred) {
+                if (! $sendingTo || ! $sendingTo->email_preferred) {
                     continue;
                 }
 
                 // Check if we should notify this user about this message.
-                if (!$this->shouldNotifyUser($sendingTo, $message, $chatRoom, $chatType, $roster->isModerator ?? FALSE)) {
+                if (! $this->shouldNotifyUser($sendingTo, $message, $chatRoom, $chatType, $roster->isModerator ?? false)) {
                     continue;
                 }
 
@@ -204,14 +206,14 @@ class ChatNotificationService
 
                 $notified++;
 
-                Log::info("Sent chat notification", [
+                Log::info('Sent chat notification', [
                     'chat_id' => $chatRoom->id,
                     'message_id' => $message->id,
                     'to_user' => $sendingTo->id,
                     'from_user' => $sendingFrom?->id,
                 ]);
             } catch (\Exception $e) {
-                Log::error("Error notifying user {$roster->userid} for message {$message->id}: " . $e->getMessage());
+                Log::error("Error notifying user {$roster->userid} for message {$message->id}: ".$e->getMessage());
             }
         }
 
@@ -237,7 +239,7 @@ class ChatNotificationService
                 ->notBlocked()
                 ->with('user');
 
-            if (!$forceAll) {
+            if (! $forceAll) {
                 $query->where(function ($q) use ($message) {
                     $q->whereNull('lastmsgemailed')
                         ->orWhere('lastmsgemailed', '<', $message->id);
@@ -245,7 +247,8 @@ class ChatNotificationService
             }
 
             return $query->get()->map(function ($roster) {
-                $roster->isModerator = TRUE;
+                $roster->isModerator = true;
+
                 return $roster;
             });
         }
@@ -295,11 +298,14 @@ class ChatNotificationService
         }
 
         // User2User: Use standard roster-based logic.
+        // Only notify the actual chat participants (user1/user2), not mods who may have
+        // added mod notes to the chat. See original iznik-server getMembersStatus().
         $query = ChatRoster::where('chatid', $chatRoom->id)
+            ->whereIn('userid', [$chatRoom->user1, $chatRoom->user2])
             ->notBlocked()
             ->with('user');
 
-        if (!$forceAll) {
+        if (! $forceAll) {
             // Only get members who haven't been mailed this message yet.
             $query->where(function ($q) use ($message) {
                 $q->whereNull('lastmsgemailed')
@@ -309,6 +315,7 @@ class ChatNotificationService
 
         return $query->get()->map(function ($roster) {
             $roster->isModerator = false;
+
             return $roster;
         });
     }
@@ -316,11 +323,11 @@ class ChatNotificationService
     /**
      * Check if a user should be notified about a specific message.
      *
-     * @param User $user The user to potentially notify
-     * @param ChatMessage $message The message to notify about
-     * @param ChatRoom $chatRoom The chat room
-     * @param string $chatType The chat type (User2User, User2Mod, etc.)
-     * @param bool $isModerator Whether this user is a moderator in this chat context
+     * @param  User  $user  The user to potentially notify
+     * @param  ChatMessage  $message  The message to notify about
+     * @param  ChatRoom  $chatRoom  The chat room
+     * @param  string  $chatType  The chat type (User2User, User2Mod, etc.)
+     * @param  bool  $isModerator  Whether this user is a moderator in this chat context
      */
     protected function shouldNotifyUser(User $user, ChatMessage $message, ChatRoom $chatRoom, string $chatType, bool $isModerator = false): bool
     {
@@ -329,10 +336,8 @@ class ChatNotificationService
 
         if ($isOwnMessage) {
             // Only send copy of own messages if user has this preference enabled.
-            // TN users always get their own messages.
-            $wantsCopy = $user->notifsOn(User::NOTIFS_EMAIL_MINE) || $user->isTN();
-            if (!$wantsCopy) {
-                return FALSE;
+            if (! $user->notifsOn(User::NOTIFS_EMAIL_MINE)) {
+                return false;
             }
         }
 
@@ -342,7 +347,7 @@ class ChatNotificationService
         if ($chatType === ChatRoom::TYPE_USER2MOD) {
             if ($chatRoom->user1 === $user->id) {
                 // Always notify the member.
-                return TRUE;
+                return true;
             }
 
             if ($isModerator) {
@@ -361,7 +366,7 @@ class ChatNotificationService
 
         // TN users always get notifications.
         if ($user->isTN()) {
-            return TRUE;
+            return true;
         }
 
         // Check user's notification preferences.

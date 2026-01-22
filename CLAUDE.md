@@ -2,13 +2,14 @@
 
 **Use the `ralph` skill** for any non-trivial development task. For automated/unattended execution: `./ralph.sh -t "task description"`
 
+- **NEVER merge PRs.** Only humans merge PRs. Claude may create PRs, push to branches, and report when CI passes, but NEVER run `gh pr merge` or any equivalent command. Always stop at "PR is ready for merge" and let the user decide.
 - **NEVER skip or make coverage optional in tests.** Coverage is an integral part of testing and must always be collected and uploaded. If coverage upload fails, fix the root cause - never bypass it.
 - **NEVER dismiss test failures as "pre-existing flaky tests" or "unrelated to my changes".** If a test fails during your work, you must investigate and fix it. Period. It does not matter whether you think the failure is related to your changes or not. The tests must pass. While it's possible some tests have underlying reliability issues, if they passed before and now fail, the change since the last successful build is usually the cause. Compare with the last successful build, find what changed, and fix it. Even if the root cause turns out to be a pre-existing issue, it still needs to be fixed - don't use "flaky" as an excuse to avoid investigation.
 - Always restart the status monitor after making changes to its code.
 - Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
 - You don't need to rebuild the Freegle Dev or ModTools Dev containers to pick up code fixes - the `freegle-host-scripts` container automatically syncs file changes to dev containers.
 - The Freegle Production and ModTools Production containers require a full rebuild to pick up code changes since they run production builds.
-- **File Sync**: The `freegle-host-scripts` container runs `file-sync.sh` which uses inotifywait to monitor file changes in iznik-nuxt3, iznik-nuxt3-modtools, iznik-server, iznik-server-go, and iznik-batch directories. Changes are automatically synced to dev containers via `docker cp`. Check logs with `docker logs freegle-host-scripts --tail 20`.
+- **File Sync**: The `freegle-host-scripts` container runs `file-sync.sh` which uses inotifywait to monitor file changes in iznik-nuxt3, iznik-server, iznik-server-go, and iznik-batch directories. Changes are automatically synced to dev containers via `docker cp`. Check logs with `docker logs freegle-host-scripts --tail 20`.
 - **HMR Caveat**: While file sync works reliably, Nuxt's HMR may not always detect `docker cp` file changes. If changes don't appear after sync, restart the container: `docker restart modtools-dev-live`.
 - The API v2 (Go) container requires a full rebuild to pick up code changes: `docker-compose build apiv2 && docker-compose up -d apiv2`
 - After making changes to the status code, remember to restart the container
@@ -100,7 +101,6 @@ This repository uses CircleCI to automatically test submodule changes. Each subm
 
 The following submodules have `.github/workflows/trigger-parent-ci.yml` configured:
 - `iznik-nuxt3`
-- `iznik-nuxt3-modtools` 
 - `iznik-server`
 - `iznik-server-go`
 
@@ -252,7 +252,7 @@ When cache appears stale or corrupted:
 ```bash
 cd /tmp/FreegleDocker
 git checkout HEAD~1 -- iznik-nuxt3/Dockerfile.prod
-git checkout HEAD~1 -- iznik-nuxt3-modtools/modtools/Dockerfile.prod
+git checkout HEAD~1 -- iznik-nuxt3/modtools/Dockerfile.prod
 git commit -m "Rollback: Restore old Dockerfiles"
 git push
 ```
@@ -342,3 +342,98 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - We should always create plans/ md files in FreegleDocker, never in submodules.
 - When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
 - **Browser Testing**: See `BROWSER-TESTING.md` for Chrome DevTools MCP usage, login flow, debugging computed styles, and injecting CSS fixes.
+
+## Session Log
+
+**Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
+
+### 2026-01-22 - Yesterday Restore Port Conflict Fix
+- **Status**: ✅ Complete
+- **Issue**: Restore showed "failed" with "freegle-traefik is unhealthy"
+- **Root Causes Found**:
+  1. Port 8084 conflict: `mcp-query-sanitizer` and `yesterday-2fa` both use port 8084
+  2. Missing `--ping=true` in yesterday-traefik config for healthcheck endpoint
+  3. Yesterday services not restarted after restore (fixed in earlier commit)
+- **Fixes Applied**:
+  - `docker-compose.override.yesterday.yml`: Added MCP containers to disabled profile
+  - `yesterday/docker-compose.yesterday-services.yml`: Added `--ping=true` to traefik command
+- **Commits**: 6c45b9b pushed to master
+- **Verified**:
+  - All yesterday containers healthy
+  - API at https://yesterday.ilovefreegle.org:8444/api/restore-status working
+  - Backup 20260122 successfully loaded
+- **Key Learning**: The "traefik unhealthy" error was actually caused by port conflicts downstream, not traefik itself
+
+### 2026-01-20 - AI Support Helper Debug Modal Replacement
+- **Status**: ✅ Complete
+- **Branch**: `feature/mcp-log-analysis`
+- **Changes Made (Session 2)**:
+  - Replaced inline debug panel with summary modal popup
+  - Debug toggle checkbox → Debug button that opens modal
+  - New "MCP Data Sent to AI" modal shows:
+    - Unique values sent to AI from MCP tools (not user queries)
+    - Frequency count for each value
+    - Pseudonymized status (✓ green badge) or PII warning (⚠ red badge)
+    - "Real Value" column when "Show PII" toggle is on
+  - Added `mcpDataSummary` computed property to aggregate token data
+  - Cleaned up unused methods: `formatDebugData`, `formatStreamLabels`, `formatLogTimestamp`
+  - Removed ~70 lines of old debug panel styles
+- **Changes Made (Session 1)**:
+  - Removed Privacy Review toggle and all human-in-the-loop approval modals
+  - Removed ~280 lines of approval-related code
+- **Files Modified**:
+  - `iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue`
+- **Verified**: Debug button opens modal, shows empty state correctly, legend displays
+- **Commit**: 51dcc765 pushed to feature/mcp-log-analysis
+
+### 2026-01-18 - services.php Corruption Fix (CircleCI)
+- **Status**: Fix pushed, monitoring CI
+- **Root Cause Analysis**:
+  - **CI vs Production difference identified**: Production generates services.php once at deploy time, then only reads it. CI has supervisor starting multiple workers simultaneously.
+  - **Actual cause**: Supervisor launches scheduler, 2 queue workers, and mail spooler - all bootstrap Laravel at startup. If services.php needs regeneration (e.g., after migrate:fresh), multiple processes write to it concurrently → corruption (0 bytes).
+  - **Reference**: testbench issue #202 documents this as a testing-specific issue.
+- **Solution**:
+  - Added `CI=${CI:-false}` env var passthrough to batch container in docker-compose.yml
+  - In CI mode, entrypoint.sh skips supervisor entirely (`exec sleep infinity`)
+  - Tests don't need background workers - they run synchronously
+  - Local dev: supervisor runs normally, stopped by status API before tests
+- **Removed Defensive Code** (-268 lines):
+  - services.php validation/repair in entrypoint.sh
+  - View timestamp checking hack in TestCase.php
+  - Bootstrap cache validation/repair in server.js
+  - inotify monitoring for bootstrap cache corruption
+- **Commits**: 4e61f25 pushed to master
+- **Next**: Monitor CircleCI run at https://app.circleci.com/pipelines/github/Freegle/FreegleDocker
+- **Blockers**: None
+- **Key Principle**: Before making any fix, understand the difference between CircleCI and a live server. This was a testing-specific race condition, not a production issue.
+
+### 2026-01-18 - AI Decline on Edit (Issue #23)
+- **Status**: All tasks ✅ Complete, PR created, waiting for CI
+- **Completed**:
+  - Created `feature/ai-decline-on-edit` branch in iznik-server
+  - TDD: Wrote failing tests first, verified they failed for expected reason
+  - Modified `Message::replaceAttachments()` to record AI decline when AI attachment is removed
+  - Uses INSERT IGNORE into `messages_ai_declined` table
+  - All local tests pass (2 new tests)
+- **PR**: https://github.com/Freegle/iznik-server/pull/42
+- **Next**: Wait for CircleCI
+- **Blockers**: None
+- **Key Decisions**:
+  - Used strict `=== TRUE` comparison for AI flag check
+  - Same INSERT IGNORE pattern as existing code in message.php:706
+
+### 2026-01-17 23:10 - Email Reply Tracking (Issue #22)
+- **Status**: All tasks ✅ Complete, PR created, waiting for CI
+- **Completed**:
+  - Created `feature/email-reply-tracking` branch in iznik-server
+  - Updated MailRouter.php regex to parse optional tracking ID from notify- addresses
+  - Added email_tracking table update when reply received with tracking ID
+  - TDD approach: wrote failing tests first, then implemented fix
+  - All local tests pass (chatRoomsTest: 19 tests, MailRouterTest: 61 tests)
+- **PR**: https://github.com/Freegle/iznik-server/pull/41
+- **Next**: Wait for CircleCI (triggered when PR merges to master)
+- **Blockers**: None
+- **Key Decisions**:
+  - Used `\d+` regex for strict numeric matching (safer than `.*`)
+  - Used `replied_at IS NULL` in UPDATE to prevent overwriting existing replies
+  - Database ID (not tracking_id string) used in reply-to address for simpler lookup

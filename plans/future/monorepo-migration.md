@@ -14,11 +14,14 @@ FreegleDocker/
 ├── iznik-server/          (submodule -> github.com/Freegle/iznik-server)
 ├── iznik-server-go/       (submodule -> github.com/Freegle/iznik-server-go)
 ├── iznik-nuxt3/           (submodule -> github.com/Freegle/iznik-nuxt3)
-├── iznik-nuxt3-modtools/  (submodule -> github.com/Freegle/iznik-nuxt3-modtools)
+│   └── modtools/          (ModTools is now part of iznik-nuxt3, not a separate repo)
+├── iznik-batch/           (submodule -> github.com/Freegle/iznik-batch)
 ├── status/
 ├── docker-compose.yml
 └── testenv.php
 ```
+
+**Note:** `iznik-nuxt3-modtools` was merged into `iznik-nuxt3/modtools/` - both Freegle and ModTools now build from the same repository with different build commands.
 
 ## Target Structure
 
@@ -28,8 +31,9 @@ FreegleDocker/
 │   └── config.yml         (consolidated)
 ├── api-php/               (was iznik-server)
 ├── api-go/                (was iznik-server-go)
-├── web-freegle/           (was iznik-nuxt3)
-├── web-modtools/          (was iznik-nuxt3-modtools)
+├── web/                   (was iznik-nuxt3, includes both Freegle and ModTools)
+│   └── modtools/          (ModTools-specific build config)
+├── batch/                 (was iznik-batch)
 ├── status/
 ├── docker-compose.yml
 └── testenv.php
@@ -67,8 +71,8 @@ git filter-repo --to-subdirectory-filter api-php
 
 # Repeat for other repos:
 # iznik-server-go -> api-go/
-# iznik-nuxt3 -> web-freegle/
-# iznik-nuxt3-modtools -> web-modtools/
+# iznik-nuxt3 -> web/
+# iznik-batch -> batch/
 ```
 
 ### 2.2 Merge Histories into FreegleDocker
@@ -218,7 +222,174 @@ jobs:
 | `iznik-nuxt3-pr-tests` | `web-pr-tests` | Path filters, remove clone step |
 | `build-and-test` | `full-test-suite` | Update all path references |
 
-## Phase 4: Docker Configuration Updates (Estimated: 2-3 hours)
+## Phase 3b: Coveralls Configuration
+
+### Current Coveralls Setup
+
+Currently, code coverage is uploaded from CircleCI to Coveralls for each submodule:
+- `iznik-server` (iznik-batch) - PHPUnit coverage
+- `iznik-server-go` - Go test coverage
+
+### Migration Tasks
+
+1. **Update Coveralls project** - May need to reconfigure for monorepo structure
+2. **Update coverage paths** - Coverage reports will reference new directory structure
+3. **Consolidate coverage reporting** - Consider unified coverage report across all components
+4. **Update .coveralls.yml** if present in submodules
+
+### Post-Migration Coverage Structure
+
+```yaml
+# Example coverage configuration
+coverage:
+  paths:
+    - api-php/       # PHP coverage
+    - api-go/        # Go coverage
+    - web/           # Frontend coverage (if added)
+```
+
+## Phase 3c: Netlify Configuration
+
+### Current Netlify Setup
+
+Two separate Netlify sites deploy from `iznik-nuxt3` production branch:
+- **Freegle site**: `npm run build` → deploys `dist/`
+- **ModTools site**: `cd modtools && npm run build` → deploys `modtools/dist/`
+
+### Migration Tasks
+
+1. **Update build commands** - Change paths from `iznik-nuxt3` to `web/`
+2. **Update base directory** - Set to `web/` in Netlify project settings
+3. **Update publish directory** - Ensure correct output paths
+4. **Test deploy previews** - Verify PR previews work with monorepo
+
+### Netlify Configuration Changes
+
+```toml
+# netlify.toml for Freegle site
+[build]
+  base = "web/"
+  command = "npm run build"
+  publish = "dist/"
+
+# netlify.toml for ModTools site
+[build]
+  base = "web/"
+  command = "cd modtools && npm run build"
+  publish = "modtools/dist/"
+```
+
+### Considerations
+
+- **Monorepo detection** - Netlify has monorepo support, may auto-detect changes
+- **Build filtering** - Configure to only rebuild when `web/` changes
+- **Environment variables** - Verify all env vars are set correctly
+
+## Phase 3d: Sentry Configuration
+
+### Current Sentry Setup
+
+Sentry is configured in the frontend for error tracking:
+- DSN configured via environment variables
+- Source maps uploaded during build
+- Releases tagged with git commit
+
+### Migration Tasks
+
+1. **Update source map paths** - New directory structure affects source map uploads
+2. **Update release naming** - May need to adjust release naming convention
+3. **Update Sentry project settings** - Verify project configuration
+4. **Test error tracking** - Ensure errors are properly captured post-migration
+
+### Sentry CLI Configuration
+
+```bash
+# Update sentry-cli commands for new paths
+sentry-cli releases files $RELEASE upload-sourcemaps web/dist --url-prefix '~/'
+```
+
+### Considerations
+
+- **Multiple projects** - May want separate Sentry projects for different components
+- **Release association** - Ensure commits are properly linked to releases
+- **Environment separation** - dev/staging/production environments
+
+## Phase 3e: GitHub Actions Migration
+
+### Current GitHub Actions Setup
+
+Each submodule has `.github/workflows/trigger-parent-ci.yml` that:
+1. Triggers on push to master
+2. Clones FreegleDocker
+3. Updates submodule reference
+4. Pushes back to FreegleDocker to trigger CircleCI
+
+### Migration Tasks
+
+1. **Remove trigger workflows** - No longer needed in monorepo
+2. **Archive submodule repos** - Mark as read-only, update READMEs
+3. **Add monorepo workflows** if needed (optional, CircleCI handles CI)
+4. **Update branch protection rules** - Configure for monorepo branches
+
+### Workflows to Remove
+
+| Repository | Workflow File | Purpose |
+|------------|--------------|---------|
+| iznik-nuxt3 | trigger-parent-ci.yml | Trigger FreegleDocker CI |
+| iznik-server | trigger-parent-ci.yml | Trigger FreegleDocker CI |
+| iznik-server-go | trigger-parent-ci.yml | Trigger FreegleDocker CI |
+| iznik-batch | trigger-parent-ci.yml | Trigger FreegleDocker CI |
+
+### Post-Migration
+
+- GitHub Actions workflows in submodules become obsolete
+- All CI runs directly from FreegleDocker on push
+- No more webhook coordination needed
+
+## Phase 3f: Git Hooks Configuration
+
+### Current Git Hooks
+
+Git hooks may exist in individual submodules for:
+- Pre-commit linting (ESLint, PHP CS Fixer)
+- Commit message validation
+- Pre-push tests
+
+### Migration Tasks
+
+1. **Consolidate hooks** - Create unified hooks at monorepo root
+2. **Update hook paths** - Hooks must work with new directory structure
+3. **Consider Husky** - Use Husky for cross-platform hook management
+4. **Path-aware hooks** - Only run relevant checks based on changed files
+
+### Recommended Hook Structure
+
+```bash
+# .husky/pre-commit
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Get changed files
+CHANGED_FILES=$(git diff --cached --name-only)
+
+# Run ESLint on changed JS/Vue files in web/
+if echo "$CHANGED_FILES" | grep -q "^web/.*\.\(js\|vue\|ts\)$"; then
+  cd web && npx eslint --fix $(echo "$CHANGED_FILES" | grep "^web/" | sed 's/^web\///')
+fi
+
+# Run PHP CS Fixer on changed PHP files in api-php/
+if echo "$CHANGED_FILES" | grep -q "^api-php/.*\.php$"; then
+  cd api-php && ./vendor/bin/php-cs-fixer fix --dry-run
+fi
+```
+
+### Considerations
+
+- **Performance** - Hooks should be fast, only check changed files
+- **Skip option** - Allow `--no-verify` for emergency commits
+- **CI backup** - Full linting runs in CI regardless of local hooks
+
+## Phase 4: Docker Configuration Updates
 
 ### 4.1 Dockerfile Updates
 
@@ -309,6 +480,10 @@ If issues arise:
 | Docker build failures | Medium | High | Test all builds locally before push |
 | Path reference bugs | High | Low | Comprehensive grep for old paths |
 | Team confusion | Medium | Low | Clear documentation and communication |
+| Netlify deploy failures | Medium | High | Test deploy previews before merge |
+| Coveralls path mismatches | Medium | Low | Update coverage config before migration |
+| Sentry source map errors | Medium | Medium | Test error tracking post-migration |
+| Lost GitHub Actions history | Low | Low | Archive workflows before removing |
 
 ## Benefits After Migration
 
@@ -326,10 +501,15 @@ If issues arise:
 | 1. Preparation | 2-4 | None |
 | 2. History Migration | 4-6 | Phase 1 |
 | 3. CircleCI Reconfiguration | 6-8 | Phase 2 |
+| 3b. Coveralls Configuration | 1-2 | Phase 2 |
+| 3c. Netlify Configuration | 2-3 | Phase 2 |
+| 3d. Sentry Configuration | 1-2 | Phase 2 |
+| 3e. GitHub Actions Migration | 1-2 | Phase 2 |
+| 3f. Git Hooks Configuration | 1-2 | Phase 2 |
 | 4. Docker Updates | 2-3 | Phase 2 |
 | 5. Testing | 4-6 | Phases 3-4 |
 | 6. Deployment | 2-3 | Phase 5 |
-| **Total** | **20-30** | |
+| **Total** | **26-41** | |
 
 ## Alternative: Keep Submodules
 
@@ -348,3 +528,8 @@ Before proceeding, confirm:
 - [ ] Backup strategy is in place
 - [ ] Communication plan for contributors
 - [ ] Timeline aligns with development schedule (avoid during active feature work)
+- [ ] Netlify project settings documented
+- [ ] Coveralls configuration understood
+- [ ] Sentry DSN and project settings documented
+- [ ] GitHub Actions workflows in submodules identified
+- [ ] Git hooks in submodules identified and consolidated

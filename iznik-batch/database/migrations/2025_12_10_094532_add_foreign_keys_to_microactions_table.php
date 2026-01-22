@@ -18,8 +18,13 @@ return new class extends Migration
             $table->foreign(['searchterm2'])->references(['id'])->on('search_terms')->onUpdate('no action')->onDelete('cascade');
             $table->foreign(['item1'])->references(['id'])->on('items')->onUpdate('no action')->onDelete('cascade');
             $table->foreign(['item2'])->references(['id'])->on('items')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['facebook_post'])->references(['id'])->on('groups_facebook_toshare')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['rotatedimage'])->references(['id'])->on('messages_attachments')->onUpdate('no action')->onDelete('cascade');
+            // Only add foreign key if column exists (table may have been created from old schema)
+            if (Schema::hasColumn('microactions', 'facebook_post')) {
+                $table->foreign(['facebook_post'])->references(['id'])->on('groups_facebook_toshare')->onUpdate('no action')->onDelete('cascade');
+            }
+            if (Schema::hasColumn('microactions', 'rotatedimage')) {
+                $table->foreign(['rotatedimage'])->references(['id'])->on('messages_attachments')->onUpdate('no action')->onDelete('cascade');
+            }
         });
     }
 

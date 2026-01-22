@@ -61,6 +61,10 @@ fi
 
 echo "Selected backup: $BACKUP_FILE"
 
+# Extract backup time from filename (iznik-YYYY-MM-DD-HH-MM.xbstream -> HH:MM)
+BACKUP_TIME=$(basename "$BACKUP_FILE" | grep -oP '\d{4}-\d{2}-\d{2}-\K\d{2}-\d{2}' | tr '-' ':')
+echo "Backup time: $BACKUP_TIME"
+
 BACKUP_SIZE=$(gsutil ls -l "$BACKUP_FILE" | grep -v TOTAL | awk '{print $1}')
 BACKUP_SIZE_GB=$((BACKUP_SIZE / 1024 / 1024 / 1024))
 echo "Backup size: ${BACKUP_SIZE_GB}GB (compressed)"
@@ -69,6 +73,7 @@ echo "Updating Yesterday code..."
 cd /var/www/FreegleDocker
 git fetch origin
 git reset --hard origin/master
+git submodule update --init --recursive
 echo "✅ Code updated"
 
 echo "Configuring Yesterday environment..."
@@ -81,7 +86,13 @@ fi
 
 echo "Stopping all Docker containers..."
 update_status "stopping" "Stopping containers..."
-docker compose down
+# Aggressive shutdown - we're restoring from backup so don't need to preserve anything
+docker compose down --timeout 10 --remove-orphans 2>/dev/null || true
+# Force stop any remaining containers (in case compose down didn't get everything)
+docker stop $(docker ps -q) 2>/dev/null || true
+# Remove all containers to prevent name conflicts
+docker rm -f $(docker ps -aq) 2>/dev/null || true
+echo "✅ All containers stopped and removed"
 
 echo "Getting volume path..."
 VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}' 2>/dev/null || echo "")
@@ -427,8 +438,8 @@ else
     exit 1
 fi
 
-# Update current backup tracker
-/var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}"
+# Update current backup tracker with date and time
+/var/www/FreegleDocker/yesterday/scripts/set-current-backup.sh "${BACKUP_DATE}" "${BACKUP_TIME}"
 
 echo ""
 if systemctl list-units --full --all | grep -q "docker-compose@freegle.service"; then
@@ -439,6 +450,11 @@ if systemctl list-units --full --all | grep -q "docker-compose@freegle.service";
 else
     echo "ℹ️  No systemd service found (Yesterday deployment) - skipping systemctl restart"
 fi
+
+echo ""
+echo "Restarting Yesterday services (API, 2FA gateway, Traefik)..."
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d
+echo "✅ Yesterday services restarted"
 
 echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="

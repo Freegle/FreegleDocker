@@ -3,19 +3,13 @@
 namespace App\Console\Commands\Mail;
 
 use App\Services\EmailSpoolerService;
+use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 
 class ProcessSpoolCommand extends Command
 {
-    /**
-     * Cache key used to signal restart.
-     */
-    public const RESTART_SIGNAL_KEY = 'mail-spooler:restart';
+    use GracefulShutdown;
 
-    /**
-     * The name and signature of the console command.
-     */
     protected $signature = "mail:spool:process
                             {--limit=100 : Maximum emails to process per run}
                             {--cleanup : Clean up old sent emails}
@@ -24,53 +18,29 @@ class ProcessSpoolCommand extends Command
                             {--stats : Show backlog statistics only}
                             {--daemon : Run continuously with 1 second sleep between batches}";
 
-    /**
-     * The console command description.
-     */
     protected $description = "Process spooled emails from the file-based queue";
 
-    /**
-     * Flag to indicate shutdown has been requested.
-     */
-    protected bool $shouldShutdown = false;
-
-    /**
-     * Timestamp when the daemon started (for restart signal comparison).
-     */
-    protected int $startedAt;
-
-    /**
-     * Execute the console command.
-     */
     public function handle(EmailSpoolerService $spooler): int
     {
-        // Stats only mode.
         if ($this->option("stats")) {
             return $this->showStats($spooler);
         }
 
-        // Cleanup mode.
         if ($this->option("cleanup")) {
             return $this->cleanup($spooler);
         }
 
-        // Retry failed mode.
         if ($this->option("retry-failed")) {
             return $this->retryFailed($spooler);
         }
 
-        // Daemon mode - run continuously.
         if ($this->option("daemon")) {
             return $this->runDaemon($spooler);
         }
 
-        // Normal processing.
         return $this->processBatch($spooler);
     }
 
-    /**
-     * Process a single batch of emails.
-     */
     protected function processBatch(EmailSpoolerService $spooler): int
     {
         $limit = (int) $this->option("limit");
@@ -96,28 +66,14 @@ class ProcessSpoolCommand extends Command
         return Command::SUCCESS;
     }
 
-    /**
-     * Run in daemon mode.
-     */
     protected function runDaemon(EmailSpoolerService $spooler): int
     {
         $limit = (int) $this->option("limit");
 
-        // Record when we started for restart signal comparison.
-        $this->startedAt = time();
-
-        // Register signal handlers for graceful shutdown.
-        $this->registerSignalHandlers();
-
+        $this->registerShutdownHandlers();
         $this->info("Running in daemon mode. Press Ctrl+C to stop.");
 
-        while (!$this->shouldShutdown) {
-            // Check for restart signal (set by deploy:restart command).
-            if ($this->shouldRestart()) {
-                $this->info("Restart signal received, shutting down...");
-                break;
-            }
-
+        while (!$this->shouldStop()) {
             $stats = $spooler->processSpool($limit);
 
             if ($stats["processed"] > 0) {
@@ -138,10 +94,8 @@ class ProcessSpoolCommand extends Command
                 }
             }
 
-            // Sleep before next batch.
             sleep(1);
 
-            // Dispatch any pending signals.
             if (function_exists("pcntl_signal_dispatch")) {
                 pcntl_signal_dispatch();
             }
@@ -152,39 +106,6 @@ class ProcessSpoolCommand extends Command
         return Command::SUCCESS;
     }
 
-    /**
-     * Check if a restart has been signaled.
-     */
-    protected function shouldRestart(): bool
-    {
-        $restartSignal = Cache::get(self::RESTART_SIGNAL_KEY);
-
-        return $restartSignal && $restartSignal > $this->startedAt;
-    }
-
-    /**
-     * Register signal handlers for graceful shutdown.
-     */
-    protected function registerSignalHandlers(): void
-    {
-        if (!function_exists("pcntl_signal")) {
-            $this->warn("PCNTL not available - graceful shutdown disabled.");
-            return;
-        }
-
-        $handler = function (int $signal): void {
-            $this->info("Received signal {$signal}, initiating graceful shutdown...");
-            $this->shouldShutdown = true;
-        };
-
-        pcntl_signal(SIGTERM, $handler);
-        pcntl_signal(SIGINT, $handler);
-        pcntl_signal(SIGHUP, $handler);
-    }
-
-    /**
-     * Show backlog statistics.
-     */
     protected function showStats(EmailSpoolerService $spooler): int
     {
         $stats = $spooler->getBacklogStats();
@@ -215,9 +136,6 @@ class ProcessSpoolCommand extends Command
         return Command::SUCCESS;
     }
 
-    /**
-     * Clean up old sent emails.
-     */
     protected function cleanup(EmailSpoolerService $spooler): int
     {
         $days = (int) $this->option("cleanup-days");
@@ -231,9 +149,6 @@ class ProcessSpoolCommand extends Command
         return Command::SUCCESS;
     }
 
-    /**
-     * Retry all failed emails.
-     */
     protected function retryFailed(EmailSpoolerService $spooler): int
     {
         $this->info("Retrying all failed emails...");

@@ -1932,59 +1932,21 @@ const httpServer = http.createServer(async (req, res) => {
         "-c",
         `
         set -e
-        echo "Clearing Laravel caches using artisan commands for proper state cleanup..."
+        echo "Setting up Laravel test environment..."
 
-        # Step 1: Remove potentially corrupt bootstrap cache files directly
-        # (artisan commands may fail if these are corrupt)
-        docker exec freegle-batch sh -c 'rm -f /var/www/html/bootstrap/cache/services.php /var/www/html/bootstrap/cache/packages.php' 2>&1 || true
+        # Stop supervisor workers before running tests.
+        # In CI, supervisor isn't running (CI=true skips it in entrypoint.sh).
+        # In local dev, this stops background workers to prevent interference.
+        echo "Stopping supervisor workers..."
+        docker exec freegle-batch supervisorctl stop all 2>&1 || true
 
-        # Step 2: Regenerate package manifest - this creates clean services.php and packages.php
-        # CRITICAL: Do NOT use || true here - we must fail if package manifest can't be regenerated
-        echo "Regenerating package manifest..."
-        docker exec freegle-batch php artisan package:discover --ansi 2>&1
-
-        # Verify the manifest was created - this is what Laravel needs to bootstrap
-        if ! docker exec freegle-batch test -f /var/www/html/bootstrap/cache/services.php; then
-          echo "ERROR: services.php was not created after package:discover"
-          exit 1
-        fi
-
-        # Step 3: Clear view cache using artisan (clears Laravel's internal state, not just files)
-        # CRITICAL: Using view:clear instead of rm -rf ensures Laravel's internal view state is reset.
-        # Without this, Laravel may still reference stale compiled view paths causing empty renders.
-        echo "Clearing compiled views with artisan view:clear..."
-        docker exec freegle-batch php artisan view:clear --ansi 2>&1 || true
-
-        # Step 4: Pre-compile all views before parallel testing to prevent race conditions
-        # Without this, multiple paratest workers may try to compile the same view simultaneously,
-        # causing some to get empty/locked files. See: https://github.com/laravel/framework/issues/54029
-        echo "Pre-compiling Blade views to avoid parallel test race conditions..."
-        if ! docker exec freegle-batch php artisan view:cache --ansi 2>&1; then
-          echo "WARNING: view:cache failed, views will be compiled on-demand"
-        fi
-
-        # Verify views are cached
-        CACHED_VIEWS=$(docker exec freegle-batch sh -c 'ls -1 /var/www/html/storage/framework/views/*.php 2>/dev/null | wc -l')
-        echo "Cached views count: $CACHED_VIEWS"
-        if [ "$CACHED_VIEWS" -lt 10 ]; then
-          echo "WARNING: Very few views cached ($CACHED_VIEWS), this may cause race conditions"
-        fi
-
-        echo "Cache directory after regeneration:"
-        docker exec freegle-batch ls -la /var/www/html/bootstrap/cache/ 2>&1 || true
-
-        # IMPORTANT: Do NOT run config:cache here - tests need to dynamically set the database name
-        # in bootstrap.php, which won't work if config is cached with the production DB name.
-
+        # Set up fresh test database
         echo "Setting up fresh test database..."
-        # Create test database if it doesn't exist, then run fresh migrations
         docker exec freegle-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
-        # Must explicitly set DB_DATABASE to avoid touching production database
         docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
 
-        echo "Running Laravel tests serially with coverage..."
-        # Using PHPUnit directly instead of ParaTest to avoid hanging at 90%
-        docker exec freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+        echo "Running Laravel tests with coverage..."
+        docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
       `,
       ],
       { stdio: "pipe" }
@@ -2068,6 +2030,40 @@ const httpServer = http.createServer(async (req, res) => {
         ? `All ${total} tests passed ✓`
         : `Tests failed: ${passed}✓ ${p.failed}✗ of ${total}`;
       console.log(`Laravel tests completed with code ${code}`);
+
+      // Collect the inotify monitoring log for artifacts
+      try {
+        const inotifyLog = execSync(
+          "docker exec freegle-batch cat /tmp/bootstrap-cache-monitor.log 2>/dev/null || echo 'No inotify events recorded'",
+          { encoding: "utf8", timeout: 10000 }
+        );
+        const inotifyArtifactPath = "/tmp/laravel-bootstrap-cache-monitor.log";
+        fs.writeFileSync(inotifyArtifactPath,
+          `=== Bootstrap Cache inotify Monitor Log ===\n` +
+          `Time: ${new Date().toISOString()}\n` +
+          `Test Exit Code: ${code}\n\n` +
+          inotifyLog
+        );
+        console.log(`Saved inotify log to ${inotifyArtifactPath}`);
+
+        // Also append to test logs for visibility
+        if (inotifyLog && inotifyLog.trim() !== 'No inotify events recorded') {
+          testStatuses.laravelTests.logs += `\n\n=== Bootstrap Cache inotify Events ===\n${inotifyLog}`;
+        }
+      } catch (e) {
+        console.log("Warning: Failed to collect inotify log:", e.message);
+      }
+
+      // Restart supervisor workers that were stopped before tests
+      try {
+        execSync("docker exec freegle-batch supervisorctl start all 2>&1 || true", {
+          encoding: "utf8",
+          timeout: 30000,
+        });
+        console.log("Restarted supervisor workers after Laravel tests");
+      } catch (e) {
+        console.log("Warning: Failed to restart supervisor workers:", e.message);
+      }
     });
 
     testProcess.on("error", (error) => {

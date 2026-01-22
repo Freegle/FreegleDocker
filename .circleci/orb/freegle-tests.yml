@@ -21,8 +21,8 @@ executors:
 
   macos-executor:
     macos:
-      xcode: 16.2.0
-    resource_class: macos.m1.medium.gen1
+      xcode: 26.2.0
+    resource_class: m4pro.medium
 
 commands:
   # === Setup Commands ===
@@ -171,8 +171,8 @@ commands:
             - nuxt-output-v2-freegle-
       - restore_cache:
           keys:
-            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}-{{ checksum "iznik-nuxt3-modtools/modtools/nuxt.config.ts" }}
-            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}
+            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
+            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}
             - nuxt-output-v2-modtools-
       - run:
           name: Restore Nuxt build cache to build contexts
@@ -189,8 +189,8 @@ commands:
 
             # Restore ModTools .output cache
             if [ -d ~/nuxt-cache/modtools/modtools/.output ]; then
-              mkdir -p iznik-nuxt3-modtools/modtools
-              cp -r ~/nuxt-cache/modtools/modtools/.output iznik-nuxt3-modtools/modtools/.output
+              mkdir -p iznik-nuxt3/modtools
+              cp -r ~/nuxt-cache/modtools/modtools/.output iznik-nuxt3/modtools/.output
               echo "✅ Restored ModTools .output cache ($(du -sh ~/nuxt-cache/modtools/modtools/.output | cut -f1))"
             else
               echo "ℹ️  No ModTools .output cache found"
@@ -206,10 +206,33 @@ commands:
             # Build only containers needed for CI tests (skip dev containers)
             # This saves ~2-3 minutes by not building freegle-dev-local, modtools-dev-local, ai-support-helper
             echo "Building CI-required containers..."
-            docker-compose -f docker-compose.yml build \
-              apiv1 apiv1-phpunit apiv2 \
-              freegle-prod-local modtools-prod-local \
-              playwright status batch
+
+            # Retry logic for transient network errors (ECONNRESET, etc.) during npm install
+            MAX_RETRIES=3
+            RETRY_DELAY=30
+
+            for attempt in $(seq 1 $MAX_RETRIES); do
+              echo "Build attempt $attempt of $MAX_RETRIES..."
+
+              if docker-compose -f docker-compose.yml build \
+                apiv1 apiv1-phpunit apiv2 \
+                freegle-prod-local modtools-prod-local \
+                playwright status batch; then
+                echo "✅ Build succeeded on attempt $attempt"
+                break
+              else
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⚠️ Build failed on attempt $attempt, retrying in ${RETRY_DELAY}s..."
+                  # Clean up any partial builds
+                  docker-compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+                  docker system prune -f 2>/dev/null || true
+                  sleep $RETRY_DELAY
+                else
+                  echo "❌ Build failed after $MAX_RETRIES attempts"
+                  exit 1
+                fi
+              fi
+            done
 
             # Start all services
             docker-compose -f docker-compose.yml up -d
@@ -257,16 +280,9 @@ commands:
             cd "$HOME/FreegleDocker"
             git submodule update --init --recursive --jobs 4
 
-            # Checkout the configured branch for iznik-nuxt3-modtools
-            echo "=== Checking out modtools branch ==="
-            cd iznik-nuxt3-modtools
-            git fetch origin
-            BRANCH=$(git config -f ../.gitmodules submodule.iznik-nuxt3-modtools.branch || echo master)
-            echo "Branch from .gitmodules: $BRANCH"
-            git checkout -B "$BRANCH" "origin/$BRANCH" || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
-            echo "Successfully checked out $BRANCH"
-            ls -la modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
-            cd ..
+            # ModTools is now built from iznik-nuxt3/modtools (same repo, different build)
+            echo "=== Verifying modtools directory ==="
+            ls -la iznik-nuxt3/modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
           max_auto_reruns: 3
           auto_rerun_delay: 10s
 
@@ -411,36 +427,60 @@ commands:
             start_time=$(date +%s)
             timeout_duration=1200  # 20 minutes
 
+            # Track if containers are actually responding (not just Docker status)
+            freegle_http_ready=false
+            modtools_http_ready=false
+
             while true; do
               current_time=$(date +%s)
               elapsed=$((current_time - start_time))
 
               if [ $elapsed -gt $timeout_duration ]; then
                 echo "❌ Timeout waiting for production containers after 20 minutes"
+                echo "Freegle HTTP ready: $freegle_http_ready"
+                echo "ModTools HTTP ready: $modtools_http_ready"
+                echo ""
+                echo "=== Freegle container logs ==="
+                docker logs freegle-prod-local --tail 50 2>&1 || true
+                echo ""
+                echo "=== ModTools container logs ==="
+                docker logs modtools-prod-local --tail 50 2>&1 || true
                 exit 1
               fi
 
-              # Check both prod containers health
+              # Check Docker status first (to see if containers are running)
               health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
               freegle_prod_status=$(echo "$health_response" | jq -r '.["freegle-prod-local"].status // "unknown"')
               modtools_prod_status=$(echo "$health_response" | jq -r '.["modtools-prod-local"].status // "unknown"')
 
-              if [ "$freegle_prod_status" = "success" ] && [ "$modtools_prod_status" = "success" ]; then
-                echo "✅ Both production containers are healthy!"
+              # Also make actual HTTP requests to verify servers are responding
+              # This is needed because Docker status is "running" during npm build
+              if [ "$freegle_http_ready" = "false" ]; then
+                if curl -s -f -o /dev/null --max-time 5 http://localhost:3012/ 2>/dev/null; then
+                  freegle_http_ready=true
+                  echo "✅ Freegle production container is responding on HTTP"
+                fi
+              fi
+
+              if [ "$modtools_http_ready" = "false" ]; then
+                if curl -s -f -o /dev/null --max-time 5 http://localhost:3013/ 2>/dev/null; then
+                  modtools_http_ready=true
+                  echo "✅ ModTools production container is responding on HTTP"
+                fi
+              fi
+
+              # Both must be running AND responding to HTTP
+              if [ "$freegle_http_ready" = "true" ] && [ "$modtools_http_ready" = "true" ]; then
+                echo "✅ Both production containers are healthy and responding!"
                 break
               else
                 elapsed_min=$((elapsed / 60))
-                echo "[${elapsed_min}m] FD Prod: ${freegle_prod_status} | MT Prod: ${modtools_prod_status} - waiting..."
+                echo "[${elapsed_min}m] Docker: FD=$freegle_prod_status MT=$modtools_prod_status | HTTP: FD=$freegle_http_ready MT=$modtools_http_ready - waiting..."
 
-                # Show container logs if they're having issues
-                if [ "$freegle_prod_status" = "failed" ] || [ "$freegle_prod_status" = "error" ]; then
-                  echo "FD Production container logs (last 10 lines):"
-                  docker logs freegle-prod-local --tail 10 2>&1 || true
-                fi
-
-                if [ "$modtools_prod_status" = "failed" ] || [ "$modtools_prod_status" = "error" ]; then
-                  echo "MT Production container logs (last 10 lines):"
-                  docker logs modtools-prod-local --tail 10 2>&1 || true
+                # Show container logs periodically to track build progress
+                if [ $((elapsed % 60)) -lt 15 ]; then
+                  echo "--- FD Production container recent output ---"
+                  docker logs freegle-prod-local --tail 3 2>&1 || true
                 fi
 
                 sleep 15
@@ -1002,6 +1042,12 @@ commands:
             docker cp freegle-apiv1-phpunit:/tmp/phpunit-output.log ~/artifacts/phpunit/ 2>/dev/null || true
             docker cp freegle-apiv1-phpunit:/tmp/phpunit-debug.log ~/artifacts/phpunit/ 2>/dev/null || true
 
+            # Collect Laravel (batch) test output and monitoring logs
+            mkdir -p ~/artifacts/laravel
+            docker cp freegle-status:/tmp/laravel-bootstrap-cache-monitor.log ~/artifacts/laravel/ 2>/dev/null || true
+            docker cp freegle-batch:/tmp/bootstrap-cache-monitor.log ~/artifacts/laravel/inotify-raw.log 2>/dev/null || true
+            docker cp freegle-batch:/tmp/laravel-coverage.xml ~/artifacts/laravel/ 2>/dev/null || true
+
             # Collect Go test coverage
             mkdir -p ~/artifacts/go
             docker cp freegle-apiv2:/app/coverage.out ~/artifacts/go/ 2>/dev/null || true
@@ -1441,8 +1487,8 @@ jobs:
             fi
 
             if [ -n "$CHANGED_FILES" ]; then
-              SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(iznik-nuxt3|iznik-nuxt3-modtools|iznik-server|iznik-server-go)$' || true)
-              NON_SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -v -E '^(iznik-nuxt3|iznik-nuxt3-modtools|iznik-server|iznik-server-go)$' || true)
+              SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(iznik-nuxt3|iznik-server|iznik-server-go)$' || true)
+              NON_SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -v -E '^(iznik-nuxt3|iznik-server|iznik-server-go)$' || true)
 
               if [ -n "$SUBMODULE_CHANGES" ] && [ -z "$NON_SUBMODULE_CHANGES" ]; then
                 git submodule init
@@ -1472,16 +1518,9 @@ jobs:
             git submodule update --recursive --jobs 4
             git submodule status
 
-            # Checkout the configured branch for iznik-nuxt3-modtools
-            echo "=== Checking out modtools branch ==="
-            cd iznik-nuxt3-modtools
-            git fetch origin
-            BRANCH=$(git config -f ../.gitmodules submodule.iznik-nuxt3-modtools.branch || echo master)
-            echo "Branch from .gitmodules: $BRANCH"
-            git checkout -B "$BRANCH" "origin/$BRANCH" || { echo "ERROR: Failed to checkout $BRANCH"; exit 1; }
-            echo "Successfully checked out $BRANCH"
-            ls -la modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
-            cd ..
+            # ModTools is now built from iznik-nuxt3/modtools (same repo, different build)
+            echo "=== Verifying modtools directory ==="
+            ls -la iznik-nuxt3/modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
 
       - setup-dependencies
 
@@ -1522,7 +1561,7 @@ jobs:
           paths:
             - ~/nuxt-cache/freegle
       - save_cache:
-          key: nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3-modtools/package.json" }}-{{ checksum "iznik-nuxt3-modtools/modtools/nuxt.config.ts" }}
+          key: nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
           paths:
             - ~/nuxt-cache/modtools
 

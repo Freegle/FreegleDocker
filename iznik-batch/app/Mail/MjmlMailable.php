@@ -43,7 +43,6 @@ abstract class MjmlMailable extends Mailable
     public function build(): static
     {
         // Render the Blade template to get MJML content.
-        // Retry once if empty to handle race conditions in parallel testing.
         $mjmlContent = $this->renderMjmlTemplate();
 
         // Compile MJML to HTML.
@@ -54,38 +53,38 @@ abstract class MjmlMailable extends Mailable
     }
 
     /**
-     * Render the MJML template with retry on empty result.
+     * Render the MJML template.
      *
-     * Handles race conditions in parallel testing where compiled views
-     * may temporarily be empty or corrupted.
+     * Views should be pre-compiled before tests run via `php artisan view:cache`.
+     * If a view renders empty, that's a real problem that needs investigation -
+     * not something to retry or patch over by deleting compiled views.
      */
     protected function renderMjmlTemplate(): string
     {
-        $content = view($this->mjmlTemplate, $this->mjmlData)->render();
+        $viewInstance = view($this->mjmlTemplate, $this->mjmlData);
+        $result = $viewInstance->render();
 
-        // If empty, clear the compiled view and retry once.
-        if (empty(trim($content))) {
-            // Clear the specific compiled view file to force recompilation.
-            $viewFinder = app('view')->getFinder();
-            $viewPath = $viewFinder->find($this->mjmlTemplate);
-            $compiledPath = app('blade.compiler')->getCompiledPath($viewPath);
+        // If render returns empty, log diagnostics to help debug.
+        if (empty(trim($result))) {
+            $bladeCompiler = app('blade.compiler');
+            $viewPath = $viewInstance->getPath();
+            $compiledPath = $bladeCompiler->getCompiledPath($viewPath);
 
-            if (file_exists($compiledPath)) {
-                @unlink($compiledPath);
-                \Log::warning('Cleared empty compiled view for retry', [
-                    'template' => $this->mjmlTemplate,
-                    'compiled_path' => $compiledPath,
-                ]);
-            }
-
-            // Small delay to allow any concurrent writes to complete.
-            usleep(10000); // 10ms
-
-            // Retry rendering.
-            $content = view($this->mjmlTemplate, $this->mjmlData)->render();
+            \Log::error('View render returned empty', [
+                'template' => $this->mjmlTemplate,
+                'view_path' => $viewPath,
+                'view_exists' => file_exists($viewPath),
+                'view_size' => file_exists($viewPath) ? filesize($viewPath) : 'N/A',
+                'compiled_path' => $compiledPath,
+                'compiled_exists' => file_exists($compiledPath),
+                'compiled_size' => file_exists($compiledPath) ? filesize($compiledPath) : 'N/A',
+                'compiled_preview' => file_exists($compiledPath) ? substr(file_get_contents($compiledPath), 0, 500) : 'N/A',
+                'data_keys' => array_keys($this->mjmlData),
+                'check_timestamps' => config('view.check_cache_timestamps'),
+            ]);
         }
 
-        return $content;
+        return $result;
     }
 
     /**

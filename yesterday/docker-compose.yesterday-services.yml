@@ -19,6 +19,7 @@ services:
       - "8193:8193"   # Iznik API v2
     command:
       - "--api.dashboard=true"
+      - "--ping=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.constraints=Label(`traefik.yesterday`,`true`)"

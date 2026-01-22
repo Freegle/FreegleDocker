@@ -102,12 +102,60 @@ class User extends Model
 
     /**
      * Get the user's preferred email address.
+     *
+     * Excludes internal Freegle domains (users.ilovefreegle.org, groups.ilovefreegle.org, etc.)
+     * and Yahoo Groups addresses, matching iznik-server's getEmailPreferred() behavior.
      */
     public function getEmailPreferredAttribute(): ?string
     {
-        return $this->emails()
+        $emails = $this->emails()
             ->orderByRaw('preferred DESC, validated DESC')
-            ->value('email');
+            ->pluck('email');
+
+        foreach ($emails as $email) {
+            if (!self::isInternalEmail($email)) {
+                return $email;
+            }
+        }
+
+        return NULL;
+    }
+
+    /**
+     * Check if an email address is an internal Freegle domain that shouldn't receive external mail.
+     *
+     * Matches iznik-server's Mail::ourDomain() + GROUP_DOMAIN + yahoogroups filtering.
+     */
+    public static function isInternalEmail(string $email): bool
+    {
+        $email = strtolower($email);
+
+        // Check against internal domains (users.ilovefreegle.org, groups.ilovefreegle.org, etc.)
+        $internalDomains = config('freegle.mail.internal_domains', [
+            'users.ilovefreegle.org',
+            'groups.ilovefreegle.org',
+            'direct.ilovefreegle.org',
+            'republisher.freegle.in',
+        ]);
+
+        foreach ($internalDomains as $domain) {
+            if (str_contains($email, '@' . strtolower($domain))) {
+                return TRUE;
+            }
+        }
+
+        // Check against excluded domain patterns (e.g., @yahoogroups.)
+        $excludedPatterns = config('freegle.mail.excluded_domain_patterns', [
+            '@yahoogroups.',
+        ]);
+
+        foreach ($excludedPatterns as $pattern) {
+            if (str_contains($email, strtolower($pattern))) {
+                return TRUE;
+            }
+        }
+
+        return FALSE;
     }
 
     /**

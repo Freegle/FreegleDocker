@@ -19,11 +19,57 @@ abstract class TestCase extends BaseTestCase
     // This rolls back each test's changes, ensuring test isolation.
     use DatabaseTransactions;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Force mail driver to 'array' for testing.
+        // Docker's MAIL_MAILER=smtp would otherwise override phpunit.xml's setting.
+        config(['mail.default' => 'array']);
+        \Illuminate\Support\Facades\Mail::forgetMailers();
+    }
+
+    /**
+     * Ensure tests are run via the status container, not directly.
+     *
+     * This prevents Claude from accidentally running tests directly with
+     * `docker exec freegle-batch php artisan test` instead of via the
+     * status container API which manages test isolation and reporting.
+     */
+    public static function setUpBeforeClass(): void
+    {
+        parent::setUpBeforeClass();
+
+        // Use getenv() instead of Laravel's env() helper because the Laravel app
+        // may not be fully bootstrapped yet in setUpBeforeClass().
+        if (! getenv('VIA_STATUS_CONTAINER')) {
+            fwrite(STDERR, "\n\n");
+            fwrite(STDERR, "╔════════════════════════════════════════════════════════════════╗\n");
+            fwrite(STDERR, "║  ERROR: Tests must be run via the status container!            ║\n");
+            fwrite(STDERR, "║                                                                ║\n");
+            fwrite(STDERR, "║  Use: curl -X POST http://localhost:8081/api/tests/php         ║\n");
+            fwrite(STDERR, "║  Or:  curl -X POST http://localhost:8081/api/tests/laravel     ║\n");
+            fwrite(STDERR, "║                                                                ║\n");
+            fwrite(STDERR, "║  DO NOT run: docker exec freegle-batch php artisan test        ║\n");
+            fwrite(STDERR, "╚════════════════════════════════════════════════════════════════╝\n");
+            fwrite(STDERR, "\n");
+            exit(1);
+        }
+    }
+
     /**
      * Create a test user with an email address.
+     *
+     * @param array $attributes User attributes. Can include:
+     *   - email_preferred: Custom email address (default: test{id}@test.com)
+     *   - Any other User model attributes
      */
     protected function createTestUser(array $attributes = []): User
     {
+        // Extract email_preferred if provided (not a User model attribute)
+        $customEmail = $attributes['email_preferred'] ?? null;
+        unset($attributes['email_preferred']);
+
         $user = User::create(array_merge([
             'firstname' => 'Test',
             'lastname' => 'User',
@@ -31,8 +77,8 @@ abstract class TestCase extends BaseTestCase
             'added' => now(),
         ], $attributes));
 
-        // Create email for user.
-        $email = 'test' . $user->id . '@test.com';
+        // Create email for user - use custom email if provided.
+        $email = $customEmail ?? 'test'.$user->id.'@test.com';
         UserEmail::create([
             'userid' => $user->id,
             'email' => $email,
@@ -56,22 +102,22 @@ abstract class TestCase extends BaseTestCase
         // Fail fast if caller tries to use hardcoded names - these cause collisions in parallel tests.
         if (isset($attributes['nameshort'])) {
             throw new \InvalidArgumentException(
-                "Do not pass 'nameshort' to createTestGroup() - it causes collisions in parallel tests. " .
-                "Use the auto-generated name and reference \$group->nameshort in assertions."
+                "Do not pass 'nameshort' to createTestGroup() - it causes collisions in parallel tests. ".
+                'Use the auto-generated name and reference $group->nameshort in assertions.'
             );
         }
         if (isset($attributes['namefull'])) {
             throw new \InvalidArgumentException(
-                "Do not pass 'namefull' to createTestGroup() - it causes collisions in parallel tests. " .
-                "Use the auto-generated name and reference \$group->namefull in assertions."
+                "Do not pass 'namefull' to createTestGroup() - it causes collisions in parallel tests. ".
+                'Use the auto-generated name and reference $group->namefull in assertions.'
             );
         }
 
         $uniqueId = uniqid('', true);
 
         return Group::create(array_merge([
-            'nameshort' => 'TestGroup_' . $uniqueId,
-            'namefull' => 'Test Freegle Group ' . $uniqueId,
+            'nameshort' => 'TestGroup_'.$uniqueId,
+            'namefull' => 'Test Freegle Group '.$uniqueId,
             'type' => Group::TYPE_FREEGLE,
             'region' => 'TestRegion',
             'lat' => 51.5074,
@@ -132,10 +178,11 @@ abstract class TestCase extends BaseTestCase
         $messages = [];
         for ($i = 0; $i < $count; $i++) {
             $messages[] = $this->createTestMessage($user, $group, [
-                'subject' => 'OFFER: Test Item ' . ($i + 1) . ' (TestLocation)',
+                'subject' => 'OFFER: Test Item '.($i + 1).' (TestLocation)',
                 'type' => $i % 2 === 0 ? Message::TYPE_OFFER : Message::TYPE_WANTED,
             ]);
         }
+
         return $messages;
     }
 
@@ -178,13 +225,13 @@ abstract class TestCase extends BaseTestCase
      *
      * Use this instead of hardcoding email addresses which cause collisions in parallel tests.
      *
-     * @param string $prefix Optional prefix for the email (e.g., 'bounced', 'validated')
-     * @param string $domain Optional domain for the email (default: 'test.com')
+     * @param  string  $prefix  Optional prefix for the email (e.g., 'bounced', 'validated')
+     * @param  string  $domain  Optional domain for the email (default: 'test.com')
      * @return string A unique email address
      */
     protected function uniqueEmail(string $prefix = 'test', string $domain = 'test.com'): string
     {
-        return $prefix . '_' . uniqid('', true) . '@' . $domain;
+        return $prefix.'_'.uniqid('', true).'@'.$domain;
     }
 
     /**
@@ -198,8 +245,8 @@ abstract class TestCase extends BaseTestCase
     {
         if (isset($attributes['email'])) {
             throw new \InvalidArgumentException(
-                "Do not pass 'email' to createTestUserEmail() - it causes collisions in parallel tests. " .
-                "Use the auto-generated email and reference \$userEmail->email in assertions."
+                "Do not pass 'email' to createTestUserEmail() - it causes collisions in parallel tests. ".
+                'Use the auto-generated email and reference $userEmail->email in assertions.'
             );
         }
 

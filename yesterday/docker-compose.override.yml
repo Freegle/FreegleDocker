@@ -54,7 +54,7 @@ services:
       - "0.0.0.0:3012:3012"
       - "0.0.0.0:3013:3013"
       - "0.0.0.0:8095:8095"
-      # Ports 8181/8193 (APIs), 8086 (phpmyadmin) and 8025 (mailhog) removed - access via 2FA gateway only
+      # Ports 8181/8193 (APIs), 8086 (phpmyadmin) and 8025 (mailpit) removed - access via 2FA gateway only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/traefik/secrets/gcloud-dns-key.json:/secrets/gcloud-dns-key.json:ro
@@ -130,8 +130,8 @@ services:
     labels:
       - "traefik.enable=false"
 
-  mailhog:
-    # Accessed via 2FA gateway at /mailhog (Admin only)
+  mailpit:
+    # Accessed via 2FA gateway at /mailpit (Admin only)
     # No direct external access - only through yesterday-2fa gateway
     # Basic auth disabled - authentication handled by 2FA gateway
     ports: !reset []
@@ -178,6 +178,11 @@ services:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
       - TUS_UPLOADER=https://uploads.ilovefreegle.org/
 
+  batch:
+    # Override database password for Yesterday's restored production database
+    environment:
+      - DB_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
+
   freegle-dev-local:
     # Routed through Traefik for SSL termination on port 3002
     # No direct port binding - Traefik handles HTTPS and proxies to container
@@ -190,6 +195,7 @@ services:
       - "traefik.http.routers.freegle-dev.entrypoints=freegle-dev"
       - "traefik.http.routers.freegle-dev.tls.certresolver=letsencrypt"
       - "traefik.http.routers.freegle-dev.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.freegle-dev.service=freegle-dev"
       - "traefik.http.services.freegle-dev.loadbalancer.server.port=3002"
     environment:
       - IZNIK_API_V1=https://${YESTERDAY_HOSTNAME}:8181/api
@@ -209,6 +215,7 @@ services:
       - "traefik.http.routers.freegle-prod.entrypoints=freegle-prod"
       - "traefik.http.routers.freegle-prod.tls.certresolver=letsencrypt"
       - "traefik.http.routers.freegle-prod.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.freegle-prod.service=freegle-prod"
       - "traefik.http.services.freegle-prod.loadbalancer.server.port=3000"
     environment:
       - USER_SITE=https://${YESTERDAY_HOSTNAME}:3012
@@ -227,6 +234,7 @@ services:
       - "traefik.http.routers.modtools-dev.entrypoints=modtools-dev"
       - "traefik.http.routers.modtools-dev.tls.certresolver=letsencrypt"
       - "traefik.http.routers.modtools-dev.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.modtools-dev.service=modtools-dev"
       - "traefik.http.services.modtools-dev.loadbalancer.server.port=3000"
     environment:
       - IZNIK_API_V1=https://${YESTERDAY_HOSTNAME}:8181/api
@@ -246,6 +254,7 @@ services:
       - "traefik.http.routers.modtools-prod.entrypoints=modtools-prod"
       - "traefik.http.routers.modtools-prod.tls.certresolver=letsencrypt"
       - "traefik.http.routers.modtools-prod.tls.domains[0].main=${YESTERDAY_HOSTNAME}"
+      - "traefik.http.routers.modtools-prod.service=modtools-prod"
       - "traefik.http.services.modtools-prod.loadbalancer.server.port=3000"
     environment:
       - USER_SITE=https://${YESTERDAY_HOSTNAME}:3013

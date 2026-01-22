@@ -383,4 +383,206 @@ class UserModelTest extends TestCase
     {
         $this->assertEquals('Link', User::LOGIN_LINK);
     }
+
+    /**
+     * Tests for internal email filtering in getEmailPreferred.
+     * These verify that iznik-batch matches iznik-server's behavior.
+     */
+
+    public function test_email_preferred_excludes_users_ilovefreegle_domain(): void
+    {
+        $user = User::create([
+            'fullname' => 'Test User',
+            'added' => now(),
+        ]);
+
+        // Create an internal email marked as preferred.
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => 'test-' . uniqid() . '@users.ilovefreegle.org',
+            'preferred' => 1,
+            'added' => now(),
+        ]);
+
+        // Create a real external email.
+        $externalEmail = 'external-' . uniqid() . '@gmail.com';
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => $externalEmail,
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        // Should skip the internal email and return the external one.
+        $this->assertEquals($externalEmail, $user->fresh()->email_preferred);
+    }
+
+    public function test_email_preferred_excludes_groups_ilovefreegle_domain(): void
+    {
+        $user = User::create([
+            'fullname' => 'Test User',
+            'added' => now(),
+        ]);
+
+        // Create a groups.ilovefreegle.org email marked as preferred.
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => 'groupname-' . uniqid() . '@groups.ilovefreegle.org',
+            'preferred' => 1,
+            'added' => now(),
+        ]);
+
+        // Create a real external email.
+        $externalEmail = 'external-' . uniqid() . '@hotmail.com';
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => $externalEmail,
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $this->assertEquals($externalEmail, $user->fresh()->email_preferred);
+    }
+
+    public function test_email_preferred_excludes_direct_ilovefreegle_domain(): void
+    {
+        $user = User::create([
+            'fullname' => 'Test User',
+            'added' => now(),
+        ]);
+
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => 'user-' . uniqid() . '@direct.ilovefreegle.org',
+            'preferred' => 1,
+            'added' => now(),
+        ]);
+
+        $externalEmail = 'external-' . uniqid() . '@yahoo.com';
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => $externalEmail,
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $this->assertEquals($externalEmail, $user->fresh()->email_preferred);
+    }
+
+    public function test_email_preferred_excludes_republisher_freegle_domain(): void
+    {
+        $user = User::create([
+            'fullname' => 'Test User',
+            'added' => now(),
+        ]);
+
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => 'feed-' . uniqid() . '@republisher.freegle.in',
+            'preferred' => 1,
+            'added' => now(),
+        ]);
+
+        $externalEmail = 'external-' . uniqid() . '@outlook.com';
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => $externalEmail,
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $this->assertEquals($externalEmail, $user->fresh()->email_preferred);
+    }
+
+    public function test_email_preferred_excludes_yahoogroups_domain(): void
+    {
+        $user = User::create([
+            'fullname' => 'Test User',
+            'added' => now(),
+        ]);
+
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => 'oldgroup-' . uniqid() . '@yahoogroups.com',
+            'preferred' => 1,
+            'added' => now(),
+        ]);
+
+        $externalEmail = 'external-' . uniqid() . '@protonmail.com';
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => $externalEmail,
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $this->assertEquals($externalEmail, $user->fresh()->email_preferred);
+    }
+
+    public function test_email_preferred_returns_null_when_all_emails_are_internal(): void
+    {
+        $user = User::create([
+            'fullname' => 'Test User',
+            'added' => now(),
+        ]);
+
+        // Only internal emails.
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => 'user1-' . uniqid() . '@users.ilovefreegle.org',
+            'preferred' => 1,
+            'added' => now(),
+        ]);
+
+        UserEmail::create([
+            'userid' => $user->id,
+            'email' => 'group1-' . uniqid() . '@groups.ilovefreegle.org',
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $this->assertNull($user->fresh()->email_preferred);
+    }
+
+    public function test_is_internal_email_detects_users_domain(): void
+    {
+        $this->assertTrue(User::isInternalEmail('test@users.ilovefreegle.org'));
+        $this->assertTrue(User::isInternalEmail('TEST@USERS.ILOVEFREEGLE.ORG'));
+    }
+
+    public function test_is_internal_email_detects_groups_domain(): void
+    {
+        $this->assertTrue(User::isInternalEmail('testgroup@groups.ilovefreegle.org'));
+    }
+
+    public function test_is_internal_email_detects_direct_domain(): void
+    {
+        $this->assertTrue(User::isInternalEmail('user@direct.ilovefreegle.org'));
+    }
+
+    public function test_is_internal_email_detects_republisher_domain(): void
+    {
+        $this->assertTrue(User::isInternalEmail('feed@republisher.freegle.in'));
+    }
+
+    public function test_is_internal_email_detects_yahoogroups(): void
+    {
+        $this->assertTrue(User::isInternalEmail('group@yahoogroups.com'));
+        $this->assertTrue(User::isInternalEmail('group@yahoogroups.co.uk'));
+    }
+
+    public function test_is_internal_email_allows_external_addresses(): void
+    {
+        $this->assertFalse(User::isInternalEmail('user@gmail.com'));
+        $this->assertFalse(User::isInternalEmail('user@yahoo.com'));
+        $this->assertFalse(User::isInternalEmail('user@hotmail.com'));
+        $this->assertFalse(User::isInternalEmail('user@example.org'));
+    }
+
+    public function test_is_internal_email_is_case_insensitive(): void
+    {
+        $this->assertTrue(User::isInternalEmail('TEST@USERS.ILOVEFREEGLE.ORG'));
+        $this->assertTrue(User::isInternalEmail('Test@Users.ILoveFreegle.Org'));
+        $this->assertTrue(User::isInternalEmail('group@YAHOOGROUPS.COM'));
+    }
 }

@@ -15,10 +15,18 @@ return new class extends Migration
             $table->foreign(['userid'])->references(['id'])->on('users')->onUpdate('no action')->onDelete('cascade');
             $table->foreign(['msgid'])->references(['id'])->on('messages')->onUpdate('no action')->onDelete('cascade');
             $table->foreign(['groupid'])->references(['id'])->on('groups')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['eventid'])->references(['id'])->on('communityevents')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['volunteeringid'])->references(['id'])->on('volunteering')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['publicityid'])->references(['id'])->on('groups_facebook_toshare')->onUpdate('no action')->onDelete('cascade');
-            $table->foreign(['storyid'])->references(['id'])->on('users_stories')->onUpdate('no action')->onDelete('cascade');
+            if (Schema::hasColumn('newsfeed', 'eventid')) {
+                $table->foreign(['eventid'])->references(['id'])->on('communityevents')->onUpdate('no action')->onDelete('cascade');
+            }
+            if (Schema::hasColumn('newsfeed', 'volunteeringid')) {
+                $table->foreign(['volunteeringid'])->references(['id'])->on('volunteering')->onUpdate('no action')->onDelete('cascade');
+            }
+            if (Schema::hasColumn('newsfeed', 'publicityid')) {
+                $table->foreign(['publicityid'])->references(['id'])->on('groups_facebook_toshare')->onUpdate('no action')->onDelete('cascade');
+            }
+            if (Schema::hasColumn('newsfeed', 'storyid')) {
+                $table->foreign(['storyid'])->references(['id'])->on('users_stories')->onUpdate('no action')->onDelete('cascade');
+            }
         });
     }
 

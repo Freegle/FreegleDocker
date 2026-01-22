@@ -2,19 +2,32 @@
 
 namespace App\Traits;
 
+/**
+ * Trait for graceful shutdown of long-running commands.
+ *
+ * Registers signal handlers for SIGTERM/SIGINT that set a flag.
+ * The command's loop should check shouldStop() at safe points
+ * (between database operations, etc.) and exit gracefully.
+ *
+ * This works with supervisor, systemd, docker stop, and Ctrl+C -
+ * all of which send SIGTERM first.
+ *
+ * Also supports file-based abort mechanism for stopping commands
+ * from external processes (e.g., deploy:refresh).
+ */
 trait GracefulShutdown
 {
     protected bool $shouldStop = FALSE;
+
     protected ?string $abortFilePath = NULL;
 
     /**
-     * Set up signal handlers for graceful shutdown.
-     * Skipped in testing environment to avoid interfering with PHPUnit's output capture.
+     * Register signal handlers for graceful shutdown.
+     * Call this at the start of your daemon loop.
      */
-    protected function setupSignalHandlers(): void
+    protected function registerShutdownHandlers(): void
     {
-        // Skip signal handlers in testing to avoid PHPUnit risky test warnings
-        // and interference with expectsOutputToContain() assertions.
+        // Skip in testing to avoid PHPUnit issues.
         if ($this->isTestingEnvironment()) {
             return;
         }
@@ -27,45 +40,17 @@ trait GracefulShutdown
     }
 
     /**
-     * Check if we're running in a testing environment.
-     *
-     * PHPUnit sets APP_ENV=testing in $_ENV/$_SERVER via phpunit.xml,
-     * but the container's OS environment may have APP_ENV=local.
-     * We check ALL sources to handle both scenarios.
+     * Alias for registerShutdownHandlers.
      */
-    protected function isTestingEnvironment(): bool
+    protected function setupSignalHandlers(): void
     {
-        // Check PHPUNIT_RUNNING constant (if defined by test bootstrap).
-        if (defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING) {
-            return true;
-        }
-
-        // Check APP_ENV from multiple sources.
-        if (getenv('APP_ENV') === 'testing') {
-            return true;
-        }
-
-        if (($_ENV['APP_ENV'] ?? null) === 'testing') {
-            return true;
-        }
-
-        if (($_SERVER['APP_ENV'] ?? null) === 'testing') {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Register shutdown handlers (alias for setupSignalHandlers).
-     */
-    protected function registerShutdownHandlers(): void
-    {
-        $this->setupSignalHandlers();
+        $this->registerShutdownHandlers();
     }
 
     /**
      * Check if we should stop processing.
+     * Call this at safe points in your loop.
+     * Checks both the signal flag and abort file existence.
      */
     protected function shouldStop(): bool
     {
@@ -73,8 +58,10 @@ trait GracefulShutdown
             return TRUE;
         }
 
+        // Check for abort file if configured.
         if ($this->abortFilePath && file_exists($this->abortFilePath)) {
             $this->shouldStop = TRUE;
+
             return TRUE;
         }
 
@@ -82,7 +69,7 @@ trait GracefulShutdown
     }
 
     /**
-     * Check if we should abort processing (alias for shouldStop).
+     * Alias for shouldStop.
      */
     protected function shouldAbort(): bool
     {
@@ -90,16 +77,19 @@ trait GracefulShutdown
     }
 
     /**
-     * Set the abort file path for this script.
+     * Set the abort file path for this command.
+     *
+     * @param  string  $scriptName  Script name used in the abort file path
      */
     protected function setAbortFile(string $scriptName): self
     {
         $this->abortFilePath = "/tmp/iznik.{$scriptName}.abort";
+
         return $this;
     }
 
     /**
-     * Create the abort file to signal shutdown.
+     * Create the abort file to signal this command should stop.
      */
     protected function createAbortFile(): void
     {
@@ -109,7 +99,7 @@ trait GracefulShutdown
     }
 
     /**
-     * Remove the abort file after processing.
+     * Remove the abort file after shutdown is complete.
      */
     protected function removeAbortFile(): void
     {
@@ -119,16 +109,34 @@ trait GracefulShutdown
     }
 
     /**
-     * Log shutdown message if stopping.
+     * Log shutdown message if stopping and return whether stopping.
+     * Useful for loop exit points.
+     *
+     * @return bool Whether the command is stopping
      */
     protected function logShutdownIfStopping(): bool
     {
         if ($this->shouldStop()) {
             if (method_exists($this, 'info')) {
-                $this->info('Graceful shutdown requested, stopping...');
+                $this->info('Shutdown signal received, stopping gracefully...');
             }
+
             return TRUE;
         }
+
         return FALSE;
+    }
+
+    protected function isTestingEnvironment(): bool
+    {
+        if (defined('PHPUNIT_RUNNING') && PHPUNIT_RUNNING) {
+            return TRUE;
+        }
+
+        return in_array(
+            'testing',
+            [getenv('APP_ENV'), $_ENV['APP_ENV'] ?? NULL, $_SERVER['APP_ENV'] ?? NULL],
+            TRUE
+        );
     }
 }

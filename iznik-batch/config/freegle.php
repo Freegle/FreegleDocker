@@ -30,6 +30,18 @@ return [
     'mail' => [
         'noreply_addr' => env('FREEGLE_NOREPLY_ADDR', 'noreply@ilovefreegle.org'),
         'user_domain' => env('FREEGLE_USER_DOMAIN', 'users.ilovefreegle.org'),
+        // Internal domains that should be excluded when selecting a user's preferred email.
+        // These are Freegle-internal addresses that can't receive external mail.
+        // Matches iznik-server's Mail::ourDomain() + GROUP_DOMAIN + yahoogroups.
+        'internal_domains' => [
+            'users.ilovefreegle.org',
+            'groups.ilovefreegle.org',
+            'direct.ilovefreegle.org',
+            'republisher.freegle.in',
+        ],
+        'excluded_domain_patterns' => [
+            '@yahoogroups.',
+        ],
         // Email logging - send BCC copies of specific email types for debugging/monitoring.
         // Format: comma-separated list of email types to log (e.g., "Welcome,ChatNotification").
         'log_types' => env('FREEGLE_MAIL_LOG_TYPES', ''),

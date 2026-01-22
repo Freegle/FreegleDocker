@@ -1392,4 +1392,77 @@ class ChatNotificationServiceTest extends TestCase
         // Non-blocked user should be notified.
         $this->assertGreaterThanOrEqual(1, $count);
     }
+
+    /**
+     * Test that moderators who added mod notes to a User2User chat
+     * are NOT notified when users reply.
+     *
+     * Bug scenario:
+     * 1. Two users have a User2User chat
+     * 2. A message is held for review
+     * 3. A moderator adds a mod note to the chat (which adds them to the roster)
+     * 4. One of the users replies
+     * 5. The moderator should NOT be notified about that reply
+     *
+     * This matches the original iznik-server getMembersStatus() which filtered:
+     * "chat_roster.userid IN (chat_rooms.user1, chat_rooms.user2)"
+     */
+    public function test_notify_by_email_user2user_excludes_moderators_in_roster(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice User']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob User']);
+        $moderator = $this->createTestUser(['fullname' => 'Charlie Moderator']);
+
+        // Create a User2User chat between user1 and user2.
+        $room = $this->createTestChatRoom($user1, $user2, [
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster entries for the actual chat participants.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $user1->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $user2->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Moderator is also in the roster (e.g., they added a mod note earlier).
+        // This simulates what happens when a mod adds a ModMail message to the chat.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $moderator->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // User1 sends a new message.
+        $message = $this->createTestChatMessage($room, $user1, [
+            'date' => now()->subMinutes(5),
+            'message' => 'Hello Bob!',
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+        // User2 should be notified (they're the recipient).
+        $user2Roster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $user2->id)
+            ->first();
+        $this->assertNotNull($user2Roster->lastmsgemailed, 'User2 should have been notified');
+
+        // Moderator should NOT be notified - they're not a participant in this User2User chat.
+        $modRoster = ChatRoster::where('chatid', $room->id)
+            ->where('userid', $moderator->id)
+            ->first();
+        $this->assertNull(
+            $modRoster->lastmsgemailed,
+            'Moderator should NOT be notified about User2User chat messages'
+        );
+
+        // Verify we only sent 1 notification (to user2), not 2.
+        $this->assertEquals(1, $count, 'Should only notify the actual recipient, not the moderator');
+    }
 }

@@ -149,13 +149,15 @@ trait AmpEmail
      * @param int $userId The user ID
      * @param int|null $excludeMessageId Message ID to exclude (shown statically)
      * @param int|null $sinceMessageId Messages newer than this are marked as NEW
+     * @param int|null $emailTrackingId Optional email tracking ID for AMP render tracking
      * @return string The full API URL with token parameters
      */
     protected function buildAmpChatUrl(
         int $chatId,
         int $userId,
         ?int $excludeMessageId = null,
-        ?int $sinceMessageId = null
+        ?int $sinceMessageId = null,
+        ?int $emailTrackingId = null
     ): string {
         $baseUrl = config('freegle.amp.api_url', 'https://api.ilovefreegle.org/amp');
         $token = $this->generateToken($userId, $chatId);
@@ -175,6 +177,10 @@ trait AmpEmail
 
         if ($sinceMessageId) {
             $url .= '&since=' . $sinceMessageId;
+        }
+
+        if ($emailTrackingId) {
+            $url .= '&tid=' . $emailTrackingId;
         }
 
         return $url;
