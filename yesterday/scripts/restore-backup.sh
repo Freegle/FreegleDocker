@@ -452,6 +452,11 @@ else
 fi
 
 echo ""
+echo "Restarting Yesterday services (API, 2FA gateway, Traefik)..."
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d
+echo "✅ Yesterday services restarted"
+
+echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="
 echo "✅ Backup from ${FORMATTED_DATE} restored successfully"
 update_status "completed" "Restore completed successfully"
