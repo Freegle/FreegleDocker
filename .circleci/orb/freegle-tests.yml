@@ -509,9 +509,9 @@ commands:
 
             cd iznik-nuxt3
 
-            # Install dependencies
+            # Install dependencies (--legacy-peer-deps avoids peer dependency conflicts)
             echo "📦 Installing dependencies..."
-            npm ci
+            npm ci --legacy-peer-deps
 
             # Run unit tests
             echo "🧪 Running Vitest unit tests..."
