@@ -347,6 +347,23 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-22 - Yesterday Restore Port Conflict Fix
+- **Status**: ✅ Complete
+- **Issue**: Restore showed "failed" with "freegle-traefik is unhealthy"
+- **Root Causes Found**:
+  1. Port 8084 conflict: `mcp-query-sanitizer` and `yesterday-2fa` both use port 8084
+  2. Missing `--ping=true` in yesterday-traefik config for healthcheck endpoint
+  3. Yesterday services not restarted after restore (fixed in earlier commit)
+- **Fixes Applied**:
+  - `docker-compose.override.yesterday.yml`: Added MCP containers to disabled profile
+  - `yesterday/docker-compose.yesterday-services.yml`: Added `--ping=true` to traefik command
+- **Commits**: 6c45b9b pushed to master
+- **Verified**:
+  - All yesterday containers healthy
+  - API at https://yesterday.ilovefreegle.org:8444/api/restore-status working
+  - Backup 20260122 successfully loaded
+- **Key Learning**: The "traefik unhealthy" error was actually caused by port conflicts downstream, not traefik itself
+
 ### 2026-01-20 - AI Support Helper Debug Modal Replacement
 - **Status**: ✅ Complete
 - **Branch**: `feature/mcp-log-analysis`
