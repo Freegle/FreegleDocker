@@ -181,9 +181,14 @@ class ChatNotificationService
                 }
 
                 // Get the sender in the conversation.
-                // For Mod2Mod, the sender is the message author.
-                // For User2User/User2Mod, it's the "other" user in the chat.
+                // For Mod2Mod, the sender is always the message author.
+                // For User2User/User2Mod:
+                //   - If this is a copy-to-self (recipient is the message author), use the message author.
+                //   - Otherwise, use the "other" user in the chat.
                 if ($chatType === ChatRoom::TYPE_MOD2MOD) {
+                    $sendingFrom = $message->user;
+                } elseif ($message->userid === $sendingTo->id) {
+                    // Copy-to-self: recipient is the message author, so sender should be themselves.
                     $sendingFrom = $message->user;
                 } else {
                     $sendingFrom = $this->getOtherUser($chatRoom, $sendingTo);
