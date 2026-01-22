@@ -412,3 +412,26 @@ stories.php      stripecreateintent.php stripecreatesubscription.php
 team.php         tryst.php        user.php         usersearch.php   visualise.php
 volunteering.php
 ```
+
+### Unused V1 Endpoints (Candidates for Removal)
+
+These v1 PHP endpoints have NO client usage in iznik-nuxt3 (FD or MT):
+
+| Endpoint | Status | Notes |
+|----------|--------|-------|
+| bulkop.php | ⚠️ Unused | No BulkOpAPI wrapper, no direct calls |
+| changes.php | ⚠️ Unused | No ChangesAPI wrapper, no direct calls |
+| error.php | ⚠️ Unused | No ErrorAPI wrapper, appears to be logging utility |
+| export.php | ⚠️ Unused | No ExportAPI wrapper, no direct calls |
+| item.php | ⚠️ Unused | No ItemAPI wrapper, no direct calls |
+| mentions.php | ⚠️ Unused | No MentionsAPI wrapper, no direct calls |
+| poll.php | ⚠️ Unused | No PollAPI wrapper, no direct calls |
+| profile.php | ⚠️ Unused | No ProfileAPI wrapper (user profiles via UserAPI) |
+| request.php | ⚠️ Unused | No RequestAPI wrapper, no direct calls |
+| src.php | ⚠️ Migrated | Client now uses v2 `/src` endpoint |
+
+**Before Removing**: Verify these aren't called by:
+- External integrations
+- Batch jobs in iznik-batch
+- Direct browser access (e.g., export functionality)
+- Other Freegle systems
