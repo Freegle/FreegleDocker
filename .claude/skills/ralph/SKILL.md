@@ -73,6 +73,11 @@ Status icons:
 
 **For bug fixes, ALWAYS use TDD: write the failing test FIRST.**
 
+**IMPORTANT**: Read `.claude/skills/testing.md` for detailed test patterns, edge cases, and common mistakes. Key points:
+- Always test null/undefined edge cases for composables and data sources
+- Test actual behavior with real data, not just that things exist
+- Use coverage reports to identify untested code paths
+
 ### The TDD Cycle: Red → Green → Refactor
 
 1. **RED**: Write a test that reproduces the bug
