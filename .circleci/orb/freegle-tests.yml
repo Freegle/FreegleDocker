@@ -513,11 +513,27 @@ commands:
             echo "📦 Installing dependencies..."
             npm ci --legacy-peer-deps
 
-            # Run unit tests
-            echo "🧪 Running Vitest unit tests..."
-            npm run test:unit -- --reporter=verbose
+            # Generate .nuxt directory (required for tsconfig.json extends)
+            echo "🔧 Running nuxt prepare..."
+            npx nuxt prepare
+
+            # Run unit tests with coverage
+            echo "🧪 Running Vitest unit tests with coverage..."
+            npm run test:unit:coverage -- --reporter=verbose
 
             echo "✅ Unit tests passed!"
+
+            # Upload coverage to Coveralls
+            echo "📤 Uploading unit test coverage..."
+            if [ -z "${COVERALLS_REPO_TOKEN}" ]; then
+              echo "⚠️ COVERALLS_REPO_TOKEN not set - skipping coverage upload"
+            elif [ -f "coverage/lcov.info" ]; then
+              echo "Found unit test coverage file"
+              npm run coveralls
+              echo "✅ Unit test coverage uploaded"
+            else
+              echo "⚠️ No coverage/lcov.info file found"
+            fi
 
   run-go-tests:
     description: "Run Go tests via the status service API and upload coverage"
@@ -1192,6 +1208,7 @@ commands:
               echo "PHP_UPLOADED=false" >> $BASH_ENV
               echo "PLAYWRIGHT_UPLOADED=false" >> $BASH_ENV
               echo "LARAVEL_UPLOADED=false" >> $BASH_ENV
+              echo "UNIT_UPLOADED=false" >> $BASH_ENV
             fi
           when: always
       - run:
@@ -1381,6 +1398,27 @@ commands:
             fi
           when: always
       - run:
+          name: Upload unit test coverage
+          command: |
+            if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
+            # Support both FreegleDocker main build and submodule paths
+            if [ -d "$HOME/FreegleDocker" ]; then
+              cd "$HOME/FreegleDocker"
+            fi
+            cd iznik-nuxt3
+            if [ -f "coverage/lcov.info" ]; then
+              echo "Found unit test coverage..."
+              export COVERALLS_SERVICE_NAME="circleci"
+              export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+              if npm run coveralls; then
+                echo "✅ Unit test coverage uploaded"
+                echo "UNIT_UPLOADED=true" >> $BASH_ENV
+              fi
+            else
+              echo "ℹ️ No unit test coverage found"
+            fi
+          when: always
+      - run:
           name: Validate expected coverage
           command: |
             if [ "$SKIP_COVERAGE" = "true" ]; then exit 0; fi
@@ -1396,6 +1434,7 @@ commands:
                 php) [ "$PHP_UPLOADED" != "true" ] && MISSING="$MISSING php" ;;
                 playwright) [ "$PLAYWRIGHT_UPLOADED" != "true" ] && MISSING="$MISSING playwright" ;;
                 laravel) [ "$LARAVEL_UPLOADED" != "true" ] && MISSING="$MISSING laravel" ;;
+                unit) [ "$UNIT_UPLOADED" != "true" ] && MISSING="$MISSING unit" ;;
               esac
             done
             if [ -n "$MISSING" ]; then
