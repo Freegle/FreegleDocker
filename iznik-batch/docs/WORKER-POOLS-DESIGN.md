@@ -63,7 +63,8 @@ We use Redis `BLPOP` (blocking list pop) to implement a bounded semaphore:
 │                    └───────┬───────┘                            │
 │                            │                                    │
 │                    ┌───────▼───────┐                            │
-│                    │  MjmlService  │                            │
+│                    │ MjmlCompiler- │                            │
+│                    │    Service    │                            │
 │                    └───────┬───────┘                            │
 └────────────────────────────┼────────────────────────────────────┘
                              │ HTTP
@@ -364,7 +365,7 @@ class PoolTimeoutException extends \RuntimeException {}
 class PoolCapacityException extends \RuntimeException {}
 ```
 
-## MjmlService Implementation
+## MjmlCompilerService Implementation
 
 ```php
 <?php
@@ -373,8 +374,15 @@ namespace App\Services;
 
 use App\Services\WorkerPool\BoundedPool;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
-class MjmlService
+/**
+ * Service for compiling MJML templates to HTML.
+ *
+ * Uses the freegle-mjml container with BoundedPool for back pressure
+ * when the compiler is under load.
+ */
+class MjmlCompilerService
 {
     private BoundedPool $pool;
 
@@ -386,8 +394,6 @@ class MjmlService
             timeoutSeconds: config('pools.mjml.timeout', 30),
             sentryThrottleSeconds: config('pools.mjml.sentry_throttle', 300)
         );
-
-        // Ensure pool is initialized
         $this->pool->initialize();
     }
 
@@ -398,18 +404,28 @@ class MjmlService
     public function compile(string $mjml): string
     {
         return $this->pool->withPermit(function () use ($mjml) {
-            $response = Http::timeout(30)
-                ->post(config('services.mjml.url'), [
-                    'mjml' => $mjml,
-                ]);
+            $url = config('services.mjml.url');
+
+            $response = Http::timeout(config('services.mjml.http_timeout', 30))
+                ->post($url, ['mjml' => $mjml]);
 
             if (!$response->successful()) {
+                Log::error('MJML compilation failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
                 throw new \RuntimeException(
                     'MJML compilation failed: ' . $response->body()
                 );
             }
 
-            return $response->json()['html'];
+            $html = $response->json()['html'] ?? '';
+
+            if (empty(trim($html))) {
+                throw new \RuntimeException('MJML compilation returned empty HTML');
+            }
+
+            return $html;
         });
     }
 
@@ -445,11 +461,15 @@ return [
 ];
 ```
 
-### config/services.php addition
+### config/services.php
 
 ```php
 'mjml' => [
+    // MJML server URL (freegle-mjml container)
     'url' => env('MJML_URL', 'http://mjml:3000/v1/render'),
+
+    // HTTP request timeout in seconds
+    'http_timeout' => env('MJML_HTTP_TIMEOUT', 30),
 ],
 ```
 
@@ -588,7 +608,7 @@ autorestart=true
 
 namespace App\Console\Commands;
 
-use App\Services\MjmlService;
+use App\Services\MjmlCompilerService;
 use Illuminate\Console\Command;
 
 class PoolStatusCommand extends Command
@@ -596,7 +616,7 @@ class PoolStatusCommand extends Command
     protected $signature = 'pool:status';
     protected $description = 'Show worker pool status';
 
-    public function handle(MjmlService $mjml): int
+    public function handle(MjmlCompilerService $mjml): int
     {
         $stats = $mjml->getPoolStats();
 
@@ -625,7 +645,7 @@ class PoolStatusCommand extends Command
 
 ## Migration Path
 
-1. **Phase 1**: Implement BoundedPool and MjmlService locally
+1. **Phase 1**: Implement BoundedPool and MjmlCompilerService locally
 2. **Phase 2**: Test with Docker Compose on dev environment
 3. **Phase 3**: Set up production branch auto-merge in CI
 4. **Phase 4**: Deploy Docker Compose to production server
