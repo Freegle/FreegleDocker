@@ -1,11 +1,53 @@
 ---
 name: ralph
-description: "MUST use for any non-trivial development task in FreegleDocker - implements iterative development with status tracking, validation, and one-task-at-a-time approach. Use when implementing features, fixing bugs, refactoring, or any task requiring more than a single simple change."
+description: "MUST use for any non-trivial development task in FreegleDocker - implements iterative development with status tracking, session logging, validation, and one-task-at-a-time approach. Use when implementing features, fixing bugs, refactoring, or any task requiring more than a single simple change."
 ---
 
 # Ralph Iterative Development Approach
 
 You are now using the Ralph approach for this task. This is MANDATORY for the Freegle codebase.
+
+## 0. Session Logging (CRITICAL for Continuity)
+
+**Before starting any work, check for and update the session log.**
+
+Session logs preserve context across conversation restarts and context compaction. This is essential for long-running tasks.
+
+### Session Log Location
+claude.md -> "Session Log" section (at end of file)
+
+### On Session Start
+1. Read `claude.md` to check for existing session log
+2. If resuming work, review the last session's state
+3. Add a new dated entry showing you're continuing
+
+### During Work
+After completing each subtask or making significant progress:
+```markdown
+### YYYY-MM-DD HH:MM - [Brief description]
+- **Status**: [Current task status table snapshot]
+- **Completed**: [What was just finished]
+- **Next**: [What's planned next]
+- **Blockers**: [Any issues encountered]
+- **Key Decisions**: [Important choices made and why]
+```
+
+### On Session End / Before Context Compaction
+Update the session log with:
+- Current state of all tasks
+- Any uncommitted changes
+- Commands that were running (e.g., CI builds in progress)
+- Exact next steps for continuation
+
+### Example Session Log Entry
+```markdown
+### 2026-01-16 14:30 - Implemented email tracking
+- **Status**: Tasks 1-3 ✅, Task 4 🔄 (CI running), Tasks 5-6 ⬜
+- **Completed**: Added AMP pixel tracking to email templates
+- **Next**: Wait for CI, then verify in MailPit
+- **Blockers**: None
+- **Key Decisions**: Used existing envelope() pattern for consistency
+```
 
 ## 1. Break Down the Task
 
@@ -27,7 +69,50 @@ Status icons:
 - ✅ Complete - finished and validated
 - ❌ Blocked - needs user input
 
-## 2. Work Iteratively
+## 2. Test-Driven Development (MANDATORY for Bug Fixes)
+
+**For bug fixes, ALWAYS use TDD: write the failing test FIRST.**
+
+### The TDD Cycle: Red → Green → Refactor
+
+1. **RED**: Write a test that reproduces the bug
+   - The test should FAIL with the current code
+   - This proves you understand the bug
+   - If the test passes immediately, you're testing the wrong thing
+
+2. **VERIFY RED**: Run the test and confirm it fails
+   - The failure message should match your expectation
+   - If it fails for a different reason, fix the test
+
+3. **GREEN**: Write minimal code to make the test pass
+   - Don't add extra features
+   - Don't refactor yet
+   - Just make it pass
+
+4. **VERIFY GREEN**: Run the test and confirm it passes
+   - All other tests should still pass too
+
+5. **REFACTOR**: Clean up if needed (while keeping tests green)
+
+### Why This Matters
+
+- **Tests written after code pass immediately** - you never saw them catch the bug
+- **Tests written first prove they test something** - you watched them fail
+- **Prevents "fix the test to match the code"** - the test is the specification
+
+### Example Task Status for Bug Fix
+
+```markdown
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1 | Write failing test reproducing bug | 🔄 In Progress | |
+| 2 | Verify test fails for expected reason | ⬜ Pending | |
+| 3 | Implement minimal fix | ⬜ Pending | |
+| 4 | Verify test passes | ⬜ Pending | |
+| 5 | Code Quality Review | ⬜ Pending | |
+```
+
+## 3. Work Iteratively
 
 For each subtask:
 1. Mark it as 🔄 In Progress
@@ -40,11 +125,11 @@ For each subtask:
 5. Update the status table
 6. Move to next task
 
-## 3. Code Quality Review (MANDATORY)
+## 4. Code Quality Review (MANDATORY)
 
 Before marking the overall task complete, perform a thorough code quality review:
 
-### 3.1 Deficiency Analysis
+### 4.1 Deficiency Analysis
 Explicitly look for problems or deficiencies in your changes:
 - **Logic errors**: Edge cases not handled? Null/empty checks missing?
 - **Security issues**: Input validation? SQL injection? XSS?
@@ -52,14 +137,14 @@ Explicitly look for problems or deficiencies in your changes:
 - **Error handling**: What happens when things fail?
 - **Config dependencies**: Are required config values always present?
 
-### 3.2 Consistency Check
+### 4.2 Consistency Check
 Check for inconsistencies with how similar problems are solved elsewhere:
 - Search for similar patterns in the codebase (e.g., other envelope() methods, similar services)
 - Ensure your approach matches established patterns
 - If you deviate from patterns, document WHY with a comment
 - Check naming conventions match existing code
 
-### 3.3 Code Duplication Refactoring
+### 4.3 Code Duplication Refactoring
 Every change should improve code quality, not decrease it:
 - **Identify duplication**: Is there existing code that does something similar?
 - **Extract common logic**: Create shared helpers/traits for repeated patterns
@@ -67,20 +152,20 @@ Every change should improve code quality, not decrease it:
 - **Clean up nearby code**: If you see small improvements near your changes, make them
 - **Remove dead code**: If your change makes code obsolete, delete it
 
-### 3.4 Document Future Improvements
+### 4.4 Document Future Improvements
 During review, you may identify issues that are out of scope for this change. **Document these for the PR**:
 - Keep a running list of "Future Improvements" identified during review
 - Include patterns that could be improved but aren't blocking
 - Note technical debt discovered but not addressed
 - These go in the PR description under "## Future Improvements"
 
-### 3.5 Test Quality
+### 4.5 Test Quality
 - Tests should test behavior, not implementation details
 - Tests should be readable and self-documenting
 - Avoid testing the same thing multiple ways
 - Mock external dependencies, not internal logic
 
-## 4. Critical Rules
+## 5. Critical Rules
 
 - **ONE task at a time** - do not try to do multiple things at once
 - **NEVER mark complete without validation/testing**
@@ -91,7 +176,7 @@ During review, you may identify issues that are out of scope for this change. **
 - Run `php artisan pint` on changed files (for PHP)
 - Update the status table after completing each task
 
-## 5. Completion Criteria
+## 6. Completion Criteria
 
 Only declare the overall task complete when:
 - All subtasks are ✅ Complete
@@ -101,7 +186,7 @@ Only declare the overall task complete when:
 - Changes have been validated appropriately
 - No code duplication introduced
 
-## 6. PR Description Format
+## 7. PR Description Format
 
 When creating a PR, include:
 
@@ -127,7 +212,7 @@ Fixes #[issue number]
 
 **IMPORTANT**: Do NOT include "Generated with Claude Code" or any AI attribution in PR descriptions.
 
-### 6.1 Updating PRs
+### 7.1 Updating PRs
 
 After Code Quality Review, always update the PR to reflect the final state:
 
@@ -145,14 +230,14 @@ This preserves discussion context while keeping the PR description accurate.
 
 **REST API Note**: Always use `gh api` with REST endpoints for PR updates, NOT `gh pr edit`. The `gh pr edit` command uses GraphQL which triggers deprecation errors related to Projects Classic, causing updates to silently fail.
 
-## 7. If Blocked
+## 8. If Blocked
 
 If you need user input or are blocked:
 - Mark the task as ❌ Blocked
 - Clearly explain what you need
 - Wait for user response before continuing
 
-## 8. Database Migration Strategy
+## 9. Database Migration Strategy
 
 Freegle uses a specific migration approach:
 
@@ -191,11 +276,11 @@ EXECUTE alterIfNotExists;
 DEALLOCATE PREPARE alterIfNotExists;
 ```
 
-## 9. Parallel Work / Multi-PR Workflow
+## 10. Parallel Work / Multi-PR Workflow
 
 When working on multiple PRs or branches simultaneously (e.g., monitoring CI while fixing another PR):
 
-### 9.1 Branch Safety Checks (CRITICAL)
+### 10.1 Branch Safety Checks (CRITICAL)
 **ALWAYS verify the current branch before making ANY changes:**
 
 ```bash
@@ -207,7 +292,7 @@ git branch --show-current
 - **ALWAYS run** `git branch --show-current` before editing files
 - If on the wrong branch, switch BEFORE making changes
 
-### 9.2 Enhanced Status Table for Parallel Work
+### 10.2 Enhanced Status Table for Parallel Work
 
 Track which branch each task belongs to:
 
@@ -221,7 +306,7 @@ Track which branch each task belongs to:
 | 3 | Review Debug Markers | fix/amp-footer | ⬜ Pending | PR #9 |
 ```
 
-### 9.3 Branch Switching Protocol
+### 10.3 Branch Switching Protocol
 
 When switching between tasks on different branches:
 
@@ -231,7 +316,7 @@ When switching between tasks on different branches:
 4. **Verify branch**: `git branch --show-current`
 5. **Pop stash if returning**: `git stash pop`
 
-### 9.4 Parallel CI Monitoring
+### 10.4 Parallel CI Monitoring
 
 When monitoring CI for multiple PRs:
 

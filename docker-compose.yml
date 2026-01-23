@@ -292,28 +292,52 @@ services:
       - "traefik.http.services.tusd.loadbalancer.server.port=8080"
       - "traefik.http.middlewares.tusd-cors-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Authorization, Origin, X-Requested-With, X-Request-ID, X-HTTP-Method-Override, Content-Type, Upload-Length, Upload-Offset, Tus-Resumable, Upload-Metadata, Upload-Defer-Length, Upload-Concat, Upload-Complete, Upload-Draft-Interop-Version, x-token, baggage, sentry-trace"
 
+  # Old status container - replaced by status-nuxt (2026-01-18)
+  # Keeping commented out for reference during transition
+  # status:
+  #   build:
+  #     context: ./status
+  #     network: host
+  #   container_name: freegle-status
+  #   networks:
+  #     - default
+  #   ports:
+  #     - "8081:80"
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.status.rule=Host(`status.localhost`)"
+  #     - "traefik.http.routers.status.entrypoints=web"
+  #     - "traefik.http.services.status.loadbalancer.server.port=80"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./status/index.html:/app/index.html:ro
+  #     - ./status/logs.html:/app/logs.html:ro
+  #     - ./status/server.js:/app/server.js:ro
+  #     - ./ssl/certs:/app/ssl:ro
+  #     - .:/project:ro
+  #     - ./status/data:/app/data:rw
+  #     - rebuild-requests:/rebuild-requests
+  #   environment:
+  #     - DOCKER_HOST=unix:///var/run/docker.sock
+
   status:
     build:
-      context: ./status
+      context: ./status-nuxt
       network: host
     container_name: freegle-status
     networks:
       - default
     ports:
-      - "8081:80"
+      - "8081:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.status.rule=Host(`status.localhost`)"
       - "traefik.http.routers.status.entrypoints=web"
-      - "traefik.http.services.status.loadbalancer.server.port=80"
+      - "traefik.http.services.status.loadbalancer.server.port=3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./status/index.html:/app/index.html:ro
-      - ./status/logs.html:/app/logs.html:ro
-      - ./status/server.js:/app/server.js:ro
       - ./ssl/certs:/app/ssl:ro
       - .:/project:ro
-      - ./status/data:/app/data:rw
       - rebuild-requests:/rebuild-requests
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
@@ -346,6 +370,8 @@ services:
   host-scripts:
     image: alpine:latest
     container_name: freegle-host-scripts
+    environment:
+      - CI=${CI:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/workspace
@@ -635,6 +661,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.freegle-dev-local.rule=Host(`freegle-dev-local.localhost`)"
       - "traefik.http.routers.freegle-dev-local.entrypoints=web"
+      - "traefik.http.routers.freegle-dev-local.service=freegle-dev-local"
       - "traefik.http.services.freegle-dev-local.loadbalancer.server.port=3002"
 
   # Development build with LIVE/PRODUCTION APIs - for mobile dev and testing with real data
@@ -713,6 +740,14 @@ services:
       apiv2:
         condition: service_started
     restart: "no"
+    healthcheck:
+      # Health check for production container - verifies nginx is responding
+      # Long start_period because npm run build runs inside container on first start
+      test: ["CMD-SHELL", "curl -f http://localhost:3003/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 900s  # 15 minutes for npm run build
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
@@ -733,6 +768,7 @@ services:
       - "traefik.http.routers.freegle-prod-local.rule=Host(`freegle-prod-local.localhost`)"
       - "traefik.http.routers.freegle-prod-local.entrypoints=web"
       - "traefik.http.routers.freegle-prod-local.middlewares=retry-prod"
+      - "traefik.http.routers.freegle-prod-local.service=freegle-prod-local"
       - "traefik.http.services.freegle-prod-local.loadbalancer.server.port=3003"
       # Retry middleware for connection resilience under parallel load
       - "traefik.http.middlewares.retry-prod.retry.attempts=3"
@@ -752,7 +788,7 @@ services:
       - "apiv2.localhost:host-gateway"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
+      dockerfile: ./iznik-nuxt3/modtools/Dockerfile
       network: host
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
@@ -786,6 +822,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools-dev-local.rule=Host(`modtools-dev-local.localhost`)"
       - "traefik.http.routers.modtools-dev-local.entrypoints=web"
+      - "traefik.http.routers.modtools-dev-local.service=modtools-dev-local"
       - "traefik.http.services.modtools-dev-local.loadbalancer.server.port=3000"
 
   # Development mode with LIVE/Production APIs - ModTools
@@ -806,7 +843,7 @@ services:
       - "0.0.0.0:3006:3000"
     build:
       context: .
-      dockerfile: ./iznik-nuxt3-modtools/modtools/Dockerfile
+      dockerfile: ./iznik-nuxt3/modtools/Dockerfile
       network: host
       args:
         IZNIK_NUXT3_MODTOOLS_BRANCH: ${IZNIK_NUXT3_MODTOOLS_BRANCH:-master}
@@ -847,7 +884,7 @@ services:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
     build:
-      context: ./iznik-nuxt3-modtools
+      context: ./iznik-nuxt3
       dockerfile: modtools/Dockerfile.prod
       network: host
       args:
@@ -864,6 +901,14 @@ services:
       apiv2:
         condition: service_started
     restart: "no"
+    healthcheck:
+      # Health check for ModTools production container - verifies nginx is responding
+      # Long start_period because npm run build runs inside container on first start
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 900s  # 15 minutes for npm run build
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
       - IZNIK_API_V2=http://apiv2.localhost/api
@@ -883,6 +928,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.modtools-prod-local.rule=Host(`modtools-prod-local.localhost`)"
       - "traefik.http.routers.modtools-prod-local.entrypoints=web"
+      - "traefik.http.routers.modtools-prod-local.service=modtools-prod-local"
       - "traefik.http.services.modtools-prod-local.loadbalancer.server.port=3001"
 
   playwright:
@@ -1034,6 +1080,9 @@ services:
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod,Digest,UnifiedDigest,DonationThank,DonationAsk
+      # CI=true skips supervisor startup to prevent Laravel bootstrap race conditions.
+      # Multiple supervisor workers bootstrapping Laravel simultaneously can corrupt services.php.
+      - CI=${CI:-false}
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/laravel-ready || exit 1"]
       interval: 10s

@@ -15,8 +15,12 @@ if [ ! -f "/var/www/html/vendor/autoload.php" ]; then
     # Install MJML in the spatie/mjml-php bin directory
     if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ]; then
         echo "Installing MJML in spatie package..."
-        cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml --silent
-        cd /var/www/html
+        if command -v npm >/dev/null 2>&1; then
+            cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml 2>&1
+            cd /var/www/html
+        else
+            echo "WARNING: npm not available, MJML installation skipped"
+        fi
     fi
 fi
 
@@ -78,21 +82,15 @@ mkdir -p /var/www/html/storage/logs
 mkdir -p /var/www/html/storage/spool/mail/{pending,sending,sent,failed}
 chmod -R 777 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
 
-# CRITICAL: Delete bootstrap cache files BEFORE running any artisan commands.
-# The volume mount may contain corrupted or stale cache files that prevent Laravel
-# from bootstrapping. We must remove them directly (not via artisan) first.
-echo "Cleaning bootstrap cache..."
-rm -f /var/www/html/bootstrap/cache/services.php
-rm -f /var/www/html/bootstrap/cache/packages.php
+# Clear environment-specific bootstrap cache files.
+# These contain resolved paths/env values that differ between environments.
+# services.php and packages.php are committed to git and should not be cleared.
+echo "Cleaning environment-specific bootstrap cache..."
 rm -f /var/www/html/bootstrap/cache/config.php
 rm -f /var/www/html/bootstrap/cache/routes-v7.php
 rm -f /var/www/html/bootstrap/cache/events.php
 
-# Now regenerate the package manifest - this creates fresh services.php and packages.php
-echo "Regenerating package manifest..."
-php artisan package:discover --ansi
-
-# Clear Laravel application caches (now safe since bootstrap cache is valid)
+# Clear application caches
 echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
@@ -100,13 +98,32 @@ php artisan config:clear || true
 # Ensure MJML is installed in spatie package
 if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
     echo "Installing MJML in spatie package..."
-    cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml --silent
-    cd /var/www/html
+    if command -v npm >/dev/null 2>&1; then
+        cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml 2>&1
+        cd /var/www/html
+        if [ -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
+            echo "MJML installed successfully"
+        else
+            echo "WARNING: MJML installation may have failed - directory not found"
+        fi
+    else
+        echo "WARNING: npm not available, MJML tests may fail"
+    fi
 fi
 
-echo "=== Starting Laravel batch job processor ==="
+echo "=== Laravel batch container ready ==="
 
 # Create ready marker file to signal healthcheck that startup is complete
 touch /tmp/laravel-ready
+
+# In CI mode, don't start supervisor.
+# Supervisor launches multiple processes (scheduler, queue workers, mail spooler) that all
+# bootstrap Laravel simultaneously. If services.php needs regeneration, multiple processes
+# writing to it at once corrupts the file. See: https://github.com/orchestral/testbench/issues/202
+# By skipping supervisor in CI, we eliminate this race condition entirely.
+if [ "${CI:-false}" = "true" ]; then
+    echo "CI mode: skipping supervisor to prevent Laravel bootstrap race conditions"
+    exec sleep infinity
+fi
 
 exec "$@"

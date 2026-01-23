@@ -57,6 +57,9 @@ class DeployWatchCommandTest extends TestCase
 
     public function test_force_triggers_refresh(): void
     {
+        // The --force flag triggers deploy:refresh which runs cache operations.
+        // We verify the output rather than mocking Artisan::call() (which causes
+        // "removed error handlers" warnings affecting all tests).
         $this->artisan('deploy:watch --force')
             ->expectsOutput('Forcing deployment refresh...')
             ->expectsOutput('Refreshing application after deployment...')

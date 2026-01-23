@@ -651,13 +651,30 @@ class ChatNotificationTest extends TestCase
         config(['freegle.amp.enabled' => true]);
         config(['freegle.amp.secret' => 'test-secret-key']);
 
-        ['user2' => $user2, 'mail' => $mail] = $this->createUser2UserChatSetup();
+        // Use Gmail for the recipient so AMP is supported (AMP is domain-restricted)
+        ['user2' => $user2, 'mail' => $mail] = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'testuser@gmail.com'],
+        ]);
 
         // Debug: Check mail object state before build.
         $recipientExists = $mail->recipient->exists;
         $chatType = $mail->chatType;
         $recipientEmail = $mail->recipient->email_preferred;
         $footerViewExists = view()->exists('emails.mjml.partials.footer');
+
+        // Try rendering the footer template directly to see if it works.
+        $directFooterRender = '';
+        $directFooterError = null;
+        try {
+            $directFooterRender = view('emails.mjml.partials.footer', [
+                'email' => $recipientEmail,
+                'settingsUrl' => 'http://test.com/settings',
+                'unsubscribeUrl' => 'http://test.com/unsubscribe',
+                'ampIncluded' => true,
+            ])->render();
+        } catch (\Throwable $e) {
+            $directFooterError = $e->getMessage();
+        }
 
         $mail->build();
         $html = $mail->render();
@@ -667,24 +684,73 @@ class ChatNotificationTest extends TestCase
         preg_match('/This email was sent[^<]*/', $html, $footerMatch);
         $footerText = $footerMatch[0] ?? 'FOOTER NOT FOUND';
 
+        // Additional diagnostics - check for ANY footer content.
+        $hasUnsubscribe = str_contains($html, 'Unsubscribe');
+        $hasSettings = str_contains($html, 'Change your email settings');
+        $hasHmrc = str_contains($html, 'HMRC');
+        $hasCharityText = str_contains($html, 'registered as a charity');
+        $hasF5F5F5 = str_contains($html, '#f5f5f5'); // Footer background color
+
+        // Check if tracking pixel is present (rendered after footer).
+        $hasTrackingPixel = str_contains($html, 'width="1" height="1"');
+
+        // Check for "Reply to" button (rendered before footer).
+        $hasReplyButton = str_contains($html, 'Reply to');
+
+        // Look for the last few sections of HTML to see structure.
+        $lastSection = '';
+        if (preg_match('/(?:Reply to[^<]+<\/a>)(.{0,500})/s', $html, $afterReplyMatch)) {
+            $lastSection = substr($afterReplyMatch[1], 0, 200);
+        }
+
         // Build debug message for assertion failure.
         $debug = sprintf(
             "\n=== DEBUG INFO ===\n" .
             "config('freegle.amp.enabled'): %s\n" .
+            "config('freegle.branding.name'): %s\n" .
+            "config('view.compiled'): %s\n" .
+            "config('view.check_cache_timestamps'): %s\n" .
             "mail->recipient->exists: %s\n" .
             "mail->recipient->email_preferred: %s\n" .
             "mail->chatType: %s\n" .
             "footer view exists: %s\n" .
             "HTML length: %d\n" .
-            "Footer text found: %s\n" .
+            "Footer text 'This email was sent...': %s\n" .
+            "--- Direct footer render test ---\n" .
+            "Direct footer render length: %d\n" .
+            "Direct footer render error: %s\n" .
+            "Direct footer has 'This email was sent': %s\n" .
+            "--- Footer content checks in mail HTML ---\n" .
+            "Has 'Unsubscribe': %s\n" .
+            "Has 'Change your email settings': %s\n" .
+            "Has 'HMRC': %s\n" .
+            "Has 'registered as a charity': %s\n" .
+            "Has footer bg color #f5f5f5: %s\n" .
+            "Has Reply button: %s\n" .
+            "Has tracking pixel: %s\n" .
+            "--- Content after Reply button (first 200 chars) ---\n%s\n" .
             "==================\n",
             var_export(config('freegle.amp.enabled'), true),
+            var_export(config('freegle.branding.name'), true),
+            var_export(config('view.compiled'), true),
+            var_export(config('view.check_cache_timestamps'), true),
             var_export($recipientExists, true),
             var_export($recipientEmail, true),
             var_export($chatType, true),
             var_export($footerViewExists, true),
             strlen($html),
-            $footerText
+            $footerText,
+            strlen($directFooterRender),
+            $directFooterError ?? 'none',
+            str_contains($directFooterRender, 'This email was sent') ? 'YES' : 'NO',
+            $hasUnsubscribe ? 'YES' : 'NO',
+            $hasSettings ? 'YES' : 'NO',
+            $hasHmrc ? 'YES' : 'NO',
+            $hasCharityText ? 'YES' : 'NO',
+            $hasF5F5F5 ? 'YES' : 'NO',
+            $hasReplyButton ? 'YES' : 'NO',
+            $hasTrackingPixel ? 'YES' : 'NO',
+            $lastSection
         );
 
         // Footer should indicate AMP was included.
@@ -727,7 +793,10 @@ class ChatNotificationTest extends TestCase
         config(['freegle.amp.enabled' => true]);
         config(['freegle.amp.secret' => 'test-secret-key']);
 
-        ['mail' => $mail] = $this->createUser2UserChatSetup();
+        // Use Gmail for the recipient so AMP is supported (AMP is domain-restricted)
+        ['mail' => $mail] = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'testuser@gmail.com'],
+        ]);
 
         // Get the tracking record.
         $tracking = $mail->getTracking();
@@ -1272,5 +1341,110 @@ class ChatNotificationTest extends TestCase
         // Mod messages should NOT show "Sheila" - should show "Volunteers" instead.
         $this->assertStringNotContainsString('Sheila', $html);
         $this->assertStringContainsString('Volunteers', $html);
+    }
+
+    /**
+     * Test that has_amp tracking flag is only set for AMP-supported email domains.
+     *
+     * AMP email is only supported by Gmail, Yahoo, AOL, Mail.ru, and Yandex.
+     * Emails to other providers (Hotmail, Outlook, iCloud, etc.) should not
+     * have has_amp=true in tracking, even if AMP is enabled globally.
+     */
+    public function test_has_amp_only_set_for_supported_domains(): void
+    {
+        // Ensure AMP is enabled for this test.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        // Test with Gmail - should have AMP.
+        $setup = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@gmail.com'],
+        ]);
+        $mail = $setup['mail'];
+        $mail->build();
+
+        // Access protected tracking property via reflection.
+        $reflection = new \ReflectionClass($mail);
+        $trackingProp = $reflection->getProperty('tracking');
+        $trackingProp->setAccessible(true);
+        $tracking = $trackingProp->getValue($mail);
+
+        $this->assertTrue($tracking->has_amp, 'Gmail should have has_amp=true');
+
+        // Test with Yahoo - should have AMP.
+        $setup2 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@yahoo.co.uk'],
+        ]);
+        $mail2 = $setup2['mail'];
+        $mail2->build();
+
+        $tracking2 = $trackingProp->getValue($mail2);
+        $this->assertTrue($tracking2->has_amp, 'Yahoo should have has_amp=true');
+
+        // Test with Hotmail - should NOT have AMP.
+        $setup3 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@hotmail.com'],
+        ]);
+        $mail3 = $setup3['mail'];
+        $mail3->build();
+
+        $tracking3 = $trackingProp->getValue($mail3);
+        $this->assertFalse($tracking3->has_amp, 'Hotmail should have has_amp=false');
+
+        // Test with Outlook - should NOT have AMP.
+        $setup4 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@outlook.com'],
+        ]);
+        $mail4 = $setup4['mail'];
+        $mail4->build();
+
+        $tracking4 = $trackingProp->getValue($mail4);
+        $this->assertFalse($tracking4->has_amp, 'Outlook should have has_amp=false');
+
+        // Test with iCloud - should NOT have AMP.
+        $setup5 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@icloud.com'],
+        ]);
+        $mail5 = $setup5['mail'];
+        $mail5->build();
+
+        $tracking5 = $trackingProp->getValue($mail5);
+        $this->assertFalse($tracking5->has_amp, 'iCloud should have has_amp=false');
+    }
+
+    /**
+     * Test that AMP content is not rendered for non-AMP-supported domains.
+     */
+    public function test_amp_content_not_rendered_for_unsupported_domains(): void
+    {
+        // Ensure AMP is enabled for this test.
+        config(['freegle.amp.enabled' => true]);
+        config(['freegle.amp.secret' => 'test-secret-key']);
+
+        // Test with Hotmail - AMP content should not be rendered.
+        $setup = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@hotmail.com'],
+        ]);
+        $mail = $setup['mail'];
+        $mail->build();
+
+        // Access protected ampHtml property via reflection.
+        $reflection = new \ReflectionClass($mail);
+        $ampHtmlProp = $reflection->getProperty('ampHtml');
+        $ampHtmlProp->setAccessible(true);
+        $ampHtml = $ampHtmlProp->getValue($mail);
+
+        $this->assertNull($ampHtml, 'Hotmail should not have AMP HTML rendered');
+
+        // Test with Gmail - AMP content should be rendered.
+        $setup2 = $this->createUser2UserChatSetup([
+            'user2_attrs' => ['email_preferred' => 'user@gmail.com'],
+        ]);
+        $mail2 = $setup2['mail'];
+        $mail2->build();
+
+        $ampHtml2 = $ampHtmlProp->getValue($mail2);
+        $this->assertNotNull($ampHtml2, 'Gmail should have AMP HTML rendered');
+        $this->assertStringContainsString('<!doctype html>', $ampHtml2);
     }
 }

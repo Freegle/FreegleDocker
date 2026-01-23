@@ -32,6 +32,37 @@ See `CLAUDE.md` for detailed documentation on:
 - Code style guidelines
 - Container commands
 
+## Deploying to Live Servers
+
+For SFTP/SCP deployments (non-Docker environments):
+
+1. **Upload the code** to the server via SFTP/SCP
+2. **Wait for automatic refresh** - The `deploy:watch` command runs every minute via Laravel's scheduler. When it detects `version.txt` has changed, it waits 5 minutes (settle time) for uploads to complete, then automatically runs `deploy:refresh`
+3. **Or trigger manually** if needed:
+   ```bash
+   php artisan deploy:refresh
+   ```
+
+### What deploy:refresh does
+
+- Clears configuration cache
+- Clears route cache
+- Clears compiled views
+- Recompiles views
+- Restarts supervisor-managed daemons gracefully
+
+### For Docker environments
+
+In Docker Compose setups (like FreegleDocker), the container handles deployment automatically. Code changes are synced to the container, and you can trigger a refresh with:
+
+```bash
+docker exec freegle-batch php artisan deploy:refresh
+```
+
+### Bootstrap cache files
+
+The `bootstrap/cache/services.php` and `packages.php` files are generated during deployment and should not be modified manually. If you encounter issues with these files, running `deploy:refresh` will regenerate them.
+
 ## License
 
 Part of the Freegle project.
