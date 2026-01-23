@@ -58,8 +58,8 @@ Retention times align with `purge_logs.php` policies from the database.
 
 ### Accessing Logs
 
-- **Grafana UI**: http://localhost:3200 (credentials: admin/freegle)
 - **Loki API**: http://localhost:3100
+- Query logs via curl: `curl -G "http://localhost:3100/loki/api/v1/query" --data-urlencode 'query={app="freegle"}'`
 
 ### Environment Variables
 

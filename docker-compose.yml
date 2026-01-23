@@ -978,10 +978,10 @@ services:
       beanstalkd:
         condition: service_healthy
 
-  # Loki - Log aggregation (optional, enabled by LOKI_ENABLED env var)
+  # Loki - Log aggregation
   loki:
     container_name: freegle-loki
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.0.0
     networks:
       - default
     ports:
@@ -990,7 +990,7 @@ services:
       - loki-data:/loki
       - ./conf/loki-config.yaml:/etc/loki/local-config.yaml:ro
     command: -config.file=/etc/loki/local-config.yaml
-    restart: "no"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
       interval: 10s
@@ -1002,31 +1002,6 @@ services:
       - "traefik.http.routers.loki.rule=Host(`loki.localhost`)"
       - "traefik.http.routers.loki.entrypoints=web"
       - "traefik.http.services.loki.loadbalancer.server.port=3100"
-
-  # Grafana - Log visualization (optional, depends on Loki)
-  grafana:
-    container_name: freegle-grafana
-    image: grafana/grafana:latest
-    networks:
-      - default
-    ports:
-      - "3200:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./conf/grafana-provisioning:/etc/grafana/provisioning:ro
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-freegle}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-    depends_on:
-      loki:
-        condition: service_healthy
-    restart: "no"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
-      - "traefik.http.routers.grafana.entrypoints=web"
-      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
 
   # Batch jobs processor (Laravel)
   batch:
@@ -1183,9 +1158,8 @@ volumes:
   rspamd_data:
     driver: local
   loki-data:
-    driver: local
-  grafana-data:
-    driver: local
+    external: true
+    name: loki-data
   apiv2_logs:
     driver: local
   mcp-pseudonymizer-data:

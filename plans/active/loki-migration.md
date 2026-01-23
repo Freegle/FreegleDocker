@@ -1,6 +1,6 @@
 # Loki Migration: Standalone Container → Docker Compose
 
-**Status**: In Progress
+**Status**: ✅ Complete (2026-01-23)
 **Branch**: `feature/worker-pools-v2`
 **PR**: #18
 
@@ -8,16 +8,34 @@
 
 Migrate Loki from a standalone Docker container to the FreegleDocker docker-compose environment. This is phase 1 of a larger migration that will later include iznik-batch and incoming mail.
 
-## Current State
+## Migration Completed
 
-### Standalone Container (This Server)
+### Changes Made
+- Upgraded Loki image: 2.9.0 → 3.0.0
+- Changed restart policy: `"no"` → `unless-stopped`
+- Volume: Named external volume `loki-data` (26GB data migrated)
+- Removed Grafana service (not needed)
+- Updated backup script for named volumes
+
+### Verification
+- ✅ Container healthy: `freegle-loki`
+- ✅ Historical data preserved: 7 log sources (api, api_headers, chat_reply, client, email, laravel-batch, logs_table)
+- ✅ All labels available (17 labels)
+- ✅ Queries working
+
+### Backout Available
+Original data preserved at `/opt/loki/data` and container config at `/opt/loki/backup/`
+
+## Previous State (Reference)
+
+### Standalone Container (Before Migration)
 - **Image**: `grafana/loki:3.0.0`
 - **Data**: `/opt/loki/data` (26GB)
 - **Config**: `/opt/loki/config/loki-config.yaml`
-- **Restart Policy**: `--restart unless-stopped` (will restart on reboot!)
+- **Restart Policy**: `--restart unless-stopped`
 - **Network**: Default bridge (isolated from docker-compose network)
 
-### Docker Compose (Current)
+### Docker Compose (Before Migration)
 - **Image**: `grafana/loki:2.9.0` (outdated)
 - **Data**: Named volume `loki-data`
 - **Config**: `./conf/loki-config.yaml`
