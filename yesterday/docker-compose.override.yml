@@ -45,6 +45,13 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=gcloud"
       - "--certificatesresolvers.letsencrypt.acme.dnschallenge.delaybeforecheck=30"
       - "--log.level=INFO"
+      - "--ping=true"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     ports:
       - "80:80"
       - "8192:8192"
