@@ -1184,7 +1184,6 @@ volumes:
   rspamd_data:
     driver: local
   loki-data:
-    external: true
     name: loki-data
   apiv2_logs:
     driver: local

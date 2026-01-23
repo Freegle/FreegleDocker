@@ -39,7 +39,20 @@ echo "Data size: $DATA_SIZE"
 # Create tarball in temp location
 echo "Creating backup tarball..."
 BACKUP_FILE="/tmp/loki-backup-${BACKUP_DATE}.tar.gz"
+
+# tar returns 1 if files change during archiving (normal for live Loki)
+# Only fail on exit code 2+ (real errors)
+set +e
 tar -czf "$BACKUP_FILE" -C / loki
+TAR_EXIT=$?
+set -e
+
+if [ $TAR_EXIT -eq 1 ]; then
+    echo "Note: Some files changed during backup (normal for live Loki)"
+elif [ $TAR_EXIT -gt 1 ]; then
+    echo "❌ tar failed with exit code $TAR_EXIT"
+    exit 1
+fi
 
 BACKUP_SIZE=$(du -sh "$BACKUP_FILE" | awk '{print $1}')
 echo "Backup size: $BACKUP_SIZE"
