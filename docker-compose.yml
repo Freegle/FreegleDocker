@@ -1079,8 +1079,6 @@ services:
       - AMP_API_URL=http://apiv2.localhost/amp
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
-      # MJML compilation via HTTP server (consistent across all environments)
-      - MJML_MODE=http
       - MJML_URL=http://mjml:3000/v1/render
       - FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod,Digest,UnifiedDigest,DonationThank,DonationAsk
       # CI=true skips supervisor startup to prevent Laravel bootstrap race conditions.

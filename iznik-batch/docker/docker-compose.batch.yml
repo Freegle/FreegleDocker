@@ -83,7 +83,6 @@ services:
       - REDIS_PORT=6379
 
       # MJML configuration (HTTP mode for worker pool back pressure)
-      - MJML_MODE=http
       - MJML_URL=http://mjml:3000/v1/render
       - MJML_HTTP_TIMEOUT=30
 
@@ -137,7 +136,6 @@ services:
       - sqlite-dbs:/app/storage/databases
     environment:
       - REDIS_HOST=redis
-      - MJML_MODE=http
       - MJML_URL=http://mjml:3000/v1/render
       - DB_HOST=${DB_HOST}
       - DB_DATABASE=${DB_DATABASE:-iznik}
