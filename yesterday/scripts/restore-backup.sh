@@ -357,11 +357,20 @@ echo "Restoring Loki logs backup..."
 echo "=========================================="
 update_status "restoring_loki" "Restoring Loki logs..."
 
-# Find most recent Loki backup (may not match exact date, get latest available)
-LOKI_BACKUP=$(gsutil ls "$BACKUP_BUCKET/loki/" 2>/dev/null | sort -r | head -1)
+# Find most recent Loki backup ON OR BEFORE the database backup date
+# This ensures log consistency - no logs for events after the DB snapshot
+echo "Looking for Loki backup on or before ${BACKUP_DATE}..."
+LOKI_BACKUP=$(gsutil ls "$BACKUP_BUCKET/loki/" 2>/dev/null | while read backup; do
+    # Extract date from filename (loki-backup-YYYYMMDD_HHMMSS.tar.gz)
+    loki_date=$(basename "$backup" | grep -oE '[0-9]{8}' | head -1)
+    if [ -n "$loki_date" ] && [ "$loki_date" -le "$BACKUP_DATE" ]; then
+        echo "$backup"
+    fi
+done | sort -r | head -1)
 
 if [ -n "$LOKI_BACKUP" ]; then
-    echo "Found Loki backup: $LOKI_BACKUP"
+    LOKI_BACKUP_DATE=$(basename "$LOKI_BACKUP" | grep -oE '[0-9]{8}' | head -1)
+    echo "Found Loki backup: $LOKI_BACKUP (date: $LOKI_BACKUP_DATE)"
     LOKI_SIZE=$(gsutil ls -l "$LOKI_BACKUP" | grep -v TOTAL | awk '{print $1}')
     LOKI_SIZE_GB=$((LOKI_SIZE / 1024 / 1024 / 1024))
     echo "Loki backup size: ${LOKI_SIZE_GB}GB"

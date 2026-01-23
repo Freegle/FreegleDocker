@@ -1003,6 +1003,29 @@ services:
       - "traefik.http.routers.loki.entrypoints=web"
       - "traefik.http.services.loki.loadbalancer.server.port=3100"
 
+  # Loki backup - runs on-demand: docker compose run --rm loki-backup
+  # Gracefully skips backup if GCS credentials not available (dev environments)
+  # Uses host gcloud credentials (~/.config/gcloud) or service account key file
+  loki-backup:
+    container_name: freegle-loki-backup
+    profiles:
+      - backup
+    build:
+      context: ./scripts/backup
+      dockerfile: Dockerfile
+    depends_on:
+      loki:
+        condition: service_healthy
+    volumes:
+      - loki-data:/loki:ro
+      # Mount host gcloud config for credentials (user account or ADC)
+      - ${GCLOUD_CONFIG_PATH:-~/.config/gcloud}:/root/.config/gcloud:ro
+    environment:
+      - GCS_BUCKET=${LOKI_BACKUP_BUCKET:-gs://freegle_backup_uk/loki}
+      - RETENTION_DAYS=${LOKI_BACKUP_RETENTION_DAYS:-30}
+    networks:
+      - default
+
   # Batch jobs processor (Laravel)
   batch:
     container_name: freegle-batch
