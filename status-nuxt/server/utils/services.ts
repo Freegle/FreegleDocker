@@ -262,6 +262,15 @@ export const services: ServiceConfig[] = [
     description: 'Log aggregation service',
   },
   {
+    id: 'mjml',
+    name: 'MJML Server',
+    category: 'infrastructure',
+    container: 'freegle-mjml',
+    healthCheck: { type: 'http', path: '/health', timeout: 3000 },
+    actions: ['restart', 'logs'],
+    description: 'Email template compilation server',
+  },
+  {
     id: 'loki-backup',
     name: 'Loki Backup',
     category: 'infrastructure',

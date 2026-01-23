@@ -36,8 +36,9 @@ return [
     ],
 
     'mjml' => [
-        // Compilation mode: 'local' (Spatie/MJML) or 'http' (external server)
-        'mode' => env('MJML_MODE', 'local'),
+        // MJML compilation mode: 'http' uses the freegle-mjml container with back pressure,
+        // 'local' uses Spatie/MJML directly (fallback, not recommended)
+        'mode' => env('MJML_MODE', 'http'),
 
         // MJML server URL for HTTP mode
         'url' => env('MJML_URL', 'http://mjml:3000/v1/render'),
