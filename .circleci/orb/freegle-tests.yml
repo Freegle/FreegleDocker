@@ -841,6 +841,53 @@ commands:
 
             echo "✅ Test database and environment ready!"
 
+  run-vitest-tests:
+    description: "Run Vitest unit tests for iznik-nuxt3 components"
+    parameters:
+      reason:
+        type: string
+        default: "Running Vitest unit tests"
+    steps:
+      - run:
+          name: Run Vitest unit tests
+          command: |
+            echo "🧪 << parameters.reason >>..."
+
+            # Determine the iznik-nuxt3 directory
+            if [ -d "$HOME/FreegleDocker/iznik-nuxt3" ]; then
+              NUXT_DIR="$HOME/FreegleDocker/iznik-nuxt3"
+            elif [ -d "$HOME/project/iznik-nuxt3" ]; then
+              NUXT_DIR="$HOME/project/iznik-nuxt3"
+            else
+              echo "❌ Could not find iznik-nuxt3 directory"
+              exit 1
+            fi
+
+            echo "📂 Using iznik-nuxt3 at: $NUXT_DIR"
+            cd "$NUXT_DIR"
+
+            # Check if vitest is configured
+            if ! grep -q '"test:unit:run"' package.json; then
+              echo "⚠️ Vitest not configured in package.json, skipping unit tests"
+              exit 0
+            fi
+
+            # Install dependencies (using npm ci for faster, deterministic installs)
+            echo "📦 Installing npm dependencies..."
+            npm ci --prefer-offline --no-audit
+
+            # Run vitest
+            echo "🧪 Running Vitest unit tests..."
+            npm run test:unit:run -- --reporter=verbose 2>&1 | tee /tmp/vitest-output.log
+            VITEST_EXIT_CODE=${PIPESTATUS[0]}
+
+            if [ $VITEST_EXIT_CODE -eq 0 ]; then
+              echo "✅ Vitest unit tests passed!"
+            else
+              echo "❌ Vitest unit tests failed with exit code: $VITEST_EXIT_CODE"
+              exit $VITEST_EXIT_CODE
+            fi
+
   run-playwright-tests:
     description: "Run Playwright tests via the status service API and upload coverage"
     parameters:
@@ -1195,13 +1242,21 @@ commands:
                   if cat coverage.lcov | coveralls; then
                     echo "✅ Go coverage uploaded"
                     echo "GO_UPLOADED=true" >> $BASH_ENV
+                  else
+                    echo "❌ Go coverage upload failed"
+                    exit 1
                   fi
                 else
+                  echo "❌ Failed to convert Go coverage to lcov format"
                   cd ..
+                  exit 1
                 fi
+              else
+                echo "❌ gcov2lcov not found"
+                exit 1
               fi
             else
-              echo "ℹ️ No Go coverage found"
+              echo "ℹ️ No Go coverage found (this is OK if Go tests didn't run)"
             fi
           when: always
       - run:
@@ -1290,15 +1345,21 @@ commands:
                 if cat coverage.lcov | coveralls; then
                   echo "✅ Playwright coverage uploaded"
                   echo "PLAYWRIGHT_UPLOADED=true" >> $BASH_ENV
+                else
+                  echo "❌ Playwright coverage upload failed"
+                  exit 1
                 fi
               else
                 if cat "$LCOV_PATH" | coveralls; then
                   echo "✅ Playwright coverage uploaded"
                   echo "PLAYWRIGHT_UPLOADED=true" >> $BASH_ENV
+                else
+                  echo "❌ Playwright coverage upload failed"
+                  exit 1
                 fi
               fi
             else
-              echo "ℹ️ No Playwright coverage found"
+              echo "ℹ️ No Playwright coverage found (this is OK if Playwright tests didn't run)"
             fi
           when: always
       - run:
@@ -1324,8 +1385,8 @@ commands:
               # Install php-coveralls in the batch container
               echo "Installing php-coveralls in batch container..."
               if ! docker exec freegle-batch composer require php-coveralls/php-coveralls --dev 2>&1; then
-                echo "⚠️ Could not install php-coveralls in batch container"
-                exit 0
+                echo "❌ Could not install php-coveralls in batch container"
+                exit 1
               fi
 
               # Initialize git repo in container (php-coveralls needs it for git info including remotes)
@@ -1344,11 +1405,12 @@ commands:
                 echo "✅ Laravel coverage uploaded"
                 echo "LARAVEL_UPLOADED=true" >> $BASH_ENV
               else
-                echo "⚠️ Laravel coverage upload failed"
+                echo "❌ Laravel coverage upload failed"
                 docker exec freegle-batch ls -la /var/www/html/vendor/bin/ 2>&1 || true
+                exit 1
               fi
             else
-              echo "ℹ️ No Laravel coverage found at /tmp/laravel-coverage.xml"
+              echo "ℹ️ No Laravel coverage found at /tmp/laravel-coverage.xml (this is OK if Laravel tests didn't run)"
             fi
           when: always
       - run:
@@ -1475,6 +1537,9 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-nuxt3"
+      # Run Vitest unit tests first (doesn't need Docker services)
+      - run-vitest-tests:
+          reason: "Running Vitest unit tests for PR"
       - start-services
       - wait-for-basic-services
       - wait-for-prod-container
@@ -1665,6 +1730,10 @@ jobs:
             echo "❌ Timeout waiting for migrations to complete"
             docker logs freegle-batch --tail 30 2>&1 || true
             exit 1
+
+      # Run Vitest unit tests first (fast, fail-fast before slower tests)
+      - run-vitest-tests:
+          reason: "Running Vitest unit tests (fail-fast before parallel tests)"
 
       # Run iznik-batch, Playwright, Go, and iznik-server tests in parallel via status API
       - run:
