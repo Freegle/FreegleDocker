@@ -39,10 +39,11 @@ class MjmlCompilerService
         return $this->pool->withPermit(function () use ($mjml) {
             $url = config('services.mjml.url');
 
+            // adrianrudnik/mjml-server expects raw MJML text with Content-Type: text/plain
+            // and returns raw HTML (not JSON)
             $response = Http::timeout(config('services.mjml.http_timeout', 30))
-                ->post($url, [
-                    'mjml' => $mjml,
-                ]);
+                ->withBody($mjml, 'text/plain')
+                ->post($url);
 
             if (! $response->successful()) {
                 Log::error('MJML compilation failed', [
@@ -54,7 +55,7 @@ class MjmlCompilerService
                 );
             }
 
-            $html = $response->json()['html'] ?? '';
+            $html = $response->body();
 
             if (empty(trim($html))) {
                 throw new \RuntimeException('MJML compilation returned empty HTML');
