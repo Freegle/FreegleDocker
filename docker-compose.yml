@@ -1119,6 +1119,8 @@ services:
         condition: service_healthy
       mjml:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     environment:
       # Laravel Application
@@ -1142,6 +1144,8 @@ services:
       - CACHE_STORE=database
       - QUEUE_CONNECTION=database
       - SESSION_DRIVER=database
+      # Redis (for BoundedPool worker pool semaphores only)
+      - REDIS_HOST=redis
       # Mail (via smarthost)
       - MAIL_MAILER=smtp
       - MAIL_HOST=mail-host
