@@ -883,6 +883,10 @@ commands:
             echo "📦 Installing npm dependencies..."
             npm ci --prefer-offline --no-audit
 
+            # Generate .nuxt directory (required for tsconfig.json extends)
+            echo "🔧 Running nuxi prepare..."
+            npx nuxi prepare
+
             # Run vitest
             echo "🧪 Running Vitest unit tests..."
             npm run test:unit:run -- --reporter=verbose 2>&1 | tee /tmp/vitest-output.log
