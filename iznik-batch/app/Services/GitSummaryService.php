@@ -95,9 +95,10 @@ class GitSummaryService
      * @param string $repoUrl Repository URL.
      * @param string $branch Branch name.
      * @param int $since Unix timestamp.
+     * @param int|null $until Unix timestamp (optional end date for catching up).
      * @return array|null Repository changes or null if no changes.
      */
-    public function getRepositoryChanges(string $repoUrl, string $branch, int $since): ?array
+    public function getRepositoryChanges(string $repoUrl, string $branch, int $since, ?int $until = null): ?array
     {
         $tempDir = sys_get_temp_dir() . '/iznik_git_' . uniqid();
         mkdir($tempDir);
@@ -124,11 +125,17 @@ class GitSummaryService
             $cwd = getcwd();
             chdir($tempDir);
 
-            // Get commits since the timestamp.
+            // Get commits since the timestamp (and optionally until a date).
             $sinceDate = date('Y-m-d H:i:s', $since);
+            $untilArg = '';
+            if ($until !== null) {
+                $untilDate = date('Y-m-d H:i:s', $until);
+                $untilArg = sprintf(' --until=%s', escapeshellarg($untilDate));
+            }
             $logCmd = sprintf(
-                'git log --since=%s --pretty=format:"%%H|%%an|%%ad|%%s" --date=short 2>&1',
-                escapeshellarg($sinceDate)
+                'git log --since=%s%s --pretty=format:"%%H|%%an|%%ad|%%s" --date=short 2>&1',
+                escapeshellarg($sinceDate),
+                $untilArg
             );
             exec($logCmd, $commits, $return);
 
@@ -257,14 +264,21 @@ class GitSummaryService
      * Generate the full report.
      *
      * @param string|null $sinceOverride Override the since date.
-     * @return array Result with 'html', 'changes', 'since_date'.
+     * @param string|null $untilOverride Override the until date (for catching up on missed weeks).
+     * @return array Result with 'html', 'changes', 'since_date', optionally 'until_date'.
      */
-    public function generateReport(?string $sinceOverride = null): array
+    public function generateReport(?string $sinceOverride = null, ?string $untilOverride = null): array
     {
         $since = $this->getLastRunTime($sinceOverride);
         $sinceDate = date('Y-m-d', $since);
 
-        Log::info('GitSummaryService: Analyzing changes', ['since' => $sinceDate]);
+        $until = $untilOverride !== null ? strtotime($untilOverride) : null;
+        $untilDate = $until !== null ? date('Y-m-d', $until) : null;
+
+        Log::info('GitSummaryService: Analyzing changes', [
+            'since' => $sinceDate,
+            'until' => $untilDate,
+        ]);
 
         // Collect all changes first.
         $allChanges = [];
@@ -276,7 +290,7 @@ class GitSummaryService
                 'branch' => $repo['branch'],
             ]);
 
-            $changes = $this->getRepositoryChanges($repo['url'], $repo['branch'], $since);
+            $changes = $this->getRepositoryChanges($repo['url'], $repo['branch'], $since, $until);
 
             if ($changes === null) {
                 Log::info('GitSummaryService: No changes found', ['repo' => $repo['name']]);
@@ -299,11 +313,15 @@ class GitSummaryService
 
         if (empty($allChanges)) {
             Log::info('GitSummaryService: No changes in any repository');
-            return [
-                'html' => $this->buildEmptyEmail($sinceDate),
+            $result = [
+                'html' => $this->buildEmptyEmail($sinceDate, $untilDate),
                 'changes' => [],
                 'since_date' => $sinceDate,
             ];
+            if ($untilDate !== null) {
+                $result['until_date'] = $untilDate;
+            }
+            return $result;
         }
 
         // Summarize all changes together with AI.
@@ -311,22 +329,48 @@ class GitSummaryService
         $summary = $this->summarizeAllChanges($allChanges);
 
         // Build the email.
-        $html = $this->buildEmail($summary, $sinceDate);
+        $html = $this->buildEmail($summary, $sinceDate, $untilDate);
 
-        return [
+        $result = [
             'html' => $html,
             'changes' => $allChanges,
             'since_date' => $sinceDate,
             'summary' => $summary,
         ];
+        if ($untilDate !== null) {
+            $result['until_date'] = $untilDate;
+        }
+        return $result;
+    }
+
+    /**
+     * Convert inline Markdown to HTML.
+     *
+     * Handles **bold**, *italic*, and `code` formatting.
+     */
+    protected function convertInlineMarkdown(string $text): string
+    {
+        // Convert **bold** to <strong>
+        $text = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $text);
+
+        // Convert *italic* to <em> (but not if it's a bullet point marker)
+        $text = preg_replace('/(?<!\*)\*([^*]+)\*(?!\*)/', '<em>$1</em>', $text);
+
+        // Convert `code` to <code>
+        $text = preg_replace('/`([^`]+)`/', '<code style="background-color: #f0f0f0; padding: 2px 4px; border-radius: 3px;">$1</code>', $text);
+
+        return $text;
     }
 
     /**
      * Build the email content with AI-generated summary.
      */
-    protected function buildEmail(string $aiSummary, string $sinceDate): string
+    protected function buildEmail(string $aiSummary, string $sinceDate, ?string $untilDate = null): string
     {
         $generatedDate = date('l, j F Y \a\t H:i');
+        $dateRange = $untilDate !== null
+            ? "{$sinceDate} to {$untilDate}"
+            : $sinceDate;
 
         // Process line by line to properly handle different elements.
         $lines = explode("\n", $aiSummary);
@@ -340,7 +384,7 @@ class GitSummaryService
             // Skip empty lines.
             if (empty($line)) {
                 if ($currentParagraph) {
-                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $currentParagraph . '</p>';
+                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $this->convertInlineMarkdown($currentParagraph) . '</p>';
                     $currentParagraph = '';
                 }
                 if ($inList) {
@@ -353,7 +397,7 @@ class GitSummaryService
             // Handle headings.
             if (preg_match('/^## (.+)$/', $line, $matches)) {
                 if ($currentParagraph) {
-                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $currentParagraph . '</p>';
+                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $this->convertInlineMarkdown($currentParagraph) . '</p>';
                     $currentParagraph = '';
                 }
                 if ($inList) {
@@ -367,7 +411,7 @@ class GitSummaryService
 
             if (preg_match('/^# (.+)$/', $line, $matches)) {
                 if ($currentParagraph) {
-                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $currentParagraph . '</p>';
+                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $this->convertInlineMarkdown($currentParagraph) . '</p>';
                     $currentParagraph = '';
                 }
                 if ($inList) {
@@ -382,14 +426,14 @@ class GitSummaryService
             // Handle bullet points.
             if (preg_match('/^[-*]\s+(.+)$/', $line, $matches)) {
                 if ($currentParagraph) {
-                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $currentParagraph . '</p>';
+                    $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $this->convertInlineMarkdown($currentParagraph) . '</p>';
                     $currentParagraph = '';
                 }
                 if (!$inList) {
                     $htmlLines[] = '<ul style="margin: 12px 0; padding-left: 24px; line-height: 1.6;">';
                     $inList = true;
                 }
-                $htmlLines[] = '<li style="margin-bottom: 8px;">' . $matches[1] . '</li>';
+                $htmlLines[] = '<li style="margin-bottom: 8px;">' . $this->convertInlineMarkdown($matches[1]) . '</li>';
                 continue;
             }
 
@@ -406,7 +450,7 @@ class GitSummaryService
 
         // Close any remaining open elements.
         if ($currentParagraph) {
-            $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $currentParagraph . '</p>';
+            $htmlLines[] = '<p style="line-height: 1.6; margin-bottom: 12px;">' . $this->convertInlineMarkdown($currentParagraph) . '</p>';
         }
         if ($inList) {
             $htmlLines[] = '</ul>';
@@ -429,7 +473,7 @@ class GitSummaryService
 
         <div style="background-color: #ebf8ff; border-left: 4px solid #4299e1; padding: 16px; margin-bottom: 24px; border-radius: 4px;">
             <p style="margin: 0; line-height: 1.6;">
-                <strong>Changes since:</strong> {$sinceDate}<br>
+                <strong>Changes since:</strong> {$dateRange}<br>
                 <strong>Generated:</strong> {$generatedDate}
             </p>
         </div>
@@ -452,9 +496,12 @@ HTML;
     /**
      * Build an empty email when there are no changes.
      */
-    protected function buildEmptyEmail(string $sinceDate): string
+    protected function buildEmptyEmail(string $sinceDate, ?string $untilDate = null): string
     {
         $generatedDate = date('l, j F Y \a\t H:i');
+        $dateRange = $untilDate !== null
+            ? "{$sinceDate} to {$untilDate}"
+            : $sinceDate;
 
         return <<<HTML
 <!DOCTYPE html>
@@ -471,7 +518,7 @@ HTML;
 
         <div style="background-color: #ebf8ff; border-left: 4px solid #4299e1; padding: 16px; margin-bottom: 24px; border-radius: 4px;">
             <p style="margin: 0; line-height: 1.6;">
-                <strong>Changes since:</strong> {$sinceDate}<br>
+                <strong>Changes since:</strong> {$dateRange}<br>
                 <strong>Generated:</strong> {$generatedDate}
             </p>
         </div>
@@ -491,22 +538,34 @@ HTML;
      * Send the report via email.
      *
      * @param string|null $sinceOverride Override the since date.
+     * @param string|null $untilOverride Override the until date (for catching up).
      * @param string|null $emailOverride Override the recipient email.
      * @param bool $updateTimestamp Whether to update the last run timestamp.
      * @return array Result with 'success', 'message', 'report'.
      */
-    public function sendReport(?string $sinceOverride = null, ?string $emailOverride = null, bool $updateTimestamp = true): array
+    public function sendReport(?string $sinceOverride = null, ?string $untilOverride = null, ?string $emailOverride = null, bool $updateTimestamp = true): array
     {
-        $report = $this->generateReport($sinceOverride);
+        $report = $this->generateReport($sinceOverride, $untilOverride);
 
         $subject = date('d-m-Y') . ' Freegle Code Changes Summary (AI Generated)';
         $to = $emailOverride ?? config('freegle.git_summary.discourse_email');
 
         try {
-            Mail::html($report['html'], function ($message) use ($to, $subject) {
+            // Use configurable FROM address - Discourse may filter by sender
+            $from = config('freegle.git_summary.from_address', 'geeks@ilovefreegle.org');
+            $fromName = config('freegle.git_summary.from_name', 'Freegle Geeks');
+
+            // Generate plain text version for email clients that prefer it (like Discourse)
+            $plainText = strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</li>', '</h1>', '</h2>'], "\n", $report['html']));
+            $plainText = html_entity_decode($plainText, ENT_QUOTES, 'UTF-8');
+            $plainText = preg_replace('/\n{3,}/', "\n\n", $plainText); // Collapse multiple newlines
+
+            Mail::send([], [], function ($message) use ($to, $subject, $from, $fromName, $report, $plainText) {
                 $message->to($to)
-                    ->from(config('mail.from.address'), config('mail.from.name'))
-                    ->subject($subject);
+                    ->from($from, $fromName)
+                    ->subject($subject)
+                    ->html($report['html'])
+                    ->text($plainText);
             });
 
             if ($updateTimestamp && $sinceOverride === null) {
