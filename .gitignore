@@ -10,6 +10,7 @@
 /.idea/prettier.xml
 /ssl/
 /.env
+/.env.background
 /rebuild-monitor.log
 yesterday/.env
 yesterday/data/

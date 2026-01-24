@@ -60,6 +60,29 @@ The Yesterday server (yesterday.ilovefreegle.org) runs with specific configurati
 - Development container uses `modtools/Dockerfile` and production container uses `Dockerfile.prod`
 - Production container requires a full rebuild to pick up code changes since it runs a production build
 
+### Production Batch Container (batch-prod)
+The `batch-prod` container runs Laravel scheduled jobs against the production database. It replaces the crontab entry on bulk3-internal.
+
+**Configuration:**
+- Uses `profiles: [production]` - only starts when production profile is enabled
+- Secrets stored in `.env.background` (gitignored) - see `.env.background.example` for template
+- Infrastructure IPs configured in `.env` (DB_HOST_IP, MAIL_HOST_IP)
+- Connects to production database via `db-host` (extra_hosts mapping)
+- Sends mail via `mail-host` smarthost (SPF/DMARC verified)
+- Logs to Loki container (`LOKI_URL=http://loki:3100`)
+- Auto-restarts on crash/reboot (`restart: unless-stopped`)
+
+**To enable:**
+1. Copy `.env.background.example` to `.env.background` and fill in secrets
+2. Set `COMPOSE_PROFILES=monitoring,production` in `.env`
+3. Run `docker compose up -d`
+
+**Migration from bulk3-internal:**
+After confirming batch-prod works, disable the crontab on bulk3-internal:
+```
+# Comment out: * * * * * cd /var/www/iznik-batch && php8.5 artisan schedule:run
+```
+
 ## Networking Configuration
 
 ### No Hardcoded IP Addresses

@@ -82,8 +82,8 @@ Refactor the status container from hand-coded JavaScript (3,300 line `server.js`
 - modtools-dev-local, modtools-dev-live, modtools-prod-local
 - apiv1, apiv2, batch
 
-**Development Tools (4):**
-- phpmyadmin, mailpit, loki, grafana
+**Development Tools (3):**
+- phpmyadmin, mailpit, loki
 
 **Infrastructure (8):**
 - traefik, percona, postgres, redis, beanstalkd, spamassassin, tusd, delivery
