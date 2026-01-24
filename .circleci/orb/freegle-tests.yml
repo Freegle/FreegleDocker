@@ -849,6 +849,13 @@ commands:
         default: "Running Vitest unit tests"
     steps:
       - run:
+          name: Install Node.js 22 for Vitest
+          command: |
+            echo "📦 Installing Node.js 22..."
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            echo "✅ Node.js $(node --version) installed"
+      - run:
           name: Run Vitest unit tests
           command: |
             echo "🧪 << parameters.reason >>..."
