@@ -1093,6 +1093,116 @@ services:
       retries: 10
       start_period: 180s
 
+  # Production batch jobs processor - connects to production database and mail
+  # Start with: docker compose --profile production up -d
+  # Requires secrets in .env.background (see .env.background.example for template)
+  batch-prod:
+    container_name: freegle-batch-prod
+    profiles:
+      - production
+    networks:
+      - default
+    build:
+      context: ./iznik-batch
+      dockerfile: docker/Dockerfile
+    env_file:
+      - .env.background
+    volumes:
+      - ./iznik-batch:/var/www/html
+      - ./iznik-server:/var/www/iznik:ro
+      - /var/log/freegle:/var/log/freegle
+    extra_hosts:
+      - "db-host:${DB_HOST_IP}"
+      - "mail-host:${MAIL_HOST_IP}"
+    depends_on:
+      loki:
+        condition: service_healthy
+      mjml:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      # Laravel Application
+      - APP_NAME=iznik-batch
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - APP_URL=http://localhost
+      # APP_KEY comes from env_file
+      - LOG_CHANNEL=stack
+      - LOG_LEVEL=debug
+      # Database (production)
+      - DB_CONNECTION=mysql
+      - DB_HOST=db-host
+      - DB_PORT=3306
+      - DB_DATABASE=iznik
+      - DB_USERNAME=root
+      # DB_PASSWORD comes from env_file
+      - DB_CHARSET=utf8mb4
+      - DB_COLLATION=utf8mb4_unicode_ci
+      # Cache & Queue (database, not Redis - matches bulk3 config)
+      - CACHE_STORE=database
+      - QUEUE_CONNECTION=database
+      - SESSION_DRIVER=database
+      # Mail (via smarthost)
+      - MAIL_MAILER=smtp
+      - MAIL_HOST=mail-host
+      - MAIL_PORT=25
+      - MAIL_USERNAME=
+      - MAIL_PASSWORD=
+      - MAIL_ENCRYPTION=null
+      - MAIL_EHLO_DOMAIN=freegle-batch
+      - MAIL_FROM_ADDRESS=noreply@ilovefreegle.org
+      - MAIL_FROM_NAME=Freegle
+      # Freegle Site URLs
+      - FREEGLE_USER_SITE=https://www.ilovefreegle.org
+      - FREEGLE_MOD_SITE=https://modtools.org
+      - FREEGLE_API_BASE_URL=https://api.ilovefreegle.org
+      - FREEGLE_API_V2_URL=https://api.ilovefreegle.org/apiv2
+      # Freegle Branding
+      - FREEGLE_SITE_NAME=Freegle
+      - FREEGLE_LOGO_URL=https://www.ilovefreegle.org/icon.png
+      - FREEGLE_WALLPAPER_URL=https://www.ilovefreegle.org/wallpaper.png
+      # Freegle Mail Configuration
+      - FREEGLE_NOREPLY_ADDR=noreply@ilovefreegle.org
+      - FREEGLE_USER_DOMAIN=users.ilovefreegle.org
+      - FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod
+      # Freegle Images
+      - FREEGLE_IMAGES_DOMAIN=https://images.ilovefreegle.org
+      - FREEGLE_DELIVERY_URL=https://delivery.ilovefreegle.org
+      - TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+      - FREEGLE_WELCOME_IMAGE1=https://www.ilovefreegle.org/images/welcome1.jpg
+      - FREEGLE_WELCOME_IMAGE2=https://www.ilovefreegle.org/images/welcome2.jpg
+      - FREEGLE_WELCOME_IMAGE3=https://www.ilovefreegle.org/images/welcome3.jpg
+      - FREEGLE_EMAIL_ASSETS_URL=https://www.ilovefreegle.org/emailimages
+      - FREEGLE_RULE_FREE_IMAGE=https://www.ilovefreegle.org/emailimages/rule-free.png
+      - FREEGLE_RULE_NICE_IMAGE=https://www.ilovefreegle.org/emailimages/rule-nice.png
+      - FREEGLE_RULE_SAFE_IMAGE=https://www.ilovefreegle.org/emailimages/rule-safe.png
+      # Loki Logging (local container)
+      - LOKI_ENABLED=true
+      - LOKI_URL=http://loki:3100
+      - LOKI_JSON_FILE=true
+      - LOKI_JSON_PATH=/var/log/freegle
+      # MJML (local container)
+      - MJML_URL=http://mjml/
+      # AMP Email
+      - AMP_EMAIL_ENABLED=true
+      # AMP_SECRET comes from env_file
+      - AMP_API_URL=https://api.ilovefreegle.org/amp
+      - AMP_READ_TOKEN_EXPIRY=168
+      - AMP_WRITE_TOKEN_EXPIRY=168
+      # Geospatial
+      - FREEGLE_SRID=3857
+      # SENTRY_LARAVEL_DSN comes from env_file
+      - SENTRY_SEND_DEFAULT_PII=true
+      - SENTRY_TRACES_SAMPLE_RATE=1.0
+      # Migrations disabled for production
+      - RUN_MIGRATIONS=false
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/laravel-ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+
   # =========================================
   # MCP Support Tools (Privacy-Preserving Log Analysis)
   # =========================================
