@@ -1031,6 +1031,28 @@ services:
       - "traefik.http.routers.loki.entrypoints=web"
       - "traefik.http.services.loki.loadbalancer.server.port=3100"
 
+  # Alloy - Log shipper to Loki
+  # Reads JSON log files from containers and ships to Loki
+  # For local dev: ships Go API logs from the apiv2_logs volume
+  # For production: batch-prod writes to host /var/log/freegle, ship separately
+  alloy:
+    container_name: freegle-alloy
+    image: grafana/alloy:v1.4.2
+    networks:
+      - default
+    volumes:
+      - ./conf/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - apiv2_logs:/var/log/freegle:ro
+    environment:
+      - LOKI_URL=http://loki:3100
+    command: ["run", "/etc/alloy/config.alloy"]
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
   # Loki backup - runs on-demand: docker compose run --rm loki-backup
   # Gracefully skips backup if GCS credentials not available (dev environments)
   # Uses host gcloud credentials (~/.config/gcloud) or service account key file
