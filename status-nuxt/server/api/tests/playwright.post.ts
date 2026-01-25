@@ -86,11 +86,35 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     // Wait a bit for container to be ready
     await new Promise(resolve => setTimeout(resolve, 3000))
 
+    // Build test args for both --list and actual run
+    let testArgs = ''
+    if (testFile) testArgs += ` ${testFile}`
+    if (testName) testArgs += ` --grep "${testName}"`
+
+    // Get accurate test count using --list before running
+    setTestState('playwright', { message: 'Counting tests...' })
+    try {
+      const listOutput = execSync(
+        `docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
+        { encoding: 'utf8', timeout: 60000 }
+      )
+      // Count lines that match test entries (lines with [chromium] marker)
+      const testLines = listOutput.split('\n').filter(line => line.includes('[chromium]'))
+      if (testLines.length > 0) {
+        const state = getTestState('playwright')
+        state.progress.total = testLines.length
+        setTestState('playwright', state)
+        appendTestLogs('playwright', `Test count from --list: ${testLines.length}\n`)
+        console.log(`Playwright --list found ${testLines.length} tests`)
+      }
+    } catch (listError: any) {
+      console.warn('Could not get test count from --list:', listError.message)
+      appendTestLogs('playwright', 'Could not pre-count tests, will determine from output\n')
+    }
+
     // Build test command - use default reporters from playwright.config.js (list, html, junit)
     // This ensures HTML report is generated for CI artifacts
-    let testCmd = 'npx playwright test'
-    if (testFile) testCmd += ` ${testFile}`
-    if (testName) testCmd += ` --grep "${testName}"`
+    const testCmd = `npx playwright test${testArgs}`
 
     setTestState('playwright', { message: 'Running Playwright tests...' })
     appendTestLogs('playwright', `Running: ${testCmd}\n`)

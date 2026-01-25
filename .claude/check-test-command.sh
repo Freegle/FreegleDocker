@@ -40,6 +40,11 @@ if [ "$IS_TEST_COMMAND" = false ]; then
   exit 0  # Not a test command, allow
 fi
 
+# Allow --list (dry run) and --help since they don't execute tests
+if echo "$COMMAND" | grep -qE -- "--list|--help"; then
+  exit 0
+fi
+
 # Block the command
 echo "BLOCKED: Do not run tests directly. Use the status container API instead:" >&2
 echo "" >&2
