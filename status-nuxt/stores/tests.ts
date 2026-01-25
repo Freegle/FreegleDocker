@@ -54,6 +54,11 @@ export const useTestStore = defineStore('tests', {
           progress: response.progress || this.tests[type].progress,
           reportUrl: response.reportUrl,
         }
+
+        // Auto-start polling if tests are running but we're not already polling
+        if (response.status === 'running' && !this.pollingIntervals.has(type)) {
+          this.startPolling(type)
+        }
       }
       catch (err) {
         console.error(`Failed to fetch ${type} test status:`, err)
