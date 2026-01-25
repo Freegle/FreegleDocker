@@ -934,8 +934,8 @@ commands:
               status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
               message=$(echo "$status_response" | jq -r '.message // "No message"')
-              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-              total=$(echo "$status_response" | jq -r '.totalTests // 0')
+              completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+              total=$(echo "$status_response" | jq -r '.progress.total // 0')
 
               elapsed_min=$((elapsed / 60))
               echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
@@ -1878,8 +1878,8 @@ jobs:
                 sleep 10
                 status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
-                completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-                total=$(echo "$status_response" | jq -r '.totalTests // 0')
+                completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+                total=$(echo "$status_response" | jq -r '.progress.total // 0')
 
                 # Update progress files
                 echo "$completed" > /tmp/playwright-completed
@@ -1937,8 +1937,8 @@ jobs:
 
               status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
-              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-              total=$(echo "$status_response" | jq -r '.totalTests // 0')
+              completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+              total=$(echo "$status_response" | jq -r '.progress.total // 0')
 
               elapsed_min=$((elapsed / 60))
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
