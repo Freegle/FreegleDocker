@@ -22,6 +22,7 @@ class GitSummaryCommand extends Command
      */
     protected $signature = 'data:git-summary
                             {--since= : Override since date (YYYY-MM-DD or relative like "-3 days")}
+                            {--until= : End date for commits (YYYY-MM-DD or relative) - for catching up on missed weeks}
                             {--email= : Override recipient email address}
                             {--dry-run : Generate report but do not send email or update timestamp}';
 
@@ -38,20 +39,25 @@ class GitSummaryCommand extends Command
         $this->registerShutdownHandlers();
 
         $sinceOverride = $this->option('since');
+        $untilOverride = $this->option('until');
         $emailOverride = $this->option('email');
         $dryRun = $this->option('dry-run');
 
         Log::info('GitSummaryCommand: Starting', [
             'since_override' => $sinceOverride,
+            'until_override' => $untilOverride,
             'email_override' => $emailOverride,
             'dry_run' => $dryRun,
         ]);
 
         if ($dryRun) {
             $this->info('Dry run mode - will not send email or update timestamp');
-            $report = $service->generateReport($sinceOverride);
+            $report = $service->generateReport($sinceOverride, $untilOverride);
 
             $this->info("Changes since: {$report['since_date']}");
+            if (isset($report['until_date'])) {
+                $this->info("Changes until: {$report['until_date']}");
+            }
             $this->info("Repositories with changes: " . count($report['changes']));
 
             $totalCommits = array_sum(array_map(fn($c) => count($c['commits']), $report['changes']));
@@ -66,12 +72,15 @@ class GitSummaryCommand extends Command
             return Command::SUCCESS;
         }
 
-        $result = $service->sendReport($sinceOverride, $emailOverride);
+        $result = $service->sendReport($sinceOverride, $untilOverride, $emailOverride);
 
         if ($result['success']) {
             $this->info('Git summary report sent successfully.');
             $this->info("Recipient: " . ($emailOverride ?? config('freegle.git_summary.discourse_email')));
             $this->info("Changes since: {$result['report']['since_date']}");
+            if (isset($result['report']['until_date'])) {
+                $this->info("Changes until: {$result['report']['until_date']}");
+            }
 
             $totalCommits = array_sum(array_map(fn($c) => count($c['commits']), $result['report']['changes']));
             $this->info("Total commits: {$totalCommits}");

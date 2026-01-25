@@ -11,17 +11,6 @@ echo "Using environment variables for configuration (no .env file needed)"
 if [ ! -f "/var/www/html/vendor/autoload.php" ]; then
     echo "Installing PHP dependencies..."
     composer install --no-interaction --prefer-dist --optimize-autoloader
-
-    # Install MJML in the spatie/mjml-php bin directory
-    if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ]; then
-        echo "Installing MJML in spatie package..."
-        if command -v npm >/dev/null 2>&1; then
-            cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml 2>&1
-            cd /var/www/html
-        else
-            echo "WARNING: npm not available, MJML installation skipped"
-        fi
-    fi
 fi
 
 # Wait for database server to be ready (connect without specifying database)
@@ -94,22 +83,6 @@ rm -f /var/www/html/bootstrap/cache/events.php
 echo "Clearing application caches..."
 php artisan cache:clear || true
 php artisan config:clear || true
-
-# Ensure MJML is installed in spatie package
-if [ -d "/var/www/html/vendor/spatie/mjml-php/bin" ] && [ ! -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
-    echo "Installing MJML in spatie package..."
-    if command -v npm >/dev/null 2>&1; then
-        cd /var/www/html/vendor/spatie/mjml-php/bin && npm install mjml 2>&1
-        cd /var/www/html
-        if [ -d "/var/www/html/vendor/spatie/mjml-php/bin/node_modules/mjml" ]; then
-            echo "MJML installed successfully"
-        else
-            echo "WARNING: MJML installation may have failed - directory not found"
-        fi
-    else
-        echo "WARNING: npm not available, MJML tests may fail"
-    fi
-fi
 
 echo "=== Laravel batch container ready ==="
 

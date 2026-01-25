@@ -176,6 +176,12 @@ const services = [
     category: "infra",
   },
   {
+    id: "mjml",
+    container: "freegle-mjml",
+    checkType: "mjml",
+    category: "infra",
+  },
+  {
     id: "beanstalkd",
     container: "freegle-beanstalkd",
     checkType: "beanstalkd",
@@ -883,6 +889,26 @@ async function runPlaywrightTests(testFile = null, testName = null) {
         restartError.message
       );
       testStatus.logs += `Warning: Failed to restart container: ${restartError.message}\n`;
+    }
+
+    // Set up test environment (FreeglePlayground group, test users) - same as PHPUnit tests
+    testStatus.message = "Setting up test environment...";
+    testStatus.logs += "Setting up test environment (FreeglePlayground group, test users)...\n";
+
+    try {
+      // Use freegle-apiv1 (not phpunit container) since Playwright tests run against the main iznik database
+      execSync(
+        'docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"',
+        {
+          encoding: "utf8",
+          timeout: 60000,
+        }
+      );
+      testStatus.logs += "Test environment set up successfully\n";
+    } catch (setupError) {
+      console.warn("Test database setup warning:", setupError.message);
+      testStatus.logs += `Warning: Test database setup issue: ${setupError.message}\n`;
+      // Continue anyway - the database might already be set up
     }
 
     // Verify Traefik routes are working before running tests
@@ -2889,6 +2915,9 @@ const httpServer = http.createServer(async (req, res) => {
             break;
           case "redis":
             testDescription = "Redis PING command response test";
+            break;
+          case "mjml":
+            testDescription = "MJML compilation server health endpoint";
             break;
           case "beanstalkd":
             testDescription = "Beanstalkd port 11300 connection test";
