@@ -214,7 +214,7 @@ commands:
             for attempt in $(seq 1 $MAX_RETRIES); do
               echo "Build attempt $attempt of $MAX_RETRIES..."
 
-              if docker-compose -f docker-compose.yml build \
+              if docker-compose -f docker-compose.yml build --no-cache \
                 apiv1 apiv1-phpunit apiv2 \
                 freegle-prod-local modtools-prod-local \
                 playwright status batch; then
