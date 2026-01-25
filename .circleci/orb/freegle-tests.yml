@@ -1600,40 +1600,6 @@ jobs:
             fi
 
       - run:
-          name: Check if only submodule changes to feature branches
-          command: |
-            if [ "$CIRCLE_BRANCH" = "master" ]; then
-              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
-            else
-              CHANGED_FILES=$(git diff --name-only origin/master...HEAD)
-            fi
-
-            if [ -n "$CHANGED_FILES" ]; then
-              SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(iznik-nuxt3|iznik-server|iznik-server-go)$' || true)
-              NON_SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -v -E '^(iznik-nuxt3|iznik-server|iznik-server-go)$' || true)
-
-              if [ -n "$SUBMODULE_CHANGES" ] && [ -z "$NON_SUBMODULE_CHANGES" ]; then
-                git submodule init
-                git submodule update --recursive --jobs 4
-
-                for submodule_path in $SUBMODULE_CHANGES; do
-                  if [ -d "$submodule_path" ]; then
-                    current_branch=$(cd "$submodule_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")
-                    if [ "$current_branch" = "HEAD" ]; then
-                      current_commit=$(cd "$submodule_path" && git rev-parse HEAD)
-                      current_branch=$(cd "$submodule_path" && git branch -r --contains "$current_commit" | grep -v HEAD | grep -E 'origin/(master|main|modtools)' | head -1 | sed 's/.*origin\///' | xargs || echo "")
-                    fi
-
-                    if [ "$current_branch" != "master" ] && [ "$current_branch" != "main" ] && [ "$current_branch" != "modtools" ]; then
-                      echo "⏭️ Submodule $submodule_path points to feature branch. Skipping build."
-                      circleci-agent step halt
-                    fi
-                  fi
-                done
-              fi
-            fi
-
-      - run:
           name: Initialize and update git submodules
           command: |
             git submodule init
