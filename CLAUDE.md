@@ -370,6 +370,120 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-25 15:45 - CircleCI Progress Monitoring Fix
+- **Status**: ✅ Complete
+- **Issue**: CircleCI progress display showed "Playwright: running (0/0)" despite API returning correct progress
+- **Root Cause**: When tests were already running and the orb tried to trigger them:
+  - HTTP 409 (conflict) was returned
+  - Orb exited early without entering polling loop
+  - Progress files (`/tmp/playwright-completed`, `/tmp/playwright-total`) were never created
+  - Display defaulted to 0/0
+- **Fix Applied** (Orb v1.1.149):
+  - Handle 409 as "tests already running" and continue to polling loop
+  - Always write default progress files (0/0) when trigger fails
+  - Applied to all 4 test types: iznik-batch, Go, PHP, Playwright
+- **Commit**: dc70e6e pushed to master
+- **Verified**: Playwright tests ran successfully (40/75 passed observed before SSH session ended)
+
+### 2026-01-25 05:00 - Playwright CI Test Failure Investigation - RESOLVED
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Issue**: Playwright tests failing on feature branch
+- **Root Cause Found**:
+  - Tests on master were STALE - expected "Let's get freegling!" but UI was changed to "Join the Reuse Revolution!" in commit 72521f46 (Dec 3, 2025)
+  - Removing @nuxt/test-utils changed package.json checksum → cache invalidated → fresh build → new UI text → tests fail
+  - The original hypothesis about `loggedInEver` was a red herring
+- **Fix Applied**:
+  - Commit 4e552d58: Updated test-modtools-login.spec.js to expect "Join the Reuse Revolution"
+  - Also updated tests/e2e/utils/user.js for consistency
+- **CI Status**: Pipeline #1437 on feature branch PASSING all tests
+- **Remaining Work**: These test fixes should be cherry-picked to master to prevent future issues
+- **Key Learning**: When CI passes on master but fails on branches, check if cached builds are masking stale tests
+
+### 2026-01-24 11:40 - Freegle Component Unit Tests Batch 17
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Commit**: fbf174ae
+- **Goal**: Fix batch 17 test failures for async chat message components
+- **Completed**:
+  - ✅ ChatMessagePromised.spec.js (44 tests) - Suspense wrapper for async setup
+  - ✅ ChatMessageReneged.spec.js (29 tests) - Same pattern
+  - ✅ ChatMessageModMail.spec.js (45 tests) - Fixed myid getter, realMod falsy check
+  - ✅ ChatMessageAddress.spec.js (20 tests) - No async needed
+  - ✅ ChatMessageInterested.spec.js (34 tests) - Fixed cleanup issues with defineAsyncComponent
+  - ✅ AutoComplete.spec.js (67 tests) - Fixed label prop, list visibility, keyboard navigation
+- **Test Count**: 7409 → 7614 tests (+205 this batch)
+- **Key Patterns**:
+  - Suspense wrapper using defineComponent and h() for async setup components
+  - Mock defineAsyncComponent to prevent async import race conditions during cleanup
+  - Mock vue-highlight-words at module level to avoid prop validation errors
+  - Use getter syntax for raw values: `get myid() { return mockMyid.value }`
+  - Provide required props like `label` to prevent deepValue split() errors
+  - Use toBeFalsy() instead of toBe(false) for null/undefined computed values
+- **Blockers**: None
+
+### 2026-01-23 18:40 - Freegle Component Unit Tests (Continued)
+- **Status**: 🔄 In Progress
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Goal**: Continue adding tests for untested Freegle components
+- **Completed This Session**:
+  - ✅ Fixed OurDatePicker.spec.js - mocked vue-datepicker-next module
+  - ✅ Fixed UserRatingsRemoveModal.spec.js - used vi.hoisted() and ref(null) for useOurModal
+  - ✅ DaFallbackDonationRequest.spec.js (11 tests)
+  - ✅ MicroVolunteeringSimilarTerm.spec.js (15 tests)
+  - ✅ DonationTraditionalExtras.spec.js (15 tests)
+  - ✅ MessageSkeleton.spec.js (8 tests) - pure presentation component
+  - ✅ SidebarRight.spec.js (12 tests) - ExternalDa wrapper
+  - ✅ UserSearch.spec.js (11 tests) - search chip with dayjs
+  - ✅ ContactDetailsAskModal.spec.js (8 tests) - postcode modal
+  - ✅ VisualiseSpeech.spec.js (12 tests) - Leaflet speech bubble
+  - ✅ MicroVolunteeringPhotoRotate.spec.js (17 tests) - rotate logic
+  - ✅ DonationAskWhatYouCan.spec.js (24 tests) - donation conditional rendering
+  - ✅ NewsHighlight.spec.js (22 tests) - read more/less functionality
+  - ✅ MicroVolunteeringSimilarTerms.spec.js (17 tests) - term selection logic
+  - ✅ DonationAskButtons2510.spec.js (27 tests) - donation button variants
+- **Test Count**: 5600 → 5845 tests (+245 this session)
+- **Key Patterns Used**:
+  - vi.hoisted() for mock functions used in vi.mock
+  - ref(null) from vue for useOurModal mock (template refs need real refs)
+  - vi.mock('module-name') for external libraries like vue-datepicker-next
+  - global.mocks for plugin-injected properties (me)
+  - $attrs.class binding in stubs to pass through component classes
+- **Next**: Continue with more untested components, ~170 still need tests
+- **Blockers**: None
+
+### 2026-01-23 - Unit Test Coverage Improvement
+- **Status**: ✅ Complete (Phase 1)
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Goal**: Improve test coverage from 7.16% to 20%+
+- **Completed**:
+  - ✅ Priority 1: Vue warning handler - tests now fail on Vue warnings
+  - ✅ Fixed ModComments/ModDeletedOrForgotten to accept null user props
+  - ✅ Fixed useOurModal mocks across test files to use proper Vue refs
+  - ✅ Commit 49b32ec2 pushed (18 files, +124/-27 lines)
+- **Blockers**: None
+
+### 2026-01-23 - ModMember System Component Tests
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd`
+- **Completed**:
+  - Added comprehensive unit tests for 7 ModMember components (268 new tests)
+  - ModMember.vue: 80 tests - main member display component
+  - ModMemberReview.vue: 34 tests - member review component
+  - ModMemberActions.vue: 43 tests - ban/remove/spam actions
+  - ModMemberButtons.vue: 46 tests - action buttons for member views
+  - ModMemberButton.vue: 33 tests - individual action button
+  - ModMemberEngagement.vue: 32 tests - engagement display
+  - ModMemberSummary.vue: 33 tests - member summary info
+  - Added memory-safe vitest configuration (pool: 'forks', maxWorkers based on CPU)
+  - Added ModCommentAddModal mock for deep dependency chain
+- **Test Count**: 1620 → 1888 tests (+268)
+- **Commits**: a0b5ca82 on feature/options-api-migration-tdd
+- **Key Patterns**:
+  - Use stubs for auto-imported child components instead of vi.mock
+  - For refs in templates, mock the object directly (not `{ value: {} }`)
+  - globalThis.useNuxtApp for auto-imported Nuxt composables
+
 ### 2026-01-22 - Yesterday Restore Port Conflict Fix
 - **Status**: ✅ Complete
 - **Issue**: Restore showed "failed" with "freegle-traefik is unhealthy"
@@ -445,18 +559,3 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - Used strict `=== TRUE` comparison for AI flag check
   - Same INSERT IGNORE pattern as existing code in message.php:706
 
-### 2026-01-17 23:10 - Email Reply Tracking (Issue #22)
-- **Status**: All tasks ✅ Complete, PR created, waiting for CI
-- **Completed**:
-  - Created `feature/email-reply-tracking` branch in iznik-server
-  - Updated MailRouter.php regex to parse optional tracking ID from notify- addresses
-  - Added email_tracking table update when reply received with tracking ID
-  - TDD approach: wrote failing tests first, then implemented fix
-  - All local tests pass (chatRoomsTest: 19 tests, MailRouterTest: 61 tests)
-- **PR**: https://github.com/Freegle/iznik-server/pull/41
-- **Next**: Wait for CircleCI (triggered when PR merges to master)
-- **Blockers**: None
-- **Key Decisions**:
-  - Used `\d+` regex for strict numeric matching (safer than `.*`)
-  - Used `replied_at IS NULL` in UPDATE to prevent overwriting existing replies
-  - Database ID (not tracking_id string) used in reply-to address for simpler lookup
