@@ -671,6 +671,11 @@ services:
       - "traefik.http.routers.freegle-dev-local.entrypoints=web"
       - "traefik.http.routers.freegle-dev-local.service=freegle-dev-local"
       - "traefik.http.services.freegle-dev-local.loadbalancer.server.port=3002"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.freegle-dev-api.rule=Host(`freegle-dev-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.freegle-dev-api.entrypoints=web"
+      - "traefik.http.routers.freegle-dev-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.freegle-dev-api.middlewares=apiv1-cors"
 
   # Development build with LIVE/PRODUCTION APIs - for mobile dev and testing with real data
   # WARNING: Actions in this container affect REAL Freegle data!
@@ -778,6 +783,11 @@ services:
       - "traefik.http.routers.freegle-prod-local.middlewares=retry-prod"
       - "traefik.http.routers.freegle-prod-local.service=freegle-prod-local"
       - "traefik.http.services.freegle-prod-local.loadbalancer.server.port=3003"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.freegle-prod-api.rule=Host(`freegle-prod-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.freegle-prod-api.entrypoints=web"
+      - "traefik.http.routers.freegle-prod-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.freegle-prod-api.middlewares=apiv1-cors"
       # Retry middleware for connection resilience under parallel load
       - "traefik.http.middlewares.retry-prod.retry.attempts=3"
       - "traefik.http.middlewares.retry-prod.retry.initialinterval=100ms"
@@ -832,6 +842,11 @@ services:
       - "traefik.http.routers.modtools-dev-local.entrypoints=web"
       - "traefik.http.routers.modtools-dev-local.service=modtools-dev-local"
       - "traefik.http.services.modtools-dev-local.loadbalancer.server.port=3000"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.modtools-dev-api.rule=Host(`modtools-dev-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.modtools-dev-api.entrypoints=web"
+      - "traefik.http.routers.modtools-dev-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.modtools-dev-api.middlewares=apiv1-cors"
 
   # Development mode with LIVE/Production APIs - ModTools
   # WARNING: This connects to REAL production data!
@@ -938,6 +953,11 @@ services:
       - "traefik.http.routers.modtools-prod-local.entrypoints=web"
       - "traefik.http.routers.modtools-prod-local.service=modtools-prod-local"
       - "traefik.http.services.modtools-prod-local.loadbalancer.server.port=3001"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.modtools-prod-api.rule=Host(`modtools-prod-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.modtools-prod-api.entrypoints=web"
+      - "traefik.http.routers.modtools-prod-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.modtools-prod-api.middlewares=apiv1-cors"
 
   playwright:
     container_name: freegle-playwright

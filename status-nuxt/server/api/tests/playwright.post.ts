@@ -86,8 +86,9 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     // Wait a bit for container to be ready
     await new Promise(resolve => setTimeout(resolve, 3000))
 
-    // Build test command
-    let testCmd = 'npx playwright test --reporter=json'
+    // Build test command - use default reporters from playwright.config.js (list, html, junit)
+    // This ensures HTML report is generated for CI artifacts
+    let testCmd = 'npx playwright test'
     if (testFile) testCmd += ` ${testFile}`
     if (testName) testCmd += ` --grep "${testName}"`
 
@@ -144,20 +145,40 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
 function parsePlaywrightOutput(text: string) {
   const state = getTestState('playwright')
 
-  // Look for test counts in Playwright JSON output
-  const passedMatch = text.match(/"passed":\s*(\d+)/)
-  const failedMatch = text.match(/"failed":\s*(\d+)/)
-  const totalMatch = text.match(/"total":\s*(\d+)/)
+  // Look for test counts in JSON output (if available)
+  const jsonPassedMatch = text.match(/"passed":\s*(\d+)/)
+  const jsonFailedMatch = text.match(/"failed":\s*(\d+)/)
+  const jsonTotalMatch = text.match(/"total":\s*(\d+)/)
 
-  if (passedMatch) state.progress.passed = parseInt(passedMatch[1])
-  if (failedMatch) state.progress.failed = parseInt(failedMatch[1])
-  if (totalMatch) state.progress.total = parseInt(totalMatch[1])
+  if (jsonPassedMatch) state.progress.passed = parseInt(jsonPassedMatch[1])
+  if (jsonFailedMatch) state.progress.failed = parseInt(jsonFailedMatch[1])
+  if (jsonTotalMatch) state.progress.total = parseInt(jsonTotalMatch[1])
 
-  // Look for test start markers
-  const testMatch = text.match(/Running \d+ tests? using \d+ workers?/)
+  // Look for list reporter summary format: "X passed" or "X failed"
+  const listPassedMatch = text.match(/(\d+)\s+passed/)
+  const listFailedMatch = text.match(/(\d+)\s+failed/)
+  const listSkippedMatch = text.match(/(\d+)\s+skipped/)
+
+  if (listPassedMatch) state.progress.passed = parseInt(listPassedMatch[1])
+  if (listFailedMatch) state.progress.failed = parseInt(listFailedMatch[1])
+
+  // Look for test start markers and extract total count
+  const testMatch = text.match(/Running (\d+) tests? using \d+ workers?/)
   if (testMatch) {
     state.message = testMatch[0]
+    state.progress.total = parseInt(testMatch[1])
   }
+
+  // Count individual test completions from accumulated logs (✓ or ✗ or ◼)
+  // Use accumulated logs to get accurate total counts
+  const allLogs = state.logs || ''
+  const passSymbols = (allLogs.match(/✓/g) || []).length
+  const failSymbols = (allLogs.match(/✗/g) || []).length
+
+  // Symbol counts from accumulated logs are the authoritative count during test run
+  // Only use these if we haven't seen summary stats yet
+  if (!listPassedMatch && passSymbols > 0) state.progress.passed = passSymbols
+  if (!listFailedMatch && failSymbols > 0) state.progress.failed = failSymbols
 
   // Update completed
   state.progress.completed = state.progress.passed + state.progress.failed

@@ -21,7 +21,7 @@ export const services: ServiceConfig[] = [
   {
     id: 'freegle-dev-live',
     name: 'Freegle Dev (Live)',
-    category: 'freegle',
+    category: 'production',
     container: 'freegle-dev-live',
     url: 'http://freegle-dev-live.localhost/',
     healthCheck: { type: 'http', path: '/', timeout: 3000 },
@@ -56,7 +56,7 @@ export const services: ServiceConfig[] = [
   {
     id: 'modtools-dev-live',
     name: 'ModTools Dev (Live)',
-    category: 'modtools',
+    category: 'production',
     container: 'modtools-dev-live',
     url: 'http://modtools-dev-live.localhost/',
     healthCheck: { type: 'http', path: '/', timeout: 3000 },
