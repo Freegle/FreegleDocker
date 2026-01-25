@@ -896,8 +896,9 @@ async function runPlaywrightTests(testFile = null, testName = null) {
     testStatus.logs += "Setting up test environment (FreeglePlayground group, test users)...\n";
 
     try {
+      // Use freegle-apiv1 (not phpunit container) since Playwright tests run against the main iznik database
       execSync(
-        'docker exec freegle-apiv1-phpunit sh -c "cd /var/www/iznik && php install/testenv.php"',
+        'docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"',
         {
           encoding: "utf8",
           timeout: 60000,
