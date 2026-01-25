@@ -2072,7 +2072,7 @@ jobs:
               # The test results will show as failed anyway
             fi
 
-            # Fail if any test suite failed
+            # Check test suite results
             if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PHP_RESULT" != "pass" ] || [ "$PLAYWRIGHT_RESULT" != "pass" ]; then
               echo "❌ One or more test suites failed"
               # Show failed test output files
@@ -2083,10 +2083,11 @@ jobs:
                   echo "📄 $f: $(wc -l < "$f") lines"
                 fi
               done
-              exit 1
+              # Don't exit 1 here - let artifacts be collected
+              # The "Evaluate overall test results" step (with when: always) will handle the failure exit
+            else
+              echo "✅ All tests passed!"
             fi
-
-            echo "✅ All tests passed!"
           no_output_timeout: 50m
 
       - store_artifacts:

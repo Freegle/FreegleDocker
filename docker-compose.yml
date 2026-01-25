@@ -521,6 +521,10 @@ services:
         condition: service_started
       redis:
         condition: service_started
+      tusd:
+        condition: service_started
+      delivery:
+        condition: service_started
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -537,6 +541,8 @@ services:
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
       - LOKI_ENABLED=false
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - IMAGE_DELIVERY=http://freegle-delivery
     volumes:
       - geoip_data:/var/lib/GeoIP
     healthcheck:
