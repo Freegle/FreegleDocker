@@ -1735,13 +1735,17 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/laravel)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ iznik-batch tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger iznik-batch tests. HTTP code: $http_code"
                 echo "fail" > /tmp/laravel-result
+                echo "0" > /tmp/laravel-completed
+                echo "0" > /tmp/laravel-total
                 exit 1
+              else
+                echo "✅ iznik-batch tests triggered successfully"
               fi
-
-              echo "✅ iznik-batch tests triggered successfully"
 
               # Poll for Laravel completion
               while true; do
@@ -1776,13 +1780,17 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/go)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ Go tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger Go tests. HTTP code: $http_code"
                 echo "fail" > /tmp/go-result
+                echo "0" > /tmp/go-completed
+                echo "0" > /tmp/go-total
                 exit 1
+              else
+                echo "✅ Go tests triggered successfully"
               fi
-
-              echo "✅ Go tests triggered successfully"
 
               # Poll for Go completion
               while true; do
@@ -1825,10 +1833,16 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ PHP tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
                 echo "fail" > /tmp/php-result
+                echo "0" > /tmp/php-completed
+                echo "0" > /tmp/php-total
                 exit 1
+              else
+                echo "✅ PHP tests triggered successfully"
               fi
 
               # Poll for PHPUnit completion
@@ -1865,13 +1879,18 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ Playwright tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger Playwright tests. HTTP code: $http_code"
                 echo "fail" > /tmp/playwright-result
+                # Initialize progress files for display
+                echo "0" > /tmp/playwright-completed
+                echo "0" > /tmp/playwright-total
                 exit 1
+              else
+                echo "✅ Playwright tests triggered successfully"
               fi
-
-              echo "✅ Playwright tests triggered successfully"
 
               # Poll for completion
               while true; do
