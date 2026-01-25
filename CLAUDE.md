@@ -370,6 +370,26 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-25 21:00 - Ralph Tasks Completed
+- **Status**: ✅ All 4 tasks complete
+- **Branch**: `feature/batch-job-logging` in FreegleDocker
+- **Tasks Completed**:
+  1. ✅ **LogsBatchJob trait** - Created `iznik-batch/app/Traits/LogsBatchJob.php` for automatic Loki logging of batch commands. Added comprehensive tests. Example usage in `UpdateKudosCommand.php`.
+  2. ✅ **deployment.md update** - Added section explaining two deployment options (FreegleDocker integration vs standalone).
+  3. ✅ **Loki logging consistency review** - Created `plans/loki-logging-consistency-review.md` documenting:
+     - Consistent elements across Go/PHP/Batch (app label, JSON format, timestamps)
+     - Inconsistencies (level handling, trace correlation, duration units)
+     - Missing activities for end-to-end tracing
+     - Recommendations for improvements
+  4. ✅ **Orphaned branches audit** - Found 2 orphaned branches in `feature/remove-email-wallpaper`:
+     - Created issue #31: Remove email wallpaper background
+     - Created issue #32: Unified Freegle Digest - consolidate per-group emails
+- **Key Files Created**:
+  - `iznik-batch/app/Traits/LogsBatchJob.php`
+  - `iznik-batch/tests/Unit/Traits/LogsBatchJobTest.php`
+  - `plans/loki-logging-consistency-review.md`
+- **Next**: Create PR for batch-job-logging branch
+
 ### 2026-01-25 19:00 - Playwright Test Count Fix and Task Creation
 - **Status**: ✅ Complete
 - **Issue**: Playwright test count showed 0/0 at start, only updating after tests started running
@@ -381,11 +401,6 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - Updated `.claude/check-test-command.sh` to allow `--list` and `--help` through hook
 - **Commit**: 247b42c pushed to master
 - **Verified**: Test count now shows correctly from start (e.g., "0/9" instead of "0/0")
-- **Additional Tasks Created**:
-  - #1: Add LokiService batch job logging (feature branch)
-  - #2: Review deployment.md documentation
-  - #3: Review Loki logging consistency across components
-  - #4: Find orphaned branches without issues
 
 ### 2026-01-25 15:45 - CircleCI Progress Monitoring Fix
 - **Status**: ✅ Complete
@@ -517,62 +532,4 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - API at https://yesterday.ilovefreegle.org:8444/api/restore-status working
   - Backup 20260122 successfully loaded
 - **Key Learning**: The "traefik unhealthy" error was actually caused by port conflicts downstream, not traefik itself
-
-### 2026-01-20 - AI Support Helper Debug Modal Replacement
-- **Status**: ✅ Complete
-- **Branch**: `feature/mcp-log-analysis`
-- **Changes Made (Session 2)**:
-  - Replaced inline debug panel with summary modal popup
-  - Debug toggle checkbox → Debug button that opens modal
-  - New "MCP Data Sent to AI" modal shows:
-    - Unique values sent to AI from MCP tools (not user queries)
-    - Frequency count for each value
-    - Pseudonymized status (✓ green badge) or PII warning (⚠ red badge)
-    - "Real Value" column when "Show PII" toggle is on
-  - Added `mcpDataSummary` computed property to aggregate token data
-  - Cleaned up unused methods: `formatDebugData`, `formatStreamLabels`, `formatLogTimestamp`
-  - Removed ~70 lines of old debug panel styles
-- **Changes Made (Session 1)**:
-  - Removed Privacy Review toggle and all human-in-the-loop approval modals
-  - Removed ~280 lines of approval-related code
-- **Files Modified**:
-  - `iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue`
-- **Verified**: Debug button opens modal, shows empty state correctly, legend displays
-- **Commit**: 51dcc765 pushed to feature/mcp-log-analysis
-
-### 2026-01-18 - services.php Corruption Fix (CircleCI)
-- **Status**: Fix pushed, monitoring CI
-- **Root Cause Analysis**:
-  - **CI vs Production difference identified**: Production generates services.php once at deploy time, then only reads it. CI has supervisor starting multiple workers simultaneously.
-  - **Actual cause**: Supervisor launches scheduler, 2 queue workers, and mail spooler - all bootstrap Laravel at startup. If services.php needs regeneration (e.g., after migrate:fresh), multiple processes write to it concurrently → corruption (0 bytes).
-  - **Reference**: testbench issue #202 documents this as a testing-specific issue.
-- **Solution**:
-  - Added `CI=${CI:-false}` env var passthrough to batch container in docker-compose.yml
-  - In CI mode, entrypoint.sh skips supervisor entirely (`exec sleep infinity`)
-  - Tests don't need background workers - they run synchronously
-  - Local dev: supervisor runs normally, stopped by status API before tests
-- **Removed Defensive Code** (-268 lines):
-  - services.php validation/repair in entrypoint.sh
-  - View timestamp checking hack in TestCase.php
-  - Bootstrap cache validation/repair in server.js
-  - inotify monitoring for bootstrap cache corruption
-- **Commits**: 4e61f25 pushed to master
-- **Next**: Monitor CircleCI run at https://app.circleci.com/pipelines/github/Freegle/FreegleDocker
-- **Blockers**: None
-- **Key Principle**: Before making any fix, understand the difference between CircleCI and a live server. This was a testing-specific race condition, not a production issue.
-
-### 2026-01-18 - AI Decline on Edit (Issue #23)
-- **Status**: All tasks ✅ Complete, PR created, waiting for CI
-- **Completed**:
-  - Created `feature/ai-decline-on-edit` branch in iznik-server
-  - TDD: Wrote failing tests first, verified they failed for expected reason
-  - Modified `Message::replaceAttachments()` to record AI decline when AI attachment is removed
-  - Uses INSERT IGNORE into `messages_ai_declined` table
-  - All local tests pass (2 new tests)
-- **PR**: https://github.com/Freegle/iznik-server/pull/42
-- **Next**: Wait for CircleCI
-- **Blockers**: None
-- **Key Decisions**:
-  - Used strict `=== TRUE` comparison for AI flag check
-  - Same INSERT IGNORE pattern as existing code in message.php:706
 
