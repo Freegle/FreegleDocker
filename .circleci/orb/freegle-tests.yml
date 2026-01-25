@@ -166,14 +166,14 @@ commands:
 
       - restore_cache:
           keys:
-            - nuxt-output-v2-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
-            - nuxt-output-v2-freegle-{{ checksum "iznik-nuxt3/package.json" }}
-            - nuxt-output-v2-freegle-
+            - nuxt-output-v3-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
+            - nuxt-output-v3-freegle-{{ checksum "iznik-nuxt3/package.json" }}
+            - nuxt-output-v3-freegle-
       - restore_cache:
           keys:
-            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
-            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}
-            - nuxt-output-v2-modtools-
+            - nuxt-output-v3-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
+            - nuxt-output-v3-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}
+            - nuxt-output-v3-modtools-
       - run:
           name: Restore Nuxt build cache to build contexts
           command: |
@@ -1645,11 +1645,11 @@ jobs:
             fi
 
       - save_cache:
-          key: nuxt-output-v2-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
+          key: nuxt-output-v3-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
           paths:
             - ~/nuxt-cache/freegle
       - save_cache:
-          key: nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
+          key: nuxt-output-v3-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
           paths:
             - ~/nuxt-cache/modtools
 
