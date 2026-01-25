@@ -891,6 +891,25 @@ async function runPlaywrightTests(testFile = null, testName = null) {
       testStatus.logs += `Warning: Failed to restart container: ${restartError.message}\n`;
     }
 
+    // Set up test environment (FreeglePlayground group, test users) - same as PHPUnit tests
+    testStatus.message = "Setting up test environment...";
+    testStatus.logs += "Setting up test environment (FreeglePlayground group, test users)...\n";
+
+    try {
+      execSync(
+        'docker exec freegle-apiv1-phpunit sh -c "cd /var/www/iznik && php install/testenv.php"',
+        {
+          encoding: "utf8",
+          timeout: 60000,
+        }
+      );
+      testStatus.logs += "Test environment set up successfully\n";
+    } catch (setupError) {
+      console.warn("Test database setup warning:", setupError.message);
+      testStatus.logs += `Warning: Test database setup issue: ${setupError.message}\n`;
+      // Continue anyway - the database might already be set up
+    }
+
     // Verify Traefik routes are working before running tests
     // This ensures Traefik has discovered and can route to all backends
     // Run from Playwright container which has host network access to .localhost domains
