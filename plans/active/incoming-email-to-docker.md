@@ -610,6 +610,78 @@ This placement:
 3. Auto-purges after 7 days so no action required
 4. Blue badge matches existing notification style
 
+### Relationship to Existing Chat Review (Two-Tier Moderation)
+
+Freegle has multiple moderation queues. Understanding how they relate:
+
+#### Current Moderation Queues
+
+| Queue | Source | Confidence | Action Required |
+|-------|--------|------------|-----------------|
+| **Pending (Group Messages)** | Email/Platform posts to groups | Low suspicion | Mod must approve/reject |
+| **Chat Review** | Website API chat messages | Medium suspicion | Mod reviews, can release |
+| **Incoming Spam (NEW)** | All incoming email | High confidence spam | Optional review, auto-purge |
+
+#### Message Flow by Source
+
+**1. Website/Platform (API)**
+```
+User sends message via website
+    → Spam score calculated at creation time
+    → Low score: Delivered immediately
+    → Medium score: Goes to Chat Review
+    → High score: Rejected with user notification
+```
+- Messages are NEVER silently discarded from the website
+- User always gets feedback if message is blocked
+
+**2. Incoming Email**
+```
+Email arrives via Postfix
+    → Parsed and routed by Laravel
+    → Pass spam checks: Route to destination (chat, group, etc.)
+    → Fail spam checks: Goes to Incoming Spam queue
+    → Auto-purged after 7 days if not reviewed
+```
+- Email spam CAN be silently discarded (sender doesn't know)
+- This is acceptable because spammers don't expect responses
+
+#### Key Differences
+
+| Aspect | Chat Review | Incoming Spam |
+|--------|-------------|---------------|
+| **Source** | Website/API only | Email only |
+| **Confidence** | Maybe spam | Almost certainly spam |
+| **User expectation** | User expects delivery | Spammer doesn't care |
+| **Action** | Must review | Can ignore (auto-purge) |
+| **Visibility** | Shows to group mods | Shows to all mods |
+
+#### Message Types in Each Queue
+
+**Chat Review** (existing):
+- Chat messages between members (sent via website)
+- Interest expressions
+- Direct messages to users
+- Flagged by spam score but not certain
+
+**Incoming Spam** (new):
+- Group posts via email (failed spam checks)
+- Chat replies via email (failed spam checks)
+- Messages to moderators (-volunteers@)
+- Bounce messages that look spammy
+- Any incoming email that triggers spam detection
+
+#### Design Principle
+
+**Website messages**: User-visible moderation (they know if blocked)
+**Email messages**: Background filtering (spam goes to review queue, not back to sender)
+
+This two-tier approach ensures:
+1. Real users on the website get feedback
+2. Email spammers don't get delivery confirmations
+3. Volunteers can see what's being filtered (transparency)
+4. False positives can be recovered from the Incoming Spam queue
+
 ---
 
 ## Part 5: ModTools Email Statistics
