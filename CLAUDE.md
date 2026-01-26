@@ -370,6 +370,23 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-25 19:00 - Playwright Test Count Fix and Task Creation
+- **Status**: ✅ Complete
+- **Issue**: Playwright test count showed 0/0 at start, only updating after tests started running
+- **Root Cause**: No pre-count mechanism - relied on parsing test output for counts
+- **Fix Applied**:
+  - Added `--list` pre-count in `status-nuxt/server/api/tests/playwright.post.ts`
+  - Increased timeout to 60s (monocart reporter runs even with --list)
+  - Removed stderr suppression to see errors
+  - Updated `.claude/check-test-command.sh` to allow `--list` and `--help` through hook
+- **Commit**: 247b42c pushed to master
+- **Verified**: Test count now shows correctly from start (e.g., "0/9" instead of "0/0")
+- **Additional Tasks Created**:
+  - #1: Add LokiService batch job logging (feature branch)
+  - #2: Review deployment.md documentation
+  - #3: Review Loki logging consistency across components
+  - #4: Find orphaned branches without issues
+
 ### 2026-01-25 15:45 - CircleCI Progress Monitoring Fix
 - **Status**: ✅ Complete
 - **Issue**: CircleCI progress display showed "Playwright: running (0/0)" despite API returning correct progress
