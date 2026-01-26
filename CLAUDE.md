@@ -370,6 +370,27 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-26 - Clickable Links in ModTools Chat Messages
+- **Status**: ✅ Complete
+- **Branch**: master (iznik-nuxt3 submodule)
+- **Request**: Make hyperlinks in chat messages clickable in ModTools only (not in Freegle for safety)
+- **Implementation**:
+  1. Created `composables/useLinkify.js` - utility for URL linkification and email highlighting
+     - `linkifyText()` - escapes HTML first, then converts URLs to clickable links
+     - `linkifyAndHighlightEmails()` - same + email highlighting for chat review
+  2. Updated `components/ChatMessageText.vue` - main chat text component
+     - Uses `miscStore.modtools` to detect ModTools context
+     - Conditionally renders linkified HTML (v-html) in ModTools, plain text in Freegle
+  3. Updated `components/ChatMessageInterested.vue` - same pattern for "interested" messages
+- **Security**: XSS-safe - HTML is escaped BEFORE adding links, preventing injection
+- **Files Created**:
+  - `iznik-nuxt3/composables/useLinkify.js` (80 lines)
+- **Files Modified**:
+  - `iznik-nuxt3/components/ChatMessageText.vue`
+  - `iznik-nuxt3/components/ChatMessageInterested.vue`
+- **Testing**: Needs visual testing in ModTools to verify links are clickable
+- **Code Quality Review**: ✅ Complete - XSS protection verified, consistent with codebase patterns
+
 ### 2026-01-25 19:00 - Playwright Test Count Fix and Task Creation
 - **Status**: ✅ Complete
 - **Issue**: Playwright test count showed 0/0 at start, only updating after tests started running
