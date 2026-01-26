@@ -777,6 +777,61 @@ commands:
           paths:
             - ~/geoip-cache
 
+  wait-for-batch-container:
+    description: "Wait for batch container to be healthy and migrations to complete"
+    steps:
+      - run:
+          name: Wait for batch container to be healthy
+          command: |
+            echo "⏳ Waiting for batch container to be healthy..."
+            TIMEOUT=300
+            ELAPSED=0
+            while [ $ELAPSED -lt $TIMEOUT ]; do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "not_found")
+              RUNNING=$(docker inspect --format='{{.State.Running}}' freegle-batch 2>/dev/null || echo "false")
+
+              if [ "$STATUS" = "healthy" ]; then
+                echo "✅ Batch container is healthy!"
+                break
+              elif [ "$RUNNING" = "false" ]; then
+                echo "❌ Batch container is not running!"
+                echo "Container logs:"
+                docker logs freegle-batch --tail 50 2>&1 || true
+                exit 1
+              fi
+
+              echo "[$ELAPSED s] Batch container status: $STATUS (running: $RUNNING) - waiting..."
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "❌ Timeout waiting for batch container to be healthy"
+              echo "Container logs:"
+              docker logs freegle-batch --tail 50 2>&1 || true
+              exit 1
+            fi
+
+            # Verify migrations have completed by checking for ready marker file
+            # The entrypoint creates /tmp/laravel-ready AFTER migrations complete
+            echo "⏳ Verifying Laravel migrations are complete..."
+            MIGRATION_TIMEOUT=120
+            MIGRATION_ELAPSED=0
+            while [ $MIGRATION_ELAPSED -lt $MIGRATION_TIMEOUT ]; do
+              if docker exec freegle-batch test -f /tmp/laravel-ready 2>/dev/null; then
+                echo "✅ Laravel ready marker found - migrations complete"
+                exit 0
+              fi
+
+              echo "[$MIGRATION_ELAPSED s] Waiting for /tmp/laravel-ready marker..."
+              sleep 5
+              MIGRATION_ELAPSED=$((MIGRATION_ELAPSED + 5))
+            done
+
+            echo "❌ Timeout waiting for migrations to complete"
+            docker logs freegle-batch --tail 30 2>&1 || true
+            exit 1
+
   setup-test-database:
     description: "Set up test database schema and test environment"
     steps:
@@ -1542,6 +1597,7 @@ jobs:
       - start-services
       - wait-for-basic-services
       - wait-for-prod-container
+      - wait-for-batch-container
       - setup-test-database
       - run-playwright-tests:
           reason: "Running Playwright tests for PR"
@@ -1641,60 +1697,11 @@ jobs:
           paths:
             - ~/nuxt-cache/modtools
 
+      # Wait for batch container migrations to complete BEFORE loading schema.sql
+      # This prevents race conditions where schema.sql's DROP TABLE statements interfere with
+      # migrations that are still running.
+      - wait-for-batch-container
       - setup-test-database
-
-      # Wait for batch container to be healthy and migrations complete before running tests
-      - run:
-          name: Wait for batch container to be healthy
-          command: |
-            echo "⏳ Waiting for batch container to be healthy..."
-            TIMEOUT=300
-            ELAPSED=0
-            while [ $ELAPSED -lt $TIMEOUT ]; do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "not_found")
-              RUNNING=$(docker inspect --format='{{.State.Running}}' freegle-batch 2>/dev/null || echo "false")
-
-              if [ "$STATUS" = "healthy" ]; then
-                echo "✅ Batch container is healthy!"
-                break
-              elif [ "$RUNNING" = "false" ]; then
-                echo "❌ Batch container is not running!"
-                echo "Container logs:"
-                docker logs freegle-batch --tail 50 2>&1 || true
-                exit 1
-              fi
-
-              echo "[$ELAPSED s] Batch container status: $STATUS (running: $RUNNING) - waiting..."
-              sleep 5
-              ELAPSED=$((ELAPSED + 5))
-            done
-
-            if [ $ELAPSED -ge $TIMEOUT ]; then
-              echo "❌ Timeout waiting for batch container to be healthy"
-              echo "Container logs:"
-              docker logs freegle-batch --tail 50 2>&1 || true
-              exit 1
-            fi
-
-            # Verify migrations have completed by checking for ready marker file
-            # The entrypoint creates /tmp/laravel-ready AFTER migrations complete
-            echo "⏳ Verifying Laravel migrations are complete..."
-            MIGRATION_TIMEOUT=120
-            MIGRATION_ELAPSED=0
-            while [ $MIGRATION_ELAPSED -lt $MIGRATION_TIMEOUT ]; do
-              if docker exec freegle-batch test -f /tmp/laravel-ready 2>/dev/null; then
-                echo "✅ Laravel ready marker found - migrations complete"
-                exit 0
-              fi
-
-              echo "[$MIGRATION_ELAPSED s] Waiting for /tmp/laravel-ready marker..."
-              sleep 5
-              MIGRATION_ELAPSED=$((MIGRATION_ELAPSED + 5))
-            done
-
-            echo "❌ Timeout waiting for migrations to complete"
-            docker logs freegle-batch --tail 30 2>&1 || true
-            exit 1
 
       # Run Vitest unit tests first (fast, fail-fast before slower tests)
       - run-vitest-tests:
