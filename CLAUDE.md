@@ -370,6 +370,26 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-26 - Incoming Email Migration Plan & Test Fixes
+- **Status**: 🔄 Plan complete, tests fixed, CI pending
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker)
+- **Plan Created**: `plans/active/incoming-email-to-docker.md` (1100+ lines)
+- **Key Sections**:
+  1. Dual postfix architecture (separate incoming/outgoing for prioritization)
+  2. Dual spam detection (SpamAssassin + Freegle custom checks)
+  3. Spam review UI with clear "why spam" explanations
+  4. Two-tier moderation (chat review vs incoming spam queue)
+  5. ModTools email statistics dashboard
+  6. Phased switchover from Exim/iznik-server
+- **Test Fixes** (feature/options-api-migration-tdd in iznik-nuxt3):
+  - Added misc store and linkify mocks for ChatMessageText.spec.js
+  - Added misc store and linkify mocks for ChatMessageInterested.spec.js
+  - Fixed Pinia "getActivePinia() was called but no active Pinia" error
+  - Commit: adca3fe7 pushed, CI running
+- **Hook Update**: Added vitest/npx vitest to test-blocking hook
+- **Issue Created**: https://github.com/Freegle/iznik-nuxt3/issues/142 (Vitest status API)
+- **Next**: Wait for CI, then this plan is ready for implementation phases
+
 ### 2026-01-26 - Clickable Links in ModTools Chat Messages
 - **Status**: ✅ Complete
 - **Branch**: master (iznik-nuxt3 submodule)
