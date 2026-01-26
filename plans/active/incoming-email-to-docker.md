@@ -2,7 +2,6 @@
 
 **Status**: Planning
 **Branch**: `feature/incoming-email-migration`
-**Supersedes**: `plans/active/incoming-email-migration-to-laravel.md` (to be archived after implementation)
 
 ## Executive Summary
 
@@ -16,7 +15,7 @@ This plan consolidates the incoming email migration strategy, covering:
 
 ---
 
-## Part 1: Architecture Decision - Postfix as Buffer
+## Part 1: Architecture - Single Postfix Design
 
 ### Current State (Bulk4)
 - **MX records** point to bulk4.ilovefreegle.org
@@ -24,128 +23,72 @@ This plan consolidates the incoming email migration strategy, covering:
 - **Pipe transport** calls `incoming.php` for each message
 - **Processing** via MailRouter in iznik-server
 
-### Options Considered
+### Architecture Decision: Single Postfix Instance
 
-| Option | Pros | Cons |
-|--------|------|------|
-| **A: Direct HTTP endpoint** | Simpler, no MTA | No buffering during outages, need custom SMTP server |
-| **B: Postfix container in Docker** | Battle-tested MTA, queuing, standard protocols | Another service to maintain |
-| **C: External relay (SES, Mailgun)** | Managed, reliable | User requirement to avoid third-party |
+A single Postfix instance handles both incoming and outgoing mail:
 
-### Decision: Option B - Postfix Container
+| Function | Port | Notes |
+|----------|------|-------|
+| **Receive from internet** | 25 | Pipe to Laravel for processing |
+| **Send notifications/digests** | 587 | Outgoing via relay |
 
-**Rationale:**
-1. **Buffering** - If iznik-batch is restarting or overloaded, Postfix queues mail safely
-2. **Proven** - Postfix is battle-tested for decades
-3. **Standard** - Uses standard SMTP, easy to monitor, well-documented
-4. **Already planned** - The existing plan already proposes this approach
-5. **Mail archiving** - Postfix `always_bcc` easily archives all mail to MailPit
+**Rationale for single instance:**
+- Simpler deployment and maintenance
+- Incoming volume is moderate (many users post via website now)
+- Postfix handles mixed traffic efficiently with proper queue prioritization
+- Existing iznik-batch already uses postfix-outgoing for sending
 
-### Single vs Dual Postfix Architecture
-
-**Question**: Should we use a single postfix instance for both incoming and outgoing mail, or separate instances?
-
-#### Traffic Characteristics
-
-| Direction | Volume | Importance | Latency Tolerance |
-|-----------|--------|------------|-------------------|
-| **Outgoing** | High (notifications, digests, 10k+/day) | Medium | Minutes acceptable |
-| **Incoming** | Low (replies, posts, ~1k/day) | **High** (user messages) | Seconds preferred |
-
-#### Analysis: Separate Instances (Recommended)
-
-**Advantages:**
-1. **Incoming prioritization** - Dedicated queue ensures user messages aren't delayed by outgoing batch
-2. **Independent scaling** - Can tune resources separately
-3. **Isolation** - Outgoing delivery issues don't affect incoming reception
-4. **Monitoring clarity** - Separate queue depths for each direction
-5. **Different configurations** - Incoming needs strict spam checks, outgoing needs delivery optimization
-
-**Disadvantages:**
-1. Two services to maintain
-2. Slightly more resource usage
-
-#### Architecture: Dual Postfix
+<details>
+<summary><strong>Docker Compose Configuration</strong></summary>
 
 ```yaml
-# Incoming mail - receives from internet, pipes to Laravel
-postfix-incoming:
-  ports:
-    - "25:25"      # SMTP from internet
-  environment:
-    - INSTANCE_TYPE=incoming
-  # Receives mail → pipes to artisan mail:incoming
-
-# Outgoing mail - receives from Laravel, delivers to internet
-postfix-outgoing:
-  ports:
-    - "587:587"    # Submission from internal services only (not exposed to internet)
-  environment:
-    - INSTANCE_TYPE=outgoing
-  # Receives mail from Laravel Mail → delivers externally
-```
-
-#### Prioritization Without Dual Postfix
-
-If using single instance, Postfix has limited prioritization options:
-- `defer_transports` can delay certain transports
-- But no true priority queuing
-- Backpressure from outgoing would still delay incoming
-
-**Recommendation: Use dual postfix instances** - the operational clarity and incoming prioritization outweighs the minor complexity increase.
-
-### Postfix Container Design (Incoming)
-
-```yaml
-# docker-compose.yml addition
-postfix-incoming:
+postfix:
   build:
-    context: ./conf/postfix-incoming
+    context: ./conf/postfix
     dockerfile: Dockerfile
-  container_name: freegle-postfix-incoming
+  container_name: freegle-postfix
   hostname: mail.ilovefreegle.org
   ports:
-    - "25:25"     # SMTP from internet
+    - "25:25"
   volumes:
-    - postfix-incoming-spool:/var/spool/postfix
-    - ./conf/postfix-incoming/main.cf:/etc/postfix/main.cf:ro
-    - ./conf/postfix-incoming/master.cf:/etc/postfix/master.cf:ro
-    - ./conf/postfix-incoming/transport:/etc/postfix/transport:ro
+    - postfix-spool:/var/spool/postfix
+    - ./conf/postfix/main.cf:/etc/postfix/main.cf:ro
+    - ./conf/postfix/master.cf:/etc/postfix/master.cf:ro
+    - ./conf/postfix/transport:/etc/postfix/transport:ro
   environment:
-    - MAILPIT_HOST=mailpit
     - BATCH_CONTAINER=batch
   networks:
     - default
   restart: unless-stopped
   depends_on:
     - batch
-    - mailpit
   profiles:
-    - production  # Only runs in production profile
+    - production
 ```
 
-### Key Configuration
+</details>
+
+<details>
+<summary><strong>Postfix Configuration Files</strong></summary>
 
 **main.cf** (core settings):
 ```
-# Domains we accept mail for
 mydestination =
 relay_domains = ilovefreegle.org, groups.ilovefreegle.org, users.ilovefreegle.org, user.trashnothing.com
-
-# Transport to Laravel
 transport_maps = hash:/etc/postfix/transport
 
 # Concurrency limits - max 4 parallel deliveries to Laravel
 freegle_destination_concurrency_limit = 4
 default_process_limit = 50
 
-# Archive all mail to MailPit for debugging
-always_bcc = archive@mailpit
+# Rate limiting for flood protection (see Part 3A)
+smtpd_client_connection_rate_limit = 50
+smtpd_client_message_rate_limit = 100
+anvil_rate_time_unit = 60s
 ```
 
 **master.cf** (transport definition):
 ```
-# Pipe to Laravel artisan command
 freegle unix - n n - 4 pipe
   flags=F user=www-data argv=/usr/bin/php /app/artisan mail:incoming ${sender} ${recipient}
 ```
@@ -158,14 +101,18 @@ user.trashnothing.com      freegle:
 ilovefreegle.org           freegle:
 ```
 
+</details>
+
 ---
 
 ## Part 2: Laravel Command Structure
 
 ### Entry Point: `mail:incoming`
 
+<details>
+<summary><strong>IncomingMailCommand.php</strong></summary>
+
 ```php
-// app/Console/Commands/Mail/IncomingMailCommand.php
 class IncomingMailCommand extends Command
 {
     protected $signature = 'mail:incoming {sender} {recipient}';
@@ -189,6 +136,8 @@ class IncomingMailCommand extends Command
 }
 ```
 
+</details>
+
 ### Service Structure
 
 ```
@@ -198,99 +147,11 @@ app/Services/Mail/Incoming/
 ├── MailRouterService.php        # Routing logic (11 outcomes)
 ├── BounceService.php            # DSN parsing and processing
 ├── FBLService.php               # Feedback loop processing
-├── SpamCheckService.php         # Dual SpamD + custom checks
-├── FreegleSpamService.php       # Freegle-specific spam detection
+├── SpamCheckService.php         # Orchestrates all spam detection
 ├── ContentModerationService.php # Worry words + spam keywords
 ├── TrashNothingService.php      # TN header validation
 ├── EmailCommandService.php      # Subscribe/unsubscribe commands
 └── AttachmentService.php        # TUSD upload handling
-```
-
-### Dual Spam Detection Approach
-
-Freegle uses two complementary spam detection systems:
-
-#### 1. SpamAssassin (SpamD)
-- External daemon for content-based spam detection
-- Connected via `lib/spamc.php` client library
-- **Threshold**: Score >= 8 triggers spam classification
-- Configuration via `SPAMD_HOST` and `SPAMD_PORT`
-- Only used for content checks when subject not in standard format
-
-#### 2. Custom Freegle Spam Checks (`Spam.php`)
-- IP reputation checks (multiple users/groups from same IP)
-- Subject duplication across groups (threshold: 30 groups)
-- Country blocking (configurable)
-- Greeting spam detection ("hello", "hey", etc. patterns)
-- Domain blacklist (DBL) URL checks
-- Known spam keywords
-- Worry words detection
-- Bulk volunteer mail detection
-- Our domain spoofing detection
-- Same image sent multiple times
-
-#### Laravel Implementation
-
-```php
-class SpamCheckService
-{
-    private const SPAMASSASSIN_THRESHOLD = 8;
-
-    public function __construct(
-        private SpamDClient $spamd,
-        private FreegleSpamService $freegleSpam
-    ) {}
-
-    public function check(ParsedEmail $email, bool $contentCheck = true): SpamResult
-    {
-        // 1. Run Freegle-specific checks first (faster, no network call)
-        $freegleResult = $this->freegleSpam->checkMessage($email);
-        if ($freegleResult->isSpam()) {
-            return $freegleResult;
-        }
-
-        // 2. Run SpamAssassin for content check if enabled
-        if ($contentCheck && !$this->hasStandardSubjectFormat($email)) {
-            $saResult = $this->spamd->check($email->getRawMessage());
-            if ($saResult->score >= self::SPAMASSASSIN_THRESHOLD) {
-                return SpamResult::spam(SpamReason::SPAMASSASSIN, $saResult->score);
-            }
-        }
-
-        return SpamResult::notSpam();
-    }
-}
-
-class FreegleSpamService
-{
-    // Port from Spam.php - all custom checks
-    public function checkMessage(ParsedEmail $email): SpamResult;
-    public function checkIpReputation(string $ip): SpamResult;
-    public function checkSubjectDuplication(string $subject): SpamResult;
-    public function checkCountry(string $ip): SpamResult;
-    public function checkGreetingSpam(string $body): SpamResult;
-    public function checkDbl(array $urls): SpamResult;
-    public function checkSpamKeywords(string $text): SpamResult;
-    public function checkWorryWords(string $text): SpamResult;
-}
-```
-
-#### SpamD Container (Docker)
-
-```yaml
-# docker-compose.yml addition
-spamd:
-  image: instantlinux/spamassassin:latest
-  container_name: freegle-spamd
-  volumes:
-    - spamd-data:/var/lib/spamassassin
-  environment:
-    - SA_UPDATE_CRON=0 4 * * *  # Update rules at 4am
-  networks:
-    - default
-  restart: unless-stopped
-  profiles:
-    - production
 ```
 
 ### Routing Outcomes (from MailRouter)
@@ -298,7 +159,7 @@ spamd:
 | Outcome | Description | Action |
 |---------|-------------|--------|
 | FAILURE | Could not process | Log error, return failure |
-| INCOMING_SPAM | Detected as spam | Log, optionally store for review |
+| INCOMING_SPAM | Detected as spam | Store in spam queue for review |
 | APPROVED | Auto-approved for posting | Create message, notify |
 | PENDING | Needs moderation | Create message, notify mods |
 | TO_USER | Chat message | Route to chat system |
@@ -310,387 +171,567 @@ spamd:
 
 ---
 
-## Part 3: Bounce and FBL Processing
+## Part 3: Hybrid Spam Detection
 
-### Current Bounce Flow (VERP-based)
-1. Outgoing mail uses `bounce-{userid}-{timestamp}@users.ilovefreegle.org`
-2. Bounces arrive at that address
-3. `bounce.php` cron extracts userid from address
-4. Records in `bounces_emails` table
-5. `bounce_users.php` suspends users with 3+ permanent bounces
+### Three-Layer Approach
 
-### New Bounce Flow (DSN parsing)
-1. Bounces arrive at `noreply@ilovefreegle.org` (new no-reply address)
-2. `BounceService` detects DSN format or heuristic bounce patterns
-3. Extracts original recipient from DSN `Final-Recipient` or body parsing
-4. Records bounce and marks email as bounced
-5. Scheduled command suspends users with threshold bounces
+Incoming mail passes through multiple spam detection layers:
 
-### BounceService Key Methods
+```
+Incoming Email
+      │
+      ▼
+┌─────────────────┐
+│ 1. Rspamd       │ ◄── Modern spam filter (phishing, malware, reputation)
+└────────┬────────┘     HTTP API on port 11334
+         │
+         ▼
+┌─────────────────┐
+│ 2. SpamAssassin │ ◄── Legacy content filter (Bayesian, rules)
+└────────┬────────┘     Socket on port 783
+         │
+         ▼
+┌─────────────────┐
+│ 3. Freegle      │ ◄── Custom checks (IP, subject dupe, greeting spam)
+│    Custom       │     From Spam.php - Freegle-specific patterns
+└────────┬────────┘
+         │
+         ▼
+    Route/Flag
+```
+
+### Complementary Detection (Not Duplication)
+
+The three layers detect **different types of spam** - they complement each other rather than duplicate:
+
+| Detection Layer | Focus | Examples |
+|-----------------|-------|----------|
+| **Rspamd** | Content & reputation | Phishing links, malware, sender reputation, DKIM/SPF failures |
+| **SpamAssassin** | Content analysis | Bayesian filtering, rule-based patterns, Nigerian prince scams |
+| **Freegle Custom** | Network behavior | Same IP posting as 17+ users, cross-posting to 30+ groups, greeting spam targeting Freegle |
+
+**Why Freegle checks are necessary:**
+- External filters don't know our network topology (same IP = different users is suspicious for us)
+- Cross-posting detection requires knowing our group structure
+- Greeting spam with URLs is a Freegle-specific attack pattern
+- References to known spammers (our blacklist, not global)
+- Domain spoofing using our domain names
+
+### Existing Infrastructure
+
+Both spam services are already running in Docker:
+- **SpamAssassin**: `spamassassin-app` container on port 783
+- **Rspamd**: `rspamd` container on port 11334
+
+The existing `SpamCheckService` in iznik-batch (`app/Services/SpamCheck/SpamCheckService.php`) already supports both:
+
+<details>
+<summary><strong>Existing SpamCheckService Usage</strong></summary>
+
+```php
+// Check with both services
+$service = new SpamCheckService();
+$results = $service->checkAll($rawEmail);
+
+// Individual checks
+$rspamdResult = $service->checkRspamd($rawEmail);
+$saResult = $service->checkSpamAssassin($rawEmail);
+```
+
+Configuration in `config/freegle.php`:
+```php
+'spam_check' => [
+    'enabled' => env('SPAM_CHECK_ENABLED', false),
+    'spamassassin_host' => env('SPAMASSASSIN_HOST', 'spamassassin-app'),
+    'spamassassin_port' => env('SPAMASSASSIN_PORT', 783),
+    'rspamd_host' => env('RSPAMD_HOST', 'rspamd'),
+    'rspamd_port' => env('RSPAMD_PORT', 11334),
+    'fail_threshold' => env('SPAM_FAIL_THRESHOLD', 5.0),
+],
+```
+
+</details>
+
+### Custom Freegle Spam Checks
+
+Port from `iznik-server/include/spam/Spam.php`:
+
+| Check | Description | Threshold |
+|-------|-------------|-----------|
+| IP reputation | Multiple users/groups from same IP | 17 users or 30 groups |
+| Subject duplication | Same subject across groups | 30 groups |
+| Country blocking | Configurable country blocks | Per-group setting |
+| Greeting spam | "hello", "hey" generic patterns | Pattern match |
+| DBL URL check | URLs on spam blacklists | Any match |
+| Spam keywords | Known spam terms | 311 keywords |
+| Worry words | Regulatory compliance | 272 words |
+| Domain spoofing | Using our domain in From | Any match |
+| Same image | Perceptual hash of attachments | 3+ in 24h |
+
+<details>
+<summary><strong>FreegleSpamService Implementation</strong></summary>
+
+```php
+class FreegleSpamService
+{
+    public function checkMessage(ParsedEmail $email): SpamResult
+    {
+        // Run all custom checks in order
+        $checks = [
+            $this->checkIpReputation($email->getSenderIp()),
+            $this->checkSubjectDuplication($email->getSubject()),
+            $this->checkCountry($email->getSenderIp()),
+            $this->checkGreetingSpam($email->getTextBody()),
+            $this->checkDbl($email->extractUrls()),
+            $this->checkSpamKeywords($email->getFullText()),
+            $this->checkWorryWords($email->getFullText()),
+            $this->checkDomainSpoofing($email->getFromAddress()),
+            $this->checkSameImage($email->getAttachments()),
+        ];
+
+        foreach ($checks as $result) {
+            if ($result->isSpam()) {
+                return $result;
+            }
+        }
+
+        return SpamResult::notSpam();
+    }
+}
+```
+
+</details>
+
+### Combined Spam Check Flow
+
+<details>
+<summary><strong>IncomingSpamCheckService</strong></summary>
+
+```php
+class IncomingSpamCheckService
+{
+    private const RSPAMD_THRESHOLD = 8.0;
+    private const SA_THRESHOLD = 8.0;
+
+    public function __construct(
+        private SpamCheckService $externalChecks,  // Existing service
+        private FreegleSpamService $freegleChecks  // New custom checks
+    ) {}
+
+    public function check(ParsedEmail $email, bool $bypassExternal = false): SpamCheckResult
+    {
+        // 1. Freegle-specific checks first (fast, no network)
+        $freegleResult = $this->freegleChecks->checkMessage($email);
+        if ($freegleResult->isSpam()) {
+            return SpamCheckResult::spam($freegleResult->getReason(), $freegleResult->getDetails());
+        }
+
+        // 2. Skip external checks for trusted sources (Trash Nothing)
+        if ($bypassExternal) {
+            return SpamCheckResult::clean();
+        }
+
+        // 3. Rspamd check (modern, HTTP-based)
+        $rspamdResult = $this->externalChecks->checkRspamd($email->getRawMessage());
+        if ($rspamdResult->score >= self::RSPAMD_THRESHOLD) {
+            return SpamCheckResult::spam('Rspamd', [
+                'score' => $rspamdResult->score,
+                'symbols' => $rspamdResult->symbols,
+            ]);
+        }
+
+        // 4. SpamAssassin check (legacy rules, Bayesian)
+        $saResult = $this->externalChecks->checkSpamAssassin($email->getRawMessage());
+        if ($saResult->score >= self::SA_THRESHOLD) {
+            return SpamCheckResult::spam('SpamAssassin', [
+                'score' => $saResult->score,
+                'rules' => $saResult->matchedRules,
+            ]);
+        }
+
+        return SpamCheckResult::clean();
+    }
+}
+```
+
+</details>
+
+### Future Improvements
+
+See `plans/future/spam-and-content-moderation-rethink.md` for planned enhancements:
+- Spam signatures with fuzzy hashing
+- LLM-based intent detection
+- Unified content moderation workflow
+
+---
+
+## Part 3A: Flood and Attack Protection
+
+Email bombing and flood attacks are real threats. Defense requires multiple layers.
+
+### Rate Limiting (Postfix Level)
+
+```
+# main.cf - Connection and message rate limits
+smtpd_client_connection_rate_limit = 50      # Connections per minute per client
+smtpd_client_message_rate_limit = 100        # Messages per minute per client
+smtpd_client_recipient_rate_limit = 200      # Recipients per minute per client
+anvil_rate_time_unit = 60s
+
+# Reject excessive connections early
+smtpd_client_connection_count_limit = 10     # Concurrent connections per client
+```
+
+### Application-Level Protection
+
+<details>
+<summary><strong>FloodProtectionService</strong></summary>
+
+```php
+class FloodProtectionService
+{
+    private const RATE_LIMIT_SENDER = 30;      // Messages per hour per sender
+    private const RATE_LIMIT_SUBJECT = 50;     // Same subject per hour across all senders
+    private const BURST_THRESHOLD = 10;        // Messages in 5 minutes = burst
+
+    public function checkFlood(string $sender, string $subject): FloodResult
+    {
+        // Check sender rate
+        $senderKey = "flood:sender:{$sender}";
+        $senderCount = Cache::increment($senderKey);
+        Cache::expire($senderKey, 3600);
+
+        if ($senderCount > self::RATE_LIMIT_SENDER) {
+            return FloodResult::blocked('sender_rate', $senderCount);
+        }
+
+        // Check burst (short-term spike)
+        $burstKey = "flood:burst:{$sender}";
+        $burstCount = Cache::increment($burstKey);
+        Cache::expire($burstKey, 300);
+
+        if ($burstCount > self::BURST_THRESHOLD) {
+            $this->alertOps("Burst detected from {$sender}: {$burstCount} in 5 min");
+            return FloodResult::blocked('burst', $burstCount);
+        }
+
+        // Check subject flooding (coordinated attack)
+        $subjectHash = md5(strtolower(trim($subject)));
+        $subjectKey = "flood:subject:{$subjectHash}";
+        $subjectCount = Cache::increment($subjectKey);
+        Cache::expire($subjectKey, 3600);
+
+        if ($subjectCount > self::RATE_LIMIT_SUBJECT) {
+            return FloodResult::blocked('subject_flood', $subjectCount);
+        }
+
+        return FloodResult::allowed();
+    }
+}
+```
+
+</details>
+
+### Attack Pattern Detection
+
+| Pattern | Detection | Response |
+|---------|-----------|----------|
+| **Email bombing** | >10 msgs/5min from same sender | Temporary block, alert ops |
+| **Subscription bombing** | Many different senders, same target | Alert, manual review |
+| **Cross-post flood** | Same subject to 30+ groups | Spam flag, moderator review |
+| **Attachment abuse** | Large attachments, rapid succession | Rate limit, reject oversized |
+
+### Monitoring & Alerts
+
+```logql
+# Loki alert: Flood detection
+{app="iznik-batch", channel="incoming_mail"}
+| json
+| flood_blocked="true"
+| count by (flood_reason) > 10
+```
+
+Alert channels:
+- Sentry for application errors
+- Grafana alerts for rate thresholds
+- Geek-alerts email for ops issues
+
+---
+
+## Part 4: Bounce and FBL Processing
+
+### Bounce Detection Strategy
+
+Bounces arrive at `noreply@ilovefreegle.org`. We detect them using:
+1. **DSN format** (RFC 3464) - `multipart/report; report-type=delivery-status`
+2. **Sender patterns** - mailer-daemon, postmaster
+3. **Subject patterns** - "Undeliverable", "Delivery failed", etc.
+
+<details>
+<summary><strong>BounceService Implementation</strong></summary>
 
 ```php
 class BounceService
 {
-    // Detection
-    public function isBounce(ParsedEmail $email): bool;
-    public function isDsnCompliant(ParsedEmail $email): bool;
+    public function isBounce(ParsedEmail $email): bool
+    {
+        // Check for DSN format
+        $contentType = $email->getHeader('content-type') ?? '';
+        if (str_contains($contentType, 'multipart/report') &&
+            str_contains($contentType, 'delivery-status')) {
+            return true;
+        }
 
-    // Extraction (cascading strategy)
-    public function extractRecipient(string $rawMessage): ?string;
-    private function extractFromDsn(string $rawMessage): ?string;
-    private function extractHeuristically(string $rawMessage): ?string;
-    private function extractFromOriginalMessage(ParsedEmail $email): ?string;
+        // Check sender patterns
+        $from = strtolower($email->getFrom());
+        if (str_contains($from, 'mailer-daemon') || str_contains($from, 'postmaster')) {
+            return true;
+        }
 
-    // Classification
-    public function isPermanent(?string $diagnosticCode): bool;
-    public function shouldIgnore(?string $diagnosticCode): bool;
+        // Check subject patterns
+        $subject = strtolower($email->getSubject() ?? '');
+        $patterns = ['undeliverable', 'delivery failed', 'mail delivery failed', 'returned mail'];
+        foreach ($patterns as $pattern) {
+            if (str_contains($subject, $pattern)) {
+                return true;
+            }
+        }
 
-    // Processing
-    public function processBounce(ParsedEmail $email): ?BounceResult;
+        return false;
+    }
+
+    public function extractRecipient(string $rawMessage): ?string
+    {
+        // Try DSN-compliant extraction first
+        if (preg_match('/^Final-Recipient:\s*rfc822;\s*(.+)$/im', $rawMessage, $m)) {
+            return trim($m[1]);
+        }
+        if (preg_match('/^Original-Recipient:\s*rfc822;\s*(.+)$/im', $rawMessage, $m)) {
+            return trim($m[1]);
+        }
+
+        // Heuristic extraction for non-DSN bounces
+        $patterns = [
+            '/following address(?:es)? failed[:\s]*<?([^\s<>]+@[^\s<>]+)>?/i',
+            '/could not be delivered to[:\s]*<?([^\s<>]+@[^\s<>]+)>?/i',
+            '/<([^\s<>]+@[^\s<>]+)>[:\s]*(?:mailbox unavailable|does not exist)/i',
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $rawMessage, $m)) {
+                return trim($m[1]);
+            }
+        }
+
+        return null;
+    }
+
+    public function isPermanent(?string $diagnosticCode): bool
+    {
+        if (!$diagnosticCode) return false;
+
+        $permanent = ['550 ', '5.1.1', 'User unknown', 'mailbox unavailable'];
+        foreach ($permanent as $pattern) {
+            if (stripos($diagnosticCode, $pattern) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 ```
+
+</details>
+
+### Bounce Suspension Logic
+
+**Important**: Temporary bounces DO count towards suspension thresholds. The current code in `iznik-server/include/mail/Bounce.php` uses two thresholds:
+
+| Threshold | Value | Bounce Type | Effect |
+|-----------|-------|-------------|--------|
+| `permthreshold` | 3 | Permanent only | Suspend after 3 permanent bounces |
+| `allthreshold` | 50 | All (permanent + temporary) | Suspend after 50 total bounces |
+
+**Three categories of bounce:**
+1. **Ignored** (`ignore()` returns true): Not recorded at all
+   - "delivery temporarily suspended", "Trop de connexions", "found on industry URI blacklists", etc.
+2. **Permanent** (`isPermanent()` returns true): Recorded with `permanent=1`
+   - "550 Requested action not taken", "550 5.1.1", "User unknown", etc.
+3. **Temporary** (not ignored, not permanent): Recorded with `permanent=0`
+   - All other bounces (e.g., "mailbox full")
+
+**Suspension only applies to preferred email**: Both queries in `suspendMail()` check that the bouncing email matches `$u->getEmailPreferred()`.
 
 ### FBL Processing
 
 FBL reports (when users mark our mail as spam) arrive at `fbl@users.ilovefreegle.org`.
 
+<details>
+<summary><strong>FBLService Implementation</strong></summary>
+
 ```php
 class FBLService
 {
-    public function isFBL(ParsedEmail $email): bool;
-    public function processFBL(ParsedEmail $email): ?FBLResult;
+    public function isFBL(ParsedEmail $email): bool
+    {
+        $contentType = $email->getHeader('content-type');
+        return str_contains($contentType ?? '', 'feedback-report');
+    }
+
+    public function processFBL(ParsedEmail $email): ?FBLResult
+    {
+        $rawMessage = $email->getRawMessage();
+
+        // Extract complainant
+        if (preg_match('/^Original-Rcpt-To:\s*(.+)$/im', $rawMessage, $m)) {
+            $complainant = trim($m[1]);
+        } else {
+            return null;
+        }
+
+        // Stop all mail to this user
+        $user = User::findByEmail($complainant);
+        if ($user) {
+            $user->update(['simple_mail' => User::SIMPLE_MAIL_NONE]);
+            return new FBLResult($complainant, $user->id, true);
+        }
+
+        return new FBLResult($complainant, null, false);
+    }
 }
 ```
 
-Action: Set user's `simple_mail = NONE` to stop all email.
+</details>
 
 ---
 
-## Part 4: Spam Review UI in ModTools
+## Part 5: Spam Review UI in ModTools
 
-### Current Problem
-Currently, incoming mail classified as spam is simply discarded with no ability to review or recover false positives.
+### Purpose
 
-### Solution: Spam Review Queue
+Store suspected spam for volunteer review instead of silently discarding. This:
+- Recovers false positives
+- Shows volunteers the value of spam filtering
+- Provides transparency into what's being blocked
 
-Store suspected spam for review instead of discarding:
+### Database Approach: Use Existing Messages Table
 
-```php
-// Database table for spam queue
-// Migration: create_incoming_spam_queue_table
-Schema::create('incoming_spam_queue', function (Blueprint $table) {
-    $table->id();
-    $table->text('raw_message');          // Full RFC2822 message
-    $table->string('envelope_from');
-    $table->string('envelope_to');
-    $table->string('from_address');
-    $table->string('subject');
-    $table->string('spam_reason');         // SpamAssassin, GreetingSpam, etc.
-    $table->decimal('spam_score', 5, 2)->nullable();
-    $table->json('spam_details')->nullable(); // Additional detection info
-    $table->timestamp('received_at');
-    $table->unsignedBigInteger('reviewed_by')->nullable();
-    $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
-    $table->timestamp('reviewed_at')->nullable();
-    $table->timestamps();
+**No new table required.** The existing `messages` table already has:
+- `spamtype` - enum for spam reason (CountryBlocked, IPUsedForDifferentUsers, etc.)
+- `spamreason` - varchar for detailed explanation
+- `message` - the raw email content
 
-    $table->index(['status', 'received_at']);
-    $table->index('envelope_to');
-});
+Spam messages are stored in `messages` with routing outcome `INCOMING_SPAM` and can be queried via:
+
+```sql
+SELECT * FROM messages
+WHERE spamtype IS NOT NULL
+AND lastroute = 'INCOMING_SPAM'
+AND arrival > DATE_SUB(NOW(), INTERVAL 7 DAY)
+ORDER BY arrival DESC;
 ```
 
-### API Endpoints
+This follows the same pattern as chat message spam (which uses `chat_messages.reviewrejected`).
 
-```
-GET /api/v2/mail/spam-queue
-    ?status=pending          # Filter by status
-    &page=1                  # Pagination
-    &per_page=20
+### Spam Reason Display
 
-GET /api/v2/mail/spam-queue/{id}
-    Returns full message details including parsed headers, body preview
-
-POST /api/v2/mail/spam-queue/{id}/approve
-    Releases message from spam queue for delivery
-    Creates whitelist entry if requested
-
-POST /api/v2/mail/spam-queue/{id}/reject
-    Marks as confirmed spam (for training)
-    Optionally adds to blacklist
-
-DELETE /api/v2/mail/spam-queue/purge
-    Removes messages older than N days (default 7)
-```
-
-### Spam Reason Explanations (Critical UX)
-
-**"Why was this marked as spam?"** - Volunteers frequently ask this question. The spam reason display must be:
-1. **Human-readable** - Technical codes translated to plain English
-2. **Specific** - Show the actual trigger (e.g., the URL, the IP, the keyword)
-3. **Educational** - Help volunteers understand spam patterns
-
-#### Reason Display Mapping
+Volunteers frequently ask "Why was this marked as spam?" The display must be human-readable:
 
 | Internal Reason | Display Text | Additional Info |
 |-----------------|--------------|-----------------|
-| `SpamAssassin` | "SpamAssassin content filter" | "Score: X (threshold: 8)" |
+| `Rspamd` | "Rspamd spam filter" | "Score: X (threshold: 8)" |
+| `SpamAssassin` | "SpamAssassin content filter" | "Score: X, rules: Y" |
 | `CountryBlocked` | "Sent from blocked country" | "Country: {country}" |
-| `IPUsedForDifferentUsers` | "Suspicious: Same IP, multiple users" | "IP used by X different users" |
-| `IPUsedForDifferentGroups` | "Suspicious: Same IP, many groups" | "IP posted to X groups" |
-| `SubjectUsedForDifferentGroups` | "Cross-posted to many groups" | "Subject seen on X groups" |
-| `GreetingSpam` | "Common greeting spam pattern" | "Detected 'hello/hey' greeting pattern" |
+| `IPUsedForDifferentUsers` | "Suspicious: Same IP, multiple users" | "IP used by X users" |
+| `SubjectUsedForDifferentGroups` | "Cross-posted to many groups" | "Subject on X groups" |
+| `GreetingSpam` | "Common greeting spam pattern" | "Detected 'hello/hey' pattern" |
 | `DBL` | "URL on spam blacklist" | "Blacklisted URL: {url}" |
 | `KnownKeyword` | "Known spam keyword detected" | "Keyword: '{keyword}'" |
 | `WorryWord` | "Flagged phrase detected" | "Phrase: '{phrase}'" |
-| `UsedOurDomain` | "Attempted domain spoofing" | "Tried to use our domain in from address" |
-| `SameImage` | "Same image posted repeatedly" | "Image seen X times in 24h" |
-| `BulkVolunteerMail` | "Bulk mail to moderators" | "Sent to X volunteer addresses" |
 
-#### Storing Spam Details
-
-The `spam_details` JSON column captures specifics for display:
-
-```php
-// When storing spam in queue
-$spamQueue->create([
-    'spam_reason' => $result->getReason(),  // e.g., 'SpamAssassin'
-    'spam_score' => $result->getScore(),     // e.g., 12.5
-    'spam_details' => [
-        'score' => 12.5,
-        'threshold' => 8.0,
-        'rules_matched' => ['BAYES_99', 'URIBL_BLACK', 'HTML_MESSAGE'],
-        // For IP reasons
-        'ip' => '192.168.1.1',
-        'users_count' => 17,
-        // For URL reasons
-        'url' => 'http://badsite.example.com',
-        // For keyword reasons
-        'keyword' => 'bitcoin investment',
-    ]
-]);
-```
-
-### ModTools Spam Review Component
+<details>
+<summary><strong>ModSpamQueue.vue Component</strong></summary>
 
 ```vue
-<!-- modtools/components/ModSpamQueue.vue -->
 <template>
   <div class="spam-queue">
     <h4>Incoming Spam</h4>
     <p class="text-muted">
-      Messages blocked by our spam filters. Auto-deleted after 7 days.
+      Messages blocked by spam filters. Auto-deleted after 7 days.
     </p>
 
-    <!-- Stats summary -->
-    <div class="queue-stats mb-3">
-      <b-badge variant="primary" class="mr-2">{{ pendingCount }} pending</b-badge>
-      <b-badge variant="success" class="mr-2">{{ approvedToday }} approved today</b-badge>
-      <b-badge variant="danger">{{ rejectedToday }} rejected today</b-badge>
-    </div>
+    <b-card v-for="msg in messages" :key="msg.id" class="mb-3">
+      <!-- WHY SPAM - Most prominent element -->
+      <div class="why-spam-box alert alert-warning mb-3">
+        <strong>Why marked as spam?</strong>
+        <p class="mb-1 mt-1">{{ getReadableReason(msg.spamtype) }}</p>
+        <small v-if="msg.spamreason" class="text-muted d-block">
+          {{ msg.spamreason }}
+        </small>
+      </div>
 
-    <!-- Message list -->
-    <div class="message-list">
-      <b-card v-for="msg in messages" :key="msg.id" class="mb-3">
-        <!-- WHY SPAM - Most prominent element -->
-        <div class="why-spam-box alert alert-warning mb-3">
-          <strong>Why marked as spam?</strong>
-          <p class="mb-1 mt-1">{{ getReadableReason(msg.spam_reason) }}</p>
-          <small v-if="msg.spam_details" class="text-muted d-block">
-            {{ getReasonDetails(msg) }}
-          </small>
-        </div>
+      <div class="spam-header d-flex justify-content-between">
+        <span><strong>From:</strong> {{ msg.fromaddr }}</span>
+        <span class="text-muted">{{ formatTime(msg.arrival) }}</span>
+      </div>
+      <div class="mt-1"><strong>Subject:</strong> {{ msg.subject }}</div>
 
-        <div class="spam-header d-flex justify-content-between">
-          <span class="from"><strong>From:</strong> {{ msg.from_address }}</span>
-          <span class="received text-muted">{{ formatTime(msg.received_at) }}</span>
-        </div>
-        <div class="spam-subject mt-1">
-          <strong>Subject:</strong> {{ msg.subject }}
-        </div>
-        <div class="spam-preview mt-2 p-2 bg-light border rounded">
-          {{ truncate(msg.body_preview, 300) }}
-        </div>
-
-        <div class="spam-actions mt-3">
-          <b-button variant="success" size="sm" @click="approve(msg.id)">
-            Not Spam - Deliver
-          </b-button>
-          <b-button variant="outline-danger" size="sm" @click="reject(msg.id)">
-            Confirm Spam
-          </b-button>
-          <b-button variant="link" size="sm" @click="showDetails(msg)">
-            View Full Message
-          </b-button>
-        </div>
-      </b-card>
-    </div>
+      <div class="spam-actions mt-3">
+        <b-button variant="success" size="sm" @click="approve(msg.id)">
+          Not Spam - Deliver
+        </b-button>
+        <b-button variant="outline-danger" size="sm" @click="reject(msg.id)">
+          Confirm Spam
+        </b-button>
+      </div>
+    </b-card>
   </div>
 </template>
 
 <script setup>
-// Human-readable reason explanations
+// Maps spamtype enum values to human-readable explanations
 const reasonMap = {
+  Rspamd: 'Rspamd spam filter flagged this message',
   SpamAssassin: 'SpamAssassin content filter flagged this message',
   CountryBlocked: 'Message sent from a country we block',
-  IPUsedForDifferentUsers: 'The sender IP has been used by many different users - suspicious',
-  IPUsedForDifferentGroups: 'The sender IP has posted to many different groups - spam behavior',
-  SubjectUsedForDifferentGroups: 'This exact subject was posted to many groups - cross-posting spam',
-  GreetingSpam: 'Common greeting spam pattern ("hello", "hey" followed by generic text)',
-  DBL: 'Message contains a URL on a known spam blacklist',
-  KnownKeyword: 'Message contains a known spam keyword',
+  IPUsedForDifferentUsers: 'Sender IP used by many different users',
+  IPUsedForDifferentGroups: 'Sender IP used for many different groups',
+  SubjectUsedForDifferentGroups: 'This subject was posted to many groups',
   WorryWord: 'Message contains a phrase requiring review',
-  UsedOurDomain: 'Sender tried to spoof our domain - impersonation attempt',
-  SameImage: 'Same image has been posted many times recently',
-  BulkVolunteerMail: 'Bulk mail sent to multiple moderator addresses'
 }
 
-const getReadableReason = (reason) => {
-  return reasonMap[reason] || reason
-}
-
-const getReasonDetails = (msg) => {
-  if (!msg.spam_details) return ''
-  const d = msg.spam_details
-  if (d.score) return `SpamAssassin score: ${d.score} (we block at 8+)`
-  if (d.country) return `Country: ${d.country}`
-  if (d.ip && d.users_count) return `IP ${d.ip} used by ${d.users_count} different users`
-  if (d.ip && d.groups_count) return `IP ${d.ip} posted to ${d.groups_count} groups`
-  if (d.url) return `Blacklisted URL: ${d.url}`
-  if (d.keyword) return `Keyword: "${d.keyword}"`
-  if (d.groups_count) return `Posted to ${d.groups_count} groups`
-  if (d.image_count) return `Same image seen ${d.image_count} times in 24h`
-  return ''
-}
+const getReadableReason = (spamtype) => reasonMap[spamtype] || spamtype
 </script>
 ```
 
-### Whitelist Management
+</details>
 
-When approving spam, offer to whitelist:
-- **Sender address**: `spam_whitelist_addresses` table
-- **Sender IP**: `spam_whitelist_ips` table
-- **Subject pattern**: `spam_whitelist_subjects` table
-
-### Retention Policy
-
-- **Pending messages**: 7 days, then auto-purge
-- **Approved messages**: Delete immediately after delivery (logged)
-- **Rejected messages**: 30 days for potential blacklist training
-
-### Access Control
-
-- All volunteers (moderators) can view the spam queue
-- Support/Admin users can approve/reject spam
-- All actions logged with user ID and timestamp
-- Sentry alerts for high false positive rates
-
-### UI Placement in ModTools
-
-Add to left sidebar under Messages section:
-- **Menu item**: "Incoming Spam" with blue badge showing pending count
-- **Badge**: Shows pending spam count (blue, like other notification counts)
-- **Purpose**: Shows volunteers the value of spam filtering without requiring action
-- **Retention**: 7 days - auto-purged if not reviewed
-
-```vue
-<!-- In LeftMenu.vue Messages section -->
-<MenuOption
-  v-if="hasModeratorRole"
-  name="Incoming Spam"
-  icon="shield-alt"
-  :badge="spamQueueCount"
-  badge-variant="primary"
-  :to="'/modtools/support/spam'"
-/>
-```
-
-This placement:
-1. Demonstrates the system's value by showing blocked spam
-2. Allows curious moderators to review if they choose
-3. Auto-purges after 7 days so no action required
-4. Blue badge matches existing notification style
-
-### Relationship to Existing Chat Review (Two-Tier Moderation)
-
-Freegle has multiple moderation queues. Understanding how they relate:
-
-#### Current Moderation Queues
+### Two-Tier Moderation (Chat Review vs Incoming Spam)
 
 | Queue | Source | Confidence | Action Required |
 |-------|--------|------------|-----------------|
-| **Pending (Group Messages)** | Email/Platform posts to groups | Low suspicion | Mod must approve/reject |
-| **Chat Review** | Website API chat messages | Medium suspicion | Mod reviews, can release |
-| **Incoming Spam (NEW)** | All incoming email | High confidence spam | Optional review, auto-purge |
+| **Chat Review** | Website/API messages | Medium suspicion | Mod reviews, can release |
+| **Incoming Spam** | All incoming email | High confidence | Optional review, auto-purge |
 
-#### Message Flow by Source
+**Key behavior**: Both chat spam and email spam are **silently black-holed** - spammers receive no indication their message was blocked. This prevents them from learning what triggers detection.
 
-**1. Website/Platform (API)**
-```
-User sends message via website
-    → Spam score calculated at creation time
-    → Low score: Delivered immediately
-    → Medium score: Goes to Chat Review
-    → High score: Rejected with user notification
-```
-- Messages are NEVER silently discarded from the website
-- User always gets feedback if message is blocked
+### UI Placement
 
-**2. Incoming Email**
-```
-Email arrives via Postfix
-    → Parsed and routed by Laravel
-    → Pass spam checks: Route to destination (chat, group, etc.)
-    → Fail spam checks: Goes to Incoming Spam queue
-    → Auto-purged after 7 days if not reviewed
-```
-- Email spam CAN be silently discarded (sender doesn't know)
-- This is acceptable because spammers don't expect responses
-
-#### Key Differences
-
-| Aspect | Chat Review | Incoming Spam |
-|--------|-------------|---------------|
-| **Source** | Website/API only | Email only |
-| **Confidence** | Maybe spam | Almost certainly spam |
-| **User expectation** | User expects delivery | Spammer doesn't care |
-| **Action** | Must review | Can ignore (auto-purge) |
-| **Visibility** | Shows to group mods | Shows to all mods |
-
-#### Message Types in Each Queue
-
-**Chat Review** (existing):
-- Chat messages between members (sent via website)
-- Interest expressions
-- Direct messages to users
-- Flagged by spam score but not certain
-
-**Incoming Spam** (new):
-- Group posts via email (failed spam checks)
-- Chat replies via email (failed spam checks)
-- Messages to moderators (-volunteers@)
-- Bounce messages that look spammy
-- Any incoming email that triggers spam detection
-
-#### Design Principle
-
-**Website messages**: User-visible moderation (they know if blocked)
-**Email messages**: Background filtering (spam goes to review queue, not back to sender)
-
-This two-tier approach ensures:
-1. Real users on the website get feedback
-2. Email spammers don't get delivery confirmations
-3. Volunteers can see what's being filtered (transparency)
-4. False positives can be recovered from the Incoming Spam queue
+Add to ModTools left sidebar under Messages:
+- **Menu item**: "Incoming Spam" with badge showing pending count
+- **Access**: All moderators can view, approve, or reject (spam is often group-related)
+- **Retention**: 7 days, then auto-purged
 
 ---
 
-## Part 5: ModTools Email Statistics
+## Part 6: ModTools Email Statistics
 
 ### API Endpoint
 
 `GET /api/v2/mail/stats` (Go API for speed)
 
-**Response:**
+<details>
+<summary><strong>Response Format</strong></summary>
+
 ```json
 {
     "queue": {
@@ -706,10 +747,6 @@ This two-tier approach ensures:
                 "pending": 32,
                 "spam": 28,
                 "dropped": 5
-            },
-            "by_source": {
-                "trashnothing": 162,
-                "direct": 83
             }
         },
         "last_24h": {
@@ -725,54 +762,14 @@ This two-tier approach ensures:
 }
 ```
 
-### ModTools UI Component
+</details>
 
-Add to Support Tools dashboard:
+### Queue Monitoring
 
-```vue
-<!-- modtools/components/ModEmailStats.vue -->
-<template>
-  <div class="email-stats">
-    <h4>Incoming Email Status</h4>
-
-    <!-- Queue Status -->
-    <div class="queue-status" :class="queueStatusClass">
-      <span>Mail Queue: {{ stats.queue.size }}</span>
-      <small>Last checked: {{ formatTime(stats.queue.checked_at) }}</small>
-    </div>
-
-    <!-- Hourly Stats -->
-    <div class="hourly-stats">
-      <div class="stat">
-        <span class="value">{{ stats.incoming.last_hour.total }}</span>
-        <span class="label">Last Hour</span>
-      </div>
-      <div class="stat">
-        <span class="value">{{ stats.incoming.last_24h.total }}</span>
-        <span class="label">Last 24h</span>
-      </div>
-      <div class="stat">
-        <span class="value">{{ stats.incoming.last_24h.bounces }}</span>
-        <span class="label">Bounces (24h)</span>
-      </div>
-    </div>
-
-    <!-- Outcome Breakdown -->
-    <div class="outcomes">
-      <div v-for="(count, outcome) in stats.incoming.last_hour.by_outcome"
-           :key="outcome"
-           class="outcome-bar">
-        <span>{{ outcome }}: {{ count }}</span>
-      </div>
-    </div>
-  </div>
-</template>
-```
-
-### Queue Monitoring Command
+<details>
+<summary><strong>MonitorMailQueueCommand</strong></summary>
 
 ```php
-// app/Console/Commands/Mail/MonitorMailQueueCommand.php
 class MonitorMailQueueCommand extends Command
 {
     protected $signature = 'mail:monitor-queue';
@@ -801,92 +798,212 @@ class MonitorMailQueueCommand extends Command
 
     private function getPostfixQueueSize(): int
     {
-        // Execute mailq in postfix container
         $output = shell_exec('docker exec freegle-postfix-incoming mailq 2>/dev/null | grep -c "^[A-F0-9]" || echo 0');
         return (int) trim($output);
     }
 }
 ```
 
----
-
-## Part 6: Mail Archiving (MailPit Integration)
-
-### Production Mail Debugging
-
-Use Postfix `always_bcc` to copy all incoming mail to MailPit:
-
-```
-# In postfix main.cf
-always_bcc = archive@mailpit
-```
-
-MailPit provides:
-- Web UI for searching/viewing mail
-- API for programmatic access
-- 7-day retention (configurable)
-- Full MIME viewing
-
-### MailPit Configuration for Production
-
-```yaml
-# In docker-compose.yml - enhance existing mailpit service
-mailpit:
-  image: axllent/mailpit:latest
-  container_name: freegle-mailpit
-  environment:
-    - MP_DATABASE=/data/mailpit.db
-    - MP_MAX_MESSAGES=100000
-    - MP_MAX_AGE=168h  # 7 days
-    - MP_SMTP_AUTH_ACCEPT_ANY=true
-    - MP_WEBROOT=/mailpit
-  volumes:
-    - mailpit-data:/data
-  labels:
-    # Expose via Traefik for Support staff
-    - "traefik.http.routers.mailpit-prod.rule=Host(`mailpit.ilovefreegle.org`)"
-    - "traefik.http.routers.mailpit-prod.middlewares=auth@docker"
-```
-
-### Access Control
-
-MailPit should only be accessible to Support/Admin users:
-- Use Traefik middleware with basic auth or OAuth
-- Or integrate into ModTools with iframe + auth check
-
-### Alternative: Piler (for longer retention)
-
-If 7-day retention is insufficient, consider Piler for enterprise-grade archiving:
-- Full-text search
-- Longer retention periods
-- Compliance features
-
-See `plans/reference/logging-and-email-tracking-research.md` for Piler setup details.
+</details>
 
 ---
 
-## Part 7: Logging Architecture
+## Part 7: Mail Archiving (Piler)
 
-### Loki for All Incoming Mail Logs
+### Overview
 
-No database tables for logging. All incoming mail events go to Loki:
+[Piler](https://www.mailpiler.org/) is used for long-term email archiving with search capabilities. All incoming mail is archived via Postfix's `always_bcc` directive.
+
+### Piler vs MailPit
+
+| Feature | Piler | MailPit |
+|---------|-------|---------|
+| **Purpose** | Production archiving | Development/debugging |
+| **Retention** | Years (compliance) | Days |
+| **Search** | Full-text, advanced | Basic |
+| **Scale** | Enterprise | Small volumes |
+| **Auth** | Custom hooks available | Basic auth |
+
+**Decision**: Use Piler for production archiving; MailPit remains for local dev environments.
+
+### ModTools Integration Options
+
+Piler has a REST API for automation and custom authentication hooks. Integration approaches:
+
+1. **Iframe embed** (simplest)
+   - Embed Piler's web UI in a ModTools modal
+   - Uses Piler's native search interface
+   - Requires SSO via custom auth hook
+
+2. **API integration** (more seamless)
+   - Use Piler REST API to search/retrieve messages
+   - Display results in native ModTools components
+   - More development work but better UX
+
+3. **Deep link** (recommended for MVP)
+   - Link from ModTools to Piler with pre-filled search parameters
+   - User ID, email address, or date range
+   - Opens Piler in new tab with relevant context
+
+<details>
+<summary><strong>Piler Auth Hook for ModTools SSO</strong></summary>
+
+In Piler's `config-site.php`, add custom authentication that validates against ModTools session:
 
 ```php
-// In IncomingMailService
+// config-site.php
+$config['CUSTOM_EMAIL_QUERY_FUNCTION'] = 'freegle_email_query';
+
+function freegle_email_query($username) {
+    // Call ModTools API to get user's accessible emails
+    $apiUrl = 'https://api.ilovefreegle.org/api/user/emails';
+    $response = file_get_contents($apiUrl . '?modtools_session=' . $_COOKIE['modtools_session']);
+    $data = json_decode($response, true);
+
+    if ($data && isset($data['emails'])) {
+        return $data['emails'];  // Array of email addresses this mod can search
+    }
+    return [];
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Docker Compose Configuration (Piler)</strong></summary>
+
+```yaml
+piler:
+  image: sutoj/piler:latest
+  container_name: freegle-piler
+  hostname: piler.ilovefreegle.org
+  environment:
+    - PILER_HOSTNAME=piler.ilovefreegle.org
+    - MYSQL_DATABASE=piler
+    - MYSQL_USER=piler
+    - MYSQL_PASSWORD=${PILER_DB_PASSWORD}
+  volumes:
+    - piler-data:/var/piler/store
+    - piler-sphinx:/var/piler/sphinx
+    - ./conf/piler/config-site.php:/etc/piler/config-site.php:ro
+  labels:
+    - "traefik.http.routers.piler.rule=Host(`piler.ilovefreegle.org`)"
+    - "traefik.http.routers.piler.middlewares=auth@docker"
+  profiles:
+    - production
+  depends_on:
+    - percona
+```
+
+</details>
+
+### Postfix Integration
+
+```
+# main.cf - Archive all mail to Piler
+always_bcc = archive@piler.ilovefreegle.org
+```
+
+### Future: Full ModTools Integration
+
+In the longer term, we could move incoming email out of the `messages` table entirely and use Piler as the primary store. This would:
+- Reduce database size
+- Improve search capabilities
+- Enable longer retention periods
+- Leverage Piler's compliance features
+
+This requires building a ModTools component that wraps Piler's API for a seamless experience.
+
+---
+
+## Part 8: Logging Architecture
+
+Following the patterns in `plans/active/logging-tree-architecture.md`, incoming mail logs use consistent structure.
+
+### Log Entry Structure
+
+Server logs without browser context use `[source] job` format:
+
+```json
+{
+  "timestamp": "2026-01-26T11:30:17.000Z",
+  "source": "batch",
+  "job": "mail:incoming",
+  "channel": "incoming_mail",
+  "envelope_from": "sender@example.com",
+  "envelope_to": "group-name@groups.ilovefreegle.org",
+  "from_address": "sender@example.com",
+  "subject": "OFFERED: Sofa (London)",
+  "message_id": "<abc123@example.com>",
+  "mail_source": "email",
+  "routing_result": "APPROVED",
+  "spam_checks": {
+    "rspamd_score": 2.1,
+    "sa_score": 1.5,
+    "freegle_result": "clean"
+  },
+  "processing_time_ms": 156,
+  "user_id": 12345,
+  "group_id": 67890,
+  "message_id_created": 98765
+}
+```
+
+### Display Format
+
+In ModTools System Logs, incoming mail appears as:
+
+```
+11:30:17  [batch] mail:incoming
+          APPROVED: "OFFERED: Sofa" from sender@example.com → #98765
+```
+
+### All Logs to Loki (No Database Tables)
+
+<details>
+<summary><strong>Laravel Logging Implementation</strong></summary>
+
+```php
 Log::channel('incoming_mail')->info('Mail processed', [
+    // Source identification
+    'source' => 'batch',
+    'job' => 'mail:incoming',
+
+    // Envelope info
     'envelope_from' => $envelope['from'],
     'envelope_to' => $envelope['to'],
+
+    // Parsed headers
     'from_address' => $parsed->getFromAddress(),
     'subject' => $parsed->getSubject(),
     'message_id' => $parsed->getMessageId(),
-    'source' => $source,  // Email, Platform, TrashNothing
+
+    // Mail source (email, platform, trashnothing)
+    'mail_source' => $source,
+
+    // Routing result (APPROVED, PENDING, INCOMING_SPAM, etc.)
     'routing_result' => $result->getOutcome(),
-    'rspamd_score' => $rspamdResult?->score,
+
+    // Spam check details (for debugging)
+    'spam_checks' => [
+        'rspamd_score' => $rspamdResult?->score,
+        'rspamd_action' => $rspamdResult?->action,
+        'sa_score' => $saResult?->score,
+        'freegle_result' => $freegleResult?->getReason() ?? 'clean',
+    ],
+
+    // Performance
     'processing_time_ms' => $duration,
+
+    // References (for correlation)
     'user_id' => $user?->id,
     'group_id' => $group?->id,
+    'message_id_created' => $createdMessage?->id,
+    'chat_id_created' => $createdChat?->id,
 ]);
 ```
+
+</details>
 
 ### Loki Queries for Support
 
@@ -895,220 +1012,66 @@ Log::channel('incoming_mail')->info('Mail processed', [
 {app="iznik-batch", channel="incoming_mail"} | json
 
 # Filter by outcome
-{app="iznik-batch", channel="incoming_mail"} | json | routing_result="Spam"
+{app="iznik-batch", channel="incoming_mail"} | json | routing_result="INCOMING_SPAM"
 
 # Filter by user
 {app="iznik-batch", channel="incoming_mail"} | json | user_id="12345"
 
+# Find high spam scores
+{app="iznik-batch", channel="incoming_mail"} | json | spam_checks_rspamd_score > 5
+
 # Bounces
-{app="iznik-batch", channel="incoming_mail"} | json | routing_result="Bounce"
+{app="iznik-batch", channel="incoming_mail"} | json | job="mail:process-bounces"
 ```
 
 ---
 
-## Part 8: Switchover Process
+## Part 9: Switchover Process
 
-### Phase 0: Preparation (Before any mail migration)
+### Phase 0: Preparation
+- [ ] Email template cleanup (remove legacy mailto: unsubscribe links)
+- [ ] Deploy Postfix container (not receiving mail yet)
+- [ ] Deploy/configure MailPit for archiving
+- [ ] Set up Loki logging channel
 
-1. **Email template cleanup**
-   - Remove legacy mailto: unsubscribe links from MGML templates
-   - Replace with website settings page links
-   - Ensure List-Unsubscribe uses RFC 8058 one-click format
+### Phase 1: Bounces Only (1-2 weeks)
+Configure Exim to forward bounces to Postfix:
 
-2. **Infrastructure setup**
-   - Deploy Postfix container (not receiving mail yet)
-   - Deploy/configure MailPit for archiving
-   - Set up Loki logging channel
+<details>
+<summary><strong>Exim Router Configuration</strong></summary>
 
-### Phase 1: Bounces Only (Lowest Risk)
+```
+bounce_to_postfix:
+  driver = manualroute
+  domains = users.ilovefreegle.org
+  local_parts = noreply : bounce-*
+  transport = postfix_smtp
+  route_list = * 127.0.0.1::2525
+```
 
-**Duration**: 1-2 weeks
+</details>
 
-1. **Configure Exim to forward bounces to Postfix**
-   ```
-   # Exim router
-   bounce_to_postfix:
-     driver = manualroute
-     domains = users.ilovefreegle.org
-     local_parts = noreply : bounce-*
-     transport = postfix_smtp
-     route_list = * 127.0.0.1::2525
-   ```
+**Success criteria**: 100% bounce detection rate, user suspension logic matches
 
-2. **Deploy Laravel BounceService**
-   - Port `Bounce.php` logic to Laravel
-   - Implement DSN parsing for no-reply bounces
-   - Keep VERP support for transition period
+### Phase 2: FBL Reports (1 week)
+Forward FBL to Postfix. **Success criteria**: FBL reports processed correctly
 
-3. **Monitor**
-   - Compare bounce counts (old vs new system)
-   - Watch for missed bounces
-   - Verify user suspension working
+### Phase 3: Trash Nothing Chat Replies (2 weeks)
+Forward TN domain to Postfix. **Why TN first**: 66% of traffic, validates via header (simpler)
 
-4. **Success criteria**
-   - 100% bounce detection rate
-   - User suspension logic matches
+### Phase 4: Native Chat Replies (2 weeks)
+Forward chat reply addresses. Needs full spam/content checks.
 
-### Phase 2: FBL Reports (Low Risk)
-
-**Duration**: 1 week
-
-1. **Forward FBL to Postfix**
-   ```
-   fbl_to_postfix:
-     driver = manualroute
-     domains = users.ilovefreegle.org
-     local_parts = fbl
-     transport = postfix_smtp
-     route_list = * 127.0.0.1::2525
-   ```
-
-2. **Deploy Laravel FBLService**
-
-3. **Success criteria**
-   - FBL reports processed correctly
-   - Users unsubscribed as expected
-
-### Phase 3: Trash Nothing Chat Replies (Medium Risk)
-
-**Duration**: 2 weeks
-
-**Why TN first**: 66% of traffic, but validates via header so bypasses spam checks - simpler to test.
-
-1. **Forward TN domain to Postfix**
-   ```
-   tn_to_postfix:
-     driver = manualroute
-     domains = user.trashnothing.com
-     transport = postfix_smtp
-     route_list = * 127.0.0.1::2525
-   ```
-
-2. **Deploy Laravel TrashNothingService**
-   - Port TN header validation
-   - Port chat routing logic
-
-3. **Success criteria**
-   - Chat messages delivered correctly
-   - TN secret validation working
-
-### Phase 4: Native Chat Replies (Medium Risk)
-
-**Duration**: 2 weeks
-
-1. **Forward chat reply addresses**
-   ```
-   chat_to_postfix:
-     driver = manualroute
-     domains = users.ilovefreegle.org
-     local_parts = notify-*
-     transport = postfix_smtp
-     route_list = * 127.0.0.1::2525
-   ```
-
-2. **Deploy full chat routing**
-   - Needs spam/content checks for non-TN mail
-
-3. **Success criteria**
-   - Chat replies work for all sources
-   - Spam detection equivalent to existing
-
-### Phase 5: Group Messages (Higher Risk)
-
-**Duration**: 2-4 weeks
-
-1. **Forward group domain**
-   ```
-   groups_to_postfix:
-     driver = manualroute
-     domains = groups.ilovefreegle.org
-     transport = postfix_smtp
-     route_list = * 127.0.0.1::2525
-   ```
-
-2. **Deploy full MailRouterService**
-   - Complete routing logic (11 outcomes)
-   - All email commands
-   - Full spam/content moderation
-
-3. **Success criteria**
-   - All routing outcomes match existing behavior
-   - Moderator workflows unchanged
+### Phase 5: Group Messages (2-4 weeks)
+Forward group domain. Complete routing logic with all 11 outcomes.
 
 ### Phase 6: Full Cutover
+Update MX records to point directly to Postfix. Disable Exim forwarding.
 
-1. **Update MX records** to point directly to Postfix
-2. **Disable Exim forwarding rules**
-3. **Monitor closely** for 1-2 weeks
-
-### Phase 7: Retire iznik-server Code
-
-**After 4+ weeks of stable operation:**
-
-1. **Remove from crontab**
-   - `bounce.php`
-   - `bounce_users.php`
-   - Any incoming mail related scripts
-
-2. **Archive code** (don't delete immediately)
-   - `scripts/incoming/incoming.php`
-   - `include/mail/MailRouter.php`
-   - `include/mail/Bounce.php`
-
-3. **Update documentation**
-   - Remove references to Exim configuration
-   - Update architecture diagrams
-
-4. **Clean up database**
-   - `bounces` table (temporary storage) can be emptied
-   - `bounces_emails` table continues to be used by Laravel
-
----
-
-## Part 9: Test Migration Strategy
-
-### Existing Tests (iznik-server)
-
-- `MailRouterTest.php` - 1923 lines, 56+ test cases
-- 77 test email files in `test/ut/php/msgs/`
-
-### Laravel Test Structure
-
-```
-tests/
-├── Unit/Services/Mail/Incoming/
-│   ├── MailParserServiceTest.php
-│   ├── MailRouterServiceTest.php
-│   ├── BounceServiceTest.php
-│   ├── FBLServiceTest.php
-│   ├── SpamCheckServiceTest.php
-│   └── ContentModerationServiceTest.php
-├── Feature/Mail/
-│   ├── IncomingMailCommandTest.php
-│   ├── GroupMessageRoutingTest.php
-│   ├── ChatReplyRoutingTest.php
-│   └── BounceProcessingTest.php
-└── fixtures/emails/
-    ├── bounce/
-    ├── fbl/
-    ├── chat-replies/
-    ├── group-messages/
-    └── spam/
-```
-
-### Test Migration Approach
-
-1. **Convert test files to templates**
-   - Replace hardcoded group names with `{{GROUP_NAME}}`
-   - Replace email addresses with `{{FROM_EMAIL}}`
-
-2. **Port test assertions**
-   - Each PHP test case becomes a Laravel test
-   - Verify same routing outcomes
-
-3. **Use DatabaseTransactions**
-   - Each test isolated
-   - Supports parallel execution
+### Phase 7: Retire iznik-server Code (4+ weeks after stable)
+- Remove from crontab: `bounce.php`, `bounce_users.php`
+- Archive code (don't delete immediately)
+- Update documentation
 
 ---
 
@@ -1118,12 +1081,11 @@ tests/
 - [ ] Create Postfix container configuration
 - [ ] Implement `mail:incoming` command
 - [ ] Implement `MailParserService`
-- [ ] Set up Loki logging channel for incoming mail
+- [ ] Set up Loki logging channel
 
 ### Phase B: Bounce Processing (Week 3-4)
 - [ ] Port `Bounce.php` to Laravel `BounceService`
-- [ ] Implement DSN parsing
-- [ ] Implement heuristic extraction
+- [ ] Implement DSN parsing and heuristic extraction
 - [ ] Port bounce tests
 - [ ] Implement `mail:process-bounces` scheduled command
 
@@ -1134,26 +1096,21 @@ tests/
 ### Phase D: Routing Logic (Week 5-6)
 - [ ] Implement `MailRouterService` with all outcomes
 - [ ] Port email command handling
-- [ ] Implement chat routing
-- [ ] Implement group message routing
+- [ ] Implement chat and group message routing
 - [ ] Port routing tests
 
 ### Phase E: Spam & Content Moderation (Week 7-8)
-- [ ] Implement `SpamCheckService` (dual SpamD + custom checks)
-- [ ] Port SpamAssassin/SpamD integration
-- [ ] Port custom Freegle spam checks from `Spam.php`
-- [ ] Implement `ContentModerationService`
-- [ ] Port worry words and spam keywords
+- [ ] Extend existing `SpamCheckService` for incoming mail
+- [ ] Implement `FreegleSpamService` (custom checks from Spam.php)
+- [ ] Implement `ContentModerationService` (worry words, spam keywords)
 - [ ] Port spam detection tests
 
 ### Phase F: ModTools UI (Week 9-10)
 - [ ] Implement Go API endpoint for mail stats
-- [ ] Create Vue component for email statistics (`ModEmailStats.vue`)
-- [ ] Add to Support Tools dashboard
-- [ ] Create spam queue database table
-- [ ] Implement spam queue API endpoints (Go)
-- [ ] Create spam review Vue component (`ModSpamQueue.vue`)
-- [ ] Implement whitelist management for approved spam
+- [ ] Create `ModEmailStats.vue` component
+- [ ] Implement spam queue API endpoints (using existing messages table)
+- [ ] Create `ModSpamQueue.vue` component
+- [ ] Add Piler deep links for email archive access
 
 ### Phase G: Production Deployment (Week 10-12)
 - [ ] Deploy Postfix container
@@ -1162,8 +1119,7 @@ tests/
 
 ### Phase H: Retirement (Week 13+)
 - [ ] Remove iznik-server incoming mail code from crontab
-- [ ] Archive code
-- [ ] Update documentation
+- [ ] Archive code, update documentation
 
 ---
 
@@ -1178,16 +1134,10 @@ Each phase can be rolled back independently:
 
 ### Monitoring
 
-1. **Queue depth** - Alert if > 100 messages
-2. **Processing errors** - Sentry alerts
-3. **Routing outcome comparison** - Log discrepancies
-4. **User complaints** - Support ticket monitoring
-
-### Data Integrity
-
-- Compare routing decisions between old/new during parallel operation
-- Log all discrepancies for investigation
-- Keep iznik-server code available for 4+ weeks after full cutover
+- **Queue depth**: Alert if > 100 messages
+- **Processing errors**: Sentry alerts
+- **Routing outcome comparison**: Log discrepancies during parallel operation
+- **User complaints**: Support ticket monitoring
 
 ---
 
@@ -1200,19 +1150,22 @@ Each phase can be rolled back independently:
 MAIL_INCOMING_ENABLED=true
 MAIL_INCOMING_LOG_RAW=true
 
-# Rspamd
+# Spam checking (uses existing SpamCheckService config)
+SPAM_CHECK_ENABLED=true
+SPAMASSASSIN_HOST=spamassassin-app
+SPAMASSASSIN_PORT=783
 RSPAMD_HOST=rspamd
-RSPAMD_PORT=11333
-RSPAMD_SPAM_THRESHOLD=8.0
+RSPAMD_PORT=11334
+SPAM_FAIL_THRESHOLD=8.0
 
 # TUSD (attachments)
-TUS_UPLOADER_URL=http://tusd:1080/files
+TUS_UPLOADER=http://freegle-tusd:8080/tus
 
 # Trash Nothing
 TN_SECRET=your-secret-here
 
 # Domains
-USER_DOMAIN=ilovefreegle.org
+FREEGLE_USER_DOMAIN=users.ilovefreegle.org
 GROUP_DOMAIN=groups.ilovefreegle.org
 
 # Mail archiving
@@ -1224,8 +1177,8 @@ MAILPIT_ARCHIVE_ENABLED=true
 ## References
 
 ### Internal Documents
-- `plans/active/incoming-email-migration-to-laravel.md` - Original detailed plan (to be superseded)
-- `plans/reference/logging-and-email-tracking-research.md` - Piler/Loki research
+- `plans/future/spam-and-content-moderation-rethink.md` - Future spam detection improvements
+- `plans/reference/logging-and-email-tracking-research.md` - Loki research
 - `iznik-batch/EMAIL-MIGRATION-GUIDE.md` - Migration lessons learned
 
 ### External
@@ -1233,9 +1186,15 @@ MAILPIT_ARCHIVE_ENABLED=true
 - [php-mime-mail-parser](https://github.com/php-mime-mail-parser/php-mime-mail-parser)
 - [RFC 3464](https://datatracker.ietf.org/doc/html/rfc3464) - DSN format
 - [RFC 5965](https://datatracker.ietf.org/doc/html/rfc5965) - FBL/ARF format
-- [MailPit](https://github.com/axllent/mailpit) - Mail testing/archiving
+- [MailPit](https://github.com/axllent/mailpit) - Mail testing/archiving (dev only)
+- [Piler Email Archiver](https://www.mailpiler.org/) - Production email archiving
+- [Piler REST API](https://docs.mailpiler.com/piler-ee/restapi/) - Enterprise API documentation
+- [Rspamd vs SpamAssassin](https://docs.rspamd.com/about/comparison/) - Feature comparison
+- [Email Bomb Prevention](https://guardiandigital.com/resources/blog/distributed-spam-attacks-and-email-bombers) - Flood defense strategies
 
 ### Source Code
 - `iznik-server/include/mail/MailRouter.php` - Current routing logic
 - `iznik-server/include/mail/Bounce.php` - Current bounce processing
+- `iznik-server/include/spam/Spam.php` - Custom spam checks to port
+- `iznik-batch/app/Services/SpamCheck/SpamCheckService.php` - Existing spam service
 - `iznik-server/test/ut/php/include/MailRouterTest.php` - Test cases to port
