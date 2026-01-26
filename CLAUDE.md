@@ -370,25 +370,27 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-01-26 - Incoming Email Migration Plan & Test Fixes
-- **Status**: 🔄 Plan complete, tests fixed, CI pending
+### 2026-01-26 - Incoming Email Migration Plan Major Update
+- **Status**: ✅ Plan updated based on detailed review
 - **Branch**: `feature/incoming-email-migration` (FreegleDocker)
-- **Plan Created**: `plans/active/incoming-email-to-docker.md` (1100+ lines)
-- **Key Sections**:
-  1. Dual postfix architecture (separate incoming/outgoing for prioritization)
-  2. Dual spam detection (SpamAssassin + Freegle custom checks)
-  3. Spam review UI with clear "why spam" explanations
-  4. Two-tier moderation (chat review vs incoming spam queue)
-  5. ModTools email statistics dashboard
-  6. Phased switchover from Exim/iznik-server
-- **Test Fixes** (feature/options-api-migration-tdd in iznik-nuxt3):
-  - Added misc store and linkify mocks for ChatMessageText.spec.js
-  - Added misc store and linkify mocks for ChatMessageInterested.spec.js
-  - Fixed Pinia "getActivePinia() was called but no active Pinia" error
-  - Commit: adca3fe7 pushed, CI running
-- **Hook Update**: Added vitest/npx vitest to test-blocking hook
-- **Issue Created**: https://github.com/Freegle/iznik-nuxt3/issues/142 (Vitest status API)
-- **Next**: Wait for CI, then this plan is ready for implementation phases
+- **Plan File**: `plans/active/incoming-email-to-docker.md` (1200 lines)
+- **Key Changes (commit e59ce5f)**:
+  1. **Architecture**: Changed from dual postfix to single postfix (simpler)
+  2. **Database**: Removed new `incoming_spam_queue` table, use existing `messages` table
+  3. **Spam Detection**: Added section explaining Freegle checks complement (not duplicate) external filters
+  4. **Flood Protection**: Added Part 3A with rate limiting and attack pattern detection
+  5. **Chat Spam**: Clarified that spam is silently black-holed (no user feedback)
+  6. **Moderator Access**: Changed spam approval from Support/Admin to all moderators
+  7. **Archiving**: Replaced MailPit with Piler for production, added ModTools integration options
+- **Research Completed**:
+  - Rspamd vs SpamAssassin feature comparison (Rspamd 10x faster, machine learning)
+  - Piler REST API integration options (iframe, API, deep link)
+  - Email bomb/flood defense strategies (rate limiting, honeypots, burst detection)
+- **Key Technical Findings**:
+  - `messages.spamtype` and `messages.spamreason` columns already exist
+  - Chat spam IS silently black-holed (no user notification) per ChatMessage.php:485
+  - Bounce suspension: 3 permanent OR 50 total (including temporary) per Bounce.php
+- **Next**: Plan is ready for implementation phases
 
 ### 2026-01-26 - Clickable Links in ModTools Chat Messages
 - **Status**: ✅ Complete
