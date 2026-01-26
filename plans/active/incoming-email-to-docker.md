@@ -422,69 +422,146 @@ DELETE /api/v2/mail/spam-queue/purge
     Removes messages older than N days (default 7)
 ```
 
+### Spam Reason Explanations (Critical UX)
+
+**"Why was this marked as spam?"** - Volunteers frequently ask this question. The spam reason display must be:
+1. **Human-readable** - Technical codes translated to plain English
+2. **Specific** - Show the actual trigger (e.g., the URL, the IP, the keyword)
+3. **Educational** - Help volunteers understand spam patterns
+
+#### Reason Display Mapping
+
+| Internal Reason | Display Text | Additional Info |
+|-----------------|--------------|-----------------|
+| `SpamAssassin` | "SpamAssassin content filter" | "Score: X (threshold: 8)" |
+| `CountryBlocked` | "Sent from blocked country" | "Country: {country}" |
+| `IPUsedForDifferentUsers` | "Suspicious: Same IP, multiple users" | "IP used by X different users" |
+| `IPUsedForDifferentGroups` | "Suspicious: Same IP, many groups" | "IP posted to X groups" |
+| `SubjectUsedForDifferentGroups` | "Cross-posted to many groups" | "Subject seen on X groups" |
+| `GreetingSpam` | "Common greeting spam pattern" | "Detected 'hello/hey' greeting pattern" |
+| `DBL` | "URL on spam blacklist" | "Blacklisted URL: {url}" |
+| `KnownKeyword` | "Known spam keyword detected" | "Keyword: '{keyword}'" |
+| `WorryWord` | "Flagged phrase detected" | "Phrase: '{phrase}'" |
+| `UsedOurDomain` | "Attempted domain spoofing" | "Tried to use our domain in from address" |
+| `SameImage` | "Same image posted repeatedly" | "Image seen X times in 24h" |
+| `BulkVolunteerMail` | "Bulk mail to moderators" | "Sent to X volunteer addresses" |
+
+#### Storing Spam Details
+
+The `spam_details` JSON column captures specifics for display:
+
+```php
+// When storing spam in queue
+$spamQueue->create([
+    'spam_reason' => $result->getReason(),  // e.g., 'SpamAssassin'
+    'spam_score' => $result->getScore(),     // e.g., 12.5
+    'spam_details' => [
+        'score' => 12.5,
+        'threshold' => 8.0,
+        'rules_matched' => ['BAYES_99', 'URIBL_BLACK', 'HTML_MESSAGE'],
+        // For IP reasons
+        'ip' => '192.168.1.1',
+        'users_count' => 17,
+        // For URL reasons
+        'url' => 'http://badsite.example.com',
+        // For keyword reasons
+        'keyword' => 'bitcoin investment',
+    ]
+]);
+```
+
 ### ModTools Spam Review Component
 
 ```vue
 <!-- modtools/components/ModSpamQueue.vue -->
 <template>
   <div class="spam-queue">
-    <h4>Incoming Spam Review</h4>
+    <h4>Incoming Spam</h4>
+    <p class="text-muted">
+      Messages blocked by our spam filters. Auto-deleted after 7 days.
+    </p>
 
     <!-- Stats summary -->
-    <div class="queue-stats">
-      <span class="stat pending">{{ pendingCount }} pending</span>
-      <span class="stat approved">{{ approvedToday }} approved today</span>
-      <span class="stat rejected">{{ rejectedToday }} rejected today</span>
+    <div class="queue-stats mb-3">
+      <b-badge variant="primary" class="mr-2">{{ pendingCount }} pending</b-badge>
+      <b-badge variant="success" class="mr-2">{{ approvedToday }} approved today</b-badge>
+      <b-badge variant="danger">{{ rejectedToday }} rejected today</b-badge>
     </div>
-
-    <!-- Filter tabs -->
-    <b-tabs v-model="activeTab">
-      <b-tab title="Pending Review" />
-      <b-tab title="Recently Approved" />
-      <b-tab title="Recently Rejected" />
-    </b-tabs>
 
     <!-- Message list -->
     <div class="message-list">
-      <div v-for="msg in messages" :key="msg.id" class="spam-item">
-        <div class="spam-header">
-          <span class="from">{{ msg.from_address }}</span>
-          <span class="reason badge" :class="reasonClass(msg.spam_reason)">
-            {{ msg.spam_reason }}
-          </span>
-          <span v-if="msg.spam_score" class="score">
-            Score: {{ msg.spam_score }}
-          </span>
+      <b-card v-for="msg in messages" :key="msg.id" class="mb-3">
+        <!-- WHY SPAM - Most prominent element -->
+        <div class="why-spam-box alert alert-warning mb-3">
+          <strong>Why marked as spam?</strong>
+          <p class="mb-1 mt-1">{{ getReadableReason(msg.spam_reason) }}</p>
+          <small v-if="msg.spam_details" class="text-muted d-block">
+            {{ getReasonDetails(msg) }}
+          </small>
         </div>
-        <div class="spam-subject">{{ msg.subject }}</div>
-        <div class="spam-preview">{{ msg.body_preview }}</div>
-        <div class="spam-actions">
+
+        <div class="spam-header d-flex justify-content-between">
+          <span class="from"><strong>From:</strong> {{ msg.from_address }}</span>
+          <span class="received text-muted">{{ formatTime(msg.received_at) }}</span>
+        </div>
+        <div class="spam-subject mt-1">
+          <strong>Subject:</strong> {{ msg.subject }}
+        </div>
+        <div class="spam-preview mt-2 p-2 bg-light border rounded">
+          {{ truncate(msg.body_preview, 300) }}
+        </div>
+
+        <div class="spam-actions mt-3">
           <b-button variant="success" size="sm" @click="approve(msg.id)">
-            Approve & Deliver
+            Not Spam - Deliver
           </b-button>
-          <b-button variant="danger" size="sm" @click="reject(msg.id)">
+          <b-button variant="outline-danger" size="sm" @click="reject(msg.id)">
             Confirm Spam
           </b-button>
-          <b-button variant="secondary" size="sm" @click="showDetails(msg)">
-            View Full
+          <b-button variant="link" size="sm" @click="showDetails(msg)">
+            View Full Message
           </b-button>
         </div>
-      </div>
+      </b-card>
     </div>
-
-    <!-- Detail modal -->
-    <b-modal v-model="showDetailModal" size="xl" title="Spam Message Details">
-      <div v-if="selectedMessage">
-        <h5>Headers</h5>
-        <pre class="headers">{{ selectedMessage.headers }}</pre>
-        <h5>Body</h5>
-        <pre class="body">{{ selectedMessage.body }}</pre>
-        <h5>Spam Analysis</h5>
-        <pre class="analysis">{{ JSON.stringify(selectedMessage.spam_details, null, 2) }}</pre>
-      </div>
-    </b-modal>
   </div>
 </template>
+
+<script setup>
+// Human-readable reason explanations
+const reasonMap = {
+  SpamAssassin: 'SpamAssassin content filter flagged this message',
+  CountryBlocked: 'Message sent from a country we block',
+  IPUsedForDifferentUsers: 'The sender IP has been used by many different users - suspicious',
+  IPUsedForDifferentGroups: 'The sender IP has posted to many different groups - spam behavior',
+  SubjectUsedForDifferentGroups: 'This exact subject was posted to many groups - cross-posting spam',
+  GreetingSpam: 'Common greeting spam pattern ("hello", "hey" followed by generic text)',
+  DBL: 'Message contains a URL on a known spam blacklist',
+  KnownKeyword: 'Message contains a known spam keyword',
+  WorryWord: 'Message contains a phrase requiring review',
+  UsedOurDomain: 'Sender tried to spoof our domain - impersonation attempt',
+  SameImage: 'Same image has been posted many times recently',
+  BulkVolunteerMail: 'Bulk mail sent to multiple moderator addresses'
+}
+
+const getReadableReason = (reason) => {
+  return reasonMap[reason] || reason
+}
+
+const getReasonDetails = (msg) => {
+  if (!msg.spam_details) return ''
+  const d = msg.spam_details
+  if (d.score) return `SpamAssassin score: ${d.score} (we block at 8+)`
+  if (d.country) return `Country: ${d.country}`
+  if (d.ip && d.users_count) return `IP ${d.ip} used by ${d.users_count} different users`
+  if (d.ip && d.groups_count) return `IP ${d.ip} posted to ${d.groups_count} groups`
+  if (d.url) return `Blacklisted URL: ${d.url}`
+  if (d.keyword) return `Keyword: "${d.keyword}"`
+  if (d.groups_count) return `Posted to ${d.groups_count} groups`
+  if (d.image_count) return `Same image seen ${d.image_count} times in 24h`
+  return ''
+}
+</script>
 ```
 
 ### Whitelist Management
