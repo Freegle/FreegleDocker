@@ -402,6 +402,28 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - **Commit**: 247b42c pushed to master
 - **Verified**: Test count now shows correctly from start (e.g., "0/9" instead of "0/0")
 
+### 2026-01-26 09:35 - Test Log Truncation Fix & LogsBatchJob Unit Test Fix
+- **Status**: ✅ Complete
+- **Branch**: `feature/batch-job-logging`
+- **Issues Found**:
+  1. **Log Truncation**: CircleCI test artifacts showed "...(truncated)" hiding actual failures
+  2. **LogsBatchJob Unit Tests**: Failing with "Call to a member function getOptions() on null"
+- **Root Causes**:
+  1. `status-nuxt` API endpoints truncated logs to LAST 5000 characters, but errors appear at BEGINNING
+  2. LogsBatchJob trait called `$this->options()` which requires `$this->output` to be set (not set in unit tests)
+- **Fixes Applied**:
+  1. Removed truncation from all 4 test status endpoints (laravel, go, php, playwright)
+  2. Added `hasOutput` check before accessing `options()` and `arguments()` in LogsBatchJob trait
+- **Files Modified**:
+  - `status-nuxt/server/api/tests/laravel/status.get.ts`
+  - `status-nuxt/server/api/tests/go/status.get.ts`
+  - `status-nuxt/server/api/tests/php/status.get.ts`
+  - `status-nuxt/server/api/tests/playwright/status.get.ts`
+  - `iznik-batch/app/Traits/LogsBatchJob.php`
+- **Commits**: 7fa5e60 (truncation fix), 1365887 (LogsBatchJob fix)
+- **CI**: Pipeline #1509 - ✅ PASSED (job #1700)
+- **Key Learning**: When `status-nuxt` was introduced to replace `status/server.js`, the truncation logic was added but was counterproductive for debugging failures
+
 ### 2026-01-25 15:45 - CircleCI Progress Monitoring Fix
 - **Status**: ✅ Complete
 - **Issue**: CircleCI progress display showed "Playwright: running (0/0)" despite API returning correct progress
