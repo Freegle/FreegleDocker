@@ -41,11 +41,12 @@ trait LogsBatchJob
         $jobName = $this->getJobName();
         $startTime = microtime(true);
 
-        /* Log job start */
+        /* Log job start - check for output before accessing options/arguments (may not be set in unit tests) */
+        $hasOutput = property_exists($this, 'output') && $this->output !== null;
         $loki->logBatchJob($jobName, 'started', array_merge([
             'signature' => $this->signature ?? null,
-            'options' => $this->options(),
-            'arguments' => $this->arguments(),
+            'options' => $hasOutput ? $this->options() : [],
+            'arguments' => $hasOutput ? $this->arguments() : [],
         ], $context));
 
         try {
