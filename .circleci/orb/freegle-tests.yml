@@ -164,26 +164,6 @@ commands:
             echo "Current working directory: $(pwd)"
             ls -la secrets/
 
-      - restore_cache:
-          keys:
-            - nuxt-output-v3-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
-            - nuxt-output-v3-freegle-{{ checksum "iznik-nuxt3/package.json" }}
-            - nuxt-output-v3-freegle-
-      - restore_cache:
-          keys:
-            - nuxt-output-v3-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
-            - nuxt-output-v3-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}
-            - nuxt-output-v3-modtools-
-      - run:
-          name: Restore Nuxt build cache to build contexts
-          command: |
-            echo "=== Nuxt build cache restoration DISABLED ==="
-            echo "Cache restoration was causing stale builds - the cache key only checks"
-            echo "package.json and nuxt.config.ts, not actual source code changes."
-            echo "Builds will be slower but always fresh."
-            echo ""
-            echo "TODO: Re-enable with improved cache key that includes source checksum"
-
       - run:
           name: Build containers
           command: |
@@ -1662,40 +1642,6 @@ jobs:
       - wait-for-basic-services
 
       - wait-for-prod-container
-
-      # Extract and cache Nuxt build output AFTER containers are healthy
-      # This ensures the npm run build has completed inside the containers
-      - run:
-          name: Extract and save Nuxt build cache
-          command: |
-            echo "=== Extracting Nuxt build cache (.output) ==="
-
-            # Create cache directories
-            mkdir -p ~/nuxt-cache/freegle
-            mkdir -p ~/nuxt-cache/modtools/modtools
-
-            # Extract Freegle .output cache (the production build output)
-            if docker inspect freegle-prod-local >/dev/null 2>&1; then
-              docker cp freegle-prod-local:/app/.output ~/nuxt-cache/freegle/.output 2>/dev/null && \
-                echo "✅ Extracted Freegle .output cache ($(du -sh ~/nuxt-cache/freegle/.output | cut -f1))" || \
-                echo "ℹ️  No Freegle .output directory found in container"
-            fi
-
-            # Extract ModTools .output cache
-            if docker inspect modtools-prod-local >/dev/null 2>&1; then
-              docker cp modtools-prod-local:/app/modtools/.output ~/nuxt-cache/modtools/modtools/.output 2>/dev/null && \
-                echo "✅ Extracted ModTools .output cache ($(du -sh ~/nuxt-cache/modtools/modtools/.output | cut -f1))" || \
-                echo "ℹ️  No ModTools .output directory found"
-            fi
-
-      - save_cache:
-          key: nuxt-output-v3-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
-          paths:
-            - ~/nuxt-cache/freegle
-      - save_cache:
-          key: nuxt-output-v3-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
-          paths:
-            - ~/nuxt-cache/modtools
 
       # Wait for batch container migrations to complete BEFORE loading schema.sql
       # This prevents race conditions where schema.sql's DROP TABLE statements interfere with
