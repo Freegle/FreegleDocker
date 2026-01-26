@@ -217,4 +217,20 @@ return [
 
     // Note: App release classification (hotfix: detection) is handled directly
     // in CircleCI via the check-hotfix-promote job. See iznik-nuxt3/.circleci/config.yml
+
+    /*
+    |--------------------------------------------------------------------------
+    | Netlify SSL Certificate Upload
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for uploading renewed Let's Encrypt certificates to Netlify.
+    | Used by the ssl:netlify-upload artisan command.
+    |
+    */
+
+    'netlify' => [
+        'token' => env('NETLIFY_TOKEN', ''),
+        'site_id' => env('NETLIFY_SITE_ID', '75fa22f1-3d32-4474-a3fc-65afbd7f4f43'),
+        'cert_path' => env('LETSENCRYPT_CERT_PATH', '/etc/letsencrypt/live/ilovefreegle.org'),
+    ],
 ];
