@@ -1921,7 +1921,16 @@ jobs:
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
               GO_COMPLETED=$([ -f /tmp/go-completed ] && cat /tmp/go-completed || echo '0')
               GO_TOTAL=$([ -f /tmp/go-total ] && cat /tmp/go-total || echo '0')
-              GO_DISPLAY=$([ "$GO_STATUS" = "running" ] && echo "running ($GO_COMPLETED/$GO_TOTAL)" || echo "$GO_STATUS")
+              # Go doesn't have a pre-count, so show just completed when total is 0
+              if [ "$GO_STATUS" = "running" ]; then
+                if [ "$GO_TOTAL" -gt 0 ]; then
+                  GO_DISPLAY="running ($GO_COMPLETED/$GO_TOTAL)"
+                else
+                  GO_DISPLAY="running ($GO_COMPLETED)"
+                fi
+              else
+                GO_DISPLAY="$GO_STATUS"
+              fi
 
               PHP_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
               PHP_COMPLETED=$([ -f /tmp/php-completed ] && cat /tmp/php-completed || echo '0')
@@ -1931,7 +1940,16 @@ jobs:
               PLAYWRIGHT_STATUS=$([ -f /tmp/playwright-result ] && cat /tmp/playwright-result || echo 'running')
               PLAYWRIGHT_COMPLETED=$([ -f /tmp/playwright-completed ] && cat /tmp/playwright-completed || echo '0')
               PLAYWRIGHT_TOTAL=$([ -f /tmp/playwright-total ] && cat /tmp/playwright-total || echo '0')
-              PLAYWRIGHT_DISPLAY=$([ "$PLAYWRIGHT_STATUS" = "running" ] && echo "running ($PLAYWRIGHT_COMPLETED/$PLAYWRIGHT_TOTAL)" || echo "$PLAYWRIGHT_STATUS")
+              # Cap completed at total for display (symbol counting can double-count at end)
+              if [ "$PLAYWRIGHT_STATUS" = "running" ]; then
+                if [ "$PLAYWRIGHT_TOTAL" -gt 0 ] && [ "$PLAYWRIGHT_COMPLETED" -gt "$PLAYWRIGHT_TOTAL" ]; then
+                  PLAYWRIGHT_DISPLAY="running ($PLAYWRIGHT_TOTAL/$PLAYWRIGHT_TOTAL)"
+                else
+                  PLAYWRIGHT_DISPLAY="running ($PLAYWRIGHT_COMPLETED/$PLAYWRIGHT_TOTAL)"
+                fi
+              else
+                PLAYWRIGHT_DISPLAY="$PLAYWRIGHT_STATUS"
+              fi
 
               echo "[${elapsed_min}m] iznik-batch: $LARAVEL_DISPLAY | Go: $GO_DISPLAY | iznik-server: $PHP_DISPLAY | Playwright: $PLAYWRIGHT_DISPLAY"
 
