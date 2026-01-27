@@ -405,12 +405,26 @@ class IncomingMailService
         // Determine response from email content
         $response = $this->parseTrystResponse($email);
 
-        // Update the tryst response
-        DB::table('trysts_responses')
-            ->updateOrInsert(
-                ['trystid' => $trystId, 'userid' => $userId],
-                ['response' => $response, 'date' => now()]
-            );
+        // Update the tryst response in the correct column based on which user is responding
+        $updateColumn = null;
+        if ($tryst->user1 == $userId) {
+            $updateColumn = 'user1response';
+        } elseif ($tryst->user2 == $userId) {
+            $updateColumn = 'user2response';
+        }
+
+        if ($updateColumn !== null) {
+            DB::table('trysts')
+                ->where('id', $trystId)
+                ->update([$updateColumn => $response]);
+        } else {
+            Log::warning('Tryst response from user not in tryst', [
+                'tryst_id' => $trystId,
+                'user_id' => $userId,
+                'user1' => $tryst->user1,
+                'user2' => $tryst->user2,
+            ]);
+        }
 
         Log::info('Processed tryst response', [
             'tryst_id' => $trystId,
