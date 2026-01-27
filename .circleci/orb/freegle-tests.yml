@@ -1700,6 +1700,9 @@ jobs:
                 echo "✅ iznik-batch tests triggered successfully"
               fi
 
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/laravel-result
+
               # Poll for Laravel completion
               while true; do
                 sleep 10
@@ -1744,6 +1747,9 @@ jobs:
               else
                 echo "✅ Go tests triggered successfully"
               fi
+
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/go-result
 
               # Poll for Go completion
               while true; do
@@ -1798,6 +1804,9 @@ jobs:
                 echo "✅ PHP tests triggered successfully"
               fi
 
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/php-result
+
               # Poll for PHPUnit completion
               while true; do
                 sleep 10
@@ -1844,6 +1853,9 @@ jobs:
               else
                 echo "✅ Playwright tests triggered successfully"
               fi
+
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/playwright-result
 
               # Poll for completion
               while true; do

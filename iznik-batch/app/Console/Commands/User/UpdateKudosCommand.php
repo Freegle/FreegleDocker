@@ -4,12 +4,13 @@ namespace App\Console\Commands\User;
 
 use App\Services\UserManagementService;
 use App\Traits\GracefulShutdown;
+use App\Traits\LogsBatchJob;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 class UpdateKudosCommand extends Command
 {
-    use GracefulShutdown;
+    use GracefulShutdown, LogsBatchJob;
 
     /**
      * The name and signature of the console command.
@@ -28,15 +29,17 @@ class UpdateKudosCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        Log::info('Starting kudos update');
-        $this->info('Updating user kudos...');
+        return $this->runWithLogging(function () use ($userService) {
+            Log::info('Starting kudos update');
+            $this->info('Updating user kudos...');
 
-        $updated = $userService->updateKudos();
+            $updated = $userService->updateKudos();
 
-        $this->info("Updated kudos for {$updated} users.");
+            $this->info("Updated kudos for {$updated} users.");
 
-        Log::info('Kudos update complete', ['updated' => $updated]);
+            Log::info('Kudos update complete', ['updated' => $updated]);
 
-        return Command::SUCCESS;
+            return Command::SUCCESS;
+        });
     }
 }

@@ -5,9 +5,7 @@ export default defineEventHandler(async () => {
   return {
     status: state.status,
     message: state.message,
-    logs: state.logs.length > 5000
-      ? '...(truncated)\n' + state.logs.slice(-5000)
-      : state.logs,
+    logs: state.logs,
     progress: state.progress,
     startTime: state.startTime,
     endTime: state.endTime,
