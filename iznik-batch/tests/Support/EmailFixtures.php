@@ -125,14 +125,20 @@ trait EmailFixtures
         string $status = '5.0.0',
         string $diagnostic = 'mailbox unavailable'
     ): string {
-        $boundary = '----=_Bounce_'.uniqid();
+        $boundary = 'Bounce_'.uniqid().'/bulk2.ilovefreegle.org';
+        $messageId = '<bounce-'.uniqid().'@bulk2.ilovefreegle.org>';
+        $date = date('r');
 
         $headers = [
-            'From' => 'MAILER-DAEMON@ilovefreegle.org',
-            'To' => 'bounce-12345-67890@users.ilovefreegle.org',
+            'Received' => 'by bulk2.ilovefreegle.org (Postfix)',
+            'Date' => $date,
+            'From' => 'MAILER-DAEMON@ilovefreegle.org (Mail Delivery System)',
             'Subject' => 'Undelivered Mail Returned to Sender',
+            'To' => 'bounce-12345-67890@users.ilovefreegle.org',
             'Auto-Submitted' => 'auto-replied',
+            'MIME-Version' => '1.0',
             'Content-Type' => "multipart/report; report-type=delivery-status;\r\n\tboundary=\"{$boundary}\"",
+            'Message-Id' => $messageId,
         ];
 
         $headerLines = [];
@@ -140,20 +146,29 @@ trait EmailFixtures
             $headerLines[] = "{$name}: {$value}";
         }
 
-        $notification = "This is the mail system.\r\n\r\n".
-            "Your message could not be delivered.\r\n\r\n".
-            "<{$originalRecipient}>: {$diagnostic}";
+        $notification = "This is the mail system at host bulk2.ilovefreegle.org.\r\n\r\n".
+            "I'm sorry to have to inform you that your message could not\r\n".
+            "be delivered to one or more recipients.\r\n\r\n".
+            "                   The mail system\r\n\r\n".
+            "<{$originalRecipient}>: host mx.example.com[192.0.2.1] said: {$diagnostic}";
 
-        $deliveryStatus = "Reporting-MTA: dns; bulk2.ilovefreegle.org\r\n\r\n".
+        $deliveryStatus = "Reporting-MTA: dns; bulk2.ilovefreegle.org\r\n".
+            "X-Postfix-Queue-ID: ABCD1234\r\n".
+            "Arrival-Date: {$date}\r\n\r\n".
             "Final-Recipient: rfc822; {$originalRecipient}\r\n".
+            "Original-Recipient: rfc822;{$originalRecipient}\r\n".
             "Action: failed\r\n".
             "Status: {$status}\r\n".
+            "Remote-MTA: dns; mx.example.com\r\n".
             "Diagnostic-Code: smtp; {$diagnostic}";
 
-        $body = "--{$boundary}\r\n".
+        $body = "This is a MIME-encapsulated message.\r\n\r\n".
+            "--{$boundary}\r\n".
+            "Content-Description: Notification\r\n".
             "Content-Type: text/plain; charset=us-ascii\r\n\r\n".
             "{$notification}\r\n\r\n".
             "--{$boundary}\r\n".
+            "Content-Description: Delivery report\r\n".
             "Content-Type: message/delivery-status\r\n\r\n".
             "{$deliveryStatus}\r\n\r\n".
             "--{$boundary}--";

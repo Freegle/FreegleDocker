@@ -168,6 +168,16 @@ class MailParserServiceTest extends TestCase
         $this->assertTrue($parsed->isPermanentBounce());
     }
 
+    public function test_dynamic_bounce_extracts_recipient(): void
+    {
+        $expectedEmail = 'bounced-user-'.uniqid().'@example.com';
+        $rawEmail = $this->createBounceEmail($expectedEmail, '5.1.1', 'User unknown');
+
+        $parsed = $this->parser->parse($rawEmail, 'MAILER-DAEMON@test.com', 'bounce-12345@users.ilovefreegle.org');
+
+        $this->assertEquals($expectedEmail, $parsed->bounceRecipient);
+    }
+
     public function test_temporary_bounce_starts_with_4(): void
     {
         $rawEmail = $this->createBounceEmail('test@example.com', '4.2.2', 'Mailbox full');
