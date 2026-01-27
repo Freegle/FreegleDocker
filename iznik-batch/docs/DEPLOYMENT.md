@@ -2,6 +2,36 @@
 
 This guide explains how to deploy iznik-batch with the worker pool system on a production server, replacing a "naked" (non-containerized) deployment.
 
+## Deployment Options
+
+There are two ways to deploy iznik-batch:
+
+### Option 1: FreegleDocker Integration (Recommended for development/CI)
+
+Use the `batch-prod` service in FreegleDocker's `docker-compose.yml`. This:
+- Integrates with other Freegle services (Loki, monitoring)
+- Uses `.env.background` for configuration
+- Shares volumes with other Freegle containers
+- Is what CircleCI and local development use
+
+To enable: Set `COMPOSE_PROFILES=monitoring,production` in FreegleDocker's `.env`
+
+### Option 2: Standalone Deployment (For isolated production servers)
+
+Use the standalone `docker-compose.batch.yml` described in this guide. This:
+- Runs completely independently of FreegleDocker
+- Includes its own git-sync for automatic updates
+- Has dedicated Redis and MJML containers
+- Is suitable for production servers that only run batch processing
+
+**Note**: If migrating from bulk3-internal, the FreegleDocker `batch-prod` service is the recommended replacement. See FreegleDocker's CLAUDE.md for migration instructions.
+
+---
+
+## Standalone Deployment Guide
+
+The following sections describe the standalone deployment option.
+
 ## Overview
 
 The worker pool deployment includes:
