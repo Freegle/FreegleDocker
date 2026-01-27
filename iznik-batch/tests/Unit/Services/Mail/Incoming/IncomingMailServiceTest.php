@@ -36,16 +36,21 @@ class IncomingMailServiceTest extends TestCase
 
     public function test_routes_digestoff_to_system(): void
     {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
         $email = $this->createMinimalEmail([
-            'From' => 'user@example.com',
-            'To' => 'digestoff-12345-67890@users.ilovefreegle.org',
+            'From' => $userEmail,
+            'To' => "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
             'Subject' => 'Turn off digest',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
-            'user@example.com',
-            'digestoff-12345-67890@users.ilovefreegle.org'
+            $userEmail,
+            "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org"
         );
 
         $result = $this->service->route($parsed);
@@ -53,23 +58,67 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
-    public function test_routes_readreceipt_to_receipt(): void
+    public function test_routes_digestoff_to_dropped_when_user_not_found(): void
     {
         $email = $this->createMinimalEmail([
             'From' => 'user@example.com',
-            'To' => 'readreceipt-111-222-333@users.ilovefreegle.org',
+            'To' => 'digestoff-99999999-88888888@users.ilovefreegle.org',
+            'Subject' => 'Turn off digest',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            'user@example.com',
+            'digestoff-99999999-88888888@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_routes_readreceipt_to_receipt(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+        $msg = $this->createTestChatMessage($chat, $user2, ['message' => 'Test message']);
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "readreceipt-{$chat->id}-{$user1->id}-{$msg->id}@users.ilovefreegle.org",
+            'Subject' => 'Read receipt',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "readreceipt-{$chat->id}-{$user1->id}-{$msg->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::RECEIPT, $result);
+    }
+
+    public function test_routes_readreceipt_to_dropped_when_chat_not_found(): void
+    {
+        $email = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'To' => 'readreceipt-99999999-88888888-77777777@users.ilovefreegle.org',
             'Subject' => 'Read receipt',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
             'user@example.com',
-            'readreceipt-111-222-333@users.ilovefreegle.org'
+            'readreceipt-99999999-88888888-77777777@users.ilovefreegle.org'
         );
 
         $result = $this->service->route($parsed);
 
-        $this->assertEquals(RoutingResult::RECEIPT, $result);
+        $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
     public function test_routes_subscribe_to_system(): void
@@ -96,16 +145,19 @@ class IncomingMailServiceTest extends TestCase
     public function test_routes_unsubscribe_to_system(): void
     {
         $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $this->createMembership($user, $group);
+        $memberEmail = $user->emails->first()->email;
 
         $email = $this->createMinimalEmail([
-            'From' => 'member@example.com',
+            'From' => $memberEmail,
             'To' => $group->nameshort.'-unsubscribe@groups.ilovefreegle.org',
             'Subject' => 'Unsubscribe',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
-            'member@example.com',
+            $memberEmail,
             $group->nameshort.'-unsubscribe@groups.ilovefreegle.org'
         );
 
@@ -114,18 +166,52 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
+    public function test_routes_unsubscribe_to_dropped_when_not_member(): void
+    {
+        $group = $this->createTestGroup();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'unknown@example.com',
+            'To' => $group->nameshort.'-unsubscribe@groups.ilovefreegle.org',
+            'Subject' => 'Unsubscribe',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            'unknown@example.com',
+            $group->nameshort.'-unsubscribe@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
     public function test_routes_oneclick_unsubscribe_to_system(): void
     {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('unsub')]);
+        $userEmail = $user->emails->first()->email;
+
+        // Create a Link login record with a key for the user
+        $key = 'validkey123';
+        DB::table('users_logins')->insert([
+            'userid' => $user->id,
+            'type' => 'Link',
+            'credentials' => $key,
+            'added' => now(),
+            'lastaccess' => now(),
+        ]);
+
         $email = $this->createMinimalEmail([
-            'From' => 'user@example.com',
-            'To' => 'unsubscribe-12345-abc123-digest@users.ilovefreegle.org',
+            'From' => $userEmail,
+            'To' => "unsubscribe-{$user->id}-{$key}-digest@users.ilovefreegle.org",
             'Subject' => 'One-click unsubscribe',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
-            'user@example.com',
-            'unsubscribe-12345-abc123-digest@users.ilovefreegle.org'
+            $userEmail,
+            "unsubscribe-{$user->id}-{$key}-digest@users.ilovefreegle.org"
         );
 
         $result = $this->service->route($parsed);
@@ -133,18 +219,95 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
+    public function test_routes_oneclick_unsubscribe_to_dropped_with_invalid_key(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('unsub')]);
+        $userEmail = $user->emails->first()->email;
+
+        // Create a Link login record with a different key
+        DB::table('users_logins')->insert([
+            'userid' => $user->id,
+            'type' => 'Link',
+            'credentials' => 'realkey123',
+            'added' => now(),
+            'lastaccess' => now(),
+        ]);
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "unsubscribe-{$user->id}-wrongkey-digest@users.ilovefreegle.org",
+            'Subject' => 'One-click unsubscribe',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "unsubscribe-{$user->id}-wrongkey-digest@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
     public function test_routes_eventsoff_to_system(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "eventsoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
+            'Subject' => 'Turn off events',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "eventsoff-{$user->id}-{$group->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+    }
+
+    public function test_routes_eventsoff_to_dropped_when_not_member(): void
     {
         $email = $this->createMinimalEmail([
             'From' => 'user@example.com',
-            'To' => 'eventsoff-12345-67890@users.ilovefreegle.org',
+            'To' => 'eventsoff-99999999-88888888@users.ilovefreegle.org',
             'Subject' => 'Turn off events',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
             'user@example.com',
-            'eventsoff-12345-67890@users.ilovefreegle.org'
+            'eventsoff-99999999-88888888@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_routes_newslettersoff_to_system(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "newslettersoff-{$user->id}@users.ilovefreegle.org",
+            'Subject' => 'Turn off newsletters',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "newslettersoff-{$user->id}@users.ilovefreegle.org"
         );
 
         $result = $this->service->route($parsed);
@@ -152,18 +315,40 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
-    public function test_routes_newslettersoff_to_system(): void
+    public function test_routes_newslettersoff_to_dropped_when_user_not_found(): void
     {
         $email = $this->createMinimalEmail([
             'From' => 'user@example.com',
-            'To' => 'newslettersoff-12345@users.ilovefreegle.org',
+            'To' => 'newslettersoff-99999999@users.ilovefreegle.org',
             'Subject' => 'Turn off newsletters',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
             'user@example.com',
-            'newslettersoff-12345@users.ilovefreegle.org'
+            'newslettersoff-99999999@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_routes_relevantoff_to_system(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "relevantoff-{$user->id}@users.ilovefreegle.org",
+            'Subject' => 'Turn off relevant',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "relevantoff-{$user->id}@users.ilovefreegle.org"
         );
 
         $result = $this->service->route($parsed);
@@ -171,18 +356,42 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
-    public function test_routes_relevantoff_to_system(): void
+    public function test_routes_relevantoff_to_dropped_when_user_not_found(): void
     {
         $email = $this->createMinimalEmail([
             'From' => 'user@example.com',
-            'To' => 'relevantoff-12345@users.ilovefreegle.org',
+            'To' => 'relevantoff-99999999@users.ilovefreegle.org',
             'Subject' => 'Turn off relevant',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
             'user@example.com',
-            'relevantoff-12345@users.ilovefreegle.org'
+            'relevantoff-99999999@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_routes_volunteeringoff_to_system(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "volunteeringoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
+            'Subject' => 'Turn off volunteering',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "volunteeringoff-{$user->id}-{$group->id}@users.ilovefreegle.org"
         );
 
         $result = $this->service->route($parsed);
@@ -190,18 +399,40 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
-    public function test_routes_volunteeringoff_to_system(): void
+    public function test_routes_volunteeringoff_to_dropped_when_not_member(): void
     {
         $email = $this->createMinimalEmail([
             'From' => 'user@example.com',
-            'To' => 'volunteeringoff-12345-67890@users.ilovefreegle.org',
+            'To' => 'volunteeringoff-99999999-88888888@users.ilovefreegle.org',
             'Subject' => 'Turn off volunteering',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
             'user@example.com',
-            'volunteeringoff-12345-67890@users.ilovefreegle.org'
+            'volunteeringoff-99999999-88888888@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_routes_notificationmailsoff_to_system(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "notificationmailsoff-{$user->id}@users.ilovefreegle.org",
+            'Subject' => 'Turn off notification mails',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "notificationmailsoff-{$user->id}@users.ilovefreegle.org"
         );
 
         $result = $this->service->route($parsed);
@@ -209,23 +440,23 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
-    public function test_routes_notificationmailsoff_to_system(): void
+    public function test_routes_notificationmailsoff_to_dropped_when_user_not_found(): void
     {
         $email = $this->createMinimalEmail([
             'From' => 'user@example.com',
-            'To' => 'notificationmailsoff-12345@users.ilovefreegle.org',
+            'To' => 'notificationmailsoff-99999999@users.ilovefreegle.org',
             'Subject' => 'Turn off notification mails',
         ]);
 
         $parsed = $this->parser->parse(
             $email,
             'user@example.com',
-            'notificationmailsoff-12345@users.ilovefreegle.org'
+            'notificationmailsoff-99999999@users.ilovefreegle.org'
         );
 
         $result = $this->service->route($parsed);
 
-        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+        $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
     public function test_routes_fbl_to_system(): void
@@ -649,9 +880,16 @@ class IncomingMailServiceTest extends TestCase
             'lastlocation' => $this->createLocation(51.5, -0.1),
         ]);
 
+        // Add worry word to database
+        DB::table('worrywords')->insert([
+            'keyword' => 'kitten',
+            'type' => 'Review',
+            'added' => now(),
+        ]);
+
         $userEmail = $user->emails->first()->email;
 
-        // Use a worry word in the subject (from WorryWords.php)
+        // Use a worry word in the subject
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
             'To' => $group->nameshort.'@groups.ilovefreegle.org',
@@ -796,9 +1034,39 @@ class IncomingMailServiceTest extends TestCase
 
     public function test_routes_tryst_response_to_tryst(): void
     {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('trystuser')]);
+        $userEmail = $user->emails->first()->email;
+
+        // Create a tryst record
+        $trystId = DB::table('trysts')->insertGetId([
+            'chatid' => 1,  // Doesn't need to be real for this test
+            'date' => now()->addDay(),
+            'added' => now(),
+        ]);
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "handover-{$trystId}-{$user->id}@users.ilovefreegle.org",
+            'Subject' => 'Accepted: Pickup at 2pm',
+            'Content-Type' => 'text/calendar; method=REPLY',
+        ], "BEGIN:VCALENDAR\nMETHOD:REPLY\nEND:VCALENDAR");
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "handover-{$trystId}-{$user->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TRYST, $result);
+    }
+
+    public function test_routes_tryst_response_to_dropped_when_not_found(): void
+    {
         $email = $this->createMinimalEmail([
             'From' => 'user@example.com',
-            'To' => 'handover-12345-67890@users.ilovefreegle.org',
+            'To' => 'handover-99999999-88888888@users.ilovefreegle.org',
             'Subject' => 'Accepted: Pickup at 2pm',
             'Content-Type' => 'text/calendar; method=REPLY',
         ], "BEGIN:VCALENDAR\nMETHOD:REPLY\nEND:VCALENDAR");
@@ -806,12 +1074,12 @@ class IncomingMailServiceTest extends TestCase
         $parsed = $this->parser->parse(
             $email,
             'user@example.com',
-            'handover-12345-67890@users.ilovefreegle.org'
+            'handover-99999999-88888888@users.ilovefreegle.org'
         );
 
         $result = $this->service->route($parsed);
 
-        $this->assertEquals(RoutingResult::TRYST, $result);
+        $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
     // ========================================

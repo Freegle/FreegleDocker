@@ -291,15 +291,20 @@ class IncomingMailCommandTest extends TestCase
 
     public function test_outputs_routing_result(): void
     {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
         $rawEmail = $this->createMinimalEmail([
-            'From' => 'user@example.com',
-            'To' => 'digestoff-12345-67890@users.ilovefreegle.org',
+            'From' => $userEmail,
+            'To' => "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
             'Subject' => 'Turn off digest',
         ]);
 
         $this->artisan('mail:incoming', [
-            'sender' => 'user@example.com',
-            'recipient' => 'digestoff-12345-67890@users.ilovefreegle.org',
+            'sender' => $userEmail,
+            'recipient' => "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
             '--stdin-content' => $rawEmail,
         ])->expectsOutput('ToSystem')
             ->assertSuccessful();
@@ -307,15 +312,20 @@ class IncomingMailCommandTest extends TestCase
 
     public function test_verbose_mode_shows_details(): void
     {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
         $rawEmail = $this->createMinimalEmail([
-            'From' => 'user@example.com',
-            'To' => 'digestoff-12345-67890@users.ilovefreegle.org',
+            'From' => $userEmail,
+            'To' => "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
             'Subject' => 'Turn off digest',
         ]);
 
         $this->artisan('mail:incoming', [
-            'sender' => 'user@example.com',
-            'recipient' => 'digestoff-12345-67890@users.ilovefreegle.org',
+            'sender' => $userEmail,
+            'recipient' => "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
             '--stdin-content' => $rawEmail,
             '-v' => true,
         ])->expectsOutputToContain('Turn off digest')

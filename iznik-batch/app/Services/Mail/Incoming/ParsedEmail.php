@@ -273,7 +273,9 @@ class ParsedEmail
         }
 
         // Check for TN-specific domain in envelope-from
-        return str_contains($this->envelopeFrom, 'trashnothing.com');
+        $tnDomain = config('freegle.mail.trashnothing_domain');
+
+        return str_contains($this->envelopeFrom, $tnDomain);
     }
 
     /**

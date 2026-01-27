@@ -228,8 +228,9 @@ class MailParserService
         $localPart = $parts[0];
         $domain = $parts[1];
 
-        // Only process groups.ilovefreegle.org addresses for group routing
-        if ($domain !== 'groups.ilovefreegle.org') {
+        // Only process group domain addresses for group routing
+        $groupDomain = config('freegle.mail.group_domain');
+        if ($domain !== $groupDomain) {
             return $result;
         }
 
@@ -384,8 +385,9 @@ class MailParserService
         $localPart = $parts[0];
         $domain = $parts[1];
 
-        // Must be users.ilovefreegle.org domain
-        if ($domain !== 'users.ilovefreegle.org') {
+        // Must be user domain
+        $userDomain = config('freegle.mail.user_domain');
+        if ($domain !== $userDomain) {
             return $result;
         }
 
@@ -432,8 +434,9 @@ class MailParserService
         $localPart = $parts[0];
         $domain = $parts[1];
 
-        // Must be users.ilovefreegle.org domain
-        if ($domain !== 'users.ilovefreegle.org') {
+        // Must be user domain
+        $userDomain = config('freegle.mail.user_domain');
+        if ($domain !== $userDomain) {
             return $result;
         }
 
