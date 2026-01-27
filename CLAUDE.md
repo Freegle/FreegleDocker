@@ -370,6 +370,57 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-27 - Incoming Email Plan TLS and Domain Documentation
+- **Status**: ✅ Complete
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker)
+- **Plan File**: `plans/active/incoming-email-to-docker.md`
+- **Updates Made**:
+  1. **Expanded TLS Section** - Added comprehensive certbot strategy:
+     - Why certbot runs on host (not in container): security, simplicity, best practice
+     - Certificate renewal: post-renewal hook to `docker exec postfix reload`
+     - Only `mail.ilovefreegle.org` needs cert (SMTP hostname), not routing domains
+     - Note that current Exim self-signed is fine for opportunistic TLS
+  2. **Email Domains Table** - Documented all 4 domains with purpose:
+     - `groups.ilovefreegle.org` (GROUP_DOMAIN) - group reply addresses
+     - `users.ilovefreegle.org` (USER_DOMAIN) - user notifications, email commands
+     - `user.trashnothing.com` (hardcoded) - Trash Nothing integration
+     - `ilovefreegle.org` (base) - catch-all for legacy/admin addresses
+- **Research Completed**:
+  - Certbot in Docker best practices (host-based renewal with read-only mounts)
+  - Security implications of running certbot inside containers (elevated permissions needed)
+  - Email domain constants in iznik-server/install/iznik.conf.php
+- **Next**: Plan ready for implementation
+
+### 2026-01-26 22:30 - Fixed CI Progress Display and localStorage State Leakage
+- **Status**: ✅ Complete
+- **Branch**: master
+- **Issues Fixed**:
+  1. **localStorage state leakage** - `loggedInEver` persisting between Playwright test runs
+     - Root cause: Auth store's `logout()` preserves `loggedInEver` across `$reset()`
+     - Fix: Clear localStorage AFTER Pinia modifications (not before), explicitly clear auth fields
+     - Commits: 4a15a277 (iznik-nuxt3), pushed to master
+  2. **Go progress shows (53/0)** - No total count for Go tests
+     - Fix: When total is 0, show just completed count e.g., "running (53)" instead of "(53/0)"
+  3. **Playwright shows (79/75)** - Symbol counting double-counts at test end
+     - Fix: Cap displayed completed at total when total > 0
+- **Orb Published**: v1.1.152 with improved progress display
+- **CI Result**: Pipeline 1525 PASSED - all tests pass with localStorage fix
+- **Removed**: Disabled caching code from orb (v1.1.151) - was not in use
+
+### 2026-01-26 17:15 - Fixed Playwright Test LoginModal Handling
+- **Status**: ✅ Complete - CI PASSED
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Issue**: Playwright tests failing due to LoginModal appearing in "Welcome back" mode instead of "Join" mode
+- **Root Cause**: `loggedInEver` state persists across test runs, causing modal to show wrong variant
+- **Fix Applied** (commit 2683729d):
+  - Updated `dismissLoginModalIfPresent` to match both "Join the Reuse Revolution" AND "Welcome back" text
+  - Updated `clickSendAndWait` to race between welcome modal, login modal, and navigation
+  - Added diagnostic logging for debugging registration failures
+- **CI Result**: Pipeline 1522, Job 1713 - **ALL TESTS PASSED**
+  - Playwright: 75 tests, 0 failures, 6 skipped
+  - Full CI duration: ~35 minutes
+- **Key Learning**: Test helpers need to handle multiple UI states, not just the happy path
+
 ### 2026-01-26 - Incoming Email Migration Plan Major Update
 - **Status**: ✅ Plan updated based on detailed review
 - **Branch**: `feature/incoming-email-migration` (FreegleDocker)
@@ -583,39 +634,4 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - **Verified**: Debug button opens modal, shows empty state correctly, legend displays
 - **Commit**: 51dcc765 pushed to feature/mcp-log-analysis
 
-### 2026-01-18 - services.php Corruption Fix (CircleCI)
-- **Status**: Fix pushed, monitoring CI
-- **Root Cause Analysis**:
-  - **CI vs Production difference identified**: Production generates services.php once at deploy time, then only reads it. CI has supervisor starting multiple workers simultaneously.
-  - **Actual cause**: Supervisor launches scheduler, 2 queue workers, and mail spooler - all bootstrap Laravel at startup. If services.php needs regeneration (e.g., after migrate:fresh), multiple processes write to it concurrently → corruption (0 bytes).
-  - **Reference**: testbench issue #202 documents this as a testing-specific issue.
-- **Solution**:
-  - Added `CI=${CI:-false}` env var passthrough to batch container in docker-compose.yml
-  - In CI mode, entrypoint.sh skips supervisor entirely (`exec sleep infinity`)
-  - Tests don't need background workers - they run synchronously
-  - Local dev: supervisor runs normally, stopped by status API before tests
-- **Removed Defensive Code** (-268 lines):
-  - services.php validation/repair in entrypoint.sh
-  - View timestamp checking hack in TestCase.php
-  - Bootstrap cache validation/repair in server.js
-  - inotify monitoring for bootstrap cache corruption
-- **Commits**: 4e61f25 pushed to master
-- **Next**: Monitor CircleCI run at https://app.circleci.com/pipelines/github/Freegle/FreegleDocker
-- **Blockers**: None
-- **Key Principle**: Before making any fix, understand the difference between CircleCI and a live server. This was a testing-specific race condition, not a production issue.
-
-### 2026-01-18 - AI Decline on Edit (Issue #23)
-- **Status**: All tasks ✅ Complete, PR created, waiting for CI
-- **Completed**:
-  - Created `feature/ai-decline-on-edit` branch in iznik-server
-  - TDD: Wrote failing tests first, verified they failed for expected reason
-  - Modified `Message::replaceAttachments()` to record AI decline when AI attachment is removed
-  - Uses INSERT IGNORE into `messages_ai_declined` table
-  - All local tests pass (2 new tests)
-- **PR**: https://github.com/Freegle/iznik-server/pull/42
-- **Next**: Wait for CircleCI
-- **Blockers**: None
-- **Key Decisions**:
-  - Used strict `=== TRUE` comparison for AI flag check
-  - Same INSERT IGNORE pattern as existing code in message.php:706
 
