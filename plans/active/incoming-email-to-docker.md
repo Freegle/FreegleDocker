@@ -966,6 +966,7 @@ Update MX records to point directly to Postfix. Disable Exim forwarding.
 - [ ] Implement `mail:incoming` command
 - [ ] Implement `MailParserService`
 - [ ] Set up Loki logging channel
+- [ ] Update architecture documentation (see Documentation Updates below)
 
 ### Phase B: Bounce Processing (Week 3-4)
 - [ ] Port `Bounce.php` to Laravel `BounceService`
@@ -1055,6 +1056,31 @@ GROUP_DOMAIN=groups.ilovefreegle.org
 # Mail archiving
 MAILPIT_ARCHIVE_ENABLED=true
 ```
+
+---
+
+## Part 13: Documentation Updates
+
+The following documentation must be updated as part of this migration:
+
+### Architecture Documentation
+- [ ] **`ARCHITECTURE.md`** - Add `postfix-incoming` container to mermaid diagram
+  - Add to "Infrastructure" subgraph
+  - Show data flow: `postfix-incoming → batch → percona`
+  - Add to Container Groups table
+- [ ] **`README.md`** - Add postfix-incoming to services list, update mailpit description
+
+### Configuration Documentation
+- [ ] **`docker-compose.yml`** - Inline comments explaining postfix-incoming configuration
+- [ ] **`.env.example`** - Add new environment variables (MAIL_INCOMING_*, domains)
+
+### Migration Documentation
+- [ ] **`iznik-batch/EMAIL-MIGRATION-GUIDE.md`** - Document incoming mail migration lessons
+- [ ] **`iznik-server/MIGRATIONS.md`** - Note code retirement timeline
+
+### Operational Documentation
+- [ ] **`CLAUDE.md`** - Update session log format, add incoming mail debugging tips
+- [ ] **Yesterday/README.md** - Note incoming mail handling differences
 
 ---
 
