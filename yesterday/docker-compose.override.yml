@@ -288,7 +288,8 @@ volumes:
     # with production backup data and should not be recreated by Docker
     external: true
   loki-data:
-    # Mark as external - this volume is populated by the restore script
-    # with Loki backup data for historical log access
-    external: true
-    name: loki-data
+    # NOT external - Docker creates this automatically if it doesn't exist
+    # The restore script will populate it with historical logs if available,
+    # but Loki can start with an empty volume (no historical logs)
+    # This prevents "external volume not found" errors if restore fails early
+    driver: local

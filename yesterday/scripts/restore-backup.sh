@@ -405,6 +405,21 @@ else
 fi
 
 echo ""
+echo "=========================================="
+echo "Pre-flight volume check..."
+echo "=========================================="
+# Ensure all required volumes exist before starting containers
+# This prevents "external volume not found" errors
+for vol in freegle_db loki-data; do
+    if ! docker volume inspect "$vol" >/dev/null 2>&1; then
+        echo "Creating missing volume: $vol"
+        docker volume create "$vol"
+    else
+        echo "✅ Volume exists: $vol"
+    fi
+done
+
+echo ""
 echo "Starting all Docker containers..."
 update_status "starting" "Starting containers..."
 docker compose up -d
