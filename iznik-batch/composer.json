@@ -11,7 +11,8 @@
         "laravel/tinker": "^2.10.1",
         "sentry/sentry-laravel": "^4.20",
         "simple-as-fuck/laravel-lock": "^0.4.0",
-        "spatie/mjml-php": "^1.2"
+        "spatie/mjml-php": "^1.2",
+        "zbateson/mail-mime-parser": "^3.0"
     },
     "require-dev": {
         "brianium/paratest": "^7.8",
