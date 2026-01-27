@@ -370,6 +370,32 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-27 - Incoming Email Migration Phase A Self-Review Complete
+- **Status**: ✅ Complete (845 tests passing)
+- **Branch**: `feature/incoming-email-migration` (iznik-batch submodule)
+- **Goal**: Self-review and fix all code quality issues identified in Phase A
+- **Tasks Completed (9 total)**:
+  1. ✅ Fixed unused constructor dependency in IncomingMailService
+  2. ✅ Fixed isSelfSent check against tests
+  3. ✅ Fixed latestmessage type (string 'User2User' vs ChatRoom::TYPE_USER2USER)
+  4. ✅ Fixed ChatMessage::TYPE_DEFAULT constant (was TYPE_INTERESTED)
+  5. ✅ Added proper return codes for all handlers (no more exceptions)
+  6. ✅ Reviewed worry words against iznik-server
+  7. ✅ Fixed hardcoded domain names - using config constants (freegle.mail.*)
+  8. ✅ Implemented all TODOs: FBL processing, ReplyTo chat, Volunteers message, TN secret validation, direct mail routing
+  9. ✅ Fixed tests to use real database records (10 tests updated with proper fixtures)
+- **Config Changes** (`config/freegle.php`):
+  - Added `trashnothing_domain` - TN domain detection
+  - Added `trashnothing_secret` - TN mail authentication
+- **Helper Methods Added** (`IncomingMailService.php`):
+  - `getOrCreateUserChat()` - Find/create User2User chat
+  - `getOrCreateUser2ModChat()` - Find/create User2Mod chat
+- **Test Improvements**:
+  - All tests now use `createTestUser()`, `createTestGroup()`, `createMembership()`
+  - Added negative test cases (e.g., "when user not found" → DROPPED)
+  - Tests: 835 → 845 (+10 edge case tests)
+- **Key Learning**: Tests using placeholder IDs fail silently with DROPPED result - always verify tests fail for the right reason first
+
 ### 2026-01-27 - Incoming Email Plan TLS and Domain Documentation
 - **Status**: ✅ Complete
 - **Branch**: `feature/incoming-email-migration` (FreegleDocker)
