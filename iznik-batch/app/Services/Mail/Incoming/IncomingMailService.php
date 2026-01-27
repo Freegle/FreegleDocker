@@ -340,7 +340,7 @@ class IncomingMailService
         DB::table('chat_roster')
             ->updateOrInsert(
                 ['chatid' => $chatId, 'userid' => $userId],
-                ['lastmsgseen' => $msgId, 'lastseen' => now()]
+                ['lastmsgseen' => $msgId, 'date' => now()]
             );
 
         // For user-to-user chats, mark message as seen by all

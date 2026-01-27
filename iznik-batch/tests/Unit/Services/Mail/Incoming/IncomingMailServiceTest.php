@@ -884,7 +884,6 @@ class IncomingMailServiceTest extends TestCase
         DB::table('worrywords')->insert([
             'keyword' => 'kitten',
             'type' => 'Review',
-            'added' => now(),
         ]);
 
         $userEmail = $user->emails->first()->email;
@@ -1037,11 +1036,14 @@ class IncomingMailServiceTest extends TestCase
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('trystuser')]);
         $userEmail = $user->emails->first()->email;
 
+        // Create a second user for the tryst
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('trystuser2')]);
+
         // Create a tryst record
         $trystId = DB::table('trysts')->insertGetId([
-            'chatid' => 1,  // Doesn't need to be real for this test
-            'date' => now()->addDay(),
-            'added' => now(),
+            'user1' => $user->id,
+            'user2' => $user2->id,
+            'arrangedfor' => now()->addDay(),
         ]);
 
         $email = $this->createMinimalEmail([
