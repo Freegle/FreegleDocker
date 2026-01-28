@@ -36,6 +36,37 @@ class IncomingMailService
     // No constructor dependencies - parsing is done by the command before routing
 
     /**
+     * Route a parsed email in dry-run mode (no database changes).
+     *
+     * This method wraps the normal routing logic in a transaction that
+     * always rolls back. All routing decisions are made (including DB reads)
+     * but no changes persist. Used for shadow testing the new code against
+     * legacy archives.
+     *
+     * @param  ParsedEmail  $email  The parsed email to route
+     * @return RoutingResult The routing outcome (what WOULD have happened)
+     */
+    public function routeDryRun(ParsedEmail $email): RoutingResult
+    {
+        $result = null;
+
+        try {
+            DB::beginTransaction();
+
+            // Run full routing logic
+            $result = $this->route($email);
+
+            // Always rollback - we don't want to persist any changes
+            DB::rollBack();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+
+        return $result;
+    }
+
+    /**
      * Route a parsed email to the appropriate handler.
      *
      * @param  ParsedEmail  $email  The parsed email to route

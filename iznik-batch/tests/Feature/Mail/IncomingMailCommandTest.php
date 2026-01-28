@@ -357,6 +357,107 @@ class IncomingMailCommandTest extends TestCase
     }
 
     // ========================================
+    // Transient Error Handling Tests
+    // ========================================
+
+    public function test_returns_tempfail_on_connection_refused(): void
+    {
+        // Mock IncomingMailService to throw a connection error
+        $this->mock(\App\Services\Mail\Incoming\IncomingMailService::class)
+            ->shouldReceive('route')
+            ->andThrow(new \PDOException('Connection refused', 2002));
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'To' => 'test@groups.ilovefreegle.org',
+            'Subject' => 'Test',
+        ]);
+
+        $this->artisan('mail:incoming', [
+            'sender' => 'user@example.com',
+            'recipient' => 'test@groups.ilovefreegle.org',
+            '--stdin-content' => $rawEmail,
+        ])->assertExitCode(75);  // EX_TEMPFAIL
+    }
+
+    public function test_returns_tempfail_on_too_many_connections(): void
+    {
+        $this->mock(\App\Services\Mail\Incoming\IncomingMailService::class)
+            ->shouldReceive('route')
+            ->andThrow(new \PDOException('Too many connections', 1040));
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'To' => 'test@groups.ilovefreegle.org',
+            'Subject' => 'Test',
+        ]);
+
+        $this->artisan('mail:incoming', [
+            'sender' => 'user@example.com',
+            'recipient' => 'test@groups.ilovefreegle.org',
+            '--stdin-content' => $rawEmail,
+        ])->assertExitCode(75);  // EX_TEMPFAIL
+    }
+
+    public function test_returns_tempfail_on_deadlock(): void
+    {
+        $this->mock(\App\Services\Mail\Incoming\IncomingMailService::class)
+            ->shouldReceive('route')
+            ->andThrow(new \PDOException('Deadlock found when trying to get lock', 1213));
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'To' => 'test@groups.ilovefreegle.org',
+            'Subject' => 'Test',
+        ]);
+
+        $this->artisan('mail:incoming', [
+            'sender' => 'user@example.com',
+            'recipient' => 'test@groups.ilovefreegle.org',
+            '--stdin-content' => $rawEmail,
+        ])->assertExitCode(75);  // EX_TEMPFAIL
+    }
+
+    public function test_returns_tempfail_on_connection_timed_out(): void
+    {
+        $this->mock(\App\Services\Mail\Incoming\IncomingMailService::class)
+            ->shouldReceive('route')
+            ->andThrow(new \Exception('Connection timed out'));
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'To' => 'test@groups.ilovefreegle.org',
+            'Subject' => 'Test',
+        ]);
+
+        $this->artisan('mail:incoming', [
+            'sender' => 'user@example.com',
+            'recipient' => 'test@groups.ilovefreegle.org',
+            '--stdin-content' => $rawEmail,
+        ])->assertExitCode(75);  // EX_TEMPFAIL
+    }
+
+    public function test_returns_success_on_non_transient_error(): void
+    {
+        // Non-transient errors should return success to prevent endless retries
+        $this->mock(\App\Services\Mail\Incoming\IncomingMailService::class)
+            ->shouldReceive('route')
+            ->andThrow(new \Exception('Some random error'));
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'To' => 'test@groups.ilovefreegle.org',
+            'Subject' => 'Test',
+        ]);
+
+        $this->artisan('mail:incoming', [
+            'sender' => 'user@example.com',
+            'recipient' => 'test@groups.ilovefreegle.org',
+            '--stdin-content' => $rawEmail,
+        ])->assertExitCode(0);  // EX_OK - drop message to prevent retry loop
+    }
+
+    // ========================================
     // Helper Methods
     // ========================================
 
