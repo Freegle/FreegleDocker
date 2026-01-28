@@ -1,9 +1,25 @@
 # Incoming Email Migration to Docker (Consolidated Plan)
 
-**Status**: Planning
+**Status**: Shadow Mode Validation (Phase A in progress)
 **Branches**:
 - FreegleDocker: `feature/incoming-email-migration` (includes iznik-batch)
-- iznik-server: `feature/incoming-email-migration` (for retirement phase only - code removal happens last)
+- iznik-server: `feature/incoming-email-migration` - archiving deployed to production (PR #48)
+
+## Current Progress (2026-01-28)
+
+### Completed
+1. **Postfix container configuration** - `conf/postfix/` with Dockerfile, main.cf, master.cf, transport maps
+2. **Laravel HTTP endpoint** - `IncomingMailController` receives mail via HTTP from Postfix
+3. **Shadow mode archiving** - Legacy `incoming.php` saves emails to `/var/lib/freegle/incoming-archive/`
+4. **Replay command** - Laravel command to replay archived emails for comparison
+
+### In Progress
+- Deploying archiving to production (iznik-server PR #48 ready for merge)
+- Postfix container ready but not receiving mail (MX records unchanged)
+
+### Not Yet Started
+- MX record switchover (safe to do after validation)
+- Full production traffic through Laravel
 
 ## Executive Summary
 
