@@ -370,6 +370,74 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-27 18:30 - CI Failure Details Display
+- **Status**: 🔄 In Progress - CI running (pipeline 1537)
+- **Branch**: `feature/incoming-email-migration`
+- **Issue**: CI failed with test failures, but couldn't see failure details in CircleCI UI
+- **Root Cause Investigation**:
+  - The test output artifact has full content (5530 lines with all 9 failures visible)
+  - The CircleCI step console only showed "Tests failed" without details
+  - The "Evaluate overall test results" step didn't extract/display failure info
+- **Fix Applied** (Orb v1.1.153):
+  - Updated "Evaluate overall test results" step to extract failure details from test output files
+  - For each failing test suite, greps for failure markers and displays them
+  - Laravel/PHP: Shows "There were X failures:" section
+  - Go: Shows lines containing FAIL/Error/panic
+  - Playwright: Shows lines containing failure markers
+  - Added note: "Full logs available in artifacts"
+- **Commits**: 494bc67 pushed to feature/incoming-email-migration
+- **Test Failures Identified** (9 failures in deploy command tests):
+  1. ClearAllCachesCommandTest - deprecation warning not printed
+  2-8. DeployRefreshCommandTest - output not printed, assertions failing
+  9. DeployWatchCommandTest - output not printed
+- **Puzzling Finding**: CI ran tests with OLD code (calledCommands array) but git shows NEW code (expectsOutput only)
+  - Investigated docker caching, volume mounts, git history
+  - Both merge parents (9e40343 and 5fe22fc) have NEW test code
+  - Issue may be transient or related to CI environment
+- **Next**: Wait for pipeline 1537 to complete and verify failure details are visible
+
+### 2026-01-28 - Shadow Mode for Incoming Email Migration Validation
+- **Status**: ✅ Complete (855 tests passing)
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker + iznik-batch + iznik-server)
+- **Goal**: Enable validation of new Laravel email processing against legacy PHP code
+- **Implementation**:
+  1. **Archive Format** - JSON files containing:
+     - Raw email (base64 encoded)
+     - Envelope from/to
+     - Legacy routing outcome
+     - Additional context (user_id, group_id, spam_type, subject, etc.)
+  2. **Legacy Side** (`iznik-server/scripts/incoming/incoming.php`):
+     - Added `saveIncomingArchive()` function
+     - Saves to `/var/lib/freegle/incoming-archive/YYYY-MM-DD/HHMMSS_random.json`
+     - Enable by creating the directory; disable by removing it
+     - Archives all outcomes (success, failok, failure)
+  3. **Laravel Side** (`iznik-batch/app/Console/Commands/ReplayIncomingArchiveCommand.php`):
+     - `php artisan mail:replay-archive <path>` - Process single file or directory
+     - `--limit=N` - Process only first N files
+     - `--stop-on-mismatch` - Stop on first discrepancy
+     - `--output=table|json|summary` - Output format
+     - Shows detailed comparison: legacy vs new outcome
+  4. **Dry-Run Mode** (`IncomingMailService::routeDryRun()`):
+     - Wraps routing in transaction that always rolls back
+     - All routing logic executes but no DB changes persist
+- **Files Created**:
+  - `iznik-batch/app/Console/Commands/ReplayIncomingArchiveCommand.php`
+- **Files Modified**:
+  - `iznik-server/scripts/incoming/incoming.php` (added archiving)
+  - `iznik-batch/app/Services/Mail/Incoming/IncomingMailService.php` (added routeDryRun)
+  - `iznik-batch/tests/Feature/Mail/IncomingMailCommandTest.php` (+5 transient error tests)
+- **Usage**:
+  ```bash
+  # On legacy server - enable archiving:
+  mkdir -p /var/lib/freegle/incoming-archive
+  chown www-data:www-data /var/lib/freegle/incoming-archive
+
+  # Copy archives to new server, then:
+  php artisan mail:replay-archive /path/to/archives --stop-on-mismatch
+  ```
+- **Tests**: 855/855 pass
+- **Next**: Deploy to legacy server, collect archives, run validation
+
 ### 2026-01-27 - Incoming Email Migration Phase A Self-Review Complete
 - **Status**: ✅ Complete (845 tests passing)
 - **Branch**: `feature/incoming-email-migration` (iznik-batch submodule)
