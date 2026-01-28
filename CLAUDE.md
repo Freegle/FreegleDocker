@@ -394,7 +394,8 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   php artisan ai:chat --user=12345 "Why is this user having problems?"
   php artisan ai:chat --interactive
   ```
-- **Next**: Push branch, test in Docker environment
+- **Pushed**: Branch pushed to origin (FreegleDocker + iznik-nuxt3)
+- **Next**: Create PR when ready to merge
 
 ### 2026-01-27 18:30 - CI Failure Details Display
 - **Status**: 🔄 In Progress - CI running (pipeline 1537)
