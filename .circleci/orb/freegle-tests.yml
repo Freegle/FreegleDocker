@@ -2112,6 +2112,61 @@ jobs:
             else
               echo "❌ Tests failed"
               echo "Laravel: $LARAVEL_TESTS_PASSED, Go: $GO_TESTS_PASSED, PHP: $PHP_TESTS_PASSED, Playwright: $PLAYWRIGHT_TESTS_PASSED"
+              echo ""
+
+              # Extract and display failure details from test output files
+              # This ensures failures are visible even if earlier output was truncated
+
+              if [ "$LARAVEL_TESTS_PASSED" != "true" ] && [ -f ~/test-output/laravel.out ]; then
+                echo "=== Laravel (iznik-batch) Failure Details ==="
+                # Show PHPUnit failure summary (lines after "There were X failures:")
+                if grep -q "There were .* failures" ~/test-output/laravel.out; then
+                  grep -A 100 "There were .* failures" ~/test-output/laravel.out | head -80
+                else
+                  # Show last 50 lines if no standard failure marker
+                  echo "(Showing last 50 lines of output)"
+                  tail -50 ~/test-output/laravel.out
+                fi
+                echo ""
+              fi
+
+              if [ "$GO_TESTS_PASSED" != "true" ] && [ -f ~/test-output/go.out ]; then
+                echo "=== Go Test Failure Details ==="
+                # Show lines containing FAIL or error
+                if grep -q "FAIL\|Error\|panic" ~/test-output/go.out; then
+                  grep -B 2 -A 5 "FAIL\|Error\|panic" ~/test-output/go.out | head -60
+                else
+                  echo "(Showing last 50 lines of output)"
+                  tail -50 ~/test-output/go.out
+                fi
+                echo ""
+              fi
+
+              if [ "$PHP_TESTS_PASSED" != "true" ] && [ -f ~/test-output/php.out ]; then
+                echo "=== PHP (iznik-server) Failure Details ==="
+                if grep -q "FAILURES\|There were .* failures" ~/test-output/php.out; then
+                  grep -A 100 "There were .* failures" ~/test-output/php.out | head -80
+                else
+                  echo "(Showing last 50 lines of output)"
+                  tail -50 ~/test-output/php.out
+                fi
+                echo ""
+              fi
+
+              if [ "$PLAYWRIGHT_TESTS_PASSED" != "true" ] && [ -f ~/test-output/playwright.out ]; then
+                echo "=== Playwright Failure Details ==="
+                # Show lines containing failure markers
+                if grep -q "✘\|Error:\|failed" ~/test-output/playwright.out; then
+                  grep -B 2 -A 10 "✘\|Error:\|failed" ~/test-output/playwright.out | head -60
+                else
+                  echo "(Showing last 50 lines of output)"
+                  tail -50 ~/test-output/playwright.out
+                fi
+                echo ""
+              fi
+
+              echo "=== Full logs available in artifacts ==="
+              echo "Download test-output/*.out files for complete details"
               exit 1
             fi
           when: always

@@ -24,7 +24,7 @@ class SendUnifiedDigestCommand extends Command
      */
     protected $description = "Send unified Freegle digests containing posts from all user's communities";
 
-    private const EMAIL_TYPE = "UnifiedDigest";
+    private const EMAIL_TYPE = 'UnifiedDigest';
 
     /**
      * Execute the console command.
@@ -32,19 +32,21 @@ class SendUnifiedDigestCommand extends Command
     public function handle(UnifiedDigestService $service): int
     {
         // Check if UnifiedDigest emails are enabled for this batch system.
-        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+        if (! self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
             $this->info("UnifiedDigest emails are not enabled in iznik-batch. Set FREEGLE_MAIL_ENABLED_TYPES in .env to include 'UnifiedDigest'.");
+
             return Command::SUCCESS;
         }
 
-        $mode = $this->option("mode");
-        $userId = $this->option("user") ? (int) $this->option("user") : null;
-        $limit = (int) $this->option("limit");
-        $dryRun = $this->option("dry-run");
+        $mode = $this->option('mode');
+        $userId = $this->option('user') ? (int) $this->option('user') : null;
+        $limit = (int) $this->option('limit');
+        $dryRun = $this->option('dry-run');
 
         // Validate mode.
-        if (!in_array($mode, [UnifiedDigestService::MODE_DAILY, UnifiedDigestService::MODE_IMMEDIATE])) {
+        if (! in_array($mode, [UnifiedDigestService::MODE_DAILY, UnifiedDigestService::MODE_IMMEDIATE])) {
             $this->error("Invalid mode '{$mode}'. Must be 'daily' or 'immediate'.");
+
             return Command::FAILURE;
         }
 
@@ -55,10 +57,11 @@ class SendUnifiedDigestCommand extends Command
         }
 
         if ($dryRun) {
-            $this->warn("Dry run mode - no emails will actually be sent.");
+            $this->warn('Dry run mode - no emails will actually be sent.');
             // In dry run mode, we just show what would happen.
             // The service doesn't support dry-run internally, so we just report.
             $this->info("Would process digests for users with {$mode} mode.");
+
             return Command::SUCCESS;
         }
 
@@ -67,16 +70,16 @@ class SendUnifiedDigestCommand extends Command
 
         $this->newLine();
         $this->table(
-            ["Metric", "Count"],
+            ['Metric', 'Count'],
             [
-                ["Users Processed", $stats["users_processed"]],
-                ["Emails Sent", $stats["emails_sent"]],
-                ["No New Posts", $stats["no_new_posts"]],
-                ["Errors", $stats["errors"]],
+                ['Users Processed', $stats['users_processed']],
+                ['Emails Sent', $stats['emails_sent']],
+                ['No New Posts', $stats['no_new_posts']],
+                ['Errors', $stats['errors']],
             ]
         );
 
-        if ($stats["errors"] > 0) {
+        if ($stats['errors'] > 0) {
             $this->warn("There were {$stats['errors']} errors. Check logs for details.");
         }
 

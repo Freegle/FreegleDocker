@@ -1,7 +1,25 @@
 # Incoming Email Migration to Docker (Consolidated Plan)
 
-**Status**: Planning
-**Branch**: `feature/incoming-email-migration`
+**Status**: Shadow Mode Validation (Phase A in progress)
+**Branches**:
+- FreegleDocker: `feature/incoming-email-migration` (includes iznik-batch)
+- iznik-server: `feature/incoming-email-migration` - archiving deployed to production (PR #48)
+
+## Current Progress (2026-01-28)
+
+### Completed
+1. **Postfix container configuration** - `conf/postfix/` with Dockerfile, main.cf, master.cf, transport maps
+2. **Laravel HTTP endpoint** - `IncomingMailController` receives mail via HTTP from Postfix
+3. **Shadow mode archiving** - Legacy `incoming.php` saves emails to `/var/lib/freegle/incoming-archive/`
+4. **Replay command** - Laravel command to replay archived emails for comparison
+
+### In Progress
+- Deploying archiving to production (iznik-server PR #48 ready for merge)
+- Postfix container ready but not receiving mail (MX records unchanged)
+
+### Not Yet Started
+- MX record switchover (safe to do after validation)
+- Full production traffic through Laravel
 
 ## Executive Summary
 
@@ -15,7 +33,7 @@ This plan consolidates the incoming email migration strategy, covering:
 
 ---
 
-## Part 1: Architecture - Single Postfix Design
+## Part 1: Architecture - Incoming Postfix Only
 
 ### Current State (Bulk4)
 - **MX records** point to bulk4.ilovefreegle.org
@@ -23,38 +41,42 @@ This plan consolidates the incoming email migration strategy, covering:
 - **Pipe transport** calls `incoming.php` for each message
 - **Processing** via MailRouter in iznik-server
 
-### Architecture Decision: Single Postfix Instance
+### Current Outgoing Mail
+- **Dev/test**: MailPit container captures all mail
+- **Production**: External smarthost via `${MAIL_HOST_IP}` (no change planned)
 
-A single Postfix instance handles both incoming and outgoing mail:
+### Architecture Decision: Add Postfix-Incoming Only
 
-| Function | Port | Notes |
-|----------|------|-------|
-| **Receive from internet** | 25 | Pipe to Laravel for processing |
-| **Send notifications/digests** | 587 | Outgoing via relay |
+We add a dedicated `postfix-incoming` container for receiving mail. Outgoing mail continues via external smarthost.
 
-**Rationale for single instance:**
-- Simpler deployment and maintenance
-- Incoming volume is moderate (many users post via website now)
-- Postfix handles mixed traffic efficiently with proper queue prioritization
-- Existing iznik-batch already uses postfix-outgoing for sending
+| Direction | Method | Notes |
+|-----------|--------|-------|
+| **Incoming** | New `postfix-incoming` container | Port 25, pipes to Laravel |
+| **Outgoing** | External smarthost (unchanged) | Already working, no need to change |
+
+**Rationale:**
+- Outgoing via smarthost already works reliably
+- Only incoming needs to move into Docker
+- Simpler - one new container instead of two
+- Clear separation of concerns
 
 <details>
 <summary><strong>Docker Compose Configuration</strong></summary>
 
 ```yaml
-postfix:
+postfix-incoming:
   build:
-    context: ./conf/postfix
+    context: ./conf/postfix-incoming
     dockerfile: Dockerfile
-  container_name: freegle-postfix
+  container_name: freegle-postfix-incoming
   hostname: mail.ilovefreegle.org
   ports:
     - "25:25"
   volumes:
-    - postfix-spool:/var/spool/postfix
-    - ./conf/postfix/main.cf:/etc/postfix/main.cf:ro
-    - ./conf/postfix/master.cf:/etc/postfix/master.cf:ro
-    - ./conf/postfix/transport:/etc/postfix/transport:ro
+    - postfix-incoming-spool:/var/spool/postfix
+    - ./conf/postfix-incoming/main.cf:/etc/postfix/main.cf:ro
+    - ./conf/postfix-incoming/master.cf:/etc/postfix/master.cf:ro
+    - ./conf/postfix-incoming/transport:/etc/postfix/transport:ro
   environment:
     - BATCH_CONTAINER=batch
   networks:
@@ -81,17 +103,77 @@ transport_maps = hash:/etc/postfix/transport
 freegle_destination_concurrency_limit = 4
 default_process_limit = 50
 
-# Rate limiting for flood protection (see Part 3A)
+# Rate limiting - prevent accepting work faster than we can process
 smtpd_client_connection_rate_limit = 50
 smtpd_client_message_rate_limit = 100
+smtpd_client_connection_count_limit = 10
 anvil_rate_time_unit = 60s
+
+# TLS for incoming SMTP (STARTTLS) - Let's Encrypt certs mounted from host
+smtpd_tls_cert_file = /etc/letsencrypt/live/mail.ilovefreegle.org/fullchain.pem
+smtpd_tls_key_file = /etc/letsencrypt/live/mail.ilovefreegle.org/privkey.pem
+smtpd_tls_security_level = may
+smtpd_tls_loglevel = 1
 ```
+
+**TLS Setup**: Use Let's Encrypt with certbot on the Docker host. Mount certs read-only into container:
+```yaml
+volumes:
+  - /etc/letsencrypt/live/mail.ilovefreegle.org:/etc/letsencrypt/live/mail.ilovefreegle.org:ro
+  - /etc/letsencrypt/archive/mail.ilovefreegle.org:/etc/letsencrypt/archive/mail.ilovefreegle.org:ro
+```
+
+**Why certbot on host (not in container)?**
+- **Security**: Running certbot in a container requires elevated permissions (port 80 for HTTP-01 challenge or DNS API keys for DNS-01)
+- **Simplicity**: The host likely already has certbot for other services; one renewal mechanism is easier to maintain
+- **Best practice**: Certs mounted read-only into containers follows principle of least privilege
+- **No container restarts needed**: Postfix picks up new certs on `postfix reload` (SIGHUP)
+
+**Certificate renewal**:
+- Certbot auto-renews via systemd timer on the host
+- Add post-renewal hook to reload Postfix: `/etc/letsencrypt/renewal-hooks/post/reload-postfix.sh`
+  ```bash
+  #!/bin/bash
+  docker exec freegle-postfix-incoming postfix reload 2>/dev/null || true
+  ```
+
+**Domain for certificate**:
+- Only `mail.ilovefreegle.org` needs a certificate (the SMTP hostname)
+- The other domains (`users.ilovefreegle.org`, `groups.ilovefreegle.org`, `user.trashnothing.com`) are envelope routing domains, not TLS identities
+- Current Exim uses a self-signed cert which is fine for opportunistic TLS; Let's Encrypt improves deliverability with stricter senders
 
 **master.cf** (transport definition):
 ```
 freegle unix - n n - 4 pipe
-  flags=F user=www-data argv=/usr/bin/php /app/artisan mail:incoming ${sender} ${recipient}
+  flags=F user=nobody argv=/usr/local/bin/mail-to-webhook.sh ${sender} ${recipient}
 ```
+
+**mail-to-webhook.sh** (inside postfix container):
+```bash
+#!/bin/bash
+# Pipe email to Laravel via HTTP webhook
+# Exit codes: 0=delivered, 75=defer (Postfix retries)
+curl --fail --silent --max-time 30 --data-binary @- \
+  -H "Content-Type: message/rfc822" \
+  -H "X-Envelope-From: $1" \
+  -H "X-Envelope-To: $2" \
+  "http://batch/api/mail/incoming"
+exit $?
+```
+
+**Why HTTP webhook?** The pipe transport runs inside the Postfix container, which can't directly execute `artisan` in the batch container. HTTP webhook allows:
+- Clean container separation
+- Postfix queues mail if batch is down (curl fails → exit 75 → defer)
+- Standard retry/backoff behavior
+- Easy monitoring via HTTP response codes
+
+**Email domains** (from iznik-server constants):
+| Domain | Defined As | Purpose |
+|--------|------------|---------|
+| `groups.ilovefreegle.org` | `GROUP_DOMAIN` | Group reply addresses (e.g., `12345-reply@groups.ilovefreegle.org`) |
+| `users.ilovefreegle.org` | `USER_DOMAIN` | User notification addresses, email commands |
+| `user.trashnothing.com` | Hardcoded | Trash Nothing user addresses (TN integration) |
+| `ilovefreegle.org` | Base domain | Catch-all for legacy or admin addresses |
 
 **transport** (domain routing):
 ```
@@ -144,7 +226,7 @@ class IncomingMailCommand extends Command
 app/Services/Mail/Incoming/
 ├── IncomingMailService.php      # Main orchestrator
 ├── MailParserService.php        # MIME parsing (php-mime-mail-parser)
-├── MailRouterService.php        # Routing logic (11 outcomes)
+├── MailRouterService.php        # Routing logic (10 outcomes)
 ├── BounceService.php            # DSN parsing and processing
 ├── FBLService.php               # Feedback loop processing
 ├── SpamCheckService.php         # Orchestrates all spam detection
@@ -365,96 +447,28 @@ See `plans/future/spam-and-content-moderation-rethink.md` for planned enhancemen
 
 ---
 
-## Part 3A: Flood and Attack Protection
+## Part 3A: Flood Protection
 
-Email bombing and flood attacks are real threats. Defense requires multiple layers.
-
-### Rate Limiting (Postfix Level)
+Flood protection is handled at the Postfix level via rate limiting configured in `main.cf`:
 
 ```
-# main.cf - Connection and message rate limits
 smtpd_client_connection_rate_limit = 50      # Connections per minute per client
 smtpd_client_message_rate_limit = 100        # Messages per minute per client
-smtpd_client_recipient_rate_limit = 200      # Recipients per minute per client
-anvil_rate_time_unit = 60s
-
-# Reject excessive connections early
 smtpd_client_connection_count_limit = 10     # Concurrent connections per client
+anvil_rate_time_unit = 60s
 ```
 
-### Application-Level Protection
+This prevents Postfix from accepting work faster than we can process it. If Laravel processing is slow or down, Postfix queues mail internally and retries with backoff.
 
-<details>
-<summary><strong>FloodProtectionService</strong></summary>
+### Queue Monitoring
 
-```php
-class FloodProtectionService
-{
-    private const RATE_LIMIT_SENDER = 30;      // Messages per hour per sender
-    private const RATE_LIMIT_SUBJECT = 50;     // Same subject per hour across all senders
-    private const BURST_THRESHOLD = 10;        // Messages in 5 minutes = burst
+Monitor Postfix queue depth via the `mail:monitor-queue` scheduled command. Alert thresholds:
+- **Warning**: Queue > 100 messages
+- **Critical**: Queue > 500 messages → Sentry alert
 
-    public function checkFlood(string $sender, string $subject): FloodResult
-    {
-        // Check sender rate
-        $senderKey = "flood:sender:{$sender}";
-        $senderCount = Cache::increment($senderKey);
-        Cache::expire($senderKey, 3600);
+### Cross-Post Flooding
 
-        if ($senderCount > self::RATE_LIMIT_SENDER) {
-            return FloodResult::blocked('sender_rate', $senderCount);
-        }
-
-        // Check burst (short-term spike)
-        $burstKey = "flood:burst:{$sender}";
-        $burstCount = Cache::increment($burstKey);
-        Cache::expire($burstKey, 300);
-
-        if ($burstCount > self::BURST_THRESHOLD) {
-            $this->alertOps("Burst detected from {$sender}: {$burstCount} in 5 min");
-            return FloodResult::blocked('burst', $burstCount);
-        }
-
-        // Check subject flooding (coordinated attack)
-        $subjectHash = md5(strtolower(trim($subject)));
-        $subjectKey = "flood:subject:{$subjectHash}";
-        $subjectCount = Cache::increment($subjectKey);
-        Cache::expire($subjectKey, 3600);
-
-        if ($subjectCount > self::RATE_LIMIT_SUBJECT) {
-            return FloodResult::blocked('subject_flood', $subjectCount);
-        }
-
-        return FloodResult::allowed();
-    }
-}
-```
-
-</details>
-
-### Attack Pattern Detection
-
-| Pattern | Detection | Response |
-|---------|-----------|----------|
-| **Email bombing** | >10 msgs/5min from same sender | Temporary block, alert ops |
-| **Subscription bombing** | Many different senders, same target | Alert, manual review |
-| **Cross-post flood** | Same subject to 30+ groups | Spam flag, moderator review |
-| **Attachment abuse** | Large attachments, rapid succession | Rate limit, reject oversized |
-
-### Monitoring & Alerts
-
-```logql
-# Loki alert: Flood detection
-{app="iznik-batch", channel="incoming_mail"}
-| json
-| flood_blocked="true"
-| count by (flood_reason) > 10
-```
-
-Alert channels:
-- Sentry for application errors
-- Grafana alerts for rate thresholds
-- Geek-alerts email for ops issues
+The existing Freegle spam check for "same subject to 30+ groups" (Part 3) handles coordinated cross-post attacks at the application level.
 
 ---
 
@@ -764,155 +778,41 @@ Add to ModTools left sidebar under Messages:
 
 </details>
 
-### Queue Monitoring
+### Queue Size Monitoring
 
-<details>
-<summary><strong>MonitorMailQueueCommand</strong></summary>
+The `postfix-incoming` container exposes queue size via a healthcheck script that writes to a shared volume:
 
-```php
-class MonitorMailQueueCommand extends Command
-{
-    protected $signature = 'mail:monitor-queue';
-
-    private const WARNING_THRESHOLD = 100;
-    private const CRITICAL_THRESHOLD = 500;
-
-    public function handle(): int
-    {
-        $queueSize = $this->getPostfixQueueSize();
-
-        Cache::put('mail:queue_size', $queueSize, now()->addMinutes(5));
-        Cache::put('mail:queue_checked_at', now(), now()->addMinutes(5));
-
-        if ($queueSize >= self::CRITICAL_THRESHOLD) {
-            Sentry::captureMessage("Critical: Mail queue at {$queueSize}");
-            return Command::FAILURE;
-        }
-
-        if ($queueSize >= self::WARNING_THRESHOLD) {
-            Sentry::captureMessage("Warning: Mail queue at {$queueSize}");
-        }
-
-        return Command::SUCCESS;
-    }
-
-    private function getPostfixQueueSize(): int
-    {
-        $output = shell_exec('docker exec freegle-postfix-incoming mailq 2>/dev/null | grep -c "^[A-F0-9]" || echo 0');
-        return (int) trim($output);
-    }
-}
+```yaml
+# docker-compose.yml
+postfix-incoming:
+  ...
+  volumes:
+    - postfix-metrics:/var/metrics
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/check-queue.sh"]
+    interval: 60s
 ```
 
-</details>
+```bash
+# check-queue.sh (inside postfix-incoming)
+#!/bin/bash
+QSIZE=$(mailq 2>/dev/null | grep -c "^[A-F0-9]" || echo 0)
+echo $QSIZE > /var/metrics/queue_size
+[ $QSIZE -lt 500 ]  # Exit non-zero if critical
+```
+
+The batch container reads `/var/metrics/queue_size` and alerts to Sentry if thresholds exceeded.
 
 ---
 
-## Part 7: Mail Archiving (Piler)
+## Part 7: Mail Archiving
 
-### Overview
+**Deferred to future issue.** For MVP, incoming mail is stored in the `messages` table with 7-day retention for spam queue.
 
-[Piler](https://www.mailpiler.org/) is used for long-term email archiving with search capabilities. All incoming mail is archived via Postfix's `always_bcc` directive.
-
-### Piler vs MailPit
-
-| Feature | Piler | MailPit |
-|---------|-------|---------|
-| **Purpose** | Production archiving | Development/debugging |
-| **Retention** | Years (compliance) | Days |
-| **Search** | Full-text, advanced | Basic |
-| **Scale** | Enterprise | Small volumes |
-| **Auth** | Custom hooks available | Basic auth |
-
-**Decision**: Use Piler for production archiving; MailPit remains for local dev environments.
-
-### ModTools Integration Options
-
-Piler has a REST API for automation and custom authentication hooks. Integration approaches:
-
-1. **Iframe embed** (simplest)
-   - Embed Piler's web UI in a ModTools modal
-   - Uses Piler's native search interface
-   - Requires SSO via custom auth hook
-
-2. **API integration** (more seamless)
-   - Use Piler REST API to search/retrieve messages
-   - Display results in native ModTools components
-   - More development work but better UX
-
-3. **Deep link** (recommended for MVP)
-   - Link from ModTools to Piler with pre-filled search parameters
-   - User ID, email address, or date range
-   - Opens Piler in new tab with relevant context
-
-<details>
-<summary><strong>Piler Auth Hook for ModTools SSO</strong></summary>
-
-In Piler's `config-site.php`, add custom authentication that validates against ModTools session:
-
-```php
-// config-site.php
-$config['CUSTOM_EMAIL_QUERY_FUNCTION'] = 'freegle_email_query';
-
-function freegle_email_query($username) {
-    // Call ModTools API to get user's accessible emails
-    $apiUrl = 'https://api.ilovefreegle.org/api/user/emails';
-    $response = file_get_contents($apiUrl . '?modtools_session=' . $_COOKIE['modtools_session']);
-    $data = json_decode($response, true);
-
-    if ($data && isset($data['emails'])) {
-        return $data['emails'];  // Array of email addresses this mod can search
-    }
-    return [];
-}
-```
-
-</details>
-
-<details>
-<summary><strong>Docker Compose Configuration (Piler)</strong></summary>
-
-```yaml
-piler:
-  image: sutoj/piler:latest
-  container_name: freegle-piler
-  hostname: piler.ilovefreegle.org
-  environment:
-    - PILER_HOSTNAME=piler.ilovefreegle.org
-    - MYSQL_DATABASE=piler
-    - MYSQL_USER=piler
-    - MYSQL_PASSWORD=${PILER_DB_PASSWORD}
-  volumes:
-    - piler-data:/var/piler/store
-    - piler-sphinx:/var/piler/sphinx
-    - ./conf/piler/config-site.php:/etc/piler/config-site.php:ro
-  labels:
-    - "traefik.http.routers.piler.rule=Host(`piler.ilovefreegle.org`)"
-    - "traefik.http.routers.piler.middlewares=auth@docker"
-  profiles:
-    - production
-  depends_on:
-    - percona
-```
-
-</details>
-
-### Postfix Integration
-
-```
-# main.cf - Archive all mail to Piler
-always_bcc = archive@piler.ilovefreegle.org
-```
-
-### Future: Full ModTools Integration
-
-In the longer term, we could move incoming email out of the `messages` table entirely and use Piler as the primary store. This would:
-- Reduce database size
-- Improve search capabilities
-- Enable longer retention periods
-- Leverage Piler's compliance features
-
-This requires building a ModTools component that wraps Piler's API for a seamless experience.
+Future options to explore separately:
+- [Piler](https://www.mailpiler.org/) for long-term archiving with search
+- MailPit for debugging (already used in dev)
+- Postfix `always_bcc` to archive all incoming mail
 
 ---
 
@@ -1063,7 +963,7 @@ Forward TN domain to Postfix. **Why TN first**: 66% of traffic, validates via he
 Forward chat reply addresses. Needs full spam/content checks.
 
 ### Phase 5: Group Messages (2-4 weeks)
-Forward group domain. Complete routing logic with all 11 outcomes.
+Forward group domain. Complete routing logic with all 10 outcomes.
 
 ### Phase 6: Full Cutover
 Update MX records to point directly to Postfix. Disable Exim forwarding.
@@ -1082,6 +982,7 @@ Update MX records to point directly to Postfix. Disable Exim forwarding.
 - [ ] Implement `mail:incoming` command
 - [ ] Implement `MailParserService`
 - [ ] Set up Loki logging channel
+- [ ] Update architecture documentation (see Documentation Updates below)
 
 ### Phase B: Bounce Processing (Week 3-4)
 - [ ] Port `Bounce.php` to Laravel `BounceService`
@@ -1171,6 +1072,31 @@ GROUP_DOMAIN=groups.ilovefreegle.org
 # Mail archiving
 MAILPIT_ARCHIVE_ENABLED=true
 ```
+
+---
+
+## Part 13: Documentation Updates
+
+The following documentation must be updated as part of this migration:
+
+### Architecture Documentation
+- [ ] **`ARCHITECTURE.md`** - Add `postfix-incoming` container to mermaid diagram
+  - Add to "Infrastructure" subgraph
+  - Show data flow: `postfix-incoming → batch → percona`
+  - Add to Container Groups table
+- [ ] **`README.md`** - Add postfix-incoming to services list, update mailpit description
+
+### Configuration Documentation
+- [ ] **`docker-compose.yml`** - Inline comments explaining postfix-incoming configuration
+- [ ] **`.env.example`** - Add new environment variables (MAIL_INCOMING_*, domains)
+
+### Migration Documentation
+- [ ] **`iznik-batch/EMAIL-MIGRATION-GUIDE.md`** - Document incoming mail migration lessons
+- [ ] **`iznik-server/MIGRATIONS.md`** - Note code retirement timeline
+
+### Operational Documentation
+- [ ] **`CLAUDE.md`** - Update session log format, add incoming mail debugging tips
+- [ ] **Yesterday/README.md** - Note incoming mail handling differences
 
 ---
 

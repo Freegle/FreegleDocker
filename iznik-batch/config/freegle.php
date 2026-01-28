@@ -30,6 +30,7 @@ return [
     'mail' => [
         'noreply_addr' => env('FREEGLE_NOREPLY_ADDR', 'noreply@ilovefreegle.org'),
         'user_domain' => env('FREEGLE_USER_DOMAIN', 'users.ilovefreegle.org'),
+        'group_domain' => env('FREEGLE_GROUP_DOMAIN', 'groups.ilovefreegle.org'),
         // Internal domains that should be excluded when selecting a user's preferred email.
         // These are Freegle-internal addresses that can't receive external mail.
         // Matches iznik-server's Mail::ourDomain() + GROUP_DOMAIN + yahoogroups.
@@ -53,6 +54,10 @@ return [
         'enabled_types' => env('FREEGLE_MAIL_ENABLED_TYPES', ''),
         // GeekAlerts email for system alerts and failure notifications.
         'geek_alerts_addr' => env('FREEGLE_GEEK_ALERTS_ADDR', 'geek-alerts@ilovefreegle.org'),
+        // Trash Nothing domain for incoming mail detection
+        'trashnothing_domain' => env('FREEGLE_TRASHNOTHING_DOMAIN', 'trashnothing.com'),
+        // Trash Nothing shared secret for mail authentication (skips spam check)
+        'trashnothing_secret' => env('FREEGLE_TRASHNOTHING_SECRET', ''),
     ],
 
     'images' => [

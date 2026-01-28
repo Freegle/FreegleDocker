@@ -3,7 +3,6 @@
 namespace App\Console\Commands\Mail;
 
 use App\Mail\Chat\ChatNotification;
-use App\Mail\Digest\MultipleDigest;
 use App\Mail\Digest\SingleDigest;
 use App\Mail\Donation\AskForDonation;
 use App\Mail\Donation\DonationThankYou;
@@ -93,6 +92,7 @@ class TestMailCommand extends Command
     {
         if ($this->option('list')) {
             $this->listEmailTypes();
+
             return Command::SUCCESS;
         }
 
@@ -100,14 +100,16 @@ class TestMailCommand extends Command
         $dryRun = $this->option('dry-run');
         $allTypes = $this->option('all-types');
 
-        if (!$type) {
-            $this->error("Email type is required. Use --list to see available types.");
+        if (! $type) {
+            $this->error('Email type is required. Use --list to see available types.');
+
             return Command::FAILURE;
         }
 
-        if (!isset($this->emailTypes[$type])) {
+        if (! isset($this->emailTypes[$type])) {
             $this->error("Unknown email type: {$type}");
             $this->listEmailTypes();
+
             return Command::FAILURE;
         }
 
@@ -123,8 +125,9 @@ class TestMailCommand extends Command
         try {
             $mailable = $this->buildMailable($type);
 
-            if (!$mailable) {
+            if (! $mailable) {
                 DB::rollBack();
+
                 return Command::FAILURE;
             }
 
@@ -167,12 +170,13 @@ class TestMailCommand extends Command
                 if ($stats['sent'] > 0) {
                     $this->info("Test email sent successfully! (spool ID: {$spoolId})");
                 } else {
-                    $this->warn("Email spooled but not sent yet. Check spool directory.");
+                    $this->warn('Email spooled but not sent yet. Check spool directory.');
                 }
             }
         } catch (\Exception $e) {
-            $this->error("Error: " . $e->getMessage());
+            $this->error('Error: '.$e->getMessage());
             DB::rollBack();
+
             return Command::FAILURE;
         }
 
@@ -194,8 +198,9 @@ class TestMailCommand extends Command
         };
 
         $toEmail = $this->option('to');
-        if (!$toEmail) {
-            $this->error("Please specify --to=email to find chat messages for that user");
+        if (! $toEmail) {
+            $this->error('Please specify --to=email to find chat messages for that user');
+
             return Command::FAILURE;
         }
 
@@ -204,8 +209,9 @@ class TestMailCommand extends Command
             $q->where('email', $toEmail);
         })->first();
 
-        if (!$recipient) {
+        if (! $recipient) {
             $this->error("No user found with email: {$toEmail}");
+
             return Command::FAILURE;
         }
 
@@ -223,11 +229,12 @@ class TestMailCommand extends Command
             try {
                 $mailable = $this->buildChatNotificationForType($chatType, $recipient, $messageType);
 
-                if (!$mailable) {
+                if (! $mailable) {
                     $skippedTypes[] = $messageType;
                     $this->warn("Skipped {$messageType} - no messages found");
                     DB::rollBack();
                     $this->newLine();
+
                     continue;
                 }
 
@@ -263,11 +270,11 @@ class TestMailCommand extends Command
                         $this->info("Sent {$messageType} notification (spool ID: {$spoolId})");
                         $sentCount++;
                     } else {
-                        $this->warn("Spooled but not sent yet");
+                        $this->warn('Spooled but not sent yet');
                     }
                 }
             } catch (\Exception $e) {
-                $this->error("Error for {$messageType}: " . $e->getMessage());
+                $this->error("Error for {$messageType}: ".$e->getMessage());
                 $skippedTypes[] = $messageType;
             }
 
@@ -275,17 +282,17 @@ class TestMailCommand extends Command
             $this->newLine();
 
             // Small delay between sends to avoid overwhelming the mail server.
-            if (!$dryRun) {
+            if (! $dryRun) {
                 usleep(500000); // 0.5 second
             }
         }
 
         $this->newLine();
-        $this->info("=== Summary ===");
+        $this->info('=== Summary ===');
         $this->info("Sent: {$sentCount} emails");
 
-        if (!empty($skippedTypes)) {
-            $this->warn("Skipped types (no messages found): " . implode(', ', $skippedTypes));
+        if (! empty($skippedTypes)) {
+            $this->warn('Skipped types (no messages found): '.implode(', ', $skippedTypes));
         }
 
         return Command::SUCCESS;
@@ -342,8 +349,9 @@ class TestMailCommand extends Command
         $messageType = $this->option('message-type');
 
         // Find recipient by email.
-        if (!$toEmail) {
-            $this->error("Please specify --to=email to find chat messages for that user");
+        if (! $toEmail) {
+            $this->error('Please specify --to=email to find chat messages for that user');
+
             return null;
         }
 
@@ -352,8 +360,9 @@ class TestMailCommand extends Command
             $q->where('email', $toEmail);
         })->first();
 
-        if (!$recipient) {
+        if (! $recipient) {
             $this->error("No user found with email: {$toEmail}");
+
             return null;
         }
 
@@ -362,8 +371,9 @@ class TestMailCommand extends Command
         // For User2Mod, check the --as option to determine perspective.
         $perspective = $this->option('as');
         if ($chatType === ChatRoom::TYPE_USER2MOD && $perspective) {
-            if (!in_array($perspective, ['member', 'mod'])) {
+            if (! in_array($perspective, ['member', 'mod'])) {
                 $this->error("Invalid --as option: {$perspective}. Use 'member' or 'mod'.");
+
                 return null;
             }
             $this->info("Testing as: {$perspective}");
@@ -385,7 +395,7 @@ class TestMailCommand extends Command
                 ->whereHas('group', function ($q) use ($recipient) {
                     $q->whereHas('memberships', function ($mq) use ($recipient) {
                         $mq->where('userid', $recipient->id)
-                           ->whereIn('role', ['Moderator', 'Owner']);
+                            ->whereIn('role', ['Moderator', 'Owner']);
                     });
                 });
         } else {
@@ -403,9 +413,10 @@ class TestMailCommand extends Command
             $q->where('userid', '!=', $recipient->id);
         })->orderBy('id', 'desc')->first();
 
-        if (!$chatRoom) {
-            $this->error("No {$chatType} chat with messages found for user {$recipient->id}" .
+        if (! $chatRoom) {
+            $this->error("No {$chatType} chat with messages found for user {$recipient->id}".
                 ($perspective === 'mod' ? ' as moderator' : ''));
+
             return null;
         }
 
@@ -418,8 +429,9 @@ class TestMailCommand extends Command
             ->with(['user', 'refMessage'])
             ->first();
 
-        if (!$latestMessage) {
-            $this->error("No messages from other users found in this chat");
+        if (! $latestMessage) {
+            $this->error('No messages from other users found in this chat');
+
             return null;
         }
 
@@ -436,7 +448,7 @@ class TestMailCommand extends Command
             ->get()
             ->reverse();
 
-        $this->info("Found latest message from " . ($sender?->displayname ?? 'unknown') . ", plus " . $previousMessages->count() . " previous messages");
+        $this->info('Found latest message from '.($sender?->displayname ?? 'unknown').', plus '.$previousMessages->count().' previous messages');
 
         $mailable = new ChatNotification($recipient, $sender, $chatRoom, $latestMessage, $chatType, $previousMessages);
 
@@ -444,7 +456,7 @@ class TestMailCommand extends Command
         $ampOverride = $this->getAmpOverride();
         if ($ampOverride !== null) {
             $mailable->setAmpOverride($ampOverride);
-            $this->info("AMP email: " . ($ampOverride ? 'ON' : 'OFF') . " (override)");
+            $this->info('AMP email: '.($ampOverride ? 'ON' : 'OFF').' (override)');
         }
 
         return $mailable;
@@ -481,7 +493,7 @@ class TestMailCommand extends Command
             }
         }
 
-        if (!$latestMessage) {
+        if (! $latestMessage) {
             // Try to find any recent message of this type (limit search for performance).
             // Only search last 30 days and use indexed columns.
             $since = now()->subDays(30);
@@ -506,6 +518,7 @@ class TestMailCommand extends Command
                 $this->warn("Using chat from different user to find {$messageType} message");
             } else {
                 $this->warn("No {$messageType} messages found in any {$chatType} chat");
+
                 return null;
             }
         }
@@ -548,8 +561,9 @@ class TestMailCommand extends Command
 
         // Get user.
         $user = $userId ? User::find($userId) : User::whereHas('emails')->inRandomOrder()->first();
-        if (!$user) {
-            $this->error("User not found");
+        if (! $user) {
+            $this->error('User not found');
+
             return null;
         }
 
@@ -564,8 +578,9 @@ class TestMailCommand extends Command
             $group = $membership ? Group::find($membership->groupid) : Group::inRandomOrder()->first();
         }
 
-        if (!$group) {
-            $this->error("No group found");
+        if (! $group) {
+            $this->error('No group found');
+
             return null;
         }
 
@@ -580,8 +595,9 @@ class TestMailCommand extends Command
             })->inRandomOrder()->first();
         }
 
-        if (!$message) {
+        if (! $message) {
             $this->error("No message found for group {$group->nameshort}");
+
             return null;
         }
 
@@ -598,8 +614,9 @@ class TestMailCommand extends Command
         $userId = $this->option('user');
 
         $user = $userId ? User::find($userId) : User::whereHas('emails')->inRandomOrder()->first();
-        if (!$user) {
-            $this->error("User not found");
+        if (! $user) {
+            $this->error('User not found');
+
             return null;
         }
 
@@ -623,8 +640,9 @@ class TestMailCommand extends Command
         $userId = $this->option('user');
 
         $user = $userId ? User::find($userId) : User::whereHas('emails')->inRandomOrder()->first();
-        if (!$user) {
-            $this->error("User not found");
+        if (! $user) {
+            $this->error('User not found');
+
             return null;
         }
 
@@ -641,8 +659,9 @@ class TestMailCommand extends Command
         $userId = $this->option('user');
 
         $user = $userId ? User::find($userId) : User::whereHas('emails')->inRandomOrder()->first();
-        if (!$user) {
-            $this->error("User not found");
+        if (! $user) {
+            $this->error('User not found');
+
             return null;
         }
 
@@ -653,7 +672,7 @@ class TestMailCommand extends Command
         if ($location) {
             $this->info("User location: {$location->name} ({$location->lat}, {$location->lng})");
         } else {
-            $this->warn("User has no location set - nearby offers will not be shown");
+            $this->warn('User has no location set - nearby offers will not be shown');
         }
 
         // WelcomeMail takes email, optional password, and user ID for nearby offers.
@@ -689,12 +708,12 @@ class TestMailCommand extends Command
             $rendered = $mailable->render();
             // Show a truncated preview.
             if (strlen($rendered) > 2000) {
-                $this->line(substr($rendered, 0, 2000) . "\n\n... (truncated, " . strlen($rendered) . " total characters)");
+                $this->line(substr($rendered, 0, 2000)."\n\n... (truncated, ".strlen($rendered).' total characters)');
             } else {
                 $this->line($rendered);
             }
         } catch (\Exception $e) {
-            $this->error("Could not render email: " . $e->getMessage());
+            $this->error('Could not render email: '.$e->getMessage());
         }
 
         $this->newLine();
