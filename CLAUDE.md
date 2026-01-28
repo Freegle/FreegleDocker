@@ -60,6 +60,29 @@ The Yesterday server (yesterday.ilovefreegle.org) runs with specific configurati
 - Development container uses `modtools/Dockerfile` and production container uses `Dockerfile.prod`
 - Production container requires a full rebuild to pick up code changes since it runs a production build
 
+### Production Batch Container (batch-prod)
+The `batch-prod` container runs Laravel scheduled jobs against the production database. It replaces the crontab entry on bulk3-internal.
+
+**Configuration:**
+- Uses `profiles: [production]` - only starts when production profile is enabled
+- Secrets stored in `.env.background` (gitignored) - see `.env.background.example` for template
+- Infrastructure IPs configured in `.env` (DB_HOST_IP, MAIL_HOST_IP)
+- Connects to production database via `db-host` (extra_hosts mapping)
+- Sends mail via `mail-host` smarthost (SPF/DMARC verified)
+- Logs to Loki container (`LOKI_URL=http://loki:3100`)
+- Auto-restarts on crash/reboot (`restart: unless-stopped`)
+
+**To enable:**
+1. Copy `.env.background.example` to `.env.background` and fill in secrets
+2. Set `COMPOSE_PROFILES=monitoring,production` in `.env`
+3. Run `docker compose up -d`
+
+**Migration from bulk3-internal:**
+After confirming batch-prod works, disable the crontab on bulk3-internal:
+```
+# Comment out: * * * * * cd /var/www/iznik-batch && php8.5 artisan schedule:run
+```
+
 ## Networking Configuration
 
 ### No Hardcoded IP Addresses
@@ -347,6 +370,362 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-27 18:30 - CI Failure Details Display
+- **Status**: 🔄 In Progress - CI running (pipeline 1537)
+- **Branch**: `feature/incoming-email-migration`
+- **Issue**: CI failed with test failures, but couldn't see failure details in CircleCI UI
+- **Root Cause Investigation**:
+  - The test output artifact has full content (5530 lines with all 9 failures visible)
+  - The CircleCI step console only showed "Tests failed" without details
+  - The "Evaluate overall test results" step didn't extract/display failure info
+- **Fix Applied** (Orb v1.1.153):
+  - Updated "Evaluate overall test results" step to extract failure details from test output files
+  - For each failing test suite, greps for failure markers and displays them
+  - Laravel/PHP: Shows "There were X failures:" section
+  - Go: Shows lines containing FAIL/Error/panic
+  - Playwright: Shows lines containing failure markers
+  - Added note: "Full logs available in artifacts"
+- **Commits**: 494bc67 pushed to feature/incoming-email-migration
+- **Test Failures Identified** (9 failures in deploy command tests):
+  1. ClearAllCachesCommandTest - deprecation warning not printed
+  2-8. DeployRefreshCommandTest - output not printed, assertions failing
+  9. DeployWatchCommandTest - output not printed
+- **Puzzling Finding**: CI ran tests with OLD code (calledCommands array) but git shows NEW code (expectsOutput only)
+  - Investigated docker caching, volume mounts, git history
+  - Both merge parents (9e40343 and 5fe22fc) have NEW test code
+  - Issue may be transient or related to CI environment
+- **Next**: Wait for pipeline 1537 to complete and verify failure details are visible
+
+### 2026-01-28 - Shadow Mode for Incoming Email Migration Validation
+- **Status**: ✅ Complete (855 tests passing)
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker + iznik-batch + iznik-server)
+- **Goal**: Enable validation of new Laravel email processing against legacy PHP code
+- **Implementation**:
+  1. **Archive Format** - JSON files containing:
+     - Raw email (base64 encoded)
+     - Envelope from/to
+     - Legacy routing outcome
+     - Additional context (user_id, group_id, spam_type, subject, etc.)
+  2. **Legacy Side** (`iznik-server/scripts/incoming/incoming.php`):
+     - Added `saveIncomingArchive()` function
+     - Saves to `/var/lib/freegle/incoming-archive/YYYY-MM-DD/HHMMSS_random.json`
+     - Enable by creating the directory; disable by removing it
+     - Archives all outcomes (success, failok, failure)
+  3. **Laravel Side** (`iznik-batch/app/Console/Commands/ReplayIncomingArchiveCommand.php`):
+     - `php artisan mail:replay-archive <path>` - Process single file or directory
+     - `--limit=N` - Process only first N files
+     - `--stop-on-mismatch` - Stop on first discrepancy
+     - `--output=table|json|summary` - Output format
+     - Shows detailed comparison: legacy vs new outcome
+  4. **Dry-Run Mode** (`IncomingMailService::routeDryRun()`):
+     - Wraps routing in transaction that always rolls back
+     - All routing logic executes but no DB changes persist
+- **Files Created**:
+  - `iznik-batch/app/Console/Commands/ReplayIncomingArchiveCommand.php`
+- **Files Modified**:
+  - `iznik-server/scripts/incoming/incoming.php` (added archiving)
+  - `iznik-batch/app/Services/Mail/Incoming/IncomingMailService.php` (added routeDryRun)
+  - `iznik-batch/tests/Feature/Mail/IncomingMailCommandTest.php` (+5 transient error tests)
+- **Usage**:
+  ```bash
+  # On legacy server - enable archiving:
+  mkdir -p /var/lib/freegle/incoming-archive
+  chown www-data:www-data /var/lib/freegle/incoming-archive
+
+  # Copy archives to new server, then:
+  php artisan mail:replay-archive /path/to/archives --stop-on-mismatch
+  ```
+- **Tests**: 855/855 pass
+- **Next**: Deploy to legacy server, collect archives, run validation
+
+### 2026-01-27 - Incoming Email Migration Phase A Self-Review Complete
+- **Status**: ✅ Complete (845 tests passing)
+- **Branch**: `feature/incoming-email-migration` (iznik-batch submodule)
+- **Goal**: Self-review and fix all code quality issues identified in Phase A
+- **Tasks Completed (9 total)**:
+  1. ✅ Fixed unused constructor dependency in IncomingMailService
+  2. ✅ Fixed isSelfSent check against tests
+  3. ✅ Fixed latestmessage type (string 'User2User' vs ChatRoom::TYPE_USER2USER)
+  4. ✅ Fixed ChatMessage::TYPE_DEFAULT constant (was TYPE_INTERESTED)
+  5. ✅ Added proper return codes for all handlers (no more exceptions)
+  6. ✅ Reviewed worry words against iznik-server
+  7. ✅ Fixed hardcoded domain names - using config constants (freegle.mail.*)
+  8. ✅ Implemented all TODOs: FBL processing, ReplyTo chat, Volunteers message, TN secret validation, direct mail routing
+  9. ✅ Fixed tests to use real database records (10 tests updated with proper fixtures)
+- **Config Changes** (`config/freegle.php`):
+  - Added `trashnothing_domain` - TN domain detection
+  - Added `trashnothing_secret` - TN mail authentication
+- **Helper Methods Added** (`IncomingMailService.php`):
+  - `getOrCreateUserChat()` - Find/create User2User chat
+  - `getOrCreateUser2ModChat()` - Find/create User2Mod chat
+- **Test Improvements**:
+  - All tests now use `createTestUser()`, `createTestGroup()`, `createMembership()`
+  - Added negative test cases (e.g., "when user not found" → DROPPED)
+  - Tests: 835 → 845 (+10 edge case tests)
+- **Key Learning**: Tests using placeholder IDs fail silently with DROPPED result - always verify tests fail for the right reason first
+
+### 2026-01-27 - Incoming Email Plan TLS and Domain Documentation
+- **Status**: ✅ Complete
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker)
+- **Plan File**: `plans/active/incoming-email-to-docker.md`
+- **Updates Made**:
+  1. **Expanded TLS Section** - Added comprehensive certbot strategy:
+     - Why certbot runs on host (not in container): security, simplicity, best practice
+     - Certificate renewal: post-renewal hook to `docker exec postfix reload`
+     - Only `mail.ilovefreegle.org` needs cert (SMTP hostname), not routing domains
+     - Note that current Exim self-signed is fine for opportunistic TLS
+  2. **Email Domains Table** - Documented all 4 domains with purpose:
+     - `groups.ilovefreegle.org` (GROUP_DOMAIN) - group reply addresses
+     - `users.ilovefreegle.org` (USER_DOMAIN) - user notifications, email commands
+     - `user.trashnothing.com` (hardcoded) - Trash Nothing integration
+     - `ilovefreegle.org` (base) - catch-all for legacy/admin addresses
+- **Research Completed**:
+  - Certbot in Docker best practices (host-based renewal with read-only mounts)
+  - Security implications of running certbot inside containers (elevated permissions needed)
+  - Email domain constants in iznik-server/install/iznik.conf.php
+- **Next**: Plan ready for implementation
+
+### 2026-01-26 22:30 - Fixed CI Progress Display and localStorage State Leakage
+- **Status**: ✅ Complete
+- **Branch**: master
+- **Issues Fixed**:
+  1. **localStorage state leakage** - `loggedInEver` persisting between Playwright test runs
+     - Root cause: Auth store's `logout()` preserves `loggedInEver` across `$reset()`
+     - Fix: Clear localStorage AFTER Pinia modifications (not before), explicitly clear auth fields
+     - Commits: 4a15a277 (iznik-nuxt3), pushed to master
+  2. **Go progress shows (53/0)** - No total count for Go tests
+     - Fix: When total is 0, show just completed count e.g., "running (53)" instead of "(53/0)"
+  3. **Playwright shows (79/75)** - Symbol counting double-counts at test end
+     - Fix: Cap displayed completed at total when total > 0
+- **Orb Published**: v1.1.152 with improved progress display
+- **CI Result**: Pipeline 1525 PASSED - all tests pass with localStorage fix
+- **Removed**: Disabled caching code from orb (v1.1.151) - was not in use
+
+### 2026-01-26 17:15 - Fixed Playwright Test LoginModal Handling
+- **Status**: ✅ Complete - CI PASSED
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Issue**: Playwright tests failing due to LoginModal appearing in "Welcome back" mode instead of "Join" mode
+- **Root Cause**: `loggedInEver` state persists across test runs, causing modal to show wrong variant
+- **Fix Applied** (commit 2683729d):
+  - Updated `dismissLoginModalIfPresent` to match both "Join the Reuse Revolution" AND "Welcome back" text
+  - Updated `clickSendAndWait` to race between welcome modal, login modal, and navigation
+  - Added diagnostic logging for debugging registration failures
+- **CI Result**: Pipeline 1522, Job 1713 - **ALL TESTS PASSED**
+  - Playwright: 75 tests, 0 failures, 6 skipped
+  - Full CI duration: ~35 minutes
+- **Key Learning**: Test helpers need to handle multiple UI states, not just the happy path
+
+### 2026-01-26 - Incoming Email Migration Plan Major Update
+- **Status**: ✅ Plan updated based on detailed review
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker)
+- **Plan File**: `plans/active/incoming-email-to-docker.md` (1200 lines)
+- **Key Changes (commit e59ce5f)**:
+  1. **Architecture**: Changed from dual postfix to single postfix (simpler)
+  2. **Database**: Removed new `incoming_spam_queue` table, use existing `messages` table
+  3. **Spam Detection**: Added section explaining Freegle checks complement (not duplicate) external filters
+  4. **Flood Protection**: Added Part 3A with rate limiting and attack pattern detection
+  5. **Chat Spam**: Clarified that spam is silently black-holed (no user feedback)
+  6. **Moderator Access**: Changed spam approval from Support/Admin to all moderators
+  7. **Archiving**: Replaced MailPit with Piler for production, added ModTools integration options
+- **Research Completed**:
+  - Rspamd vs SpamAssassin feature comparison (Rspamd 10x faster, machine learning)
+  - Piler REST API integration options (iframe, API, deep link)
+  - Email bomb/flood defense strategies (rate limiting, honeypots, burst detection)
+- **Key Technical Findings**:
+  - `messages.spamtype` and `messages.spamreason` columns already exist
+  - Chat spam IS silently black-holed (no user notification) per ChatMessage.php:485
+  - Bounce suspension: 3 permanent OR 50 total (including temporary) per Bounce.php
+- **Next**: Plan is ready for implementation phases
+
+### 2026-01-26 - Clickable Links in ModTools Chat Messages
+- **Status**: ✅ Complete
+- **Branch**: master (iznik-nuxt3 submodule)
+- **Request**: Make hyperlinks in chat messages clickable in ModTools only (not in Freegle for safety)
+- **Implementation**:
+  1. Created `composables/useLinkify.js` - utility for URL linkification and email highlighting
+     - `linkifyText()` - escapes HTML first, then converts URLs to clickable links
+     - `linkifyAndHighlightEmails()` - same + email highlighting for chat review
+  2. Updated `components/ChatMessageText.vue` - main chat text component
+     - Uses `miscStore.modtools` to detect ModTools context
+     - Conditionally renders linkified HTML (v-html) in ModTools, plain text in Freegle
+  3. Updated `components/ChatMessageInterested.vue` - same pattern for "interested" messages
+- **Security**: XSS-safe - HTML is escaped BEFORE adding links, preventing injection
+- **Files Created**:
+  - `iznik-nuxt3/composables/useLinkify.js` (80 lines)
+- **Files Modified**:
+  - `iznik-nuxt3/components/ChatMessageText.vue`
+  - `iznik-nuxt3/components/ChatMessageInterested.vue`
+- **Testing**: Needs visual testing in ModTools to verify links are clickable
+- **Code Quality Review**: ✅ Complete - XSS protection verified, consistent with codebase patterns
+
+### 2026-01-25 21:00 - Ralph Tasks Completed
+- **Status**: ✅ All 4 tasks complete
+- **Branch**: `feature/batch-job-logging` in FreegleDocker
+- **Tasks Completed**:
+  1. ✅ **LogsBatchJob trait** - Created `iznik-batch/app/Traits/LogsBatchJob.php` for automatic Loki logging of batch commands. Added comprehensive tests. Example usage in `UpdateKudosCommand.php`.
+  2. ✅ **deployment.md update** - Added section explaining two deployment options (FreegleDocker integration vs standalone).
+  3. ✅ **Loki logging consistency review** - Created `plans/loki-logging-consistency-review.md` documenting:
+     - Consistent elements across Go/PHP/Batch (app label, JSON format, timestamps)
+     - Inconsistencies (level handling, trace correlation, duration units)
+     - Missing activities for end-to-end tracing
+     - Recommendations for improvements
+  4. ✅ **Orphaned branches audit** - Found 2 orphaned branches in `feature/remove-email-wallpaper`:
+     - Created issue #31: Remove email wallpaper background
+     - Created issue #32: Unified Freegle Digest - consolidate per-group emails
+- **Key Files Created**:
+  - `iznik-batch/app/Traits/LogsBatchJob.php`
+  - `iznik-batch/tests/Unit/Traits/LogsBatchJobTest.php`
+  - `plans/loki-logging-consistency-review.md`
+- **Next**: Create PR for batch-job-logging branch
+
+### 2026-01-25 19:00 - Playwright Test Count Fix and Task Creation
+- **Status**: ✅ Complete
+- **Issue**: Playwright test count showed 0/0 at start, only updating after tests started running
+- **Root Cause**: No pre-count mechanism - relied on parsing test output for counts
+- **Fix Applied**:
+  - Added `--list` pre-count in `status-nuxt/server/api/tests/playwright.post.ts`
+  - Increased timeout to 60s (monocart reporter runs even with --list)
+  - Removed stderr suppression to see errors
+  - Updated `.claude/check-test-command.sh` to allow `--list` and `--help` through hook
+- **Commit**: 247b42c pushed to master
+- **Verified**: Test count now shows correctly from start (e.g., "0/9" instead of "0/0")
+
+### 2026-01-26 09:35 - Test Log Truncation Fix & LogsBatchJob Unit Test Fix
+- **Status**: ✅ Complete
+- **Branch**: `feature/batch-job-logging`
+- **Issues Found**:
+  1. **Log Truncation**: CircleCI test artifacts showed "...(truncated)" hiding actual failures
+  2. **LogsBatchJob Unit Tests**: Failing with "Call to a member function getOptions() on null"
+- **Root Causes**:
+  1. `status-nuxt` API endpoints truncated logs to LAST 5000 characters, but errors appear at BEGINNING
+  2. LogsBatchJob trait called `$this->options()` which requires `$this->output` to be set (not set in unit tests)
+- **Fixes Applied**:
+  1. Removed truncation from all 4 test status endpoints (laravel, go, php, playwright)
+  2. Added `hasOutput` check before accessing `options()` and `arguments()` in LogsBatchJob trait
+- **Files Modified**:
+  - `status-nuxt/server/api/tests/laravel/status.get.ts`
+  - `status-nuxt/server/api/tests/go/status.get.ts`
+  - `status-nuxt/server/api/tests/php/status.get.ts`
+  - `status-nuxt/server/api/tests/playwright/status.get.ts`
+  - `iznik-batch/app/Traits/LogsBatchJob.php`
+- **Commits**: 7fa5e60 (truncation fix), 1365887 (LogsBatchJob fix)
+- **CI**: Pipeline #1509 - ✅ PASSED (job #1700)
+- **Key Learning**: When `status-nuxt` was introduced to replace `status/server.js`, the truncation logic was added but was counterproductive for debugging failures
+
+### 2026-01-25 15:45 - CircleCI Progress Monitoring Fix
+- **Status**: ✅ Complete
+- **Issue**: CircleCI progress display showed "Playwright: running (0/0)" despite API returning correct progress
+- **Root Cause**: When tests were already running and the orb tried to trigger them:
+  - HTTP 409 (conflict) was returned
+  - Orb exited early without entering polling loop
+  - Progress files (`/tmp/playwright-completed`, `/tmp/playwright-total`) were never created
+  - Display defaulted to 0/0
+- **Fix Applied** (Orb v1.1.149):
+  - Handle 409 as "tests already running" and continue to polling loop
+  - Always write default progress files (0/0) when trigger fails
+  - Applied to all 4 test types: iznik-batch, Go, PHP, Playwright
+- **Commit**: dc70e6e pushed to master
+- **Verified**: Playwright tests ran successfully (40/75 passed observed before SSH session ended)
+
+### 2026-01-25 05:00 - Playwright CI Test Failure Investigation - RESOLVED
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Issue**: Playwright tests failing on feature branch
+- **Root Cause Found**:
+  - Tests on master were STALE - expected "Let's get freegling!" but UI was changed to "Join the Reuse Revolution!" in commit 72521f46 (Dec 3, 2025)
+  - Removing @nuxt/test-utils changed package.json checksum → cache invalidated → fresh build → new UI text → tests fail
+  - The original hypothesis about `loggedInEver` was a red herring
+- **Fix Applied**:
+  - Commit 4e552d58: Updated test-modtools-login.spec.js to expect "Join the Reuse Revolution"
+  - Also updated tests/e2e/utils/user.js for consistency
+- **CI Status**: Pipeline #1437 on feature branch PASSING all tests
+- **Remaining Work**: These test fixes should be cherry-picked to master to prevent future issues
+- **Key Learning**: When CI passes on master but fails on branches, check if cached builds are masking stale tests
+
+### 2026-01-24 11:40 - Freegle Component Unit Tests Batch 17
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Commit**: fbf174ae
+- **Goal**: Fix batch 17 test failures for async chat message components
+- **Completed**:
+  - ✅ ChatMessagePromised.spec.js (44 tests) - Suspense wrapper for async setup
+  - ✅ ChatMessageReneged.spec.js (29 tests) - Same pattern
+  - ✅ ChatMessageModMail.spec.js (45 tests) - Fixed myid getter, realMod falsy check
+  - ✅ ChatMessageAddress.spec.js (20 tests) - No async needed
+  - ✅ ChatMessageInterested.spec.js (34 tests) - Fixed cleanup issues with defineAsyncComponent
+  - ✅ AutoComplete.spec.js (67 tests) - Fixed label prop, list visibility, keyboard navigation
+- **Test Count**: 7409 → 7614 tests (+205 this batch)
+- **Key Patterns**:
+  - Suspense wrapper using defineComponent and h() for async setup components
+  - Mock defineAsyncComponent to prevent async import race conditions during cleanup
+  - Mock vue-highlight-words at module level to avoid prop validation errors
+  - Use getter syntax for raw values: `get myid() { return mockMyid.value }`
+  - Provide required props like `label` to prevent deepValue split() errors
+  - Use toBeFalsy() instead of toBe(false) for null/undefined computed values
+- **Blockers**: None
+
+### 2026-01-23 18:40 - Freegle Component Unit Tests (Continued)
+- **Status**: 🔄 In Progress
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Goal**: Continue adding tests for untested Freegle components
+- **Completed This Session**:
+  - ✅ Fixed OurDatePicker.spec.js - mocked vue-datepicker-next module
+  - ✅ Fixed UserRatingsRemoveModal.spec.js - used vi.hoisted() and ref(null) for useOurModal
+  - ✅ DaFallbackDonationRequest.spec.js (11 tests)
+  - ✅ MicroVolunteeringSimilarTerm.spec.js (15 tests)
+  - ✅ DonationTraditionalExtras.spec.js (15 tests)
+  - ✅ MessageSkeleton.spec.js (8 tests) - pure presentation component
+  - ✅ SidebarRight.spec.js (12 tests) - ExternalDa wrapper
+  - ✅ UserSearch.spec.js (11 tests) - search chip with dayjs
+  - ✅ ContactDetailsAskModal.spec.js (8 tests) - postcode modal
+  - ✅ VisualiseSpeech.spec.js (12 tests) - Leaflet speech bubble
+  - ✅ MicroVolunteeringPhotoRotate.spec.js (17 tests) - rotate logic
+  - ✅ DonationAskWhatYouCan.spec.js (24 tests) - donation conditional rendering
+  - ✅ NewsHighlight.spec.js (22 tests) - read more/less functionality
+  - ✅ MicroVolunteeringSimilarTerms.spec.js (17 tests) - term selection logic
+  - ✅ DonationAskButtons2510.spec.js (27 tests) - donation button variants
+- **Test Count**: 5600 → 5845 tests (+245 this session)
+- **Key Patterns Used**:
+  - vi.hoisted() for mock functions used in vi.mock
+  - ref(null) from vue for useOurModal mock (template refs need real refs)
+  - vi.mock('module-name') for external libraries like vue-datepicker-next
+  - global.mocks for plugin-injected properties (me)
+  - $attrs.class binding in stubs to pass through component classes
+- **Next**: Continue with more untested components, ~170 still need tests
+- **Blockers**: None
+
+### 2026-01-23 - Unit Test Coverage Improvement
+- **Status**: ✅ Complete (Phase 1)
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Goal**: Improve test coverage from 7.16% to 20%+
+- **Completed**:
+  - ✅ Priority 1: Vue warning handler - tests now fail on Vue warnings
+  - ✅ Fixed ModComments/ModDeletedOrForgotten to accept null user props
+  - ✅ Fixed useOurModal mocks across test files to use proper Vue refs
+  - ✅ Commit 49b32ec2 pushed (18 files, +124/-27 lines)
+- **Blockers**: None
+
+### 2026-01-23 - ModMember System Component Tests
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd`
+- **Completed**:
+  - Added comprehensive unit tests for 7 ModMember components (268 new tests)
+  - ModMember.vue: 80 tests - main member display component
+  - ModMemberReview.vue: 34 tests - member review component
+  - ModMemberActions.vue: 43 tests - ban/remove/spam actions
+  - ModMemberButtons.vue: 46 tests - action buttons for member views
+  - ModMemberButton.vue: 33 tests - individual action button
+  - ModMemberEngagement.vue: 32 tests - engagement display
+  - ModMemberSummary.vue: 33 tests - member summary info
+  - Added memory-safe vitest configuration (pool: 'forks', maxWorkers based on CPU)
+  - Added ModCommentAddModal mock for deep dependency chain
+- **Test Count**: 1620 → 1888 tests (+268)
+- **Commits**: a0b5ca82 on feature/options-api-migration-tdd
+- **Key Patterns**:
+  - Use stubs for auto-imported child components instead of vi.mock
+  - For refs in templates, mock the object directly (not `{ value: {} }`)
+  - globalThis.useNuxtApp for auto-imported Nuxt composables
+
 ### 2026-01-22 - Yesterday Restore Port Conflict Fix
 - **Status**: ✅ Complete
 - **Issue**: Restore showed "failed" with "freegle-traefik is unhealthy"
@@ -364,76 +743,3 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - Backup 20260122 successfully loaded
 - **Key Learning**: The "traefik unhealthy" error was actually caused by port conflicts downstream, not traefik itself
 
-### 2026-01-20 - AI Support Helper Debug Modal Replacement
-- **Status**: ✅ Complete
-- **Branch**: `feature/mcp-log-analysis`
-- **Changes Made (Session 2)**:
-  - Replaced inline debug panel with summary modal popup
-  - Debug toggle checkbox → Debug button that opens modal
-  - New "MCP Data Sent to AI" modal shows:
-    - Unique values sent to AI from MCP tools (not user queries)
-    - Frequency count for each value
-    - Pseudonymized status (✓ green badge) or PII warning (⚠ red badge)
-    - "Real Value" column when "Show PII" toggle is on
-  - Added `mcpDataSummary` computed property to aggregate token data
-  - Cleaned up unused methods: `formatDebugData`, `formatStreamLabels`, `formatLogTimestamp`
-  - Removed ~70 lines of old debug panel styles
-- **Changes Made (Session 1)**:
-  - Removed Privacy Review toggle and all human-in-the-loop approval modals
-  - Removed ~280 lines of approval-related code
-- **Files Modified**:
-  - `iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue`
-- **Verified**: Debug button opens modal, shows empty state correctly, legend displays
-- **Commit**: 51dcc765 pushed to feature/mcp-log-analysis
-
-### 2026-01-18 - services.php Corruption Fix (CircleCI)
-- **Status**: Fix pushed, monitoring CI
-- **Root Cause Analysis**:
-  - **CI vs Production difference identified**: Production generates services.php once at deploy time, then only reads it. CI has supervisor starting multiple workers simultaneously.
-  - **Actual cause**: Supervisor launches scheduler, 2 queue workers, and mail spooler - all bootstrap Laravel at startup. If services.php needs regeneration (e.g., after migrate:fresh), multiple processes write to it concurrently → corruption (0 bytes).
-  - **Reference**: testbench issue #202 documents this as a testing-specific issue.
-- **Solution**:
-  - Added `CI=${CI:-false}` env var passthrough to batch container in docker-compose.yml
-  - In CI mode, entrypoint.sh skips supervisor entirely (`exec sleep infinity`)
-  - Tests don't need background workers - they run synchronously
-  - Local dev: supervisor runs normally, stopped by status API before tests
-- **Removed Defensive Code** (-268 lines):
-  - services.php validation/repair in entrypoint.sh
-  - View timestamp checking hack in TestCase.php
-  - Bootstrap cache validation/repair in server.js
-  - inotify monitoring for bootstrap cache corruption
-- **Commits**: 4e61f25 pushed to master
-- **Next**: Monitor CircleCI run at https://app.circleci.com/pipelines/github/Freegle/FreegleDocker
-- **Blockers**: None
-- **Key Principle**: Before making any fix, understand the difference between CircleCI and a live server. This was a testing-specific race condition, not a production issue.
-
-### 2026-01-18 - AI Decline on Edit (Issue #23)
-- **Status**: All tasks ✅ Complete, PR created, waiting for CI
-- **Completed**:
-  - Created `feature/ai-decline-on-edit` branch in iznik-server
-  - TDD: Wrote failing tests first, verified they failed for expected reason
-  - Modified `Message::replaceAttachments()` to record AI decline when AI attachment is removed
-  - Uses INSERT IGNORE into `messages_ai_declined` table
-  - All local tests pass (2 new tests)
-- **PR**: https://github.com/Freegle/iznik-server/pull/42
-- **Next**: Wait for CircleCI
-- **Blockers**: None
-- **Key Decisions**:
-  - Used strict `=== TRUE` comparison for AI flag check
-  - Same INSERT IGNORE pattern as existing code in message.php:706
-
-### 2026-01-17 23:10 - Email Reply Tracking (Issue #22)
-- **Status**: All tasks ✅ Complete, PR created, waiting for CI
-- **Completed**:
-  - Created `feature/email-reply-tracking` branch in iznik-server
-  - Updated MailRouter.php regex to parse optional tracking ID from notify- addresses
-  - Added email_tracking table update when reply received with tracking ID
-  - TDD approach: wrote failing tests first, then implemented fix
-  - All local tests pass (chatRoomsTest: 19 tests, MailRouterTest: 61 tests)
-- **PR**: https://github.com/Freegle/iznik-server/pull/41
-- **Next**: Wait for CircleCI (triggered when PR merges to master)
-- **Blockers**: None
-- **Key Decisions**:
-  - Used `\d+` regex for strict numeric matching (safer than `.*`)
-  - Used `replied_at IS NULL` in UPDATE to prevent overwriting existing replies
-  - Database ID (not tracking_id string) used in reply-to address for simpler lookup

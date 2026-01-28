@@ -127,6 +127,15 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        // Incoming mail processing logs
+        // Structured for Loki ingestion
+        'incoming_mail' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/incoming-mail.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

@@ -7,7 +7,7 @@ This is the Laravel-based batch job processor for Freegle. It handles background
 - **Laravel 12** application with PHP 8.3+
 - Uses the main `iznik` database directly (same as iznik-server)
 - PHPUnit tests use `iznik_batch_test` database
-- Uses MJML for email templates via `spatie/laravel-mjml`
+- Uses MJML for email templates via the freegle-mjml HTTP server
 - Container name: `freegle-batch`
 
 ## Configuration

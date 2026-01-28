@@ -25,8 +25,9 @@ class SendTestChatNotificationCommand extends Command
 
         if ($chatId) {
             $chatRoom = ChatRoom::find($chatId);
-            if (!$chatRoom) {
+            if (! $chatRoom) {
                 $this->error("Chat room {$chatId} not found.");
+
                 return 1;
             }
         } else {
@@ -34,11 +35,12 @@ class SendTestChatNotificationCommand extends Command
             $chatRoom = ChatRoom::whereHas('messages', function ($q) {
                 $q->where('date', '>=', now()->subDays(30));
             })
-            ->where('chattype', ChatRoom::TYPE_USER2USER)
-            ->first();
+                ->where('chattype', ChatRoom::TYPE_USER2USER)
+                ->first();
 
-            if (!$chatRoom) {
+            if (! $chatRoom) {
                 $this->error('No chat rooms with recent messages found.');
+
                 return 1;
             }
         }
@@ -49,8 +51,9 @@ class SendTestChatNotificationCommand extends Command
         $user1 = User::find($chatRoom->user1);
         $user2 = User::find($chatRoom->user2);
 
-        if (!$user1 || !$user2) {
+        if (! $user1 || ! $user2) {
             $this->error('Could not find users for this chat room.');
+
             return 1;
         }
 
@@ -61,8 +64,9 @@ class SendTestChatNotificationCommand extends Command
             ->with(['user', 'refMessage'])
             ->first();
 
-        if (!$latestMessage) {
+        if (! $latestMessage) {
             $this->error('No messages found in this chat room.');
+
             return 1;
         }
 
@@ -91,7 +95,7 @@ class SendTestChatNotificationCommand extends Command
         // In this case, the recipient IS the sender (they get a copy of their own message).
         if ($this->option('own-message')) {
             $recipient = $sender;
-            $this->info("Simulating OWN MESSAGE notification (copy to self).");
+            $this->info('Simulating OWN MESSAGE notification (copy to self).');
         } else {
             // Normal case: recipient is the OTHER user in the chat.
             $recipient = $latestMessage->userid === $user1->id ? $user2 : $user1;
@@ -99,14 +103,15 @@ class SendTestChatNotificationCommand extends Command
 
         $toEmail = $this->option('to') ?? $recipient->email_preferred;
 
-        if (!$toEmail) {
-            $this->error("Recipient has no email address. Use --to to specify one.");
+        if (! $toEmail) {
+            $this->error('Recipient has no email address. Use --to to specify one.');
+
             return 1;
         }
 
         // Use display names or generate meaningful ones for clarity.
-        $senderDisplayName = $sender->displayname ?: 'User' . $sender->id;
-        $recipientDisplayName = $recipient->displayname ?: 'User' . $recipient->id;
+        $senderDisplayName = $sender->displayname ?: 'User'.$sender->id;
+        $recipientDisplayName = $recipient->displayname ?: 'User'.$recipient->id;
 
         $this->info("Sending test email to: {$toEmail}");
         $this->info("Message sender: {$senderDisplayName}");
@@ -129,7 +134,7 @@ class SendTestChatNotificationCommand extends Command
         Mail::to($toEmail)->send($mail);
 
         $this->info('Test email sent successfully!');
-        $this->info("Check Mailpit at http://mailpit.localhost to view it.");
+        $this->info('Check Mailpit at http://mailpit.localhost to view it.');
 
         return 0;
     }

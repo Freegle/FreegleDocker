@@ -71,10 +71,10 @@ class AppServiceProvider extends ServiceProvider
         if (!$mjmlBinary) {
             $message = 'MJML binary not found. Email templates will not render correctly. ' .
                 'Install with: npm install mjml (in project root)';
-            Log::critical($message);
+            Log::warning($message);
 
-            // Fatal error - cannot send emails without MJML.
-            throw new \RuntimeException($message);
+            // Warning only - plain text emails (Mail::raw) still work without MJML.
+            // Only MJML-based email templates will fail to render.
         }
     }
 }

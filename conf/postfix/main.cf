@@ -1,0 +1,49 @@
+# Postfix main configuration for Freegle incoming mail processing
+# This container receives mail and pipes it to Laravel for processing
+
+# Basic settings
+smtpd_banner = $myhostname ESMTP Freegle Mail Server
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+
+# Hostname and domain settings
+myhostname = mail.ilovefreegle.org
+mydomain = ilovefreegle.org
+myorigin = $mydomain
+
+# Network settings - listen on all interfaces in container
+inet_interfaces = all
+inet_protocols = ipv4
+
+# Accept mail for these domains (virtual mailbox domains)
+mydestination =
+virtual_mailbox_domains = groups.ilovefreegle.org, users.ilovefreegle.org, user.trashnothing.com, ilovefreegle.org
+
+# Transport maps - route all accepted domains to the freegle pipe
+transport_maps = hash:/etc/postfix/transport
+
+# Concurrency limits for Laravel pipe transport
+# Limit parallel deliveries to avoid overwhelming the server
+freegle_destination_concurrency_limit = 4
+default_process_limit = 50
+
+# Size limits
+message_size_limit = 26214400
+mailbox_size_limit = 0
+
+# TLS settings for incoming connections (opportunistic)
+smtpd_tls_cert_file = /etc/ssl/certs/ssl-cert-snakeoil.pem
+smtpd_tls_key_file = /etc/ssl/private/ssl-cert-snakeoil.key
+smtpd_tls_security_level = may
+smtpd_tls_loglevel = 1
+
+# Relay restrictions - only accept mail for our domains
+smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
+
+# Queue settings
+maximal_queue_lifetime = 1d
+bounce_queue_lifetime = 1d
+
+# Logging
+maillog_file = /dev/stdout

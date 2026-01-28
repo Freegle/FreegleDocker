@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'mjml' => [
+        // MJML server URL (adrianrudnik/mjml-server on port 80)
+        'url' => env('MJML_URL', 'http://mjml/'),
+
+        // HTTP request timeout in seconds
+        'http_timeout' => env('MJML_HTTP_TIMEOUT', 30),
+    ],
+
 ];
