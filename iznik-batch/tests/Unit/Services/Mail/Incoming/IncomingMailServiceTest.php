@@ -1351,7 +1351,7 @@ class IncomingMailServiceTest extends TestCase
     public function test_group_post_from_moderator_goes_to_pending(): void
     {
         $mod = $this->createTestUser(['email_preferred' => $this->uniqueEmail('mod')]);
-        $group = $this->createTestGroup(['nameshort' => 'testgroup-'.uniqid()]);
+        $group = $this->createTestGroup();
 
         // Give user a location and make them a moderator
         $locationId = $this->createLocation(51.5, -0.1);
@@ -1381,7 +1381,6 @@ class IncomingMailServiceTest extends TestCase
     {
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
         $group = $this->createTestGroup([
-            'nameshort' => 'testgroup-'.uniqid(),
             'settings' => json_encode(['moderated' => 1]),
         ]);
 
@@ -1413,7 +1412,6 @@ class IncomingMailServiceTest extends TestCase
     {
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
         $group = $this->createTestGroup([
-            'nameshort' => 'testgroup-'.uniqid(),
             'overridemoderation' => 'ModerateAll',  // The "Big Switch"
         ]);
 
@@ -1445,7 +1443,6 @@ class IncomingMailServiceTest extends TestCase
     {
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
         $group = $this->createTestGroup([
-            'nameshort' => 'testgroup-'.uniqid(),
             'settings' => json_encode(['moderated' => 0]),
         ]);
 
@@ -1674,7 +1671,6 @@ class IncomingMailServiceTest extends TestCase
     {
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
         $group = $this->createTestGroup([
-            'nameshort' => 'testgroup-'.uniqid(),
             'settings' => json_encode(['moderated' => 0]),
         ]);
 
