@@ -370,16 +370,31 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-01-28 - MCP AI Support Helper Branch Merge
-- **Status**: 🔄 In Progress
-- **Branch**: `feature/mcp-log-analysis` (merging master)
+### 2026-01-28 - MCP AI Support Helper Branch Merge + CLI Chatbot
+- **Status**: ✅ Complete
+- **Branch**: `feature/mcp-log-analysis` (merged master + new command)
 - **Goal**: Bring MCP AI support helper branch up to date with master, add artisan CLI chatbot
-- **MCP Architecture Summary** (from Jan 18-21 work):
+- **MCP Architecture Summary**:
   - `ai-support-helper` container (port 8083) - runs Claude CLI with MCP tools
   - `ai-sanitizer` container (port 8084) - PII pseudonymization, Loki/MySQL queries
   - MCP tools: `query_logs` (Loki), `query_database` (MySQL with SQL validation)
   - ModTools UI: `ModSupportAIAssistant.vue` - chat interface for support staff
   - Privacy: All PII automatically tokenized before reaching Claude
+- **Tasks Completed**:
+  1. ✅ Merged master into feature/mcp-log-analysis (resolved all conflicts)
+  2. ✅ Updated iznik-nuxt3 submodule with merged ModSupportAIAssistant.vue
+  3. ✅ Created `ai:chat` artisan command for CLI-based AI support
+  4. ✅ Added 12 tests for ChatCommand covering all scenarios
+- **New Files**:
+  - `iznik-batch/app/Console/Commands/AI/ChatCommand.php`
+  - `iznik-batch/tests/Feature/Console/AIChat/ChatCommandTest.php`
+- **Usage**:
+  ```bash
+  php artisan ai:chat "When did user 12345 last log in?"
+  php artisan ai:chat --user=12345 "Why is this user having problems?"
+  php artisan ai:chat --interactive
+  ```
+- **Next**: Push branch, test in Docker environment
 
 ### 2026-01-27 18:30 - CI Failure Details Display
 - **Status**: 🔄 In Progress - CI running (pipeline 1537)
