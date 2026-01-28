@@ -943,6 +943,84 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
     }
 
+    public function test_routes_spam_keyword_from_database_to_incoming_spam(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamkw')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        // Insert a spam keyword into the database (matching legacy behavior)
+        DB::table('spam_keywords')->insert([
+            'word' => 'weight loss',
+            'action' => 'Spam',
+            'type' => 'Literal',
+            'exclude' => NULL,
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Supplements (London)',
+        ], 'Amazing weight loss results with this product!');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_spam_keyword_with_exclude_pattern_does_not_match(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamexcl')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        // Insert keyword with exclude pattern
+        DB::table('spam_keywords')->insert([
+            'word' => 'courier',
+            'action' => 'Spam',
+            'type' => 'Literal',
+            'exclude' => 'Never agree to pay courier fees',
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        // Message contains the keyword BUT also the exclude pattern
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Furniture (London)',
+        ], 'I can arrange a courier. Never agree to pay courier fees for delivery.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should NOT be spam because exclude pattern matches
+        $this->assertNotEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
     public function test_drops_known_spammer(): void
     {
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('badactor')]);
@@ -1193,6 +1271,432 @@ class IncomingMailServiceTest extends TestCase
         $result = $this->service->route($parsed);
 
         $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    // ========================================
+    // Freegle-Formatted Address Tests (user ID in address)
+    // ========================================
+
+    /**
+     * Test that direct mail to Freegle-formatted address extracts user ID.
+     * Address format: *-{userid}@users.ilovefreegle.org
+     */
+    public function test_routes_direct_mail_to_freegle_address_to_user(): void
+    {
+        // Create recipient user
+        $recipient = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        // Create sender user with email in the database
+        $sender = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $senderEmail = $sender->emails->first()->email;
+
+        // Create location so user isn't "unmapped"
+        $locationId = $this->createLocation(51.5, -0.1);
+        DB::table('users')->where('id', $sender->id)->update(['lastlocation' => $locationId]);
+
+        // Use Freegle-formatted address: anything-{userid}@users.ilovefreegle.org
+        $freegleAddress = "somename-{$recipient->id}@users.ilovefreegle.org";
+
+        $email = $this->createMinimalEmail([
+            'From' => $senderEmail,
+            'To' => $freegleAddress,
+            'Subject' => 'Re: Your offer',
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse($email, $senderEmail, $freegleAddress);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
+
+    /**
+     * Test that direct mail to Freegle-formatted address with invalid user ID is dropped.
+     */
+    public function test_routes_direct_mail_to_invalid_freegle_address_to_dropped(): void
+    {
+        $sender = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $senderEmail = $sender->emails->first()->email;
+
+        // User ID 99999999 doesn't exist
+        $freegleAddress = 'somename-99999999@users.ilovefreegle.org';
+
+        $email = $this->createMinimalEmail([
+            'From' => $senderEmail,
+            'To' => $freegleAddress,
+            'Subject' => 'Re: Your offer',
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse($email, $senderEmail, $freegleAddress);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    // ========================================
+    // Group Post Moderation Tests
+    // ========================================
+
+    /**
+     * Test that posts from moderators go to pending (per volunteer request to avoid accidents).
+     */
+    public function test_group_post_from_moderator_goes_to_pending(): void
+    {
+        $mod = $this->createTestUser(['email_preferred' => $this->uniqueEmail('mod')]);
+        $group = $this->createTestGroup(['nameshort' => 'testgroup-'.uniqid()]);
+
+        // Give user a location and make them a moderator
+        $locationId = $this->createLocation(51.5, -0.1);
+        DB::table('users')->where('id', $mod->id)->update(['lastlocation' => $locationId]);
+        $this->createMembership($mod, $group, 'Approved', 'Moderator');
+
+        $modEmail = $mod->emails->first()->email;
+        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
+
+        $email = $this->createMinimalEmail([
+            'From' => $modEmail,
+            'To' => $groupAddress,
+            'Subject' => 'OFFER: Test item (London)',
+        ], 'A test offer from moderator');
+
+        $parsed = $this->parser->parse($email, $modEmail, $groupAddress);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::PENDING, $result);
+    }
+
+    /**
+     * Test that posts to group with moderated=1 setting go to pending.
+     */
+    public function test_group_post_to_moderated_group_goes_to_pending(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
+        $group = $this->createTestGroup([
+            'nameshort' => 'testgroup-'.uniqid(),
+            'settings' => json_encode(['moderated' => 1]),
+        ]);
+
+        // Give user a location and make them a member
+        $locationId = $this->createLocation(51.5, -0.1);
+        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
+        $this->createMembership($user, $group);
+
+        $userEmail = $user->emails->first()->email;
+        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $groupAddress,
+            'Subject' => 'OFFER: Test item (London)',
+        ], 'A test offer');
+
+        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::PENDING, $result);
+    }
+
+    /**
+     * Test that posts to group with overridemoderation=ModerateAll (Big Switch) go to pending.
+     */
+    public function test_group_post_with_override_moderation_goes_to_pending(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
+        $group = $this->createTestGroup([
+            'nameshort' => 'testgroup-'.uniqid(),
+            'overridemoderation' => 'ModerateAll',  // The "Big Switch"
+        ]);
+
+        // Give user a location and make them a member
+        $locationId = $this->createLocation(51.5, -0.1);
+        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
+        $this->createMembership($user, $group);
+
+        $userEmail = $user->emails->first()->email;
+        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $groupAddress,
+            'Subject' => 'OFFER: Test item (London)',
+        ], 'A test offer');
+
+        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::PENDING, $result);
+    }
+
+    /**
+     * Test that posts from regular member to unmoderated group are approved.
+     */
+    public function test_group_post_from_member_to_unmoderated_group_is_approved(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
+        $group = $this->createTestGroup([
+            'nameshort' => 'testgroup-'.uniqid(),
+            'settings' => json_encode(['moderated' => 0]),
+        ]);
+
+        // Give user a location and make them a member
+        $locationId = $this->createLocation(51.5, -0.1);
+        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
+        $this->createMembership($user, $group);
+
+        $userEmail = $user->emails->first()->email;
+        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $groupAddress,
+            'Subject' => 'OFFER: Test item (London)',
+        ], 'A test offer');
+
+        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::APPROVED, $result);
+    }
+
+    // ========================================
+    // Chat Notification Self-Send Tests
+    // ========================================
+
+    /**
+     * Test that replying to a chat notification where sender is the notify address user works.
+     *
+     * This is the NORMAL chat reply flow:
+     * 1. User1 receives a notification about a message in chat with User2
+     * 2. The reply-to address is notify-{chatid}-{user1id}@...
+     * 3. User1 replies, and the message is added to the chat
+     */
+    public function test_chat_reply_where_sender_is_notify_user_is_accepted(): void
+    {
+        // Create two users and a chat between them
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        // User1's registered email
+        $user1Email = $user1->emails->first()->email;
+
+        // User1 replies to a notify address for user1 - this is the normal reply flow
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Chat message',
+        ], 'This is a reply');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        // This is a valid chat reply and should be accepted
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
+
+    /**
+     * Test that a valid chat reply from the OTHER user in the chat is accepted.
+     */
+    public function test_chat_reply_from_other_user_is_accepted(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        // User2 replies to a notification that was sent to user1
+        $user2Email = $user2->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user2Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Chat message',
+        ], 'Reply from other user');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user2Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
+
+    // ========================================
+    // Chat Stale Reply Tests
+    // ========================================
+
+    /**
+     * Test that replies to stale chats (>90 days) from unfamiliar sender are dropped.
+     * Matches legacy User::OPEN_AGE = 90 days.
+     */
+    public function test_chat_reply_to_stale_chat_from_unfamiliar_sender_is_dropped(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        // Make the chat stale (91 days ago - beyond the 90 day threshold)
+        DB::table('chat_rooms')->where('id', $chat->id)->update([
+            'latestmessage' => now()->subDays(91),
+        ]);
+
+        // Send from an unfamiliar email (not associated with user1)
+        $unfamiliarEmail = 'unknown-'.uniqid().'@example.com';
+
+        $email = $this->createMinimalEmail([
+            'From' => $unfamiliarEmail,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Old conversation',
+        ], 'A reply to a very old chat');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $unfamiliarEmail,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    /**
+     * Test that replies to fresh chats from unfamiliar sender are accepted.
+     */
+    public function test_chat_reply_to_fresh_chat_from_unfamiliar_sender_is_accepted(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        // Make the chat fresh (30 days ago - within the 90 day threshold)
+        DB::table('chat_rooms')->where('id', $chat->id)->update([
+            'latestmessage' => now()->subDays(30),
+        ]);
+
+        // Send from an unfamiliar email (not associated with user1)
+        $unfamiliarEmail = 'unknown-'.uniqid().'@example.com';
+
+        $email = $this->createMinimalEmail([
+            'From' => $unfamiliarEmail,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Recent conversation',
+        ], 'A reply to a recent chat');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $unfamiliarEmail,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
+
+    // ========================================
+    // TN Email Canonicalization Tests
+    // ========================================
+
+    /**
+     * Test that TN emails with group suffix are canonicalized correctly.
+     * e.g., alice-g123@user.trashnothing.com should match alice-g456@user.trashnothing.com
+     */
+    public function test_tn_emails_with_different_group_suffixes_match_same_user(): void
+    {
+        // Create user with one TN email
+        $user = $this->createTestUser(['email_preferred' => 'testuser-g123@user.trashnothing.com']);
+
+        // Create another TN email for the same user with different group suffix
+        DB::table('users_emails')->insert([
+            'userid' => $user->id,
+            'email' => 'testuser-g456@user.trashnothing.com',
+            'canon' => 'testuser@usertrashnothingcom',
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        // Create recipient user
+        $recipient = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+
+        // Create location so sender isn't "unmapped"
+        $locationId = $this->createLocation(51.5, -0.1);
+        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
+
+        // Use Freegle-formatted address for recipient
+        $freegleAddress = "somename-{$recipient->id}@users.ilovefreegle.org";
+
+        // Send from the second TN email (g456)
+        $email = $this->createMinimalEmail([
+            'From' => 'testuser-g456@user.trashnothing.com',
+            'To' => $freegleAddress,
+            'Subject' => 'Re: Your offer',
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'testuser-g456@user.trashnothing.com',
+            $freegleAddress
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should find the sender via canon lookup and route successfully
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
+
+    /**
+     * Test that posts from member with NULL ourPostingStatus go to pending.
+     *
+     * Legacy behavior: when ourPostingStatus is null, it defaults to MODERATED
+     * which means the message goes to pending for moderator review.
+     */
+    public function test_group_post_with_null_posting_status_goes_to_pending(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
+        $group = $this->createTestGroup([
+            'nameshort' => 'testgroup-'.uniqid(),
+            'settings' => json_encode(['moderated' => 0]),
+        ]);
+
+        // Give user a location
+        $locationId = $this->createLocation(51.5, -0.1);
+        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
+
+        // Create membership with NULL ourPostingStatus (the default)
+        $this->createMembership($user, $group);
+        // Explicitly set ourPostingStatus to NULL
+        DB::table('memberships')
+            ->where('userid', $user->id)
+            ->where('groupid', $group->id)
+            ->update(['ourPostingStatus' => null]);
+
+        $userEmail = $user->emails->first()->email;
+        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $groupAddress,
+            'Subject' => 'OFFER: Test item (London)',
+        ], 'A test offer');
+
+        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
+
+        $result = $this->service->route($parsed);
+
+        // NULL posting status defaults to MODERATED per legacy behavior
+        $this->assertEquals(RoutingResult::PENDING, $result);
     }
 
     // ========================================

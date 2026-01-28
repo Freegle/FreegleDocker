@@ -6,6 +6,7 @@ use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 
@@ -101,6 +102,7 @@ class ReplayIncomingArchiveCommand extends Command
             'matched' => 0,
             'mismatched' => 0,
             'errors' => 0,
+            'skipped' => 0,
         ];
 
         $progressBar = $this->output->createProgressBar(count($files));
@@ -113,6 +115,8 @@ class ReplayIncomingArchiveCommand extends Command
             $stats['total']++;
             if ($result['error']) {
                 $stats['errors']++;
+            } elseif (isset($result['skipped_reason'])) {
+                $stats['skipped']++;
             } elseif ($result['match']) {
                 $stats['matched']++;
             } else {
@@ -184,6 +188,7 @@ class ReplayIncomingArchiveCommand extends Command
             'envelope_from' => null,
             'envelope_to' => null,
             'subject' => null,
+            'routing_context' => null,
         ];
 
         try {
@@ -195,7 +200,7 @@ class ReplayIncomingArchiveCommand extends Command
                 throw new \RuntimeException('Invalid JSON: '.json_last_error_msg());
             }
 
-            if (! isset($archive['version']) || $archive['version'] !== 1) {
+            if (! isset($archive['version']) || ! in_array($archive['version'], [1, 2])) {
                 throw new \RuntimeException('Unsupported archive version');
             }
 
@@ -209,6 +214,32 @@ class ReplayIncomingArchiveCommand extends Command
             $result['envelope_to'] = $envelopeTo;
             $result['legacy_outcome'] = $legacyOutcome;
             $result['subject'] = $archive['legacy_result']['subject'] ?? null;
+
+            // Capture routing context from v2 archives for mismatch diagnostics
+            if ($archive['version'] >= 2) {
+                $result['routing_context'] = [
+                    'our_posting_status' => $archive['legacy_result']['our_posting_status'] ?? null,
+                    'membership_role' => $archive['legacy_result']['membership_role'] ?? null,
+                    'group_moderated' => $archive['legacy_result']['group_moderated'] ?? null,
+                    'override_moderation' => $archive['legacy_result']['override_moderation'] ?? null,
+                ];
+            }
+
+            // Check if legacy didn't save the message (message_id is null)
+            // This happens when:
+            // 1. Message was a duplicate (same message-id already in DB) - failok=true
+            // 2. Message failed to parse/save for other reasons - failok=false
+            // In both cases, legacy never called route(), so we shouldn't route either.
+            // We just accept the legacy outcome as correct for these cases.
+            $legacyMessageId = $archive['legacy_result']['message_id'] ?? null;
+            if ($legacyMessageId === null) {
+                // Legacy didn't save this message, so don't try to route it
+                $result['new_outcome'] = $legacyOutcome;
+                $result['match'] = true;  // Accept legacy outcome as authoritative
+                $result['skipped_reason'] = 'Legacy did not save message (duplicate or parse failure)';
+
+                return $result;
+            }
 
             // Parse email through new code
             $parsed = $this->parserService->parse($rawEmail, $envelopeFrom, $envelopeTo);
@@ -245,6 +276,7 @@ class ReplayIncomingArchiveCommand extends Command
                 ['Total', $stats['total'], '100%'],
                 ['Matched', $stats['matched'], $this->percentage($stats['matched'], $stats['total'])],
                 ['Mismatched', $stats['mismatched'], $this->percentage($stats['mismatched'], $stats['total'])],
+                ['Skipped (duplicates)', $stats['skipped'], $this->percentage($stats['skipped'], $stats['total'])],
                 ['Errors', $stats['errors'], $this->percentage($stats['errors'], $stats['total'])],
             ]
         );
@@ -312,6 +344,18 @@ class ReplayIncomingArchiveCommand extends Command
         }
         $this->line(sprintf('  <fg=green>Legacy:</> %s', $result['legacy_outcome']));
         $this->line(sprintf('  <fg=red>New:</> %s', $result['new_outcome']));
+
+        // Show routing context from v2 archives to aid diagnosis
+        if (! empty($result['routing_context'])) {
+            $ctx = $result['routing_context'];
+            $this->line(sprintf(
+                '  <fg=cyan>Context:</> postingStatus=%s role=%s groupModerated=%s override=%s',
+                $ctx['our_posting_status'] ?? 'NULL',
+                $ctx['membership_role'] ?? 'NULL',
+                $ctx['group_moderated'] === null ? 'NULL' : ($ctx['group_moderated'] ? 'yes' : 'no'),
+                $ctx['override_moderation'] ?? 'NULL'
+            ));
+        }
     }
 
     /**
@@ -324,5 +368,34 @@ class ReplayIncomingArchiveCommand extends Command
         }
 
         return sprintf('%.1f%%', ($count / $total) * 100);
+    }
+
+    /**
+     * Extract Message-Id from raw email.
+     */
+    private function extractMessageId(string $rawEmail): ?string
+    {
+        // Match Message-Id header (case insensitive)
+        if (preg_match('/^Message-I[dD]:\s*<?([^>\s]+)>?\s*$/mi', $rawEmail, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if message is a duplicate (already exists in database).
+     *
+     * Legacy behavior: message-id has group suffix appended, so we check with LIKE.
+     * This matches both exact message-id and message-id-{groupid} variants.
+     */
+    private function isDuplicateMessage(string $messageId): bool
+    {
+        // The legacy code appends "-{groupid}" to message-ids, so we need to check
+        // for both the exact message-id and any with a suffix
+        return DB::table('messages')
+            ->where('messageid', $messageId)
+            ->orWhere('messageid', 'LIKE', $messageId.'-%')
+            ->exists();
     }
 }

@@ -27,8 +27,8 @@ use Illuminate\Support\Facades\Log;
  */
 class IncomingMailService
 {
-    // Maximum age for chat replies (84 days = 12 weeks)
-    private const STALE_CHAT_DAYS = 84;
+    // Maximum age for chat replies (90 days to match legacy User::OPEN_AGE)
+    private const STALE_CHAT_DAYS = 90;
 
     // Maximum age for message replies (42 days = 6 weeks)
     private const EXPIRED_MESSAGE_DAYS = 42;
@@ -1313,7 +1313,7 @@ class IncomingMailService
      */
     private function isStaleChatWithUnfamiliarSender(ChatRoom $chat, ParsedEmail $email): bool
     {
-        // Check if chat is stale (>84 days old)
+        // Check if chat is stale (>90 days old, per User::OPEN_AGE)
         $latestMessage = $chat->latestmessage;
         if ($latestMessage === null || $latestMessage->diffInDays(now()) <= self::STALE_CHAT_DAYS) {
             return false;
@@ -1481,7 +1481,8 @@ class IncomingMailService
         }
 
         // Check posting status (column is camelCase: ourPostingStatus)
-        $postingStatus = $membership->ourPostingStatus ?? 'DEFAULT';
+        // Keep null to match legacy behavior where null defaults to MODERATED (Pending)
+        $postingStatus = $membership->ourPostingStatus;
 
         // Check if user is unmapped (no location)
         if ($user->lastlocation === null) {
@@ -1501,11 +1502,52 @@ class IncomingMailService
             return RoutingResult::PENDING;
         }
 
+        // Check if PROHIBITED - drop regardless of other settings
+        if ($postingStatus === 'PROHIBITED') {
+            Log::info('User has PROHIBITED posting status - dropping', [
+                'user_id' => $user->id,
+                'group_id' => $group->id,
+            ]);
+
+            return RoutingResult::DROPPED;
+        }
+
+        // Check if "Big Switch" is enabled (group overrides all moderation)
+        if ($group->overridemoderation === 'ModerateAll') {
+            Log::info('Group has ModerateAll override - pending', [
+                'group_id' => $group->id,
+            ]);
+
+            return RoutingResult::PENDING;
+        }
+
+        // Check if user is a moderator - mods always go to pending for email posts
+        // This is requested by volunteers to avoid accidents.
+        if ($user->isModeratorOf($group->id)) {
+            Log::info('Post from moderator - pending', [
+                'user_id' => $user->id,
+                'group_id' => $group->id,
+            ]);
+
+            return RoutingResult::PENDING;
+        }
+
+        // Check if group has moderation enabled
+        $groupModerated = $group->getSetting('moderated', 0);
+        if ($groupModerated) {
+            Log::info('Group has moderation enabled - pending', [
+                'group_id' => $group->id,
+            ]);
+
+            return RoutingResult::PENDING;
+        }
+
         // Route based on posting status
+        // Legacy behavior: null posting status defaults to MODERATED (Pending)
+        // Only 'DEFAULT' or 'UNMODERATED' explicit status goes to Approved
         return match ($postingStatus) {
-            'MODERATED' => RoutingResult::PENDING,
-            'PROHIBITED' => RoutingResult::DROPPED,
-            default => RoutingResult::APPROVED,
+            'DEFAULT', 'UNMODERATED' => RoutingResult::APPROVED,
+            default => RoutingResult::PENDING,  // null, MODERATED, etc.
         };
     }
 
@@ -1534,36 +1576,64 @@ class IncomingMailService
     }
 
     /**
-     * Check if email is spam.
+     * Check if email is spam using the spam_keywords database table.
+     *
+     * Matches legacy Spam::checkSpam() behavior: checks message body and subject
+     * against keywords with action 'Spam' or 'Review', using word boundary regex
+     * matching, with support for exclude patterns.
      */
     private function isSpam(ParsedEmail $email): bool
     {
-        $subject = strtolower($email->subject ?? '');
-        $body = strtolower($email->textBody ?? '');
+        $subject = $email->subject ?? '';
+        $body = $email->textBody ?? '';
 
-        // Common spam patterns
-        // Note: Full spam checking is handled by Rspamd/SpamAssassin at the MTA level.
-        // These patterns catch obvious spam that might bypass external filters.
-        $spamPatterns = [
-            'make money fast',
-            'guaranteed returns',
-            'western union',
-            'send money',
-            'lottery winner',
-            'nigerian prince',
-        ];
+        // Strip job text URLs before checking (matches legacy behavior)
+        $body = preg_replace('/\<https\:\/\/www\.ilovefreegle\.org\/jobs\/.*\>.*$/im', '', $body);
 
-        foreach ($spamPatterns as $pattern) {
-            if (str_contains($subject, $pattern) || str_contains($body, $pattern)) {
-                Log::info('Spam pattern detected', [
-                    'pattern' => $pattern,
+        // Decode HTML entities used by spammers to disguise words (matches legacy)
+        $body = str_replace('&#616;', 'i', $body);
+        $body = str_replace('&#537;', 's', $body);
+        $body = str_replace('&#206;', 'I', $body);
+        $body = str_replace('=C2', '£', $body);
+
+        // Check keywords from database (legacy checks both Review and Spam actions)
+        $keywords = DB::table('spam_keywords')
+            ->whereIn('action', ['Spam', 'Review'])
+            ->get();
+
+        foreach ($keywords as $keyword) {
+            $word = trim($keyword->word);
+            if (strlen($word) === 0) {
+                continue;
+            }
+
+            $pattern = '/\b' . preg_quote($word, '/') . '\b/i';
+
+            // Check if keyword matches in body or subject
+            $matchesBody = preg_match($pattern, $body);
+            $matchesSubject = preg_match($pattern, $subject);
+
+            if ($matchesBody || $matchesSubject) {
+                // Check exclude pattern - if message matches exclude, it's not spam
+                if (! empty($keyword->exclude)) {
+                    $excludePattern = '/' . $keyword->exclude . '/i';
+                    $messageText = $body . ' ' . $subject;
+
+                    if (@preg_match($excludePattern, $messageText)) {
+                        continue;
+                    }
+                }
+
+                Log::info('Spam keyword detected from database', [
+                    'keyword' => $word,
+                    'action' => $keyword->action,
                 ]);
 
-                return true;
+                return TRUE;
             }
         }
 
-        return false;
+        return FALSE;
     }
 
     /**
@@ -1653,8 +1723,11 @@ class IncomingMailService
      * Handle direct mail to users.
      *
      * Direct mail is sent to {something}@users.ilovefreegle.org where {something}
-     * is a user's email address that can be looked up. This handles replies to
+     * contains a user ID that can be extracted. This handles replies to
      * What's New emails and direct user-to-user communication.
+     *
+     * Both sender and recipient must be identifiable Freegle users. If either
+     * cannot be found, the message is dropped.
      */
     private function handleDirectMail(ParsedEmail $email): RoutingResult
     {
@@ -1663,22 +1736,13 @@ class IncomingMailService
             'to' => $email->envelopeTo,
         ]);
 
-        // Find the recipient user by looking up the envelope-to address
-        $toAddress = $email->envelopeTo;
-        $recipientEmail = UserEmail::where('email', $toAddress)->first();
-
-        if ($recipientEmail === null) {
-            Log::info('Direct mail to unknown user address', [
-                'to' => $toAddress,
-            ]);
-
-            return RoutingResult::DROPPED;
-        }
-
-        $recipientUser = User::find($recipientEmail->userid);
+        // Find the recipient user by looking up the envelope-to address.
+        // This handles both Freegle-formatted addresses like *-{uid}@users.ilovefreegle.org
+        // and regular email addresses in the users_emails table.
+        $recipientUser = $this->findUserByEmail($email->envelopeTo);
         if ($recipientUser === null) {
-            Log::warning('Direct mail to email with no user', [
-                'to' => $toAddress,
+            Log::info('Direct mail to unknown user address', [
+                'to' => $email->envelopeTo,
             ]);
 
             return RoutingResult::DROPPED;
@@ -1747,12 +1811,83 @@ class IncomingMailService
             return null;
         }
 
-        $userEmail = UserEmail::where('email', $email)->first();
+        // First check for Freegle-formatted addresses like *-{uid}@users.ilovefreegle.org
+        // These have the user ID embedded in the local part after the last hyphen.
+        // This matches the legacy User::findByEmail() behavior.
+        $userDomain = config('freegle.mail.user_domain');
+        if (preg_match('/.*-(\d+)@' . preg_quote($userDomain, '/') . '$/i', $email, $matches)) {
+            $userId = (int) $matches[1];
+            $user = User::find($userId);
+            if ($user !== null) {
+                return $user;
+            }
+        }
+
+        // Canonicalize the email for lookup (matches legacy User::canonMail())
+        $canonEmail = $this->canonicalizeEmail($email);
+
+        // Look up by email or canonicalized email
+        $userEmail = UserEmail::where('email', $email)
+            ->orWhere('canon', $canonEmail)
+            ->first();
+
         if ($userEmail === null) {
             return null;
         }
 
         return User::find($userEmail->userid);
+    }
+
+    /**
+     * Canonicalize an email address (matches legacy User::canonMail()).
+     *
+     * This handles:
+     * - TN addresses: rkrochelle-g8860@user.trashnothing.com → rkrochelle@user.trashnothing.com
+     * - Googlemail → Gmail
+     * - Plus addressing removal
+     * - Dot removal for Gmail LHS
+     * - Dot removal for ALL domain RHS (legacy behavior for space saving)
+     */
+    private function canonicalizeEmail(string $email): string
+    {
+        // Googlemail is Gmail really in US and UK
+        $email = str_replace('@googlemail.', '@gmail.', $email);
+        $email = str_replace('@googlemail.co.uk', '@gmail.co.uk', $email);
+
+        // Canonicalize TN addresses - strip everything after hyphen before @user.trashnothing.com
+        // e.g., rkrochelle-g8860@user.trashnothing.com → rkrochelle@user.trashnothing.com
+        // Note: Legacy uses (.*)\-(.*) which matches any hyphen suffix, not just -gNNN
+        if (preg_match('/(.*)-(.*)(@user\.trashnothing\.com)/i', $email, $matches)) {
+            $email = $matches[1] . $matches[3];
+        }
+
+        // Remove plus addressing (except Facebook)
+        // e.g., john+freegle@gmail.com → john@gmail.com
+        if (strpos($email, '@proxymail.facebook.com') === false &&
+            substr($email, 0, 1) !== '+' &&
+            preg_match('/(.*)\+(.*)(@.*)/', $email, $matches)) {
+            $email = $matches[1] . $matches[3];
+        }
+
+        // Split into LHS and RHS at @
+        $atPos = strpos($email, '@');
+        if ($atPos !== false) {
+            $lhs = substr($email, 0, $atPos);
+            $rhs = substr($email, $atPos);
+
+            // Remove dots in LHS for Gmail (they're ignored)
+            if (stripos($rhs, '@gmail') !== false || stripos($rhs, '@googlemail') !== false) {
+                $lhs = str_replace('.', '', $lhs);
+            }
+
+            // Remove dots from RHS (domain) - legacy behavior for space saving
+            // This is the format historically used in the canon column
+            $rhs = str_replace('.', '', $rhs);
+
+            $email = $lhs . $rhs;
+        }
+
+        return $email;
     }
 
     /**
