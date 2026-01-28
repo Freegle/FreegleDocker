@@ -923,6 +923,14 @@ class IncomingMailServiceTest extends TestCase
             'lastlocation' => $this->createLocation(51.5, -0.1),
         ]);
 
+        // Insert spam keyword to detect "Western Union" in the email body
+        DB::table('spam_keywords')->insert([
+            'word' => 'Western Union',
+            'action' => 'Spam',
+            'type' => 'Literal',
+            'exclude' => null,
+        ]);
+
         $userEmail = $user->emails->first()->email;
 
         // Use known spam patterns
