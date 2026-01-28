@@ -1377,6 +1377,8 @@ volumes:
     name: loki-data
   grafana-data:
     driver: local
+  apiv1_logs:
+    driver: local
   apiv2_logs:
     driver: local
   batch_logs:
