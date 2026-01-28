@@ -1356,7 +1356,7 @@ class IncomingMailServiceTest extends TestCase
         // Give user a location and make them a moderator
         $locationId = $this->createLocation(51.5, -0.1);
         DB::table('users')->where('id', $mod->id)->update(['lastlocation' => $locationId]);
-        $this->createMembership($mod, $group, 'Approved', 'Moderator');
+        $this->createMembership($mod, $group, ['role' => 'Moderator']);
 
         $modEmail = $mod->emails->first()->email;
         $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
@@ -1446,10 +1446,10 @@ class IncomingMailServiceTest extends TestCase
             'settings' => json_encode(['moderated' => 0]),
         ]);
 
-        // Give user a location and make them a member
+        // Give user a location and make them a member with DEFAULT posting status
         $locationId = $this->createLocation(51.5, -0.1);
         DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
-        $this->createMembership($user, $group);
+        $this->createMembership($user, $group, ['ourPostingStatus' => 'DEFAULT']);
 
         $userEmail = $user->emails->first()->email;
         $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
