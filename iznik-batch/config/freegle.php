@@ -177,11 +177,39 @@ return [
 
     'git_summary' => [
         'gemini_api_key' => env('GOOGLE_GEMINI_API_KEY', ''),
+        'from_address' => env('GIT_SUMMARY_FROM_ADDRESS', 'geeks@ilovefreegle.org'),
+        'from_name' => env('GIT_SUMMARY_FROM_NAME', 'Freegle Geeks'),
         'repositories' => [
-            '/home/edward/FreegleDockerWSL/iznik-nuxt3',
-            '/home/edward/FreegleDockerWSL/iznik-server',
-            '/home/edward/FreegleDockerWSL/iznik-server-go',
-            '/home/edward/FreegleDockerWSL/iznik-batch',
+            [
+                'name' => 'Freegle Direct & ModTools (Frontend)',
+                'url' => 'https://github.com/Freegle/iznik-nuxt3.git',
+                'branch' => 'production',
+                'category' => 'FD',
+            ],
+            [
+                'name' => 'PHP API (iznik-server)',
+                'url' => 'https://github.com/Freegle/iznik-server.git',
+                'branch' => 'master',
+                'category' => 'API',
+            ],
+            [
+                'name' => 'Go API (iznik-server-go)',
+                'url' => 'https://github.com/Freegle/iznik-server-go.git',
+                'branch' => 'master',
+                'category' => 'API',
+            ],
+            [
+                'name' => 'Batch Jobs (iznik-batch)',
+                'url' => 'https://github.com/Freegle/iznik-batch.git',
+                'branch' => 'master',
+                'category' => 'BE',
+            ],
+            [
+                'name' => 'Docker Infrastructure (FreegleDocker)',
+                'url' => 'https://github.com/Freegle/FreegleDocker.git',
+                'branch' => 'master',
+                'category' => 'BE',
+            ],
         ],
         'max_days_back' => 7,
         'discourse_email' => env('FREEGLE_DISCOURSE_TECH_EMAIL', ''),
@@ -189,4 +217,20 @@ return [
 
     // Note: App release classification (hotfix: detection) is handled directly
     // in CircleCI via the check-hotfix-promote job. See iznik-nuxt3/.circleci/config.yml
+
+    /*
+    |--------------------------------------------------------------------------
+    | Netlify SSL Certificate Upload
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for uploading renewed Let's Encrypt certificates to Netlify.
+    | Used by the ssl:netlify-upload artisan command.
+    |
+    */
+
+    'netlify' => [
+        'token' => env('NETLIFY_TOKEN', ''),
+        'site_id' => env('NETLIFY_SITE_ID', '75fa22f1-3d32-4474-a3fc-65afbd7f4f43'),
+        'cert_path' => env('LETSENCRYPT_CERT_PATH', '/etc/letsencrypt/live/ilovefreegle.org'),
+    ],
 ];

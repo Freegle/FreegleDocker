@@ -3,6 +3,7 @@
 #
 # This configuration:
 # - Disables production containers (freegle-prod-local, modtools-prod-local)
+# - Disables MCP containers (not needed on Yesterday, and port 8084 conflicts with 2FA)
 # - Exposes dev containers on external ports for yesterday access
 # - Uses the updated container names (freegle-dev-local, modtools-dev-local)
 
@@ -13,6 +14,28 @@ services:
       - disabled
 
   modtools-prod-local:
+    profiles:
+      - disabled
+
+  # Disable MCP support tools (not needed on Yesterday, mcp-query-sanitizer uses port 8084
+  # which conflicts with yesterday-2fa)
+  mcp-query-sanitizer:
+    profiles:
+      - disabled
+
+  mcp-interface:
+    profiles:
+      - disabled
+
+  mcp-pseudonymizer:
+    profiles:
+      - disabled
+
+  mcp-pseudonymizer-data:
+    profiles:
+      - disabled
+
+  mcp-audit-logs:
     profiles:
       - disabled
 

@@ -2,12 +2,12 @@
 
 namespace App\Mail;
 
+use App\Services\MjmlCompilerService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Str;
-use Spatie\Mjml\Mjml;
 use Symfony\Component\Mime\Email;
 
 abstract class MjmlMailable extends Mailable
@@ -88,7 +88,7 @@ abstract class MjmlMailable extends Mailable
     }
 
     /**
-     * Compile MJML to HTML.
+     * Compile MJML to HTML via the MJML server.
      *
      * @throws \RuntimeException If MJML compilation fails or produces empty output
      */
@@ -120,23 +120,8 @@ abstract class MjmlMailable extends Mailable
         }
 
         try {
-            $result = Mjml::new()->toHtml($mjml);
-
-            // Check for empty output - MJML compilation failed silently.
-            if (empty(trim($result))) {
-                $error = 'MJML compilation produced empty HTML output';
-                \Log::error($error, [
-                    'mailable' => static::class,
-                    'template' => $this->mjmlTemplate ?? 'unknown',
-                    'mjml_length' => strlen($mjml),
-                ]);
-                throw new \RuntimeException($error);
-            }
-
-            return $result;
-        } catch (\RuntimeException $e) {
-            // Re-throw our own exceptions.
-            throw $e;
+            $compiler = app(MjmlCompilerService::class);
+            return $compiler->compile($mjml);
         } catch (\Exception $e) {
             // Log and throw on MJML compilation failure - never send broken emails.
             $error = 'MJML compilation failed: ' . $e->getMessage();

@@ -64,10 +64,11 @@ const openReport = () => {
             :class="['progress-bar', progressVariant]"
             role="progressbar"
             :style="{ width: progressPercent + '%' }"
-          >
-            {{ state.progress.completed }}/{{ state.progress.total }}
-            ({{ state.progress.passed }} passed, {{ state.progress.failed }} failed)
-          </div>
+          />
+        </div>
+        <div class="small mt-1">
+          {{ state.progress.completed }}/{{ state.progress.total }}
+          ({{ state.progress.passed }} passed<span v-if="state.progress.failed > 0" class="text-danger">, {{ state.progress.failed }} failed</span>)
         </div>
         <div v-if="state.progress.current" class="small text-muted mt-1">
           Running: {{ state.progress.current }}

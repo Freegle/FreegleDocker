@@ -1,0 +1,60 @@
+#!/bin/bash
+# Hook script to prevent running tests directly
+# Tests should be run via the status container API:
+#   curl -X POST http://localhost:8081/api/tests/playwright
+#   curl -X POST http://localhost:8081/api/tests/php
+#   curl -X POST http://localhost:8081/api/tests/go
+
+# Read the tool input from stdin
+INPUT=$(cat)
+
+# Extract the command from the JSON input
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+
+if [ -z "$COMMAND" ]; then
+  exit 0  # No command, allow
+fi
+
+# Check if this is a test command
+TEST_PATTERNS=(
+  "playwright test"
+  "npx playwright test"
+  "npm run test"
+  "npm test"
+  "go test"
+  "phpunit"
+  "artisan test"
+  "artisan dusk"
+  "vendor/bin/phpunit"
+  "vitest"
+  "npx vitest"
+)
+
+IS_TEST_COMMAND=false
+for pattern in "${TEST_PATTERNS[@]}"; do
+  if echo "$COMMAND" | grep -q "$pattern"; then
+    IS_TEST_COMMAND=true
+    break
+  fi
+done
+
+if [ "$IS_TEST_COMMAND" = false ]; then
+  exit 0  # Not a test command, allow
+fi
+
+# Allow --list (dry run) and --help since they don't execute tests
+if echo "$COMMAND" | grep -qE -- "--list|--help"; then
+  exit 0
+fi
+
+# Block the command
+echo "BLOCKED: Do not run tests directly. Use the status container API or CI:" >&2
+echo "" >&2
+echo "  Playwright:   curl -X POST http://localhost:8081/api/tests/playwright" >&2
+echo "  PHPUnit:      curl -X POST http://localhost:8081/api/tests/php" >&2
+echo "  Go tests:     curl -X POST http://localhost:8081/api/tests/go" >&2
+echo "  iznik-batch:  curl -X POST http://localhost:8081/api/tests/iznik-batch" >&2
+echo "  Vitest:       Push to branch and check CircleCI (runs in iznik-nuxt3 repo)" >&2
+echo "" >&2
+echo "To check status: curl -s http://localhost:8081/api/tests/<type>/status | jq '.'" >&2
+exit 2

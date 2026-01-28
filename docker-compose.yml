@@ -217,6 +217,22 @@ services:
       retries: 5
       start_period: 10s
 
+  # MJML email template compilation server (used by batch for worker pool back pressure)
+  # API: POST raw MJML text to / with Content-Type: text/plain, returns compiled HTML
+  mjml:
+    container_name: freegle-mjml
+    networks:
+      - default
+    image: adrianrudnik/mjml-server:latest
+    restart: "no"
+    healthcheck:
+      # Server has no dedicated health endpoint; use TCP check on port 80
+      test: ["CMD-SHELL", "nc -z localhost 80 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   delivery:
     container_name: freegle-delivery
     networks:
@@ -507,6 +523,10 @@ services:
         condition: service_started
       redis:
         condition: service_started
+      tusd:
+        condition: service_started
+      delivery:
+        condition: service_started
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -523,6 +543,8 @@ services:
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
       - LOKI_ENABLED=false
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - IMAGE_DELIVERY=http://freegle-delivery
     volumes:
       - geoip_data:/var/lib/GeoIP
     healthcheck:
@@ -651,6 +673,11 @@ services:
       - "traefik.http.routers.freegle-dev-local.entrypoints=web"
       - "traefik.http.routers.freegle-dev-local.service=freegle-dev-local"
       - "traefik.http.services.freegle-dev-local.loadbalancer.server.port=3002"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.freegle-dev-api.rule=Host(`freegle-dev-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.freegle-dev-api.entrypoints=web"
+      - "traefik.http.routers.freegle-dev-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.freegle-dev-api.middlewares=apiv1-cors"
 
   # Development build with LIVE/PRODUCTION APIs - for mobile dev and testing with real data
   # WARNING: Actions in this container affect REAL Freegle data!
@@ -758,6 +785,11 @@ services:
       - "traefik.http.routers.freegle-prod-local.middlewares=retry-prod"
       - "traefik.http.routers.freegle-prod-local.service=freegle-prod-local"
       - "traefik.http.services.freegle-prod-local.loadbalancer.server.port=3003"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.freegle-prod-api.rule=Host(`freegle-prod-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.freegle-prod-api.entrypoints=web"
+      - "traefik.http.routers.freegle-prod-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.freegle-prod-api.middlewares=apiv1-cors"
       # Retry middleware for connection resilience under parallel load
       - "traefik.http.middlewares.retry-prod.retry.attempts=3"
       - "traefik.http.middlewares.retry-prod.retry.initialinterval=100ms"
@@ -812,6 +844,11 @@ services:
       - "traefik.http.routers.modtools-dev-local.entrypoints=web"
       - "traefik.http.routers.modtools-dev-local.service=modtools-dev-local"
       - "traefik.http.services.modtools-dev-local.loadbalancer.server.port=3000"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.modtools-dev-api.rule=Host(`modtools-dev-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.modtools-dev-api.entrypoints=web"
+      - "traefik.http.routers.modtools-dev-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.modtools-dev-api.middlewares=apiv1-cors"
 
   # Development mode with LIVE/Production APIs - ModTools
   # WARNING: This connects to REAL production data!
@@ -918,6 +955,11 @@ services:
       - "traefik.http.routers.modtools-prod-local.entrypoints=web"
       - "traefik.http.routers.modtools-prod-local.service=modtools-prod-local"
       - "traefik.http.services.modtools-prod-local.loadbalancer.server.port=3001"
+      # Route /api/* to the API container (mirrors Netlify _redirects behavior)
+      - "traefik.http.routers.modtools-prod-api.rule=Host(`modtools-prod-local.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.modtools-prod-api.entrypoints=web"
+      - "traefik.http.routers.modtools-prod-api.service=apiv1-localhost-freegledocker"
+      - "traefik.http.routers.modtools-prod-api.middlewares=apiv1-cors"
 
   playwright:
     container_name: freegle-playwright
@@ -966,10 +1008,10 @@ services:
       beanstalkd:
         condition: service_healthy
 
-  # Loki - Log aggregation (optional, enabled by LOKI_ENABLED env var)
+  # Loki - Log aggregation
   loki:
     container_name: freegle-loki
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.0.0
     networks:
       - default
     ports:
@@ -978,7 +1020,7 @@ services:
       - loki-data:/loki
       - ./conf/loki-config.yaml:/etc/loki/local-config.yaml:ro
     command: -config.file=/etc/loki/local-config.yaml
-    restart: "no"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
       interval: 10s
@@ -991,22 +1033,27 @@ services:
       - "traefik.http.routers.loki.entrypoints=web"
       - "traefik.http.services.loki.loadbalancer.server.port=3100"
 
-  # Alloy - Log shipper (ships JSON logs from all API containers to Loki)
+  # Alloy - Log shipper to Loki
+  # Reads JSON log files from containers and ships to Loki
+  # For local dev: ships Go API logs from the apiv2_logs volume
+  # For production: batch-prod writes to host /var/log/freegle, ship separately
   alloy:
     container_name: freegle-alloy
     image: grafana/alloy:v1.4.2
     networks:
       - default
     volumes:
-      - apiv1_logs:/var/log/freegle/apiv1:ro
-      - apiv2_logs:/var/log/freegle/apiv2:ro
-      - batch_logs:/var/log/freegle/batch:ro
-      - ./conf/alloy-config.alloy:/etc/alloy/config.alloy:ro
-    command: run /etc/alloy/config.alloy
-    restart: "no"
+      - ./conf/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - apiv2_logs:/var/log/freegle:ro
+    environment:
+      - LOKI_URL=http://loki:3100
+    command: ["run", "/etc/alloy/config.alloy"]
     depends_on:
       loki:
         condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - monitoring
 
   # Grafana - Log visualization (optional, depends on Loki)
   grafana:
@@ -1026,12 +1073,32 @@ services:
     depends_on:
       loki:
         condition: service_healthy
-    restart: "no"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
-      - "traefik.http.routers.grafana.entrypoints=web"
-      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Loki backup - runs on-demand: docker compose run --rm loki-backup
+  # Gracefully skips backup if GCS credentials not available (dev environments)
+  # Uses host gcloud credentials (~/.config/gcloud) or service account key file
+  loki-backup:
+    container_name: freegle-loki-backup
+    profiles:
+      - backup
+    build:
+      context: ./scripts/backup
+      dockerfile: Dockerfile
+    depends_on:
+      loki:
+        condition: service_healthy
+    volumes:
+      - loki-data:/loki:ro
+      # Mount host gcloud config for credentials (user account or ADC)
+      - ${GCLOUD_CONFIG_PATH:-~/.config/gcloud}:/root/.config/gcloud:ro
+    environment:
+      - GCS_BUCKET=${LOKI_BACKUP_BUCKET:-gs://freegle_backup_uk/loki}
+      - RETENTION_DAYS=${LOKI_BACKUP_RETENTION_DAYS:-30}
+    networks:
+      - default
 
   # Batch jobs processor (Laravel)
   batch:
@@ -1052,6 +1119,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      mjml:
+        condition: service_healthy
     restart: "no"
     environment:
       - APP_NAME=Freegle Batch Jobs
@@ -1086,10 +1155,125 @@ services:
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - LOKI_JSON_PATH=/var/log/freegle
+      - MJML_URL=http://mjml/
       - FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod,Digest,UnifiedDigest,DonationThank,DonationAsk
       # CI=true skips supervisor startup to prevent Laravel bootstrap race conditions.
       # Multiple supervisor workers bootstrapping Laravel simultaneously can corrupt services.php.
       - CI=${CI:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/laravel-ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+
+  # Production batch jobs processor - connects to production database and mail
+  # Start with: docker compose --profile production up -d
+  # Requires secrets in .env.background (see .env.background.example for template)
+  batch-prod:
+    container_name: freegle-batch-prod
+    profiles:
+      - production
+    networks:
+      - default
+    build:
+      context: ./iznik-batch
+      dockerfile: docker/Dockerfile
+    env_file:
+      - .env.background
+    volumes:
+      - ./iznik-batch:/var/www/html
+      - ./iznik-server:/var/www/iznik:ro
+      - /var/log/freegle:/var/log/freegle
+    extra_hosts:
+      - "db-host:${DB_HOST_IP}"
+      - "mail-host:${MAIL_HOST_IP}"
+    depends_on:
+      loki:
+        condition: service_healthy
+      mjml:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      # Laravel Application
+      - APP_NAME=iznik-batch
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - APP_URL=http://localhost
+      # APP_KEY comes from env_file
+      - LOG_CHANNEL=stack
+      - LOG_LEVEL=debug
+      # Database (production)
+      - DB_CONNECTION=mysql
+      - DB_HOST=db-host
+      - DB_PORT=3306
+      - DB_DATABASE=iznik
+      - DB_USERNAME=root
+      # DB_PASSWORD comes from env_file
+      - DB_CHARSET=utf8mb4
+      - DB_COLLATION=utf8mb4_unicode_ci
+      # Cache & Queue (database, not Redis - matches bulk3 config)
+      - CACHE_STORE=database
+      - QUEUE_CONNECTION=database
+      - SESSION_DRIVER=database
+      # Redis (for BoundedPool worker pool semaphores only)
+      - REDIS_HOST=redis
+      # Mail (via smarthost)
+      - MAIL_MAILER=smtp
+      - MAIL_HOST=mail-host
+      - MAIL_PORT=25
+      - MAIL_USERNAME=
+      - MAIL_PASSWORD=
+      - MAIL_ENCRYPTION=null
+      - MAIL_EHLO_DOMAIN=freegle-batch
+      - MAIL_FROM_ADDRESS=noreply@ilovefreegle.org
+      - MAIL_FROM_NAME=Freegle
+      # Freegle Site URLs
+      - FREEGLE_USER_SITE=https://www.ilovefreegle.org
+      - FREEGLE_MOD_SITE=https://modtools.org
+      - FREEGLE_API_BASE_URL=https://api.ilovefreegle.org
+      - FREEGLE_API_V2_URL=https://api.ilovefreegle.org/apiv2
+      # Freegle Branding
+      - FREEGLE_SITE_NAME=Freegle
+      - FREEGLE_LOGO_URL=https://www.ilovefreegle.org/icon.png
+      - FREEGLE_WALLPAPER_URL=https://www.ilovefreegle.org/wallpaper.png
+      # Freegle Mail Configuration
+      - FREEGLE_NOREPLY_ADDR=noreply@ilovefreegle.org
+      - FREEGLE_USER_DOMAIN=users.ilovefreegle.org
+      - FREEGLE_MAIL_ENABLED_TYPES=Welcome,ChatNotification,ChatNotificationUser2Mod,ChatNotificationMod2Mod
+      # Freegle Images
+      - FREEGLE_IMAGES_DOMAIN=https://images.ilovefreegle.org
+      - FREEGLE_DELIVERY_URL=https://delivery.ilovefreegle.org
+      - TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+      - FREEGLE_WELCOME_IMAGE1=https://www.ilovefreegle.org/images/welcome1.jpg
+      - FREEGLE_WELCOME_IMAGE2=https://www.ilovefreegle.org/images/welcome2.jpg
+      - FREEGLE_WELCOME_IMAGE3=https://www.ilovefreegle.org/images/welcome3.jpg
+      - FREEGLE_EMAIL_ASSETS_URL=https://www.ilovefreegle.org/emailimages
+      - FREEGLE_RULE_FREE_IMAGE=https://www.ilovefreegle.org/emailimages/rule-free.png
+      - FREEGLE_RULE_NICE_IMAGE=https://www.ilovefreegle.org/emailimages/rule-nice.png
+      - FREEGLE_RULE_SAFE_IMAGE=https://www.ilovefreegle.org/emailimages/rule-safe.png
+      # Loki Logging (local container)
+      - LOKI_ENABLED=true
+      - LOKI_URL=http://loki:3100
+      - LOKI_JSON_FILE=true
+      - LOKI_JSON_PATH=/var/log/freegle
+      # MJML (local container)
+      - MJML_URL=http://mjml/
+      # AMP Email
+      - AMP_EMAIL_ENABLED=true
+      # AMP_SECRET comes from env_file
+      - AMP_API_URL=https://api.ilovefreegle.org/amp
+      - AMP_READ_TOKEN_EXPIRY=168
+      - AMP_WRITE_TOKEN_EXPIRY=168
+      # Geospatial
+      - FREEGLE_SRID=3857
+      # SENTRY_LARAVEL_DSN comes from env_file
+      - SENTRY_SEND_DEFAULT_PII=true
+      - SENTRY_TRACES_SAMPLE_RATE=1.0
+      # Migrations disabled for production
+      - RUN_MIGRATIONS=false
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/laravel-ready || exit 1"]
       interval: 10s
@@ -1190,10 +1374,8 @@ volumes:
   rspamd_data:
     driver: local
   loki-data:
-    driver: local
+    name: loki-data
   grafana-data:
-    driver: local
-  apiv1_logs:
     driver: local
   apiv2_logs:
     driver: local

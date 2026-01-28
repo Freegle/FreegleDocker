@@ -21,7 +21,7 @@ export const services: ServiceConfig[] = [
   {
     id: 'freegle-dev-live',
     name: 'Freegle Dev (Live)',
-    category: 'freegle',
+    category: 'production',
     container: 'freegle-dev-live',
     url: 'http://freegle-dev-live.localhost/',
     healthCheck: { type: 'http', path: '/', timeout: 3000 },
@@ -56,7 +56,7 @@ export const services: ServiceConfig[] = [
   {
     id: 'modtools-dev-live',
     name: 'ModTools Dev (Live)',
-    category: 'modtools',
+    category: 'production',
     container: 'modtools-dev-live',
     url: 'http://modtools-dev-live.localhost/',
     healthCheck: { type: 'http', path: '/', timeout: 3000 },
@@ -271,6 +271,35 @@ export const services: ServiceConfig[] = [
     healthCheck: { type: 'http', path: '/', timeout: 3000 },
     actions: ['restart', 'visit', 'logs'],
     description: 'Image transformation service (weserv)',
+  },
+  {
+    id: 'loki',
+    name: 'Loki',
+    category: 'infrastructure',
+    container: 'freegle-loki',
+    url: 'http://loki.localhost/ready',
+    healthCheck: { type: 'http', path: '/ready', timeout: 3000 },
+    actions: ['restart', 'logs'],
+    description: 'Log aggregation service',
+  },
+  {
+    id: 'mjml',
+    name: 'MJML Server',
+    category: 'infrastructure',
+    container: 'freegle-mjml',
+    healthCheck: { type: 'http', path: '/health', timeout: 3000 },
+    actions: ['restart', 'logs'],
+    description: 'Email template compilation server',
+  },
+  {
+    id: 'loki-backup',
+    name: 'Loki Backup',
+    category: 'infrastructure',
+    container: 'freegle-loki-backup',
+    healthCheck: { type: 'docker', timeout: 3000 },
+    actions: ['logs'],
+    description: 'On-demand backup: docker compose --profile backup run --rm loki-backup',
+    profile: 'backup',
   },
 
   // ============================================

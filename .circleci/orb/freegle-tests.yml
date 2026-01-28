@@ -164,38 +164,6 @@ commands:
             echo "Current working directory: $(pwd)"
             ls -la secrets/
 
-      - restore_cache:
-          keys:
-            - nuxt-output-v2-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
-            - nuxt-output-v2-freegle-{{ checksum "iznik-nuxt3/package.json" }}
-            - nuxt-output-v2-freegle-
-      - restore_cache:
-          keys:
-            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
-            - nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}
-            - nuxt-output-v2-modtools-
-      - run:
-          name: Restore Nuxt build cache to build contexts
-          command: |
-            echo "=== Restoring Nuxt build cache (.output) ==="
-
-            # Restore Freegle .output cache (this is what the start script checks to skip builds)
-            if [ -d ~/nuxt-cache/freegle/.output ]; then
-              cp -r ~/nuxt-cache/freegle/.output iznik-nuxt3/.output
-              echo "✅ Restored Freegle .output cache ($(du -sh ~/nuxt-cache/freegle/.output | cut -f1))"
-            else
-              echo "ℹ️  No Freegle .output cache found (first build or cache expired)"
-            fi
-
-            # Restore ModTools .output cache
-            if [ -d ~/nuxt-cache/modtools/modtools/.output ]; then
-              mkdir -p iznik-nuxt3/modtools
-              cp -r ~/nuxt-cache/modtools/modtools/.output iznik-nuxt3/modtools/.output
-              echo "✅ Restored ModTools .output cache ($(du -sh ~/nuxt-cache/modtools/modtools/.output | cut -f1))"
-            else
-              echo "ℹ️  No ModTools .output cache found"
-            fi
-
       - run:
           name: Build containers
           command: |
@@ -214,7 +182,7 @@ commands:
             for attempt in $(seq 1 $MAX_RETRIES); do
               echo "Build attempt $attempt of $MAX_RETRIES..."
 
-              if docker-compose -f docker-compose.yml build \
+              if docker-compose -f docker-compose.yml build --no-cache \
                 apiv1 apiv1-phpunit apiv2 \
                 freegle-prod-local modtools-prod-local \
                 playwright status batch; then
@@ -789,6 +757,61 @@ commands:
           paths:
             - ~/geoip-cache
 
+  wait-for-batch-container:
+    description: "Wait for batch container to be healthy and migrations to complete"
+    steps:
+      - run:
+          name: Wait for batch container to be healthy
+          command: |
+            echo "⏳ Waiting for batch container to be healthy..."
+            TIMEOUT=300
+            ELAPSED=0
+            while [ $ELAPSED -lt $TIMEOUT ]; do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "not_found")
+              RUNNING=$(docker inspect --format='{{.State.Running}}' freegle-batch 2>/dev/null || echo "false")
+
+              if [ "$STATUS" = "healthy" ]; then
+                echo "✅ Batch container is healthy!"
+                break
+              elif [ "$RUNNING" = "false" ]; then
+                echo "❌ Batch container is not running!"
+                echo "Container logs:"
+                docker logs freegle-batch --tail 50 2>&1 || true
+                exit 1
+              fi
+
+              echo "[$ELAPSED s] Batch container status: $STATUS (running: $RUNNING) - waiting..."
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+            done
+
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "❌ Timeout waiting for batch container to be healthy"
+              echo "Container logs:"
+              docker logs freegle-batch --tail 50 2>&1 || true
+              exit 1
+            fi
+
+            # Verify migrations have completed by checking for ready marker file
+            # The entrypoint creates /tmp/laravel-ready AFTER migrations complete
+            echo "⏳ Verifying Laravel migrations are complete..."
+            MIGRATION_TIMEOUT=120
+            MIGRATION_ELAPSED=0
+            while [ $MIGRATION_ELAPSED -lt $MIGRATION_TIMEOUT ]; do
+              if docker exec freegle-batch test -f /tmp/laravel-ready 2>/dev/null; then
+                echo "✅ Laravel ready marker found - migrations complete"
+                exit 0
+              fi
+
+              echo "[$MIGRATION_ELAPSED s] Waiting for /tmp/laravel-ready marker..."
+              sleep 5
+              MIGRATION_ELAPSED=$((MIGRATION_ELAPSED + 5))
+            done
+
+            echo "❌ Timeout waiting for migrations to complete"
+            docker logs freegle-batch --tail 30 2>&1 || true
+            exit 1
+
   setup-test-database:
     description: "Set up test database schema and test environment"
     steps:
@@ -841,6 +864,64 @@ commands:
 
             echo "✅ Test database and environment ready!"
 
+  run-vitest-tests:
+    description: "Run Vitest unit tests for iznik-nuxt3 components"
+    parameters:
+      reason:
+        type: string
+        default: "Running Vitest unit tests"
+    steps:
+      - run:
+          name: Install Node.js 22 for Vitest
+          command: |
+            echo "📦 Installing Node.js 22..."
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            echo "✅ Node.js $(node --version) installed"
+      - run:
+          name: Run Vitest unit tests
+          command: |
+            echo "🧪 << parameters.reason >>..."
+
+            # Determine the iznik-nuxt3 directory
+            if [ -d "$HOME/FreegleDocker/iznik-nuxt3" ]; then
+              NUXT_DIR="$HOME/FreegleDocker/iznik-nuxt3"
+            elif [ -d "$HOME/project/iznik-nuxt3" ]; then
+              NUXT_DIR="$HOME/project/iznik-nuxt3"
+            else
+              echo "❌ Could not find iznik-nuxt3 directory"
+              exit 1
+            fi
+
+            echo "📂 Using iznik-nuxt3 at: $NUXT_DIR"
+            cd "$NUXT_DIR"
+
+            # Check if vitest is configured
+            if ! grep -q '"test:unit:run"' package.json; then
+              echo "⚠️ Vitest not configured in package.json, skipping unit tests"
+              exit 0
+            fi
+
+            # Install dependencies (using npm ci for faster, deterministic installs)
+            echo "📦 Installing npm dependencies..."
+            npm ci --prefer-offline --no-audit
+
+            # Generate .nuxt directory (required for tsconfig.json extends)
+            echo "🔧 Running nuxi prepare..."
+            npx nuxi prepare
+
+            # Run vitest
+            echo "🧪 Running Vitest unit tests..."
+            npm run test:unit:run -- --reporter=verbose 2>&1 | tee /tmp/vitest-output.log
+            VITEST_EXIT_CODE=${PIPESTATUS[0]}
+
+            if [ $VITEST_EXIT_CODE -eq 0 ]; then
+              echo "✅ Vitest unit tests passed!"
+            else
+              echo "❌ Vitest unit tests failed with exit code: $VITEST_EXIT_CODE"
+              exit $VITEST_EXIT_CODE
+            fi
+
   run-playwright-tests:
     description: "Run Playwright tests via the status service API and upload coverage"
     parameters:
@@ -888,8 +969,8 @@ commands:
               status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
               message=$(echo "$status_response" | jq -r '.message // "No message"')
-              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-              total=$(echo "$status_response" | jq -r '.totalTests // 0')
+              completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+              total=$(echo "$status_response" | jq -r '.progress.total // 0')
 
               elapsed_min=$((elapsed / 60))
               echo "[${elapsed_min}m] Status: $status, Progress: $completed/$total tests"
@@ -1195,13 +1276,21 @@ commands:
                   if cat coverage.lcov | coveralls; then
                     echo "✅ Go coverage uploaded"
                     echo "GO_UPLOADED=true" >> $BASH_ENV
+                  else
+                    echo "❌ Go coverage upload failed"
+                    exit 1
                   fi
                 else
+                  echo "❌ Failed to convert Go coverage to lcov format"
                   cd ..
+                  exit 1
                 fi
+              else
+                echo "❌ gcov2lcov not found"
+                exit 1
               fi
             else
-              echo "ℹ️ No Go coverage found"
+              echo "ℹ️ No Go coverage found (this is OK if Go tests didn't run)"
             fi
           when: always
       - run:
@@ -1290,15 +1379,21 @@ commands:
                 if cat coverage.lcov | coveralls; then
                   echo "✅ Playwright coverage uploaded"
                   echo "PLAYWRIGHT_UPLOADED=true" >> $BASH_ENV
+                else
+                  echo "❌ Playwright coverage upload failed"
+                  exit 1
                 fi
               else
                 if cat "$LCOV_PATH" | coveralls; then
                   echo "✅ Playwright coverage uploaded"
                   echo "PLAYWRIGHT_UPLOADED=true" >> $BASH_ENV
+                else
+                  echo "❌ Playwright coverage upload failed"
+                  exit 1
                 fi
               fi
             else
-              echo "ℹ️ No Playwright coverage found"
+              echo "ℹ️ No Playwright coverage found (this is OK if Playwright tests didn't run)"
             fi
           when: always
       - run:
@@ -1324,8 +1419,8 @@ commands:
               # Install php-coveralls in the batch container
               echo "Installing php-coveralls in batch container..."
               if ! docker exec freegle-batch composer require php-coveralls/php-coveralls --dev 2>&1; then
-                echo "⚠️ Could not install php-coveralls in batch container"
-                exit 0
+                echo "❌ Could not install php-coveralls in batch container"
+                exit 1
               fi
 
               # Initialize git repo in container (php-coveralls needs it for git info including remotes)
@@ -1344,11 +1439,12 @@ commands:
                 echo "✅ Laravel coverage uploaded"
                 echo "LARAVEL_UPLOADED=true" >> $BASH_ENV
               else
-                echo "⚠️ Laravel coverage upload failed"
+                echo "❌ Laravel coverage upload failed"
                 docker exec freegle-batch ls -la /var/www/html/vendor/bin/ 2>&1 || true
+                exit 1
               fi
             else
-              echo "ℹ️ No Laravel coverage found at /tmp/laravel-coverage.xml"
+              echo "ℹ️ No Laravel coverage found at /tmp/laravel-coverage.xml (this is OK if Laravel tests didn't run)"
             fi
           when: always
       - run:
@@ -1475,9 +1571,13 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-nuxt3"
+      # Run Vitest unit tests first (doesn't need Docker services)
+      - run-vitest-tests:
+          reason: "Running Vitest unit tests for PR"
       - start-services
       - wait-for-basic-services
       - wait-for-prod-container
+      - wait-for-batch-container
       - setup-test-database
       - run-playwright-tests:
           reason: "Running Playwright tests for PR"
@@ -1524,40 +1624,6 @@ jobs:
             fi
 
       - run:
-          name: Check if only submodule changes to feature branches
-          command: |
-            if [ "$CIRCLE_BRANCH" = "master" ]; then
-              CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
-            else
-              CHANGED_FILES=$(git diff --name-only origin/master...HEAD)
-            fi
-
-            if [ -n "$CHANGED_FILES" ]; then
-              SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(iznik-nuxt3|iznik-server|iznik-server-go)$' || true)
-              NON_SUBMODULE_CHANGES=$(echo "$CHANGED_FILES" | grep -v -E '^(iznik-nuxt3|iznik-server|iznik-server-go)$' || true)
-
-              if [ -n "$SUBMODULE_CHANGES" ] && [ -z "$NON_SUBMODULE_CHANGES" ]; then
-                git submodule init
-                git submodule update --recursive --jobs 4
-
-                for submodule_path in $SUBMODULE_CHANGES; do
-                  if [ -d "$submodule_path" ]; then
-                    current_branch=$(cd "$submodule_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")
-                    if [ "$current_branch" = "HEAD" ]; then
-                      current_commit=$(cd "$submodule_path" && git rev-parse HEAD)
-                      current_branch=$(cd "$submodule_path" && git branch -r --contains "$current_commit" | grep -v HEAD | grep -E 'origin/(master|main|modtools)' | head -1 | sed 's/.*origin\///' | xargs || echo "")
-                    fi
-
-                    if [ "$current_branch" != "master" ] && [ "$current_branch" != "main" ] && [ "$current_branch" != "modtools" ]; then
-                      echo "⏭️ Submodule $submodule_path points to feature branch. Skipping build."
-                      circleci-agent step halt
-                    fi
-                  fi
-                done
-              fi
-            fi
-
-      - run:
           name: Initialize and update git submodules
           command: |
             git submodule init
@@ -1577,94 +1643,15 @@ jobs:
 
       - wait-for-prod-container
 
-      # Extract and cache Nuxt build output AFTER containers are healthy
-      # This ensures the npm run build has completed inside the containers
-      - run:
-          name: Extract and save Nuxt build cache
-          command: |
-            echo "=== Extracting Nuxt build cache (.output) ==="
-
-            # Create cache directories
-            mkdir -p ~/nuxt-cache/freegle
-            mkdir -p ~/nuxt-cache/modtools/modtools
-
-            # Extract Freegle .output cache (the production build output)
-            if docker inspect freegle-prod-local >/dev/null 2>&1; then
-              docker cp freegle-prod-local:/app/.output ~/nuxt-cache/freegle/.output 2>/dev/null && \
-                echo "✅ Extracted Freegle .output cache ($(du -sh ~/nuxt-cache/freegle/.output | cut -f1))" || \
-                echo "ℹ️  No Freegle .output directory found in container"
-            fi
-
-            # Extract ModTools .output cache
-            if docker inspect modtools-prod-local >/dev/null 2>&1; then
-              docker cp modtools-prod-local:/app/modtools/.output ~/nuxt-cache/modtools/modtools/.output 2>/dev/null && \
-                echo "✅ Extracted ModTools .output cache ($(du -sh ~/nuxt-cache/modtools/modtools/.output | cut -f1))" || \
-                echo "ℹ️  No ModTools .output directory found"
-            fi
-
-      - save_cache:
-          key: nuxt-output-v2-freegle-{{ checksum "iznik-nuxt3/package.json" }}-{{ checksum "iznik-nuxt3/nuxt.config.ts" }}
-          paths:
-            - ~/nuxt-cache/freegle
-      - save_cache:
-          key: nuxt-output-v2-modtools-{{ checksum "iznik-nuxt3/modtools/package.json" }}-{{ checksum "iznik-nuxt3/modtools/nuxt.config.ts" }}
-          paths:
-            - ~/nuxt-cache/modtools
-
+      # Wait for batch container migrations to complete BEFORE loading schema.sql
+      # This prevents race conditions where schema.sql's DROP TABLE statements interfere with
+      # migrations that are still running.
+      - wait-for-batch-container
       - setup-test-database
 
-      # Wait for batch container to be healthy and migrations complete before running tests
-      - run:
-          name: Wait for batch container to be healthy
-          command: |
-            echo "⏳ Waiting for batch container to be healthy..."
-            TIMEOUT=300
-            ELAPSED=0
-            while [ $ELAPSED -lt $TIMEOUT ]; do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "not_found")
-              RUNNING=$(docker inspect --format='{{.State.Running}}' freegle-batch 2>/dev/null || echo "false")
-
-              if [ "$STATUS" = "healthy" ]; then
-                echo "✅ Batch container is healthy!"
-                break
-              elif [ "$RUNNING" = "false" ]; then
-                echo "❌ Batch container is not running!"
-                echo "Container logs:"
-                docker logs freegle-batch --tail 50 2>&1 || true
-                exit 1
-              fi
-
-              echo "[$ELAPSED s] Batch container status: $STATUS (running: $RUNNING) - waiting..."
-              sleep 5
-              ELAPSED=$((ELAPSED + 5))
-            done
-
-            if [ $ELAPSED -ge $TIMEOUT ]; then
-              echo "❌ Timeout waiting for batch container to be healthy"
-              echo "Container logs:"
-              docker logs freegle-batch --tail 50 2>&1 || true
-              exit 1
-            fi
-
-            # Verify migrations have completed by checking for ready marker file
-            # The entrypoint creates /tmp/laravel-ready AFTER migrations complete
-            echo "⏳ Verifying Laravel migrations are complete..."
-            MIGRATION_TIMEOUT=120
-            MIGRATION_ELAPSED=0
-            while [ $MIGRATION_ELAPSED -lt $MIGRATION_TIMEOUT ]; do
-              if docker exec freegle-batch test -f /tmp/laravel-ready 2>/dev/null; then
-                echo "✅ Laravel ready marker found - migrations complete"
-                exit 0
-              fi
-
-              echo "[$MIGRATION_ELAPSED s] Waiting for /tmp/laravel-ready marker..."
-              sleep 5
-              MIGRATION_ELAPSED=$((MIGRATION_ELAPSED + 5))
-            done
-
-            echo "❌ Timeout waiting for migrations to complete"
-            docker logs freegle-batch --tail 30 2>&1 || true
-            exit 1
+      # Run Vitest unit tests first (fast, fail-fast before slower tests)
+      - run-vitest-tests:
+          reason: "Running Vitest unit tests (fail-fast before parallel tests)"
 
       # Run iznik-batch, Playwright, Go, and iznik-server tests in parallel via status API
       - run:
@@ -1701,13 +1688,20 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/laravel)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ iznik-batch tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger iznik-batch tests. HTTP code: $http_code"
                 echo "fail" > /tmp/laravel-result
+                echo "0" > /tmp/laravel-completed
+                echo "0" > /tmp/laravel-total
                 exit 1
+              else
+                echo "✅ iznik-batch tests triggered successfully"
               fi
 
-              echo "✅ iznik-batch tests triggered successfully"
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/laravel-result
 
               # Poll for Laravel completion
               while true; do
@@ -1742,13 +1736,20 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/go)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ Go tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger Go tests. HTTP code: $http_code"
                 echo "fail" > /tmp/go-result
+                echo "0" > /tmp/go-completed
+                echo "0" > /tmp/go-total
                 exit 1
+              else
+                echo "✅ Go tests triggered successfully"
               fi
 
-              echo "✅ Go tests triggered successfully"
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/go-result
 
               # Poll for Go completion
               while true; do
@@ -1791,11 +1792,20 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ PHP tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger PHP tests. HTTP code: $http_code"
                 echo "fail" > /tmp/php-result
+                echo "0" > /tmp/php-completed
+                echo "0" > /tmp/php-total
                 exit 1
+              else
+                echo "✅ PHP tests triggered successfully"
               fi
+
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/php-result
 
               # Poll for PHPUnit completion
               while true; do
@@ -1831,21 +1841,29 @@ jobs:
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
               http_code="${response: -3}"
 
-              if [ "$http_code" -ne "200" ]; then
+              if [ "$http_code" = "409" ]; then
+                echo "⚠️ Playwright tests already running (HTTP 409) - joining existing run"
+              elif [ "$http_code" -ne "200" ]; then
                 echo "❌ Failed to trigger Playwright tests. HTTP code: $http_code"
                 echo "fail" > /tmp/playwright-result
+                # Initialize progress files for display
+                echo "0" > /tmp/playwright-completed
+                echo "0" > /tmp/playwright-total
                 exit 1
+              else
+                echo "✅ Playwright tests triggered successfully"
               fi
 
-              echo "✅ Playwright tests triggered successfully"
+              # Mark as running so fail-fast can detect killed tests
+              echo "running" > /tmp/playwright-result
 
               # Poll for completion
               while true; do
                 sleep 10
                 status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
-                completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-                total=$(echo "$status_response" | jq -r '.totalTests // 0')
+                completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+                total=$(echo "$status_response" | jq -r '.progress.total // 0')
 
                 # Update progress files
                 echo "$completed" > /tmp/playwright-completed
@@ -1903,8 +1921,8 @@ jobs:
 
               status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
-              completed=$(echo "$status_response" | jq -r '.completedTests // 0')
-              total=$(echo "$status_response" | jq -r '.totalTests // 0')
+              completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
+              total=$(echo "$status_response" | jq -r '.progress.total // 0')
 
               elapsed_min=$((elapsed / 60))
               LARAVEL_STATUS=$([ -f /tmp/laravel-result ] && cat /tmp/laravel-result || echo 'running')
@@ -1915,7 +1933,16 @@ jobs:
               GO_STATUS=$([ -f /tmp/go-result ] && cat /tmp/go-result || echo 'running')
               GO_COMPLETED=$([ -f /tmp/go-completed ] && cat /tmp/go-completed || echo '0')
               GO_TOTAL=$([ -f /tmp/go-total ] && cat /tmp/go-total || echo '0')
-              GO_DISPLAY=$([ "$GO_STATUS" = "running" ] && echo "running ($GO_COMPLETED/$GO_TOTAL)" || echo "$GO_STATUS")
+              # Go doesn't have a pre-count, so show just completed when total is 0
+              if [ "$GO_STATUS" = "running" ]; then
+                if [ "$GO_TOTAL" -gt 0 ]; then
+                  GO_DISPLAY="running ($GO_COMPLETED/$GO_TOTAL)"
+                else
+                  GO_DISPLAY="running ($GO_COMPLETED)"
+                fi
+              else
+                GO_DISPLAY="$GO_STATUS"
+              fi
 
               PHP_STATUS=$([ -f /tmp/php-result ] && cat /tmp/php-result || echo 'running')
               PHP_COMPLETED=$([ -f /tmp/php-completed ] && cat /tmp/php-completed || echo '0')
@@ -1925,7 +1952,16 @@ jobs:
               PLAYWRIGHT_STATUS=$([ -f /tmp/playwright-result ] && cat /tmp/playwright-result || echo 'running')
               PLAYWRIGHT_COMPLETED=$([ -f /tmp/playwright-completed ] && cat /tmp/playwright-completed || echo '0')
               PLAYWRIGHT_TOTAL=$([ -f /tmp/playwright-total ] && cat /tmp/playwright-total || echo '0')
-              PLAYWRIGHT_DISPLAY=$([ "$PLAYWRIGHT_STATUS" = "running" ] && echo "running ($PLAYWRIGHT_COMPLETED/$PLAYWRIGHT_TOTAL)" || echo "$PLAYWRIGHT_STATUS")
+              # Cap completed at total for display (symbol counting can double-count at end)
+              if [ "$PLAYWRIGHT_STATUS" = "running" ]; then
+                if [ "$PLAYWRIGHT_TOTAL" -gt 0 ] && [ "$PLAYWRIGHT_COMPLETED" -gt "$PLAYWRIGHT_TOTAL" ]; then
+                  PLAYWRIGHT_DISPLAY="running ($PLAYWRIGHT_TOTAL/$PLAYWRIGHT_TOTAL)"
+                else
+                  PLAYWRIGHT_DISPLAY="running ($PLAYWRIGHT_COMPLETED/$PLAYWRIGHT_TOTAL)"
+                fi
+              else
+                PLAYWRIGHT_DISPLAY="$PLAYWRIGHT_STATUS"
+              fi
 
               echo "[${elapsed_min}m] iznik-batch: $LARAVEL_DISPLAY | Go: $GO_DISPLAY | iznik-server: $PHP_DISPLAY | Playwright: $PLAYWRIGHT_DISPLAY"
 
@@ -2038,7 +2074,7 @@ jobs:
               # The test results will show as failed anyway
             fi
 
-            # Fail if any test suite failed
+            # Check test suite results
             if [ "$LARAVEL_RESULT" != "pass" ] || [ "$GO_RESULT" != "pass" ] || [ "$PHP_RESULT" != "pass" ] || [ "$PLAYWRIGHT_RESULT" != "pass" ]; then
               echo "❌ One or more test suites failed"
               # Show failed test output files
@@ -2049,10 +2085,11 @@ jobs:
                   echo "📄 $f: $(wc -l < "$f") lines"
                 fi
               done
-              exit 1
+              # Don't exit 1 here - let artifacts be collected
+              # The "Evaluate overall test results" step (with when: always) will handle the failure exit
+            else
+              echo "✅ All tests passed!"
             fi
-
-            echo "✅ All tests passed!"
           no_output_timeout: 50m
 
       - store_artifacts:

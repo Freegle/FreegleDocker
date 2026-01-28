@@ -1394,6 +1394,98 @@ class ChatNotificationServiceTest extends TestCase
     }
 
     /**
+     * Test that when a user receives a copy of their own message (NOTIFS_EMAIL_MINE),
+     * the From name shows THEIR name, not the other user's name.
+     *
+     * Bug scenario:
+     * 1. Alice and Bob have a User2User chat
+     * 2. Alice has NOTIFS_EMAIL_MINE enabled
+     * 3. Alice sends a message
+     * 4. Alice receives a copy of her own message
+     * 5. The From name should be "Alice on Freegle", NOT "Bob on Freegle"
+     */
+    public function test_notify_by_email_copy_to_self_shows_own_name_not_other_user(): void
+    {
+        // Create Alice with NOTIFS_EMAIL_MINE enabled.
+        $alice = $this->createTestUser([
+            'fullname' => 'Alice Sender',
+            'settings' => [
+                'notifications' => [
+                    'email' => true,
+                    'emailmine' => true,
+                    'push' => false,
+                ],
+            ],
+        ]);
+
+        $bob = $this->createTestUser(['fullname' => 'Bob Recipient']);
+
+        $room = $this->createTestChatRoom($alice, $bob, [
+            'latestmessage' => now(),
+        ]);
+
+        // Create roster entries.
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $alice->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $bob->id,
+            'lastmsgemailed' => null,
+        ]);
+
+        // Alice sends a message.
+        $this->createTestChatMessage($room, $alice, [
+            'date' => now()->subMinutes(5),
+            'message' => 'Hello Bob!',
+        ]);
+
+        $count = $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+        // Should send 2 notifications: one to Bob (normal), one to Alice (copy of own message).
+        $this->assertEquals(2, $count, 'Should notify both Bob and Alice (copy-to-self)');
+
+        // Get all sent ChatNotification mails.
+        $sentMails = Mail::sent(ChatNotification::class);
+        $this->assertCount(2, $sentMails, 'Should have sent exactly 2 ChatNotification emails');
+
+        // Find the emails sent to each user.
+        $aliceMail = null;
+        $bobMail = null;
+
+        foreach ($sentMails as $mail) {
+            if ($mail->recipient->id === $alice->id) {
+                $aliceMail = $mail;
+            }
+            if ($mail->recipient->id === $bob->id) {
+                $bobMail = $mail;
+            }
+        }
+
+        $this->assertNotNull($aliceMail, 'Alice should have received an email');
+        $this->assertNotNull($bobMail, 'Bob should have received an email');
+
+        // When Alice receives a copy of her own message, the sender should be Alice (not Bob).
+        // This ensures the From name shows "Alice Sender on Freegle", not "Bob Recipient on Freegle".
+        $this->assertEquals(
+            $alice->id,
+            $aliceMail->sender->id,
+            'When Alice receives copy of own message, sender should be Alice (not Bob). '.
+            'Expected Alice (id='.$alice->id.'), got sender id='.$aliceMail->sender->id
+        );
+
+        // Bob should receive the message with Alice as sender (normal case).
+        $this->assertEquals(
+            $alice->id,
+            $bobMail->sender->id,
+            'Bob should receive message from Alice'
+        );
+    }
+
+    /**
      * Test that moderators who added mod notes to a User2User chat
      * are NOT notified when users reply.
      *

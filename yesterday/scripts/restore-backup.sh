@@ -352,6 +352,74 @@ verify_all_containers() {
 }
 
 echo ""
+echo "=========================================="
+echo "Restoring Loki logs backup..."
+echo "=========================================="
+update_status "restoring_loki" "Restoring Loki logs..."
+
+# Find most recent Loki backup ON OR BEFORE the database backup date
+# This ensures log consistency - no logs for events after the DB snapshot
+echo "Looking for Loki backup on or before ${BACKUP_DATE}..."
+LOKI_BACKUP=$(gsutil ls "$BACKUP_BUCKET/loki/" 2>/dev/null | while read backup; do
+    # Extract date from filename (loki-backup-YYYYMMDD_HHMMSS.tar.gz)
+    loki_date=$(basename "$backup" | grep -oE '[0-9]{8}' | head -1)
+    if [ -n "$loki_date" ] && [ "$loki_date" -le "$BACKUP_DATE" ]; then
+        echo "$backup"
+    fi
+done | sort -r | head -1)
+
+if [ -n "$LOKI_BACKUP" ]; then
+    LOKI_BACKUP_DATE=$(basename "$LOKI_BACKUP" | grep -oE '[0-9]{8}' | head -1)
+    echo "Found Loki backup: $LOKI_BACKUP (date: $LOKI_BACKUP_DATE)"
+    LOKI_SIZE=$(gsutil ls -l "$LOKI_BACKUP" | grep -v TOTAL | awk '{print $1}')
+    LOKI_SIZE_GB=$((LOKI_SIZE / 1024 / 1024 / 1024))
+    echo "Loki backup size: ${LOKI_SIZE_GB}GB"
+
+    # Create loki-data volume if it doesn't exist
+    if ! docker volume inspect loki-data >/dev/null 2>&1; then
+        echo "Creating loki-data volume..."
+        docker volume create loki-data
+    fi
+
+    # Get volume path and clear it
+    LOKI_VOLUME_PATH=$(docker volume inspect loki-data -f '{{.Mountpoint}}')
+    echo "Clearing existing Loki data..."
+    rm -rf "${LOKI_VOLUME_PATH}"/*
+
+    # Extract Loki backup directly to volume
+    echo "Extracting Loki backup to volume..."
+    gsutil cat "$LOKI_BACKUP" | tar -xzf - -C "${LOKI_VOLUME_PATH}" --strip-components=1
+
+    # Set ownership for Loki (runs as UID 10001)
+    chown -R 10001:10001 "${LOKI_VOLUME_PATH}"
+
+    LOKI_FINAL_SIZE=$(du -sh "${LOKI_VOLUME_PATH}" | awk '{print $1}')
+    echo "✅ Loki backup restored: ${LOKI_FINAL_SIZE}"
+else
+    echo "⚠️  No Loki backup found in $BACKUP_BUCKET/loki/ - skipping Loki restore"
+    echo "   Loki will start with empty data (no historical logs)"
+    # Still create the volume so Loki can start
+    if ! docker volume inspect loki-data >/dev/null 2>&1; then
+        docker volume create loki-data
+    fi
+fi
+
+echo ""
+echo "=========================================="
+echo "Pre-flight volume check..."
+echo "=========================================="
+# Ensure all required volumes exist before starting containers
+# This prevents "external volume not found" errors
+for vol in freegle_db loki-data; do
+    if ! docker volume inspect "$vol" >/dev/null 2>&1; then
+        echo "Creating missing volume: $vol"
+        docker volume create "$vol"
+    else
+        echo "✅ Volume exists: $vol"
+    fi
+done
+
+echo ""
 echo "Starting all Docker containers..."
 update_status "starting" "Starting containers..."
 docker compose up -d
@@ -450,6 +518,11 @@ if systemctl list-units --full --all | grep -q "docker-compose@freegle.service";
 else
     echo "ℹ️  No systemd service found (Yesterday deployment) - skipping systemctl restart"
 fi
+
+echo ""
+echo "Restarting Yesterday services (API, 2FA gateway, Traefik)..."
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d
+echo "✅ Yesterday services restarted"
 
 echo ""
 echo "=== Yesterday Restoration Completed: $(date) ==="
