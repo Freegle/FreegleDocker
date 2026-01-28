@@ -1256,6 +1256,35 @@ services:
       start_period: 180s
 
   # =========================================
+  # Incoming Mail Processing (Postfix)
+  # =========================================
+  # Receives incoming mail and routes to Laravel for processing.
+  # IMPORTANT: This container does NOT receive mail until MX records are updated.
+  # Safe to run - mail only arrives when DNS points to this server.
+
+  postfix:
+    container_name: freegle-postfix
+    profiles:
+      - mail
+    build:
+      context: ./conf/postfix
+      dockerfile: Dockerfile
+    networks:
+      - default
+    ports:
+      - "25:25"
+    depends_on:
+      batch:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "postfix status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # =========================================
   # MCP Support Tools (Privacy-Preserving Log Analysis)
   # =========================================
 
