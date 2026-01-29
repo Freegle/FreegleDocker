@@ -925,6 +925,13 @@ class IncomingMailServiceTest extends TestCase
 
         $userEmail = $user->emails->first()->email;
 
+        // Seed a spam keyword so the spam checker can detect it
+        DB::table('spam_keywords')->insert([
+            'word' => 'Western Union',
+            'action' => 'Spam',
+            'type' => 'Literal',
+        ]);
+
         // Use known spam patterns
         $email = $this->createMinimalEmail([
             'From' => $userEmail,

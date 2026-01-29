@@ -1551,7 +1551,7 @@ class IncomingMailService
         $result = $this->spamCheck->checkMessage($email);
 
         if ($result !== null) {
-            [$isSpam, $reason, $detail] = $result;
+            [, $reason, $detail] = $result;
             Log::info('Spam detected', [
                 'reason' => $reason,
                 'detail' => $detail,
@@ -1561,20 +1561,19 @@ class IncomingMailService
         }
 
         // Also run SpamAssassin if available (matches legacy MailRouter::checkSpam)
-        $skipSpamCheck = $this->shouldSkipSpamCheck($email);
-        if (! $skipSpamCheck) {
-            [$score, $isSpam] = $this->spamCheck->checkSpamAssassin(
-                $email->rawMessage,
-                $email->subject ?? ''
-            );
+        // Note: isSpam() is only called when shouldSkipSpamCheck() is false,
+        // so SpamAssassin always runs here.
+        [$score, $isSpam] = $this->spamCheck->checkSpamAssassin(
+            $email->rawMessage,
+            $email->subject ?? ''
+        );
 
-            if ($isSpam) {
-                Log::info('SpamAssassin flagged as spam', [
-                    'score' => $score,
-                ]);
+        if ($isSpam) {
+            Log::info('SpamAssassin flagged as spam', [
+                'score' => $score,
+            ]);
 
-                return true;
-            }
+            return true;
         }
 
         return false;
