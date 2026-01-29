@@ -595,7 +595,8 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+        // Known spammers are dropped early in routing, before volunteers handling
+        $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
     public function test_volunteers_autoreply_is_dropped(): void
