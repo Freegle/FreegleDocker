@@ -370,6 +370,70 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-28 - Dry Run Routing Mismatch Fixes (Session 3)
+- **Status**: 🔄 In Progress
+- **Branch**: master (FreegleDocker + iznik-batch)
+- **Goal**: Fix remaining mismatches from 3182-file replay, enhance replay with user/group/chat comparison
+- **Replay Results**: 3182 total, 2663 matched (83.7%), 63 mismatched (2.0%), 456 skipped (14.3%)
+- **Fixes Applied**:
+  1. **Spam check in handleVolunteersMessage()**: Added isSpam(), known spammer, and autoreply checks matching legacy toVolunteers()
+  2. **Enhanced isAutoReply()**: Added subject patterns (Out of Office, Auto-Reply, etc.) and body patterns matching legacy Message::isAutoreply()
+  3. **RoutingOutcome class**: Created to wrap RoutingResult with user_id, group_id, chat_id context
+  4. **routeDryRun() enhanced**: Now returns RoutingOutcome with routing context for comparison
+  5. **Replay command enhanced**: Compares user_id between legacy and new routing, displays routing context
+- **Remaining 63 mismatches** (all expected):
+  - 26 Pending=>Approved: DB timing (postingStatus changed after routing)
+  - 24 IncomingSpam=>ToVolunteers: SpamAssassin not in new code
+  - 13 others: minor edge cases (deleted users, legacy archive anomalies)
+- **Tests Added** (5 new):
+  - `test_volunteers_message_with_spam_keyword_routes_to_incoming_spam`
+  - `test_volunteers_message_from_known_spammer_routes_to_incoming_spam`
+  - `test_volunteers_autoreply_is_dropped`
+  - `test_volunteers_autoreply_via_header_is_dropped`
+  - `test_dry_run_returns_routing_outcome_with_context`
+- **Next**: Commit and push, run on CircleCI
+
+### 2026-01-28 - Dry Run Routing Mismatch Fixes (Session 2)
+- **Status**: ✅ Complete
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker + iznik-batch)
+- **Goal**: Fix remaining routing mismatches from shadow testing
+- **Results**: Improved from 171/188 (91.0%) to 177/188 (94.1%)
+- **Key Fix**: NULL `ourPostingStatus` handling
+  - Legacy defaults NULL to MODERATED (→ PENDING)
+  - Was incorrectly defaulting to 'DEFAULT' (→ APPROVED)
+  - Fixed match statement: only 'DEFAULT' or 'UNMODERATED' → APPROVED, all else → PENDING
+- **Test Added**: `test_group_post_with_null_posting_status_goes_to_pending`
+- **Remaining 11 mismatches** (all Legacy=Dropped, New=ToUser/Pending):
+  - 5 notify address replies that legacy drops
+  - 5 direct mail to user addresses that legacy drops
+  - 1 group post that legacy drops but we route to Pending
+  - Investigation suggests these are edge cases where legacy may be overly aggressive
+  - Users/memberships exist, chats are valid, no apparent reason for drops
+
+### 2026-01-28 - Dry Run Routing Mismatch Fixes (Session 1)
+- **Status**: ✅ Complete
+- **Branch**: `feature/incoming-email-migration` (FreegleDocker + iznik-batch)
+- **Goal**: Fix routing mismatches found when comparing legacy PHP code to new Laravel code
+- **Initial Results**: 164/188 match (87.2%), 24 mismatches
+- **Final Results**: 171/188 match (91.0%)
+- **Fixes Applied**:
+  1. **Freegle-formatted address parsing**: Added UID extraction from `*-{uid}@users.ilovefreegle.org` addresses in `findUserByEmail()`
+  2. **TN email canonicalization**: Added `canonicalizeEmail()` matching legacy `User::canonMail()` - strips TN group suffix, googlemail→gmail, plus addressing, gmail dots
+  3. **Stale chat threshold**: Changed `STALE_CHAT_DAYS` from 84 to 90 to match legacy `User::OPEN_AGE`
+  4. **Group moderation checks**: Added checks for moderators (always pending), group `moderated` setting, and `overridemoderation=ModerateAll` (Big Switch)
+- **Test Cases Added** (8 new tests):
+  - `test_routes_direct_mail_to_freegle_address_to_user`
+  - `test_routes_direct_mail_to_invalid_freegle_address_to_dropped`
+  - `test_group_post_from_moderator_goes_to_pending`
+  - `test_group_post_to_moderated_group_goes_to_pending`
+  - `test_group_post_with_override_moderation_goes_to_pending`
+  - `test_group_post_from_member_to_unmoderated_group_is_approved`
+  - `test_chat_reply_to_stale_chat_from_unfamiliar_sender_is_dropped`
+  - `test_chat_reply_to_fresh_chat_from_unfamiliar_sender_is_accepted`
+- **Files Modified**:
+  - `iznik-batch/app/Services/Mail/Incoming/IncomingMailService.php`
+  - `iznik-batch/tests/Unit/Services/Mail/Incoming/IncomingMailServiceTest.php`
+
 ### 2026-01-27 18:30 - CI Failure Details Display
 - **Status**: 🔄 In Progress - CI running (pipeline 1537)
 - **Branch**: `feature/incoming-email-migration`

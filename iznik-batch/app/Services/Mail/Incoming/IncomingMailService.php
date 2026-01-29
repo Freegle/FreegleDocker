@@ -33,7 +33,14 @@ class IncomingMailService
     // Maximum age for message replies (42 days = 6 weeks)
     private const EXPIRED_MESSAGE_DAYS = 42;
 
-    // No constructor dependencies - parsing is done by the command before routing
+    // Routing context - populated during routing for dry-run comparison
+    private ?int $routingUserId = null;
+
+    private ?int $routingGroupId = null;
+
+    private ?int $routingChatId = null;
+
+    private ?string $routingSpamReason = null;
 
     /**
      * Route a parsed email in dry-run mode (no database changes).
@@ -44,11 +51,17 @@ class IncomingMailService
      * legacy archives.
      *
      * @param  ParsedEmail  $email  The parsed email to route
-     * @return RoutingResult The routing outcome (what WOULD have happened)
+     * @return RoutingOutcome The routing outcome with context (what WOULD have happened)
      */
-    public function routeDryRun(ParsedEmail $email): RoutingResult
+    public function routeDryRun(ParsedEmail $email): RoutingOutcome
     {
         $result = null;
+
+        // Reset routing context
+        $this->routingUserId = null;
+        $this->routingGroupId = null;
+        $this->routingChatId = null;
+        $this->routingSpamReason = null;
 
         try {
             DB::beginTransaction();
@@ -63,7 +76,13 @@ class IncomingMailService
             throw $e;
         }
 
-        return $result;
+        return new RoutingOutcome(
+            result: $result,
+            userId: $this->routingUserId,
+            groupId: $this->routingGroupId,
+            chatId: $this->routingChatId,
+            spamReason: $this->routingSpamReason,
+        );
     }
 
     /**
@@ -1305,6 +1324,10 @@ class IncomingMailService
         // Create chat message
         $this->createChatMessageFromEmail($chat, $userId, $email);
 
+        // Track routing context
+        $this->routingUserId = $userId;
+        $this->routingChatId = $chatId;
+
         return RoutingResult::TO_USER;
     }
 
@@ -1384,6 +1407,15 @@ class IncomingMailService
             'is_auto' => $email->isToAuto,
         ]);
 
+        // Check for spam keywords before routing to volunteers (matches legacy toVolunteers behavior).
+        // Legacy runs Spam::checkMessage() which includes the spam_keywords DB check.
+        // Only skip if TN secret is valid.
+        $skipSpamCheck = $this->shouldSkipSpamCheck($email);
+
+        if (! $skipSpamCheck && $this->isSpam($email)) {
+            return RoutingResult::INCOMING_SPAM;
+        }
+
         // Find the group
         $group = $this->findGroup($email->targetGroupName);
         if ($group === null) {
@@ -1404,6 +1436,33 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
+        // Track routing context early
+        $this->routingUserId = $user->id;
+        $this->routingGroupId = $group->id;
+
+        // Check if sender is a known spammer (matches legacy toVolunteers behavior)
+        $isSpammer = DB::table('spam_users')
+            ->where('userid', $user->id)
+            ->where('collection', 'Spammer')
+            ->exists();
+
+        if ($isSpammer) {
+            Log::info('Volunteers message from known spammer', [
+                'user_id' => $user->id,
+            ]);
+
+            return RoutingResult::INCOMING_SPAM;
+        }
+
+        // Drop autoreplies to volunteer addresses (matches legacy behavior)
+        if (! $skipSpamCheck && $email->isAutoReply()) {
+            Log::info('Dropping autoreply to volunteers', [
+                'from' => $email->fromAddress,
+            ]);
+
+            return RoutingResult::DROPPED;
+        }
+
         // Get or create User2Mod chat between user and group moderators
         $chat = $this->getOrCreateUser2ModChat($user->id, $group->id);
         if ($chat === null) {
@@ -1417,6 +1476,11 @@ class IncomingMailService
 
         // Create the chat message
         $this->createChatMessageFromEmail($chat, $user->id, $email);
+
+        // Track routing context
+        $this->routingUserId = $user->id;
+        $this->routingGroupId = $group->id;
+        $this->routingChatId = $chat->id;
 
         Log::info('Created volunteers message', [
             'chat_id' => $chat->id,
@@ -1471,6 +1535,10 @@ class IncomingMailService
 
             return RoutingResult::DROPPED;
         }
+
+        // Track routing context
+        $this->routingUserId = $user->id;
+        $this->routingGroupId = $group->id;
 
         // Check if Trash Nothing post with valid secret (skip spam check)
         $skipSpamCheck = $this->shouldSkipSpamCheck($email);

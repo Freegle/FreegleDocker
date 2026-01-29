@@ -189,6 +189,11 @@ class ReplayIncomingArchiveCommand extends Command
             'envelope_to' => null,
             'subject' => null,
             'routing_context' => null,
+            'new_user_id' => null,
+            'new_group_id' => null,
+            'new_chat_id' => null,
+            'user_id_mismatch' => false,
+            'legacy_user_id' => null,
         ];
 
         try {
@@ -245,12 +250,26 @@ class ReplayIncomingArchiveCommand extends Command
             $parsed = $this->parserService->parse($rawEmail, $envelopeFrom, $envelopeTo);
 
             // Route through new code in dry-run mode (no DB writes)
-            $newOutcome = $this->incomingMailService->routeDryRun($parsed);
+            $outcome = $this->incomingMailService->routeDryRun($parsed);
+            $newOutcome = $outcome->result;
             $result['new_outcome'] = $newOutcome->value;
+            $result['new_user_id'] = $outcome->userId;
+            $result['new_group_id'] = $outcome->groupId;
+            $result['new_chat_id'] = $outcome->chatId;
 
             // Compare outcomes
             $expectedNewOutcome = self::LEGACY_TO_NEW_MAP[$legacyOutcome] ?? null;
             $result['match'] = ($newOutcome === $expectedNewOutcome);
+
+            // If outcomes match, also compare user_id if both are available
+            if ($result['match'] && $outcome->userId !== null) {
+                $legacyUserId = $archive['legacy_result']['user_id'] ?? null;
+                if ($legacyUserId !== null && (int) $legacyUserId !== $outcome->userId) {
+                    $result['match'] = false;
+                    $result['user_id_mismatch'] = true;
+                    $result['legacy_user_id'] = (int) $legacyUserId;
+                }
+            }
 
         } catch (\Throwable $e) {
             $result['error'] = $e->getMessage();
@@ -355,6 +374,30 @@ class ReplayIncomingArchiveCommand extends Command
                 $ctx['group_moderated'] === null ? 'NULL' : ($ctx['group_moderated'] ? 'yes' : 'no'),
                 $ctx['override_moderation'] ?? 'NULL'
             ));
+        }
+
+        // Show user ID mismatch if outcomes matched but user IDs differ
+        if (! empty($result['user_id_mismatch'])) {
+            $this->line(sprintf(
+                '  <fg=magenta>User ID mismatch:</> legacy=%d new=%d',
+                $result['legacy_user_id'],
+                $result['new_user_id']
+            ));
+        }
+
+        // Show new routing context (user/group/chat)
+        $contextParts = [];
+        if (! empty($result['new_user_id'])) {
+            $contextParts[] = 'user=' . $result['new_user_id'];
+        }
+        if (! empty($result['new_group_id'])) {
+            $contextParts[] = 'group=' . $result['new_group_id'];
+        }
+        if (! empty($result['new_chat_id'])) {
+            $contextParts[] = 'chat=' . $result['new_chat_id'];
+        }
+        if (! empty($contextParts)) {
+            $this->line(sprintf('  <fg=blue>New routing:</> %s', implode(' ', $contextParts)));
         }
     }
 
