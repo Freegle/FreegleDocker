@@ -370,6 +370,24 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+### 2026-01-29 - SpamCheckService Implementation Complete
+- **Status**: ✅ Complete (906 tests passing locally)
+- **Branch**: `feature/incoming-email-migration`
+- **Goal**: Implement all 18 missing spam detection features from legacy iznik-server
+- **Implementation**:
+  - Created `SpamCheckService.php` (~890 lines) with all legacy spam detection
+  - 51 unit tests in `SpamCheckServiceTest.php`
+  - Integrated into `IncomingMailService.isSpam()` replacing inline detection
+  - Added GeoIP config to `config/freegle.php`
+- **Features**: IP country blocking, IP reputation (user/group thresholds), subject reuse, keyword matching, greeting spam, spammer references, Spamhaus DBL, SpamAssassin, image spam, language detection, review checks (scripts/money/emails/links), bulk volunteer mail, domain spoofing
+- **Code Quality Review**:
+  - Removed unused `$isSpam` variable from destructured result
+  - Removed redundant `shouldSkipSpamCheck()` call (dead code in `isSpam()`)
+  - Fixed `test_routes_spam_to_incoming_spam` - needed `spam_keywords` seed
+  - `checkReview()` and `checkImageSpam()` are for chat message processing (not email routing) - correctly left unintegrated in email flow
+- **Commits**: 30c25df (main implementation), 037c119 (code quality fixes)
+- **CI**: Pipeline 1563 running, pipeline 1564 triggered with fixes
+
 ### 2026-01-27 18:30 - CI Failure Details Display
 - **Status**: 🔄 In Progress - CI running (pipeline 1537)
 - **Branch**: `feature/incoming-email-migration`

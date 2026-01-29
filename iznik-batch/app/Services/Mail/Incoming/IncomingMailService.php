@@ -1221,6 +1221,26 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
+        // Check if message is on a closed group (legacy: replyToSingleMessage checks group closed setting)
+        $messageGroups = DB::table('messages_groups')
+            ->where('msgid', $messageId)
+            ->pluck('groupid');
+
+        foreach ($messageGroups as $groupId) {
+            $group = Group::find($groupId);
+            if ($group !== null) {
+                $settings = json_decode($group->settings ?? '{}', true) ?: [];
+                if (! empty($settings['closed'])) {
+                    Log::info('Reply to message on closed group', [
+                        'message_id' => $messageId,
+                        'group_id' => $groupId,
+                    ]);
+
+                    return RoutingResult::TO_SYSTEM;
+                }
+            }
+        }
+
         // Find the sender user
         $fromUser = $this->findUserByEmail($email->fromAddress);
         if ($fromUser === null) {
@@ -1277,6 +1297,13 @@ class IncomingMailService
             'user_id' => $userId,
             'message_id' => $email->chatMessageId,
         ]);
+
+        // Drop misdirected read receipts (legacy: isReceipt check in replyToChatNotification)
+        if ($this->isReadReceipt($email)) {
+            Log::debug('Dropping misdirected read receipt in chat reply');
+
+            return RoutingResult::DROPPED;
+        }
 
         // Validate chat exists
         $chat = ChatRoom::find($chatId);
@@ -1359,28 +1386,113 @@ class IncomingMailService
 
     /**
      * Create a chat message from an incoming email.
+     *
+     * Matches legacy MailRouter behaviour:
+     * - Runs spam checks; if spam found, sets reviewrequired=1 (not rejected)
+     * - Runs checkReview for review-level content checks
+     * - After creation, checks image attachments for repeated hash spam
      */
     private function createChatMessageFromEmail(ChatRoom $chat, int $userId, ParsedEmail $email): void
     {
         $body = $email->textBody ?? $email->htmlBody ?? '';
 
-        ChatMessage::create([
+        // Determine if this chat message needs review (matching legacy flow).
+        // In the legacy code, MailRouter::checkSpam() is called first. If spam is
+        // found and the email is destined for chat (@users domain), the message is
+        // NOT rejected - instead $spamfound is passed to ChatMessage::create() as
+        // $forcereview, setting reviewrequired=1.
+        $reviewRequired = false;
+        $reportReason = null;
+
+        // Check for spam-level issues
+        $spamResult = $this->spamCheck->checkMessage($email);
+        if ($spamResult !== null) {
+            [, $reason, $detail] = $spamResult;
+            $reviewRequired = true;
+            $reportReason = $reason;
+            Log::info('Chat message flagged for review (spam detected)', [
+                'reason' => $reason,
+                'detail' => $detail,
+            ]);
+        }
+
+        // Check for review-level issues (scripts, money, links, language, etc.)
+        // Matches legacy ChatMessage::process() calling Spam::checkReview()
+        if (! $reviewRequired && strlen($body) > 0) {
+            $reviewReason = $this->spamCheck->checkReview($body, true);
+            if ($reviewReason !== null) {
+                $reviewRequired = true;
+                $reportReason = $reviewReason;
+                Log::info('Chat message flagged for review', [
+                    'reason' => $reviewReason,
+                ]);
+            }
+        }
+
+        $chatMsg = ChatMessage::create([
             'chatid' => $chat->id,
             'userid' => $userId,
             'message' => $body,
             'type' => ChatMessage::TYPE_DEFAULT,
             'date' => now(),
             'platform' => 0, // Email source
+            'reviewrequired' => $reviewRequired ? 1 : 0,
+            'reportreason' => $reportReason,
         ]);
 
         Log::info('Created chat message from email', [
             'chat_id' => $chat->id,
             'user_id' => $userId,
+            'review_required' => $reviewRequired,
         ]);
+
+        // Check image attachments for repeated hash spam (matching legacy addPhotosToChat).
+        // If the same image hash has been used too many times recently, flag for review.
+        $this->checkChatImageSpam($chatMsg);
+    }
+
+    /**
+     * Check chat message image attachments for repeated hash spam.
+     *
+     * Matches legacy MailRouter::addPhotosToChat() which checks each image
+     * hash against recent usage and flags the message for review if the
+     * same image has been used more than IMAGE_THRESHOLD times in 24 hours.
+     */
+    private function checkChatImageSpam(ChatMessage $chatMsg): void
+    {
+        if ($chatMsg->imageid === null) {
+            return;
+        }
+
+        $image = DB::table('chat_images')->where('id', $chatMsg->imageid)->first();
+        if ($image === null || empty($image->hash)) {
+            return;
+        }
+
+        if ($this->spamCheck->checkImageSpam($image->hash)) {
+            DB::table('chat_messages')
+                ->where('id', $chatMsg->id)
+                ->update([
+                    'reviewrequired' => 1,
+                    'reportreason' => SpamCheckService::REASON_IMAGE_SENT_MANY_TIMES,
+                ]);
+
+            Log::info('Chat image flagged for review (repeated hash)', [
+                'chat_message_id' => $chatMsg->id,
+                'hash' => $image->hash,
+            ]);
+        }
     }
 
     /**
      * Handle messages to group volunteers.
+     *
+     * Matches legacy toVolunteers() flow:
+     * 1. Run SpamAssassin check first
+     * 2. Run checkMessage() for our own spam checks
+     * 3. Check if sender is a known spammer
+     * 4. Filter auto-replies (for -auto@ addresses, not -volunteers@)
+     * 5. Create User2Mod chat message
      */
     private function handleVolunteersMessage(ParsedEmail $email): RoutingResult
     {
@@ -1408,6 +1520,53 @@ class IncomingMailService
             ]);
 
             return RoutingResult::DROPPED;
+        }
+
+        // Spam check: SpamAssassin first (matching legacy toVolunteers flow)
+        [$spamScore, $isSpamAssassin] = $this->spamCheck->checkSpamAssassin(
+            $email->rawMessage,
+            $email->subject ?? ''
+        );
+
+        if ($isSpamAssassin) {
+            Log::info('Volunteers message flagged by SpamAssassin', [
+                'score' => $spamScore,
+            ]);
+
+            return RoutingResult::INCOMING_SPAM;
+        }
+
+        // Spam check: our own checks (matching legacy toVolunteers flow)
+        $spamResult = $this->spamCheck->checkMessage($email);
+        if ($spamResult !== null) {
+            [, $reason, $detail] = $spamResult;
+            Log::info('Volunteers message flagged as spam', [
+                'reason' => $reason,
+                'detail' => $detail,
+            ]);
+
+            return RoutingResult::INCOMING_SPAM;
+        }
+
+        // Filter auto-replies for -auto@ addresses (legacy: !isAutoreply() check for non-volunteers)
+        if (! $email->isToVolunteers && $email->isAutoReply()) {
+            Log::debug('Dropping auto-reply to auto address');
+
+            return RoutingResult::DROPPED;
+        }
+
+        // Check if sender is a known spammer (legacy checks getSpammerByUserid)
+        $isSpammer = DB::table('spam_users')
+            ->where('userid', $user->id)
+            ->where('collection', 'Spammer')
+            ->exists();
+
+        if ($isSpammer) {
+            Log::info('Volunteers message from known spammer', [
+                'user_id' => $user->id,
+            ]);
+
+            return RoutingResult::INCOMING_SPAM;
         }
 
         // Get or create User2Mod chat between user and group moderators
@@ -1476,6 +1635,15 @@ class IncomingMailService
             ]);
 
             return RoutingResult::DROPPED;
+        }
+
+        // Check for TAKEN/RECEIVED subjects - swallow silently (legacy toGroup: paired TAKEN/RECEIVED → TO_SYSTEM)
+        if ($this->isTakenOrReceivedSubject($email->subject)) {
+            Log::info('TAKEN/RECEIVED post swallowed', [
+                'subject' => $email->subject,
+            ]);
+
+            return RoutingResult::TO_SYSTEM;
         }
 
         // Check if Trash Nothing post with valid secret (skip spam check)
@@ -1794,6 +1962,44 @@ class IncomingMailService
             'user1' => $userId1,
             'user2' => $userId2,
         ]);
+    }
+
+    /**
+     * Check if subject indicates a TAKEN or RECEIVED post.
+     *
+     * These are completion markers in the legacy format: "TAKEN: item (location)" or "RECEIVED: item (location)".
+     * Legacy toGroup() swallows these silently as TO_SYSTEM since mods don't need to review them.
+     */
+    private function isTakenOrReceivedSubject(?string $subject): bool
+    {
+        if ($subject === null) {
+            return false;
+        }
+
+        return (bool) preg_match('/^\s*(TAKEN|RECEIVED)\s*:/i', $subject);
+    }
+
+    /**
+     * Check if email is a read receipt (MDN).
+     *
+     * Read receipts sent to chat notification addresses are misdirected and should be dropped.
+     * Legacy: MailRouter::replyToChatNotification checks $this->msg->isReceipt().
+     */
+    private function isReadReceipt(ParsedEmail $email): bool
+    {
+        // Check Content-Type for disposition-notification
+        $contentType = $email->getHeader('content-type') ?? '';
+        if (str_contains(strtolower($contentType), 'disposition-notification')) {
+            return true;
+        }
+
+        // Check for MDN-specific content disposition header
+        $contentDisposition = $email->getHeader('content-disposition') ?? '';
+        if (str_contains(strtolower($contentDisposition), 'notification')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
