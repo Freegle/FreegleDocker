@@ -9,7 +9,6 @@ use App\Models\Membership;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\UserEmail;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -34,6 +33,13 @@ class IncomingMailService
     private const EXPIRED_MESSAGE_DAYS = 42;
 
     // No constructor dependencies - parsing is done by the command before routing
+
+    private SpamCheckService $spamCheck;
+
+    public function __construct(?SpamCheckService $spamCheck = null)
+    {
+        $this->spamCheck = $spamCheck ?? app(SpamCheckService::class);
+    }
 
     /**
      * Route a parsed email in dry-run mode (no database changes).
@@ -810,11 +816,11 @@ class IncomingMailService
         }
 
         // Get current settings JSON
-        $settings = json_decode($user->settings ?? '{}', TRUE) ?: [];
+        $settings = json_decode($user->settings ?? '{}', true) ?: [];
 
         // Only update if not already off
-        if (($settings['notificationmails'] ?? TRUE) === TRUE) {
-            $settings['notificationmails'] = FALSE;
+        if (($settings['notificationmails'] ?? true) === true) {
+            $settings['notificationmails'] = false;
             $user->settings = json_encode($settings);
             $user->save();
 
@@ -1534,29 +1540,37 @@ class IncomingMailService
     }
 
     /**
-     * Check if email is spam.
+     * Check if email is spam using the SpamCheckService.
+     *
+     * Runs all spam detection checks from legacy Spam::checkMessage() and
+     * Spam::checkSpam(): keywords, IP checks, subject reuse, greeting spam,
+     * Spamhaus DBL, known spammer references, and more.
      */
     private function isSpam(ParsedEmail $email): bool
     {
-        $subject = strtolower($email->subject ?? '');
-        $body = strtolower($email->textBody ?? '');
+        $result = $this->spamCheck->checkMessage($email);
 
-        // Common spam patterns
-        // Note: Full spam checking is handled by Rspamd/SpamAssassin at the MTA level.
-        // These patterns catch obvious spam that might bypass external filters.
-        $spamPatterns = [
-            'make money fast',
-            'guaranteed returns',
-            'western union',
-            'send money',
-            'lottery winner',
-            'nigerian prince',
-        ];
+        if ($result !== null) {
+            [$isSpam, $reason, $detail] = $result;
+            Log::info('Spam detected', [
+                'reason' => $reason,
+                'detail' => $detail,
+            ]);
 
-        foreach ($spamPatterns as $pattern) {
-            if (str_contains($subject, $pattern) || str_contains($body, $pattern)) {
-                Log::info('Spam pattern detected', [
-                    'pattern' => $pattern,
+            return true;
+        }
+
+        // Also run SpamAssassin if available (matches legacy MailRouter::checkSpam)
+        $skipSpamCheck = $this->shouldSkipSpamCheck($email);
+        if (! $skipSpamCheck) {
+            [$score, $isSpam] = $this->spamCheck->checkSpamAssassin(
+                $email->rawMessage,
+                $email->subject ?? ''
+            );
+
+            if ($isSpam) {
+                Log::info('SpamAssassin flagged as spam', [
+                    'score' => $score,
                 ]);
 
                 return true;
@@ -1588,7 +1602,7 @@ class IncomingMailService
         if (str_contains($subject, '£') || str_contains($body, '£')) {
             Log::debug('Worry word found: £');
 
-            return TRUE;
+            return true;
         }
 
         // First, remove any ALLOWED type words from the text
@@ -1603,14 +1617,14 @@ class IncomingMailService
         // Check for phrases (words containing spaces) with literal matching
         foreach ($worryWords as $worryWord) {
             if ($worryWord->type !== 'Allowed' && str_contains($worryWord->keyword, ' ')) {
-                if (stripos($subject, $worryWord->keyword) !== FALSE ||
-                    stripos($body, $worryWord->keyword) !== FALSE) {
+                if (stripos($subject, $worryWord->keyword) !== false ||
+                    stripos($body, $worryWord->keyword) !== false) {
                     Log::debug('Worry word phrase found', [
                         'keyword' => $worryWord->keyword,
                         'type' => $worryWord->type,
                     ]);
 
-                    return TRUE;
+                    return true;
                 }
             }
         }
@@ -1639,14 +1653,14 @@ class IncomingMailService
                                 'type' => $worryWord->type,
                             ]);
 
-                            return TRUE;
+                            return true;
                         }
                     }
                 }
             }
         }
 
-        return FALSE;
+        return false;
     }
 
     /**
