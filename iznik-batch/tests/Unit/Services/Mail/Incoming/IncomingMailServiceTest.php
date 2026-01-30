@@ -1196,10 +1196,16 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // Volunteers messages with spam should be flagged
-        // The spam check happens during chat message creation for volunteers,
-        // so routing succeeds but the message is flagged for review
+        // Volunteers messages with spam go to review (not rejected) - users may be reporting spam
         $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // The chat message should be flagged for review so volunteers see it was detected
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
     public function test_banned_user_post_dropped(): void
@@ -1528,7 +1534,7 @@ class IncomingMailServiceTest extends TestCase
             ->first();
 
         $this->assertEquals(1, $lastMessage->reviewrequired);
-        $this->assertEquals('Known spam keyword', $lastMessage->reportreason);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
     public function test_chat_reply_with_money_symbol_flagged_for_review(): void
@@ -1562,7 +1568,7 @@ class IncomingMailServiceTest extends TestCase
             ->first();
 
         $this->assertEquals(1, $lastMessage->reviewrequired);
-        $this->assertEquals('Money', $lastMessage->reportreason);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
     public function test_chat_reply_with_script_tag_flagged_for_review(): void
@@ -1595,7 +1601,7 @@ class IncomingMailServiceTest extends TestCase
             ->first();
 
         $this->assertEquals(1, $lastMessage->reviewrequired);
-        $this->assertEquals('Script', $lastMessage->reportreason);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
     public function test_clean_chat_reply_not_flagged_for_review(): void
@@ -1712,14 +1718,14 @@ class IncomingMailServiceTest extends TestCase
             ->first();
 
         $this->assertEquals(1, $lastMessage->reviewrequired);
-        $this->assertEquals('Email', $lastMessage->reportreason);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
     // ========================================
     // Volunteers Spam Check Tests
     // ========================================
 
-    public function test_volunteers_message_from_spammer_returns_incoming_spam(): void
+    public function test_volunteers_message_from_spammer_flagged_for_review(): void
     {
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-spammer')]);
@@ -1749,10 +1755,19 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+        // Known spammer to volunteers: goes to review, not rejected
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // Chat message should be flagged for review
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
-    public function test_volunteers_spam_keyword_returns_incoming_spam(): void
+    public function test_volunteers_spam_keyword_flagged_for_review(): void
     {
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-spam')]);
@@ -1782,7 +1797,16 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+        // Volunteers spam goes to review, not rejected
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // Chat message should be flagged
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
     // ========================================

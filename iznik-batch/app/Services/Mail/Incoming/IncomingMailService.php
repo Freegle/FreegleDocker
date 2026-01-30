@@ -1392,8 +1392,13 @@ class IncomingMailService
      * - Runs checkReview for review-level content checks
      * - After creation, checks image attachments for repeated hash spam
      */
-    private function createChatMessageFromEmail(ChatRoom $chat, int $userId, ParsedEmail $email): void
-    {
+    private function createChatMessageFromEmail(
+        ChatRoom $chat,
+        int $userId,
+        ParsedEmail $email,
+        bool $forceReview = false,
+        ?string $forceReviewReason = null
+    ): void {
         $body = $email->textBody ?? $email->htmlBody ?? '';
 
         // Determine if this chat message needs review (matching legacy flow).
@@ -1401,19 +1406,21 @@ class IncomingMailService
         // found and the email is destined for chat (@users domain), the message is
         // NOT rejected - instead $spamfound is passed to ChatMessage::create() as
         // $forcereview, setting reviewrequired=1.
-        $reviewRequired = false;
-        $reportReason = null;
+        $reviewRequired = $forceReview;
+        $reportReason = $forceReviewReason;
 
-        // Check for spam-level issues
-        $spamResult = $this->spamCheck->checkMessage($email);
-        if ($spamResult !== null) {
-            [, $reason, $detail] = $spamResult;
-            $reviewRequired = true;
-            $reportReason = $reason;
-            Log::info('Chat message flagged for review (spam detected)', [
-                'reason' => $reason,
-                'detail' => $detail,
-            ]);
+        // Check for spam-level issues (unless already flagged by caller)
+        if (! $reviewRequired) {
+            $spamResult = $this->spamCheck->checkMessage($email);
+            if ($spamResult !== null) {
+                [, $reason, $detail] = $spamResult;
+                $reviewRequired = true;
+                $reportReason = $reason;
+                Log::info('Chat message flagged for review (spam detected)', [
+                    'reason' => $reason,
+                    'detail' => $detail,
+                ]);
+            }
         }
 
         // Check for review-level issues (scripts, money, links, language, etc.)
@@ -1429,6 +1436,11 @@ class IncomingMailService
             }
         }
 
+        // Map reportreason to valid enum values for the chat_messages table.
+        // The DB column is enum('Spam','Other','Last','Force','Fully','TooMany','User','UnknownMessage','SameImage','DodgyImage').
+        // Our spam check reasons are more detailed, so map them to the enum.
+        $dbReportReason = $this->mapReportReason($reportReason);
+
         $chatMsg = ChatMessage::create([
             'chatid' => $chat->id,
             'userid' => $userId,
@@ -1437,7 +1449,7 @@ class IncomingMailService
             'date' => now(),
             'platform' => 0, // Email source
             'reviewrequired' => $reviewRequired ? 1 : 0,
-            'reportreason' => $reportReason,
+            'reportreason' => $dbReportReason,
         ]);
 
         Log::info('Created chat message from email', [
@@ -1485,6 +1497,28 @@ class IncomingMailService
     }
 
     /**
+     * Map a spam check reason to a valid chat_messages.reportreason enum value.
+     *
+     * The DB column is enum('Spam','Other','Last','Force','Fully','TooMany','User','UnknownMessage','SameImage','DodgyImage').
+     * SpamCheckService returns detailed reason strings. Map them to the enum.
+     */
+    private function mapReportReason(?string $reason): ?string
+    {
+        if ($reason === null) {
+            return null;
+        }
+
+        // These are already valid enum values
+        $validEnumValues = ['Spam', 'Other', 'Last', 'Force', 'Fully', 'TooMany', 'User', 'UnknownMessage', 'SameImage', 'DodgyImage'];
+        if (in_array($reason, $validEnumValues, true)) {
+            return $reason;
+        }
+
+        // Map detailed reasons to generic 'Spam' enum value
+        return 'Spam';
+    }
+
+    /**
      * Handle messages to group volunteers.
      *
      * Matches legacy toVolunteers() flow:
@@ -1522,32 +1556,6 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
-        // Spam check: SpamAssassin first (matching legacy toVolunteers flow)
-        [$spamScore, $isSpamAssassin] = $this->spamCheck->checkSpamAssassin(
-            $email->rawMessage,
-            $email->subject ?? ''
-        );
-
-        if ($isSpamAssassin) {
-            Log::info('Volunteers message flagged by SpamAssassin', [
-                'score' => $spamScore,
-            ]);
-
-            return RoutingResult::INCOMING_SPAM;
-        }
-
-        // Spam check: our own checks (matching legacy toVolunteers flow)
-        $spamResult = $this->spamCheck->checkMessage($email);
-        if ($spamResult !== null) {
-            [, $reason, $detail] = $spamResult;
-            Log::info('Volunteers message flagged as spam', [
-                'reason' => $reason,
-                'detail' => $detail,
-            ]);
-
-            return RoutingResult::INCOMING_SPAM;
-        }
-
         // Filter auto-replies for -auto@ addresses (legacy: !isAutoreply() check for non-volunteers)
         if (! $email->isToVolunteers && $email->isAutoReply()) {
             Log::debug('Dropping auto-reply to auto address');
@@ -1555,18 +1563,54 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
-        // Check if sender is a known spammer (legacy checks getSpammerByUserid)
-        $isSpammer = DB::table('spam_users')
-            ->where('userid', $user->id)
-            ->where('collection', 'Spammer')
-            ->exists();
+        // Spam checks for volunteers messages: flag for review, never reject.
+        // Users may be reporting spam to volunteers, so we don't want to block
+        // the message. Instead, flag it so volunteers can see it was detected.
+        $spamDetected = false;
+        $spamReason = null;
 
-        if ($isSpammer) {
-            Log::info('Volunteers message from known spammer', [
-                'user_id' => $user->id,
+        // SpamAssassin check
+        [$spamScore, $isSpamAssassin] = $this->spamCheck->checkSpamAssassin(
+            $email->rawMessage,
+            $email->subject ?? ''
+        );
+
+        if ($isSpamAssassin) {
+            $spamDetected = true;
+            $spamReason = 'SpamAssassin score '.$spamScore;
+            Log::info('Volunteers message flagged by SpamAssassin (for review)', [
+                'score' => $spamScore,
             ]);
+        }
 
-            return RoutingResult::INCOMING_SPAM;
+        // Our own spam checks
+        if (! $spamDetected) {
+            $spamResult = $this->spamCheck->checkMessage($email);
+            if ($spamResult !== null) {
+                [, $reason, $detail] = $spamResult;
+                $spamDetected = true;
+                $spamReason = $reason;
+                Log::info('Volunteers message flagged as spam (for review)', [
+                    'reason' => $reason,
+                    'detail' => $detail,
+                ]);
+            }
+        }
+
+        // Known spammer check
+        if (! $spamDetected) {
+            $isSpammer = DB::table('spam_users')
+                ->where('userid', $user->id)
+                ->where('collection', 'Spammer')
+                ->exists();
+
+            if ($isSpammer) {
+                $spamDetected = true;
+                $spamReason = 'Known spammer';
+                Log::info('Volunteers message from known spammer (for review)', [
+                    'user_id' => $user->id,
+                ]);
+            }
         }
 
         // Get or create User2Mod chat between user and group moderators
@@ -1580,13 +1624,14 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
-        // Create the chat message
-        $this->createChatMessageFromEmail($chat, $user->id, $email);
+        // Create the chat message, flagging for review if spam was detected
+        $this->createChatMessageFromEmail($chat, $user->id, $email, $spamDetected, $spamReason);
 
         Log::info('Created volunteers message', [
             'chat_id' => $chat->id,
             'user_id' => $user->id,
             'group_id' => $group->id,
+            'spam_flagged' => $spamDetected,
         ]);
 
         return RoutingResult::TO_VOLUNTEERS;
