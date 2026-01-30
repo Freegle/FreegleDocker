@@ -349,7 +349,24 @@ commands:
 
               if [ $elapsed -gt $timeout_duration ]; then
                 echo "❌ Timeout waiting for API services after 10 minutes"
-                docker-compose -f docker-compose.yml logs
+                echo ""
+                echo "=== Final status API response ==="
+                curl -s http://localhost:8081/api/status/all 2>/dev/null | jq . || echo "(status service not responding)"
+                echo ""
+                echo "=== Docker container health ==="
+                docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null || true
+                echo ""
+                echo "=== Status container logs (last 30) ==="
+                docker logs freegle-status --tail 30 2>&1 || true
+                echo ""
+                echo "=== API v1 container logs (last 30) ==="
+                docker logs freegle-apiv1-phpunit --tail 30 2>&1 || true
+                echo ""
+                echo "=== API v2 container logs (last 30) ==="
+                docker logs freegle-apiv2 --tail 30 2>&1 || true
+                echo ""
+                echo "=== Batch container logs (last 30) ==="
+                docker logs freegle-batch --tail 30 2>&1 || true
                 exit 1
               fi
 

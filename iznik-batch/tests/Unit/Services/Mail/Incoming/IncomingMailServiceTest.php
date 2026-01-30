@@ -532,6 +532,156 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
     }
 
+    public function test_volunteers_message_with_spam_keyword_routes_to_incoming_spam(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volspam')]);
+        $this->createMembership($user, $group);
+
+        // Insert spam keyword
+        DB::table('spam_keywords')->insert([
+            'word' => 'weight loss',
+            'action' => 'Spam',
+            'type' => 'Literal',
+            'exclude' => NULL,
+        ]);
+
+        $memberEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $memberEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Amazing weight loss opportunity',
+        ], 'Great weight loss product!');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $memberEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_volunteers_message_from_known_spammer_routes_to_incoming_spam(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volspammer')]);
+        $this->createMembership($user, $group);
+
+        // Mark user as known spammer
+        DB::table('spam_users')->insert([
+            'userid' => $user->id,
+            'collection' => 'Spammer',
+            'reason' => 'Test spammer',
+            'added' => now(),
+        ]);
+
+        $memberEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $memberEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Innocent looking message',
+        ], 'This is a normal-looking message from a spammer.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $memberEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Known spammers are dropped early in routing, before volunteers handling
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_volunteers_autoreply_is_dropped(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volooo')]);
+        $this->createMembership($user, $group);
+
+        $memberEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $memberEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Out of Office: Re: Question',
+        ], 'I am currently out of the office.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $memberEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_volunteers_autoreply_via_header_is_dropped(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volauto')]);
+        $this->createMembership($user, $group);
+
+        $memberEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $memberEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Re: Question',
+            'Auto-Submitted' => 'auto-replied',
+        ], 'Thanks for your email.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $memberEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    public function test_dry_run_returns_routing_outcome_with_context(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('dryrun')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $memberEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $memberEmail,
+            'To' => $group->nameshort . '@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Test item (London)',
+        ], 'Free to collect.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $memberEmail,
+            $group->nameshort . '@groups.ilovefreegle.org'
+        );
+
+        $outcome = $this->service->routeDryRun($parsed);
+
+        $this->assertEquals(RoutingResult::APPROVED, $outcome->result);
+        $this->assertEquals($user->id, $outcome->userId);
+        $this->assertEquals($group->id, $outcome->groupId);
+    }
+
     // ========================================
     // Bounce Handling Tests
     // ========================================
