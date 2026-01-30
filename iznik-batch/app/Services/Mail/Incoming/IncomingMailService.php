@@ -117,8 +117,8 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
-        // Check if sender is a known spammer
-        if ($this->isKnownSpammer($email)) {
+        // Check if sender is a known spammer (skip for volunteers - they go to review instead)
+        if (! $email->isToVolunteers && ! $email->isToAuto && $this->isKnownSpammer($email)) {
             Log::debug('Dropping message from known spammer');
 
             return RoutingResult::DROPPED;

@@ -1132,7 +1132,7 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
     }
 
-    public function test_bulk_volunteer_mail_detected_as_spam(): void
+    public function test_bulk_volunteer_mail_flagged_for_review(): void
     {
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('bulkmailer')]);
         $userEmail = $user->emails->first()->email;
@@ -1166,7 +1166,16 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+        // Bulk volunteer mail goes to review, not rejected
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // Chat message should be flagged
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
     public function test_volunteers_with_spam_keyword_detected_as_spam(): void
