@@ -49,7 +49,7 @@ class Job extends Model
 
             $poly = "POLYGON(($swlng $swlat, $swlng $nelat, $nelng $nelat, $nelng $swlat, $swlng $swlat))";
 
-            $jobs = static::select('id', 'title', 'location', 'company', 'city', 'url', 'cpc')
+            $jobs = static::select('id', 'title', 'canonical_title', 'location', 'company', 'city', 'url', 'cpc')
                 ->whereRaw("ST_Within(geometry, ST_GeomFromText(?, ?))", [$poly, $srid])
                 ->whereRaw("cpc >= ?", [self::MINIMUM_CPC])
                 ->where('visible', 1)
@@ -68,17 +68,21 @@ class Job extends Model
             $ambit += $step;
         }
 
-        // Add images to jobs from ai_images table.
+        // Add images to jobs using the pre-computed canonical_title column.
         if ($results->isNotEmpty()) {
-            $titles = $results->pluck('title')->toArray();
-            $images = DB::table('ai_images')
-                ->whereIn('name', $titles)
-                ->pluck('externaluid', 'name');
+            $canonicalTitles = $results->pluck('canonical_title')->filter()->unique()->values()->toArray();
+            $images = collect();
+
+            if (count($canonicalTitles)) {
+                $images = DB::table('ai_images')
+                    ->whereIn('name', $canonicalTitles)
+                    ->pluck('externaluid', 'name');
+            }
 
             $placeholderUrl = config('freegle.images.email_assets') . '/briefcase.png';
 
             foreach ($results as $job) {
-                $job->image_url = self::buildImageUrl($images[$job->title] ?? null) ?? $placeholderUrl;
+                $job->image_url = self::buildImageUrl($images[$job->canonical_title] ?? null) ?? $placeholderUrl;
             }
         }
 
