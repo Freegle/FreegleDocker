@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('jobs', 'canonical_title')) {
+            return;
+        }
+
         Schema::table('jobs', function (Blueprint $table) {
             $table->string('canonical_title', 255)->nullable()->after('visible');
             $table->index('canonical_title');
