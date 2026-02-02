@@ -1702,7 +1702,9 @@ class IncomingMailService
         }
 
         // Check posting status (column is camelCase: ourPostingStatus)
-        $postingStatus = $membership->ourPostingStatus ?? 'DEFAULT';
+        // Legacy defaults NULL to MODERATED (→ PENDING). Only explicit 'DEFAULT' or
+        // 'UNMODERATED' posting status means approved.
+        $postingStatus = $membership->ourPostingStatus;
 
         // Check if user is unmapped (no location)
         if ($user->lastlocation === null) {
@@ -1724,9 +1726,9 @@ class IncomingMailService
 
         // Route based on posting status
         return match ($postingStatus) {
-            'MODERATED' => RoutingResult::PENDING,
+            'DEFAULT', 'UNMODERATED' => RoutingResult::APPROVED,
             'PROHIBITED' => RoutingResult::DROPPED,
-            default => RoutingResult::APPROVED,
+            default => RoutingResult::PENDING,  // NULL, MODERATED, or any other value
         };
     }
 
@@ -1891,22 +1893,14 @@ class IncomingMailService
             'to' => $email->envelopeTo,
         ]);
 
-        // Find the recipient user by looking up the envelope-to address
-        $toAddress = $email->envelopeTo;
-        $recipientEmail = UserEmail::where('email', $toAddress)->first();
+        // Find the recipient user by looking up the envelope-to address.
+        // Uses findUserByEmail which handles Freegle-formatted addresses
+        // (*-UID@users.ilovefreegle.org) and canonical email matching.
+        $recipientUser = $this->findUserByEmail($email->envelopeTo);
 
-        if ($recipientEmail === null) {
-            Log::info('Direct mail to unknown user address', [
-                'to' => $toAddress,
-            ]);
-
-            return RoutingResult::DROPPED;
-        }
-
-        $recipientUser = User::find($recipientEmail->userid);
         if ($recipientUser === null) {
-            Log::warning('Direct mail to email with no user', [
-                'to' => $toAddress,
+            Log::info('Direct mail to unknown user address', [
+                'to' => $email->envelopeTo,
             ]);
 
             return RoutingResult::DROPPED;
@@ -1968,6 +1962,10 @@ class IncomingMailService
 
     /**
      * Find a user by email address.
+     *
+     * Handles Freegle-formatted addresses (*-UID@users.ilovefreegle.org) by
+     * extracting the UID directly. Also uses canonical email matching for
+     * TN variant addresses (matching legacy User::findByEmail behaviour).
      */
     private function findUserByEmail(?string $email): ?User
     {
@@ -1975,12 +1973,70 @@ class IncomingMailService
             return null;
         }
 
-        $userEmail = UserEmail::where('email', $email)->first();
-        if ($userEmail === null) {
-            return null;
+        // Check for Freegle-formatted address with embedded UID
+        $userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        if (preg_match('/.*\-(\d+)@' . preg_quote($userDomain, '/') . '$/', $email, $matches)) {
+            return User::find((int) $matches[1]);
         }
 
-        return User::find($userEmail->userid);
+        // Try direct email lookup first
+        $userEmail = UserEmail::where('email', $email)->first();
+        if ($userEmail !== null) {
+            return User::find($userEmail->userid);
+        }
+
+        // Try canonical email lookup (handles TN variants, gmail dots, etc.)
+        $canon = $this->canonicalizeEmail($email);
+        if ($canon !== $email) {
+            $userEmail = UserEmail::where('canon', $canon)->first();
+            if ($userEmail !== null) {
+                return User::find($userEmail->userid);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Canonicalize an email address to match legacy User::canonMail().
+     *
+     * Handles: TN group suffixes, googlemail→gmail, plus addressing, gmail dots.
+     */
+    private function canonicalizeEmail(string $email): string
+    {
+        // Googlemail → Gmail
+        $email = str_replace('@googlemail.', '@gmail.', $email);
+        $email = str_replace('@googlemail.co.uk', '@gmail.co.uk', $email);
+
+        // Strip TN group suffix: user-gNNNN@user.trashnothing.com → user@user.trashnothing.com
+        if (preg_match('/(.*)\-(.*)(@user\.trashnothing\.com)/', $email, $matches)) {
+            $email = $matches[1] . $matches[3];
+        }
+
+        // Remove plus addressing (except Facebook proxy and leading +)
+        if (
+            str_starts_with($email, '+') === false &&
+            preg_match('/(.*)\+(.*)(@.*)/', $email, $matches) &&
+            strpos($email, '@proxymail.facebook.com') === false
+        ) {
+            $email = $matches[1] . $matches[3];
+        }
+
+        // Remove dots in Gmail LHS
+        $p = strpos($email, '@');
+        if ($p !== false) {
+            $lhs = substr($email, 0, $p);
+            $rhs = substr($email, $p);
+
+            if (stripos($rhs, '@gmail') !== false || stripos($rhs, '@googlemail') !== false) {
+                $lhs = str_replace('.', '', $lhs);
+            }
+
+            // Remove dots from RHS (matches legacy behaviour)
+            $email = $lhs . str_replace('.', '', $rhs);
+        }
+
+        return $email;
     }
 
     /**
