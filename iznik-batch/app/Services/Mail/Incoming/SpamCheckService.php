@@ -114,7 +114,7 @@ class SpamCheckService
         $ip = $email->senderIp;
         $fromName = $email->fromName ?? '';
         $subject = $email->subject ?? '';
-        $body = $email->textBody ?? '';
+        $body = (new StripQuotedService)->strip($email->textBody ?? '');
 
         // Check for our-domain spoofing in from name
         $groupDomain = config('freegle.mail.group_domain');

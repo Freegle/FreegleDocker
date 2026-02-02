@@ -538,7 +538,7 @@ class IncomingMailServiceTest extends TestCase
     // Bounce Handling Tests
     // ========================================
 
-    public function test_routes_bounce_to_dropped(): void
+    public function test_routes_bounce_to_system(): void
     {
         $bounceEmail = $this->createBounceEmail(
             'recipient@example.com',
@@ -554,8 +554,8 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // Bounces are processed (user may be suspended) but message is dropped
-        $this->assertEquals(RoutingResult::DROPPED, $result);
+        // Bounces are system processing - not dropped
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
     }
 
     public function test_permanent_bounce_suspends_user_email(): void

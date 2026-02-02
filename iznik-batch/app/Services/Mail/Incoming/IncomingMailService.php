@@ -36,15 +36,18 @@ class IncomingMailService
 
     private SpamCheckService $spamCheck;
 
+    private StripQuotedService $stripQuoted;
+
     /**
      * Context from the last routing decision (group name, user id, etc.).
      * Set during route() and read by controllers for logging.
      */
     private array $lastRoutingContext = [];
 
-    public function __construct(?SpamCheckService $spamCheck = null)
+    public function __construct(?SpamCheckService $spamCheck = null, ?StripQuotedService $stripQuoted = null)
     {
         $this->spamCheck = $spamCheck ?? app(SpamCheckService::class);
+        $this->stripQuoted = $stripQuoted ?? new StripQuotedService;
     }
 
     /**
@@ -1221,7 +1224,7 @@ class IncomingMailService
             }
         }
 
-        return RoutingResult::DROPPED;
+        return RoutingResult::TO_SYSTEM;
     }
 
     /**
@@ -1489,6 +1492,9 @@ class IncomingMailService
         ?string $forceReviewReason = null
     ): void {
         $body = $email->textBody ?? $email->htmlBody ?? '';
+
+        // Strip quoted reply text and signatures before storing.
+        $body = $this->stripQuoted->strip($body);
 
         // Determine if this chat message needs review (matching legacy flow).
         // In the legacy code, MailRouter::checkSpam() is called first. If spam is
