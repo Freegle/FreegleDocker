@@ -1443,11 +1443,11 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
-    public function test_banned_user_post_dropped(): void
+    public function test_prohibited_user_post_dropped(): void
     {
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('banned')]);
-        // Add membership then set posting status to prohibited
+        // PROHIBITED users are blocked by the API (message.php:625) so email should match
         $this->createMembership($user, $group, [
             'ourPostingStatus' => 'PROHIBITED',
         ]);
@@ -2198,6 +2198,7 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
+        // API rejects PROHIBITED with "Not allowed to post" (message.php:625), email matches
         $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 

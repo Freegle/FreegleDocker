@@ -1913,6 +1913,8 @@ class IncomingMailService
         }
 
         // Route based on posting status
+        // API rejects PROHIBITED with "Not allowed to post on this group" (message.php:625)
+        // so email should match: drop the post.
         return match ($postingStatus) {
             'DEFAULT', 'UNMODERATED' => RoutingResult::APPROVED,
             'PROHIBITED' => RoutingResult::DROPPED,
