@@ -132,9 +132,24 @@ class LokiService
         string $subject,
         string $messageId,
         string $routingOutcome,
+        array $context = [],
     ): void {
         if (! $this->enabled) {
             return;
+        }
+
+        $message = [
+            'envelope_from' => $envelopeFrom,
+            'envelope_to' => $envelopeTo,
+            'from_address' => $fromAddress,
+            'subject' => $subject,
+            'message_id' => $messageId,
+            'routing_outcome' => $routingOutcome,
+        ];
+
+        // Merge routing context (group_name, user_id, chat_id, etc.)
+        if (! empty($context)) {
+            $message = array_merge($message, $context);
         }
 
         $entry = [
@@ -145,14 +160,7 @@ class LokiService
                 'type' => 'routed',
                 'subtype' => $routingOutcome,
             ],
-            'message' => [
-                'envelope_from' => $envelopeFrom,
-                'envelope_to' => $envelopeTo,
-                'from_address' => $fromAddress,
-                'subject' => $subject,
-                'message_id' => $messageId,
-                'routing_outcome' => $routingOutcome,
-            ],
+            'message' => $message,
         ];
 
         $this->writeLog('incoming_mail.log', $entry);

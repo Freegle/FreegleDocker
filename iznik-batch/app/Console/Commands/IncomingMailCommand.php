@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Services\LokiService;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
-use App\Services\Mail\Incoming\RoutingResult;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -89,6 +88,7 @@ class IncomingMailCommand extends Command
                 $parsed->subject ?? '',
                 $parsed->messageId ?? '',
                 $result->value,
+                $service->getLastRoutingContext(),
             );
 
             return $result->getExitCode();

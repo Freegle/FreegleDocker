@@ -24,8 +24,6 @@ class IncomingMailController extends Controller
 
     /**
      * Receive and process an incoming email.
-     *
-     * @return Response
      */
     public function receive(Request $request): Response
     {
@@ -42,6 +40,7 @@ class IncomingMailController extends Controller
         // Validate we have content
         if (empty($rawEmail)) {
             Log::warning('Empty email content received');
+
             return response('Empty content', 400);
         }
 
@@ -66,6 +65,7 @@ class IncomingMailController extends Controller
                 $parsed->subject ?? '',
                 $parsed->messageId ?? '',
                 $result->value,
+                $this->mailService->getLastRoutingContext(),
             );
 
             return response('OK', 200);

@@ -36,9 +36,23 @@ class IncomingMailService
 
     private SpamCheckService $spamCheck;
 
+    /**
+     * Context from the last routing decision (group name, user id, etc.).
+     * Set during route() and read by controllers for logging.
+     */
+    private array $lastRoutingContext = [];
+
     public function __construct(?SpamCheckService $spamCheck = null)
     {
         $this->spamCheck = $spamCheck ?? app(SpamCheckService::class);
+    }
+
+    /**
+     * Get context from the last routing decision.
+     */
+    public function getLastRoutingContext(): array
+    {
+        return $this->lastRoutingContext;
     }
 
     /**
@@ -80,6 +94,8 @@ class IncomingMailService
      */
     public function route(ParsedEmail $email): RoutingResult
     {
+        $this->lastRoutingContext = [];
+
         Log::debug('Routing incoming email', [
             'envelope_from' => $email->envelopeFrom,
             'envelope_to' => $email->envelopeTo,
@@ -1277,6 +1293,13 @@ class IncomingMailService
         // Create the chat message
         $this->createChatMessageFromEmail($chat, $fromUser->id, $email);
 
+        $this->lastRoutingContext = [
+            'user_id' => $fromUser->id,
+            'to_user_id' => $messageOwner,
+            'chat_id' => $chat->id,
+            'message_id' => $messageId,
+        ];
+
         Log::info('Created chat message from reply-to email', [
             'message_id' => $messageId,
             'chat_id' => $chat->id,
@@ -1339,6 +1362,11 @@ class IncomingMailService
 
         // Create chat message
         $this->createChatMessageFromEmail($chat, $userId, $email);
+
+        $this->lastRoutingContext = [
+            'user_id' => $userId,
+            'chat_id' => $chatId,
+        ];
 
         return RoutingResult::TO_USER;
     }
@@ -1629,6 +1657,13 @@ class IncomingMailService
         // Create the chat message, flagging for review if spam was detected
         $this->createChatMessageFromEmail($chat, $user->id, $email, $spamDetected, $spamReason);
 
+        $this->lastRoutingContext = [
+            'group_id' => $group->id,
+            'group_name' => $group->nameshort ?? $group->namefull ?? '',
+            'user_id' => $user->id,
+            'chat_id' => $chat->id,
+        ];
+
         Log::info('Created volunteers message', [
             'chat_id' => $chat->id,
             'user_id' => $user->id,
@@ -1695,6 +1730,13 @@ class IncomingMailService
 
         // Check if Trash Nothing post with valid secret (skip spam check)
         $skipSpamCheck = $this->shouldSkipSpamCheck($email);
+
+        // Set context early - we know the group and user at this point
+        $this->lastRoutingContext = [
+            'group_id' => $group->id,
+            'group_name' => $group->nameshort ?? $group->namefull ?? '',
+            'user_id' => $user->id,
+        ];
 
         // Check for spam if not TN
         if (! $skipSpamCheck && $this->isSpam($email)) {
@@ -1939,6 +1981,12 @@ class IncomingMailService
         // Create the chat message
         $this->createChatMessageFromEmail($chat, $senderUser->id, $email);
 
+        $this->lastRoutingContext = [
+            'user_id' => $senderUser->id,
+            'to_user_id' => $recipientUser->id,
+            'chat_id' => $chat->id,
+        ];
+
         Log::info('Created chat message from direct mail', [
             'chat_id' => $chat->id,
             'from_user' => $senderUser->id,
@@ -1975,7 +2023,7 @@ class IncomingMailService
 
         // Check for Freegle-formatted address with embedded UID
         $userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
-        if (preg_match('/.*\-(\d+)@' . preg_quote($userDomain, '/') . '$/', $email, $matches)) {
+        if (preg_match('/.*\-(\d+)@'.preg_quote($userDomain, '/').'$/', $email, $matches)) {
             return User::find((int) $matches[1]);
         }
 
@@ -2010,7 +2058,7 @@ class IncomingMailService
 
         // Strip TN group suffix: user-gNNNN@user.trashnothing.com → user@user.trashnothing.com
         if (preg_match('/(.*)\-(.*)(@user\.trashnothing\.com)/', $email, $matches)) {
-            $email = $matches[1] . $matches[3];
+            $email = $matches[1].$matches[3];
         }
 
         // Remove plus addressing (except Facebook proxy and leading +)
@@ -2019,7 +2067,7 @@ class IncomingMailService
             preg_match('/(.*)\+(.*)(@.*)/', $email, $matches) &&
             strpos($email, '@proxymail.facebook.com') === false
         ) {
-            $email = $matches[1] . $matches[3];
+            $email = $matches[1].$matches[3];
         }
 
         // Remove dots in Gmail LHS
@@ -2033,7 +2081,7 @@ class IncomingMailService
             }
 
             // Remove dots from RHS (matches legacy behaviour)
-            $email = $lhs . str_replace('.', '', $rhs);
+            $email = $lhs.str_replace('.', '', $rhs);
         }
 
         return $email;
