@@ -6,11 +6,14 @@
 - **NEVER skip or make coverage optional in tests.** Coverage is an integral part of testing and must always be collected and uploaded. If coverage upload fails, fix the root cause - never bypass it.
 - **NEVER dismiss test failures as "pre-existing flaky tests" or "unrelated to my changes".** If a test fails during your work, you must investigate and fix it. Period. It does not matter whether you think the failure is related to your changes or not. The tests must pass. While it's possible some tests have underlying reliability issues, if they passed before and now fail, the change since the last successful build is usually the cause. Compare with the last successful build, find what changed, and fix it. Even if the root cause turns out to be a pre-existing issue, it still needs to be fixed - don't use "flaky" as an excuse to avoid investigation.
 - Always restart the status monitor after making changes to its code.
-- To verify compose project: stop all containers, prune, rebuild, restart, and monitor via status container.
-- **Dev containers** don't need rebuilds - `freegle-host-scripts` auto-syncs file changes via `docker cp`. Check logs: `docker logs freegle-host-scripts --tail 20`.
-- **HMR Caveat**: If Nuxt doesn't detect synced changes, restart: `docker restart modtools-dev-live`.
-- **Production containers** require full rebuild for code changes.
-- **API v2 (Go)** requires rebuild: `docker-compose build apiv2 && docker-compose up -d apiv2`
+- Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
+- You don't need to rebuild the Freegle Dev or ModTools Dev containers to pick up code fixes - the `freegle-host-scripts` container automatically syncs file changes to dev containers.
+- The Freegle Production and ModTools Production containers require a full rebuild to pick up code changes since they run production builds.
+- **File Sync**: The `freegle-host-scripts` container runs `file-sync.sh` which uses inotifywait to monitor file changes in iznik-nuxt3, iznik-server, iznik-server-go, and iznik-batch directories. Changes are automatically synced to dev containers via `docker cp`. Check logs with `docker logs freegle-host-scripts --tail 20`.
+- **HMR Caveat**: While file sync works reliably, Nuxt's HMR may not always detect `docker cp` file changes. If changes don't appear after sync, restart the container: `docker restart modtools-dev-live`.
+- The API v2 (Go) container requires a full rebuild to pick up code changes: `docker-compose build apiv2 && docker-compose up -d apiv2`
+- After making changes to the status code, remember to restart the container
+- When running in a docker compose environment and making changes, be careful to copy them to the container.
 
 ## Yesterday Environment Configuration
 
@@ -152,10 +155,31 @@ The PAT is stored as `FREEGLE_DOCKER_TOKEN` secret in each submodule repo.
 
 ### Adding New Submodules
 
-1. `git submodule add`, copy `trigger-parent-ci.yml` from existing submodule
-2. Add `FREEGLE_DOCKER_TOKEN` secret (FreegleGeeks PAT scoped to Freegle org)
-3. Update docs: `README.md`, `.circleci/README.md`, this file
-4. Test with a commit to verify CI triggers
+When adding new submodules to this repository, follow these steps:
+
+1. **Add the submodule** to the repository using `git submodule add`
+
+2. **Create webhook workflow** in the new submodule repository:
+   ```bash
+   mkdir -p NEW_SUBMODULE/.github/workflows
+   ```
+
+3. **Copy the trigger workflow** from an existing submodule:
+   ```bash
+   cp iznik-nuxt3/.github/workflows/trigger-parent-ci.yml NEW_SUBMODULE/.github/workflows/
+   ```
+
+4. **Add FREEGLE_DOCKER_TOKEN secret** to the new submodule repository:
+   - Go to Settings → Secrets and Variables → Actions
+   - Add repository secret named `FREEGLE_DOCKER_TOKEN`
+   - Use the fine-grained PAT from FreegleGeeks (scoped to Freegle org)
+
+5. **Update documentation** in:
+   - Main `README.md` (add to webhook integration list)
+   - `.circleci/README.md` (add to configured submodules list)
+   - This `CLAUDE.md` file (add to current configuration list)
+
+6. **Test the integration** by making a test commit to the new submodule and verifying it triggers the FreegleDocker CircleCI pipeline.
 
 ### Publishing the CircleCI Orb
 
@@ -179,13 +203,109 @@ Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
 
 ## Docker Build Caching
 
-Production containers use BuildKit cache-from and CircleCI save_cache (two-layer strategy). Controlled by `ENABLE_DOCKER_CACHE` env var in CircleCI (default: `false`).
+Production containers use BuildKit cache-from and CircleCI save_cache for faster builds.
 
-- **Cache versions** (bump to invalidate): `buildcache-v1` (BuildKit), `nuxt-output-v2` (Nuxt artifacts)
-- **Master** pulls/pushes cache; **feature branches** pull only (no push)
-- **Invalidate**: Change version suffixes in `.circleci/orb/freegle-tests.yml`, publish orb, push
-- **Rollback**: Set `ENABLE_DOCKER_CACHE=false` in CircleCI and retrigger build
-- **GHCR cache**: `ghcr.io/freegle/freegle-prod:buildcache-v1`, `ghcr.io/freegle/modtools-prod:buildcache-v1`
+### Feature Flag
+
+Caching is controlled by the `ENABLE_DOCKER_CACHE` environment variable in CircleCI:
+
+- **Enable**: Set `ENABLE_DOCKER_CACHE=true` in CircleCI project settings → Environment Variables
+- **Disable**: Set `ENABLE_DOCKER_CACHE=false` (rollback to old docker-compose build)
+- **Default**: If not set, caching defaults to `false` (safe fallback)
+
+### How It Works
+
+**Two-layer caching strategy**:
+
+1. **CircleCI save_cache** (Nuxt build artifacts):
+   - Caches `.output/` directory (production build output)
+   - Skips `npm run build` if code unchanged
+   - ~10-16 minute savings on cache hit
+
+2. **BuildKit cache-from** (Docker layers):
+   - Caches npm dependencies and build layers in GHCR
+   - Reuses unchanged layers (npm ci, Nuxt build)
+   - ~3-5 minute additional savings
+
+### Cache Versions
+
+Current cache versions (bump to invalidate):
+
+- **BuildKit cache**: `buildcache-v1`
+- **Nuxt artifacts**: `nuxt-output-v2`
+
+### Cache Strategy
+
+- **Master branch**: Pulls cache, builds, pushes updated cache
+- **Feature branches**: Pulls cache from master, builds, does NOT push (avoids conflicts)
+
+### How to Invalidate Cache
+
+When cache appears stale or corrupted:
+
+1. Edit `.circleci/orb/freegle-tests.yml`
+2. Change version suffixes:
+   - `buildcache-v1` → `buildcache-v2` (find/replace all instances)
+   - `nuxt-v1` → `nuxt-v2` (find/replace all instances)
+3. Publish updated orb: `~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x`
+4. Push changes to trigger rebuild
+
+### Build Performance
+
+**Expected times**:
+
+| Scenario | Without Cache | With Cache | Savings |
+|----------|---------------|------------|---------|
+| No code changes | 51 min | ~25 min | 26 min (51%) |
+| Code changes only | 51 min | ~35 min | 16 min (31%) |
+| Dependency changes | 51 min | ~37 min | 14 min (27%) |
+| **Average (75% cache hit)** | **51 min** | **~28 min** | **23 min (45%)** |
+
+### Rollback Instructions
+
+**Immediate rollback** (no code changes needed):
+
+1. Go to CircleCI project settings → Environment Variables
+2. Set `ENABLE_DOCKER_CACHE=false`
+3. Retrigger failed build
+4. **Result**: Falls back to old docker-compose build (no caching)
+
+**Full rollback** (if Dockerfiles cause issues):
+
+```bash
+cd /tmp/FreegleDocker
+git checkout HEAD~1 -- iznik-nuxt3/Dockerfile.prod
+git checkout HEAD~1 -- iznik-nuxt3/modtools/Dockerfile.prod
+git commit -m "Rollback: Restore old Dockerfiles"
+git push
+```
+
+### Cache Locations
+
+**CircleCI save_cache**:
+- Freegle: `~/nuxt-cache/freegle/` (`.output/`, `.nuxt/`)
+- ModTools: `~/nuxt-cache/modtools/` (`.output/`, `.nuxt/`)
+
+**GHCR BuildKit cache**:
+- Freegle: `ghcr.io/freegle/freegle-prod:buildcache-v1`
+- ModTools: `ghcr.io/freegle/modtools-prod:buildcache-v1`
+
+### Monitoring Cache Performance
+
+Check CircleCI logs for cache status:
+
+```
+✅ Found cached Freegle build (245M)
+✅ Pulled Freegle cache in 45s (size: 3.2GB)
+✅ Freegle build completed in 120s
+📊 Total build time: 180s
+```
+
+**Warning signs** (indicates cache not working):
+
+- ⚠️ No cached build found (expected on first run)
+- ⚠️ Pull time >120s (slow network, consider disabling)
+- ⚠️ Build time not improving (cache invalidated or not hitting)
 
 ## Testing Consolidation
 
@@ -250,69 +370,23 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-01-28 - Dry Run Routing Mismatch Fixes (Session 3)
-- **Status**: 🔄 In Progress
-- **Branch**: master (FreegleDocker + iznik-batch)
-- **Goal**: Fix remaining mismatches from 3182-file replay, enhance replay with user/group/chat comparison
-- **Replay Results**: 3182 total, 2663 matched (83.7%), 63 mismatched (2.0%), 456 skipped (14.3%)
-- **Fixes Applied**:
-  1. **Spam check in handleVolunteersMessage()**: Added isSpam(), known spammer, and autoreply checks matching legacy toVolunteers()
-  2. **Enhanced isAutoReply()**: Added subject patterns (Out of Office, Auto-Reply, etc.) and body patterns matching legacy Message::isAutoreply()
-  3. **RoutingOutcome class**: Created to wrap RoutingResult with user_id, group_id, chat_id context
-  4. **routeDryRun() enhanced**: Now returns RoutingOutcome with routing context for comparison
-  5. **Replay command enhanced**: Compares user_id between legacy and new routing, displays routing context
-- **Remaining 63 mismatches** (all expected):
-  - 26 Pending=>Approved: DB timing (postingStatus changed after routing)
-  - 24 IncomingSpam=>ToVolunteers: SpamAssassin not in new code
-  - 13 others: minor edge cases (deleted users, legacy archive anomalies)
-- **Tests Added** (5 new):
-  - `test_volunteers_message_with_spam_keyword_routes_to_incoming_spam`
-  - `test_volunteers_message_from_known_spammer_routes_to_incoming_spam`
-  - `test_volunteers_autoreply_is_dropped`
-  - `test_volunteers_autoreply_via_header_is_dropped`
-  - `test_dry_run_returns_routing_outcome_with_context`
-- **Next**: Commit and push, run on CircleCI
-
-### 2026-01-28 - Dry Run Routing Mismatch Fixes (Session 2)
-- **Status**: ✅ Complete
-- **Branch**: `feature/incoming-email-migration` (FreegleDocker + iznik-batch)
-- **Goal**: Fix remaining routing mismatches from shadow testing
-- **Results**: Improved from 171/188 (91.0%) to 177/188 (94.1%)
-- **Key Fix**: NULL `ourPostingStatus` handling
-  - Legacy defaults NULL to MODERATED (→ PENDING)
-  - Was incorrectly defaulting to 'DEFAULT' (→ APPROVED)
-  - Fixed match statement: only 'DEFAULT' or 'UNMODERATED' → APPROVED, all else → PENDING
-- **Test Added**: `test_group_post_with_null_posting_status_goes_to_pending`
-- **Remaining 11 mismatches** (all Legacy=Dropped, New=ToUser/Pending):
-  - 5 notify address replies that legacy drops
-  - 5 direct mail to user addresses that legacy drops
-  - 1 group post that legacy drops but we route to Pending
-  - Investigation suggests these are edge cases where legacy may be overly aggressive
-  - Users/memberships exist, chats are valid, no apparent reason for drops
-
-### 2026-01-28 - Dry Run Routing Mismatch Fixes (Session 1)
-- **Status**: ✅ Complete
-- **Branch**: `feature/incoming-email-migration` (FreegleDocker + iznik-batch)
-- **Goal**: Fix routing mismatches found when comparing legacy PHP code to new Laravel code
-- **Initial Results**: 164/188 match (87.2%), 24 mismatches
-- **Final Results**: 171/188 match (91.0%)
-- **Fixes Applied**:
-  1. **Freegle-formatted address parsing**: Added UID extraction from `*-{uid}@users.ilovefreegle.org` addresses in `findUserByEmail()`
-  2. **TN email canonicalization**: Added `canonicalizeEmail()` matching legacy `User::canonMail()` - strips TN group suffix, googlemail→gmail, plus addressing, gmail dots
-  3. **Stale chat threshold**: Changed `STALE_CHAT_DAYS` from 84 to 90 to match legacy `User::OPEN_AGE`
-  4. **Group moderation checks**: Added checks for moderators (always pending), group `moderated` setting, and `overridemoderation=ModerateAll` (Big Switch)
-- **Test Cases Added** (8 new tests):
-  - `test_routes_direct_mail_to_freegle_address_to_user`
-  - `test_routes_direct_mail_to_invalid_freegle_address_to_dropped`
-  - `test_group_post_from_moderator_goes_to_pending`
-  - `test_group_post_to_moderated_group_goes_to_pending`
-  - `test_group_post_with_override_moderation_goes_to_pending`
-  - `test_group_post_from_member_to_unmoderated_group_is_approved`
-  - `test_chat_reply_to_stale_chat_from_unfamiliar_sender_is_dropped`
-  - `test_chat_reply_to_fresh_chat_from_unfamiliar_sender_is_accepted`
-- **Files Modified**:
-  - `iznik-batch/app/Services/Mail/Incoming/IncomingMailService.php`
-  - `iznik-batch/tests/Unit/Services/Mail/Incoming/IncomingMailServiceTest.php`
+### 2026-01-29 - SpamCheckService Implementation Complete
+- **Status**: ✅ Complete (906 tests passing locally)
+- **Branch**: `feature/incoming-email-migration`
+- **Goal**: Implement all 18 missing spam detection features from legacy iznik-server
+- **Implementation**:
+  - Created `SpamCheckService.php` (~890 lines) with all legacy spam detection
+  - 51 unit tests in `SpamCheckServiceTest.php`
+  - Integrated into `IncomingMailService.isSpam()` replacing inline detection
+  - Added GeoIP config to `config/freegle.php`
+- **Features**: IP country blocking, IP reputation (user/group thresholds), subject reuse, keyword matching, greeting spam, spammer references, Spamhaus DBL, SpamAssassin, image spam, language detection, review checks (scripts/money/emails/links), bulk volunteer mail, domain spoofing
+- **Code Quality Review**:
+  - Removed unused `$isSpam` variable from destructured result
+  - Removed redundant `shouldSkipSpamCheck()` call (dead code in `isSpam()`)
+  - Fixed `test_routes_spam_to_incoming_spam` - needed `spam_keywords` seed
+  - `checkReview()` and `checkImageSpam()` are for chat message processing (not email routing) - correctly left unintegrated in email flow
+- **Commits**: 30c25df (main implementation), 037c119 (code quality fixes)
+- **CI**: Pipeline 1563 running, pipeline 1564 triggered with fixes
 
 ### 2026-01-27 18:30 - CI Failure Details Display
 - **Status**: 🔄 In Progress - CI running (pipeline 1537)
@@ -502,25 +576,188 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - **Testing**: Needs visual testing in ModTools to verify links are clickable
 - **Code Quality Review**: ✅ Complete - XSS protection verified, consistent with codebase patterns
 
-### 2026-01-25 - Ralph Tasks & Playwright Fix
+### 2026-01-25 21:00 - Ralph Tasks Completed
+- **Status**: ✅ All 4 tasks complete
+- **Branch**: `feature/batch-job-logging` in FreegleDocker
+- **Tasks Completed**:
+  1. ✅ **LogsBatchJob trait** - Created `iznik-batch/app/Traits/LogsBatchJob.php` for automatic Loki logging of batch commands. Added comprehensive tests. Example usage in `UpdateKudosCommand.php`.
+  2. ✅ **deployment.md update** - Added section explaining two deployment options (FreegleDocker integration vs standalone).
+  3. ✅ **Loki logging consistency review** - Created `plans/loki-logging-consistency-review.md` documenting:
+     - Consistent elements across Go/PHP/Batch (app label, JSON format, timestamps)
+     - Inconsistencies (level handling, trace correlation, duration units)
+     - Missing activities for end-to-end tracing
+     - Recommendations for improvements
+  4. ✅ **Orphaned branches audit** - Found 2 orphaned branches in `feature/remove-email-wallpaper`:
+     - Created issue #31: Remove email wallpaper background
+     - Created issue #32: Unified Freegle Digest - consolidate per-group emails
+- **Key Files Created**:
+  - `iznik-batch/app/Traits/LogsBatchJob.php`
+  - `iznik-batch/tests/Unit/Traits/LogsBatchJobTest.php`
+  - `plans/loki-logging-consistency-review.md`
+- **Next**: Create PR for batch-job-logging branch
+
+### 2026-01-25 19:00 - Playwright Test Count Fix and Task Creation
+- **Status**: ✅ Complete
+- **Issue**: Playwright test count showed 0/0 at start, only updating after tests started running
+- **Root Cause**: No pre-count mechanism - relied on parsing test output for counts
+- **Fix Applied**:
+  - Added `--list` pre-count in `status-nuxt/server/api/tests/playwright.post.ts`
+  - Increased timeout to 60s (monocart reporter runs even with --list)
+  - Removed stderr suppression to see errors
+  - Updated `.claude/check-test-command.sh` to allow `--list` and `--help` through hook
+- **Commit**: 247b42c pushed to master
+- **Verified**: Test count now shows correctly from start (e.g., "0/9" instead of "0/0")
+
+### 2026-01-26 09:35 - Test Log Truncation Fix & LogsBatchJob Unit Test Fix
 - **Status**: ✅ Complete
 - **Branch**: `feature/batch-job-logging`
-- LogsBatchJob trait, deployment.md, Loki logging review, orphaned branches audit (issues #31, #32)
-- Playwright test count pre-count fix (commit 247b42c)
+- **Issues Found**:
+  1. **Log Truncation**: CircleCI test artifacts showed "...(truncated)" hiding actual failures
+  2. **LogsBatchJob Unit Tests**: Failing with "Call to a member function getOptions() on null"
+- **Root Causes**:
+  1. `status-nuxt` API endpoints truncated logs to LAST 5000 characters, but errors appear at BEGINNING
+  2. LogsBatchJob trait called `$this->options()` which requires `$this->output` to be set (not set in unit tests)
+- **Fixes Applied**:
+  1. Removed truncation from all 4 test status endpoints (laravel, go, php, playwright)
+  2. Added `hasOutput` check before accessing `options()` and `arguments()` in LogsBatchJob trait
+- **Files Modified**:
+  - `status-nuxt/server/api/tests/laravel/status.get.ts`
+  - `status-nuxt/server/api/tests/go/status.get.ts`
+  - `status-nuxt/server/api/tests/php/status.get.ts`
+  - `status-nuxt/server/api/tests/playwright/status.get.ts`
+  - `iznik-batch/app/Traits/LogsBatchJob.php`
+- **Commits**: 7fa5e60 (truncation fix), 1365887 (LogsBatchJob fix)
+- **CI**: Pipeline #1509 - ✅ PASSED (job #1700)
+- **Key Learning**: When `status-nuxt` was introduced to replace `status/server.js`, the truncation logic was added but was counterproductive for debugging failures
 
-### 2026-01-26 09:35 - Test Log Truncation & CI Progress Fixes
+### 2026-01-25 15:45 - CircleCI Progress Monitoring Fix
 - **Status**: ✅ Complete
-- Removed log truncation from status endpoints; fixed LogsBatchJob `hasOutput` check
-- CircleCI progress: handle 409 as "already running", continue polling (Orb v1.1.149)
+- **Issue**: CircleCI progress display showed "Playwright: running (0/0)" despite API returning correct progress
+- **Root Cause**: When tests were already running and the orb tried to trigger them:
+  - HTTP 409 (conflict) was returned
+  - Orb exited early without entering polling loop
+  - Progress files (`/tmp/playwright-completed`, `/tmp/playwright-total`) were never created
+  - Display defaulted to 0/0
+- **Fix Applied** (Orb v1.1.149):
+  - Handle 409 as "tests already running" and continue to polling loop
+  - Always write default progress files (0/0) when trigger fails
+  - Applied to all 4 test types: iznik-batch, Go, PHP, Playwright
+- **Commit**: dc70e6e pushed to master
+- **Verified**: Playwright tests ran successfully (40/75 passed observed before SSH session ended)
 
-### 2026-01-25 05:00 - Playwright CI Test Failure Fix
+### 2026-01-25 05:00 - Playwright CI Test Failure Investigation - RESOLVED
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Issue**: Playwright tests failing on feature branch
+- **Root Cause Found**:
+  - Tests on master were STALE - expected "Let's get freegling!" but UI was changed to "Join the Reuse Revolution!" in commit 72521f46 (Dec 3, 2025)
+  - Removing @nuxt/test-utils changed package.json checksum → cache invalidated → fresh build → new UI text → tests fail
+  - The original hypothesis about `loggedInEver` was a red herring
+- **Fix Applied**:
+  - Commit 4e552d58: Updated test-modtools-login.spec.js to expect "Join the Reuse Revolution"
+  - Also updated tests/e2e/utils/user.js for consistency
+- **CI Status**: Pipeline #1437 on feature branch PASSING all tests
+- **Remaining Work**: These test fixes should be cherry-picked to master to prevent future issues
+- **Key Learning**: When CI passes on master but fails on branches, check if cached builds are masking stale tests
+
+### 2026-01-24 11:40 - Freegle Component Unit Tests Batch 17
+- **Status**: ✅ Complete
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Commit**: fbf174ae
+- **Goal**: Fix batch 17 test failures for async chat message components
+- **Completed**:
+  - ✅ ChatMessagePromised.spec.js (44 tests) - Suspense wrapper for async setup
+  - ✅ ChatMessageReneged.spec.js (29 tests) - Same pattern
+  - ✅ ChatMessageModMail.spec.js (45 tests) - Fixed myid getter, realMod falsy check
+  - ✅ ChatMessageAddress.spec.js (20 tests) - No async needed
+  - ✅ ChatMessageInterested.spec.js (34 tests) - Fixed cleanup issues with defineAsyncComponent
+  - ✅ AutoComplete.spec.js (67 tests) - Fixed label prop, list visibility, keyboard navigation
+- **Test Count**: 7409 → 7614 tests (+205 this batch)
+- **Key Patterns**:
+  - Suspense wrapper using defineComponent and h() for async setup components
+  - Mock defineAsyncComponent to prevent async import race conditions during cleanup
+  - Mock vue-highlight-words at module level to avoid prop validation errors
+  - Use getter syntax for raw values: `get myid() { return mockMyid.value }`
+  - Provide required props like `label` to prevent deepValue split() errors
+  - Use toBeFalsy() instead of toBe(false) for null/undefined computed values
+- **Blockers**: None
+
+### 2026-01-23 18:40 - Freegle Component Unit Tests (Continued)
+- **Status**: 🔄 In Progress
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Goal**: Continue adding tests for untested Freegle components
+- **Completed This Session**:
+  - ✅ Fixed OurDatePicker.spec.js - mocked vue-datepicker-next module
+  - ✅ Fixed UserRatingsRemoveModal.spec.js - used vi.hoisted() and ref(null) for useOurModal
+  - ✅ DaFallbackDonationRequest.spec.js (11 tests)
+  - ✅ MicroVolunteeringSimilarTerm.spec.js (15 tests)
+  - ✅ DonationTraditionalExtras.spec.js (15 tests)
+  - ✅ MessageSkeleton.spec.js (8 tests) - pure presentation component
+  - ✅ SidebarRight.spec.js (12 tests) - ExternalDa wrapper
+  - ✅ UserSearch.spec.js (11 tests) - search chip with dayjs
+  - ✅ ContactDetailsAskModal.spec.js (8 tests) - postcode modal
+  - ✅ VisualiseSpeech.spec.js (12 tests) - Leaflet speech bubble
+  - ✅ MicroVolunteeringPhotoRotate.spec.js (17 tests) - rotate logic
+  - ✅ DonationAskWhatYouCan.spec.js (24 tests) - donation conditional rendering
+  - ✅ NewsHighlight.spec.js (22 tests) - read more/less functionality
+  - ✅ MicroVolunteeringSimilarTerms.spec.js (17 tests) - term selection logic
+  - ✅ DonationAskButtons2510.spec.js (27 tests) - donation button variants
+- **Test Count**: 5600 → 5845 tests (+245 this session)
+- **Key Patterns Used**:
+  - vi.hoisted() for mock functions used in vi.mock
+  - ref(null) from vue for useOurModal mock (template refs need real refs)
+  - vi.mock('module-name') for external libraries like vue-datepicker-next
+  - global.mocks for plugin-injected properties (me)
+  - $attrs.class binding in stubs to pass through component classes
+- **Next**: Continue with more untested components, ~170 still need tests
+- **Blockers**: None
+
+### 2026-01-23 - Unit Test Coverage Improvement
+- **Status**: ✅ Complete (Phase 1)
+- **Branch**: `feature/options-api-migration-tdd` in iznik-nuxt3
+- **Goal**: Improve test coverage from 7.16% to 20%+
+- **Completed**:
+  - ✅ Priority 1: Vue warning handler - tests now fail on Vue warnings
+  - ✅ Fixed ModComments/ModDeletedOrForgotten to accept null user props
+  - ✅ Fixed useOurModal mocks across test files to use proper Vue refs
+  - ✅ Commit 49b32ec2 pushed (18 files, +124/-27 lines)
+- **Blockers**: None
+
+### 2026-01-23 - ModMember System Component Tests
 - **Status**: ✅ Complete
 - **Branch**: `feature/options-api-migration-tdd`
-- Stale test text ("Let's get freegling!" → "Join the Reuse Revolution!"). Fixed in 4e552d58.
+- **Completed**:
+  - Added comprehensive unit tests for 7 ModMember components (268 new tests)
+  - ModMember.vue: 80 tests - main member display component
+  - ModMemberReview.vue: 34 tests - member review component
+  - ModMemberActions.vue: 43 tests - ban/remove/spam actions
+  - ModMemberButtons.vue: 46 tests - action buttons for member views
+  - ModMemberButton.vue: 33 tests - individual action button
+  - ModMemberEngagement.vue: 32 tests - engagement display
+  - ModMemberSummary.vue: 33 tests - member summary info
+  - Added memory-safe vitest configuration (pool: 'forks', maxWorkers based on CPU)
+  - Added ModCommentAddModal mock for deep dependency chain
+- **Test Count**: 1620 → 1888 tests (+268)
+- **Commits**: a0b5ca82 on feature/options-api-migration-tdd
+- **Key Patterns**:
+  - Use stubs for auto-imported child components instead of vi.mock
+  - For refs in templates, mock the object directly (not `{ value: {} }`)
+  - globalThis.useNuxtApp for auto-imported Nuxt composables
 
-### 2026-01-24 - Unit Tests Progress (feature/options-api-migration-tdd)
-- **Status**: ✅ Complete through Batch 17
-- Test count: 1620 → 7614 across multiple sessions
-- Key patterns: Suspense wrappers for async setup, vi.hoisted(), defineAsyncComponent mocks, getter syntax for reactive values
-
+### 2026-01-22 - Yesterday Restore Port Conflict Fix
+- **Status**: ✅ Complete
+- **Issue**: Restore showed "failed" with "freegle-traefik is unhealthy"
+- **Root Causes Found**:
+  1. Port 8084 conflict: `mcp-query-sanitizer` and `yesterday-2fa` both use port 8084
+  2. Missing `--ping=true` in yesterday-traefik config for healthcheck endpoint
+  3. Yesterday services not restarted after restore (fixed in earlier commit)
+- **Fixes Applied**:
+  - `docker-compose.override.yesterday.yml`: Added MCP containers to disabled profile
+  - `yesterday/docker-compose.yesterday-services.yml`: Added `--ping=true` to traefik command
+- **Commits**: 6c45b9b pushed to master
+- **Verified**:
+  - All yesterday containers healthy
+  - API at https://yesterday.ilovefreegle.org:8444/api/restore-status working
+  - Backup 20260122 successfully loaded
+- **Key Learning**: The "traefik unhealthy" error was actually caused by port conflicts downstream, not traefik itself
 

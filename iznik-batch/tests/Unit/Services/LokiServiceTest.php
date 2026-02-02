@@ -8,6 +8,7 @@ use Tests\TestCase;
 class LokiServiceTest extends TestCase
 {
     protected string $testLogPath;
+
     protected LokiService $lokiService;
 
     protected function setUp(): void
@@ -15,8 +16,8 @@ class LokiServiceTest extends TestCase
         parent::setUp();
 
         // Use a test-specific log path.
-        $this->testLogPath = storage_path('logs/loki-test-' . uniqid());
-        if (!is_dir($this->testLogPath)) {
+        $this->testLogPath = storage_path('logs/loki-test-'.uniqid());
+        if (! is_dir($this->testLogPath)) {
             mkdir($this->testLogPath, 0755, true);
         }
 
@@ -26,7 +27,7 @@ class LokiServiceTest extends TestCase
             'freegle.loki.log_path' => $this->testLogPath,
         ]);
 
-        $this->lokiService = new LokiService();
+        $this->lokiService = new LokiService;
     }
 
     protected function tearDown(): void
@@ -41,13 +42,13 @@ class LokiServiceTest extends TestCase
 
     protected function recursiveDelete(string $dir): void
     {
-        if (!is_dir($dir)) {
+        if (! is_dir($dir)) {
             return;
         }
 
         $files = array_diff(scandir($dir), ['.', '..']);
         foreach ($files as $file) {
-            $path = $dir . '/' . $file;
+            $path = $dir.'/'.$file;
             if (is_dir($path)) {
                 $this->recursiveDelete($path);
             } else {
@@ -60,30 +61,30 @@ class LokiServiceTest extends TestCase
     public function test_is_enabled_returns_config_value(): void
     {
         config(['freegle.loki.enabled' => true]);
-        $service = new LokiService();
+        $service = new LokiService;
         $this->assertTrue($service->isEnabled());
 
         config(['freegle.loki.enabled' => false]);
-        $service = new LokiService();
+        $service = new LokiService;
         $this->assertFalse($service->isEnabled());
     }
 
     public function test_log_batch_job_does_nothing_when_disabled(): void
     {
         config(['freegle.loki.enabled' => false]);
-        $service = new LokiService();
+        $service = new LokiService;
 
         $service->logBatchJob('TestJob', 'started', ['key' => 'value']);
 
         // File should not be created.
-        $this->assertFileDoesNotExist($this->testLogPath . '/batch.log');
+        $this->assertFileDoesNotExist($this->testLogPath.'/batch.log');
     }
 
     public function test_log_batch_job_writes_to_file_when_enabled(): void
     {
         $this->lokiService->logBatchJob('TestJob', 'started', ['items' => 10]);
 
-        $logFile = $this->testLogPath . '/batch.log';
+        $logFile = $this->testLogPath.'/batch.log';
         $this->assertFileExists($logFile);
 
         $content = file_get_contents($logFile);
@@ -106,11 +107,11 @@ class LokiServiceTest extends TestCase
     public function test_log_email_send_does_nothing_when_disabled(): void
     {
         config(['freegle.loki.enabled' => false]);
-        $service = new LokiService();
+        $service = new LokiService;
 
         $service->logEmailSend('digest', $this->uniqueEmail('loki'), 'Test Subject');
 
-        $this->assertFileDoesNotExist($this->testLogPath . '/email.log');
+        $this->assertFileDoesNotExist($this->testLogPath.'/email.log');
     }
 
     public function test_log_email_send_writes_to_file_when_enabled(): void
@@ -126,7 +127,7 @@ class LokiServiceTest extends TestCase
             ['extra' => 'data']
         );
 
-        $logFile = $this->testLogPath . '/email.log';
+        $logFile = $this->testLogPath.'/email.log';
         $this->assertFileExists($logFile);
 
         $content = file_get_contents($logFile);
@@ -160,7 +161,7 @@ class LokiServiceTest extends TestCase
             ['mailable_class' => 'App\\Mail\\Welcome\\WelcomeMail']
         );
 
-        $logFile = $this->testLogPath . '/email.log';
+        $logFile = $this->testLogPath.'/email.log';
         $content = file_get_contents($logFile);
         $entry = json_decode(trim($content), true);
 
@@ -180,7 +181,7 @@ class LokiServiceTest extends TestCase
             []
         );
 
-        $logFile = $this->testLogPath . '/email.log';
+        $logFile = $this->testLogPath.'/email.log';
         $content = file_get_contents($logFile);
         $entry = json_decode(trim($content), true);
 
@@ -199,7 +200,7 @@ class LokiServiceTest extends TestCase
             []
         );
 
-        $logFile = $this->testLogPath . '/email.log';
+        $logFile = $this->testLogPath.'/email.log';
         $content = file_get_contents($logFile);
         $entry = json_decode(trim($content), true);
 
@@ -210,18 +211,18 @@ class LokiServiceTest extends TestCase
     public function test_log_event_does_nothing_when_disabled(): void
     {
         config(['freegle.loki.enabled' => false]);
-        $service = new LokiService();
+        $service = new LokiService;
 
         $service->logEvent('purge', 'messages', ['count' => 100]);
 
-        $this->assertFileDoesNotExist($this->testLogPath . '/batch_event.log');
+        $this->assertFileDoesNotExist($this->testLogPath.'/batch_event.log');
     }
 
     public function test_log_event_writes_to_file_when_enabled(): void
     {
         $this->lokiService->logEvent('purge', 'messages', ['count' => 100]);
 
-        $logFile = $this->testLogPath . '/batch_event.log';
+        $logFile = $this->testLogPath.'/batch_event.log';
         $this->assertFileExists($logFile);
 
         $content = file_get_contents($logFile);
@@ -244,7 +245,7 @@ class LokiServiceTest extends TestCase
             'recipients' => 50,
         ]);
 
-        $logFile = $this->testLogPath . '/batch_event.log';
+        $logFile = $this->testLogPath.'/batch_event.log';
         $content = file_get_contents($logFile);
         $entry = json_decode(trim($content), true);
 
@@ -256,7 +257,7 @@ class LokiServiceTest extends TestCase
         $this->lokiService->logBatchJob('Job1', 'started');
         $this->lokiService->logBatchJob('Job1', 'completed');
 
-        $logFile = $this->testLogPath . '/batch.log';
+        $logFile = $this->testLogPath.'/batch.log';
         $content = file_get_contents($logFile);
         $lines = array_filter(explode("\n", $content));
 
@@ -265,13 +266,115 @@ class LokiServiceTest extends TestCase
 
     public function test_log_creates_directory_if_not_exists(): void
     {
-        $nestedPath = $this->testLogPath . '/nested/deep/path';
+        $nestedPath = $this->testLogPath.'/nested/deep/path';
         config(['freegle.loki.log_path' => $nestedPath]);
 
-        $service = new LokiService();
+        $service = new LokiService;
         $service->logBatchJob('TestJob', 'started');
 
-        $this->assertFileExists($nestedPath . '/batch.log');
+        $this->assertFileExists($nestedPath.'/batch.log');
+    }
+
+    public function test_log_incoming_email_writes_to_file(): void
+    {
+        $this->lokiService->logIncomingEmail(
+            'sender@example.com',
+            'group@groups.ilovefreegle.org',
+            'sender@example.com',
+            'OFFER: Test Item',
+            '<msg-123@example.com>',
+            'Pending',
+        );
+
+        $logFile = $this->testLogPath.'/incoming_mail.log';
+        $this->assertFileExists($logFile);
+
+        $content = file_get_contents($logFile);
+        $entry = json_decode(trim($content), true);
+
+        $this->assertEquals('freegle', $entry['labels']['app']);
+        $this->assertEquals('incoming_mail', $entry['labels']['source']);
+        $this->assertEquals('routed', $entry['labels']['type']);
+        $this->assertEquals('Pending', $entry['labels']['subtype']);
+
+        $this->assertEquals('sender@example.com', $entry['message']['envelope_from']);
+        $this->assertEquals('group@groups.ilovefreegle.org', $entry['message']['envelope_to']);
+        $this->assertEquals('OFFER: Test Item', $entry['message']['subject']);
+        $this->assertEquals('Pending', $entry['message']['routing_outcome']);
+    }
+
+    public function test_log_incoming_email_includes_context(): void
+    {
+        $this->lokiService->logIncomingEmail(
+            'sender@example.com',
+            'group@groups.ilovefreegle.org',
+            'sender@example.com',
+            'OFFER: Test Item',
+            '<msg-123@example.com>',
+            'Pending',
+            ['group_id' => 42, 'group_name' => 'FreeglePlayground', 'user_id' => 99],
+        );
+
+        $logFile = $this->testLogPath.'/incoming_mail.log';
+        $content = file_get_contents($logFile);
+        $entry = json_decode(trim($content), true);
+
+        $this->assertEquals(42, $entry['message']['group_id']);
+        $this->assertEquals('FreeglePlayground', $entry['message']['group_name']);
+        $this->assertEquals(99, $entry['message']['user_id']);
+    }
+
+    public function test_log_bounce_event_writes_to_file(): void
+    {
+        $this->lokiService->logBounceEvent(
+            'user@example.com',
+            123,
+            true,
+            'Mailbox not found',
+        );
+
+        $logFile = $this->testLogPath.'/bounce.log';
+        $this->assertFileExists($logFile);
+
+        $content = file_get_contents($logFile);
+        $entry = json_decode(trim($content), true);
+
+        $this->assertEquals('freegle', $entry['labels']['app']);
+        $this->assertEquals('bounce', $entry['labels']['source']);
+        $this->assertEquals('bounced', $entry['labels']['type']);
+        $this->assertEquals('permanent', $entry['labels']['subtype']);
+
+        $this->assertEquals('user@example.com', $entry['message']['email']);
+        $this->assertEquals(123, $entry['message']['user_id']);
+        $this->assertTrue($entry['message']['is_permanent']);
+        $this->assertEquals('Mailbox not found', $entry['message']['reason']);
+    }
+
+    public function test_log_bounce_event_temporary(): void
+    {
+        $this->lokiService->logBounceEvent(
+            'user@example.com',
+            456,
+            false,
+            'Mailbox full',
+        );
+
+        $logFile = $this->testLogPath.'/bounce.log';
+        $content = file_get_contents($logFile);
+        $entry = json_decode(trim($content), true);
+
+        $this->assertEquals('temporary', $entry['labels']['subtype']);
+        $this->assertFalse($entry['message']['is_permanent']);
+    }
+
+    public function test_log_bounce_event_does_nothing_when_disabled(): void
+    {
+        config(['freegle.loki.enabled' => false]);
+        $service = new LokiService;
+
+        $service->logBounceEvent('user@example.com', 123, true, 'Bounce');
+
+        $this->assertFileDoesNotExist($this->testLogPath.'/bounce.log');
     }
 
     public function test_log_entries_are_valid_json(): void
@@ -281,7 +384,7 @@ class LokiServiceTest extends TestCase
             'unicode' => '日本語',
         ]);
 
-        $logFile = $this->testLogPath . '/batch.log';
+        $logFile = $this->testLogPath.'/batch.log';
         $content = file_get_contents($logFile);
         $entry = json_decode(trim($content), true);
 

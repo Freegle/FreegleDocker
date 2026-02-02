@@ -251,8 +251,11 @@ class JobModelTest extends TestCase
 
         $jobTitle = 'Software Developer';
 
+        $canonicalTitle = strtolower($jobTitle);
+
         DB::table('jobs')->insert([
             'title' => $jobTitle,
+            'canonical_title' => $canonicalTitle,
             'location' => 'London',
             'company' => 'Test',
             'city' => 'London',
@@ -262,9 +265,9 @@ class JobModelTest extends TestCase
             'geometry' => DB::raw("ST_GeomFromText('POINT($lng $lat)', $srid)"),
         ]);
 
-        // Add AI image for this job title.
+        // Add AI image for this job's canonical title.
         DB::table('ai_images')->insert([
-            'name' => $jobTitle,
+            'name' => $canonicalTitle,
             'externaluid' => 'freegletusd-abc123',
         ]);
 

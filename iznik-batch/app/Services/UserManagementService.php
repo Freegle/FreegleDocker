@@ -17,6 +17,13 @@ class UserManagementService
      */
     protected int $chunkSize = 1000;
 
+    private LokiService $lokiService;
+
+    public function __construct(LokiService $lokiService)
+    {
+        $this->lokiService = $lokiService;
+    }
+
     /**
      * Merge duplicate user accounts.
      * Users with the same email should be merged.
@@ -42,7 +49,7 @@ class UserManagementService
                 $this->mergeUsersForEmail($duplicate->email);
                 $stats['users_merged']++;
             } catch (\Exception $e) {
-                Log::error("Error merging users for email {$duplicate->email}: " . $e->getMessage());
+                Log::error("Error merging users for email {$duplicate->email}: ".$e->getMessage());
                 $stats['errors']++;
             }
         }
@@ -98,7 +105,7 @@ class UserManagementService
                         ->update([$column => $keepUserId]);
                 } catch (\Exception $e) {
                     // May fail on unique constraints, which is fine.
-                    Log::debug("Could not update {$table}.{$column}: " . $e->getMessage());
+                    Log::debug("Could not update {$table}.{$column}: ".$e->getMessage());
                 }
             }
 
@@ -131,7 +138,14 @@ class UserManagementService
 
         foreach ($bouncedEmails as $email) {
             UserEmail::where('id', $email->id)
-                ->update(['validated' => NULL]);
+                ->update(['validated' => null]);
+
+            $this->lokiService->logBounceEvent(
+                $email->email ?? '',
+                $email->userid ?? 0,
+                true,
+                'Bounced email marked invalid',
+            );
 
             $stats['marked_invalid']++;
             $stats['processed']++;

@@ -1050,8 +1050,6 @@ services:
       loki:
         condition: service_healthy
     restart: unless-stopped
-    profiles:
-      - monitoring
 
   # Loki backup - runs on-demand: docker compose run --rm loki-backup
   # Gracefully skips backup if GCS credentials not available (dev environments)
@@ -1087,6 +1085,7 @@ services:
     volumes:
       - ./iznik-batch:/var/www/html
       - ./iznik-server:/var/www/iznik:ro
+      - apiv2_logs:/var/log/freegle
     depends_on:
       percona:
         condition: service_healthy
@@ -1274,7 +1273,7 @@ services:
     ports:
       - "25:25"
     depends_on:
-      batch:
+      batch-prod:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

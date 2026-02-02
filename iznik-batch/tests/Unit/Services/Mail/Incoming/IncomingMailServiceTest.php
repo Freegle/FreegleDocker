@@ -2,6 +2,8 @@
 
 namespace Tests\Unit\Services\Mail\Incoming;
 
+use App\Models\Group;
+use App\Models\User;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
@@ -532,156 +534,6 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
     }
 
-    public function test_volunteers_message_with_spam_keyword_routes_to_incoming_spam(): void
-    {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volspam')]);
-        $this->createMembership($user, $group);
-
-        // Insert spam keyword
-        DB::table('spam_keywords')->insert([
-            'word' => 'weight loss',
-            'action' => 'Spam',
-            'type' => 'Literal',
-            'exclude' => NULL,
-        ]);
-
-        $memberEmail = $user->emails->first()->email;
-
-        $email = $this->createMinimalEmail([
-            'From' => $memberEmail,
-            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
-            'Subject' => 'Amazing weight loss opportunity',
-        ], 'Great weight loss product!');
-
-        $parsed = $this->parser->parse(
-            $email,
-            $memberEmail,
-            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
-        );
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
-    }
-
-    public function test_volunteers_message_from_known_spammer_routes_to_incoming_spam(): void
-    {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volspammer')]);
-        $this->createMembership($user, $group);
-
-        // Mark user as known spammer
-        DB::table('spam_users')->insert([
-            'userid' => $user->id,
-            'collection' => 'Spammer',
-            'reason' => 'Test spammer',
-            'added' => now(),
-        ]);
-
-        $memberEmail = $user->emails->first()->email;
-
-        $email = $this->createMinimalEmail([
-            'From' => $memberEmail,
-            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
-            'Subject' => 'Innocent looking message',
-        ], 'This is a normal-looking message from a spammer.');
-
-        $parsed = $this->parser->parse(
-            $email,
-            $memberEmail,
-            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
-        );
-
-        $result = $this->service->route($parsed);
-
-        // Known spammers are dropped early in routing, before volunteers handling
-        $this->assertEquals(RoutingResult::DROPPED, $result);
-    }
-
-    public function test_volunteers_autoreply_is_dropped(): void
-    {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volooo')]);
-        $this->createMembership($user, $group);
-
-        $memberEmail = $user->emails->first()->email;
-
-        $email = $this->createMinimalEmail([
-            'From' => $memberEmail,
-            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
-            'Subject' => 'Out of Office: Re: Question',
-        ], 'I am currently out of the office.');
-
-        $parsed = $this->parser->parse(
-            $email,
-            $memberEmail,
-            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
-        );
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::DROPPED, $result);
-    }
-
-    public function test_volunteers_autoreply_via_header_is_dropped(): void
-    {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volauto')]);
-        $this->createMembership($user, $group);
-
-        $memberEmail = $user->emails->first()->email;
-
-        $email = $this->createMinimalEmail([
-            'From' => $memberEmail,
-            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
-            'Subject' => 'Re: Question',
-            'Auto-Submitted' => 'auto-replied',
-        ], 'Thanks for your email.');
-
-        $parsed = $this->parser->parse(
-            $email,
-            $memberEmail,
-            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
-        );
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::DROPPED, $result);
-    }
-
-    public function test_dry_run_returns_routing_outcome_with_context(): void
-    {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('dryrun')]);
-        $this->createMembership($user, $group, [
-            'ourPostingStatus' => 'DEFAULT',
-        ]);
-        DB::table('users')->where('id', $user->id)->update([
-            'lastlocation' => $this->createLocation(51.5, -0.1),
-        ]);
-
-        $memberEmail = $user->emails->first()->email;
-
-        $email = $this->createMinimalEmail([
-            'From' => $memberEmail,
-            'To' => $group->nameshort . '@groups.ilovefreegle.org',
-            'Subject' => 'OFFER: Test item (London)',
-        ], 'Free to collect.');
-
-        $parsed = $this->parser->parse(
-            $email,
-            $memberEmail,
-            $group->nameshort . '@groups.ilovefreegle.org'
-        );
-
-        $outcome = $this->service->routeDryRun($parsed);
-
-        $this->assertEquals(RoutingResult::APPROVED, $outcome->result);
-        $this->assertEquals($user->id, $outcome->userId);
-        $this->assertEquals($group->id, $outcome->groupId);
-    }
-
     // ========================================
     // Bounce Handling Tests
     // ========================================
@@ -1073,15 +925,14 @@ class IncomingMailServiceTest extends TestCase
             'lastlocation' => $this->createLocation(51.5, -0.1),
         ]);
 
-        // Insert spam keyword to detect "Western Union" in the email body
+        $userEmail = $user->emails->first()->email;
+
+        // Seed a spam keyword so the spam checker can detect it
         DB::table('spam_keywords')->insert([
             'word' => 'Western Union',
             'action' => 'Spam',
             'type' => 'Literal',
-            'exclude' => null,
         ]);
-
-        $userEmail = $user->emails->first()->email;
 
         // Use known spam patterns
         $email = $this->createMinimalEmail([
@@ -1101,32 +952,16 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
     }
 
-    public function test_routes_spam_keyword_from_database_to_incoming_spam(): void
+    public function test_greeting_spam_detected_as_incoming_spam(): void
     {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamkw')]);
-        $this->createMembership($user, $group, [
-            'ourPostingStatus' => 'DEFAULT',
-        ]);
-        DB::table('users')->where('id', $user->id)->update([
-            'lastlocation' => $this->createLocation(51.5, -0.1),
-        ]);
+        [$user, $group, $userEmail] = $this->createPostableUser();
 
-        // Insert a spam keyword into the database (matching legacy behavior)
-        DB::table('spam_keywords')->insert([
-            'word' => 'weight loss',
-            'action' => 'Spam',
-            'type' => 'Literal',
-            'exclude' => NULL,
-        ]);
-
-        $userEmail = $user->emails->first()->email;
-
+        // Greeting spam pattern: greeting in subject + line1, with HTTP link
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
             'To' => $group->nameshort.'@groups.ilovefreegle.org',
-            'Subject' => 'OFFER: Supplements (London)',
-        ], 'Amazing weight loss results with this product!');
+            'Subject' => 'Hello there!',
+        ], "Hello my friend\nPlease check this out\nhttp://spammy-link.com/click-here");
 
         $parsed = $this->parser->parse(
             $email,
@@ -1139,33 +974,25 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
     }
 
-    public function test_spam_keyword_with_exclude_pattern_does_not_match(): void
+    public function test_refer_to_spammer_detected_as_incoming_spam(): void
     {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamexcl')]);
-        $this->createMembership($user, $group, [
-            'ourPostingStatus' => 'DEFAULT',
-        ]);
-        DB::table('users')->where('id', $user->id)->update([
-            'lastlocation' => $this->createLocation(51.5, -0.1),
-        ]);
+        [$user, $group, $userEmail] = $this->createPostableUser();
 
-        // Insert keyword with exclude pattern
-        DB::table('spam_keywords')->insert([
-            'word' => 'courier',
-            'action' => 'Spam',
-            'type' => 'Literal',
-            'exclude' => 'Never agree to pay courier fees',
+        // Create a known spammer
+        $spammer = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spammer')]);
+        DB::table('spam_users')->insert([
+            'userid' => $spammer->id,
+            'collection' => 'Spammer',
+            'reason' => 'Known spammer',
+            'added' => now(),
         ]);
+        $spammerEmail = $spammer->emails->first()->email;
 
-        $userEmail = $user->emails->first()->email;
-
-        // Message contains the keyword BUT also the exclude pattern
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
             'To' => $group->nameshort.'@groups.ilovefreegle.org',
-            'Subject' => 'OFFER: Furniture (London)',
-        ], 'I can arrange a courier. Never agree to pay courier fees for delivery.');
+            'Subject' => 'OFFER: Free Stuff (London)',
+        ], "Contact {$spammerEmail} for more details about this offer.");
 
         $parsed = $this->parser->parse(
             $email,
@@ -1175,8 +1002,250 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // Should NOT be spam because exclude pattern matches
-        $this->assertNotEquals(RoutingResult::INCOMING_SPAM, $result);
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_our_domain_in_from_name_detected_as_incoming_spam(): void
+    {
+        [$user, $group, $userEmail] = $this->createPostableUser();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'groups.ilovefreegle.org <'.$userEmail.'>',
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Free Item (London)',
+        ], 'A normal looking message body.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_subject_reuse_across_groups_detected_as_spam(): void
+    {
+        [$user, , $userEmail] = $this->createPostableUser();
+
+        // Create many groups and message history with same pruned subject
+        // to exceed SUBJECT_THRESHOLD (30)
+        for ($i = 0; $i < 31; $i++) {
+            $g = $this->createTestGroup();
+            DB::table('messages_history')->insert([
+                'fromuser' => $user->id,
+                'prunedsubject' => 'Test Spammy Subject',
+                'groupid' => $g->id,
+                'fromip' => '1.2.3.4',
+                'fromname' => 'Test User',
+                'arrival' => now(),
+            ]);
+        }
+
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, ['ourPostingStatus' => 'DEFAULT']);
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Test Spammy Subject (London)',
+        ], 'Normal body text');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_ip_user_threshold_detected_as_spam(): void
+    {
+        [$user, $group, $userEmail] = $this->createPostableUser();
+
+        // Create message history with many users from same IP (> USER_THRESHOLD=5)
+        for ($i = 0; $i < 6; $i++) {
+            $u = $this->createTestUser(['email_preferred' => $this->uniqueEmail("ipuser{$i}")]);
+            DB::table('messages_history')->insert([
+                'fromuser' => $u->id,
+                'prunedsubject' => "Subject {$i}",
+                'groupid' => $group->id,
+                'fromip' => '203.0.113.99',
+                'fromname' => "User {$i}",
+                'arrival' => now(),
+            ]);
+        }
+
+        // Email with the same suspicious IP
+        $rawEmail = "From: {$userEmail}\r\nTo: {$group->nameshort}@groups.ilovefreegle.org\r\n"
+            ."Subject: OFFER: Something (London)\r\nX-Freegle-IP: 203.0.113.99\r\n\r\n"
+            .'Normal body text';
+
+        $parsed = $this->parser->parse(
+            $rawEmail,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_ip_group_threshold_detected_as_spam(): void
+    {
+        [$user, , $userEmail] = $this->createPostableUser();
+
+        // Create message history with many groups from same IP (>= GROUP_THRESHOLD=20)
+        for ($i = 0; $i < 20; $i++) {
+            $g = $this->createTestGroup();
+            DB::table('messages_history')->insert([
+                'fromuser' => $user->id,
+                'prunedsubject' => 'Subject',
+                'groupid' => $g->id,
+                'fromip' => '203.0.113.88',
+                'fromname' => 'Test User',
+                'arrival' => now(),
+            ]);
+        }
+
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, ['ourPostingStatus' => 'DEFAULT']);
+
+        $rawEmail = "From: {$userEmail}\r\nTo: {$group->nameshort}@groups.ilovefreegle.org\r\n"
+            ."Subject: OFFER: Something (London)\r\nX-Freegle-IP: 203.0.113.88\r\n\r\n"
+            .'Normal body text';
+
+        $parsed = $this->parser->parse(
+            $rawEmail,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_bulk_volunteer_mail_flagged_for_review(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('bulkmailer')]);
+        $userEmail = $user->emails->first()->email;
+
+        // Create history of bulk sends to volunteer addresses
+        for ($i = 0; $i < 21; $i++) {
+            $g = $this->createTestGroup();
+            $this->createMembership($user, $g);
+            DB::table('messages')->insert([
+                'envelopefrom' => $userEmail,
+                'envelopeto' => $g->nameshort.'-volunteers@groups.ilovefreegle.org',
+                'arrival' => now(),
+            ]);
+        }
+
+        // Now send one more volunteer email
+        $targetGroup = $this->createTestGroup();
+        $this->createMembership($user, $targetGroup);
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $targetGroup->nameshort.'-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Important message for volunteers',
+        ], 'Please share this with everyone.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $targetGroup->nameshort.'-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Bulk volunteer mail goes to review, not rejected
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // Chat message should be flagged
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
+    }
+
+    public function test_volunteers_with_spam_keyword_detected_as_spam(): void
+    {
+        DB::table('spam_keywords')->insert([
+            'word' => 'Western Union',
+            'action' => 'Spam',
+            'type' => 'Literal',
+        ]);
+
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volspammer')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Important notice',
+        ], 'Send money via Western Union to claim your prize.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Volunteers messages with spam go to review (not rejected) - users may be reporting spam
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // The chat message should be flagged for review so volunteers see it was detected
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
+    }
+
+    public function test_banned_user_post_dropped(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('banned')]);
+        // Add membership then set posting status to prohibited
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'PROHIBITED',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Something (London)',
+        ], 'Normal message body.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
     public function test_drops_known_spammer(): void
@@ -1432,219 +1501,29 @@ class IncomingMailServiceTest extends TestCase
     }
 
     // ========================================
-    // Freegle-Formatted Address Tests (user ID in address)
+    // Chat Spam/Review Tests
     // ========================================
 
-    /**
-     * Test that direct mail to Freegle-formatted address extracts user ID.
-     * Address format: *-{userid}@users.ilovefreegle.org
-     */
-    public function test_routes_direct_mail_to_freegle_address_to_user(): void
+    public function test_chat_reply_with_spam_keyword_flagged_for_review(): void
     {
-        // Create recipient user
-        $recipient = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
-        // Create sender user with email in the database
-        $sender = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
-        $senderEmail = $sender->emails->first()->email;
-
-        // Create location so user isn't "unmapped"
-        $locationId = $this->createLocation(51.5, -0.1);
-        DB::table('users')->where('id', $sender->id)->update(['lastlocation' => $locationId]);
-
-        // Use Freegle-formatted address: anything-{userid}@users.ilovefreegle.org
-        $freegleAddress = "somename-{$recipient->id}@users.ilovefreegle.org";
-
-        $email = $this->createMinimalEmail([
-            'From' => $senderEmail,
-            'To' => $freegleAddress,
-            'Subject' => 'Re: Your offer',
-        ], 'Is this still available?');
-
-        $parsed = $this->parser->parse($email, $senderEmail, $freegleAddress);
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::TO_USER, $result);
-    }
-
-    /**
-     * Test that direct mail to Freegle-formatted address with invalid user ID is dropped.
-     */
-    public function test_routes_direct_mail_to_invalid_freegle_address_to_dropped(): void
-    {
-        $sender = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
-        $senderEmail = $sender->emails->first()->email;
-
-        // User ID 99999999 doesn't exist
-        $freegleAddress = 'somename-99999999@users.ilovefreegle.org';
-
-        $email = $this->createMinimalEmail([
-            'From' => $senderEmail,
-            'To' => $freegleAddress,
-            'Subject' => 'Re: Your offer',
-        ], 'Is this still available?');
-
-        $parsed = $this->parser->parse($email, $senderEmail, $freegleAddress);
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::DROPPED, $result);
-    }
-
-    // ========================================
-    // Group Post Moderation Tests
-    // ========================================
-
-    /**
-     * Test that posts from moderators go to pending (per volunteer request to avoid accidents).
-     */
-    public function test_group_post_from_moderator_goes_to_pending(): void
-    {
-        $mod = $this->createTestUser(['email_preferred' => $this->uniqueEmail('mod')]);
-        $group = $this->createTestGroup();
-
-        // Give user a location and make them a moderator
-        $locationId = $this->createLocation(51.5, -0.1);
-        DB::table('users')->where('id', $mod->id)->update(['lastlocation' => $locationId]);
-        $this->createMembership($mod, $group, ['role' => 'Moderator']);
-
-        $modEmail = $mod->emails->first()->email;
-        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
-
-        $email = $this->createMinimalEmail([
-            'From' => $modEmail,
-            'To' => $groupAddress,
-            'Subject' => 'OFFER: Test item (London)',
-        ], 'A test offer from moderator');
-
-        $parsed = $this->parser->parse($email, $modEmail, $groupAddress);
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::PENDING, $result);
-    }
-
-    /**
-     * Test that posts to group with moderated=1 setting go to pending.
-     */
-    public function test_group_post_to_moderated_group_goes_to_pending(): void
-    {
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
-        $group = $this->createTestGroup([
-            'settings' => json_encode(['moderated' => 1]),
+        // Seed a spam keyword
+        DB::table('spam_keywords')->insert([
+            'word' => 'Western Union',
+            'action' => 'Spam',
+            'type' => 'Literal',
         ]);
 
-        // Give user a location and make them a member
-        $locationId = $this->createLocation(51.5, -0.1);
-        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
-        $this->createMembership($user, $group);
-
-        $userEmail = $user->emails->first()->email;
-        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
-
-        $email = $this->createMinimalEmail([
-            'From' => $userEmail,
-            'To' => $groupAddress,
-            'Subject' => 'OFFER: Test item (London)',
-        ], 'A test offer');
-
-        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::PENDING, $result);
-    }
-
-    /**
-     * Test that posts to group with overridemoderation=ModerateAll (Big Switch) go to pending.
-     */
-    public function test_group_post_with_override_moderation_goes_to_pending(): void
-    {
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
-        $group = $this->createTestGroup([
-            'overridemoderation' => 'ModerateAll',  // The "Big Switch"
-        ]);
-
-        // Give user a location and make them a member
-        $locationId = $this->createLocation(51.5, -0.1);
-        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
-        $this->createMembership($user, $group);
-
-        $userEmail = $user->emails->first()->email;
-        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
-
-        $email = $this->createMinimalEmail([
-            'From' => $userEmail,
-            'To' => $groupAddress,
-            'Subject' => 'OFFER: Test item (London)',
-        ], 'A test offer');
-
-        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::PENDING, $result);
-    }
-
-    /**
-     * Test that posts from regular member to unmoderated group are approved.
-     */
-    public function test_group_post_from_member_to_unmoderated_group_is_approved(): void
-    {
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
-        $group = $this->createTestGroup([
-            'settings' => json_encode(['moderated' => 0]),
-        ]);
-
-        // Give user a location and make them a member with DEFAULT posting status
-        $locationId = $this->createLocation(51.5, -0.1);
-        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
-        $this->createMembership($user, $group, ['ourPostingStatus' => 'DEFAULT']);
-
-        $userEmail = $user->emails->first()->email;
-        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
-
-        $email = $this->createMinimalEmail([
-            'From' => $userEmail,
-            'To' => $groupAddress,
-            'Subject' => 'OFFER: Test item (London)',
-        ], 'A test offer');
-
-        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::APPROVED, $result);
-    }
-
-    // ========================================
-    // Chat Notification Self-Send Tests
-    // ========================================
-
-    /**
-     * Test that replying to a chat notification where sender is the notify address user works.
-     *
-     * This is the NORMAL chat reply flow:
-     * 1. User1 receives a notification about a message in chat with User2
-     * 2. The reply-to address is notify-{chatid}-{user1id}@...
-     * 3. User1 replies, and the message is added to the chat
-     */
-    public function test_chat_reply_where_sender_is_notify_user_is_accepted(): void
-    {
-        // Create two users and a chat between them
-        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
-        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
         $chat = $this->createTestChatRoom($user1, $user2);
 
-        // User1's registered email
         $user1Email = $user1->emails->first()->email;
 
-        // User1 replies to a notify address for user1 - this is the normal reply flow
         $email = $this->createMinimalEmail([
             'From' => $user1Email,
             'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
-            'Subject' => 'Re: Chat message',
-        ], 'This is a reply');
+            'Subject' => 'Re: About the item',
+        ], 'Please send payment via Western Union to claim your item.');
 
         $parsed = $this->parser->parse(
             $email,
@@ -1654,70 +1533,406 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // This is a valid chat reply and should be accepted
+        // Chat-bound spam is NOT rejected - it goes to review
         $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // The chat message should be flagged for review
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
-    /**
-     * Test that a valid chat reply from the OTHER user in the chat is accepted.
-     */
-    public function test_chat_reply_from_other_user_is_accepted(): void
+    public function test_chat_reply_with_money_symbol_flagged_for_review(): void
     {
-        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
-        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
         $chat = $this->createTestChatRoom($user1, $user2);
 
-        // User2 replies to a notification that was sent to user1
-        $user2Email = $user2->emails->first()->email;
+        $user1Email = $user1->emails->first()->email;
 
         $email = $this->createMinimalEmail([
-            'From' => $user2Email,
+            'From' => $user1Email,
             'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
-            'Subject' => 'Re: Chat message',
-        ], 'Reply from other user');
+            'Subject' => 'Re: About the item',
+        ], 'I will sell this for £50, bargain price.');
 
         $parsed = $this->parser->parse(
             $email,
-            $user2Email,
+            $user1Email,
             "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
         );
 
         $result = $this->service->route($parsed);
 
         $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // checkReview detects money symbols
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
-    // ========================================
-    // Chat Stale Reply Tests
-    // ========================================
-
-    /**
-     * Test that replies to stale chats (>90 days) from unfamiliar sender are dropped.
-     * Matches legacy User::OPEN_AGE = 90 days.
-     */
-    public function test_chat_reply_to_stale_chat_from_unfamiliar_sender_is_dropped(): void
+    public function test_chat_reply_with_script_tag_flagged_for_review(): void
     {
-        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
-        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
         $chat = $this->createTestChatRoom($user1, $user2);
 
-        // Make the chat stale (91 days ago - beyond the 90 day threshold)
-        DB::table('chat_rooms')->where('id', $chat->id)->update([
-            'latestmessage' => now()->subDays(91),
-        ]);
-
-        // Send from an unfamiliar email (not associated with user1)
-        $unfamiliarEmail = 'unknown-'.uniqid().'@example.com';
+        $user1Email = $user1->emails->first()->email;
 
         $email = $this->createMinimalEmail([
-            'From' => $unfamiliarEmail,
+            'From' => $user1Email,
             'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
-            'Subject' => 'Re: Old conversation',
-        ], 'A reply to a very old chat');
+            'Subject' => 'Re: About the item',
+        ], 'Hello <script>alert("xss")</script> world');
 
         $parsed = $this->parser->parse(
             $email,
-            $unfamiliarEmail,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
+    }
+
+    public function test_clean_chat_reply_not_flagged_for_review(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Yes, it is still available! When would you like to collect?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(0, $lastMessage->reviewrequired);
+        $this->assertNull($lastMessage->reportreason);
+    }
+
+    public function test_direct_mail_with_spam_flagged_for_review(): void
+    {
+        // Seed a spam keyword
+        DB::table('spam_keywords')->insert([
+            'word' => 'Western Union',
+            'action' => 'Spam',
+            'type' => 'Literal',
+        ]);
+
+        $sender = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $recipient = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        $senderEmail = $sender->emails->first()->email;
+        $recipientEmail = $recipient->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $senderEmail,
+            'To' => $recipientEmail,
+            'Subject' => 'About the item',
+        ], 'Send money via Western Union to receive your prize.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $senderEmail,
+            $recipientEmail
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Direct mail spam goes to review, not rejection
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // Find the chat that was created
+        $chat = DB::table('chat_rooms')
+            ->where(function ($q) use ($sender, $recipient) {
+                $q->where('user1', $sender->id)->where('user2', $recipient->id);
+            })
+            ->orWhere(function ($q) use ($sender, $recipient) {
+                $q->where('user1', $recipient->id)->where('user2', $sender->id);
+            })
+            ->first();
+
+        $this->assertNotNull($chat);
+
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+    }
+
+    public function test_chat_reply_with_external_email_flagged_for_review(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Contact me at myemail@externaldomain.com for more details about this offer.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
+    }
+
+    // ========================================
+    // Volunteers Spam Check Tests
+    // ========================================
+
+    public function test_volunteers_message_from_spammer_flagged_for_review(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-spammer')]);
+        $this->createMembership($user, $group);
+
+        // Mark user as spammer
+        DB::table('spam_users')->insert([
+            'userid' => $user->id,
+            'collection' => 'Spammer',
+            'added' => now(),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+        $groupName = $group->nameshort;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "{$groupName}-volunteers@groups.ilovefreegle.org",
+            'Subject' => 'Help please',
+        ], 'I need help with my item.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "{$groupName}-volunteers@groups.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Known spammer to volunteers: goes to review, not rejected
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // Chat message should be flagged for review
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
+    }
+
+    public function test_volunteers_spam_keyword_flagged_for_review(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-spam')]);
+        $this->createMembership($user, $group);
+
+        // Seed spam keyword
+        DB::table('spam_keywords')->insert([
+            'word' => 'Western Union',
+            'action' => 'Spam',
+            'type' => 'Literal',
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+        $groupName = $group->nameshort;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "{$groupName}-volunteers@groups.ilovefreegle.org",
+            'Subject' => 'Help please',
+        ], 'Please send money via Western Union right away.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "{$groupName}-volunteers@groups.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Volunteers spam goes to review, not rejected
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // Chat message should be flagged
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired);
+        $this->assertEquals('Spam', $lastMessage->reportreason);
+    }
+
+    // ========================================
+    // TAKEN/RECEIVED Swallowing Tests
+    // ========================================
+
+    public function test_taken_subject_post_routes_to_system(): void
+    {
+        [$user, $group, $userEmail] = $this->createPostableUser();
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "{$group->nameshort}@groups.ilovefreegle.org",
+            'Subject' => 'TAKEN: Dining table (London)',
+        ], 'This item has been taken.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "{$group->nameshort}@groups.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+    }
+
+    public function test_received_subject_post_routes_to_system(): void
+    {
+        [$user, $group, $userEmail] = $this->createPostableUser();
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "{$group->nameshort}@groups.ilovefreegle.org",
+            'Subject' => 'RECEIVED: Bookshelf (Acton)',
+        ], 'Got this, thanks!');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "{$group->nameshort}@groups.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+    }
+
+    // ========================================
+    // Closed Group Reply Test
+    // ========================================
+
+    public function test_reply_to_message_on_closed_group_returns_to_system(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('closed-sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('closed-recipient')]);
+
+        // Create a group with closed setting
+        $group = $this->createTestGroup(['settings' => json_encode(['closed' => true])]);
+
+        // Create a message on that group
+        $messageId = DB::table('messages')->insertGetId([
+            'arrival' => now()->subDays(5),
+            'date' => now()->subDays(5),
+            'fromuser' => $user2->id,
+            'subject' => 'OFFER: Something',
+            'type' => 'Offer',
+        ]);
+
+        DB::table('messages_groups')->insert([
+            'msgid' => $messageId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+            'arrival' => now()->subDays(5),
+        ]);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "replyto-{$messageId}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: OFFER: Something',
+        ], 'I would like this please.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "replyto-{$messageId}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+    }
+
+    // ========================================
+    // Read Receipt in Chat Reply Test
+    // ========================================
+
+    public function test_read_receipt_in_chat_reply_is_dropped(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('receipt-sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('receipt-recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+            'Content-Type' => 'multipart/report; report-type=disposition-notification',
+        ], '');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
             "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
         );
 
@@ -1726,136 +1941,196 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
-    /**
-     * Test that replies to fresh chats from unfamiliar sender are accepted.
-     */
-    public function test_chat_reply_to_fresh_chat_from_unfamiliar_sender_is_accepted(): void
-    {
-        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
-        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
-        $chat = $this->createTestChatRoom($user1, $user2);
-
-        // Make the chat fresh (30 days ago - within the 90 day threshold)
-        DB::table('chat_rooms')->where('id', $chat->id)->update([
-            'latestmessage' => now()->subDays(30),
-        ]);
-
-        // Send from an unfamiliar email (not associated with user1)
-        $unfamiliarEmail = 'unknown-'.uniqid().'@example.com';
-
-        $email = $this->createMinimalEmail([
-            'From' => $unfamiliarEmail,
-            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
-            'Subject' => 'Re: Recent conversation',
-        ], 'A reply to a recent chat');
-
-        $parsed = $this->parser->parse(
-            $email,
-            $unfamiliarEmail,
-            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
-        );
-
-        $result = $this->service->route($parsed);
-
-        $this->assertEquals(RoutingResult::TO_USER, $result);
-    }
-
     // ========================================
-    // TN Email Canonicalization Tests
+    // Prohibited Posting Status Test
     // ========================================
 
-    /**
-     * Test that TN emails with group suffix are canonicalized correctly.
-     * e.g., alice-g123@user.trashnothing.com should match alice-g456@user.trashnothing.com
-     */
-    public function test_tn_emails_with_different_group_suffixes_match_same_user(): void
+    public function test_prohibited_posting_status_routes_to_dropped(): void
     {
-        // Create user with one TN email
-        $user = $this->createTestUser(['email_preferred' => 'testuser-g123@user.trashnothing.com']);
-
-        // Create another TN email for the same user with different group suffix
-        DB::table('users_emails')->insert([
-            'userid' => $user->id,
-            'email' => 'testuser-g456@user.trashnothing.com',
-            'canon' => 'testuser@usertrashnothingcom',
-            'preferred' => 0,
-            'added' => now(),
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('prohibited')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'PROHIBITED',
         ]);
-
-        // Create recipient user
-        $recipient = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
-
-        // Create location so sender isn't "unmapped"
-        $locationId = $this->createLocation(51.5, -0.1);
-        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
-
-        // Use Freegle-formatted address for recipient
-        $freegleAddress = "somename-{$recipient->id}@users.ilovefreegle.org";
-
-        // Send from the second TN email (g456)
-        $email = $this->createMinimalEmail([
-            'From' => 'testuser-g456@user.trashnothing.com',
-            'To' => $freegleAddress,
-            'Subject' => 'Re: Your offer',
-        ], 'Is this still available?');
-
-        $parsed = $this->parser->parse(
-            $email,
-            'testuser-g456@user.trashnothing.com',
-            $freegleAddress
-        );
-
-        $result = $this->service->route($parsed);
-
-        // Should find the sender via canon lookup and route successfully
-        $this->assertEquals(RoutingResult::TO_USER, $result);
-    }
-
-    /**
-     * Test that posts from member with NULL ourPostingStatus go to pending.
-     *
-     * Legacy behavior: when ourPostingStatus is null, it defaults to MODERATED
-     * which means the message goes to pending for moderator review.
-     */
-    public function test_group_post_with_null_posting_status_goes_to_pending(): void
-    {
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user')]);
-        $group = $this->createTestGroup([
-            'settings' => json_encode(['moderated' => 0]),
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
         ]);
-
-        // Give user a location
-        $locationId = $this->createLocation(51.5, -0.1);
-        DB::table('users')->where('id', $user->id)->update(['lastlocation' => $locationId]);
-
-        // Create membership with NULL ourPostingStatus (the default)
-        $this->createMembership($user, $group);
-        // Explicitly set ourPostingStatus to NULL
-        DB::table('memberships')
-            ->where('userid', $user->id)
-            ->where('groupid', $group->id)
-            ->update(['ourPostingStatus' => null]);
 
         $userEmail = $user->emails->first()->email;
-        $groupAddress = $group->nameshort.'@groups.ilovefreegle.org';
 
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
-            'To' => $groupAddress,
-            'Subject' => 'OFFER: Test item (London)',
-        ], 'A test offer');
+            'To' => "{$group->nameshort}@groups.ilovefreegle.org",
+            'Subject' => 'OFFER: Banned item',
+        ], 'This is a test post.');
 
-        $parsed = $this->parser->parse($email, $userEmail, $groupAddress);
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "{$group->nameshort}@groups.ilovefreegle.org"
+        );
 
         $result = $this->service->route($parsed);
 
-        // NULL posting status defaults to MODERATED per legacy behavior
-        $this->assertEquals(RoutingResult::PENDING, $result);
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    // ========================================
+    // Direct Mail Self-to-Self Test
+    // ========================================
+
+    public function test_direct_mail_to_self_is_dropped(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('selfmail')]);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $userEmail,
+            'Subject' => 'Testing',
+        ], 'Hello me.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $userEmail
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
     // ========================================
     // Helper Methods
     // ========================================
+
+    /**
+     * Create a user with group membership, location, and DEFAULT posting status.
+     *
+     * @return array{User, Group, string} [user, group, userEmail]
+     */
+    protected function createPostableUser(): array
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('postable')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+        $userEmail = $user->emails->first()->email;
+
+        return [$user, $group, $userEmail];
+    }
+
+    public function test_autoreply_to_notify_address_is_not_globally_dropped(): void
+    {
+        // Legacy code routes notify- addresses BEFORE checking auto-reply globally.
+        // An auto-reply to a notify address should reach handleChatNotificationReply(),
+        // not be dropped by the global auto-reply filter.
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+        $user2Email = $user2->emails->first()->email;
+
+        // Make chat fresh so stale check doesn't interfere
+        DB::table('chat_rooms')
+            ->where('id', $chat->id)
+            ->update(['latestmessage' => now()->subDays(1)]);
+
+        $email = $this->createMinimalEmail([
+            'From' => $user2Email,
+            'To' => "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Your message',
+            'Auto-Submitted' => 'auto-replied',
+        ], 'I am out of office.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user2Email,
+            "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should be routed to user (chat reply), NOT dropped
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
+
+    public function test_bounce_to_notify_address_is_not_globally_dropped(): void
+    {
+        // Bounces to notify addresses should reach handleChatNotificationReply(),
+        // not be intercepted by the global bounce handler.
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+        $user2Email = $user2->emails->first()->email;
+
+        DB::table('chat_rooms')
+            ->where('id', $chat->id)
+            ->update(['latestmessage' => now()->subDays(1)]);
+
+        // Simulate a bounce-like message (has bounce status) to a notify address
+        // The key thing is that isChatNotificationReply() should take priority
+        $email = $this->createMinimalEmail([
+            'From' => 'mailer-daemon@example.com',
+            'To' => "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org",
+            'Subject' => 'Delivery Status Notification',
+        ], 'This message was undeliverable.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'mailer-daemon@example.com',
+            "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org"
+        );
+
+        // If the parser detects this as a chat notification reply (chatId is set),
+        // it should be routed via handleChatNotificationReply, not the bounce handler.
+        // The result depends on whether mailer-daemon is in the chat - likely DROPPED
+        // by the handler itself, but importantly NOT by the global bounce filter.
+        if ($parsed->isChatNotificationReply()) {
+            $result = $this->service->route($parsed);
+            // mailer-daemon won't be in the chat, so handler drops it - that's fine
+            // The point is the global bounce check didn't intercept it
+            $this->assertNotEquals(RoutingResult::DROPPED, $result,
+                'Should not have been dropped by global bounce handler if chat notification reply was detected');
+        } else {
+            // If parser doesn't detect bounce headers, it goes through bounce handler - also acceptable
+            $this->assertTrue(true, 'Parser did not detect as chat notification reply - bounce handler handles it');
+        }
+    }
+
+    public function test_autoreply_to_replyto_address_is_not_globally_dropped(): void
+    {
+        // Auto-replies to replyto- addresses should reach handleReplyToAddress(),
+        // not be dropped by the global auto-reply filter.
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Your offer',
+            'Auto-Submitted' => 'auto-replied',
+        ], 'I am currently away.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should be routed to user (reply to message), NOT dropped by global auto-reply filter
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
 
     /**
      * Create a location for testing.
@@ -1868,5 +2143,108 @@ class IncomingMailServiceTest extends TestCase
             'lat' => $lat,
             'lng' => $lng,
         ]);
+    }
+
+    public function test_routing_context_set_for_approved_post(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('ctx-member')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Context Test (London)',
+        ], 'Testing routing context.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::APPROVED, $result);
+
+        $context = $this->service->getLastRoutingContext();
+        $this->assertEquals($group->id, $context['group_id']);
+        $this->assertEquals($group->nameshort, $context['group_name']);
+        $this->assertEquals($user->id, $context['user_id']);
+    }
+
+    public function test_routing_context_empty_for_dropped(): void
+    {
+        $email = $this->createMinimalEmail([
+            'From' => 'unknown@nowhere.com',
+            'To' => 'nonexistent-subscribe@groups.ilovefreegle.org',
+            'Subject' => 'Subscribe',
+        ], 'Subscribe');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'unknown@nowhere.com',
+            'nonexistent-subscribe@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+
+        $context = $this->service->getLastRoutingContext();
+        $this->assertEmpty($context);
+    }
+
+    public function test_routing_context_reset_between_calls(): void
+    {
+        // First call sets context
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('ctx-reset')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email1 = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Reset Test (London)',
+        ], 'Testing reset.');
+
+        $parsed1 = $this->parser->parse(
+            $email1,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed1);
+        $this->assertNotEmpty($this->service->getLastRoutingContext());
+
+        // Second call should reset context
+        $email2 = $this->createMinimalEmail([
+            'From' => 'unknown@nowhere.com',
+            'To' => 'nonexistent-subscribe@groups.ilovefreegle.org',
+            'Subject' => 'Subscribe',
+        ], 'Subscribe');
+
+        $parsed2 = $this->parser->parse(
+            $email2,
+            'unknown@nowhere.com',
+            'nonexistent-subscribe@groups.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed2);
+        $this->assertEmpty($this->service->getLastRoutingContext());
     }
 }

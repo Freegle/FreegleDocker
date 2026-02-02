@@ -164,6 +164,12 @@ Schedule::command('mail:spool:process --cleanup --cleanup-days=7')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Clean up incoming email archives older than 48 hours.
+Schedule::command('mail:cleanup-archive')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // =============================================================================
 // GIT SUMMARY
 // =============================================================================
