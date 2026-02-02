@@ -69,6 +69,9 @@ class AmpEmailSupport
         'yandex.ru',
         'yandex.com',
         'ya.ru',
+
+        // Custom domains hosted on Gmail (Google Workspace)
+        'ehibbert.org.uk',
     ];
 
     /**
