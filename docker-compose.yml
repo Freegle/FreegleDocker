@@ -1273,7 +1273,7 @@ services:
     ports:
       - "25:25"
     depends_on:
-      batch:
+      batch-prod:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

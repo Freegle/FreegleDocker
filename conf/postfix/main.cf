@@ -7,6 +7,9 @@ biff = no
 append_dot_mydomain = no
 readme_directory = no
 
+# Alpine uses lmdb instead of hash for lookup tables
+default_database_type = lmdb
+
 # Hostname and domain settings
 myhostname = mail.ilovefreegle.org
 mydomain = ilovefreegle.org
@@ -21,7 +24,7 @@ mydestination =
 virtual_mailbox_domains = groups.ilovefreegle.org, users.ilovefreegle.org, user.trashnothing.com, ilovefreegle.org
 
 # Transport maps - route all accepted domains to the freegle pipe
-transport_maps = hash:/etc/postfix/transport
+transport_maps = lmdb:/etc/postfix/transport
 
 # Concurrency limits for Laravel pipe transport
 # Limit parallel deliveries to avoid overwhelming the server
@@ -33,8 +36,8 @@ message_size_limit = 26214400
 mailbox_size_limit = 0
 
 # TLS settings for incoming connections (opportunistic)
-smtpd_tls_cert_file = /etc/ssl/certs/ssl-cert-snakeoil.pem
-smtpd_tls_key_file = /etc/ssl/private/ssl-cert-snakeoil.key
+smtpd_tls_cert_file = /etc/ssl/certs/postfix.pem
+smtpd_tls_key_file = /etc/ssl/private/postfix.key
 smtpd_tls_security_level = may
 smtpd_tls_loglevel = 1
 
