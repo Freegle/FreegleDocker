@@ -1,8 +1,17 @@
 import { spawn, execSync } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   console.log('Starting Laravel tests...')
+
+  // Read optional filter/testsuite params from request body
+  let filter = ''
+  let testsuite = 'Unit,Feature'
+  try {
+    const body = await readBody(event)
+    if (body?.filter) filter = body.filter
+    if (body?.testsuite) testsuite = body.testsuite
+  } catch {}
 
   // Check if already running
   if (isTestRunning('laravel')) {
@@ -37,7 +46,7 @@ export default defineEventHandler(async () => {
     docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
 
     echo "Running Laravel tests with coverage..."
-    docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+    docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=${testsuite}${filter ? ` --filter="${filter}"` : ''} --coverage-clover=/tmp/laravel-coverage.xml 2>&1
   `], { stdio: 'pipe' })
 
   testProcess.stdout.on('data', (data) => {
