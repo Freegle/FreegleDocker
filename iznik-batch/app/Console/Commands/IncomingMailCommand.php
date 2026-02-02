@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\LokiService;
+use App\Services\Mail\Incoming\IncomingArchiveService;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use Illuminate\Console\Command;
@@ -39,7 +40,7 @@ class IncomingMailCommand extends Command
 
     private const EX_TEMPFAIL = 75;
 
-    public function handle(MailParserService $parser, IncomingMailService $service): int
+    public function handle(MailParserService $parser, IncomingMailService $service, IncomingArchiveService $archiveService): int
     {
         $sender = $this->argument('sender');
         $recipient = $this->argument('recipient');
@@ -49,6 +50,9 @@ class IncomingMailCommand extends Command
         if ($rawEmail === null) {
             $rawEmail = file_get_contents('php://stdin');
         }
+
+        // Archive raw email to disk before processing (safety net for reprocessing).
+        $archivePath = $archiveService->archive($rawEmail, $sender, $recipient);
 
         try {
             // Parse the email
@@ -67,6 +71,11 @@ class IncomingMailCommand extends Command
 
             // Output the result
             $this->line($result->value);
+
+            // Record outcome in archive file.
+            if ($archivePath) {
+                $archiveService->recordOutcome($archivePath, $result->value);
+            }
 
             // Log for monitoring (Laravel log)
             Log::channel('incoming_mail')->info('Mail processed', [

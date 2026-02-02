@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\LokiService;
+use App\Services\Mail\Incoming\IncomingArchiveService;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use Illuminate\Http\Request;
@@ -19,7 +20,8 @@ class IncomingMailController extends Controller
 {
     public function __construct(
         private readonly MailParserService $parser,
-        private readonly IncomingMailService $mailService
+        private readonly IncomingMailService $mailService,
+        private readonly IncomingArchiveService $archiveService
     ) {}
 
     /**
@@ -44,6 +46,9 @@ class IncomingMailController extends Controller
             return response('Empty content', 400);
         }
 
+        // Archive raw email to disk before processing (safety net for reprocessing).
+        $archivePath = $this->archiveService->archive($rawEmail, $sender, $recipient);
+
         try {
             // Parse the email
             $parsed = $this->parser->parse($rawEmail, $sender, $recipient);
@@ -56,6 +61,11 @@ class IncomingMailController extends Controller
                 'recipient' => $recipient,
                 'result' => $result->value,
             ]);
+
+            // Record outcome in archive file.
+            if ($archivePath) {
+                $this->archiveService->recordOutcome($archivePath, $result->value);
+            }
 
             // Log to Loki for ModTools incoming email dashboard
             app(LokiService::class)->logIncomingEmail(

@@ -319,6 +319,12 @@ class IncomingMailService
             if ($userEmail) {
                 $user = User::find($userEmail->userid);
                 if ($user) {
+                    // Log old values for reversibility.
+                    $oldFrequencies = DB::table('memberships')
+                        ->where('userid', $user->id)
+                        ->pluck('emailfrequency', 'id')
+                        ->toArray();
+
                     // Turn off email digests for all their memberships
                     DB::table('memberships')
                         ->where('userid', $user->id)
@@ -327,6 +333,7 @@ class IncomingMailService
                     Log::info('Turned off emails due to FBL', [
                         'user_id' => $user->id,
                         'email' => $recipientEmail,
+                        'old_frequencies' => $oldFrequencies,
                     ]);
                 }
             }
@@ -469,9 +476,18 @@ class IncomingMailService
         }
 
         if ($updateColumn !== null) {
+            $oldValue = $tryst->$updateColumn;
             DB::table('trysts')
                 ->where('id', $trystId)
                 ->update([$updateColumn => $response]);
+
+            Log::info('Updated tryst response', [
+                'tryst_id' => $trystId,
+                'user_id' => $userId,
+                'column' => $updateColumn,
+                'old_value' => $oldValue,
+                'new_value' => $response,
+            ]);
         } else {
             Log::warning('Tryst response from user not in tryst', [
                 'tryst_id' => $trystId,
@@ -562,12 +578,15 @@ class IncomingMailService
         }
 
         // Set email frequency to 0 (NEVER)
+        $oldFrequency = $membership->emailfrequency;
         $membership->emailfrequency = 0;
         $membership->save();
 
         Log::info('Turned off digest for user', [
             'user_id' => $userId,
             'group_id' => $groupId,
+            'membership_id' => $membership->id,
+            'old_emailfrequency' => $oldFrequency,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -621,12 +640,15 @@ class IncomingMailService
         }
 
         // Set eventsallowed to 0
+        $oldEventsAllowed = $membership->eventsallowed;
         $membership->eventsallowed = 0;
         $membership->save();
 
         Log::info('Turned off events for user', [
             'user_id' => $userId,
             'group_id' => $groupId,
+            'membership_id' => $membership->id,
+            'old_eventsallowed' => $oldEventsAllowed,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -673,11 +695,13 @@ class IncomingMailService
         }
 
         // Set newslettersallowed to 0
+        $oldNewslettersAllowed = $user->newslettersallowed;
         $user->newslettersallowed = 0;
         $user->save();
 
         Log::info('Turned off newsletters for user', [
             'user_id' => $userId,
+            'old_newslettersallowed' => $oldNewslettersAllowed,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -724,11 +748,13 @@ class IncomingMailService
         }
 
         // Set relevantallowed to 0
+        $oldRelevantAllowed = $user->relevantallowed;
         $user->relevantallowed = 0;
         $user->save();
 
         Log::info('Turned off relevant for user', [
             'user_id' => $userId,
+            'old_relevantallowed' => $oldRelevantAllowed,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -782,11 +808,14 @@ class IncomingMailService
         }
 
         // Set volunteeringallowed to 0
+        $oldVolunteeringAllowed = $membership->volunteeringallowed;
         $membership->volunteeringallowed = 0;
         $membership->save();
 
         Log::info('Turned off volunteering for user', [
             'user_id' => $userId,
+            'membership_id' => $membership->id,
+            'old_volunteeringallowed' => $oldVolunteeringAllowed,
             'group_id' => $groupId,
         ]);
 
@@ -844,6 +873,7 @@ class IncomingMailService
 
             Log::info('Turned off notification mails for user', [
                 'user_id' => $userId,
+                'old_notificationmails' => TRUE,
             ]);
         }
 
@@ -907,6 +937,9 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
+        // Log old value for reversibility.
+        $oldDeleted = DB::table('users')->where('id', $userId)->value('deleted');
+
         // Put user into limbo (soft delete)
         DB::table('users')
             ->where('id', $userId)
@@ -915,6 +948,7 @@ class IncomingMailService
         Log::info('Put user into limbo via one-click unsubscribe', [
             'user_id' => $userId,
             'type' => $type,
+            'old_deleted' => $oldDeleted,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -1003,6 +1037,7 @@ class IncomingMailService
             Log::info('Created new user for subscribe', [
                 'user_id' => $user->id,
                 'email' => $envFrom,
+                'created_new' => TRUE,
             ]);
         } else {
             $user = User::find($userEmail->userid);
@@ -1034,7 +1069,7 @@ class IncomingMailService
         }
 
         // Add membership
-        Membership::create([
+        $membership = Membership::create([
             'userid' => $user->id,
             'groupid' => $group->id,
             'role' => 'Member',
@@ -1047,6 +1082,8 @@ class IncomingMailService
             'user_id' => $user->id,
             'group_id' => $group->id,
             'group_name' => $groupName,
+            'membership_id' => $membership->id,
+            'created_new' => TRUE,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -1137,6 +1174,19 @@ class IncomingMailService
             return RoutingResult::DROPPED;
         }
 
+        // Log full membership for reversibility before deletion.
+        Log::info('Removing membership (saving state for rollback)', [
+            'membership_id' => $membership->id,
+            'user_id' => $user->id,
+            'group_id' => $group->id,
+            'role' => $membership->role,
+            'collection' => $membership->collection,
+            'emailfrequency' => $membership->emailfrequency,
+            'eventsallowed' => $membership->eventsallowed,
+            'volunteeringallowed' => $membership->volunteeringallowed,
+            'ourPostingStatus' => $membership->ourPostingStatus,
+        ]);
+
         // Remove membership
         $membership->delete();
 
@@ -1182,6 +1232,14 @@ class IncomingMailService
      */
     private function recordBounce(int $userId, string $emailAddress): void
     {
+        // Log old value for reversibility.
+        $existing = DB::table('users_emails')
+            ->where('userid', $userId)
+            ->where('email', $emailAddress)
+            ->first();
+
+        $oldBounced = $existing?->bounced;
+
         DB::table('users_emails')
             ->where('userid', $userId)
             ->where('email', $emailAddress)
@@ -1192,6 +1250,7 @@ class IncomingMailService
         Log::info('Recorded bounce for user', [
             'user_id' => $userId,
             'email' => $emailAddress,
+            'old_bounced' => $oldBounced,
         ]);
     }
 
@@ -1484,6 +1543,7 @@ class IncomingMailService
 
         Log::info('Created chat message from email', [
             'chat_id' => $chat->id,
+            'chat_message_id' => $chatMsg->id,
             'user_id' => $userId,
             'review_required' => $reviewRequired,
         ]);
@@ -2108,11 +2168,20 @@ class IncomingMailService
         }
 
         // Create new chat
-        return ChatRoom::create([
+        $chat = ChatRoom::create([
             'chattype' => 'User2User',
             'user1' => $userId1,
             'user2' => $userId2,
         ]);
+
+        Log::info('Created new User2User chat', [
+            'chat_id' => $chat->id,
+            'user1' => $userId1,
+            'user2' => $userId2,
+            'created_new' => TRUE,
+        ]);
+
+        return $chat;
     }
 
     /**
@@ -2169,10 +2238,19 @@ class IncomingMailService
         }
 
         // Create new chat
-        return ChatRoom::create([
+        $chat = ChatRoom::create([
             'chattype' => 'User2Mod',
             'user1' => $userId,
             'groupid' => $groupId,
         ]);
+
+        Log::info('Created new User2Mod chat', [
+            'chat_id' => $chat->id,
+            'user_id' => $userId,
+            'group_id' => $groupId,
+            'created_new' => TRUE,
+        ]);
+
+        return $chat;
     }
 }
