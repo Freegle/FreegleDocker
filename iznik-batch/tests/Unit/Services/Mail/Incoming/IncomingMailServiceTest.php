@@ -2144,4 +2144,107 @@ class IncomingMailServiceTest extends TestCase
             'lng' => $lng,
         ]);
     }
+
+    public function test_routing_context_set_for_approved_post(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('ctx-member')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Context Test (London)',
+        ], 'Testing routing context.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::APPROVED, $result);
+
+        $context = $this->service->getLastRoutingContext();
+        $this->assertEquals($group->id, $context['group_id']);
+        $this->assertEquals($group->nameshort, $context['group_name']);
+        $this->assertEquals($user->id, $context['user_id']);
+    }
+
+    public function test_routing_context_empty_for_dropped(): void
+    {
+        $email = $this->createMinimalEmail([
+            'From' => 'unknown@nowhere.com',
+            'To' => 'nonexistent-subscribe@groups.ilovefreegle.org',
+            'Subject' => 'Subscribe',
+        ], 'Subscribe');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'unknown@nowhere.com',
+            'nonexistent-subscribe@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+
+        $context = $this->service->getLastRoutingContext();
+        $this->assertEmpty($context);
+    }
+
+    public function test_routing_context_reset_between_calls(): void
+    {
+        // First call sets context
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('ctx-reset')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email1 = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Reset Test (London)',
+        ], 'Testing reset.');
+
+        $parsed1 = $this->parser->parse(
+            $email1,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed1);
+        $this->assertNotEmpty($this->service->getLastRoutingContext());
+
+        // Second call should reset context
+        $email2 = $this->createMinimalEmail([
+            'From' => 'unknown@nowhere.com',
+            'To' => 'nonexistent-subscribe@groups.ilovefreegle.org',
+            'Subject' => 'Subscribe',
+        ], 'Subscribe');
+
+        $parsed2 = $this->parser->parse(
+            $email2,
+            'unknown@nowhere.com',
+            'nonexistent-subscribe@groups.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed2);
+        $this->assertEmpty($this->service->getLastRoutingContext());
+    }
 }
