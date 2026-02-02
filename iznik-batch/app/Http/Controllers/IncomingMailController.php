@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\LokiService;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use Illuminate\Http\Request;
@@ -54,8 +55,18 @@ class IncomingMailController extends Controller
             Log::info('Incoming mail processed', [
                 'sender' => $sender,
                 'recipient' => $recipient,
-                'result' => $result->type->value,
+                'result' => $result->value,
             ]);
+
+            // Log to Loki for ModTools incoming email dashboard
+            app(LokiService::class)->logIncomingEmail(
+                $sender,
+                $recipient,
+                $parsed->fromAddress,
+                $parsed->subject ?? '',
+                $parsed->messageId ?? '',
+                $result->value,
+            );
 
             return response('OK', 200);
 

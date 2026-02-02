@@ -122,6 +122,42 @@ class LokiService
     }
 
     /**
+     * Log an incoming email routing event.
+     */
+    public function logIncomingEmail(
+        string $envelopeFrom,
+        string $envelopeTo,
+        string $fromAddress,
+        string $subject,
+        string $messageId,
+        string $routingOutcome,
+    ): void {
+        if (!$this->enabled) {
+            return;
+        }
+
+        $entry = [
+            'timestamp' => now()->toIso8601String(),
+            'labels' => [
+                'app' => 'freegle',
+                'source' => 'incoming_mail',
+                'type' => 'routed',
+                'subtype' => $routingOutcome,
+            ],
+            'message' => [
+                'envelope_from' => $envelopeFrom,
+                'envelope_to' => $envelopeTo,
+                'from_address' => $fromAddress,
+                'subject' => $subject,
+                'message_id' => $messageId,
+                'routing_outcome' => $routingOutcome,
+            ],
+        ];
+
+        $this->writeLog('incoming_mail.log', $entry);
+    }
+
+    /**
      * Log a general event from batch processing.
      *
      * @param string $type Log type
