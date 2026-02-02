@@ -92,8 +92,21 @@ class IncomingMailService
             return $systemResult;
         }
 
-        // Phase 2: Check for bounces (BEFORE auto-reply check)
-        // Bounces have Auto-Submitted header but should be processed, not dropped
+        // Phase 2: Check for chat/message replies BEFORE global bounce/auto-reply filters.
+        // Legacy code (MailRouter.php:267-276) routes notify- and replyto- addresses first,
+        // with each handler applying its own nuanced bounce/auto-reply logic internally.
+        // The global filters must not intercept these or we'll drop legitimate chat replies
+        // from TN autoreplies, Nextdoor bounces, etc.
+        if ($email->isChatNotificationReply()) {
+            return $this->handleChatNotificationReply($email);
+        }
+
+        $replyToResult = $this->handleReplyToAddress($email);
+        if ($replyToResult !== null) {
+            return $replyToResult;
+        }
+
+        // Phase 3: Check for bounces
         if ($email->isBounce()) {
             return $this->handleBounce($email);
         }
@@ -122,17 +135,6 @@ class IncomingMailService
             Log::debug('Dropping message from known spammer');
 
             return RoutingResult::DROPPED;
-        }
-
-        // Phase 3: Check for chat/message replies
-        if ($email->isChatNotificationReply()) {
-            return $this->handleChatNotificationReply($email);
-        }
-
-        // Check for replyto- addresses
-        $replyToResult = $this->handleReplyToAddress($email);
-        if ($replyToResult !== null) {
-            return $replyToResult;
         }
 
         // Phase 4: Check for volunteer/auto addresses
