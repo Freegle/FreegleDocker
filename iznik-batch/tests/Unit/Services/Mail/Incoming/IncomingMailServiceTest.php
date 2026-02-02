@@ -2474,4 +2474,53 @@ class IncomingMailServiceTest extends TestCase
         $this->service->route($parsed2);
         $this->assertEmpty($this->service->getLastRoutingContext());
     }
+
+    public function test_chat_notification_reply_tracks_email_reply(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        // Create an email_tracking record simulating a chat notification that was sent to user1.
+        DB::table('email_tracking')->insert([
+            'tracking_id' => 'test-tracking-' . uniqid(),
+            'email_type' => 'ChatNotification',
+            'userid' => $user1->id,
+            'recipient_email' => $user1->emails->first()->email,
+            'subject' => 'New message from user2',
+            'metadata' => json_encode(['chat_id' => $chat->id, 'sender_id' => $user2->id]),
+            'sent_at' => now()->subMinutes(30),
+            'has_amp' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: New message from user2',
+        ], 'Thanks, I will collect it tomorrow.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // Verify the email_tracking record was updated with reply info.
+        $tracking = DB::table('email_tracking')
+            ->where('email_type', 'ChatNotification')
+            ->where('userid', $user1->id)
+            ->whereRaw("JSON_EXTRACT(metadata, '$.chat_id') = ?", [$chat->id])
+            ->first();
+
+        $this->assertNotNull($tracking->replied_at, 'replied_at should be set');
+        $this->assertEquals('email', $tracking->replied_via, 'replied_via should be email');
+    }
 }

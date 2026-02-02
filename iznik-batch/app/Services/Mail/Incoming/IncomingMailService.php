@@ -1435,6 +1435,9 @@ class IncomingMailService
         // Create the chat message
         $this->createChatMessageFromEmail($chat, $fromUser->id, $email);
 
+        // Track email reply in email_tracking for AMP comparison stats.
+        $this->trackEmailReply($chat->id, $fromUser->id);
+
         $this->lastRoutingContext = [
             'user_id' => $fromUser->id,
             'to_user_id' => $messageOwner,
@@ -1505,12 +1508,43 @@ class IncomingMailService
         // Create chat message
         $this->createChatMessageFromEmail($chat, $userId, $email);
 
+        // Track email reply in email_tracking so AMP vs email reply stats are accurate.
+        // Find the most recent chat notification sent to this user for this chat.
+        $this->trackEmailReply($chatId, $userId);
+
         $this->lastRoutingContext = [
             'user_id' => $userId,
             'chat_id' => $chatId,
         ];
 
         return RoutingResult::TO_USER;
+    }
+
+    /**
+     * Track an email reply against the most recent email_tracking record for this chat/user.
+     */
+    private function trackEmailReply(int $chatId, int $userId): void
+    {
+        try {
+            DB::table('email_tracking')
+                ->where('email_type', 'ChatNotification')
+                ->where('userid', $userId)
+                ->where('replied_at', null)
+                ->whereRaw("JSON_EXTRACT(metadata, '$.chat_id') = ?", [$chatId])
+                ->orderByDesc('sent_at')
+                ->limit(1)
+                ->update([
+                    'replied_at' => now(),
+                    'replied_via' => 'email',
+                ]);
+        } catch (\Throwable $e) {
+            // Don't let tracking failures break mail processing.
+            Log::warning('Failed to track email reply', [
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -2128,6 +2162,9 @@ class IncomingMailService
 
         // Create the chat message
         $this->createChatMessageFromEmail($chat, $senderUser->id, $email);
+
+        // Track email reply in email_tracking for AMP comparison stats.
+        $this->trackEmailReply($chat->id, $senderUser->id);
 
         $this->lastRoutingContext = [
             'user_id' => $senderUser->id,
