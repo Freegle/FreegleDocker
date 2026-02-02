@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 class LokiService
 {
     private bool $enabled = false;
+
     private string $logPath;
 
     public function __construct()
@@ -31,13 +32,13 @@ class LokiService
     /**
      * Log a batch job event.
      *
-     * @param string $jobName Name of the batch job
-     * @param string $event Event type (started, completed, failed)
-     * @param array $context Additional context data
+     * @param  string  $jobName  Name of the batch job
+     * @param  string  $event  Event type (started, completed, failed)
+     * @param  array  $context  Additional context data
      */
     public function logBatchJob(string $jobName, string $event, array $context = []): void
     {
-        if (!$this->enabled) {
+        if (! $this->enabled) {
             return;
         }
 
@@ -61,13 +62,13 @@ class LokiService
     /**
      * Log an email send event.
      *
-     * @param string $type Email type (digest, notification, etc.)
-     * @param string $recipient Recipient email address
-     * @param string $subject Email subject
-     * @param int|null $userId User ID
-     * @param int|null $groupId Group ID
-     * @param string|null $traceId Trace ID for log correlation
-     * @param array $context Additional context
+     * @param  string  $type  Email type (digest, notification, etc.)
+     * @param  string  $recipient  Recipient email address
+     * @param  string  $subject  Email subject
+     * @param  int|null  $userId  User ID
+     * @param  int|null  $groupId  Group ID
+     * @param  string|null  $traceId  Trace ID for log correlation
+     * @param  array  $context  Additional context
      */
     public function logEmailSend(
         string $type,
@@ -78,7 +79,7 @@ class LokiService
         ?string $traceId = null,
         array $context = []
     ): void {
-        if (!$this->enabled) {
+        if (! $this->enabled) {
             return;
         }
 
@@ -102,7 +103,7 @@ class LokiService
         }
 
         // Add mailable class as label if available in context.
-        if (!empty($context['mailable_class'])) {
+        if (! empty($context['mailable_class'])) {
             $labels['mailable_class'] = class_basename($context['mailable_class']);
         }
 
@@ -132,7 +133,7 @@ class LokiService
         string $messageId,
         string $routingOutcome,
     ): void {
-        if (!$this->enabled) {
+        if (! $this->enabled) {
             return;
         }
 
@@ -158,15 +159,47 @@ class LokiService
     }
 
     /**
+     * Log an email bounce event.
+     */
+    public function logBounceEvent(
+        string $email,
+        int $userId,
+        bool $isPermanent,
+        string $reason,
+    ): void {
+        if (! $this->enabled) {
+            return;
+        }
+
+        $entry = [
+            'timestamp' => now()->toIso8601String(),
+            'labels' => [
+                'app' => 'freegle',
+                'source' => 'bounce',
+                'type' => 'bounced',
+                'subtype' => $isPermanent ? 'permanent' : 'temporary',
+            ],
+            'message' => [
+                'email' => $email,
+                'user_id' => $userId,
+                'is_permanent' => $isPermanent,
+                'reason' => $reason,
+            ],
+        ];
+
+        $this->writeLog('bounce.log', $entry);
+    }
+
+    /**
      * Log a general event from batch processing.
      *
-     * @param string $type Log type
-     * @param string $subtype Log subtype
-     * @param array $context Additional context
+     * @param  string  $type  Log type
+     * @param  string  $subtype  Log subtype
+     * @param  array  $context  Additional context
      */
     public function logEvent(string $type, string $subtype, array $context = []): void
     {
-        if (!$this->enabled) {
+        if (! $this->enabled) {
             return;
         }
 
@@ -177,7 +210,7 @@ class LokiService
             'subtype' => $subtype,
         ];
 
-        if (!empty($context['groupid'])) {
+        if (! empty($context['groupid'])) {
             $labels['groupid'] = (string) $context['groupid'];
         }
 
@@ -196,21 +229,21 @@ class LokiService
     /**
      * Write a log entry to a JSON file.
      *
-     * @param string $filename Log filename
-     * @param array $entry Log entry
+     * @param  string  $filename  Log filename
+     * @param  array  $entry  Log entry
      */
     private function writeLog(string $filename, array $entry): void
     {
-        $logFile = $this->logPath . '/' . $filename;
+        $logFile = $this->logPath.'/'.$filename;
 
         // Ensure directory exists.
         $dir = dirname($logFile);
-        if (!is_dir($dir)) {
+        if (! is_dir($dir)) {
             @mkdir($dir, 0755, true);
         }
 
         // Write as JSON line.
-        $line = json_encode($entry) . "\n";
+        $line = json_encode($entry)."\n";
         @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
     }
 
@@ -221,8 +254,9 @@ class LokiService
     {
         $parts = explode('@', $email);
         if (count($parts) === 2) {
-            return substr(md5($parts[0]), 0, 8) . '@' . $parts[1];
+            return substr(md5($parts[0]), 0, 8).'@'.$parts[1];
         }
+
         return substr(md5($email), 0, 16);
     }
 }
