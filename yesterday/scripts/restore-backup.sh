@@ -44,7 +44,16 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 # This is critical - the restore script kills ALL containers (including yesterday services)
 # early in the process. If it fails before reaching the restart code at the end,
 # the yesterday services (API, 2FA, traefik) stay dead, breaking the entire system.
-trap 'update_status "failed" "Restore failed - check logs"; echo "Restarting yesterday services after failure..."; docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d 2>/dev/null || true; echo "✅ Yesterday services restarted"' ERR
+cleanup_on_failure() {
+    update_status "failed" "Restore failed - check logs"
+    echo "Restarting main Docker stack after failure..."
+    cd /var/www/FreegleDocker
+    docker compose up -d 2>/dev/null || true
+    echo "Restarting yesterday services after failure..."
+    docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d 2>/dev/null || true
+    echo "✅ Services restarted after failure"
+}
+trap cleanup_on_failure ERR
 
 echo "=== Yesterday Restoration Started: $(date) ==="
 echo "Restoring backup from date: ${BACKUP_DATE}..."
@@ -389,9 +398,16 @@ if [ -n "$LOKI_BACKUP" ]; then
     echo "Clearing existing Loki data..."
     rm -rf "${LOKI_VOLUME_PATH}"/*
 
-    # Extract Loki backup directly to volume
+    # Download Loki backup to local file first, then extract
+    # gsutil cp has built-in retries and resumable downloads, unlike gsutil cat which
+    # streams through a single SSL connection that fails on large files (20GB+)
+    LOKI_LOCAL="/tmp/loki-backup.tar.gz"
+    echo "Downloading Loki backup to local file..."
+    rm -f "$LOKI_LOCAL"
+    gsutil -o 'GSUtil:resumable_threshold=1048576' cp "$LOKI_BACKUP" "$LOKI_LOCAL"
     echo "Extracting Loki backup to volume..."
-    gsutil cat "$LOKI_BACKUP" | tar -xzf - -C "${LOKI_VOLUME_PATH}" --strip-components=1
+    tar -xzf "$LOKI_LOCAL" -C "${LOKI_VOLUME_PATH}" --strip-components=1
+    rm -f "$LOKI_LOCAL"
 
     # Set ownership for Loki (runs as UID 10001)
     chown -R 10001:10001 "${LOKI_VOLUME_PATH}"
