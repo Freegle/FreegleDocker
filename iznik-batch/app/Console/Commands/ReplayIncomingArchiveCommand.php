@@ -195,7 +195,7 @@ class ReplayIncomingArchiveCommand extends Command
                 throw new \RuntimeException('Invalid JSON: '.json_last_error_msg());
             }
 
-            if (! isset($archive['version']) || $archive['version'] !== 1) {
+            if (! isset($archive['version']) || ! in_array($archive['version'], [1, 2])) {
                 throw new \RuntimeException('Unsupported archive version');
             }
 

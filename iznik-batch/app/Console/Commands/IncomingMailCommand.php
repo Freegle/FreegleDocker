@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\LokiService;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
@@ -68,7 +69,7 @@ class IncomingMailCommand extends Command
             // Output the result
             $this->line($result->value);
 
-            // Log for monitoring
+            // Log for monitoring (Laravel log)
             Log::channel('incoming_mail')->info('Mail processed', [
                 'source' => 'batch',
                 'job' => 'mail:incoming',
@@ -79,6 +80,16 @@ class IncomingMailCommand extends Command
                 'message_id' => $parsed->messageId,
                 'routing_result' => $result->value,
             ]);
+
+            // Log to Loki for ModTools incoming email dashboard
+            app(LokiService::class)->logIncomingEmail(
+                $sender,
+                $recipient,
+                $parsed->fromAddress,
+                $parsed->subject ?? '',
+                $parsed->messageId ?? '',
+                $result->value,
+            );
 
             return $result->getExitCode();
 
