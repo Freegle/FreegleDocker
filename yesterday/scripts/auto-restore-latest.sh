@@ -88,6 +88,26 @@ echo "🔄 New backup available: $LATEST_DATE (current: ${CURRENT_DATE:-none})"
 echo "Starting automatic restoration via API..."
 echo ""
 
+# Ensure yesterday services are running before attempting restore via API
+# The restore script kills ALL containers, and if a previous restore failed,
+# the yesterday-api container will still be dead.
+if ! curl -sf http://localhost:8082/health >/dev/null 2>&1; then
+    echo "⚠️  Yesterday API is not running - starting yesterday services..."
+    docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d 2>&1
+    # Wait for API to be healthy
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:8082/health >/dev/null 2>&1; then
+            echo "✅ Yesterday API is now running"
+            break
+        fi
+        sleep 2
+    done
+    if ! curl -sf http://localhost:8082/health >/dev/null 2>&1; then
+        echo "❌ Failed to start yesterday API - cannot trigger restore"
+        exit 1
+    fi
+fi
+
 # Trigger restoration via API so progress is tracked
 API_RESPONSE=$(curl -s -X POST http://localhost:8082/api/backups/${LATEST_DATE}/load)
 echo "API Response: $API_RESPONSE"
