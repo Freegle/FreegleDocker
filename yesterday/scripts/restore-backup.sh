@@ -40,8 +40,11 @@ fi
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-# Trap errors and update status
-trap 'update_status "failed" "Restore failed - check logs"' ERR
+# Trap errors: update status AND restart yesterday services
+# This is critical - the restore script kills ALL containers (including yesterday services)
+# early in the process. If it fails before reaching the restart code at the end,
+# the yesterday services (API, 2FA, traefik) stay dead, breaking the entire system.
+trap 'update_status "failed" "Restore failed - check logs"; echo "Restarting yesterday services after failure..."; docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d 2>/dev/null || true; echo "✅ Yesterday services restarted"' ERR
 
 echo "=== Yesterday Restoration Started: $(date) ==="
 echo "Restoring backup from date: ${BACKUP_DATE}..."

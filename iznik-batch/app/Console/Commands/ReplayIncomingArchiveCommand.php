@@ -6,6 +6,7 @@ use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 
@@ -101,6 +102,7 @@ class ReplayIncomingArchiveCommand extends Command
             'matched' => 0,
             'mismatched' => 0,
             'errors' => 0,
+            'skipped' => 0,
         ];
 
         $progressBar = $this->output->createProgressBar(count($files));
@@ -113,6 +115,8 @@ class ReplayIncomingArchiveCommand extends Command
             $stats['total']++;
             if ($result['error']) {
                 $stats['errors']++;
+            } elseif (isset($result['skipped_reason'])) {
+                $stats['skipped']++;
             } elseif ($result['match']) {
                 $stats['matched']++;
             } else {
@@ -184,6 +188,12 @@ class ReplayIncomingArchiveCommand extends Command
             'envelope_from' => null,
             'envelope_to' => null,
             'subject' => null,
+            'routing_context' => null,
+            'new_user_id' => null,
+            'new_group_id' => null,
+            'new_chat_id' => null,
+            'user_id_mismatch' => false,
+            'legacy_user_id' => null,
         ];
 
         try {
@@ -195,7 +205,7 @@ class ReplayIncomingArchiveCommand extends Command
                 throw new \RuntimeException('Invalid JSON: '.json_last_error_msg());
             }
 
-            if (! isset($archive['version']) || $archive['version'] !== 1) {
+            if (! isset($archive['version']) || ! in_array($archive['version'], [1, 2])) {
                 throw new \RuntimeException('Unsupported archive version');
             }
 
@@ -210,16 +220,56 @@ class ReplayIncomingArchiveCommand extends Command
             $result['legacy_outcome'] = $legacyOutcome;
             $result['subject'] = $archive['legacy_result']['subject'] ?? null;
 
+            // Capture routing context from v2 archives for mismatch diagnostics
+            if ($archive['version'] >= 2) {
+                $result['routing_context'] = [
+                    'our_posting_status' => $archive['legacy_result']['our_posting_status'] ?? null,
+                    'membership_role' => $archive['legacy_result']['membership_role'] ?? null,
+                    'group_moderated' => $archive['legacy_result']['group_moderated'] ?? null,
+                    'override_moderation' => $archive['legacy_result']['override_moderation'] ?? null,
+                ];
+            }
+
+            // Check if legacy didn't save the message (message_id is null)
+            // This happens when:
+            // 1. Message was a duplicate (same message-id already in DB) - failok=true
+            // 2. Message failed to parse/save for other reasons - failok=false
+            // In both cases, legacy never called route(), so we shouldn't route either.
+            // We just accept the legacy outcome as correct for these cases.
+            $legacyMessageId = $archive['legacy_result']['message_id'] ?? null;
+            if ($legacyMessageId === null) {
+                // Legacy didn't save this message, so don't try to route it
+                $result['new_outcome'] = $legacyOutcome;
+                $result['match'] = true;  // Accept legacy outcome as authoritative
+                $result['skipped_reason'] = 'Legacy did not save message (duplicate or parse failure)';
+
+                return $result;
+            }
+
             // Parse email through new code
             $parsed = $this->parserService->parse($rawEmail, $envelopeFrom, $envelopeTo);
 
             // Route through new code in dry-run mode (no DB writes)
-            $newOutcome = $this->incomingMailService->routeDryRun($parsed);
+            $outcome = $this->incomingMailService->routeDryRun($parsed);
+            $newOutcome = $outcome->result;
             $result['new_outcome'] = $newOutcome->value;
+            $result['new_user_id'] = $outcome->userId;
+            $result['new_group_id'] = $outcome->groupId;
+            $result['new_chat_id'] = $outcome->chatId;
 
             // Compare outcomes
             $expectedNewOutcome = self::LEGACY_TO_NEW_MAP[$legacyOutcome] ?? null;
             $result['match'] = ($newOutcome === $expectedNewOutcome);
+
+            // If outcomes match, also compare user_id if both are available
+            if ($result['match'] && $outcome->userId !== null) {
+                $legacyUserId = $archive['legacy_result']['user_id'] ?? null;
+                if ($legacyUserId !== null && (int) $legacyUserId !== $outcome->userId) {
+                    $result['match'] = false;
+                    $result['user_id_mismatch'] = true;
+                    $result['legacy_user_id'] = (int) $legacyUserId;
+                }
+            }
 
         } catch (\Throwable $e) {
             $result['error'] = $e->getMessage();
@@ -245,6 +295,7 @@ class ReplayIncomingArchiveCommand extends Command
                 ['Total', $stats['total'], '100%'],
                 ['Matched', $stats['matched'], $this->percentage($stats['matched'], $stats['total'])],
                 ['Mismatched', $stats['mismatched'], $this->percentage($stats['mismatched'], $stats['total'])],
+                ['Skipped (duplicates)', $stats['skipped'], $this->percentage($stats['skipped'], $stats['total'])],
                 ['Errors', $stats['errors'], $this->percentage($stats['errors'], $stats['total'])],
             ]
         );
@@ -312,6 +363,42 @@ class ReplayIncomingArchiveCommand extends Command
         }
         $this->line(sprintf('  <fg=green>Legacy:</> %s', $result['legacy_outcome']));
         $this->line(sprintf('  <fg=red>New:</> %s', $result['new_outcome']));
+
+        // Show routing context from v2 archives to aid diagnosis
+        if (! empty($result['routing_context'])) {
+            $ctx = $result['routing_context'];
+            $this->line(sprintf(
+                '  <fg=cyan>Context:</> postingStatus=%s role=%s groupModerated=%s override=%s',
+                $ctx['our_posting_status'] ?? 'NULL',
+                $ctx['membership_role'] ?? 'NULL',
+                $ctx['group_moderated'] === null ? 'NULL' : ($ctx['group_moderated'] ? 'yes' : 'no'),
+                $ctx['override_moderation'] ?? 'NULL'
+            ));
+        }
+
+        // Show user ID mismatch if outcomes matched but user IDs differ
+        if (! empty($result['user_id_mismatch'])) {
+            $this->line(sprintf(
+                '  <fg=magenta>User ID mismatch:</> legacy=%d new=%d',
+                $result['legacy_user_id'],
+                $result['new_user_id']
+            ));
+        }
+
+        // Show new routing context (user/group/chat)
+        $contextParts = [];
+        if (! empty($result['new_user_id'])) {
+            $contextParts[] = 'user=' . $result['new_user_id'];
+        }
+        if (! empty($result['new_group_id'])) {
+            $contextParts[] = 'group=' . $result['new_group_id'];
+        }
+        if (! empty($result['new_chat_id'])) {
+            $contextParts[] = 'chat=' . $result['new_chat_id'];
+        }
+        if (! empty($contextParts)) {
+            $this->line(sprintf('  <fg=blue>New routing:</> %s', implode(' ', $contextParts)));
+        }
     }
 
     /**
@@ -324,5 +411,34 @@ class ReplayIncomingArchiveCommand extends Command
         }
 
         return sprintf('%.1f%%', ($count / $total) * 100);
+    }
+
+    /**
+     * Extract Message-Id from raw email.
+     */
+    private function extractMessageId(string $rawEmail): ?string
+    {
+        // Match Message-Id header (case insensitive)
+        if (preg_match('/^Message-I[dD]:\s*<?([^>\s]+)>?\s*$/mi', $rawEmail, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if message is a duplicate (already exists in database).
+     *
+     * Legacy behavior: message-id has group suffix appended, so we check with LIKE.
+     * This matches both exact message-id and message-id-{groupid} variants.
+     */
+    private function isDuplicateMessage(string $messageId): bool
+    {
+        // The legacy code appends "-{groupid}" to message-ids, so we need to check
+        // for both the exact message-id and any with a suffix
+        return DB::table('messages')
+            ->where('messageid', $messageId)
+            ->orWhere('messageid', 'LIKE', $messageId.'-%')
+            ->exists();
     }
 }

@@ -204,13 +204,59 @@ class ParsedEmail
      */
     public function isAutoReply(): bool
     {
+        // Check Auto-Submitted header (RFC 3834)
         $autoSubmitted = $this->getHeader('auto-submitted');
-        if ($autoSubmitted === null) {
-            return false;
+        if ($autoSubmitted !== null && strtolower($autoSubmitted) !== 'no') {
+            return TRUE;
         }
 
-        // RFC 3834: 'no' means manual, anything else is automatic
-        return strtolower($autoSubmitted) !== 'no';
+        // Check subject patterns (matches legacy Message::isAutoreply)
+        $autoReplySubjects = [
+            'Auto Response', 'Autoresponder', 'If your enquiry is urgent',
+            'Thankyou for your enquiry', 'Thanks for your email',
+            'Thanks for contacting', 'Thank you for your enquiry',
+            'Many thanks for your', 'Automatic reply', 'Automated reply',
+            'Auto-Reply', 'Out of Office', 'maternity leave', 'paternity leave',
+            'return to the office', 'due to return', 'annual leave',
+            'on holiday', 'vacation reply', 'YOUR ORDER MANAGEMENT REQUEST',
+        ];
+
+        $subject = $this->subject ?? '';
+        foreach ($autoReplySubjects as $pattern) {
+            if (stripos($subject, $pattern) !== FALSE) {
+                return TRUE;
+            }
+        }
+
+        // Check body patterns (matches legacy Message::isAutoreply)
+        $autoReplyBodies = [
+            'I aim to respond within', 'Our team aims to respond',
+            'reply as soon as possible', 'with clients right now',
+            'Automated response', 'Please note his new address',
+            'THIS IS AN AUTO-RESPONSE MESSAGE', 'out of the office',
+            'on annual leave', 'Thank you so much for your email enquiry',
+            "Thanks for your email enquiry", "don't check this very often",
+            'below to complete the verification process',
+            'We respond to emails as quickly as we can',
+            'this email address is no longer in use', 'away from the office',
+            "I won't be able to check any emails until after",
+            "I'm on leave at the moment",
+            "We'll get back to you as soon as possible",
+            'currently on leave', 'To complete this verification',
+            'I am currently away from my computer, but will reply to your message as soon as I return',
+            "E-mails to personal mailboxes aren't monitored",
+            'I am currently unavailable',
+            'We appreciate your patience while we get back to you.',
+        ];
+
+        $body = $this->textBody ?? '';
+        foreach ($autoReplyBodies as $pattern) {
+            if (stripos($body, $pattern) !== FALSE) {
+                return TRUE;
+            }
+        }
+
+        return FALSE;
     }
 
     /**
