@@ -19,8 +19,9 @@ COPY transport /etc/postfix/transport
 COPY freegle-mail-handler /usr/local/bin/freegle-mail-handler
 RUN chmod +x /usr/local/bin/freegle-mail-handler
 
-# Build the transport map (Alpine uses lmdb, not hash)
-RUN postmap lmdb:/etc/postfix/transport
+# Build lookup tables (Alpine uses lmdb, not hash)
+RUN postmap lmdb:/etc/postfix/transport && \
+    postalias lmdb:/etc/postfix/aliases
 
 # Create spool directories
 RUN mkdir -p /var/spool/postfix && \
