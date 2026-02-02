@@ -8,6 +8,7 @@ use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Tests\Support\EmailFixtures;
 use Tests\TestCase;
 
@@ -580,6 +581,231 @@ class IncomingMailServiceTest extends TestCase
         // Refresh and check the user's email is now marked as bounced
         $userEmail->refresh();
         $this->assertNotNull($userEmail->bounced, 'Email should be marked as bounced');
+    }
+
+    public function test_permanent_bounce_to_group_address_suspends_user_email(): void
+    {
+        // Issue #39: Bounces delivered to group addresses (not bounce-{userid}) should
+        // still record the bounce by looking up the recipient email in users_emails.
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('group-bounce')]);
+        $userEmail = $user->emails->first();
+
+        $bounceEmail = $this->createBounceEmail(
+            $userEmail->email,
+            '5.2.2',
+            'mailbox full'
+        );
+
+        $parsed = $this->parser->parse(
+            $bounceEmail,
+            'MAILER-DAEMON@outlook.com',
+            'Bexhillfreegle-auto@groups.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed);
+
+        $userEmail->refresh();
+        $this->assertNotNull($userEmail->bounced, 'Bounce to group address should still mark email as bounced');
+    }
+
+    public function test_temporary_bounce_to_group_address_not_recorded(): void
+    {
+        // Temporary bounces (4.x.x) should NOT be recorded as permanent bounces.
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('temp-bounce')]);
+        $userEmail = $user->emails->first();
+
+        $bounceEmail = $this->createBounceEmail(
+            $userEmail->email,
+            '4.2.2',
+            'mailbox full temporarily'
+        );
+
+        $parsed = $this->parser->parse(
+            $bounceEmail,
+            'MAILER-DAEMON@outlook.com',
+            'Somefreegle-auto@groups.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed);
+
+        $userEmail->refresh();
+        $this->assertNull($userEmail->bounced, 'Temporary bounce should not mark email as bounced');
+    }
+
+    // ========================================
+    // Human Reply to Bounce Address Tests (Issue #40)
+    // ========================================
+
+    public function test_human_reply_to_bounce_address_sends_auto_reply(): void
+    {
+        // A human replying to a bounce- address should get a helpful auto-reply
+        // and the email should be routed as TO_SYSTEM.
+        Mail::fake();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'arthurcoxhill@gmail.com',
+            'Subject' => 'Re: [Lancaster Morecambe Freegle] What\'s New (36 messages)',
+        ], 'Thanks for the digest, I want to reply to a post.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'arthurcoxhill@gmail.com',
+            'bounce-44294373-1770054044@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+        Mail::assertSent(\App\Mail\BounceAddressAutoReply::class, function ($mail) {
+            return $mail->hasTo('arthurcoxhill@gmail.com');
+        });
+    }
+
+    public function test_auto_reply_not_sent_to_mailer_daemon(): void
+    {
+        // Loop prevention: never auto-reply to mailer-daemon
+        Mail::fake();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'MAILER-DAEMON@example.com',
+            'Subject' => 'Delivery failure',
+        ], 'Could not deliver.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'MAILER-DAEMON@example.com',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        // Not a DSN so won't be detected as bounce by isBounce() — should still
+        // hit the bounce-address handler in routeSystemAddress
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+        Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
+    }
+
+    public function test_auto_reply_not_sent_to_noreply(): void
+    {
+        Mail::fake();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'noreply@example.com',
+            'Subject' => 'Automated message',
+        ], 'This is automated.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'noreply@example.com',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+        Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
+    }
+
+    public function test_auto_reply_not_sent_to_bounce_address(): void
+    {
+        Mail::fake();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'bounce-99999-11111@users.ilovefreegle.org',
+            'Subject' => 'Re: something',
+        ], 'Reply from another bounce address.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'bounce-99999-11111@users.ilovefreegle.org',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+        Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
+    }
+
+    public function test_auto_reply_not_sent_when_auto_submitted_header(): void
+    {
+        Mail::fake();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'Subject' => 'Out of office',
+            'Auto-Submitted' => 'auto-replied',
+        ], 'I am away.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'user@example.com',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+        Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
+    }
+
+    public function test_auto_reply_rate_limited_per_sender(): void
+    {
+        // Second reply from same sender within 24h should NOT get auto-reply
+        Mail::fake();
+
+        $email = $this->createMinimalEmail([
+            'From' => 'repeater@example.com',
+            'Subject' => 'Re: digest',
+        ], 'First reply.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            'repeater@example.com',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed);
+        Mail::assertSent(\App\Mail\BounceAddressAutoReply::class);
+
+        // Second reply
+        Mail::fake();
+        $email2 = $this->createMinimalEmail([
+            'From' => 'repeater@example.com',
+            'Subject' => 'Re: digest again',
+        ], 'Second reply.');
+
+        $parsed2 = $this->parser->parse(
+            $email2,
+            'repeater@example.com',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $this->service->route($parsed2);
+        Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
+    }
+
+    public function test_dsn_bounce_to_bounce_address_not_auto_replied(): void
+    {
+        // Actual DSN bounces should be handled by handleBounce, not auto-replied
+        Mail::fake();
+
+        $bounceEmail = $this->createBounceEmail(
+            'recipient@example.com',
+            '5.1.1',
+            'User unknown'
+        );
+
+        $parsed = $this->parser->parse(
+            $bounceEmail,
+            'MAILER-DAEMON@ilovefreegle.org',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+        Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
     }
 
     // ========================================

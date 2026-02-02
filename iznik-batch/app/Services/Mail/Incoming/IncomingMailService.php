@@ -9,8 +9,10 @@ use App\Models\Membership;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\UserEmail;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail as MailFacade;
 
 /**
  * Service for routing incoming email messages.
@@ -128,6 +130,14 @@ class IncomingMailService
         // Phase 3: Check for bounces
         if ($email->isBounce()) {
             return $this->handleBounce($email);
+        }
+
+        // Phase 3b: Human reply to bounce return-path address (issue #40).
+        // Non-DSN emails to bounce-{userid}-{timestamp}@ addresses are human replies
+        // that replied to Return-Path instead of Reply-To. Send helpful auto-reply.
+        $localPart = explode('@', $email->envelopeTo)[0] ?? '';
+        if (str_starts_with($localPart, 'bounce-')) {
+            return $this->handleHumanReplyToBounceAddress($email);
         }
 
         // Check for known dropped senders (Twitter, etc.)
@@ -876,7 +886,7 @@ class IncomingMailService
 
             Log::info('Turned off notification mails for user', [
                 'user_id' => $userId,
-                'old_notificationmails' => TRUE,
+                'old_notificationmails' => true,
             ]);
         }
 
@@ -1040,7 +1050,7 @@ class IncomingMailService
             Log::info('Created new user for subscribe', [
                 'user_id' => $user->id,
                 'email' => $envFrom,
-                'created_new' => TRUE,
+                'created_new' => true,
             ]);
         } else {
             $user = User::find($userEmail->userid);
@@ -1086,7 +1096,7 @@ class IncomingMailService
             'group_id' => $group->id,
             'group_name' => $groupName,
             'membership_id' => $membership->id,
-            'created_new' => TRUE,
+            'created_new' => true,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -1213,14 +1223,26 @@ class IncomingMailService
             'permanent' => $email->isPermanentBounce(),
         ]);
 
-        // Extract user ID from bounce address if present
-        $localPart = explode('@', $email->envelopeTo)[0] ?? '';
-        if (preg_match('/^bounce-(\d+)-/', $localPart, $matches)) {
-            $userId = (int) $matches[1];
+        if ($email->isPermanentBounce() && $email->bounceRecipient) {
+            // Extract user ID from bounce address if present
+            $localPart = explode('@', $email->envelopeTo)[0] ?? '';
+            if (preg_match('/^bounce-(\d+)-/', $localPart, $matches)) {
+                $this->recordBounce((int) $matches[1], $email->bounceRecipient);
+            } else {
+                // Bounce delivered to a group/other address — look up recipient directly.
+                // This handles cases where the original email was sent from a group address
+                // rather than a bounce- address (issue #39).
+                $userEmail = DB::table('users_emails')
+                    ->where('email', $email->bounceRecipient)
+                    ->first();
 
-            if ($email->isPermanentBounce() && $email->bounceRecipient) {
-                // Record permanent bounce against user's email
-                $this->recordBounce($userId, $email->bounceRecipient);
+                if ($userEmail) {
+                    $this->recordBounce($userEmail->userid, $email->bounceRecipient);
+                } else {
+                    Log::info('Bounce recipient not found in users_emails', [
+                        'recipient' => $email->bounceRecipient,
+                    ]);
+                }
             }
         }
 
@@ -1255,6 +1277,64 @@ class IncomingMailService
             'email' => $emailAddress,
             'old_bounced' => $oldBounced,
         ]);
+    }
+
+    /**
+     * Handle human replies to bounce return-path addresses (issue #40).
+     *
+     * Some email clients reply to Return-Path instead of Reply-To. When this
+     * happens, the reply goes to bounce-{userid}-{timestamp}@users... which is
+     * only meant for DSN processing. We send a helpful auto-reply explaining
+     * how to reach Freegle properly.
+     */
+    private function handleHumanReplyToBounceAddress(ParsedEmail $email): RoutingResult
+    {
+        $senderAddress = strtolower($email->fromAddress ?? $email->envelopeFrom ?? '');
+
+        Log::info('Human reply to bounce address', [
+            'from' => $senderAddress,
+            'envelope_to' => $email->envelopeTo,
+            'subject' => $email->subject,
+        ]);
+
+        // Loop prevention: never auto-reply to these senders
+        $suppressPatterns = ['mailer-daemon', 'postmaster', 'noreply', 'no-reply', 'bounce-'];
+        foreach ($suppressPatterns as $pattern) {
+            if (str_contains($senderAddress, $pattern)) {
+                Log::debug('Suppressing auto-reply to system address', ['from' => $senderAddress]);
+
+                return RoutingResult::TO_SYSTEM;
+            }
+        }
+
+        // Loop prevention: never auto-reply to auto-submitted messages
+        if ($email->isAutoReply()) {
+            Log::debug('Suppressing auto-reply to auto-submitted message');
+
+            return RoutingResult::TO_SYSTEM;
+        }
+
+        // Rate limit: max 1 auto-reply per 24h per sender
+        $cacheKey = 'bounce_autoreply:'.md5($senderAddress);
+        if (Cache::has($cacheKey)) {
+            Log::debug('Rate limiting auto-reply', ['from' => $senderAddress]);
+
+            return RoutingResult::TO_SYSTEM;
+        }
+
+        // Send auto-reply
+        try {
+            MailFacade::to($senderAddress)->send(new \App\Mail\BounceAddressAutoReply($senderAddress));
+            Cache::put($cacheKey, true, now()->addHours(24));
+            Log::info('Sent bounce address auto-reply', ['to' => $senderAddress]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send bounce address auto-reply', [
+                'to' => $senderAddress,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return RoutingResult::TO_SYSTEM;
     }
 
     /**
@@ -2184,7 +2264,7 @@ class IncomingMailService
             'chat_id' => $chat->id,
             'user1' => $userId1,
             'user2' => $userId2,
-            'created_new' => TRUE,
+            'created_new' => true,
         ]);
 
         return $chat;
@@ -2254,7 +2334,7 @@ class IncomingMailService
             'chat_id' => $chat->id,
             'user_id' => $userId,
             'group_id' => $groupId,
-            'created_new' => TRUE,
+            'created_new' => true,
         ]);
 
         return $chat;
