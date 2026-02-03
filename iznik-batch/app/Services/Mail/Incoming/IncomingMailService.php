@@ -41,16 +41,22 @@ class IncomingMailService
 
     private StripQuotedService $stripQuoted;
 
+    private BounceService $bounceService;
+
     /**
      * Context from the last routing decision (group name, user id, etc.).
      * Set during route() and read by controllers for logging.
      */
     private array $lastRoutingContext = [];
 
-    public function __construct(?SpamCheckService $spamCheck = null, ?StripQuotedService $stripQuoted = null)
-    {
+    public function __construct(
+        ?SpamCheckService $spamCheck = null,
+        ?StripQuotedService $stripQuoted = null,
+        ?BounceService $bounceService = null
+    ) {
         $this->spamCheck = $spamCheck ?? app(SpamCheckService::class);
         $this->stripQuoted = $stripQuoted ?? new StripQuotedService;
+        $this->bounceService = $bounceService ?? new BounceService;
     }
 
     /**
@@ -1215,69 +1221,59 @@ class IncomingMailService
 
     /**
      * Handle bounce messages.
+     *
+     * Processes DSN bounce messages by:
+     * 1. Parsing the DSN to extract diagnostic code and recipient
+     * 2. Classifying as permanent, temporary, or ignored
+     * 3. Recording in bounces_emails table
+     * 4. Checking if user should be suspended (inline, not via cron)
+     *
+     * @see BounceService for full implementation details
      */
     private function handleBounce(ParsedEmail $email): RoutingResult
     {
         Log::info('Processing bounce', [
             'recipient' => $email->bounceRecipient,
             'status' => $email->bounceStatus,
-            'permanent' => $email->isPermanentBounce(),
+            'envelope_to' => $email->envelopeTo,
         ]);
 
-        if ($email->isPermanentBounce() && $email->bounceRecipient) {
-            // Extract user ID from bounce address if present
-            $localPart = explode('@', $email->envelopeTo)[0] ?? '';
-            if (preg_match('/^bounce-(\d+)-/', $localPart, $matches)) {
-                $this->recordBounce((int) $matches[1], $email->bounceRecipient);
-            } else {
-                // Bounce delivered to a group/other address — look up recipient directly.
-                // This handles cases where the original email was sent from a group address
-                // rather than a bounce- address (issue #39).
-                $userEmail = DB::table('users_emails')
-                    ->where('email', $email->bounceRecipient)
-                    ->first();
+        $result = $this->bounceService->processBounce($email);
 
-                if ($userEmail) {
-                    $this->recordBounce($userEmail->userid, $email->bounceRecipient);
-                } else {
-                    Log::info('Bounce recipient not found in users_emails', [
-                        'recipient' => $email->bounceRecipient,
-                    ]);
+        if (! $result['success']) {
+            $error = $result['error'] ?? 'unknown';
+            Log::warning('Bounce processing failed', [
+                'error' => $error,
+                'envelope_to' => $email->envelopeTo,
+            ]);
+
+            // For unparseable DSNs, only return ERROR if we expected valid DSN data.
+            // If the parser already determined there's no bounceRecipient, this might
+            // be a human reply that was incorrectly flagged as a bounce. Return TO_SYSTEM
+            // to match legacy behavior and allow the routing to continue to other handlers.
+            if ($error === 'unparseable') {
+                if ($email->bounceRecipient !== null) {
+                    // We had recipient info but couldn't parse - this is a real error
+                    $this->lastRoutingContext = [
+                        'routing_reason' => 'Bounce parse failed',
+                    ];
+
+                    return RoutingResult::ERROR;
                 }
+                // No recipient info - probably not a real DSN, return TO_SYSTEM quietly
+                Log::debug('Bounce without recipient info - treating as non-bounce');
             }
         }
 
+        // Update routing context
+        if (isset($result['user_id'])) {
+            $this->lastRoutingContext = [
+                'user_id' => $result['user_id'],
+                'routing_reason' => 'Bounce processed'.($result['suspended'] ?? false ? ' (user suspended)' : ''),
+            ];
+        }
+
         return RoutingResult::TO_SYSTEM;
-    }
-
-    /**
-     * Record a bounce against a user's email.
-     *
-     * The bounced column stores a timestamp (when the bounce was recorded),
-     * not a count. Setting it marks the email as having bounced.
-     */
-    private function recordBounce(int $userId, string $emailAddress): void
-    {
-        // Log old value for reversibility.
-        $existing = DB::table('users_emails')
-            ->where('userid', $userId)
-            ->where('email', $emailAddress)
-            ->first();
-
-        $oldBounced = $existing?->bounced;
-
-        DB::table('users_emails')
-            ->where('userid', $userId)
-            ->where('email', $emailAddress)
-            ->update([
-                'bounced' => now(),
-            ]);
-
-        Log::info('Recorded bounce for user', [
-            'user_id' => $userId,
-            'email' => $emailAddress,
-            'old_bounced' => $oldBounced,
-        ]);
     }
 
     /**

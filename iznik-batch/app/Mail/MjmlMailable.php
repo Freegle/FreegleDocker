@@ -266,8 +266,11 @@ abstract class MjmlMailable extends Mailable
     {
         $headers = $message->getHeaders();
 
-        // Trace ID for correlating email with Loki logs.
-        $headers->addTextHeader('X-Freegle-Trace-Id', $this->traceId);
+        // Trace ID for correlating email with Loki logs and bounce tracking.
+        // If this mailable uses TrackableEmail trait, use the email_tracking.tracking_id
+        // so bounces can be linked back to the specific email sent.
+        $traceId = $this->getTraceIdForHeader();
+        $headers->addTextHeader('X-Freegle-Trace-Id', $traceId);
 
         // Email type for filtering/categorization.
         $headers->addTextHeader('X-Freegle-Email-Type', class_basename($this));
@@ -289,6 +292,28 @@ abstract class MjmlMailable extends Mailable
     protected function getRecipientUserId(): ?int
     {
         return null;
+    }
+
+    /**
+     * Get the trace ID to use in the X-Freegle-Trace-Id header.
+     *
+     * If this mailable uses the TrackableEmail trait and has an EmailTracking record,
+     * use the tracking_id from that record. This allows bounce messages to be linked
+     * back to the specific email that was sent.
+     *
+     * Otherwise, use the default traceId generated in the constructor.
+     */
+    protected function getTraceIdForHeader(): string
+    {
+        // Check if this class uses TrackableEmail trait and has tracking initialized
+        if (method_exists($this, 'getTracking')) {
+            $tracking = $this->getTracking();
+            if ($tracking && $tracking->tracking_id) {
+                return $tracking->tracking_id;
+            }
+        }
+
+        return $this->traceId;
     }
 
     /**
