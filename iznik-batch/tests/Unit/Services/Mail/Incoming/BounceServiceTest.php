@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Services\Mail\Incoming;
 
+use App\Models\EmailTracking;
 use App\Models\User;
 use App\Models\UserEmail;
 use App\Services\Mail\Incoming\BounceService;
@@ -671,5 +672,221 @@ DSN;
         $this->assertDatabaseMissing('bounces_emails', [
             'emailid' => $userEmail->id,
         ]);
+    }
+
+    // ===================================================================
+    // Email Tracking Integration Tests
+    // ===================================================================
+
+    public function test_extracts_trace_id_from_dsn(): void
+    {
+        $dsnBody = <<<'DSN'
+From: Mail Delivery System <MAILER-DAEMON@example.com>
+Subject: Mail delivery failed
+
+Diagnostic-Code: smtp; 550 5.1.1 User unknown
+Original-Recipient: rfc822;test@example.com
+X-Freegle-Trace-Id: abc123xyz789tracking
+DSN;
+
+        $result = $this->service->parseDsn($dsnBody);
+
+        $this->assertNotNull($result);
+        $this->assertEquals('abc123xyz789tracking', $result['trace_id']);
+    }
+
+    public function test_returns_null_trace_id_when_not_present(): void
+    {
+        $dsnBody = <<<'DSN'
+Diagnostic-Code: smtp; 550 User unknown
+Original-Recipient: rfc822;test@example.com
+DSN;
+
+        $result = $this->service->parseDsn($dsnBody);
+
+        $this->assertNotNull($result);
+        $this->assertNull($result['trace_id']);
+    }
+
+    public function test_updates_email_tracking_via_trace_id(): void
+    {
+        // Create a user and email tracking record
+        $user = $this->createTestUser();
+        $trackingId = 'test-tracking-id-12345';
+
+        $tracking = EmailTracking::create([
+            'tracking_id' => $trackingId,
+            'email_type' => 'TestEmail',
+            'userid' => $user->id,
+            'recipient_email' => 'recipient@example.com',
+            'sent_at' => now()->subMinutes(5),
+        ]);
+
+        // Update via trace ID
+        $result = $this->service->updateEmailTracking($trackingId, null);
+
+        $this->assertTrue($result);
+
+        // Verify bounced_at was set
+        $tracking->refresh();
+        $this->assertNotNull($tracking->bounced_at);
+    }
+
+    public function test_updates_email_tracking_via_recipient_fallback(): void
+    {
+        // Create a user and email tracking record
+        $user = $this->createTestUser();
+        $recipientEmail = 'fallback-test@example.com';
+
+        $tracking = EmailTracking::create([
+            'tracking_id' => 'some-tracking-id',
+            'email_type' => 'TestEmail',
+            'userid' => $user->id,
+            'recipient_email' => $recipientEmail,
+            'sent_at' => now()->subMinutes(5),
+        ]);
+
+        // Update via recipient email (no trace ID)
+        $result = $this->service->updateEmailTracking(null, $recipientEmail);
+
+        $this->assertTrue($result);
+
+        // Verify bounced_at was set
+        $tracking->refresh();
+        $this->assertNotNull($tracking->bounced_at);
+    }
+
+    public function test_fallback_uses_most_recent_unbounced_email(): void
+    {
+        // Create a user and multiple email tracking records
+        $user = $this->createTestUser();
+        $recipientEmail = 'multi-email-test@example.com';
+
+        // Older email (already bounced)
+        $oldTracking = EmailTracking::create([
+            'tracking_id' => 'old-tracking-id',
+            'email_type' => 'TestEmail',
+            'userid' => $user->id,
+            'recipient_email' => $recipientEmail,
+            'sent_at' => now()->subHours(2),
+            'bounced_at' => now()->subHour(),
+        ]);
+
+        // Middle email (not bounced)
+        $middleTracking = EmailTracking::create([
+            'tracking_id' => 'middle-tracking-id',
+            'email_type' => 'TestEmail',
+            'userid' => $user->id,
+            'recipient_email' => $recipientEmail,
+            'sent_at' => now()->subMinutes(30),
+        ]);
+
+        // Most recent email (not bounced)
+        $recentTracking = EmailTracking::create([
+            'tracking_id' => 'recent-tracking-id',
+            'email_type' => 'TestEmail',
+            'userid' => $user->id,
+            'recipient_email' => $recipientEmail,
+            'sent_at' => now()->subMinutes(5),
+        ]);
+
+        // Update via recipient email (should pick most recent unbounced)
+        $result = $this->service->updateEmailTracking(null, $recipientEmail);
+
+        $this->assertTrue($result);
+
+        // Verify only most recent unbounced email was updated
+        $recentTracking->refresh();
+        $middleTracking->refresh();
+        $oldTracking->refresh();
+
+        $this->assertNotNull($recentTracking->bounced_at);
+        $this->assertNull($middleTracking->bounced_at);
+        // Old one was already bounced
+        $this->assertNotNull($oldTracking->bounced_at);
+    }
+
+    public function test_returns_false_when_no_tracking_record_found(): void
+    {
+        // Try to update with non-existent trace ID and recipient
+        $result = $this->service->updateEmailTracking('nonexistent-id', 'nonexistent@example.com');
+
+        $this->assertFalse($result);
+    }
+
+    public function test_process_bounce_updates_email_tracking_with_trace_id(): void
+    {
+        $user = $this->createTestUser(['bouncing' => 0]);
+        $userEmail = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
+        $trackingId = 'bounce-test-tracking-id';
+
+        // Create email tracking record
+        $tracking = EmailTracking::create([
+            'tracking_id' => $trackingId,
+            'email_type' => 'TestEmail',
+            'userid' => $user->id,
+            'recipient_email' => $userEmail->email,
+            'sent_at' => now()->subMinutes(5),
+        ]);
+
+        // Create bounce DSN with trace ID
+        $rawBounce = <<<DSN
+Diagnostic-Code: smtp; 550 5.1.1 User unknown
+Original-Recipient: rfc822;{$userEmail->email}
+X-Freegle-Trace-Id: {$trackingId}
+DSN;
+
+        $parsedEmail = $this->createParsedEmail([
+            'rawMessage' => $rawBounce,
+            'envelopeTo' => "bounce-{$user->id}-1699000000@users.ilovefreegle.org",
+            'bounceRecipient' => $userEmail->email,
+            'bounceStatus' => '5.1.1',
+        ]);
+
+        $result = $this->service->processBounce($parsedEmail);
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['tracking_updated']);
+
+        // Verify email tracking was updated
+        $tracking->refresh();
+        $this->assertNotNull($tracking->bounced_at);
+    }
+
+    public function test_process_bounce_falls_back_to_recipient_when_no_trace_id(): void
+    {
+        $user = $this->createTestUser(['bouncing' => 0]);
+        $userEmail = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
+
+        // Create email tracking record without using trace ID in DSN
+        $tracking = EmailTracking::create([
+            'tracking_id' => 'fallback-tracking-id',
+            'email_type' => 'TestEmail',
+            'userid' => $user->id,
+            'recipient_email' => $userEmail->email,
+            'sent_at' => now()->subMinutes(5),
+        ]);
+
+        // Create bounce DSN WITHOUT trace ID
+        $rawBounce = <<<DSN
+Diagnostic-Code: smtp; 550 5.1.1 User unknown
+Original-Recipient: rfc822;{$userEmail->email}
+DSN;
+
+        $parsedEmail = $this->createParsedEmail([
+            'rawMessage' => $rawBounce,
+            'envelopeTo' => "bounce-{$user->id}-1699000000@users.ilovefreegle.org",
+            'bounceRecipient' => $userEmail->email,
+            'bounceStatus' => '5.1.1',
+        ]);
+
+        $result = $this->service->processBounce($parsedEmail);
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['tracking_updated']);
+
+        // Verify email tracking was updated via fallback
+        $tracking->refresh();
+        $this->assertNotNull($tracking->bounced_at);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Mail\Incoming;
 
+use App\Models\EmailTracking;
 use App\Models\User;
 use App\Models\UserEmail;
 use Illuminate\Support\Facades\DB;
@@ -83,6 +84,7 @@ class BounceService
 
         $diagnosticCode = $dsn['diagnostic_code'];
         $recipientEmail = $dsn['original_recipient'];
+        $traceId = $dsn['trace_id'] ?? null;
 
         // Check if this should be ignored (temporary/infrastructure issues)
         if ($this->shouldIgnoreBounce($diagnosticCode)) {
@@ -128,6 +130,9 @@ class BounceService
         $isPermanent = $email->isPermanentBounce() || $this->isPermanentBounce($diagnosticCode);
         $this->recordBounce($userEmail->id, $diagnosticCode, $isPermanent);
 
+        // Update email_tracking record if we have a trace ID
+        $trackingUpdated = $this->updateEmailTracking($traceId, $recipientEmail);
+
         // Inline suspension check
         $suspended = $this->checkAndSuspendUser($userEmail->userid);
 
@@ -136,12 +141,15 @@ class BounceService
             'email' => $recipientEmail,
             'permanent' => $isPermanent,
             'suspended' => $suspended,
+            'trace_id' => $traceId,
+            'tracking_updated' => $trackingUpdated,
         ]);
 
         return [
             'success' => true,
             'user_id' => $userEmail->userid,
             'suspended' => $suspended,
+            'tracking_updated' => $trackingUpdated,
         ];
     }
 
@@ -153,12 +161,16 @@ class BounceService
      * 2. Non-standard headers (X-Failed-Recipients, Final-Recipient)
      * 3. Heuristic body extraction for non-compliant bounces
      *
-     * @return array{diagnostic_code: string, original_recipient: ?string}|null
+     * Also extracts X-Freegle-Trace-Id if present in the original message headers,
+     * which allows linking the bounce back to the specific email_tracking record.
+     *
+     * @return array{diagnostic_code: string, original_recipient: ?string, trace_id: ?string}|null
      */
     public function parseDsn(string $rawMessage): ?array
     {
         $diagnosticCode = null;
         $originalRecipient = null;
+        $traceId = null;
 
         // Strategy 1: Standard Diagnostic-Code header
         if (preg_match('/^Diagnostic-Code:\s*(.+)$/im', $rawMessage, $matches)) {
@@ -205,6 +217,13 @@ class BounceService
             }
         }
 
+        // Extract X-Freegle-Trace-Id from original message headers if present.
+        // This is included in the DSN as part of the original message headers.
+        // The trace ID allows us to link this bounce to the specific email_tracking record.
+        if (preg_match('/^X-Freegle-Trace-Id:\s*(.+)$/im', $rawMessage, $matches)) {
+            $traceId = trim($matches[1]);
+        }
+
         // Must have at least a diagnostic code to be considered valid
         if ($diagnosticCode === null) {
             return null;
@@ -213,6 +232,7 @@ class BounceService
         return [
             'diagnostic_code' => $diagnosticCode,
             'original_recipient' => $originalRecipient,
+            'trace_id' => $traceId,
         ];
     }
 
@@ -285,6 +305,63 @@ class BounceService
             'email_id' => $emailId,
             'permanent' => $isPermanent,
         ]);
+    }
+
+    /**
+     * Update the email_tracking record to mark a bounce.
+     *
+     * Uses the trace ID (X-Freegle-Trace-Id) if available to find the exact
+     * email_tracking record. Falls back to finding the most recent unbounced
+     * email sent to the recipient address.
+     *
+     * @param  string|null  $traceId  The X-Freegle-Trace-Id from the original email
+     * @param  string|null  $recipientEmail  The recipient email address
+     * @return bool True if an email_tracking record was updated
+     */
+    public function updateEmailTracking(?string $traceId, ?string $recipientEmail): bool
+    {
+        // Strategy 1: Use trace ID for exact match
+        if ($traceId !== null) {
+            $updated = EmailTracking::where('tracking_id', $traceId)
+                ->whereNull('bounced_at')
+                ->update(['bounced_at' => now()]);
+
+            if ($updated > 0) {
+                Log::debug('Updated email_tracking via trace ID', [
+                    'trace_id' => $traceId,
+                ]);
+
+                return true;
+            }
+        }
+
+        // Strategy 2: Fall back to most recent unbounced email to this recipient
+        if ($recipientEmail !== null) {
+            $tracking = EmailTracking::where('recipient_email', $recipientEmail)
+                ->whereNull('bounced_at')
+                ->whereNotNull('sent_at')
+                ->orderByDesc('sent_at')
+                ->first();
+
+            if ($tracking !== null) {
+                $tracking->bounced_at = now();
+                $tracking->save();
+
+                Log::debug('Updated email_tracking via recipient fallback', [
+                    'tracking_id' => $tracking->tracking_id,
+                    'recipient_email' => $recipientEmail,
+                ]);
+
+                return true;
+            }
+        }
+
+        Log::debug('No email_tracking record found to update', [
+            'trace_id' => $traceId,
+            'recipient_email' => $recipientEmail,
+        ]);
+
+        return false;
     }
 
     /**

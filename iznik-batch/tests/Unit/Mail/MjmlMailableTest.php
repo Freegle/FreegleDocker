@@ -3,6 +3,8 @@
 namespace Tests\Unit\Mail;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\TrackableEmail;
+use App\Models\EmailTracking;
 use Illuminate\Mail\Mailables\Envelope;
 use Tests\TestCase;
 
@@ -161,5 +163,87 @@ class MjmlMailableTest extends TestCase
 
         // Should return self.
         $this->assertInstanceOf(\App\Mail\Donation\DonationThankYou::class, $result);
+    }
+
+    public function test_get_trace_id_uses_default_when_no_tracking(): void
+    {
+        $mailable = new class extends MjmlMailable {
+            protected function getSubject(): string
+            {
+                return 'Test Subject';
+            }
+
+            public function exposeGetTraceIdForHeader(): string
+            {
+                return $this->getTraceIdForHeader();
+            }
+        };
+
+        $traceId = $mailable->exposeGetTraceIdForHeader();
+
+        // Should return default trace ID format: freegle-{timestamp}_{random}
+        $this->assertStringStartsWith('freegle-', $traceId);
+    }
+
+    public function test_get_trace_id_uses_tracking_id_when_tracking_enabled(): void
+    {
+        // Create a mailable that uses TrackableEmail trait
+        $mailable = new class extends MjmlMailable {
+            use TrackableEmail;
+
+            public ?EmailTracking $testTracking = null;
+
+            protected function getSubject(): string
+            {
+                return 'Test Subject';
+            }
+
+            public function getTracking(): ?EmailTracking
+            {
+                return $this->testTracking;
+            }
+
+            public function exposeGetTraceIdForHeader(): string
+            {
+                return $this->getTraceIdForHeader();
+            }
+        };
+
+        // Create a mock tracking record
+        $trackingId = 'test-tracking-id-for-header';
+        $tracking = new EmailTracking([
+            'tracking_id' => $trackingId,
+            'email_type' => 'Test',
+            'recipient_email' => 'test@example.com',
+        ]);
+        $mailable->testTracking = $tracking;
+
+        $traceId = $mailable->exposeGetTraceIdForHeader();
+
+        // Should return the tracking_id from EmailTracking
+        $this->assertEquals($trackingId, $traceId);
+    }
+
+    public function test_get_trace_id_falls_back_to_default_when_tracking_null(): void
+    {
+        // Create a mailable that uses TrackableEmail trait but has null tracking
+        $mailable = new class extends MjmlMailable {
+            use TrackableEmail;
+
+            protected function getSubject(): string
+            {
+                return 'Test Subject';
+            }
+
+            public function exposeGetTraceIdForHeader(): string
+            {
+                return $this->getTraceIdForHeader();
+            }
+        };
+
+        $traceId = $mailable->exposeGetTraceIdForHeader();
+
+        // Should fall back to default trace ID format
+        $this->assertStringStartsWith('freegle-', $traceId);
     }
 }
