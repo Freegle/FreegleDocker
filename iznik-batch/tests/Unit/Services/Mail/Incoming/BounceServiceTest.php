@@ -318,21 +318,19 @@ DSN;
     // User Suspension Tests
     // ===================================================================
 
-    public function test_suspends_user_after_3_permanent_bounces_on_preferred_email(): void
+    public function test_suspends_user_after_1_permanent_bounce_on_preferred_email(): void
     {
         $user = $this->createTestUser(['bouncing' => 0]);
         $email = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
 
-        // Create 3 permanent bounces
-        for ($i = 0; $i < 3; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $email->id,
-                'reason' => '550 User unknown',
-                'permanent' => 1,
-                'reset' => 0,
-                'date' => now(),
-            ]);
-        }
+        // Create 1 permanent bounce - industry standard is immediate suspension
+        DB::table('bounces_emails')->insert([
+            'emailid' => $email->id,
+            'reason' => '550 User unknown',
+            'permanent' => 1,
+            'reset' => 0,
+            'date' => now(),
+        ]);
 
         $this->service->checkAndSuspendUser($user->id);
 
@@ -362,22 +360,11 @@ DSN;
         $this->assertEquals(1, $user->bouncing);
     }
 
-    public function test_does_not_suspend_with_2_permanent_bounces(): void
+    public function test_does_not_suspend_with_0_permanent_bounces(): void
     {
         $user = $this->createTestUser(['bouncing' => 0]);
-        $email = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
 
-        // Create only 2 permanent bounces
-        for ($i = 0; $i < 2; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $email->id,
-                'reason' => '550 User unknown',
-                'permanent' => 1,
-                'reset' => 0,
-                'date' => now(),
-            ]);
-        }
-
+        // No bounces at all - user should not be suspended
         $this->service->checkAndSuspendUser($user->id);
 
         $user->refresh();
@@ -616,18 +603,7 @@ DSN;
         $user = $this->createTestUser(['bouncing' => 0]);
         $userEmail = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
 
-        // Add 2 existing permanent bounces
-        for ($i = 0; $i < 2; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $userEmail->id,
-                'reason' => '550 Previous bounce',
-                'permanent' => 1,
-                'reset' => 0,
-                'date' => now(),
-            ]);
-        }
-
-        // Process the 3rd bounce which should trigger suspension
+        // Process a permanent bounce which should trigger immediate suspension
         $rawBounce = <<<DSN
 Diagnostic-Code: smtp; 550 5.1.1 User unknown
 Original-Recipient: rfc822;{$userEmail->email}
@@ -643,7 +619,7 @@ DSN;
         $this->service->processBounce($parsedEmail);
 
         $user->refresh();
-        $this->assertEquals(1, $user->bouncing, 'User should be suspended after 3rd permanent bounce');
+        $this->assertEquals(1, $user->bouncing, 'User should be suspended after 1st permanent bounce');
     }
 
     public function test_ignores_temporary_bounce_that_should_be_ignored(): void

@@ -15,16 +15,17 @@ use Sentry\Laravel\Facade as Sentry;
  * Handles DSN parsing, bounce classification, recording, and user suspension.
  * Designed for inline processing during email routing (no separate cron job).
  *
- * Suspension thresholds (matching legacy iznik-server Bounce.php):
- * - 3+ permanent bounces on preferred email
+ * Suspension thresholds:
+ * - 1+ permanent bounces on preferred email (industry standard: immediate)
  * - 50+ total bounces on preferred email
  *
  * TODO: The legacy `bounces` table is obsolete - remove it in a future migration.
  */
 class BounceService
 {
-    // Suspension thresholds (from legacy Bounce.php)
-    private const PERMANENT_THRESHOLD = 3;
+    // Suspension thresholds
+    // Industry standard: hard bounces should suspend immediately (1 occurrence)
+    private const PERMANENT_THRESHOLD = 1;
 
     private const TOTAL_THRESHOLD = 50;
 
