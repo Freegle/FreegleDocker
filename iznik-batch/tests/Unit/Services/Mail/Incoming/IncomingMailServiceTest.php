@@ -928,7 +928,7 @@ class IncomingMailServiceTest extends TestCase
             ->orderBy('id', 'desc')
             ->first();
 
-        $this->assertStringContainsStringString('The test reply message content', $lastMessage->message);
+        $this->assertStringContainsString('The test reply message content', $lastMessage->message);
     }
 
     // ========================================
