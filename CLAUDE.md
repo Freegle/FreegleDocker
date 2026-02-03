@@ -116,6 +116,52 @@ Test URLs work properly:
 - Remember that if you make changes directly to a container, they will be lost on restart. Any container changes must also be made locally.
 - If debugging Playwright test failures, check the Freegle container for logs triggering a reload. Those will break tests. Add anything shown to the pre-optimization in nuxt.config.js and rebuild the container to pick it up.
 
+## Loki Log Querying
+
+Logs from all Freegle services are collected in Loki. The Go API v2 provides a `/api/systemlogs` endpoint that wraps Loki queries for ModTools.
+
+### Available Labels
+Query `http://localhost:3100/loki/api/v1/labels` for current labels. Common ones:
+- `app` - Always "freegle"
+- `source` - Log source: `api`, `client`, `chat_reply`, `email`, `incoming_mail`, `logs_table`
+- `user_id` - User ID (indexed, fast for filtering)
+- `level` - Log level: `info`, `error`, etc.
+- `type`, `subtype` - Event categorization
+
+### Direct Loki Query Examples
+
+**IMPORTANT**: Always use `-G` with `--data-urlencode` for proper query encoding:
+
+```bash
+# Query logs for a specific user
+curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={app="freegle", user_id="503028"}' \
+  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
+  --data-urlencode "end=$(date +%s)000000000" \
+  --data-urlencode 'limit=50'
+
+# Search all sources for errors
+curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={app="freegle", level="error"}' \
+  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
+  --data-urlencode "end=$(date +%s)000000000"
+
+# Text search across all logs
+curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={app="freegle"} |~ "search text"' \
+  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
+  --data-urlencode "end=$(date +%s)000000000"
+```
+
+### Common Pitfalls
+1. **Timestamps are nanoseconds** - Multiply Unix seconds by 1000000000
+2. **Use localhost:3100**, not the docker network name `loki`
+3. **jq may silently fail** - Store result in variable first to verify data exists
+4. **Label values must be quoted** - `user_id="503028"` not `user_id=503028`
+
+### Via Go API
+ModTools uses `/api/systemlogs?userid=503028&sources=api,client&start=1h` - see `iznik-server-go/systemlogs/systemlogs.go` for implementation.
+
 ## CircleCI Submodule Integration
 
 This repository uses CircleCI to automatically test submodule changes. Each submodule is configured with a GitHub Actions workflow that triggers the parent repository's CircleCI pipeline.

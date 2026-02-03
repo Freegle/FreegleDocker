@@ -1602,7 +1602,14 @@ class IncomingMailService
         bool $forceReview = false,
         ?string $forceReviewReason = null
     ): void {
-        $body = $email->textBody ?? $email->htmlBody ?? '';
+        // Get body text, converting HTML to plain text if no text part exists.
+        // This handles email clients like Apple Mail that may send HTML-only emails.
+        $body = $email->textBody;
+        if ($body === null && $email->htmlBody !== null) {
+            $html2text = new \Html2Text\Html2Text($email->htmlBody);
+            $body = $html2text->getText();
+        }
+        $body = $body ?? '';
 
         // Strip quoted reply text and signatures before storing.
         $body = $this->stripQuoted->strip($body);

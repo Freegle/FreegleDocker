@@ -2699,4 +2699,55 @@ class IncomingMailServiceTest extends TestCase
         $this->assertNotNull($tracking->replied_at, 'replied_at should be set');
         $this->assertEquals('email', $tracking->replied_via, 'replied_via should be email');
     }
+
+    // ========================================
+    // HTML-Only Email Tests
+    // ========================================
+
+    public function test_html_only_email_converted_to_plain_text(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        // Create an HTML-only email (no text part) like Apple Mail sometimes sends
+        $htmlContent = '<html><head></head><body><div>Hi Karen, I live at 5 Kingsfield Close. The trolley is still available.</div><div>Warm wishes</div><div>Tessa</div></body></html>';
+
+        $email = $this->createMultipartEmail(
+            [
+                'From' => $user1Email,
+                'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+                'Subject' => 'Re: About the trolley',
+            ],
+            '', // No text body
+            $htmlContent // HTML only
+        );
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // Verify the message was stored as plain text, not HTML
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        // Should NOT contain HTML tags
+        $this->assertStringNotContainsString('<html>', $lastMessage->message);
+        $this->assertStringNotContainsString('<div>', $lastMessage->message);
+        $this->assertStringNotContainsString('<body>', $lastMessage->message);
+
+        // Should contain the actual text content
+        $this->assertStringContainsString('Kingsfield Close', $lastMessage->message);
+        $this->assertStringContainsString('trolley', $lastMessage->message);
+    }
 }
