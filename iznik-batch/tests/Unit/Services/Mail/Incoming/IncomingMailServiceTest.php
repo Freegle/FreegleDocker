@@ -1160,6 +1160,10 @@ class IncomingMailServiceTest extends TestCase
             'type' => 'Literal',
         ]);
 
+        // Recreate service to pick up the newly inserted keyword
+        // (SpamCheckService caches keywords on first access)
+        $this->service = app(IncomingMailService::class);
+
         // Use known spam patterns
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
@@ -1198,6 +1202,10 @@ class IncomingMailServiceTest extends TestCase
             'action' => 'Spam',
             'type' => 'Literal',
         ]);
+
+        // Recreate service to pick up the newly inserted keyword
+        // (SpamCheckService caches keywords on first access)
+        $this->service = app(IncomingMailService::class);
 
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
@@ -1305,6 +1313,10 @@ class IncomingMailServiceTest extends TestCase
             'action' => 'Spam',
             'type' => 'Literal',
         ]);
+
+        // Recreate service to pick up the newly inserted keyword
+        // (SpamCheckService caches keywords on first access)
+        $this->service = app(IncomingMailService::class);
 
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
@@ -1563,6 +1575,9 @@ class IncomingMailServiceTest extends TestCase
             'action' => 'Spam',
             'type' => 'Literal',
         ]);
+
+        // Recreate service to pick up the newly inserted keyword
+        $this->service = app(IncomingMailService::class);
 
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volspammer')]);
         $group = $this->createTestGroup();
@@ -1891,6 +1906,9 @@ class IncomingMailServiceTest extends TestCase
             'type' => 'Literal',
         ]);
 
+        // Recreate service to pick up the newly inserted keyword
+        $this->service = app(IncomingMailService::class);
+
         $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
         $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
         $chat = $this->createTestChatRoom($user1, $user2);
@@ -2033,6 +2051,9 @@ class IncomingMailServiceTest extends TestCase
             'type' => 'Literal',
         ]);
 
+        // Recreate service to pick up the newly inserted keyword
+        $this->service = app(IncomingMailService::class);
+
         $sender = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
         $recipient = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
         $senderEmail = $sender->emails->first()->email;
@@ -2166,6 +2187,9 @@ class IncomingMailServiceTest extends TestCase
             'action' => 'Spam',
             'type' => 'Literal',
         ]);
+
+        // Recreate service to pick up the newly inserted keyword
+        $this->service = app(IncomingMailService::class);
 
         $userEmail = $user->emails->first()->email;
         $groupName = $group->nameshort;
