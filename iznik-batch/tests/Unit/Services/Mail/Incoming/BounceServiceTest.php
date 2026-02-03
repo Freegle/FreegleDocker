@@ -442,14 +442,15 @@ DSN;
         $user = $this->createTestUser(['bouncing' => 0]);
         $email = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
 
-        // Create 49 temporary bounces
+        // Create 49 temporary bounces - spread across time to avoid soft bounce threshold
+        // (soft bounce threshold is 5 within 14 days, so put these older than 14 days)
         for ($i = 0; $i < 49; $i++) {
             DB::table('bounces_emails')->insert([
                 'emailid' => $email->id,
                 'reason' => '421 Try again later',
                 'permanent' => 0,
                 'reset' => 0,
-                'date' => now(),
+                'date' => now()->subDays(15 + $i), // Older than 14 days
             ]);
         }
 
