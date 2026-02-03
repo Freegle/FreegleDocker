@@ -103,6 +103,18 @@ class SpamCheckService
     private ?array $cachedSpamWords = null;
 
     /**
+     * Clear the cached spam words.
+     *
+     * This is primarily for testing - when tests insert keywords after the
+     * service is created, this allows them to clear the cache so new keywords
+     * are picked up.
+     */
+    public function clearKeywordCache(): void
+    {
+        $this->cachedSpamWords = null;
+    }
+
+    /**
      * Run all message-level spam checks (matching legacy Spam::checkMessage).
      *
      * Returns null if message is clean, or [isSpam, reason, detail] if spam found.
