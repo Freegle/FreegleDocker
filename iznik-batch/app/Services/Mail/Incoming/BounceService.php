@@ -27,6 +27,12 @@ class BounceService
     // Industry standard: hard bounces should suspend immediately (1 occurrence)
     private const PERMANENT_THRESHOLD = 1;
 
+    // Soft bounce threshold: X bounces within Y days indicates persistent problem
+    private const SOFT_BOUNCE_THRESHOLD = 5;
+
+    private const SOFT_BOUNCE_DAYS = 14;
+
+    // Legacy total threshold (kept as fallback for very old bounces)
     private const TOTAL_THRESHOLD = 50;
 
     // Error directory for unparseable bounces
@@ -369,8 +375,9 @@ class BounceService
      * Check if a user should be suspended due to bounces and suspend if so.
      *
      * Suspension thresholds (only for preferred email):
-     * - 3+ permanent bounces
-     * - 50+ total bounces
+     * - 1+ permanent bounces (immediate - industry standard)
+     * - 5+ soft bounces within 14 days (persistent problem)
+     * - 50+ total bounces (legacy fallback)
      *
      * @return bool True if user was suspended by this call
      */
@@ -408,7 +415,21 @@ class BounceService
             return true;
         }
 
-        // Count all bounces on preferred email (not reset)
+        // Count soft bounces within the time window (persistent soft bounce problem)
+        $softBounceCount = DB::table('bounces_emails')
+            ->where('emailid', $preferredEmail->id)
+            ->where('permanent', 0)
+            ->where('reset', 0)
+            ->where('date', '>=', now()->subDays(self::SOFT_BOUNCE_DAYS))
+            ->count();
+
+        if ($softBounceCount >= self::SOFT_BOUNCE_THRESHOLD) {
+            $this->suspendUser($userId);
+
+            return true;
+        }
+
+        // Legacy fallback: count all bounces on preferred email (not reset)
         $totalCount = DB::table('bounces_emails')
             ->where('emailid', $preferredEmail->id)
             ->where('reset', 0)
