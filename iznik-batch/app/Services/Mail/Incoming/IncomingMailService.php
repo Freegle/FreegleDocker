@@ -60,6 +60,16 @@ class IncomingMailService
     }
 
     /**
+     * Helper to set routing reason and return DROPPED result.
+     */
+    private function dropped(string $reason, array $extraContext = []): RoutingResult
+    {
+        $this->lastRoutingContext = array_merge(['routing_reason' => $reason], $extraContext);
+
+        return RoutingResult::DROPPED;
+    }
+
+    /**
      * Get context from the last routing decision.
      */
     public function getLastRoutingContext(): array
@@ -149,28 +159,28 @@ class IncomingMailService
 
         // Check for known dropped senders (Twitter, etc.)
         if ($this->shouldDropSender($email)) {
-            return RoutingResult::DROPPED;
+            return $this->dropped('Known dropped sender (Twitter, etc.)');
         }
 
         // Check for auto-replies (OOO, vacation, etc.)
         if ($email->isAutoReply()) {
             Log::debug('Dropping auto-reply message');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Auto-reply (OOO, vacation, etc.)');
         }
 
         // Check for self-sent messages
         if ($this->isSelfSent($email)) {
             Log::debug('Dropping self-sent message');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Self-sent message');
         }
 
         // Check if sender is a known spammer (skip for volunteers - they go to review instead)
         if (! $email->isToVolunteers && ! $email->isToAuto && $this->isKnownSpammer($email)) {
             Log::debug('Dropping message from known spammer');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Known spammer');
         }
 
         // Phase 4: Check for volunteer/auto addresses
@@ -380,7 +390,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Invalid read receipt address format');
         }
 
         $chatId = (int) $matches[1];
@@ -405,7 +415,7 @@ class IncomingMailService
                 'chat_id' => $chatId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Read receipt for non-existent chat');
         }
 
         // Check if user can see the chat
@@ -415,7 +425,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Read receipt from user not in chat');
         }
 
         // Update the chat roster to mark messages as seen
@@ -458,7 +468,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 471");
         }
 
         $trystId = (int) $matches[1];
@@ -481,7 +491,7 @@ class IncomingMailService
                 'tryst_id' => $trystId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 494");
         }
 
         // Determine response from email content
@@ -574,7 +584,7 @@ class IncomingMailService
         if (! $userId || ! $groupId) {
             Log::warning('Invalid digest off command - missing user or group ID');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 587");
         }
 
         // Update user's last access
@@ -594,7 +604,7 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 607");
         }
 
         // Set email frequency to 0 (NEVER)
@@ -628,7 +638,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 641");
         }
 
         $userId = (int) $matches[1];
@@ -656,7 +666,7 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 669");
         }
 
         // Set eventsallowed to 0
@@ -690,7 +700,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 703");
         }
 
         $userId = (int) $matches[1];
@@ -711,7 +721,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 724");
         }
 
         // Set newslettersallowed to 0
@@ -743,7 +753,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 756");
         }
 
         $userId = (int) $matches[1];
@@ -764,7 +774,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 777");
         }
 
         // Set relevantallowed to 0
@@ -796,7 +806,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 809");
         }
 
         $userId = (int) $matches[1];
@@ -824,7 +834,7 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 837");
         }
 
         // Set volunteeringallowed to 0
@@ -858,7 +868,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 871");
         }
 
         $userId = (int) $matches[1];
@@ -879,7 +889,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 892");
         }
 
         // Get current settings JSON
@@ -916,7 +926,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 929");
         }
 
         $userId = (int) $matches[1];
@@ -935,7 +945,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 948");
         }
 
         // Prevent accidental unsubscription by moderators
@@ -944,7 +954,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 957");
         }
 
         // Validate the key to prevent spoof unsubscribes
@@ -954,7 +964,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 967");
         }
 
         // Log old value for reversibility.
@@ -1014,7 +1024,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1027");
         }
 
         $groupName = $matches[1];
@@ -1030,7 +1040,7 @@ class IncomingMailService
                 'group' => $groupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1043");
         }
 
         // Find or create the user
@@ -1066,7 +1076,7 @@ class IncomingMailService
                     'email' => $envFrom,
                 ]);
 
-                return RoutingResult::DROPPED;
+                return $this->dropped("See line 1079");
             }
 
             // Update last access
@@ -1126,7 +1136,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1139");
         }
 
         $groupName = $matches[1];
@@ -1142,7 +1152,7 @@ class IncomingMailService
                 'group' => $groupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1155");
         }
 
         // Find the user by envelope from
@@ -1154,7 +1164,7 @@ class IncomingMailService
                 'email' => $envFrom,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1167");
         }
 
         $user = User::find($userEmail->userid);
@@ -1163,7 +1173,7 @@ class IncomingMailService
                 'email' => $envFrom,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1176");
         }
 
         // Update last access
@@ -1181,7 +1191,7 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1194");
         }
 
         if (in_array($membership->role, ['Moderator', 'Owner'])) {
@@ -1191,7 +1201,7 @@ class IncomingMailService
                 'role' => $membership->role,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1204");
         }
 
         // Log full membership for reversibility before deletion.
@@ -1352,7 +1362,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1365");
         }
 
         $messageId = (int) $parts[1];
@@ -1364,7 +1374,7 @@ class IncomingMailService
                 'message_id' => $messageId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1377");
         }
 
         // Check if message is expired (>42 days old)
@@ -1375,7 +1385,7 @@ class IncomingMailService
                 'age_days' => $arrival->diffInDays(now()),
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1388");
         }
 
         // Check if message is on a closed group (legacy: replyToSingleMessage checks group closed setting)
@@ -1405,7 +1415,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1418");
         }
 
         // Get the message owner
@@ -1415,7 +1425,7 @@ class IncomingMailService
                 'message_id' => $messageId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1428");
         }
 
         // Get or create User2User chat between the sender and message owner
@@ -1426,7 +1436,7 @@ class IncomingMailService
                 'to_user' => $messageOwner,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1439");
         }
 
         // Create the chat message
@@ -1469,7 +1479,7 @@ class IncomingMailService
         if ($this->isReadReceipt($email)) {
             Log::debug('Dropping misdirected read receipt in chat reply');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1482");
         }
 
         // Validate chat exists
@@ -1479,7 +1489,7 @@ class IncomingMailService
                 'chat_id' => $chatId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1492");
         }
 
         // Check if chat is stale and sender email is unfamiliar
@@ -1489,7 +1499,7 @@ class IncomingMailService
                 'age_days' => $chat->latestmessage?->diffInDays(now()),
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1502");
         }
 
         // Validate user is part of chat
@@ -1499,7 +1509,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1512");
         }
 
         // Create chat message
@@ -1757,7 +1767,7 @@ class IncomingMailService
                 'group' => $email->targetGroupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1770");
         }
 
         // Find sender user
@@ -1767,14 +1777,14 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1780");
         }
 
         // Filter auto-replies for -auto@ addresses (legacy: !isAutoreply() check for non-volunteers)
         if (! $email->isToVolunteers && $email->isAutoReply()) {
             Log::debug('Dropping auto-reply to auto address');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1787");
         }
 
         // Spam checks for volunteers messages: flag for review, never reject.
@@ -1835,7 +1845,7 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1848");
         }
 
         // Create the chat message, flagging for review if spam was detected
@@ -1875,7 +1885,7 @@ class IncomingMailService
                 'group' => $email->targetGroupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1888");
         }
 
         // Find sender user
@@ -1885,7 +1895,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1898");
         }
 
         // Check membership
@@ -1900,7 +1910,7 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 1913");
         }
 
         // Check for TAKEN/RECEIVED subjects - swallow silently (legacy toGroup: paired TAKEN/RECEIVED → TO_SYSTEM)
@@ -2292,7 +2302,7 @@ class IncomingMailService
                 'to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 2305");
         }
 
         // Find the sender user
@@ -2302,7 +2312,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 2315");
         }
 
         // Don't create a chat between the same user
@@ -2311,7 +2321,7 @@ class IncomingMailService
                 'user_id' => $senderUser->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 2324");
         }
 
         // Get or create chat between sender and recipient
@@ -2322,7 +2332,7 @@ class IncomingMailService
                 'to_user' => $recipientUser->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("See line 2335");
         }
 
         // Create the chat message
