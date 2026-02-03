@@ -39,6 +39,9 @@ enum RoutingResult: string
     // Routing failed
     case FAILURE = 'Failure';
 
+    // Error during processing (e.g., unparseable bounce)
+    case ERROR = 'Error';
+
     /**
      * Check if this result indicates the message was saved.
      */

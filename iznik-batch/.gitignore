@@ -28,3 +28,4 @@ Homestead.yaml
 npm-debug.log
 yarn-error.log
 Thumbs.db
+storage/incoming-archive/
