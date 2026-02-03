@@ -371,6 +371,72 @@ DSN;
         $this->assertEquals(0, $user->bouncing);
     }
 
+    public function test_suspends_user_after_5_soft_bounces_within_14_days(): void
+    {
+        $user = $this->createTestUser(['bouncing' => 0]);
+        $email = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
+
+        // Create 5 soft bounces within the last 14 days
+        for ($i = 0; $i < 5; $i++) {
+            DB::table('bounces_emails')->insert([
+                'emailid' => $email->id,
+                'reason' => '421 Try again later',
+                'permanent' => 0,
+                'reset' => 0,
+                'date' => now()->subDays($i), // Spread over last 5 days
+            ]);
+        }
+
+        $this->service->checkAndSuspendUser($user->id);
+
+        $user->refresh();
+        $this->assertEquals(1, $user->bouncing);
+    }
+
+    public function test_does_not_suspend_with_4_soft_bounces_within_14_days(): void
+    {
+        $user = $this->createTestUser(['bouncing' => 0]);
+        $email = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
+
+        // Create only 4 soft bounces (below threshold)
+        for ($i = 0; $i < 4; $i++) {
+            DB::table('bounces_emails')->insert([
+                'emailid' => $email->id,
+                'reason' => '421 Try again later',
+                'permanent' => 0,
+                'reset' => 0,
+                'date' => now()->subDays($i),
+            ]);
+        }
+
+        $this->service->checkAndSuspendUser($user->id);
+
+        $user->refresh();
+        $this->assertEquals(0, $user->bouncing);
+    }
+
+    public function test_does_not_suspend_with_5_soft_bounces_older_than_14_days(): void
+    {
+        $user = $this->createTestUser(['bouncing' => 0]);
+        $email = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
+
+        // Create 5 soft bounces but all older than 14 days
+        for ($i = 0; $i < 5; $i++) {
+            DB::table('bounces_emails')->insert([
+                'emailid' => $email->id,
+                'reason' => '421 Try again later',
+                'permanent' => 0,
+                'reset' => 0,
+                'date' => now()->subDays(15 + $i), // All older than 14 days
+            ]);
+        }
+
+        $this->service->checkAndSuspendUser($user->id);
+
+        $user->refresh();
+        $this->assertEquals(0, $user->bouncing);
+    }
+
     public function test_does_not_suspend_with_49_total_bounces(): void
     {
         $user = $this->createTestUser(['bouncing' => 0]);
