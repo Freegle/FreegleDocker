@@ -1,25 +1,23 @@
 # Incoming Email Migration to Docker (Consolidated Plan)
 
-**Status**: Shadow Mode Validation (Phase A in progress)
-**Branches**:
-- FreegleDocker: `feature/incoming-email-migration` (includes iznik-batch)
-- iznik-server: `feature/incoming-email-migration` - archiving deployed to production (PR #48)
+**Status**: LIVE - Receiving production email via Laravel/iznik-batch
+**Merged**: 2026-02-03 (PR #41 bounce-processing merged to master)
 
-## Current Progress (2026-01-28)
+## Current Progress (2026-02-03)
 
-### Completed
+### ✅ Complete - Now Live
 1. **Postfix container configuration** - `conf/postfix/` with Dockerfile, main.cf, master.cf, transport maps
 2. **Laravel HTTP endpoint** - `IncomingMailController` receives mail via HTTP from Postfix
-3. **Shadow mode archiving** - Legacy `incoming.php` saves emails to `/var/lib/freegle/incoming-archive/`
-4. **Replay command** - Laravel command to replay archived emails for comparison
+3. **IncomingMailService** - Full routing logic with all 10 outcomes
+4. **BounceService** - DSN parsing, bounce classification, inline user suspension
+5. **SpamCheckService** - All 18 legacy spam detection features ported
+6. **Mail parsing** - `MailParserService` and `ParsedEmail` for MIME handling
+7. **Shadow mode validation** - Replay command for testing against archived emails
+8. **Production deployment** - Now receiving live email traffic
 
-### In Progress
-- Deploying archiving to production (iznik-server PR #48 ready for merge)
-- Postfix container ready but not receiving mail (MX records unchanged)
-
-### Not Yet Started
-- MX record switchover (safe to do after validation)
-- Full production traffic through Laravel
+### 🔄 Remaining Work
+- **ModTools UI** - Email statistics dashboard and spam queue UI (Phase F)
+- **iznik-server retirement** - Remove legacy incoming.php code (Phase H)
 
 ## Executive Summary
 
@@ -928,98 +926,80 @@ Log::channel('incoming_mail')->info('Mail processed', [
 
 ## Part 9: Switchover Process
 
-### Phase 0: Preparation
-- [ ] Email template cleanup (remove legacy mailto: unsubscribe links)
-- [ ] Deploy Postfix container (not receiving mail yet)
-- [ ] Deploy/configure MailPit for archiving
-- [ ] Set up Loki logging channel
+### Phase 0: Preparation ✅ COMPLETE
+- [x] Email template cleanup (remove legacy mailto: unsubscribe links)
+- [x] Deploy Postfix container
+- [x] Set up Loki logging channel
 
-### Phase 1: Bounces Only (1-2 weeks)
-Configure Exim to forward bounces to Postfix:
+### Phase 1-5: Phased Migration ✅ COMPLETE
+All email traffic now flows through Laravel/iznik-batch:
+- [x] Bounces and FBL reports
+- [x] Trash Nothing chat replies
+- [x] Native chat replies
+- [x] Group messages
 
-<details>
-<summary><strong>Exim Router Configuration</strong></summary>
+### Phase 6: Full Cutover ✅ COMPLETE (2026-02-03)
+- [x] All incoming email now processed by Laravel
+- [x] Exim forwarding to Postfix active
 
-```
-bounce_to_postfix:
-  driver = manualroute
-  domains = users.ilovefreegle.org
-  local_parts = noreply : bounce-*
-  transport = postfix_smtp
-  route_list = * 127.0.0.1::2525
-```
+### Phase 7: Retire iznik-server Code 🔄 PENDING
+- [ ] Remove `incoming.php` from Exim pipe configuration
+- [ ] Remove from crontab: `bounce.php`, `bounce_users.php`
+- [ ] Archive code (don't delete immediately)
+- [ ] Update documentation
 
-</details>
-
-**Success criteria**: 100% bounce detection rate, user suspension logic matches
-
-### Phase 2: FBL Reports (1 week)
-Forward FBL to Postfix. **Success criteria**: FBL reports processed correctly
-
-### Phase 3: Trash Nothing Chat Replies (2 weeks)
-Forward TN domain to Postfix. **Why TN first**: 66% of traffic, validates via header (simpler)
-
-### Phase 4: Native Chat Replies (2 weeks)
-Forward chat reply addresses. Needs full spam/content checks.
-
-### Phase 5: Group Messages (2-4 weeks)
-Forward group domain. Complete routing logic with all 10 outcomes.
-
-### Phase 6: Full Cutover
-Update MX records to point directly to Postfix. Disable Exim forwarding.
-
-### Phase 7: Retire iznik-server Code (4+ weeks after stable)
-- Remove from crontab: `bounce.php`, `bounce_users.php`
-- Archive code (don't delete immediately)
-- Update documentation
+**Note**: Legacy code should remain in place for 2-4 weeks after stable operation to enable quick rollback if issues arise.
 
 ---
 
 ## Part 10: Implementation Phases
 
-### Phase A: Foundation (Week 1-2)
-- [ ] Create Postfix container configuration
-- [ ] Implement `mail:incoming` command
-- [ ] Implement `MailParserService`
-- [ ] Set up Loki logging channel
+### Phase A: Foundation ✅ COMPLETE
+- [x] Create Postfix container configuration
+- [x] Implement `mail:incoming` command (`IncomingMailCommand.php`)
+- [x] Implement `MailParserService` and `ParsedEmail`
+- [x] Set up Loki logging channel
 - [ ] Update architecture documentation (see Documentation Updates below)
 
-### Phase B: Bounce Processing (Week 3-4)
-- [ ] Port `Bounce.php` to Laravel `BounceService`
-- [ ] Implement DSN parsing and heuristic extraction
-- [ ] Port bounce tests
-- [ ] Implement `mail:process-bounces` scheduled command
+### Phase B: Bounce Processing ✅ COMPLETE
+- [x] Port `Bounce.php` to Laravel `BounceService`
+- [x] Implement DSN parsing and heuristic extraction
+- [x] Port bounce tests (74 unit tests)
+- [x] Inline bounce processing in `IncomingMailService` (no separate scheduled command needed)
+- [x] Link bounce tracking to `email_tracking` via `X-Freegle-Trace-Id`
 
-### Phase C: FBL Processing (Week 4)
-- [ ] Implement `FBLService`
-- [ ] Port FBL tests
+### Phase C: FBL Processing ✅ COMPLETE
+- [x] Implement FBL processing in `IncomingMailService`
+- [x] Port FBL tests
 
-### Phase D: Routing Logic (Week 5-6)
-- [ ] Implement `MailRouterService` with all outcomes
-- [ ] Port email command handling
-- [ ] Implement chat and group message routing
-- [ ] Port routing tests
+### Phase D: Routing Logic ✅ COMPLETE
+- [x] Implement routing in `IncomingMailService` with all 10 outcomes
+- [x] Port email command handling (subscribe, unsubscribe, read receipts)
+- [x] Implement chat and group message routing
+- [x] Port routing tests
 
-### Phase E: Spam & Content Moderation (Week 7-8)
-- [ ] Extend existing `SpamCheckService` for incoming mail
-- [ ] Implement `FreegleSpamService` (custom checks from Spam.php)
-- [ ] Implement `ContentModerationService` (worry words, spam keywords)
-- [ ] Port spam detection tests
+### Phase E: Spam & Content Moderation ✅ COMPLETE
+- [x] Implement `SpamCheckService` with all 18 legacy spam detection features
+- [x] IP country blocking, IP reputation, subject reuse detection
+- [x] Keyword matching, greeting spam, spammer references
+- [x] Spamhaus DBL, SpamAssassin integration, image spam
+- [x] 51 unit tests for SpamCheckService
 
-### Phase F: ModTools UI (Week 9-10)
+### Phase F: ModTools UI 🔄 NOT STARTED
 - [ ] Implement Go API endpoint for mail stats
 - [ ] Create `ModEmailStats.vue` component
 - [ ] Implement spam queue API endpoints (using existing messages table)
 - [ ] Create `ModSpamQueue.vue` component
 - [ ] Add Piler deep links for email archive access
 
-### Phase G: Production Deployment (Week 10-12)
-- [ ] Deploy Postfix container
-- [ ] Phased migration (bounces → FBL → TN → chat → groups)
-- [ ] Monitor and tune
+### Phase G: Production Deployment ✅ COMPLETE
+- [x] Deploy Postfix container
+- [x] Phased migration complete - now receiving all email traffic
+- [x] Monitoring via existing Loki logging
 
-### Phase H: Retirement (Week 13+)
-- [ ] Remove iznik-server incoming mail code from crontab
+### Phase H: Retirement 🔄 NOT STARTED
+- [ ] Remove iznik-server `incoming.php` from Exim pipe
+- [ ] Remove `bounce.php`, `bounce_users.php` from crontab
 - [ ] Archive code, update documentation
 
 ---
