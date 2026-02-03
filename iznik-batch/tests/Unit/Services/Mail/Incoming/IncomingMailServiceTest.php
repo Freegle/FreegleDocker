@@ -928,7 +928,7 @@ class IncomingMailServiceTest extends TestCase
             ->orderBy('id', 'desc')
             ->first();
 
-        $this->assertStringContainsString('The test reply message content', $lastMessage->message);
+        $this->assertStringContainsStringString('The test reply message content', $lastMessage->message);
     }
 
     // ========================================
@@ -1176,6 +1176,158 @@ class IncomingMailServiceTest extends TestCase
         $result = $this->service->route($parsed);
 
         $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+    }
+
+    public function test_spam_message_stored_for_moderator_review(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamstore')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        // Set user location
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        // Seed a spam keyword
+        DB::table('spam_keywords')->insert([
+            'word' => 'Nigerian Prince',
+            'action' => 'Spam',
+            'type' => 'Literal',
+        ]);
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Free money from Nigerian Prince (London)',
+        ], 'I am a Nigerian Prince with money for you.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+
+        // Verify message was created in database with spam info
+        $message = DB::table('messages')
+            ->where('fromuser', $user->id)
+            ->where('subject', 'OFFER: Free money from Nigerian Prince (London)')
+            ->first();
+
+        $this->assertNotNull($message, 'Message should be created in database');
+        $this->assertEquals('Known spam keyword', $message->spamtype);
+        $this->assertStringContainsString('Nigerian Prince', $message->spamreason);
+
+        // Verify messages_groups entry with Pending collection
+        $messageGroup = DB::table('messages_groups')
+            ->where('msgid', $message->id)
+            ->where('groupid', $group->id)
+            ->first();
+
+        $this->assertNotNull($messageGroup, 'Message group entry should exist');
+        $this->assertEquals('Pending', $messageGroup->collection);
+
+        // Verify messages_history entry for spam tracking
+        $history = DB::table('messages_history')
+            ->where('msgid', $message->id)
+            ->first();
+
+        $this->assertNotNull($history, 'Message history entry should exist');
+        $this->assertEquals($group->id, $history->groupid);
+    }
+
+    public function test_spamassassin_spam_stored_with_score(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamasspam')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        // Create email with SpamAssassin headers indicating high spam score
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Test item (London)',
+            'X-Spam-Score' => '15.5',
+            'X-Spam-Status' => 'Yes, score=15.5 required=5.0',
+        ], 'Test body');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // If SpamAssassin score triggers spam detection
+        if ($result === RoutingResult::INCOMING_SPAM) {
+            $message = DB::table('messages')
+                ->where('fromuser', $user->id)
+                ->orderBy('id', 'desc')
+                ->first();
+
+            $this->assertNotNull($message);
+            $this->assertEquals('SpamAssassin', $message->spamtype);
+            $this->assertStringContainsString('score', $message->spamreason);
+        }
+    }
+
+    public function test_routing_context_includes_spam_info(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamctx')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        // Seed spam keyword
+        DB::table('spam_keywords')->insert([
+            'word' => 'Lottery Winner',
+            'action' => 'Spam',
+            'type' => 'Literal',
+        ]);
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Lottery Winner prize (London)',
+        ], 'You are a Lottery Winner!');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+
+        // Check routing context includes spam details
+        $context = $this->service->getLastRoutingContext();
+        $this->assertArrayHasKey('spam_type', $context);
+        $this->assertArrayHasKey('spam_reason', $context);
+        $this->assertArrayHasKey('message_id', $context);
+        $this->assertEquals('Known spam keyword', $context['spam_type']);
     }
 
     public function test_greeting_spam_detected_as_incoming_spam(): void

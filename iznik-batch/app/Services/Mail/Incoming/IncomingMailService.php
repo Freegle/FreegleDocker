@@ -7,6 +7,7 @@ use App\Models\ChatRoom;
 use App\Models\Group;
 use App\Models\Membership;
 use App\Models\Message;
+use App\Models\MessageGroup;
 use App\Models\User;
 use App\Models\UserEmail;
 use Illuminate\Support\Facades\Cache;
@@ -1919,8 +1920,26 @@ class IncomingMailService
         ];
 
         // Check for spam if not TN
-        if (! $skipSpamCheck && $this->isSpam($email)) {
-            return RoutingResult::INCOMING_SPAM;
+        if (! $skipSpamCheck) {
+            [$isSpam, $spamType, $spamReason] = $this->checkForSpam($email);
+            if ($isSpam) {
+                // Create the message with spam info and route to pending for moderator review
+                $messageId = $this->createGroupPostMessage($email, $user, $group, $spamType, $spamReason);
+
+                if ($messageId !== null) {
+                    $this->lastRoutingContext['message_id'] = $messageId;
+                    $this->lastRoutingContext['spam_type'] = $spamType;
+                    $this->lastRoutingContext['spam_reason'] = $spamReason;
+
+                    Log::info('Spam message created for moderator review', [
+                        'message_id' => $messageId,
+                        'spam_type' => $spamType,
+                        'spam_reason' => $spamReason,
+                    ]);
+                }
+
+                return RoutingResult::INCOMING_SPAM;
+            }
         }
 
         // Check posting status (column is camelCase: ourPostingStatus)
@@ -1957,6 +1976,135 @@ class IncomingMailService
     }
 
     /**
+     * Create a message record for a group post.
+     *
+     * This stores the message in the database with appropriate collection status.
+     * For spam messages, sets spamtype/spamreason and collection=Pending for moderator review.
+     *
+     * @param  ParsedEmail  $email  The parsed email
+     * @param  User  $user  The sender user
+     * @param  Group  $group  The target group
+     * @param  string|null  $spamType  Spam type if this is a spam message
+     * @param  string|null  $spamReason  Spam reason if this is a spam message
+     * @return int|null  The created message ID, or null on failure
+     */
+    private function createGroupPostMessage(
+        ParsedEmail $email,
+        User $user,
+        Group $group,
+        ?string $spamType = null,
+        ?string $spamReason = null
+    ): ?int {
+        try {
+            // Determine message type from subject using keyword matching
+            $type = Message::determineType($email->subject);
+
+            // Generate a unique message ID if not present
+            $messageId = $email->messageId ?? (microtime(true) . '@' . config('freegle.mail.user_domain', 'users.ilovefreegle.org'));
+            // Append group ID to make message ID unique per group (matches legacy behavior)
+            $messageId = $messageId . '-' . $group->id;
+
+            // Create the message record
+            $message = Message::create([
+                'date' => now(),
+                'source' => Message::SOURCE_EMAIL ?? 'Email',
+                'sourceheader' => $email->getHeader('X-Freegle-Source') ?? 'Platform',
+                'message' => $email->rawMessage,
+                'fromuser' => $user->id,
+                'envelopefrom' => $email->envelopeFrom,
+                'envelopeto' => $email->envelopeTo,
+                'fromname' => $email->fromName,
+                'fromaddr' => $email->fromAddress,
+                'replyto' => $email->replyTo,
+                'fromip' => $email->senderIp,
+                'subject' => $email->subject,
+                'suggestedsubject' => $email->subject, // TODO: implement subject suggestion
+                'messageid' => $messageId,
+                'tnpostid' => $email->tnPostId,
+                'textbody' => $email->textBody,
+                'type' => $type,
+                'lat' => $user->lat,
+                'lng' => $user->lng,
+                'locationid' => $user->lastlocation,
+                'spamtype' => $spamType,
+                'spamreason' => $spamReason,
+            ]);
+
+            if (! $message || ! $message->id) {
+                Log::error('Failed to create message record');
+
+                return null;
+            }
+
+            // Create the messages_groups entry
+            // Spam messages go to Pending for moderator review (matches legacy markAsSpam behavior)
+            $collection = $spamType !== null
+                ? MessageGroup::COLLECTION_PENDING
+                : MessageGroup::COLLECTION_INCOMING;
+
+            MessageGroup::create([
+                'msgid' => $message->id,
+                'groupid' => $group->id,
+                'msgtype' => $type,
+                'collection' => $collection,
+                'arrival' => now(),
+            ]);
+
+            // Add to message history for spam checking
+            DB::table('messages_history')->insert([
+                'groupid' => $group->id,
+                'source' => Message::SOURCE_EMAIL ?? 'Email',
+                'fromuser' => $user->id,
+                'envelopefrom' => $email->envelopeFrom,
+                'envelopeto' => $email->envelopeTo,
+                'fromname' => $email->fromName,
+                'fromaddr' => $email->fromAddress,
+                'fromip' => $email->senderIp,
+                'subject' => $email->subject,
+                'prunedsubject' => $this->pruneSubject($email->subject),
+                'messageid' => $messageId,
+                'msgid' => $message->id,
+            ]);
+
+            return $message->id;
+
+        } catch (\Exception $e) {
+            // Check for duplicate message ID (can happen if message is resent)
+            if (str_contains($e->getMessage(), 'Duplicate entry')) {
+                Log::info('Duplicate message ID, likely resent message', [
+                    'message_id' => $email->messageId,
+                ]);
+
+                return null;
+            }
+
+            Log::error('Failed to create group post message', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Prune subject for history comparison (remove location, normalize).
+     */
+    private function pruneSubject(?string $subject): ?string
+    {
+        if ($subject === null) {
+            return null;
+        }
+
+        // Remove location in parentheses at end
+        $pruned = preg_replace('/\s*\([^)]+\)\s*$/', '', $subject);
+        // Remove type prefix
+        $pruned = preg_replace('/^(OFFER|WANTED|TAKEN|RECEIVED)\s*:\s*/i', '', $pruned);
+
+        return trim($pruned);
+    }
+
+    /**
      * Check if spam check should be skipped (e.g., for TN with valid secret).
      */
     private function shouldSkipSpamCheck(ParsedEmail $email): bool
@@ -1986,8 +2134,10 @@ class IncomingMailService
      * Runs all spam detection checks from legacy Spam::checkMessage() and
      * Spam::checkSpam(): keywords, IP checks, subject reuse, greeting spam,
      * Spamhaus DBL, known spammer references, and more.
+     *
+     * @return array{bool, ?string, ?string} [isSpam, spamType, spamReason]
      */
-    private function isSpam(ParsedEmail $email): bool
+    private function checkForSpam(ParsedEmail $email): array
     {
         $result = $this->spamCheck->checkMessage($email);
 
@@ -1998,11 +2148,11 @@ class IncomingMailService
                 'detail' => $detail,
             ]);
 
-            return true;
+            return [true, $reason, $detail];
         }
 
         // Also run SpamAssassin if available (matches legacy MailRouter::checkSpam)
-        // Note: isSpam() is only called when shouldSkipSpamCheck() is false,
+        // Note: checkForSpam() is only called when shouldSkipSpamCheck() is false,
         // so SpamAssassin always runs here.
         [$score, $isSpam] = $this->spamCheck->checkSpamAssassin(
             $email->rawMessage,
@@ -2010,14 +2160,26 @@ class IncomingMailService
         );
 
         if ($isSpam) {
+            $reason = SpamCheckService::REASON_SPAMASSASSIN;
+            $detail = "SpamAssassin flagged this as possible spam; score $score (high is bad)";
             Log::info('SpamAssassin flagged as spam', [
                 'score' => $score,
             ]);
 
-            return true;
+            return [true, $reason, $detail];
         }
 
-        return false;
+        return [false, null, null];
+    }
+
+    /**
+     * Legacy wrapper for checkForSpam() - returns boolean only.
+     */
+    private function isSpam(ParsedEmail $email): bool
+    {
+        [$isSpam] = $this->checkForSpam($email);
+
+        return $isSpam;
     }
 
     /**
