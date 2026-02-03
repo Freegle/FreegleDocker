@@ -468,7 +468,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 471");
+            return $this->dropped("Invalid handover address format");
         }
 
         $trystId = (int) $matches[1];
@@ -491,7 +491,7 @@ class IncomingMailService
                 'tryst_id' => $trystId,
             ]);
 
-            return $this->dropped("See line 494");
+            return $this->dropped("Tryst response for non-existent tryst");
         }
 
         // Determine response from email content
@@ -584,7 +584,7 @@ class IncomingMailService
         if (! $userId || ! $groupId) {
             Log::warning('Invalid digest off command - missing user or group ID');
 
-            return $this->dropped("See line 587");
+            return $this->dropped("Digest off command missing user or group ID");
         }
 
         // Update user's last access
@@ -604,7 +604,7 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return $this->dropped("See line 607");
+            return $this->dropped("User not an approved member for digest off");
         }
 
         // Set email frequency to 0 (NEVER)
@@ -638,7 +638,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 641");
+            return $this->dropped("Invalid events off address format");
         }
 
         $userId = (int) $matches[1];
@@ -666,7 +666,7 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return $this->dropped("See line 669");
+            return $this->dropped("User not an approved member for events off");
         }
 
         // Set eventsallowed to 0
@@ -700,7 +700,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 703");
+            return $this->dropped("Invalid newsletters off address format");
         }
 
         $userId = (int) $matches[1];
@@ -721,7 +721,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return $this->dropped("See line 724");
+            return $this->dropped("User not found for newsletters off");
         }
 
         // Set newslettersallowed to 0
@@ -753,7 +753,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 756");
+            return $this->dropped("Invalid relevant off address format");
         }
 
         $userId = (int) $matches[1];
@@ -774,7 +774,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return $this->dropped("See line 777");
+            return $this->dropped("User not found for relevant off");
         }
 
         // Set relevantallowed to 0
@@ -806,7 +806,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 809");
+            return $this->dropped("Invalid volunteering off address format");
         }
 
         $userId = (int) $matches[1];
@@ -834,7 +834,7 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return $this->dropped("See line 837");
+            return $this->dropped("User not an approved member for volunteering off");
         }
 
         // Set volunteeringallowed to 0
@@ -868,7 +868,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 871");
+            return $this->dropped("Invalid notification mails off address format");
         }
 
         $userId = (int) $matches[1];
@@ -889,7 +889,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return $this->dropped("See line 892");
+            return $this->dropped("User not found for notification mails off");
         }
 
         // Get current settings JSON
@@ -926,7 +926,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 929");
+            return $this->dropped("Invalid one-click unsubscribe address format");
         }
 
         $userId = (int) $matches[1];
@@ -945,7 +945,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return $this->dropped("See line 948");
+            return $this->dropped("User not found for one-click unsubscribe");
         }
 
         // Prevent accidental unsubscription by moderators
@@ -954,7 +954,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return $this->dropped("See line 957");
+            return $this->dropped("Ignoring one-click unsubscribe for moderator");
         }
 
         // Validate the key to prevent spoof unsubscribes
@@ -964,7 +964,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return $this->dropped("See line 967");
+            return $this->dropped("Invalid key for one-click unsubscribe");
         }
 
         // Log old value for reversibility.
@@ -1024,7 +1024,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 1027");
+            return $this->dropped("Invalid subscribe address format");
         }
 
         $groupName = $matches[1];
@@ -1040,7 +1040,7 @@ class IncomingMailService
                 'group' => $groupName,
             ]);
 
-            return $this->dropped("See line 1043");
+            return $this->dropped("Subscribe to unknown group");
         }
 
         // Find or create the user
@@ -1076,7 +1076,7 @@ class IncomingMailService
                     'email' => $envFrom,
                 ]);
 
-                return $this->dropped("See line 1079");
+                return $this->dropped("User email exists but user not found for subscribe");
             }
 
             // Update last access
@@ -1136,7 +1136,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 1139");
+            return $this->dropped("Invalid unsubscribe address format");
         }
 
         $groupName = $matches[1];
@@ -1152,7 +1152,7 @@ class IncomingMailService
                 'group' => $groupName,
             ]);
 
-            return $this->dropped("See line 1155");
+            return $this->dropped("Unsubscribe from unknown group");
         }
 
         // Find the user by envelope from
@@ -1164,7 +1164,7 @@ class IncomingMailService
                 'email' => $envFrom,
             ]);
 
-            return $this->dropped("See line 1167");
+            return $this->dropped("Unsubscribe from unknown user");
         }
 
         $user = User::find($userEmail->userid);
@@ -1173,7 +1173,7 @@ class IncomingMailService
                 'email' => $envFrom,
             ]);
 
-            return $this->dropped("See line 1176");
+            return $this->dropped("User email exists but user not found for unsubscribe");
         }
 
         // Update last access
@@ -1191,7 +1191,7 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return $this->dropped("See line 1194");
+            return $this->dropped("User not a member of group for unsubscribe");
         }
 
         if (in_array($membership->role, ['Moderator', 'Owner'])) {
@@ -1201,7 +1201,7 @@ class IncomingMailService
                 'role' => $membership->role,
             ]);
 
-            return $this->dropped("See line 1204");
+            return $this->dropped("Ignoring unsubscribe for moderator or owner");
         }
 
         // Log full membership for reversibility before deletion.
@@ -1362,7 +1362,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 1365");
+            return $this->dropped("Invalid replyto address format");
         }
 
         $messageId = (int) $parts[1];
@@ -1374,7 +1374,7 @@ class IncomingMailService
                 'message_id' => $messageId,
             ]);
 
-            return $this->dropped("See line 1377");
+            return $this->dropped("Reply to non-existent message");
         }
 
         // Check if message is expired (>42 days old)
@@ -1385,7 +1385,7 @@ class IncomingMailService
                 'age_days' => $arrival->diffInDays(now()),
             ]);
 
-            return $this->dropped("See line 1388");
+            return $this->dropped("Reply to expired message");
         }
 
         // Check if message is on a closed group (legacy: replyToSingleMessage checks group closed setting)
@@ -1415,7 +1415,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return $this->dropped("See line 1418");
+            return $this->dropped("Reply from unknown user");
         }
 
         // Get the message owner
@@ -1425,7 +1425,7 @@ class IncomingMailService
                 'message_id' => $messageId,
             ]);
 
-            return $this->dropped("See line 1428");
+            return $this->dropped("Message has no owner");
         }
 
         // Get or create User2User chat between the sender and message owner
@@ -1436,7 +1436,7 @@ class IncomingMailService
                 'to_user' => $messageOwner,
             ]);
 
-            return $this->dropped("See line 1439");
+            return $this->dropped("Could not create chat for reply");
         }
 
         // Create the chat message
@@ -1479,7 +1479,7 @@ class IncomingMailService
         if ($this->isReadReceipt($email)) {
             Log::debug('Dropping misdirected read receipt in chat reply');
 
-            return $this->dropped("See line 1482");
+            return $this->dropped("Misdirected read receipt in chat reply");
         }
 
         // Validate chat exists
@@ -1489,7 +1489,7 @@ class IncomingMailService
                 'chat_id' => $chatId,
             ]);
 
-            return $this->dropped("See line 1492");
+            return $this->dropped("Reply to non-existent chat");
         }
 
         // Check if chat is stale and sender email is unfamiliar
@@ -1499,7 +1499,7 @@ class IncomingMailService
                 'age_days' => $chat->latestmessage?->diffInDays(now()),
             ]);
 
-            return $this->dropped("See line 1502");
+            return $this->dropped("Reply to stale chat from unfamiliar sender");
         }
 
         // Validate user is part of chat
@@ -1509,7 +1509,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return $this->dropped("See line 1512");
+            return $this->dropped("User not part of chat");
         }
 
         // Create chat message
@@ -1767,7 +1767,7 @@ class IncomingMailService
                 'group' => $email->targetGroupName,
             ]);
 
-            return $this->dropped("See line 1770");
+            return $this->dropped("Volunteers message to unknown group");
         }
 
         // Find sender user
@@ -1777,14 +1777,14 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return $this->dropped("See line 1780");
+            return $this->dropped("Volunteers message from unknown user");
         }
 
         // Filter auto-replies for -auto@ addresses (legacy: !isAutoreply() check for non-volunteers)
         if (! $email->isToVolunteers && $email->isAutoReply()) {
             Log::debug('Dropping auto-reply to auto address');
 
-            return $this->dropped("See line 1787");
+            return $this->dropped("Auto-reply to auto address dropped");
         }
 
         // Spam checks for volunteers messages: flag for review, never reject.
@@ -1845,7 +1845,7 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return $this->dropped("See line 1848");
+            return $this->dropped("Could not create User2Mod chat");
         }
 
         // Create the chat message, flagging for review if spam was detected
@@ -1885,7 +1885,7 @@ class IncomingMailService
                 'group' => $email->targetGroupName,
             ]);
 
-            return $this->dropped("See line 1888");
+            return $this->dropped("Post to unknown group");
         }
 
         // Find sender user
@@ -1895,7 +1895,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return $this->dropped("See line 1898");
+            return $this->dropped("Post from unknown user");
         }
 
         // Check membership
@@ -1910,7 +1910,7 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return $this->dropped("See line 1913");
+            return $this->dropped("Post from non-member");
         }
 
         // Check for TAKEN/RECEIVED subjects - swallow silently (legacy toGroup: paired TAKEN/RECEIVED → TO_SYSTEM)
@@ -2302,7 +2302,7 @@ class IncomingMailService
                 'to' => $email->envelopeTo,
             ]);
 
-            return $this->dropped("See line 2305");
+            return $this->dropped("Direct mail to unknown user address");
         }
 
         // Find the sender user
@@ -2312,7 +2312,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return $this->dropped("See line 2315");
+            return $this->dropped("Direct mail from unknown user");
         }
 
         // Don't create a chat between the same user
@@ -2321,7 +2321,7 @@ class IncomingMailService
                 'user_id' => $senderUser->id,
             ]);
 
-            return $this->dropped("See line 2324");
+            return $this->dropped("Direct mail to self");
         }
 
         // Get or create chat between sender and recipient
@@ -2332,7 +2332,7 @@ class IncomingMailService
                 'to_user' => $recipientUser->id,
             ]);
 
-            return $this->dropped("See line 2335");
+            return $this->dropped("Could not create chat for direct mail");
         }
 
         // Create the chat message
