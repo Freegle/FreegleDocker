@@ -129,12 +129,15 @@ class IncomingMailService
 
         // Check for known dropped senders (Twitter, etc.)
         if ($this->shouldDropSender($email)) {
+            $this->lastRoutingContext['routing_reason'] = 'Known dropped sender (e.g., Twitter notifications)';
+
             return RoutingResult::DROPPED;
         }
 
         // Check for auto-replies (OOO, vacation, etc.)
         if ($email->isAutoReply()) {
             Log::debug('Dropping auto-reply message');
+            $this->lastRoutingContext['routing_reason'] = 'Auto-reply (out of office, vacation, etc.)';
 
             return RoutingResult::DROPPED;
         }
@@ -142,6 +145,7 @@ class IncomingMailService
         // Check for self-sent messages
         if ($this->isSelfSent($email)) {
             Log::debug('Dropping self-sent message');
+            $this->lastRoutingContext['routing_reason'] = 'Self-sent (envelope-from equals envelope-to)';
 
             return RoutingResult::DROPPED;
         }
@@ -149,6 +153,7 @@ class IncomingMailService
         // Check if sender is a known spammer (skip for volunteers - they go to review instead)
         if (! $email->isToVolunteers && ! $email->isToAuto && $this->isKnownSpammer($email)) {
             Log::debug('Dropping message from known spammer');
+            $this->lastRoutingContext['routing_reason'] = 'Known spammer';
 
             return RoutingResult::DROPPED;
         }
@@ -340,6 +345,8 @@ class IncomingMailService
         } else {
             Log::warning('FBL report could not extract recipient email');
         }
+
+        $this->lastRoutingContext['routing_reason'] = 'FBL (Feedback Loop) spam report processed';
 
         return RoutingResult::TO_SYSTEM;
     }
@@ -589,6 +596,8 @@ class IncomingMailService
             'old_emailfrequency' => $oldFrequency,
         ]);
 
+        $this->lastRoutingContext['routing_reason'] = 'Digest off command processed';
+
         return RoutingResult::TO_SYSTEM;
     }
 
@@ -651,6 +660,8 @@ class IncomingMailService
             'old_eventsallowed' => $oldEventsAllowed,
         ]);
 
+        $this->lastRoutingContext['routing_reason'] = 'Events off command processed';
+
         return RoutingResult::TO_SYSTEM;
     }
 
@@ -704,6 +715,8 @@ class IncomingMailService
             'old_newslettersallowed' => $oldNewslettersAllowed,
         ]);
 
+        $this->lastRoutingContext['routing_reason'] = 'Newsletters off command processed';
+
         return RoutingResult::TO_SYSTEM;
     }
 
@@ -756,6 +769,8 @@ class IncomingMailService
             'user_id' => $userId,
             'old_relevantallowed' => $oldRelevantAllowed,
         ]);
+
+        $this->lastRoutingContext['routing_reason'] = 'Relevant off command processed';
 
         return RoutingResult::TO_SYSTEM;
     }
@@ -819,6 +834,8 @@ class IncomingMailService
             'group_id' => $groupId,
         ]);
 
+        $this->lastRoutingContext['routing_reason'] = 'Volunteering off command processed';
+
         return RoutingResult::TO_SYSTEM;
     }
 
@@ -873,9 +890,11 @@ class IncomingMailService
 
             Log::info('Turned off notification mails for user', [
                 'user_id' => $userId,
-                'old_notificationmails' => TRUE,
+                'old_notificationmails' => true,
             ]);
         }
+
+        $this->lastRoutingContext['routing_reason'] = 'Notification mails off command processed';
 
         return RoutingResult::TO_SYSTEM;
     }
@@ -950,6 +969,8 @@ class IncomingMailService
             'type' => $type,
             'old_deleted' => $oldDeleted,
         ]);
+
+        $this->lastRoutingContext['routing_reason'] = 'One-click unsubscribe processed';
 
         return RoutingResult::TO_SYSTEM;
     }
@@ -1037,7 +1058,7 @@ class IncomingMailService
             Log::info('Created new user for subscribe', [
                 'user_id' => $user->id,
                 'email' => $envFrom,
-                'created_new' => TRUE,
+                'created_new' => true,
             ]);
         } else {
             $user = User::find($userEmail->userid);
@@ -1065,6 +1086,8 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
+            $this->lastRoutingContext['routing_reason'] = 'Subscribe command - user already a member';
+
             return RoutingResult::TO_SYSTEM;
         }
 
@@ -1083,8 +1106,10 @@ class IncomingMailService
             'group_id' => $group->id,
             'group_name' => $groupName,
             'membership_id' => $membership->id,
-            'created_new' => TRUE,
+            'created_new' => true,
         ]);
+
+        $this->lastRoutingContext['routing_reason'] = 'Subscribe command - user added to group';
 
         return RoutingResult::TO_SYSTEM;
     }
@@ -1196,6 +1221,8 @@ class IncomingMailService
             'group_name' => $groupName,
         ]);
 
+        $this->lastRoutingContext['routing_reason'] = 'Unsubscribe command - user removed from group';
+
         return RoutingResult::TO_SYSTEM;
     }
 
@@ -1218,7 +1245,12 @@ class IncomingMailService
             if ($email->isPermanentBounce() && $email->bounceRecipient) {
                 // Record permanent bounce against user's email
                 $this->recordBounce($userId, $email->bounceRecipient);
+                $this->lastRoutingContext['routing_reason'] = 'Bounce processed (permanent)';
+            } else {
+                $this->lastRoutingContext['routing_reason'] = 'Bounce processed (temporary)';
             }
+        } else {
+            $this->lastRoutingContext['routing_reason'] = 'Bounce notification received';
         }
 
         return RoutingResult::DROPPED;
@@ -1312,6 +1344,8 @@ class IncomingMailService
                         'message_id' => $messageId,
                         'group_id' => $groupId,
                     ]);
+
+                    $this->lastRoutingContext['routing_reason'] = 'Reply to message on closed group';
 
                     return RoutingResult::TO_SYSTEM;
                 }
@@ -1785,6 +1819,8 @@ class IncomingMailService
                 'subject' => $email->subject,
             ]);
 
+            $this->lastRoutingContext['routing_reason'] = 'TAKEN/RECEIVED completion marker (no action needed)';
+
             return RoutingResult::TO_SYSTEM;
         }
 
@@ -1800,6 +1836,7 @@ class IncomingMailService
 
         // Check for spam if not TN
         if (! $skipSpamCheck && $this->isSpam($email)) {
+            // The spam reason was set in isSpam() via spamCheck->checkMessage()
             return RoutingResult::INCOMING_SPAM;
         }
 
@@ -1876,6 +1913,11 @@ class IncomingMailService
                 'detail' => $detail,
             ]);
 
+            $this->lastRoutingContext['routing_reason'] = "Spam check: {$reason}";
+            if ($detail) {
+                $this->lastRoutingContext['routing_reason'] .= " ({$detail})";
+            }
+
             return true;
         }
 
@@ -1891,6 +1933,8 @@ class IncomingMailService
             Log::info('SpamAssassin flagged as spam', [
                 'score' => $score,
             ]);
+
+            $this->lastRoutingContext['routing_reason'] = "SpamAssassin score: {$score}";
 
             return true;
         }
@@ -2178,7 +2222,7 @@ class IncomingMailService
             'chat_id' => $chat->id,
             'user1' => $userId1,
             'user2' => $userId2,
-            'created_new' => TRUE,
+            'created_new' => true,
         ]);
 
         return $chat;
@@ -2248,7 +2292,7 @@ class IncomingMailService
             'chat_id' => $chat->id,
             'user_id' => $userId,
             'group_id' => $groupId,
-            'created_new' => TRUE,
+            'created_new' => true,
         ]);
 
         return $chat;
