@@ -46,6 +46,11 @@ class BounceService
         '550-5.1.1',
         '550 No Such User Here',
         "dd This user doesn't have",
+        '5.0.0',  // Generic permanent failure status
+        '5.1.1',  // Bad destination mailbox
+        '5.1.2',  // Bad destination system
+        '5.2.1',  // Mailbox disabled
+        '5.2.2',  // Mailbox full (permanent after retry timeout)
     ];
 
     // Patterns that indicate we should ignore this bounce (temporary/infrastructure issues)
@@ -184,7 +189,19 @@ class BounceService
             $diagnosticCode = trim($matches[1]);
         }
 
-        // Strategy 2: Extract from body for non-standard DSNs
+        // Strategy 2: DSN Status header (e.g., "Status: 5.0.0")
+        if ($diagnosticCode === null) {
+            if (preg_match('/^Status:\s*(5\.\d+\.\d+)/im', $rawMessage, $matches)) {
+                // Also try to get error text from body
+                $errorText = '';
+                if (preg_match('/following address\(es\) failed:.*?\n\s*\S+@\S+\n\s*(.+)/is', $rawMessage, $textMatches)) {
+                    $errorText = ' ' . trim($textMatches[1]);
+                }
+                $diagnosticCode = trim($matches[1]) . $errorText;
+            }
+        }
+
+        // Strategy 3: Extract from body for non-standard DSNs
         if ($diagnosticCode === null) {
             // Look for 5xx error codes in body
             if (preg_match('/\b(5\d\d[\s\-][\d\.]+\s+[^\r\n]+)/i', $rawMessage, $matches)) {
