@@ -834,52 +834,65 @@ commands:
     steps:
       - run:
           name: Set up test database and environment
+          command: ~/scripts/setup-test-database.sh
+
+  run-vitest-tests:
+    description: "Run Vitest unit tests for iznik-nuxt3 components"
+    parameters:
+      reason:
+        type: string
+        default: "Running Vitest unit tests"
+    steps:
+      - run:
+          name: Install Node.js 22 for Vitest
           command: |
-            # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
-            if [ -d "$HOME/FreegleDocker" ]; then
-              cd "$HOME/FreegleDocker"
+            echo "📦 Installing Node.js 22..."
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            echo "✅ Node.js $(node --version) installed"
+      - run:
+          name: Run Vitest unit tests
+          command: |
+            echo "🧪 << parameters.reason >>..."
+
+            # Determine the iznik-nuxt3 directory
+            if [ -d "$HOME/FreegleDocker/iznik-nuxt3" ]; then
+              NUXT_DIR="$HOME/FreegleDocker/iznik-nuxt3"
+            elif [ -d "$HOME/project/iznik-nuxt3" ]; then
+              NUXT_DIR="$HOME/project/iznik-nuxt3"
+            else
+              echo "❌ Could not find iznik-nuxt3 directory"
+              exit 1
             fi
-            echo "🗄️ Setting up test database and environment..."
 
-            # Verify required containers are still running
-            echo "Verifying required containers..."
-            for container in freegle-apiv1 freegle-percona; do
-              if ! docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -q "true"; then
-                echo "❌ Container $container is not running!"
-                echo ""
-                echo "=== Container status ==="
-                docker ps -a --filter "name=$container" --format "table {{.Names}}\t{{.Status}}\t{{.State}}"
-                echo ""
-                echo "=== Container logs (last 50 lines) ==="
-                docker logs "$container" --tail 50 2>&1 || echo "Could not get logs"
-                echo ""
-                echo "=== All container statuses ==="
-                docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.State}}" | head -30
-                exit 1
-              fi
-              echo "✅ $container is running"
-            done
+            echo "📂 Using iznik-nuxt3 at: $NUXT_DIR"
+            cd "$NUXT_DIR"
 
-            # Load database schema first (use container name directly for reliability)
-            echo "Loading database schema..."
-            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
-              sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
-              sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
-              sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
-              sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-              sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-              mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
-              mysql -h percona -u root -piznik iznik < install/schema.sql && \
-              mysql -h percona -u root -piznik iznik < install/functions.sql && \
-              mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
-              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
-              mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
+            # Check if vitest is configured
+            if ! grep -q '"test:unit:run"' package.json; then
+              echo "⚠️ Vitest not configured in package.json, skipping unit tests"
+              exit 0
+            fi
 
-            # Set up test environment using testenv.php from iznik-server
-            echo "Setting up test environment (FreeglePlayground group, test users, etc.)..."
-            docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+            # Install dependencies (using npm ci for faster, deterministic installs)
+            echo "📦 Installing npm dependencies..."
+            npm ci --prefer-offline --no-audit
 
-            echo "✅ Test database and environment ready!"
+            # Generate .nuxt directory (required for tsconfig.json extends)
+            echo "🔧 Running nuxi prepare..."
+            npx nuxi prepare
+
+            # Run vitest
+            echo "🧪 Running Vitest unit tests..."
+            npm run test:unit:run -- --reporter=verbose 2>&1 | tee /tmp/vitest-output.log
+            VITEST_EXIT_CODE=${PIPESTATUS[0]}
+
+            if [ $VITEST_EXIT_CODE -eq 0 ]; then
+              echo "✅ Vitest unit tests passed!"
+            else
+              echo "❌ Vitest unit tests failed with exit code: $VITEST_EXIT_CODE"
+              exit $VITEST_EXIT_CODE
+            fi
 
   run-vitest-tests:
     description: "Run Vitest unit tests for iznik-nuxt3 components"
