@@ -143,27 +143,6 @@ class LocationIdTest extends TestCase
         $email = Mockery::mock(ParsedEmail::class);
         $email->shouldReceive('getTrashNothingCoordinates')
             ->andReturn('51.5074,-0.1278');
-        $email->shouldReceive('getHeader')->andReturn(null);
-        $email->shouldReceive('getTrashNothingPostId')->andReturn('12345');
-        $email->shouldReceive('getTrashNothingSource')->andReturn('native-app');
-        $email->shouldReceive('isFromTrashNothing')->andReturn(true);
-        $email->subject = 'OFFER: Test item (London)';
-        $email->textBody = 'Test body';
-        $email->rawMessage = 'Raw message';
-        $email->fromAddress = 'test@user.trashnothing.com';
-        $email->fromName = 'Test User';
-        $email->envelopeFrom = 'test@user.trashnothing.com';
-        $email->envelopeTo = 'testgroup@groups.ilovefreegle.org';
-        $email->messageId = 'test-message-id@trashnothing.com';
-        $email->senderIp = null;
-
-        // Create test user and group
-        $user = User::factory()->create();
-        $group = Group::factory()->create([
-            'type' => 'Freegle',
-            'onhere' => 1,
-            'publish' => 1,
-        ]);
 
         // The coordinates from the header should be used, not the user's location
         // This test verifies the parsing logic is correct
