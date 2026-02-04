@@ -1960,32 +1960,70 @@ class IncomingMailService
         // 'UNMODERATED' posting status means approved.
         $postingStatus = $membership->ourPostingStatus;
 
+        // Determine routing result first
+        $routingResult = RoutingResult::PENDING;  // Default
+        $pendingReason = null;
+
         // Check if user is unmapped (no location)
         if ($user->lastlocation === null) {
+            $pendingReason = 'unmapped user';
             Log::info('Post from unmapped user - pending', [
                 'user_id' => $user->id,
             ]);
-
-            return RoutingResult::PENDING;
         }
-
         // Check for worry words
-        if ($this->containsWorryWords($email)) {
+        elseif ($this->containsWorryWords($email)) {
+            $pendingReason = 'worry words';
             Log::info('Post contains worry words - pending', [
                 'subject' => $email->subject,
             ]);
-
-            return RoutingResult::PENDING;
         }
-
         // Route based on posting status
         // API rejects PROHIBITED with "Not allowed to post on this group" (message.php:625)
         // so email should match: drop the post.
-        return match ($postingStatus) {
-            'DEFAULT', 'UNMODERATED' => RoutingResult::APPROVED,
-            'PROHIBITED' => RoutingResult::DROPPED,
-            default => RoutingResult::PENDING,  // NULL, MODERATED, or any other value
-        };
+        else {
+            $routingResult = match ($postingStatus) {
+                'DEFAULT', 'UNMODERATED' => RoutingResult::APPROVED,
+                'PROHIBITED' => RoutingResult::DROPPED,
+                default => RoutingResult::PENDING,  // NULL, MODERATED, or any other value
+            };
+        }
+
+        // For DROPPED messages, don't create a record
+        if ($routingResult === RoutingResult::DROPPED) {
+            return RoutingResult::DROPPED;
+        }
+
+        // Create the message record for APPROVED and PENDING posts
+        $messageId = $this->createGroupPostMessage($email, $user, $group);
+
+        if ($messageId !== null) {
+            $this->lastRoutingContext['message_id'] = $messageId;
+
+            // Update the collection based on routing result
+            if ($routingResult === RoutingResult::APPROVED) {
+                // Message is approved - update collection to Approved
+                MessageGroup::where('msgid', $messageId)
+                    ->update(['collection' => MessageGroup::COLLECTION_APPROVED]);
+
+                Log::info('Message approved and posted to group', [
+                    'message_id' => $messageId,
+                    'group_id' => $group->id,
+                ]);
+            } else {
+                // Message is pending - collection is already Incoming, update to Pending
+                MessageGroup::where('msgid', $messageId)
+                    ->update(['collection' => MessageGroup::COLLECTION_PENDING]);
+
+                Log::info('Message pending moderator review', [
+                    'message_id' => $messageId,
+                    'group_id' => $group->id,
+                    'reason' => $pendingReason ?? 'posting status',
+                ]);
+            }
+        }
+
+        return $routingResult;
     }
 
     /**
@@ -2021,7 +2059,7 @@ class IncomingMailService
             $message = Message::create([
                 'date' => now(),
                 'source' => Message::SOURCE_EMAIL ?? 'Email',
-                'sourceheader' => $email->getHeader('X-Freegle-Source') ?? 'Platform',
+                'sourceheader' => $this->determineSourceHeader($email),
                 'message' => $email->rawMessage,
                 'fromuser' => $user->id,
                 'envelopefrom' => $email->envelopeFrom,
@@ -2552,5 +2590,54 @@ class IncomingMailService
         ]);
 
         return $chat;
+    }
+
+    /**
+     * Determine the source header for a message based on email headers.
+     *
+     * This matches the logic from iznik-server Message.php to properly identify
+     * the source of incoming emails (TrashNothing, Yahoo, Platform, etc.).
+     *
+     * The priority order is:
+     * 1. X-Freegle-Source header (explicit source)
+     * 2. X-trash-nothing-Source header (TrashNothing posts, prefixed with "TN-")
+     * 3. X-Mailer = "Yahoo Groups Message Poster" -> "Yahoo-Web"
+     * 4. X-Mailer contains "Freegle Message Maker" -> "MessageMaker"
+     * 5. From our domain -> "Platform"
+     * 6. Default -> "Yahoo-Email" (historical name for emails from Freegle members)
+     */
+    private function determineSourceHeader(ParsedEmail $email): string
+    {
+        // 1. Try X-Freegle-Source header first
+        $source = $email->getHeader('X-Freegle-Source');
+        if ($source && $source !== 'Unknown') {
+            return $source;
+        }
+
+        // 2. Try X-trash-nothing-Source and prepend TN-
+        $tnSource = $email->getHeader('X-trash-nothing-Source');
+        if ($tnSource) {
+            return 'TN-'.$tnSource;
+        }
+
+        // 3. Check X-Mailer for Yahoo Groups
+        $mailer = $email->getHeader('X-Mailer');
+        if ($mailer === 'Yahoo Groups Message Poster') {
+            return 'Yahoo-Web';
+        }
+
+        // 4. Check X-Mailer for Freegle Message Maker
+        if ($mailer && str_contains($mailer, 'Freegle Message Maker')) {
+            return 'MessageMaker';
+        }
+
+        // 5. Default based on whether from our domain
+        // "Yahoo-Email" is the historical name used for any posts received via
+        // email from Freegle members (not actually Yahoo-specific anymore)
+        if (User::isInternalEmail($email->fromAddress)) {
+            return 'Platform';
+        }
+
+        return 'Yahoo-Email';
     }
 }
