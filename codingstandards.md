@@ -74,7 +74,7 @@ When adding or modifying v2 API (Go) features:
 
 ## Playwright Tests
 
-- Never use `expect().toBeVisible()` - use `locator.waitFor({ state: 'visible' })`.
+- Always use Playwright assertions instead of locator.waitFor() or page.waitForTimeout().
 - Never use hardcoded timeouts - use constants from config.js.
 - Never fix tests by direct navigation - simulate user behaviour via clicks.
 - Never bypass checks with native JavaScript click.
