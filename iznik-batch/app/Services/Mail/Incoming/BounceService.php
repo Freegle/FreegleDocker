@@ -192,9 +192,9 @@ class BounceService
         // Strategy 2: DSN Status header (e.g., "Status: 5.0.0")
         if ($diagnosticCode === null) {
             if (preg_match('/^Status:\s*(5\.\d+\.\d+)/im', $rawMessage, $matches)) {
-                // Also try to get error text from body
+                // Also try to get error text from body (single line only)
                 $errorText = '';
-                if (preg_match('/following address\(es\) failed:.*?\n\s*\S+@\S+\n\s*(.+)/is', $rawMessage, $textMatches)) {
+                if (preg_match('/following address\(es\) failed:.*?\n\s*\S+@\S+\n\s*([^\r\n]+)/is', $rawMessage, $textMatches)) {
                     $errorText = ' ' . trim($textMatches[1]);
                 }
                 $diagnosticCode = trim($matches[1]) . $errorText;
