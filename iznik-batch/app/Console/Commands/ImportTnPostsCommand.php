@@ -257,6 +257,18 @@ class ImportTnPostsCommand extends Command
                 'arrival' => $arrivalDate,
             ]);
 
+            // Link item from subject
+            list($parsedType, $itemName, $location) = $this->parseSubject($subject);
+            if ($itemName) {
+                $itemId = $this->findOrCreateItem($itemName);
+                if ($itemId) {
+                    DB::table('messages_items')->insertOrIgnore([
+                        'msgid' => $message->id,
+                        'itemid' => $itemId,
+                    ]);
+                }
+            }
+
             // Add to message history
             DB::table('messages_history')->insert([
                 'groupid' => $group->id,
@@ -477,5 +489,79 @@ class ImportTnPostsCommand extends Command
         }
 
         return null;
+    }
+
+    /**
+     * Parse subject line: "OFFER: Item name (Location)"
+     * Returns [type, item, location]
+     */
+    private function parseSubject(string $subj): array
+    {
+        $type = null;
+        $item = null;
+        $location = null;
+
+        $p = strpos($subj, ':');
+
+        if ($p !== false) {
+            $startp = $p;
+            $rest = trim(substr($subj, $p + 1));
+            $p = strlen($rest) - 1;
+
+            if (substr($rest, -1) == ')') {
+                $count = 0;
+
+                do {
+                    $curr = substr($rest, $p, 1);
+
+                    if ($curr == '(') {
+                        $count--;
+                    } elseif ($curr == ')') {
+                        $count++;
+                    }
+
+                    $p--;
+                } while ($count > 0 && $p > 0);
+
+                if ($count == 0) {
+                    $type = trim(substr($subj, 0, $startp));
+                    $location = trim(substr($rest, $p + 2, strlen($rest) - $p - 3));
+                    $item = trim(substr($rest, 0, $p));
+                }
+            }
+        }
+
+        return [$type, $item, $location];
+    }
+
+    /**
+     * Find or create an item by name
+     */
+    private function findOrCreateItem(string $name): ?int
+    {
+        $name = trim($name);
+        if (empty($name)) {
+            return null;
+        }
+
+        // Truncate to max length (from Item.php)
+        if (strlen($name) > 60) {
+            $name = substr($name, 0, 60);
+        }
+
+        // Try to find existing item
+        $existing = DB::table('items')
+            ->where('name', $name)
+            ->first();
+
+        if ($existing) {
+            return $existing->id;
+        }
+
+        // Create new item (indexing will happen via normal cron process)
+        return DB::table('items')->insertGetId([
+            'name' => $name,
+            'popularity' => 0,
+        ]);
     }
 }
