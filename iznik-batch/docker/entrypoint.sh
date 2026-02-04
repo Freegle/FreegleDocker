@@ -43,7 +43,10 @@ echo 'Test database ready: '.getenv('DB_DATABASE').'_test'.PHP_EOL;
 
 # Run migrations only if explicitly enabled (disabled by default for safety).
 # Set RUN_MIGRATIONS=true in docker-compose.yml for development environments.
-if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+# In CI mode, skip automatic migrations - they race with schema.sql loading.
+if [ "${CI:-false}" = "true" ]; then
+    echo "CI mode: skipping automatic migrations (schema.sql handles database setup)"
+elif [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     echo "Running migrations (RUN_MIGRATIONS=true)..."
     migrationAttempts=3
     while [ $migrationAttempts -gt 0 ]; do
