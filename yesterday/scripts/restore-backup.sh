@@ -414,6 +414,15 @@ if [ -n "$LOKI_BACKUP" ]; then
 
     LOKI_FINAL_SIZE=$(du -sh "${LOKI_VOLUME_PATH}" | awk '{print $1}')
     echo "✅ Loki backup restored: ${LOKI_FINAL_SIZE}"
+
+    # Flush disk buffers and pause to let I/O settle
+    # After extracting 26GB of data, the system is under heavy I/O load.
+    # Without this pause, containers (especially traefik) may fail healthchecks
+    # due to slow disk access when reading config files.
+    echo "Syncing disk buffers after Loki restore..."
+    sync
+    echo "Waiting for I/O to settle..."
+    sleep 15
 else
     echo "⚠️  No Loki backup found in $BACKUP_BUCKET/loki/ - skipping Loki restore"
     echo "   Loki will start with empty data (no historical logs)"

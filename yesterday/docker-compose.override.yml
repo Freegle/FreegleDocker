@@ -51,7 +51,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-      start_period: 10s
+      start_period: 30s  # Increased from 10s to handle I/O load after Loki restore
     ports:
       - "80:80"
       - "8192:8192"
