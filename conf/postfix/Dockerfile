@@ -1,6 +1,13 @@
 FROM alpine:3.19
 
-RUN apk add --no-cache postfix postfix-pcre bash curl
+RUN apk add --no-cache postfix postfix-pcre bash curl openssl
+
+# Generate self-signed TLS cert for opportunistic STARTTLS
+RUN openssl req -x509 -newkey rsa:2048 \
+    -keyout /etc/ssl/private/postfix.key \
+    -out /etc/ssl/certs/postfix.pem \
+    -days 3650 -nodes \
+    -subj '/CN=mail.ilovefreegle.org'
 
 # Create mail user for running the pipe
 RUN adduser -D -u 1000 mail-handler
@@ -12,8 +19,9 @@ COPY transport /etc/postfix/transport
 COPY freegle-mail-handler /usr/local/bin/freegle-mail-handler
 RUN chmod +x /usr/local/bin/freegle-mail-handler
 
-# Build the transport map
-RUN postmap /etc/postfix/transport
+# Build lookup tables (Alpine uses lmdb, not hash)
+RUN postmap lmdb:/etc/postfix/transport && \
+    postalias lmdb:/etc/postfix/aliases
 
 # Create spool directories
 RUN mkdir -p /var/spool/postfix && \

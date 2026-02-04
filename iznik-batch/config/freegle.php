@@ -77,6 +77,11 @@ return [
         'rule_safe' => env('FREEGLE_RULE_SAFE_IMAGE', 'https://www.ilovefreegle.org/emailimages/rule-safe.png'),
     ],
 
+    // GeoIP database for IP country lookups
+    'geoip' => [
+        'mmdb_path' => env('GEOIP_MMDB_PATH', '/usr/share/GeoIP/GeoLite2-Country.mmdb'),
+    ],
+
     // TUS uploader for AI-generated images
     'tus_uploader' => env('TUS_UPLOADER', 'https://uploads.ilovefreegle.org:8080'),
 

@@ -42,7 +42,7 @@ return new class extends Migration
             $table->longText('htmlbody')->nullable();
             $table->integer('retrycount')->default(0)->comment('We might fail to route, and later retry');
             $table->timestamp('retrylastfailure')->nullable()->index('retrylastfailure');
-            $table->enum('spamtype', ['CountryBlocked', 'IPUsedForDifferentUsers', 'IPUsedForDifferentGroups', 'SubjectUsedForDifferentGroups', 'SpamAssassin', 'NotSpam', 'WorryWord'])->nullable();
+            $table->string('spamtype', 50)->nullable()->comment('Type of spam detected - now VARCHAR to support all SpamCheckService reasons');
             $table->string('spamreason')->nullable()->comment('Why we think this message may be spam');
             $table->decimal('lat', 10, 6)->nullable()->index('lat');
             $table->decimal('lng', 10, 6)->nullable()->index('lng');

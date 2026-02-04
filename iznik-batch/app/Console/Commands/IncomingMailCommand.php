@@ -2,9 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Services\LokiService;
+use App\Services\Mail\Incoming\IncomingArchiveService;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
-use App\Services\Mail\Incoming\RoutingResult;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -39,7 +40,7 @@ class IncomingMailCommand extends Command
 
     private const EX_TEMPFAIL = 75;
 
-    public function handle(MailParserService $parser, IncomingMailService $service): int
+    public function handle(MailParserService $parser, IncomingMailService $service, IncomingArchiveService $archiveService): int
     {
         $sender = $this->argument('sender');
         $recipient = $this->argument('recipient');
@@ -49,6 +50,9 @@ class IncomingMailCommand extends Command
         if ($rawEmail === null) {
             $rawEmail = file_get_contents('php://stdin');
         }
+
+        // Archive raw email to disk before processing (safety net for reprocessing).
+        $archivePath = $archiveService->archive($rawEmail, $sender, $recipient);
 
         try {
             // Parse the email
@@ -68,7 +72,12 @@ class IncomingMailCommand extends Command
             // Output the result
             $this->line($result->value);
 
-            // Log for monitoring
+            // Record outcome in archive file.
+            if ($archivePath) {
+                $archiveService->recordOutcome($archivePath, $result->value);
+            }
+
+            // Log for monitoring (Laravel log)
             Log::channel('incoming_mail')->info('Mail processed', [
                 'source' => 'batch',
                 'job' => 'mail:incoming',
@@ -79,6 +88,17 @@ class IncomingMailCommand extends Command
                 'message_id' => $parsed->messageId,
                 'routing_result' => $result->value,
             ]);
+
+            // Log to Loki for ModTools incoming email dashboard
+            app(LokiService::class)->logIncomingEmail(
+                $sender,
+                $recipient,
+                $parsed->fromAddress,
+                $parsed->subject ?? '',
+                $parsed->messageId ?? '',
+                $result->value,
+                $service->getLastRoutingContext(),
+            );
 
             return $result->getExitCode();
 

@@ -4,6 +4,7 @@ namespace Tests\Unit\Services;
 
 use App\Models\User;
 use App\Models\UserEmail;
+use App\Services\LokiService;
 use App\Services\UserManagementService;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -15,7 +16,8 @@ class UserManagementServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new UserManagementService();
+        $lokiService = $this->createMock(LokiService::class);
+        $this->service = new UserManagementService($lokiService);
     }
 
     public function test_process_bounced_emails_marks_invalid(): void
@@ -41,7 +43,7 @@ class UserManagementServiceTest extends TestCase
 
         // Update the user's email to be validated but not bounced.
         UserEmail::where('userid', $user->id)
-            ->update(['bounced' => NULL, 'validated' => now()]);
+            ->update(['bounced' => null, 'validated' => now()]);
 
         $stats = $this->service->processBouncedEmails();
 

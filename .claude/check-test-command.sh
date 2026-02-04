@@ -15,28 +15,52 @@ if [ -z "$COMMAND" ]; then
   exit 0  # No command, allow
 fi
 
-# Check if this is a test command
+# Check if this is a test execution command.
+# We match actual test runner invocations, not arbitrary strings in URLs/paths.
+# Each pattern is a regex that anchors to word boundaries or command structure.
 TEST_PATTERNS=(
-  "playwright test"
-  "npx playwright test"
-  "npm run test"
-  "npm test"
-  "go test"
-  "phpunit"
-  "artisan test"
-  "artisan dusk"
-  "vendor/bin/phpunit"
-  "vitest"
-  "npx vitest"
+  '\bplaywright test\b'
+  '\bnpx playwright test\b'
+  '\bnpm run test\b'
+  '\bnpm test\b'
+  '\bgo test\b'
+  '\bartisan test\b'
+  '\bartisan dusk\b'
+  '\bvendor/bin/phpunit\b'
+  '\bvitest\b'
+  '\bnpx vitest\b'
 )
 
+# Skip commands that are just downloading/reading files (not executing tests).
+# These commonly contain test-related strings in URLs or file paths.
+IS_DATA_COMMAND=false
+if echo "$COMMAND" | grep -qE '\bcurl\b.*circle-artifacts\.com'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '\bcurl\b.*circleci\.com/api'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '^\s*(cat|tail|head|less|wc)\b.*/tmp/'; then
+  IS_DATA_COMMAND=true
+fi
+# docker exec commands that only read processes/logs (not running tests)
+if echo "$COMMAND" | grep -qE '\bdocker (top|logs)\b'; then
+  IS_DATA_COMMAND=true
+fi
+# grep/ps commands looking at processes
+if echo "$COMMAND" | grep -qE '\b(ps|pgrep)\b'; then
+  IS_DATA_COMMAND=true
+fi
+
 IS_TEST_COMMAND=false
-for pattern in "${TEST_PATTERNS[@]}"; do
-  if echo "$COMMAND" | grep -q "$pattern"; then
-    IS_TEST_COMMAND=true
-    break
-  fi
-done
+if [ "$IS_DATA_COMMAND" = false ]; then
+  for pattern in "${TEST_PATTERNS[@]}"; do
+    if echo "$COMMAND" | grep -qE "$pattern"; then
+      IS_TEST_COMMAND=true
+      break
+    fi
+  done
+fi
 
 if [ "$IS_TEST_COMMAND" = false ]; then
   exit 0  # Not a test command, allow

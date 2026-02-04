@@ -292,10 +292,10 @@ class EmailSpoolerService
 
                     // Build the body - either with AMP or standard multipart/alternative.
                     if (!empty($data['amp_html'])) {
-                        // TEMPORARY: Save AMP HTML to /tmp for validation testing.
-                        $ampFile = '/tmp/amp-email-' . ($data['id'] ?? uniqid()) . '.html';
-                        file_put_contents($ampFile, $data['amp_html']);
-                        Log::debug('AMP HTML saved for validation', ['file' => $ampFile]);
+                        // DEBUG: Uncomment to save AMP HTML for validation testing.
+                        // $ampFile = '/tmp/amp-email-' . ($data['id'] ?? uniqid()) . '.html';
+                        // file_put_contents($ampFile, $data['amp_html']);
+                        // Log::debug('AMP HTML saved for validation', ['file' => $ampFile]);
 
                         // AMP emails need multipart/alternative with text, AMP, and HTML parts.
                         $textPart = new TextPart($data['text'] ?? '', 'utf-8', 'plain');

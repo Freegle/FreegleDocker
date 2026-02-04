@@ -7,11 +7,13 @@ use App\Models\ChatRoom;
 use App\Models\Group;
 use App\Models\Membership;
 use App\Models\Message;
+use App\Models\MessageGroup;
 use App\Models\User;
 use App\Models\UserEmail;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail as MailFacade;
 
 /**
  * Service for routing incoming email messages.
@@ -27,62 +29,52 @@ use Illuminate\Support\Facades\Log;
  */
 class IncomingMailService
 {
-    // Maximum age for chat replies (90 days to match legacy User::OPEN_AGE)
-    private const STALE_CHAT_DAYS = 90;
+    // Maximum age for chat replies (84 days = 12 weeks)
+    private const STALE_CHAT_DAYS = 84;
 
     // Maximum age for message replies (42 days = 6 weeks)
     private const EXPIRED_MESSAGE_DAYS = 42;
 
-    // Routing context - populated during routing for dry-run comparison
-    private ?int $routingUserId = null;
+    // No constructor dependencies - parsing is done by the command before routing
 
-    private ?int $routingGroupId = null;
+    private SpamCheckService $spamCheck;
 
-    private ?int $routingChatId = null;
+    private StripQuotedService $stripQuoted;
 
-    private ?string $routingSpamReason = null;
+    private BounceService $bounceService;
 
     /**
-     * Route a parsed email in dry-run mode (no database changes).
-     *
-     * This method wraps the normal routing logic in a transaction that
-     * always rolls back. All routing decisions are made (including DB reads)
-     * but no changes persist. Used for shadow testing the new code against
-     * legacy archives.
-     *
-     * @param  ParsedEmail  $email  The parsed email to route
-     * @return RoutingOutcome The routing outcome with context (what WOULD have happened)
+     * Context from the last routing decision (group name, user id, etc.).
+     * Set during route() and read by controllers for logging.
      */
-    public function routeDryRun(ParsedEmail $email): RoutingOutcome
+    private array $lastRoutingContext = [];
+
+    public function __construct(
+        ?SpamCheckService $spamCheck = null,
+        ?StripQuotedService $stripQuoted = null,
+        ?BounceService $bounceService = null
+    ) {
+        $this->spamCheck = $spamCheck ?? app(SpamCheckService::class);
+        $this->stripQuoted = $stripQuoted ?? new StripQuotedService;
+        $this->bounceService = $bounceService ?? new BounceService;
+    }
+
+    /**
+     * Helper to set routing reason and return DROPPED result.
+     */
+    private function dropped(string $reason, array $extraContext = []): RoutingResult
     {
-        $result = null;
+        $this->lastRoutingContext = array_merge(['routing_reason' => $reason], $extraContext);
 
-        // Reset routing context
-        $this->routingUserId = null;
-        $this->routingGroupId = null;
-        $this->routingChatId = null;
-        $this->routingSpamReason = null;
+        return RoutingResult::DROPPED;
+    }
 
-        try {
-            DB::beginTransaction();
-
-            // Run full routing logic
-            $result = $this->route($email);
-
-            // Always rollback - we don't want to persist any changes
-            DB::rollBack();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
-
-        return new RoutingOutcome(
-            result: $result,
-            userId: $this->routingUserId,
-            groupId: $this->routingGroupId,
-            chatId: $this->routingChatId,
-            spamReason: $this->routingSpamReason,
-        );
+    /**
+     * Get context from the last routing decision.
+     */
+    public function getLastRoutingContext(): array
+    {
+        return $this->lastRoutingContext;
     }
 
     /**
@@ -93,6 +85,8 @@ class IncomingMailService
      */
     public function route(ParsedEmail $email): RoutingResult
     {
+        $this->lastRoutingContext = [];
+
         Log::debug('Routing incoming email', [
             'envelope_from' => $email->envelopeFrom,
             'envelope_to' => $email->envelopeTo,
@@ -105,47 +99,57 @@ class IncomingMailService
             return $systemResult;
         }
 
-        // Phase 2: Check for bounces (BEFORE auto-reply check)
-        // Bounces have Auto-Submitted header but should be processed, not dropped
+        // Phase 2: Check for chat/message replies BEFORE global bounce/auto-reply filters.
+        // Legacy code (MailRouter.php:267-276) routes notify- and replyto- addresses first,
+        // with each handler applying its own nuanced bounce/auto-reply logic internally.
+        // The global filters must not intercept these or we'll drop legitimate chat replies
+        // from TN autoreplies, Nextdoor bounces, etc.
+        if ($email->isChatNotificationReply()) {
+            return $this->handleChatNotificationReply($email);
+        }
+
+        $replyToResult = $this->handleReplyToAddress($email);
+        if ($replyToResult !== null) {
+            return $replyToResult;
+        }
+
+        // Phase 3: Check for bounces
         if ($email->isBounce()) {
             return $this->handleBounce($email);
         }
 
+        // Phase 3b: Human reply to bounce return-path address (issue #40).
+        // Non-DSN emails to bounce-{userid}-{timestamp}@ addresses are human replies
+        // that replied to Return-Path instead of Reply-To. Send helpful auto-reply.
+        $localPart = explode('@', $email->envelopeTo)[0] ?? '';
+        if (str_starts_with($localPart, 'bounce-')) {
+            return $this->handleHumanReplyToBounceAddress($email);
+        }
+
         // Check for known dropped senders (Twitter, etc.)
         if ($this->shouldDropSender($email)) {
-            return RoutingResult::DROPPED;
+            return $this->dropped('Known dropped sender (Twitter, etc.)');
         }
 
         // Check for auto-replies (OOO, vacation, etc.)
         if ($email->isAutoReply()) {
             Log::debug('Dropping auto-reply message');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Auto-reply (OOO, vacation, etc.)');
         }
 
         // Check for self-sent messages
         if ($this->isSelfSent($email)) {
             Log::debug('Dropping self-sent message');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Self-sent message');
         }
 
-        // Check if sender is a known spammer
-        if ($this->isKnownSpammer($email)) {
+        // Check if sender is a known spammer (skip for volunteers - they go to review instead)
+        if (! $email->isToVolunteers && ! $email->isToAuto && $this->isKnownSpammer($email)) {
             Log::debug('Dropping message from known spammer');
 
-            return RoutingResult::DROPPED;
-        }
-
-        // Phase 3: Check for chat/message replies
-        if ($email->isChatNotificationReply()) {
-            return $this->handleChatNotificationReply($email);
-        }
-
-        // Check for replyto- addresses
-        $replyToResult = $this->handleReplyToAddress($email);
-        if ($replyToResult !== null) {
-            return $replyToResult;
+            return $this->dropped('Known spammer');
         }
 
         // Phase 4: Check for volunteer/auto addresses
@@ -314,6 +318,12 @@ class IncomingMailService
             if ($userEmail) {
                 $user = User::find($userEmail->userid);
                 if ($user) {
+                    // Log old values for reversibility.
+                    $oldFrequencies = DB::table('memberships')
+                        ->where('userid', $user->id)
+                        ->pluck('emailfrequency', 'id')
+                        ->toArray();
+
                     // Turn off email digests for all their memberships
                     DB::table('memberships')
                         ->where('userid', $user->id)
@@ -322,6 +332,7 @@ class IncomingMailService
                     Log::info('Turned off emails due to FBL', [
                         'user_id' => $user->id,
                         'email' => $recipientEmail,
+                        'old_frequencies' => $oldFrequencies,
                     ]);
                 }
             }
@@ -348,7 +359,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Invalid read receipt address format');
         }
 
         $chatId = (int) $matches[1];
@@ -373,7 +384,7 @@ class IncomingMailService
                 'chat_id' => $chatId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Read receipt for non-existent chat');
         }
 
         // Check if user can see the chat
@@ -383,7 +394,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped('Read receipt from user not in chat');
         }
 
         // Update the chat roster to mark messages as seen
@@ -426,7 +437,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid handover address format");
         }
 
         $trystId = (int) $matches[1];
@@ -449,7 +460,7 @@ class IncomingMailService
                 'tryst_id' => $trystId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Tryst response for non-existent tryst");
         }
 
         // Determine response from email content
@@ -464,9 +475,18 @@ class IncomingMailService
         }
 
         if ($updateColumn !== null) {
+            $oldValue = $tryst->$updateColumn;
             DB::table('trysts')
                 ->where('id', $trystId)
                 ->update([$updateColumn => $response]);
+
+            Log::info('Updated tryst response', [
+                'tryst_id' => $trystId,
+                'user_id' => $userId,
+                'column' => $updateColumn,
+                'old_value' => $oldValue,
+                'new_value' => $response,
+            ]);
         } else {
             Log::warning('Tryst response from user not in tryst', [
                 'tryst_id' => $trystId,
@@ -533,7 +553,7 @@ class IncomingMailService
         if (! $userId || ! $groupId) {
             Log::warning('Invalid digest off command - missing user or group ID');
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Digest off command missing user or group ID");
         }
 
         // Update user's last access
@@ -553,16 +573,19 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not an approved member for digest off");
         }
 
         // Set email frequency to 0 (NEVER)
+        $oldFrequency = $membership->emailfrequency;
         $membership->emailfrequency = 0;
         $membership->save();
 
         Log::info('Turned off digest for user', [
             'user_id' => $userId,
             'group_id' => $groupId,
+            'membership_id' => $membership->id,
+            'old_emailfrequency' => $oldFrequency,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -584,7 +607,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid events off address format");
         }
 
         $userId = (int) $matches[1];
@@ -612,16 +635,19 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not an approved member for events off");
         }
 
         // Set eventsallowed to 0
+        $oldEventsAllowed = $membership->eventsallowed;
         $membership->eventsallowed = 0;
         $membership->save();
 
         Log::info('Turned off events for user', [
             'user_id' => $userId,
             'group_id' => $groupId,
+            'membership_id' => $membership->id,
+            'old_eventsallowed' => $oldEventsAllowed,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -643,7 +669,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid newsletters off address format");
         }
 
         $userId = (int) $matches[1];
@@ -664,15 +690,17 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not found for newsletters off");
         }
 
         // Set newslettersallowed to 0
+        $oldNewslettersAllowed = $user->newslettersallowed;
         $user->newslettersallowed = 0;
         $user->save();
 
         Log::info('Turned off newsletters for user', [
             'user_id' => $userId,
+            'old_newslettersallowed' => $oldNewslettersAllowed,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -694,7 +722,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid relevant off address format");
         }
 
         $userId = (int) $matches[1];
@@ -715,15 +743,17 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not found for relevant off");
         }
 
         // Set relevantallowed to 0
+        $oldRelevantAllowed = $user->relevantallowed;
         $user->relevantallowed = 0;
         $user->save();
 
         Log::info('Turned off relevant for user', [
             'user_id' => $userId,
+            'old_relevantallowed' => $oldRelevantAllowed,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -745,7 +775,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid volunteering off address format");
         }
 
         $userId = (int) $matches[1];
@@ -773,15 +803,18 @@ class IncomingMailService
                 'group_id' => $groupId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not an approved member for volunteering off");
         }
 
         // Set volunteeringallowed to 0
+        $oldVolunteeringAllowed = $membership->volunteeringallowed;
         $membership->volunteeringallowed = 0;
         $membership->save();
 
         Log::info('Turned off volunteering for user', [
             'user_id' => $userId,
+            'membership_id' => $membership->id,
+            'old_volunteeringallowed' => $oldVolunteeringAllowed,
             'group_id' => $groupId,
         ]);
 
@@ -804,7 +837,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid notification mails off address format");
         }
 
         $userId = (int) $matches[1];
@@ -825,20 +858,21 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not found for notification mails off");
         }
 
         // Get current settings JSON
-        $settings = json_decode($user->settings ?? '{}', TRUE) ?: [];
+        $settings = json_decode($user->settings ?? '{}', true) ?: [];
 
         // Only update if not already off
-        if (($settings['notificationmails'] ?? TRUE) === TRUE) {
-            $settings['notificationmails'] = FALSE;
+        if (($settings['notificationmails'] ?? true) === true) {
+            $settings['notificationmails'] = false;
             $user->settings = json_encode($settings);
             $user->save();
 
             Log::info('Turned off notification mails for user', [
                 'user_id' => $userId,
+                'old_notificationmails' => true,
             ]);
         }
 
@@ -861,7 +895,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid one-click unsubscribe address format");
         }
 
         $userId = (int) $matches[1];
@@ -880,7 +914,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not found for one-click unsubscribe");
         }
 
         // Prevent accidental unsubscription by moderators
@@ -889,7 +923,7 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Ignoring one-click unsubscribe for moderator");
         }
 
         // Validate the key to prevent spoof unsubscribes
@@ -899,8 +933,11 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid key for one-click unsubscribe");
         }
+
+        // Log old value for reversibility.
+        $oldDeleted = DB::table('users')->where('id', $userId)->value('deleted');
 
         // Put user into limbo (soft delete)
         DB::table('users')
@@ -910,6 +947,7 @@ class IncomingMailService
         Log::info('Put user into limbo via one-click unsubscribe', [
             'user_id' => $userId,
             'type' => $type,
+            'old_deleted' => $oldDeleted,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -955,7 +993,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid subscribe address format");
         }
 
         $groupName = $matches[1];
@@ -971,7 +1009,7 @@ class IncomingMailService
                 'group' => $groupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Subscribe to unknown group");
         }
 
         // Find or create the user
@@ -998,6 +1036,7 @@ class IncomingMailService
             Log::info('Created new user for subscribe', [
                 'user_id' => $user->id,
                 'email' => $envFrom,
+                'created_new' => true,
             ]);
         } else {
             $user = User::find($userEmail->userid);
@@ -1006,7 +1045,7 @@ class IncomingMailService
                     'email' => $envFrom,
                 ]);
 
-                return RoutingResult::DROPPED;
+                return $this->dropped("User email exists but user not found for subscribe");
             }
 
             // Update last access
@@ -1029,7 +1068,7 @@ class IncomingMailService
         }
 
         // Add membership
-        Membership::create([
+        $membership = Membership::create([
             'userid' => $user->id,
             'groupid' => $group->id,
             'role' => 'Member',
@@ -1042,6 +1081,8 @@ class IncomingMailService
             'user_id' => $user->id,
             'group_id' => $group->id,
             'group_name' => $groupName,
+            'membership_id' => $membership->id,
+            'created_new' => true,
         ]);
 
         return RoutingResult::TO_SYSTEM;
@@ -1064,7 +1105,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid unsubscribe address format");
         }
 
         $groupName = $matches[1];
@@ -1080,7 +1121,7 @@ class IncomingMailService
                 'group' => $groupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Unsubscribe from unknown group");
         }
 
         // Find the user by envelope from
@@ -1092,7 +1133,7 @@ class IncomingMailService
                 'email' => $envFrom,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Unsubscribe from unknown user");
         }
 
         $user = User::find($userEmail->userid);
@@ -1101,7 +1142,7 @@ class IncomingMailService
                 'email' => $envFrom,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User email exists but user not found for unsubscribe");
         }
 
         // Update last access
@@ -1119,7 +1160,7 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not a member of group for unsubscribe");
         }
 
         if (in_array($membership->role, ['Moderator', 'Owner'])) {
@@ -1129,8 +1170,21 @@ class IncomingMailService
                 'role' => $membership->role,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Ignoring unsubscribe for moderator or owner");
         }
+
+        // Log full membership for reversibility before deletion.
+        Log::info('Removing membership (saving state for rollback)', [
+            'membership_id' => $membership->id,
+            'user_id' => $user->id,
+            'group_id' => $group->id,
+            'role' => $membership->role,
+            'collection' => $membership->collection,
+            'emailfrequency' => $membership->emailfrequency,
+            'eventsallowed' => $membership->eventsallowed,
+            'volunteeringallowed' => $membership->volunteeringallowed,
+            'ourPostingStatus' => $membership->ourPostingStatus,
+        ]);
 
         // Remove membership
         $membership->delete();
@@ -1146,48 +1200,117 @@ class IncomingMailService
 
     /**
      * Handle bounce messages.
+     *
+     * Processes DSN bounce messages by:
+     * 1. Parsing the DSN to extract diagnostic code and recipient
+     * 2. Classifying as permanent, temporary, or ignored
+     * 3. Recording in bounces_emails table
+     * 4. Checking if user should be suspended (inline, not via cron)
+     *
+     * @see BounceService for full implementation details
      */
     private function handleBounce(ParsedEmail $email): RoutingResult
     {
         Log::info('Processing bounce', [
             'recipient' => $email->bounceRecipient,
             'status' => $email->bounceStatus,
-            'permanent' => $email->isPermanentBounce(),
+            'envelope_to' => $email->envelopeTo,
         ]);
 
-        // Extract user ID from bounce address if present
-        $localPart = explode('@', $email->envelopeTo)[0] ?? '';
-        if (preg_match('/^bounce-(\d+)-/', $localPart, $matches)) {
-            $userId = (int) $matches[1];
+        $result = $this->bounceService->processBounce($email);
 
-            if ($email->isPermanentBounce() && $email->bounceRecipient) {
-                // Record permanent bounce against user's email
-                $this->recordBounce($userId, $email->bounceRecipient);
+        if (! $result['success']) {
+            $error = $result['error'] ?? 'unknown';
+            Log::warning('Bounce processing failed', [
+                'error' => $error,
+                'envelope_to' => $email->envelopeTo,
+            ]);
+
+            // For unparseable DSNs, only return ERROR if we expected valid DSN data.
+            // If the parser already determined there's no bounceRecipient, this might
+            // be a human reply that was incorrectly flagged as a bounce. Return TO_SYSTEM
+            // to match legacy behavior and allow the routing to continue to other handlers.
+            if ($error === 'unparseable') {
+                if ($email->bounceRecipient !== null) {
+                    // We had recipient info but couldn't parse - this is a real error
+                    $this->lastRoutingContext = [
+                        'routing_reason' => 'Bounce parse failed',
+                    ];
+
+                    return RoutingResult::ERROR;
+                }
+                // No recipient info - probably not a real DSN, return TO_SYSTEM quietly
+                Log::debug('Bounce without recipient info - treating as non-bounce');
             }
         }
 
-        return RoutingResult::DROPPED;
+        // Update routing context
+        if (isset($result['user_id'])) {
+            $this->lastRoutingContext = [
+                'user_id' => $result['user_id'],
+                'routing_reason' => 'Bounce processed'.($result['suspended'] ?? false ? ' (user suspended)' : ''),
+            ];
+        }
+
+        return RoutingResult::TO_SYSTEM;
     }
 
     /**
-     * Record a bounce against a user's email.
+     * Handle human replies to bounce return-path addresses (issue #40).
      *
-     * The bounced column stores a timestamp (when the bounce was recorded),
-     * not a count. Setting it marks the email as having bounced.
+     * Some email clients reply to Return-Path instead of Reply-To. When this
+     * happens, the reply goes to bounce-{userid}-{timestamp}@users... which is
+     * only meant for DSN processing. We send a helpful auto-reply explaining
+     * how to reach Freegle properly.
      */
-    private function recordBounce(int $userId, string $emailAddress): void
+    private function handleHumanReplyToBounceAddress(ParsedEmail $email): RoutingResult
     {
-        DB::table('users_emails')
-            ->where('userid', $userId)
-            ->where('email', $emailAddress)
-            ->update([
-                'bounced' => now(),
-            ]);
+        $senderAddress = strtolower($email->fromAddress ?? $email->envelopeFrom ?? '');
 
-        Log::info('Recorded bounce for user', [
-            'user_id' => $userId,
-            'email' => $emailAddress,
+        Log::info('Human reply to bounce address', [
+            'from' => $senderAddress,
+            'envelope_to' => $email->envelopeTo,
+            'subject' => $email->subject,
         ]);
+
+        // Loop prevention: never auto-reply to these senders
+        $suppressPatterns = ['mailer-daemon', 'postmaster', 'noreply', 'no-reply', 'bounce-'];
+        foreach ($suppressPatterns as $pattern) {
+            if (str_contains($senderAddress, $pattern)) {
+                Log::debug('Suppressing auto-reply to system address', ['from' => $senderAddress]);
+
+                return RoutingResult::TO_SYSTEM;
+            }
+        }
+
+        // Loop prevention: never auto-reply to auto-submitted messages
+        if ($email->isAutoReply()) {
+            Log::debug('Suppressing auto-reply to auto-submitted message');
+
+            return RoutingResult::TO_SYSTEM;
+        }
+
+        // Rate limit: max 1 auto-reply per 24h per sender
+        $cacheKey = 'bounce_autoreply:'.md5($senderAddress);
+        if (Cache::has($cacheKey)) {
+            Log::debug('Rate limiting auto-reply', ['from' => $senderAddress]);
+
+            return RoutingResult::TO_SYSTEM;
+        }
+
+        // Send auto-reply
+        try {
+            MailFacade::to($senderAddress)->send(new \App\Mail\BounceAddressAutoReply($senderAddress));
+            Cache::put($cacheKey, true, now()->addHours(24));
+            Log::info('Sent bounce address auto-reply', ['to' => $senderAddress]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send bounce address auto-reply', [
+                'to' => $senderAddress,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return RoutingResult::TO_SYSTEM;
     }
 
     /**
@@ -1208,7 +1331,7 @@ class IncomingMailService
                 'envelope_to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Invalid replyto address format");
         }
 
         $messageId = (int) $parts[1];
@@ -1220,7 +1343,7 @@ class IncomingMailService
                 'message_id' => $messageId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Reply to non-existent message");
         }
 
         // Check if message is expired (>42 days old)
@@ -1231,7 +1354,27 @@ class IncomingMailService
                 'age_days' => $arrival->diffInDays(now()),
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Reply to expired message");
+        }
+
+        // Check if message is on a closed group (legacy: replyToSingleMessage checks group closed setting)
+        $messageGroups = DB::table('messages_groups')
+            ->where('msgid', $messageId)
+            ->pluck('groupid');
+
+        foreach ($messageGroups as $groupId) {
+            $group = Group::find($groupId);
+            if ($group !== null) {
+                $settings = json_decode($group->settings ?? '{}', true) ?: [];
+                if (! empty($settings['closed'])) {
+                    Log::info('Reply to message on closed group', [
+                        'message_id' => $messageId,
+                        'group_id' => $groupId,
+                    ]);
+
+                    return RoutingResult::TO_SYSTEM;
+                }
+            }
         }
 
         // Find the sender user
@@ -1241,7 +1384,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Reply from unknown user");
         }
 
         // Get the message owner
@@ -1251,7 +1394,7 @@ class IncomingMailService
                 'message_id' => $messageId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Message has no owner");
         }
 
         // Get or create User2User chat between the sender and message owner
@@ -1262,11 +1405,21 @@ class IncomingMailService
                 'to_user' => $messageOwner,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Could not create chat for reply");
         }
 
         // Create the chat message
         $this->createChatMessageFromEmail($chat, $fromUser->id, $email);
+
+        // Track email reply in email_tracking for AMP comparison stats.
+        $this->trackEmailReply($chat->id, $fromUser->id);
+
+        $this->lastRoutingContext = [
+            'user_id' => $fromUser->id,
+            'to_user_id' => $messageOwner,
+            'chat_id' => $chat->id,
+            'message_id' => $messageId,
+        ];
 
         Log::info('Created chat message from reply-to email', [
             'message_id' => $messageId,
@@ -1291,6 +1444,13 @@ class IncomingMailService
             'message_id' => $email->chatMessageId,
         ]);
 
+        // Drop misdirected read receipts (legacy: isReceipt check in replyToChatNotification)
+        if ($this->isReadReceipt($email)) {
+            Log::debug('Dropping misdirected read receipt in chat reply');
+
+            return $this->dropped("Misdirected read receipt in chat reply");
+        }
+
         // Validate chat exists
         $chat = ChatRoom::find($chatId);
         if ($chat === null) {
@@ -1298,7 +1458,7 @@ class IncomingMailService
                 'chat_id' => $chatId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Reply to non-existent chat");
         }
 
         // Check if chat is stale and sender email is unfamiliar
@@ -1308,7 +1468,7 @@ class IncomingMailService
                 'age_days' => $chat->latestmessage?->diffInDays(now()),
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Reply to stale chat from unfamiliar sender");
         }
 
         // Validate user is part of chat
@@ -1318,17 +1478,49 @@ class IncomingMailService
                 'user_id' => $userId,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("User not part of chat");
         }
 
         // Create chat message
         $this->createChatMessageFromEmail($chat, $userId, $email);
 
-        // Track routing context
-        $this->routingUserId = $userId;
-        $this->routingChatId = $chatId;
+        // Track email reply in email_tracking so AMP vs email reply stats are accurate.
+        // Find the most recent chat notification sent to this user for this chat.
+        $this->trackEmailReply($chatId, $userId);
+
+        $this->lastRoutingContext = [
+            'user_id' => $userId,
+            'chat_id' => $chatId,
+        ];
 
         return RoutingResult::TO_USER;
+    }
+
+    /**
+     * Track an email reply against the most recent email_tracking record for this chat/user.
+     */
+    private function trackEmailReply(int $chatId, int $userId): void
+    {
+        try {
+            DB::table('email_tracking')
+                ->where('email_type', 'ChatNotification')
+                ->where('userid', $userId)
+                ->where('replied_at', null)
+                ->whereRaw("JSON_EXTRACT(metadata, '$.chat_id') = ?", [$chatId])
+                ->orderByDesc('sent_at')
+                ->limit(1)
+                ->update([
+                    'replied_at' => now(),
+                    'replied_via' => 'email',
+                ]);
+        } catch (\Throwable $e) {
+            // Don't let tracking failures break mail processing.
+            Log::warning('Failed to track email reply', [
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -1336,7 +1528,7 @@ class IncomingMailService
      */
     private function isStaleChatWithUnfamiliarSender(ChatRoom $chat, ParsedEmail $email): bool
     {
-        // Check if chat is stale (>90 days old, per User::OPEN_AGE)
+        // Check if chat is stale (>84 days old)
         $latestMessage = $chat->latestmessage;
         if ($latestMessage === null || $latestMessage->diffInDays(now()) <= self::STALE_CHAT_DAYS) {
             return false;
@@ -1376,28 +1568,158 @@ class IncomingMailService
 
     /**
      * Create a chat message from an incoming email.
+     *
+     * Matches legacy MailRouter behaviour:
+     * - Runs spam checks; if spam found, sets reviewrequired=1 (not rejected)
+     * - Runs checkReview for review-level content checks
+     * - After creation, checks image attachments for repeated hash spam
      */
-    private function createChatMessageFromEmail(ChatRoom $chat, int $userId, ParsedEmail $email): void
-    {
-        $body = $email->textBody ?? $email->htmlBody ?? '';
+    private function createChatMessageFromEmail(
+        ChatRoom $chat,
+        int $userId,
+        ParsedEmail $email,
+        bool $forceReview = false,
+        ?string $forceReviewReason = null
+    ): void {
+        // Get body text, converting HTML to plain text if no text part exists.
+        // This handles email clients like Apple Mail that may send HTML-only emails.
+        $body = $email->textBody;
+        if ($body === null && $email->htmlBody !== null) {
+            $html2text = new \Html2Text\Html2Text($email->htmlBody);
+            $body = $html2text->getText();
+        }
+        $body = $body ?? '';
 
-        ChatMessage::create([
+        // Strip quoted reply text and signatures before storing.
+        $body = $this->stripQuoted->strip($body);
+
+        // Determine if this chat message needs review (matching legacy flow).
+        // In the legacy code, MailRouter::checkSpam() is called first. If spam is
+        // found and the email is destined for chat (@users domain), the message is
+        // NOT rejected - instead $spamfound is passed to ChatMessage::create() as
+        // $forcereview, setting reviewrequired=1.
+        $reviewRequired = $forceReview;
+        $reportReason = $forceReviewReason;
+
+        // Check for spam-level issues (unless already flagged by caller)
+        if (! $reviewRequired) {
+            $spamResult = $this->spamCheck->checkMessage($email);
+            if ($spamResult !== null) {
+                [, $reason, $detail] = $spamResult;
+                $reviewRequired = true;
+                $reportReason = $reason;
+                Log::info('Chat message flagged for review (spam detected)', [
+                    'reason' => $reason,
+                    'detail' => $detail,
+                ]);
+            }
+        }
+
+        // Check for review-level issues (scripts, money, links, language, etc.)
+        // Matches legacy ChatMessage::process() calling Spam::checkReview()
+        if (! $reviewRequired && strlen($body) > 0) {
+            $reviewReason = $this->spamCheck->checkReview($body, true);
+            if ($reviewReason !== null) {
+                $reviewRequired = true;
+                $reportReason = $reviewReason;
+                Log::info('Chat message flagged for review', [
+                    'reason' => $reviewReason,
+                ]);
+            }
+        }
+
+        // Map reportreason to valid enum values for the chat_messages table.
+        // The DB column is enum('Spam','Other','Last','Force','Fully','TooMany','User','UnknownMessage','SameImage','DodgyImage').
+        // Our spam check reasons are more detailed, so map them to the enum.
+        $dbReportReason = $this->mapReportReason($reportReason);
+
+        $chatMsg = ChatMessage::create([
             'chatid' => $chat->id,
             'userid' => $userId,
             'message' => $body,
             'type' => ChatMessage::TYPE_DEFAULT,
             'date' => now(),
             'platform' => 0, // Email source
+            'reviewrequired' => $reviewRequired ? 1 : 0,
+            'reportreason' => $dbReportReason,
         ]);
 
         Log::info('Created chat message from email', [
             'chat_id' => $chat->id,
+            'chat_message_id' => $chatMsg->id,
             'user_id' => $userId,
+            'review_required' => $reviewRequired,
         ]);
+
+        // Check image attachments for repeated hash spam (matching legacy addPhotosToChat).
+        // If the same image hash has been used too many times recently, flag for review.
+        $this->checkChatImageSpam($chatMsg);
+    }
+
+    /**
+     * Check chat message image attachments for repeated hash spam.
+     *
+     * Matches legacy MailRouter::addPhotosToChat() which checks each image
+     * hash against recent usage and flags the message for review if the
+     * same image has been used more than IMAGE_THRESHOLD times in 24 hours.
+     */
+    private function checkChatImageSpam(ChatMessage $chatMsg): void
+    {
+        if ($chatMsg->imageid === null) {
+            return;
+        }
+
+        $image = DB::table('chat_images')->where('id', $chatMsg->imageid)->first();
+        if ($image === null || empty($image->hash)) {
+            return;
+        }
+
+        if ($this->spamCheck->checkImageSpam($image->hash)) {
+            DB::table('chat_messages')
+                ->where('id', $chatMsg->id)
+                ->update([
+                    'reviewrequired' => 1,
+                    'reportreason' => SpamCheckService::REASON_IMAGE_SENT_MANY_TIMES,
+                ]);
+
+            Log::info('Chat image flagged for review (repeated hash)', [
+                'chat_message_id' => $chatMsg->id,
+                'hash' => $image->hash,
+            ]);
+        }
+    }
+
+    /**
+     * Map a spam check reason to a valid chat_messages.reportreason enum value.
+     *
+     * The DB column is enum('Spam','Other','Last','Force','Fully','TooMany','User','UnknownMessage','SameImage','DodgyImage').
+     * SpamCheckService returns detailed reason strings. Map them to the enum.
+     */
+    private function mapReportReason(?string $reason): ?string
+    {
+        if ($reason === null) {
+            return null;
+        }
+
+        // These are already valid enum values
+        $validEnumValues = ['Spam', 'Other', 'Last', 'Force', 'Fully', 'TooMany', 'User', 'UnknownMessage', 'SameImage', 'DodgyImage'];
+        if (in_array($reason, $validEnumValues, true)) {
+            return $reason;
+        }
+
+        // Map detailed reasons to generic 'Spam' enum value
+        return 'Spam';
     }
 
     /**
      * Handle messages to group volunteers.
+     *
+     * Matches legacy toVolunteers() flow:
+     * 1. Run SpamAssassin check first
+     * 2. Run checkMessage() for our own spam checks
+     * 3. Check if sender is a known spammer
+     * 4. Filter auto-replies (for -auto@ addresses, not -volunteers@)
+     * 5. Create User2Mod chat message
      */
     private function handleVolunteersMessage(ParsedEmail $email): RoutingResult
     {
@@ -1407,15 +1729,6 @@ class IncomingMailService
             'is_auto' => $email->isToAuto,
         ]);
 
-        // Check for spam keywords before routing to volunteers (matches legacy toVolunteers behavior).
-        // Legacy runs Spam::checkMessage() which includes the spam_keywords DB check.
-        // Only skip if TN secret is valid.
-        $skipSpamCheck = $this->shouldSkipSpamCheck($email);
-
-        if (! $skipSpamCheck && $this->isSpam($email)) {
-            return RoutingResult::INCOMING_SPAM;
-        }
-
         // Find the group
         $group = $this->findGroup($email->targetGroupName);
         if ($group === null) {
@@ -1423,7 +1736,7 @@ class IncomingMailService
                 'group' => $email->targetGroupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Volunteers message to unknown group");
         }
 
         // Find sender user
@@ -1433,34 +1746,64 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Volunteers message from unknown user");
         }
 
-        // Track routing context early
-        $this->routingUserId = $user->id;
-        $this->routingGroupId = $group->id;
+        // Filter auto-replies for -auto@ addresses (legacy: !isAutoreply() check for non-volunteers)
+        if (! $email->isToVolunteers && $email->isAutoReply()) {
+            Log::debug('Dropping auto-reply to auto address');
 
-        // Check if sender is a known spammer (matches legacy toVolunteers behavior)
-        $isSpammer = DB::table('spam_users')
-            ->where('userid', $user->id)
-            ->where('collection', 'Spammer')
-            ->exists();
-
-        if ($isSpammer) {
-            Log::info('Volunteers message from known spammer', [
-                'user_id' => $user->id,
-            ]);
-
-            return RoutingResult::INCOMING_SPAM;
+            return $this->dropped("Auto-reply to auto address dropped");
         }
 
-        // Drop autoreplies to volunteer addresses (matches legacy behavior)
-        if (! $skipSpamCheck && $email->isAutoReply()) {
-            Log::info('Dropping autoreply to volunteers', [
-                'from' => $email->fromAddress,
-            ]);
+        // Spam checks for volunteers messages: flag for review, never reject.
+        // Users may be reporting spam to volunteers, so we don't want to block
+        // the message. Instead, flag it so volunteers can see it was detected.
+        $spamDetected = false;
+        $spamReason = null;
 
-            return RoutingResult::DROPPED;
+        // SpamAssassin check
+        [$spamScore, $isSpamAssassin] = $this->spamCheck->checkSpamAssassin(
+            $email->rawMessage,
+            $email->subject ?? ''
+        );
+
+        if ($isSpamAssassin) {
+            $spamDetected = true;
+            $spamReason = 'SpamAssassin score '.$spamScore;
+            Log::info('Volunteers message flagged by SpamAssassin (for review)', [
+                'score' => $spamScore,
+            ]);
+        }
+
+        // Our own spam checks
+        if (! $spamDetected) {
+            $spamResult = $this->spamCheck->checkMessage($email);
+            if ($spamResult !== null) {
+                [, $reason, $detail] = $spamResult;
+                $spamDetected = true;
+                $spamReason = $reason;
+                Log::info('Volunteers message flagged as spam (for review)', [
+                    'reason' => $reason,
+                    'detail' => $detail,
+                ]);
+            }
+        }
+
+        // Known spammer check
+        if (! $spamDetected) {
+            $isSpammer = DB::table('spam_users')
+                ->where('userid', $user->id)
+                ->where('collection', 'Spammer')
+                ->exists();
+
+            if ($isSpammer) {
+                $spamDetected = true;
+                $spamReason = 'Known spammer';
+                Log::info('Volunteers message from known spammer (for review)', [
+                    'user_id' => $user->id,
+                ]);
+            }
         }
 
         // Get or create User2Mod chat between user and group moderators
@@ -1471,21 +1814,24 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Could not create User2Mod chat");
         }
 
-        // Create the chat message
-        $this->createChatMessageFromEmail($chat, $user->id, $email);
+        // Create the chat message, flagging for review if spam was detected
+        $this->createChatMessageFromEmail($chat, $user->id, $email, $spamDetected, $spamReason);
 
-        // Track routing context
-        $this->routingUserId = $user->id;
-        $this->routingGroupId = $group->id;
-        $this->routingChatId = $chat->id;
+        $this->lastRoutingContext = [
+            'group_id' => $group->id,
+            'group_name' => $group->nameshort ?? $group->namefull ?? '',
+            'user_id' => $user->id,
+            'chat_id' => $chat->id,
+        ];
 
         Log::info('Created volunteers message', [
             'chat_id' => $chat->id,
             'user_id' => $user->id,
             'group_id' => $group->id,
+            'spam_flagged' => $spamDetected,
         ]);
 
         return RoutingResult::TO_VOLUNTEERS;
@@ -1508,7 +1854,7 @@ class IncomingMailService
                 'group' => $email->targetGroupName,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Post to unknown group");
         }
 
         // Find sender user
@@ -1518,7 +1864,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Post from unknown user");
         }
 
         // Check membership
@@ -1533,90 +1879,249 @@ class IncomingMailService
                 'group_id' => $group->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Post from non-member");
         }
 
-        // Track routing context
-        $this->routingUserId = $user->id;
-        $this->routingGroupId = $group->id;
+        // Check for TAKEN/RECEIVED subjects - swallow silently (legacy toGroup: paired TAKEN/RECEIVED → TO_SYSTEM)
+        if ($this->isTakenOrReceivedSubject($email->subject)) {
+            Log::info('TAKEN/RECEIVED post swallowed', [
+                'subject' => $email->subject,
+            ]);
+
+            return RoutingResult::TO_SYSTEM;
+        }
 
         // Check if Trash Nothing post with valid secret (skip spam check)
         $skipSpamCheck = $this->shouldSkipSpamCheck($email);
 
+        // Set context early - we know the group and user at this point
+        $this->lastRoutingContext = [
+            'group_id' => $group->id,
+            'group_name' => $group->nameshort ?? $group->namefull ?? '',
+            'user_id' => $user->id,
+        ];
+
         // Check for spam if not TN
-        if (! $skipSpamCheck && $this->isSpam($email)) {
-            return RoutingResult::INCOMING_SPAM;
+        if (! $skipSpamCheck) {
+            [$isSpam, $spamType, $spamReason] = $this->checkForSpam($email);
+            if ($isSpam) {
+                // Create the message with spam info and route to pending for moderator review
+                $messageId = $this->createGroupPostMessage($email, $user, $group, $spamType, $spamReason);
+
+                if ($messageId !== null) {
+                    $this->lastRoutingContext['message_id'] = $messageId;
+                    $this->lastRoutingContext['spam_type'] = $spamType;
+                    $this->lastRoutingContext['spam_reason'] = $spamReason;
+
+                    Log::info('Spam message created for moderator review', [
+                        'message_id' => $messageId,
+                        'spam_type' => $spamType,
+                        'spam_reason' => $spamReason,
+                    ]);
+                }
+
+                return RoutingResult::INCOMING_SPAM;
+            }
         }
 
         // Check posting status (column is camelCase: ourPostingStatus)
-        // Keep null to match legacy behavior where null defaults to MODERATED (Pending)
+        // Legacy defaults NULL to MODERATED (→ PENDING). Only explicit 'DEFAULT' or
+        // 'UNMODERATED' posting status means approved.
         $postingStatus = $membership->ourPostingStatus;
+
+        // Determine routing result first
+        $routingResult = RoutingResult::PENDING;  // Default
+        $pendingReason = null;
 
         // Check if user is unmapped (no location)
         if ($user->lastlocation === null) {
+            $pendingReason = 'unmapped user';
             Log::info('Post from unmapped user - pending', [
                 'user_id' => $user->id,
             ]);
-
-            return RoutingResult::PENDING;
         }
-
         // Check for worry words
-        if ($this->containsWorryWords($email)) {
+        elseif ($this->containsWorryWords($email)) {
+            $pendingReason = 'worry words';
             Log::info('Post contains worry words - pending', [
                 'subject' => $email->subject,
             ]);
-
-            return RoutingResult::PENDING;
+        }
+        // Route based on posting status
+        // API rejects PROHIBITED with "Not allowed to post on this group" (message.php:625)
+        // so email should match: drop the post.
+        else {
+            $routingResult = match ($postingStatus) {
+                'DEFAULT', 'UNMODERATED' => RoutingResult::APPROVED,
+                'PROHIBITED' => RoutingResult::DROPPED,
+                default => RoutingResult::PENDING,  // NULL, MODERATED, or any other value
+            };
         }
 
-        // Check if PROHIBITED - drop regardless of other settings
-        if ($postingStatus === 'PROHIBITED') {
-            Log::info('User has PROHIBITED posting status - dropping', [
-                'user_id' => $user->id,
-                'group_id' => $group->id,
-            ]);
-
+        // For DROPPED messages, don't create a record
+        if ($routingResult === RoutingResult::DROPPED) {
             return RoutingResult::DROPPED;
         }
 
-        // Check if "Big Switch" is enabled (group overrides all moderation)
-        if ($group->overridemoderation === 'ModerateAll') {
-            Log::info('Group has ModerateAll override - pending', [
-                'group_id' => $group->id,
-            ]);
+        // Create the message record for APPROVED and PENDING posts
+        $messageId = $this->createGroupPostMessage($email, $user, $group);
 
-            return RoutingResult::PENDING;
+        if ($messageId !== null) {
+            $this->lastRoutingContext['message_id'] = $messageId;
+
+            // Update the collection based on routing result
+            if ($routingResult === RoutingResult::APPROVED) {
+                // Message is approved - update collection to Approved
+                MessageGroup::where('msgid', $messageId)
+                    ->update(['collection' => MessageGroup::COLLECTION_APPROVED]);
+
+                Log::info('Message approved and posted to group', [
+                    'message_id' => $messageId,
+                    'group_id' => $group->id,
+                ]);
+            } else {
+                // Message is pending - collection is already Incoming, update to Pending
+                MessageGroup::where('msgid', $messageId)
+                    ->update(['collection' => MessageGroup::COLLECTION_PENDING]);
+
+                Log::info('Message pending moderator review', [
+                    'message_id' => $messageId,
+                    'group_id' => $group->id,
+                    'reason' => $pendingReason ?? 'posting status',
+                ]);
+            }
         }
 
-        // Check if user is a moderator - mods always go to pending for email posts
-        // This is requested by volunteers to avoid accidents.
-        if ($user->isModeratorOf($group->id)) {
-            Log::info('Post from moderator - pending', [
-                'user_id' => $user->id,
-                'group_id' => $group->id,
+        return $routingResult;
+    }
+
+    /**
+     * Create a message record for a group post.
+     *
+     * This stores the message in the database with appropriate collection status.
+     * For spam messages, sets spamtype/spamreason and collection=Pending for moderator review.
+     *
+     * @param  ParsedEmail  $email  The parsed email
+     * @param  User  $user  The sender user
+     * @param  Group  $group  The target group
+     * @param  string|null  $spamType  Spam type if this is a spam message
+     * @param  string|null  $spamReason  Spam reason if this is a spam message
+     * @return int|null  The created message ID, or null on failure
+     */
+    private function createGroupPostMessage(
+        ParsedEmail $email,
+        User $user,
+        Group $group,
+        ?string $spamType = null,
+        ?string $spamReason = null
+    ): ?int {
+        try {
+            // Determine message type from subject using keyword matching
+            $type = Message::determineType($email->subject);
+
+            // Generate a unique message ID if not present
+            $messageId = $email->messageId ?? (microtime(true) . '@' . config('freegle.mail.user_domain', 'users.ilovefreegle.org'));
+            // Append group ID to make message ID unique per group (matches legacy behavior)
+            $messageId = $messageId . '-' . $group->id;
+
+            // Create the message record
+            $message = Message::create([
+                'date' => now(),
+                'source' => Message::SOURCE_EMAIL ?? 'Email',
+                'sourceheader' => $this->determineSourceHeader($email),
+                'message' => $email->rawMessage,
+                'fromuser' => $user->id,
+                'envelopefrom' => $email->envelopeFrom,
+                'envelopeto' => $email->envelopeTo,
+                'fromname' => $email->fromName,
+                'fromaddr' => $email->fromAddress,
+                'replyto' => $email->getHeader('Reply-To'),
+                'fromip' => $email->senderIp,
+                'subject' => $email->subject,
+                'suggestedsubject' => $email->subject, // TODO: implement subject suggestion
+                'messageid' => $messageId,
+                'tnpostid' => $email->getTrashNothingPostId(),
+                'textbody' => $email->textBody,
+                'type' => $type,
+                'lat' => $user->lat,
+                'lng' => $user->lng,
+                'locationid' => $user->lastlocation,
+                'spamtype' => $spamType,
+                'spamreason' => $spamReason,
             ]);
 
-            return RoutingResult::PENDING;
-        }
+            if (! $message || ! $message->id) {
+                Log::error('Failed to create message record');
 
-        // Check if group has moderation enabled
-        $groupModerated = $group->getSetting('moderated', 0);
-        if ($groupModerated) {
-            Log::info('Group has moderation enabled - pending', [
-                'group_id' => $group->id,
+                return null;
+            }
+
+            // Create the messages_groups entry
+            // Spam messages go to Pending for moderator review (matches legacy markAsSpam behavior)
+            $collection = $spamType !== null
+                ? MessageGroup::COLLECTION_PENDING
+                : MessageGroup::COLLECTION_INCOMING;
+
+            MessageGroup::create([
+                'msgid' => $message->id,
+                'groupid' => $group->id,
+                'msgtype' => $type,
+                'collection' => $collection,
+                'arrival' => now(),
             ]);
 
-            return RoutingResult::PENDING;
+            // Add to message history for spam checking
+            DB::table('messages_history')->insert([
+                'groupid' => $group->id,
+                'source' => Message::SOURCE_EMAIL ?? 'Email',
+                'fromuser' => $user->id,
+                'envelopefrom' => $email->envelopeFrom,
+                'envelopeto' => $email->envelopeTo,
+                'fromname' => $email->fromName,
+                'fromaddr' => $email->fromAddress,
+                'fromip' => $email->senderIp,
+                'subject' => $email->subject,
+                'prunedsubject' => $this->pruneSubject($email->subject),
+                'messageid' => $messageId,
+                'msgid' => $message->id,
+            ]);
+
+            return $message->id;
+
+        } catch (\Exception $e) {
+            // Check for duplicate message ID (can happen if message is resent)
+            if (str_contains($e->getMessage(), 'Duplicate entry')) {
+                Log::info('Duplicate message ID, likely resent message', [
+                    'message_id' => $email->messageId,
+                ]);
+
+                return null;
+            }
+
+            Log::error('Failed to create group post message', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Prune subject for history comparison (remove location, normalize).
+     */
+    private function pruneSubject(?string $subject): ?string
+    {
+        if ($subject === null) {
+            return null;
         }
 
-        // Route based on posting status
-        // Legacy behavior: null posting status defaults to MODERATED (Pending)
-        // Only 'DEFAULT' or 'UNMODERATED' explicit status goes to Approved
-        return match ($postingStatus) {
-            'DEFAULT', 'UNMODERATED' => RoutingResult::APPROVED,
-            default => RoutingResult::PENDING,  // null, MODERATED, etc.
-        };
+        // Remove location in parentheses at end
+        $pruned = preg_replace('/\s*\([^)]+\)\s*$/', '', $subject);
+        // Remove type prefix
+        $pruned = preg_replace('/^(OFFER|WANTED|TAKEN|RECEIVED)\s*:\s*/i', '', $pruned);
+
+        return trim($pruned);
     }
 
     /**
@@ -1644,64 +2149,57 @@ class IncomingMailService
     }
 
     /**
-     * Check if email is spam using the spam_keywords database table.
+     * Check if email is spam using the SpamCheckService.
      *
-     * Matches legacy Spam::checkSpam() behavior: checks message body and subject
-     * against keywords with action 'Spam' or 'Review', using word boundary regex
-     * matching, with support for exclude patterns.
+     * Runs all spam detection checks from legacy Spam::checkMessage() and
+     * Spam::checkSpam(): keywords, IP checks, subject reuse, greeting spam,
+     * Spamhaus DBL, known spammer references, and more.
+     *
+     * @return array{bool, ?string, ?string} [isSpam, spamType, spamReason]
+     */
+    private function checkForSpam(ParsedEmail $email): array
+    {
+        $result = $this->spamCheck->checkMessage($email);
+
+        if ($result !== null) {
+            [, $reason, $detail] = $result;
+            Log::info('Spam detected', [
+                'reason' => $reason,
+                'detail' => $detail,
+            ]);
+
+            return [true, $reason, $detail];
+        }
+
+        // Also run SpamAssassin if available (matches legacy MailRouter::checkSpam)
+        // Note: checkForSpam() is only called when shouldSkipSpamCheck() is false,
+        // so SpamAssassin always runs here.
+        [$score, $isSpam] = $this->spamCheck->checkSpamAssassin(
+            $email->rawMessage,
+            $email->subject ?? ''
+        );
+
+        if ($isSpam) {
+            $reason = SpamCheckService::REASON_SPAMASSASSIN;
+            $detail = "SpamAssassin flagged this as possible spam; score $score (high is bad)";
+            Log::info('SpamAssassin flagged as spam', [
+                'score' => $score,
+            ]);
+
+            return [true, $reason, $detail];
+        }
+
+        return [false, null, null];
+    }
+
+    /**
+     * Legacy wrapper for checkForSpam() - returns boolean only.
      */
     private function isSpam(ParsedEmail $email): bool
     {
-        $subject = $email->subject ?? '';
-        $body = $email->textBody ?? '';
+        [$isSpam] = $this->checkForSpam($email);
 
-        // Strip job text URLs before checking (matches legacy behavior)
-        $body = preg_replace('/\<https\:\/\/www\.ilovefreegle\.org\/jobs\/.*\>.*$/im', '', $body);
-
-        // Decode HTML entities used by spammers to disguise words (matches legacy)
-        $body = str_replace('&#616;', 'i', $body);
-        $body = str_replace('&#537;', 's', $body);
-        $body = str_replace('&#206;', 'I', $body);
-        $body = str_replace('=C2', '£', $body);
-
-        // Check keywords from database (legacy checks both Review and Spam actions)
-        $keywords = DB::table('spam_keywords')
-            ->whereIn('action', ['Spam', 'Review'])
-            ->get();
-
-        foreach ($keywords as $keyword) {
-            $word = trim($keyword->word);
-            if (strlen($word) === 0) {
-                continue;
-            }
-
-            $pattern = '/\b' . preg_quote($word, '/') . '\b/i';
-
-            // Check if keyword matches in body or subject
-            $matchesBody = preg_match($pattern, $body);
-            $matchesSubject = preg_match($pattern, $subject);
-
-            if ($matchesBody || $matchesSubject) {
-                // Check exclude pattern - if message matches exclude, it's not spam
-                if (! empty($keyword->exclude)) {
-                    $excludePattern = '/' . $keyword->exclude . '/i';
-                    $messageText = $body . ' ' . $subject;
-
-                    if (@preg_match($excludePattern, $messageText)) {
-                        continue;
-                    }
-                }
-
-                Log::info('Spam keyword detected from database', [
-                    'keyword' => $word,
-                    'action' => $keyword->action,
-                ]);
-
-                return TRUE;
-            }
-        }
-
-        return FALSE;
+        return $isSpam;
     }
 
     /**
@@ -1726,7 +2224,7 @@ class IncomingMailService
         if (str_contains($subject, '£') || str_contains($body, '£')) {
             Log::debug('Worry word found: £');
 
-            return TRUE;
+            return true;
         }
 
         // First, remove any ALLOWED type words from the text
@@ -1741,14 +2239,14 @@ class IncomingMailService
         // Check for phrases (words containing spaces) with literal matching
         foreach ($worryWords as $worryWord) {
             if ($worryWord->type !== 'Allowed' && str_contains($worryWord->keyword, ' ')) {
-                if (stripos($subject, $worryWord->keyword) !== FALSE ||
-                    stripos($body, $worryWord->keyword) !== FALSE) {
+                if (stripos($subject, $worryWord->keyword) !== false ||
+                    stripos($body, $worryWord->keyword) !== false) {
                     Log::debug('Worry word phrase found', [
                         'keyword' => $worryWord->keyword,
                         'type' => $worryWord->type,
                     ]);
 
-                    return TRUE;
+                    return true;
                 }
             }
         }
@@ -1777,25 +2275,22 @@ class IncomingMailService
                                 'type' => $worryWord->type,
                             ]);
 
-                            return TRUE;
+                            return true;
                         }
                     }
                 }
             }
         }
 
-        return FALSE;
+        return false;
     }
 
     /**
      * Handle direct mail to users.
      *
      * Direct mail is sent to {something}@users.ilovefreegle.org where {something}
-     * contains a user ID that can be extracted. This handles replies to
+     * is a user's email address that can be looked up. This handles replies to
      * What's New emails and direct user-to-user communication.
-     *
-     * Both sender and recipient must be identifiable Freegle users. If either
-     * cannot be found, the message is dropped.
      */
     private function handleDirectMail(ParsedEmail $email): RoutingResult
     {
@@ -1805,15 +2300,16 @@ class IncomingMailService
         ]);
 
         // Find the recipient user by looking up the envelope-to address.
-        // This handles both Freegle-formatted addresses like *-{uid}@users.ilovefreegle.org
-        // and regular email addresses in the users_emails table.
+        // Uses findUserByEmail which handles Freegle-formatted addresses
+        // (*-UID@users.ilovefreegle.org) and canonical email matching.
         $recipientUser = $this->findUserByEmail($email->envelopeTo);
+
         if ($recipientUser === null) {
             Log::info('Direct mail to unknown user address', [
                 'to' => $email->envelopeTo,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Direct mail to unknown user address");
         }
 
         // Find the sender user
@@ -1823,7 +2319,7 @@ class IncomingMailService
                 'from' => $email->fromAddress,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Direct mail from unknown user");
         }
 
         // Don't create a chat between the same user
@@ -1832,7 +2328,7 @@ class IncomingMailService
                 'user_id' => $senderUser->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Direct mail to self");
         }
 
         // Get or create chat between sender and recipient
@@ -1843,11 +2339,20 @@ class IncomingMailService
                 'to_user' => $recipientUser->id,
             ]);
 
-            return RoutingResult::DROPPED;
+            return $this->dropped("Could not create chat for direct mail");
         }
 
         // Create the chat message
         $this->createChatMessageFromEmail($chat, $senderUser->id, $email);
+
+        // Track email reply in email_tracking for AMP comparison stats.
+        $this->trackEmailReply($chat->id, $senderUser->id);
+
+        $this->lastRoutingContext = [
+            'user_id' => $senderUser->id,
+            'to_user_id' => $recipientUser->id,
+            'chat_id' => $chat->id,
+        ];
 
         Log::info('Created chat message from direct mail', [
             'chat_id' => $chat->id,
@@ -1872,6 +2377,10 @@ class IncomingMailService
 
     /**
      * Find a user by email address.
+     *
+     * Handles Freegle-formatted addresses (*-UID@users.ilovefreegle.org) by
+     * extracting the UID directly. Also uses canonical email matching for
+     * TN variant addresses (matching legacy User::findByEmail behaviour).
      */
     private function findUserByEmail(?string $email): ?User
     {
@@ -1879,80 +2388,67 @@ class IncomingMailService
             return null;
         }
 
-        // First check for Freegle-formatted addresses like *-{uid}@users.ilovefreegle.org
-        // These have the user ID embedded in the local part after the last hyphen.
-        // This matches the legacy User::findByEmail() behavior.
-        $userDomain = config('freegle.mail.user_domain');
-        if (preg_match('/.*-(\d+)@' . preg_quote($userDomain, '/') . '$/i', $email, $matches)) {
-            $userId = (int) $matches[1];
-            $user = User::find($userId);
-            if ($user !== null) {
-                return $user;
+        // Check for Freegle-formatted address with embedded UID
+        $userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        if (preg_match('/.*\-(\d+)@'.preg_quote($userDomain, '/').'$/', $email, $matches)) {
+            return User::find((int) $matches[1]);
+        }
+
+        // Try direct email lookup first
+        $userEmail = UserEmail::where('email', $email)->first();
+        if ($userEmail !== null) {
+            return User::find($userEmail->userid);
+        }
+
+        // Try canonical email lookup (handles TN variants, gmail dots, etc.)
+        $canon = $this->canonicalizeEmail($email);
+        if ($canon !== $email) {
+            $userEmail = UserEmail::where('canon', $canon)->first();
+            if ($userEmail !== null) {
+                return User::find($userEmail->userid);
             }
         }
 
-        // Canonicalize the email for lookup (matches legacy User::canonMail())
-        $canonEmail = $this->canonicalizeEmail($email);
-
-        // Look up by email or canonicalized email
-        $userEmail = UserEmail::where('email', $email)
-            ->orWhere('canon', $canonEmail)
-            ->first();
-
-        if ($userEmail === null) {
-            return null;
-        }
-
-        return User::find($userEmail->userid);
+        return null;
     }
 
     /**
-     * Canonicalize an email address (matches legacy User::canonMail()).
+     * Canonicalize an email address to match legacy User::canonMail().
      *
-     * This handles:
-     * - TN addresses: rkrochelle-g8860@user.trashnothing.com → rkrochelle@user.trashnothing.com
-     * - Googlemail → Gmail
-     * - Plus addressing removal
-     * - Dot removal for Gmail LHS
-     * - Dot removal for ALL domain RHS (legacy behavior for space saving)
+     * Handles: TN group suffixes, googlemail→gmail, plus addressing, gmail dots.
      */
     private function canonicalizeEmail(string $email): string
     {
-        // Googlemail is Gmail really in US and UK
+        // Googlemail → Gmail
         $email = str_replace('@googlemail.', '@gmail.', $email);
         $email = str_replace('@googlemail.co.uk', '@gmail.co.uk', $email);
 
-        // Canonicalize TN addresses - strip everything after hyphen before @user.trashnothing.com
-        // e.g., rkrochelle-g8860@user.trashnothing.com → rkrochelle@user.trashnothing.com
-        // Note: Legacy uses (.*)\-(.*) which matches any hyphen suffix, not just -gNNN
-        if (preg_match('/(.*)-(.*)(@user\.trashnothing\.com)/i', $email, $matches)) {
-            $email = $matches[1] . $matches[3];
+        // Strip TN group suffix: user-gNNNN@user.trashnothing.com → user@user.trashnothing.com
+        if (preg_match('/(.*)\-(.*)(@user\.trashnothing\.com)/', $email, $matches)) {
+            $email = $matches[1].$matches[3];
         }
 
-        // Remove plus addressing (except Facebook)
-        // e.g., john+freegle@gmail.com → john@gmail.com
-        if (strpos($email, '@proxymail.facebook.com') === false &&
-            substr($email, 0, 1) !== '+' &&
-            preg_match('/(.*)\+(.*)(@.*)/', $email, $matches)) {
-            $email = $matches[1] . $matches[3];
+        // Remove plus addressing (except Facebook proxy and leading +)
+        if (
+            str_starts_with($email, '+') === false &&
+            preg_match('/(.*)\+(.*)(@.*)/', $email, $matches) &&
+            strpos($email, '@proxymail.facebook.com') === false
+        ) {
+            $email = $matches[1].$matches[3];
         }
 
-        // Split into LHS and RHS at @
-        $atPos = strpos($email, '@');
-        if ($atPos !== false) {
-            $lhs = substr($email, 0, $atPos);
-            $rhs = substr($email, $atPos);
+        // Remove dots in Gmail LHS
+        $p = strpos($email, '@');
+        if ($p !== false) {
+            $lhs = substr($email, 0, $p);
+            $rhs = substr($email, $p);
 
-            // Remove dots in LHS for Gmail (they're ignored)
             if (stripos($rhs, '@gmail') !== false || stripos($rhs, '@googlemail') !== false) {
                 $lhs = str_replace('.', '', $lhs);
             }
 
-            // Remove dots from RHS (domain) - legacy behavior for space saving
-            // This is the format historically used in the canon column
-            $rhs = str_replace('.', '', $rhs);
-
-            $email = $lhs . $rhs;
+            // Remove dots from RHS (matches legacy behaviour)
+            $email = $lhs.str_replace('.', '', $rhs);
         }
 
         return $email;
@@ -1979,11 +2475,58 @@ class IncomingMailService
         }
 
         // Create new chat
-        return ChatRoom::create([
+        $chat = ChatRoom::create([
             'chattype' => 'User2User',
             'user1' => $userId1,
             'user2' => $userId2,
         ]);
+
+        Log::info('Created new User2User chat', [
+            'chat_id' => $chat->id,
+            'user1' => $userId1,
+            'user2' => $userId2,
+            'created_new' => true,
+        ]);
+
+        return $chat;
+    }
+
+    /**
+     * Check if subject indicates a TAKEN or RECEIVED post.
+     *
+     * These are completion markers in the legacy format: "TAKEN: item (location)" or "RECEIVED: item (location)".
+     * Legacy toGroup() swallows these silently as TO_SYSTEM since mods don't need to review them.
+     */
+    private function isTakenOrReceivedSubject(?string $subject): bool
+    {
+        if ($subject === null) {
+            return false;
+        }
+
+        return (bool) preg_match('/^\s*(TAKEN|RECEIVED)\s*:/i', $subject);
+    }
+
+    /**
+     * Check if email is a read receipt (MDN).
+     *
+     * Read receipts sent to chat notification addresses are misdirected and should be dropped.
+     * Legacy: MailRouter::replyToChatNotification checks $this->msg->isReceipt().
+     */
+    private function isReadReceipt(ParsedEmail $email): bool
+    {
+        // Check Content-Type for disposition-notification
+        $contentType = $email->getHeader('content-type') ?? '';
+        if (str_contains(strtolower($contentType), 'disposition-notification')) {
+            return true;
+        }
+
+        // Check for MDN-specific content disposition header
+        $contentDisposition = $email->getHeader('content-disposition') ?? '';
+        if (str_contains(strtolower($contentDisposition), 'notification')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -2002,10 +2545,68 @@ class IncomingMailService
         }
 
         // Create new chat
-        return ChatRoom::create([
+        $chat = ChatRoom::create([
             'chattype' => 'User2Mod',
             'user1' => $userId,
             'groupid' => $groupId,
         ]);
+
+        Log::info('Created new User2Mod chat', [
+            'chat_id' => $chat->id,
+            'user_id' => $userId,
+            'group_id' => $groupId,
+            'created_new' => true,
+        ]);
+
+        return $chat;
+    }
+
+    /**
+     * Determine the source header for a message based on email headers.
+     *
+     * This matches the logic from iznik-server Message.php to properly identify
+     * the source of incoming emails (TrashNothing, Yahoo, Platform, etc.).
+     *
+     * The priority order is:
+     * 1. X-Freegle-Source header (explicit source)
+     * 2. X-trash-nothing-Source header (TrashNothing posts, prefixed with "TN-")
+     * 3. X-Mailer = "Yahoo Groups Message Poster" -> "Yahoo-Web"
+     * 4. X-Mailer contains "Freegle Message Maker" -> "MessageMaker"
+     * 5. From our domain -> "Platform"
+     * 6. Default -> "Yahoo-Email" (historical name for emails from Freegle members)
+     */
+    private function determineSourceHeader(ParsedEmail $email): string
+    {
+        // 1. Try X-Freegle-Source header first
+        $source = $email->getHeader('X-Freegle-Source');
+        if ($source && $source !== 'Unknown') {
+            return $source;
+        }
+
+        // 2. Try X-trash-nothing-Source and prepend TN-
+        $tnSource = $email->getHeader('X-trash-nothing-Source');
+        if ($tnSource) {
+            return 'TN-'.$tnSource;
+        }
+
+        // 3. Check X-Mailer for Yahoo Groups
+        $mailer = $email->getHeader('X-Mailer');
+        if ($mailer === 'Yahoo Groups Message Poster') {
+            return 'Yahoo-Web';
+        }
+
+        // 4. Check X-Mailer for Freegle Message Maker
+        if ($mailer && str_contains($mailer, 'Freegle Message Maker')) {
+            return 'MessageMaker';
+        }
+
+        // 5. Default based on whether from our domain
+        // "Yahoo-Email" is the historical name used for any posts received via
+        // email from Freegle members (not actually Yahoo-specific anymore)
+        if (User::isInternalEmail($email->fromAddress)) {
+            return 'Platform';
+        }
+
+        return 'Yahoo-Email';
     }
 }

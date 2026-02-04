@@ -1746,8 +1746,16 @@ jobs:
                 echo "$total" > /tmp/laravel-total
 
                 if [ "$status" = "completed" ]; then
-                  echo "pass" > /tmp/laravel-result
-                  echo "✅ iznik-batch tests passed!"
+                  success=$(echo "$status_response" | jq -r '.success // false')
+                  if [ "$success" = "true" ]; then
+                    echo "pass" > /tmp/laravel-result
+                    echo "✅ iznik-batch tests passed!"
+                  else
+                    echo "fail" > /tmp/laravel-result
+                    echo "❌ iznik-batch tests failed!"
+                  fi
+                  # Always write logs to output file for artifacts
+                  echo "$status_response" | jq -r '.logs // "No logs"'
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/laravel-result
@@ -1794,8 +1802,16 @@ jobs:
                 echo "$total" > /tmp/go-total
 
                 if [ "$status" = "completed" ]; then
-                  echo "pass" > /tmp/go-result
-                  echo "✅ Go tests passed!"
+                  success=$(echo "$status_response" | jq -r '.success // false')
+                  if [ "$success" = "true" ]; then
+                    echo "pass" > /tmp/go-result
+                    echo "✅ Go tests passed!"
+                  else
+                    echo "fail" > /tmp/go-result
+                    echo "❌ Go tests failed!"
+                  fi
+                  # Always write logs to output file for artifacts
+                  echo "$status_response" | jq -r '.logs // "No logs"'
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/go-result
@@ -1850,13 +1866,20 @@ jobs:
 
 
                 if [ "$status" = "completed" ]; then
-                  echo "pass" > /tmp/php-result
-                  echo "✅ iznik-server tests passed!"
+                  success=$(echo "$status_response" | jq -r '.success // false')
+                  if [ "$success" = "true" ]; then
+                    echo "pass" > /tmp/php-result
+                    echo "✅ iznik-server tests passed!"
+                  else
+                    echo "fail" > /tmp/php-result
+                    echo "❌ iznik-server tests failed!"
+                  fi
+                  # Always write logs to output file for artifacts
+                  echo "$status_response" | jq -r '.logs // "No logs"'
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/php-result
                   echo "❌ iznik-server tests failed!"
-                  # Get the logs for the output file
                   echo "$status_response" | jq -r '.logs // "No logs"'
                   break
                 fi
@@ -1903,14 +1926,17 @@ jobs:
                   success=$(echo "$status_response" | jq -r '.success // false')
                   if [ "$success" = "true" ]; then
                     echo "pass" > /tmp/playwright-result
+                    echo "✅ Playwright tests passed!"
                   else
                     echo "fail" > /tmp/playwright-result
-                    # Get the logs for the output file
-                    echo "$status_response" | jq -r '.logs // "No logs"'
+                    echo "❌ Playwright tests failed!"
                   fi
+                  # Always write logs to output file for artifacts
+                  echo "$status_response" | jq -r '.logs // "No logs"'
                   break
                 elif [ "$status" = "failed" ] || [ "$status" = "error" ]; then
                   echo "fail" > /tmp/playwright-result
+                  echo "❌ Playwright tests failed!"
                   echo "$status_response" | jq -r '.logs // "No logs"'
                   break
                 fi
@@ -2035,6 +2061,29 @@ jobs:
             wait $GO_PID 2>/dev/null || true
             wait $PHPUNIT_PID 2>/dev/null || true
             wait $PLAYWRIGHT_PID 2>/dev/null || true
+
+            # For killed tests, the background subshell was terminated before it could
+            # write logs to the output file. Fetch and append logs from the status API.
+            if [ "$TESTS_KILLED_EARLY" = "true" ]; then
+              echo "📋 Capturing final logs for killed tests..."
+              for test_type in laravel go php playwright; do
+                outfile=""
+                case $test_type in
+                  laravel) outfile=~/test-output/laravel.out ;;
+                  go) outfile=~/test-output/go.out ;;
+                  php) outfile=~/test-output/phpunit.out ;;
+                  playwright) outfile=~/test-output/playwright.out ;;
+                esac
+                result=$(cat /tmp/${test_type}-result 2>/dev/null || echo "unknown")
+                if [ "$result" = "running" ] || [ "$result" = "unknown" ]; then
+                  echo "📋 Fetching final logs for $test_type..."
+                  status_response=$(curl -s http://localhost:8081/api/tests/${test_type}/status || echo '{}')
+                  echo "" >> "$outfile"
+                  echo "=== Test killed by fail-fast ===" >> "$outfile"
+                  echo "$status_response" | jq -r '.logs // "No logs available"' >> "$outfile" 2>/dev/null || true
+                fi
+              done
+            fi
 
             # Check results from files
             LARAVEL_RESULT=$(cat /tmp/laravel-result 2>/dev/null || echo "fail")

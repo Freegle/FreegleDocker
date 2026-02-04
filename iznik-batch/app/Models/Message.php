@@ -14,13 +14,77 @@ class Message extends Model
     protected $guarded = ['id'];
     public $timestamps = FALSE;
 
-    public const TYPE_OFFER = 'Offer';
-    public const TYPE_WANTED = 'Wanted';
+    // Source types
+    public const SOURCE_EMAIL = 'Email';
+    public const SOURCE_PLATFORM = 'Platform';
 
+    // Message types
+    public const TYPE_OFFER = 'Offer';
+    public const TYPE_TAKEN = 'Taken';
+    public const TYPE_WANTED = 'Wanted';
+    public const TYPE_RECEIVED = 'Received';
+    public const TYPE_ADMIN = 'Admin';
+    public const TYPE_OTHER = 'Other';
+
+    // Outcome types (for messages_outcomes table)
     public const OUTCOME_TAKEN = 'Taken';
     public const OUTCOME_RECEIVED = 'Received';
     public const OUTCOME_WITHDRAWN = 'Withdrawn';
     public const OUTCOME_EXPIRED = 'Expired';
+
+    /**
+     * Keywords for message type detection.
+     * Includes common misspellings and Welsh translations.
+     */
+    public const TYPE_KEYWORDS = [
+        self::TYPE_OFFER => [
+            'ofer', 'offr', 'offrer', 'ffered', 'offfered', 'offrered', 'offered', 'offeer', 'cynnig', 'offred',
+            'offer', 'offering', 'reoffer', 're offer', 're-offer', 'reoffered', 're offered', 're-offered',
+            'offfer', 'offeed', 'available',
+        ],
+        self::TYPE_TAKEN => [
+            'collected', 'take', 'stc', 'gone', 'withdrawn', 'ta ke n', 'promised',
+            'cymeryd', 'cymerwyd', 'takln', 'taken', 'cymryd',
+        ],
+        self::TYPE_WANTED => [
+            'wnted', 'requested', 'rquested', 'request', 'would like', 'want',
+            'anted', 'wated', 'need', 'needed', 'wamted', 'require', 'required', 'watnted', 'wented',
+            'sought', 'seeking', 'eisiau', 'wedi eisiau', 'eisiau', 'wnated', 'wanted', 'looking', 'waned',
+        ],
+        self::TYPE_RECEIVED => [
+            'recieved', 'reiceved', 'receved', 'rcd', 'rec\'d', 'recevied',
+            'receive', 'derbynewid', 'derbyniwyd', 'received', 'recivered',
+        ],
+        self::TYPE_ADMIN => ['admin', 'sn'],
+    ];
+
+    /**
+     * Determine message type from subject line.
+     * Returns the type with the earliest keyword match.
+     */
+    public static function determineType(?string $subject): string
+    {
+        if ($subject === null || $subject === '') {
+            return self::TYPE_OTHER;
+        }
+
+        $type = self::TYPE_OTHER;
+        $pos = PHP_INT_MAX;
+
+        foreach (self::TYPE_KEYWORDS as $keyword => $vals) {
+            foreach ($vals as $val) {
+                if (preg_match('/\b(' . preg_quote($val, '/') . ')\b/i', $subject, $matches, PREG_OFFSET_CAPTURE)) {
+                    if ($matches[1][1] < $pos) {
+                        // We want the match earliest in the string - handles cases like "Offerton"
+                        $type = $keyword;
+                        $pos = $matches[1][1];
+                    }
+                }
+            }
+        }
+
+        return $type;
+    }
 
     protected $casts = [
         'arrival' => 'datetime',

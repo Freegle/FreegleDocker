@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\LokiService;
+use App\Services\Mail\Incoming\IncomingArchiveService;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use Illuminate\Http\Request;
@@ -18,13 +20,12 @@ class IncomingMailController extends Controller
 {
     public function __construct(
         private readonly MailParserService $parser,
-        private readonly IncomingMailService $mailService
+        private readonly IncomingMailService $mailService,
+        private readonly IncomingArchiveService $archiveService
     ) {}
 
     /**
      * Receive and process an incoming email.
-     *
-     * @return Response
      */
     public function receive(Request $request): Response
     {
@@ -41,8 +42,12 @@ class IncomingMailController extends Controller
         // Validate we have content
         if (empty($rawEmail)) {
             Log::warning('Empty email content received');
+
             return response('Empty content', 400);
         }
+
+        // Archive raw email to disk before processing (safety net for reprocessing).
+        $archivePath = $this->archiveService->archive($rawEmail, $sender, $recipient);
 
         try {
             // Parse the email
@@ -54,8 +59,24 @@ class IncomingMailController extends Controller
             Log::info('Incoming mail processed', [
                 'sender' => $sender,
                 'recipient' => $recipient,
-                'result' => $result->type->value,
+                'result' => $result->value,
             ]);
+
+            // Record outcome in archive file.
+            if ($archivePath) {
+                $this->archiveService->recordOutcome($archivePath, $result->value);
+            }
+
+            // Log to Loki for ModTools incoming email dashboard
+            app(LokiService::class)->logIncomingEmail(
+                $sender,
+                $recipient,
+                $parsed->fromAddress,
+                $parsed->subject ?? '',
+                $parsed->messageId ?? '',
+                $result->value,
+                $this->mailService->getLastRoutingContext(),
+            );
 
             return response('OK', 200);
 
