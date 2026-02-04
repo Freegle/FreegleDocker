@@ -6,7 +6,7 @@ use App\Models\Group;
 use App\Models\User;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\ParsedEmail;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Mockery;
 use ReflectionClass;
@@ -14,7 +14,7 @@ use Tests\TestCase;
 
 class LocationIdTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     private IncomingMailService $service;
 
