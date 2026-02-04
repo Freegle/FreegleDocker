@@ -63,7 +63,7 @@ get_container_info() {
             targets="$targets"$'\n'"modtools-dev-live /app/${relative_path#iznik-nuxt3/} ModTools-Dev-Live"
         fi
         echo "$targets"
-    elif [[ "$relative_path" == iznik-nuxt3/plugins/* || "$relative_path" == iznik-nuxt3/composables/* || "$relative_path" == iznik-nuxt3/stores/* || "$relative_path" == iznik-nuxt3/utils/* ]]; then
+    elif [[ "$relative_path" == iznik-nuxt3/plugins/* || "$relative_path" == iznik-nuxt3/composables/* || "$relative_path" == iznik-nuxt3/stores/* || "$relative_path" == iznik-nuxt3/utils/* || "$relative_path" == iznik-nuxt3/components/* ]]; then
         # Shared code used by both Freegle and ModTools - sync to all containers
         local targets="freegle-dev-local /app/${relative_path#iznik-nuxt3/} Freegle-Dev-Local"
         if docker ps --format '{{.Names}}' | grep -q '^freegle-dev-live$'; then
