@@ -2583,7 +2583,7 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals($user->id, $context['user_id']);
     }
 
-    public function test_routing_context_empty_for_dropped(): void
+    public function test_routing_context_has_reason_for_dropped(): void
     {
         $email = $this->createMinimalEmail([
             'From' => 'unknown@nowhere.com',
@@ -2601,13 +2601,15 @@ class IncomingMailServiceTest extends TestCase
 
         $this->assertEquals(RoutingResult::DROPPED, $result);
 
+        // Dropped emails should have a routing_reason explaining why they were dropped
         $context = $this->service->getLastRoutingContext();
-        $this->assertEmpty($context);
+        $this->assertArrayHasKey('routing_reason', $context);
+        $this->assertNotEmpty($context['routing_reason']);
     }
 
     public function test_routing_context_reset_between_calls(): void
     {
-        // First call sets context
+        // First call sets context for approved message
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('ctx-reset')]);
         $this->createMembership($user, $group, [
@@ -2632,9 +2634,11 @@ class IncomingMailServiceTest extends TestCase
         );
 
         $this->service->route($parsed1);
-        $this->assertNotEmpty($this->service->getLastRoutingContext());
+        $context1 = $this->service->getLastRoutingContext();
+        $this->assertNotEmpty($context1);
+        $this->assertArrayHasKey('group_id', $context1);
 
-        // Second call should reset context
+        // Second call should reset context (no group_id from first call)
         $email2 = $this->createMinimalEmail([
             'From' => 'unknown@nowhere.com',
             'To' => 'nonexistent-subscribe@groups.ilovefreegle.org',
@@ -2648,7 +2652,11 @@ class IncomingMailServiceTest extends TestCase
         );
 
         $this->service->route($parsed2);
-        $this->assertEmpty($this->service->getLastRoutingContext());
+        $context2 = $this->service->getLastRoutingContext();
+        // Context should be reset - no group_id from the first call should remain
+        $this->assertArrayNotHasKey('group_id', $context2);
+        // But dropped emails do have routing_reason
+        $this->assertArrayHasKey('routing_reason', $context2);
     }
 
     public function test_chat_notification_reply_tracks_email_reply(): void
