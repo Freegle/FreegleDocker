@@ -2024,6 +2024,37 @@ class IncomingMailService
             // Append group ID to make message ID unique per group (matches legacy behavior)
             $messageId = $messageId . '-' . $group->id;
 
+            // Determine lat/lng - prefer TN coordinates header, fall back to user location
+            $lat = null;
+            $lng = null;
+
+            $tnCoords = $email->getTrashNothingCoordinates();
+            if ($tnCoords) {
+                $parts = explode(',', $tnCoords);
+                if (count($parts) >= 2) {
+                    $lat = (float) trim($parts[0]);
+                    $lng = (float) trim($parts[1]);
+                }
+            }
+
+            // Fall back to user's location if no TN coordinates
+            if ($lat === null || $lng === null) {
+                [$lat, $lng] = $user->getLatLng();
+            }
+
+            // Find the closest postcode location to get locationid
+            $locationId = null;
+            if ($lat !== null && $lng !== null) {
+                $locationId = $this->findClosestPostcodeId($lat, $lng);
+
+                // Update user's lastlocation if we found one
+                if ($locationId && $user->id) {
+                    DB::table('users')
+                        ->where('id', $user->id)
+                        ->update(['lastlocation' => $locationId]);
+                }
+            }
+
             // Create the message record
             $message = Message::create([
                 'date' => now(),
@@ -2043,9 +2074,9 @@ class IncomingMailService
                 'tnpostid' => $email->getTrashNothingPostId(),
                 'textbody' => $email->textBody,
                 'type' => $type,
-                'lat' => $user->lat,
-                'lng' => $user->lng,
-                'locationid' => $user->lastlocation,
+                'lat' => $lat,
+                'lng' => $lng,
+                'locationid' => $locationId,
                 'spamtype' => $spamType,
                 'spamreason' => $spamReason,
             ]);
@@ -2608,5 +2639,54 @@ class IncomingMailService
         }
 
         return 'Yahoo-Email';
+    }
+
+    /**
+     * Find the closest postcode location ID for given coordinates.
+     *
+     * Uses spatial index to efficiently find the nearest postcode.
+     * Matches the logic from iznik-server Location::closestPostcode().
+     *
+     * @param  float  $lat  Latitude
+     * @param  float  $lng  Longitude
+     * @return int|null The location ID of the closest postcode, or null if not found
+     */
+    private function findClosestPostcodeId(float $lat, float $lng): ?int
+    {
+        $srid = config('freegle.srid', 3857);
+
+        // Start with a small search radius and expand if needed
+        $scan = 0.00001953125;
+
+        while ($scan <= 0.2) {
+            $swlat = $lat - $scan;
+            $nelat = $lat + $scan;
+            $swlng = $lng - $scan;
+            $nelng = $lng + $scan;
+
+            $poly = "POLYGON(($swlng $swlat, $swlng $nelat, $nelng $nelat, $nelng $swlat, $swlng $swlat))";
+
+            $sql = "SELECT locations.id,
+                           ST_distance(locations_spatial.geometry, ST_GeomFromText('POINT($lng $lat)', $srid)) AS dist
+                    FROM locations_spatial
+                    INNER JOIN locations ON locations.id = locations_spatial.locationid
+                    WHERE MBRContains(ST_Envelope(ST_GeomFromText('$poly', $srid)), locations_spatial.geometry)
+                      AND locations.type = 'Postcode'
+                      AND LOCATE(' ', locations.name) > 0
+                    ORDER BY dist ASC,
+                             CASE WHEN ST_Dimension(locations_spatial.geometry) < 2 THEN 0
+                                  ELSE ST_AREA(locations_spatial.geometry) END ASC
+                    LIMIT 1";
+
+            $result = DB::selectOne($sql);
+
+            if ($result) {
+                return (int) $result->id;
+            }
+
+            $scan *= 2;
+        }
+
+        return null;
     }
 }
