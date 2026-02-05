@@ -267,12 +267,17 @@ class MailParserService
         ];
 
         // Check if this looks like a bounce
-        $isFromMailerDaemon = stripos($envelopeFrom, 'mailer-daemon') !== false;
+        // RFC 5321: Bounces should use null sender (empty MAIL FROM:<>) or MAILER-DAEMON
+        // Some MTAs also use postmaster@
+        $isFromBounceSource = $envelopeFrom === '' ||  // Null sender (RFC 5321 compliant)
+            stripos($envelopeFrom, 'mailer-daemon') !== false ||
+            stripos($envelopeFrom, 'postmaster') !== false;
+
         $contentType = $message->getHeaderValue('Content-Type') ?? '';
         $isDeliveryReport = stripos($contentType, 'multipart/report') !== false &&
             stripos($contentType, 'delivery-status') !== false;
 
-        if (! $isFromMailerDaemon && ! $isDeliveryReport) {
+        if (! $isFromBounceSource && ! $isDeliveryReport) {
             return $result;
         }
 
@@ -302,7 +307,53 @@ class MailParserService
             }
         }
 
+        // Fallback: Check subject for bounce patterns (legacy compatibility)
+        // Legacy code (iznik-server/include/message/Message.php) uses subject heuristics
+        if ($result['status'] === null) {
+            $subject = $message->getHeaderValue('Subject') ?? '';
+            if ($this->isBounceSubject($subject)) {
+                // Set a generic bounce status so isBounce() returns true
+                // We don't have the specific status code, but we know it's a bounce
+                $result['status'] = '5.0.0';  // Generic permanent failure
+                $result['diagnostic'] = 'Detected by subject pattern: '.$subject;
+            }
+        }
+
         return $result;
+    }
+
+    /**
+     * Check if subject matches bounce patterns (legacy compatibility).
+     *
+     * Ported from iznik-server/include/message/Message.php bounce_subjects
+     */
+    private function isBounceSubject(string $subject): bool
+    {
+        $bounceSubjects = [
+            'Unable to deliver your message',
+            'Mail delivery failed',
+            'Delivery Status Notification',
+            'Undelivered Mail Returned to Sender',
+            'Local delivery error',
+            'Returned mail',
+            'delivery failure',
+            'Delivery has failed',
+            'Email delivery failure',
+            'Undeliverable',
+            'User unknown',
+            'Could not send message',
+            'Unknown user',
+            'Malformed recipient',
+            'invalid address',
+        ];
+
+        foreach ($bounceSubjects as $pattern) {
+            if (stripos($subject, $pattern) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

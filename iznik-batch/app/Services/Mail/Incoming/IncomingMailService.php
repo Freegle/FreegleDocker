@@ -1324,6 +1324,18 @@ class IncomingMailService
             return null;
         }
 
+        // Check for bounces FIRST - bounces to replyto addresses happen when the
+        // original What's New notification email bounces. Process as bounce, not chat.
+        // Legacy code (MailRouter.php:1212) had this check.
+        if ($email->isBounce()) {
+            Log::info('Bounce detected at replyto address, routing to bounce handler', [
+                'envelope_to' => $email->envelopeTo,
+                'bounce_recipient' => $email->bounceRecipient,
+            ]);
+
+            return $this->handleBounce($email);
+        }
+
         // Parse replyto-{msgid}-{fromid}
         $parts = explode('-', $localPart);
         if (count($parts) < 3) {
@@ -1449,6 +1461,19 @@ class IncomingMailService
             Log::debug('Dropping misdirected read receipt in chat reply');
 
             return $this->dropped("Misdirected read receipt in chat reply");
+        }
+
+        // Check for bounces FIRST - bounces to notify addresses happen when the original
+        // chat notification email bounces. These should be processed as bounces, not
+        // as chat messages. Legacy code (MailRouter.php:1364) had this check.
+        if ($email->isBounce()) {
+            Log::info('Bounce detected at notify address, routing to bounce handler', [
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+                'bounce_recipient' => $email->bounceRecipient,
+            ]);
+
+            return $this->handleBounce($email);
         }
 
         // Validate chat exists

@@ -2758,4 +2758,230 @@ class IncomingMailServiceTest extends TestCase
         $this->assertStringContainsString('Kingsfield Close', $lastMessage->message);
         $this->assertStringContainsString('trolley', $lastMessage->message);
     }
+
+    // ========================================
+    // Bounce to Notify Address Tests (Issue: spotonmybum bounce went to chat review)
+    // ========================================
+
+    public function test_bounce_to_notify_address_should_be_processed_as_bounce_not_chat_message(): void
+    {
+        // When a bounce arrives at a notify-{chatId}-{userId}@ address (because the
+        // original chat notification email bounced), it should be processed as a bounce,
+        // NOT routed to handleChatNotificationReply which would create a chat message.
+
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('bounced-recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+        $user2Email = $user2->emails->first()->email;
+
+        // Update chat to have recent activity (so it's not stale)
+        DB::table('chat_rooms')
+            ->where('id', $chat->id)
+            ->update(['latestmessage' => now()->subHours(1)]);
+
+        // Count chat messages before
+        $messageCountBefore = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->count();
+
+        // Create a bounce email (multipart/report with delivery-status)
+        // This is what postfix sends when a chat notification bounces
+        $bounceEmail = $this->createBounceEmail(
+            $user2Email,
+            '5.1.1',  // Permanent bounce - mailbox doesn't exist
+            '550 5.1.1 User unknown'
+        );
+
+        $notifyAddress = "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org";
+
+        $parsed = $this->parser->parse(
+            $bounceEmail,
+            'MAILER-DAEMON@bulk2.ilovefreegle.org',
+            $notifyAddress
+        );
+
+        // Verify the parser detects this as a bounce
+        $this->assertTrue($parsed->isBounce(), 'Parser should detect this as a bounce');
+
+        // Route the email
+        $result = $this->service->route($parsed);
+
+        // The result should be TO_SYSTEM (bounce processed) not TO_USER (chat message created)
+        $this->assertEquals(
+            RoutingResult::TO_SYSTEM,
+            $result,
+            'Bounce to notify address should return TO_SYSTEM, not TO_USER'
+        );
+
+        // Verify NO new chat message was created
+        $messageCountAfter = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->count();
+        $this->assertEquals(
+            $messageCountBefore,
+            $messageCountAfter,
+            'Bounce should NOT create a chat message'
+        );
+
+        // Verify the bounce was recorded (user's email marked as bounced)
+        $user2Email = DB::table('users_emails')
+            ->where('userid', $user2->id)
+            ->where('preferred', 1)
+            ->first();
+        $this->assertNotNull(
+            $user2Email->bounced,
+            'Bounce should mark user email as bounced'
+        );
+    }
+
+    public function test_bounce_to_notify_address_from_outlook_block(): void
+    {
+        // Real case: Outlook blocked our IP and sent a bounce like:
+        // "550 5.7.1 Unfortunately, messages from [77.72.7.253] weren't sent."
+        //
+        // These bounces should be processed as bounces, not chat messages.
+
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender2')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('outlook-blocked')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+        $user2Email = $user2->emails->first()->email;
+
+        DB::table('chat_rooms')
+            ->where('id', $chat->id)
+            ->update(['latestmessage' => now()->subHours(1)]);
+
+        $messageCountBefore = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->count();
+
+        // Create bounce with Outlook-style error message
+        $bounceEmail = $this->createBounceEmail(
+            $user2Email,
+            '5.7.1',
+            "550 5.7.1 Unfortunately, messages from [77.72.7.253] weren't sent. Please contact your Internet service provider"
+        );
+
+        $notifyAddress = "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org";
+
+        $parsed = $this->parser->parse(
+            $bounceEmail,
+            'MAILER-DAEMON@bulk2.ilovefreegle.org',
+            $notifyAddress
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should be processed as bounce
+        $this->assertEquals(
+            RoutingResult::TO_SYSTEM,
+            $result,
+            'Outlook IP-blocked bounce should return TO_SYSTEM'
+        );
+
+        // No chat message created
+        $messageCountAfter = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->count();
+        $this->assertEquals($messageCountBefore, $messageCountAfter);
+    }
+
+    public function test_legitimate_chat_reply_to_notify_address_still_works(): void
+    {
+        // Ensure the fix doesn't break legitimate chat replies.
+        // A regular email (not a bounce) to a notify address should still
+        // create a chat message.
+
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster3')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier3')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+        $user2Email = $user2->emails->first()->email;
+
+        DB::table('chat_rooms')
+            ->where('id', $chat->id)
+            ->update(['latestmessage' => now()->subHours(1)]);
+
+        $messageCountBefore = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->count();
+
+        // Regular reply (not a bounce)
+        $replyEmail = $this->createMinimalEmail([
+            'From' => $user2Email,
+            'To' => "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Your item',
+        ], 'Yes, I am still interested in collecting this.');
+
+        $parsed = $this->parser->parse(
+            $replyEmail,
+            $user2Email,
+            "notify-{$chat->id}-{$user2->id}@users.ilovefreegle.org"
+        );
+
+        // Should NOT be detected as a bounce
+        $this->assertFalse($parsed->isBounce(), 'Regular reply should not be detected as bounce');
+
+        $result = $this->service->route($parsed);
+
+        // Should create a chat message
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        $messageCountAfter = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->count();
+        $this->assertEquals(
+            $messageCountBefore + 1,
+            $messageCountAfter,
+            'Regular reply should create a chat message'
+        );
+    }
+
+    public function test_bounce_to_replyto_address_should_be_processed_as_bounce(): void
+    {
+        // Bounces can also arrive at replyto-{msgid}-{fromid}@ addresses when
+        // a What's New notification bounces. These should be processed as bounces.
+
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster4')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier4')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+        $replierEmail = $replier->emails->first()->email;
+
+        // Create a bounce to a replyto address
+        $bounceEmail = $this->createBounceEmail(
+            $replierEmail,
+            '5.1.1',
+            '550 5.1.1 User unknown'
+        );
+
+        $replytoAddress = "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org";
+
+        $parsed = $this->parser->parse(
+            $bounceEmail,
+            'MAILER-DAEMON@bulk2.ilovefreegle.org',
+            $replytoAddress
+        );
+
+        // Verify parser detects this as a bounce
+        $this->assertTrue($parsed->isBounce(), 'Parser should detect this as a bounce');
+
+        $result = $this->service->route($parsed);
+
+        // Should be processed as bounce (TO_SYSTEM), not as a chat reply (TO_USER)
+        $this->assertEquals(
+            RoutingResult::TO_SYSTEM,
+            $result,
+            'Bounce to replyto address should return TO_SYSTEM'
+        );
+
+        // Verify bounce was recorded
+        $replierEmailRecord = DB::table('users_emails')
+            ->where('userid', $replier->id)
+            ->where('preferred', 1)
+            ->first();
+        $this->assertNotNull(
+            $replierEmailRecord->bounced,
+            'Bounce should mark user email as bounced'
+        );
+    }
 }

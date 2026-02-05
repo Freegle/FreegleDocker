@@ -188,6 +188,96 @@ class MailParserServiceTest extends TestCase
         $this->assertFalse($parsed->isPermanentBounce());
     }
 
+    public function test_bounce_detected_with_empty_envelope_from(): void
+    {
+        // RFC 5321: Bounces (DSNs) should use empty envelope-from (null sender)
+        // Postfix often sends bounces with MAIL FROM:<>
+        $rawEmail = $this->createBounceEmail('test@example.com', '5.1.1', 'User unknown');
+
+        // Empty string represents null sender <>
+        $parsed = $this->parser->parse($rawEmail, '', 'notify-123-456@users.ilovefreegle.org');
+
+        $this->assertTrue($parsed->isBounce(), 'Bounce with empty envelope-from should be detected');
+        $this->assertEquals('test@example.com', $parsed->bounceRecipient);
+    }
+
+    public function test_bounce_detected_with_postmaster_envelope_from(): void
+    {
+        // Some MTAs use postmaster@ as envelope-from for bounces
+        $rawEmail = $this->createBounceEmail('test@example.com', '5.1.1', 'User unknown');
+
+        $parsed = $this->parser->parse($rawEmail, 'postmaster@bulk2.ilovefreegle.org', 'notify-123-456@users.ilovefreegle.org');
+
+        $this->assertTrue($parsed->isBounce(), 'Bounce with postmaster envelope-from should be detected');
+    }
+
+    public function test_bounce_detected_by_content_type_regardless_of_envelope(): void
+    {
+        // If Content-Type is multipart/report with delivery-status, it's a bounce
+        // regardless of envelope-from
+        $rawEmail = $this->createBounceEmail('test@example.com', '5.1.1', 'User unknown');
+
+        // Even with a regular user email as envelope-from, content-type should detect it
+        $parsed = $this->parser->parse($rawEmail, 'someuser@example.com', 'notify-123-456@users.ilovefreegle.org');
+
+        $this->assertTrue($parsed->isBounce(), 'Bounce should be detected by Content-Type even with regular envelope-from');
+    }
+
+    public function test_bounce_detected_by_subject_heuristics(): void
+    {
+        // Legacy compatibility: detect bounces by subject even without proper DSN format
+        // This matches the behavior in iznik-server/include/message/Message.php
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'someuser@example.com',
+            'To' => 'notify-123-456@users.ilovefreegle.org',
+            'Subject' => 'Undelivered Mail Returned to Sender',
+        ], 'Your message could not be delivered.');
+
+        $parsed = $this->parser->parse($rawEmail, 'someuser@example.com', 'notify-123-456@users.ilovefreegle.org');
+
+        $this->assertTrue($parsed->isBounce(), 'Bounce should be detected by subject pattern');
+    }
+
+    public function test_bounce_detected_by_delivery_status_notification_subject(): void
+    {
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'postmaster@example.com',
+            'To' => 'notify-123-456@users.ilovefreegle.org',
+            'Subject' => 'Delivery Status Notification (Failure)',
+        ], 'The email account that you tried to reach does not exist.');
+
+        $parsed = $this->parser->parse($rawEmail, 'postmaster@example.com', 'notify-123-456@users.ilovefreegle.org');
+
+        $this->assertTrue($parsed->isBounce(), 'Delivery Status Notification subject should detect bounce');
+    }
+
+    public function test_bounce_detected_by_mail_delivery_failed_subject(): void
+    {
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'mailer@example.com',
+            'To' => 'notify-123-456@users.ilovefreegle.org',
+            'Subject' => 'Mail delivery failed: returning message to sender',
+        ], 'A message that you sent could not be delivered.');
+
+        $parsed = $this->parser->parse($rawEmail, 'mailer@example.com', 'notify-123-456@users.ilovefreegle.org');
+
+        $this->assertTrue($parsed->isBounce(), 'Mail delivery failed subject should detect bounce');
+    }
+
+    public function test_regular_email_not_detected_as_bounce(): void
+    {
+        // Ensure we don't false-positive on regular emails
+        $rawEmail = $this->createMinimalEmail([
+            'From' => 'user@example.com',
+            'To' => 'notify-123-456@users.ilovefreegle.org',
+            'Subject' => 'Re: Your item on Freegle',
+        ], 'Yes I am still interested in the item.');
+
+        $parsed = $this->parser->parse($rawEmail, 'user@example.com', 'notify-123-456@users.ilovefreegle.org');
+
+        $this->assertFalse($parsed->isBounce(), 'Regular email should not be detected as bounce');
+    }
+
     // ========================================
     // Chat Reply Detection Tests
     // ========================================
