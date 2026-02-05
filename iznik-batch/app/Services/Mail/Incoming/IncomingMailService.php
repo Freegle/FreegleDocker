@@ -2049,10 +2049,12 @@ class IncomingMailService
             // Append group ID to make message ID unique per group (matches legacy behavior)
             $messageId = $messageId . '-' . $group->id;
 
-            // Determine lat/lng - prefer TN coordinates header, fall back to user location
+            // Determine lat/lng - prefer TN coordinates header, then subject location, then user location
             $lat = null;
             $lng = null;
+            $locationId = null;
 
+            // 1. Try TN coordinates header
             $tnCoords = $email->getTrashNothingCoordinates();
             if ($tnCoords) {
                 $parts = explode(',', $tnCoords);
@@ -2062,8 +2064,18 @@ class IncomingMailService
                 }
             }
 
-            // Fall back to user's location if no TN coordinates
-            $locationId = null;
+            // 2. Try to extract location from subject (e.g., "OFFER: Sofa (Edinburgh)")
+            // This matches legacy suggestSubject() behavior in Message.php:3940-3942
+            if ($lat === null || $lng === null) {
+                $subjectLocation = $this->extractLocationFromSubject($email->subject, $group->id);
+                if ($subjectLocation) {
+                    $lat = $subjectLocation['lat'];
+                    $lng = $subjectLocation['lng'];
+                    $locationId = $subjectLocation['id'];
+                }
+            }
+
+            // 3. Fall back to user's location if still no coordinates
             if ($lat === null || $lng === null) {
                 [$lat, $lng] = $user->getLatLng();
                 // If user has lastlocation, use that as locationid
@@ -2072,16 +2084,16 @@ class IncomingMailService
                 }
             }
 
-            // Find the closest postcode location to get locationid (if not already set from user)
+            // Find the closest postcode location to get locationid (if not already set)
             if ($lat !== null && $lng !== null && $locationId === null) {
                 $locationId = $this->findClosestPostcodeId($lat, $lng);
+            }
 
-                // Update user's lastlocation if we found one
-                if ($locationId && $user->id) {
-                    DB::table('users')
-                        ->where('id', $user->id)
-                        ->update(['lastlocation' => $locationId]);
-                }
+            // Update user's lastlocation if we found a location
+            if ($locationId && $user->id) {
+                DB::table('users')
+                    ->where('id', $user->id)
+                    ->update(['lastlocation' => $locationId]);
             }
 
             // Create the message record
@@ -2729,5 +2741,108 @@ class IncomingMailService
         }
 
         return null;
+    }
+
+    /**
+     * Extract location from subject line.
+     *
+     * Parses subjects like "OFFER: Sofa (Edinburgh)" to extract "Edinburgh"
+     * then looks it up in the locations for this group.
+     * Matches legacy Message.php:suggestSubject() behavior.
+     *
+     * @param  string  $subject  The email subject
+     * @param  int  $groupId  The group ID to search locations for
+     * @return array|null Array with id, lat, lng or null if not found
+     */
+    private function extractLocationFromSubject(string $subject, int $groupId): ?array
+    {
+        // Parse the subject: "TYPE: item (location)"
+        [$type, $item, $locationName] = $this->parseSubject($subject);
+
+        if (! $locationName) {
+            return null;
+        }
+
+        // Look up the location for this group
+        // First try exact match on name
+        $location = DB::table('locations')
+            ->where('name', $locationName)
+            ->whereNotNull('lat')
+            ->whereNotNull('lng')
+            ->first(['id', 'lat', 'lng']);
+
+        if ($location) {
+            return [
+                'id' => (int) $location->id,
+                'lat' => (float) $location->lat,
+                'lng' => (float) $location->lng,
+            ];
+        }
+
+        // Try case-insensitive search
+        $location = DB::table('locations')
+            ->whereRaw('LOWER(name) = ?', [strtolower($locationName)])
+            ->whereNotNull('lat')
+            ->whereNotNull('lng')
+            ->first(['id', 'lat', 'lng']);
+
+        if ($location) {
+            return [
+                'id' => (int) $location->id,
+                'lat' => (float) $location->lat,
+                'lng' => (float) $location->lng,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse subject to extract type, item, and location.
+     *
+     * Subject format: "TYPE: item (location)"
+     * Location may contain brackets so we count backwards.
+     * Matches legacy Message::parseSubject() in Message.php:5773
+     *
+     * @param  string  $subj  The subject line
+     * @return array [type, item, location] - any may be null
+     */
+    private function parseSubject(string $subj): array
+    {
+        $type = null;
+        $item = null;
+        $location = null;
+
+        $p = strpos($subj, ':');
+
+        if ($p !== false) {
+            $startp = $p;
+            $rest = trim(substr($subj, $p + 1));
+            $p = strlen($rest) - 1;
+
+            if (substr($rest, -1) == ')') {
+                $count = 0;
+
+                do {
+                    $curr = substr($rest, $p, 1);
+
+                    if ($curr == '(') {
+                        $count--;
+                    } elseif ($curr == ')') {
+                        $count++;
+                    }
+
+                    $p--;
+                } while ($count > 0 && $p > 0);
+
+                if ($count == 0) {
+                    $type = trim(substr($subj, 0, $startp));
+                    $location = trim(substr($rest, $p + 2, strlen($rest) - $p - 3));
+                    $item = trim(substr($rest, 0, $p));
+                }
+            }
+        }
+
+        return [$type, $item, $location];
     }
 }
