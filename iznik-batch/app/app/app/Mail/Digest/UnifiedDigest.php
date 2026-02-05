@@ -1,0 +1,240 @@
+<?php
+
+namespace App\Mail\Digest;
+
+use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
+use App\Mail\Traits\TrackableEmail;
+use App\Models\User;
+use App\Services\UnifiedDigestService;
+use App\Support\EmojiUtils;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Unified Freegle digest email.
+ *
+ * Contains posts from all communities the user is a member of,
+ * with cross-posted items deduplicated.
+ */
+class UnifiedDigest extends MjmlMailable
+{
+    use LoggableEmail;
+    use TrackableEmail;
+
+    public string $userSite;
+
+    public string $deliveryUrl;
+
+    protected Collection $preparedPosts;
+
+    public function __construct(
+        protected User $user,
+        protected Collection $posts,
+        protected string $mode
+    ) {
+        parent::__construct();
+
+        $this->userSite = config('freegle.sites.user');
+        $this->deliveryUrl = config('freegle.delivery.base_url');
+
+        // Prepare posts with tracking URLs and decoded text.
+        $this->preparedPosts = $this->preparePosts();
+
+        // Initialize email tracking.
+        $userId = $this->user->exists ? $this->user->id : null;
+
+        $this->initTracking(
+            'UnifiedDigest',
+            $this->user->email_preferred,
+            $userId,
+            null,
+            $this->getSubject(),
+            [
+                'mode' => $this->mode,
+                'post_count' => $this->posts->count(),
+            ]
+        );
+    }
+
+    /**
+     * Get the recipient's user ID for common header tracking.
+     */
+    protected function getRecipientUserId(): ?int
+    {
+        return $this->user->id ?? null;
+    }
+
+    /**
+     * Build the message.
+     */
+    public function build(): static
+    {
+        return $this->mjmlView('emails.mjml.digest.unified', array_merge([
+            'user' => $this->user,
+            'posts' => $this->preparedPosts,
+            'postCount' => $this->posts->count(),
+            'settingsUrl' => $this->trackedUrl($this->userSite . '/settings', 'footer_settings', 'settings'),
+            'browseUrl' => $this->trackedUrl($this->userSite . '/browse', 'browse_button', 'browse'),
+            'userSite' => $this->userSite,
+        ], $this->getTrackingData()), 'emails.text.digest.unified')
+            ->to($this->user->email_preferred)
+            ->applyLogging('UnifiedDigest');
+    }
+
+    /**
+     * Get the subject line.
+     *
+     * Format: "5 new posts near you - Sofa, Coffee table, Books..."
+     */
+    protected function getSubject(): string
+    {
+        $count = $this->posts->count();
+        $itemNames = $this->getItemNamesForSubject();
+
+        $subject = "{$count} new post" . ($count === 1 ? '' : 's') . " near you";
+
+        if ($itemNames) {
+            $subject .= " - {$itemNames}";
+        }
+
+        return $subject;
+    }
+
+    /**
+     * Get item names for the subject line teaser.
+     *
+     * @return string Comma-separated item names, max 50 chars
+     */
+    protected function getItemNamesForSubject(): string
+    {
+        $names = [];
+        $totalLength = 0;
+        $maxLength = 50;
+
+        foreach ($this->posts as $post) {
+            $message = $post['message'];
+            $itemName = $this->extractItemName($message->subject);
+
+            // Truncate individual item names to 25 chars.
+            if (strlen($itemName) > 25) {
+                $itemName = substr($itemName, 0, 22) . '...';
+            }
+
+            $newLength = $totalLength + strlen($itemName) + ($totalLength > 0 ? 2 : 0);
+
+            if ($newLength > $maxLength) {
+                break;
+            }
+
+            $names[] = $itemName;
+            $totalLength = $newLength;
+        }
+
+        return implode(', ', $names);
+    }
+
+    /**
+     * Extract item name from subject line.
+     * Removes OFFER/WANTED prefix and location suffix.
+     */
+    protected function extractItemName(string $subject): string
+    {
+        // Remove OFFER/WANTED prefix.
+        $name = preg_replace('/^(OFFER|WANTED)\s*:\s*/i', '', $subject);
+
+        // Remove location suffix (stuff in parentheses at the end).
+        $name = preg_replace('/\s*\([^)]+\)\s*$/', '', $name);
+
+        return trim($name);
+    }
+
+    /**
+     * Prepare posts with tracking URLs and processed data.
+     */
+    protected function preparePosts(): Collection
+    {
+        return $this->posts->map(function ($post, $index) {
+            $message = $post['message'];
+            $postedToGroups = $post['postedToGroups'];
+
+            // Get group names for "Posted to:" display.
+            $postedToText = count($postedToGroups) > 1
+                ? $this->formatPostedTo($postedToGroups)
+                : null;
+
+            // Get image URL via delivery service.
+            $imageUrl = $this->getMessageImageUrl($message);
+
+            // Decode emoji sequences in message text.
+            $messageText = $message->textbody
+                ? EmojiUtils::decodeEmojis($message->textbody)
+                : null;
+
+            // Create tracked URL for this message (with position tracking).
+            $messageUrl = $this->trackedUrl(
+                $this->userSite . '/message/' . $message->id,
+                "post_{$index}",
+                'view_message'
+            );
+
+            return [
+                'message' => $message,
+                'messageText' => $messageText,
+                'messageUrl' => $messageUrl,
+                'imageUrl' => $imageUrl,
+                'postedToText' => $postedToText,
+                'type' => $message->type,
+                'subject' => $message->subject,
+                'itemName' => $this->extractItemName($message->subject),
+            ];
+        });
+    }
+
+    /**
+     * Format the "Posted to" text for display.
+     */
+    protected function formatPostedTo(array $groupIds): string
+    {
+        $groupNames = DB::table('groups')
+            ->whereIn('id', $groupIds)
+            ->pluck('nameshort');
+
+        return 'Posted to: ' . $groupNames->implode(', ');
+    }
+
+    /**
+     * Get the message image URL via delivery service.
+     */
+    protected function getMessageImageUrl($message): ?string
+    {
+        if (!$message->attachments || $message->attachments->isEmpty()) {
+            return null;
+        }
+
+        $attachment = $message->attachments->first();
+
+        // If there's an external URL, use it directly.
+        if (!empty($attachment->externalurl)) {
+            return $this->getDeliveryUrl($attachment->externalurl, 300);
+        }
+
+        // Build URL from image domain - message images use timg_ prefix for thumbnails.
+        $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
+        $sourceUrl = "{$imagesDomain}/timg_{$attachment->id}.jpg";
+
+        return $this->getDeliveryUrl($sourceUrl, 300);
+    }
+
+    /**
+     * Get a URL via the delivery service for image resizing/optimization.
+     */
+    protected function getDeliveryUrl(string $sourceUrl, int $width): string
+    {
+        if (!$this->deliveryUrl) {
+            return $sourceUrl;
+        }
+
+        return $this->deliveryUrl . '/?url=' . urlencode($sourceUrl) . '&w=' . $width;
+    }
+}
