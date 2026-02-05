@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -11,7 +10,8 @@ use Illuminate\Support\Facades\Log;
  * TUS (Tus Upload Server) is a resumable upload protocol used by Freegle
  * to store message and chat attachments.
  *
- * Port from iznik-server/include/misc/Tus.php
+ * Port from iznik-server/include/misc/Tus.php - uses curl throughout
+ * for precise control over the TUS protocol.
  */
 class TusService
 {
@@ -42,11 +42,11 @@ class TusService
         }
 
         // Step 2: Verify file exists (HEAD request)
-        if (! $this->verifyFile($url)) {
+        if (! $this->verifyFileExists($url)) {
             return null;
         }
 
-        // Step 3: Upload the data (PATCH request)
+        // Step 3: Upload the data (PATCH request) - always from offset 0 for fresh uploads
         return $this->uploadData($url, $data, $chkAlgo, $fileChk);
     }
 
@@ -55,106 +55,177 @@ class TusService
      */
     private function createFile(int $fileLen, string $mime): ?string
     {
-        try {
-            $response = Http::withHeaders([
-                'Tus-Resumable' => '1.0.0',
-                'Content-Type' => 'application/offset+octet-stream',
-                'Upload-Length' => (string) $fileLen,
-                'Upload-Metadata' => sprintf(
-                    'relativePath bnVsbA==,name %s,type %s,filetype %s,filename %s',
-                    base64_encode($mime),
-                    base64_encode('image/webp'),
-                    base64_encode('image/webp'),
-                    base64_encode('image.webp')
-                ),
-            ])->post($this->tusUploader);
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $this->tusUploader);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_NOBODY, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Tus-Resumable: 1.0.0',
+            'Content-Type: application/offset+octet-stream',
+            'Upload-Length: '.$fileLen,
+            sprintf(
+                'Upload-Metadata: relativePath bnVsbA==,name %s,type %s,filetype %s,filename %s',
+                base64_encode($mime),
+                base64_encode('image/webp'),
+                base64_encode('image/webp'),
+                base64_encode('image.webp')
+            ),
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
 
-            if ($response->status() === 201) {
-                $location = $response->header('Location');
-                if ($location) {
-                    return $location;
-                }
-            }
+        $result = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
+        if ($errno) {
+            Log::warning('TUS create file curl error', [
+                'errno' => $errno,
+                'error' => curl_error($ch),
+            ]);
+
+            return null;
+        }
+
+        if ($httpCode !== 201) {
             Log::warning('TUS create file failed', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return null;
-        } catch (\Exception $e) {
-            Log::error('TUS create file exception', [
-                'error' => $e->getMessage(),
+                'status' => $httpCode,
+                'result' => $result,
             ]);
 
             return null;
         }
+
+        // Extract Location header using same approach as legacy code
+        $headers = $this->getHeaders($result);
+        $location = $headers['location'] ?? null;
+
+        if (! $location) {
+            Log::warning('TUS create file no location header', [
+                'result' => $result,
+                'headers' => $headers,
+            ]);
+
+            return null;
+        }
+
+        return $location;
     }
 
     /**
-     * Verify file exists on the TUS server.
+     * Verify file exists on the TUS server (HEAD request).
      */
-    private function verifyFile(string $url): bool
+    private function verifyFileExists(string $url): bool
     {
-        try {
-            $response = Http::withHeaders([
-                'Tus-Resumable' => '1.0.0',
-                'Content-Type' => 'application/offset+octet-stream',
-            ])->head($url);
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'HEAD');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_NOBODY, true);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Tus-Resumable: 1.0.0',
+            'Content-Type: application/offset+octet-stream',
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
 
-            if ($response->status() === 200) {
-                return true;
-            }
+        $result = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
-            Log::warning('TUS verify file failed', [
+        if ($errno) {
+            Log::warning('TUS verify file curl error', [
                 'url' => $url,
-                'status' => $response->status(),
-            ]);
-
-            return false;
-        } catch (\Exception $e) {
-            Log::error('TUS verify file exception', [
-                'url' => $url,
-                'error' => $e->getMessage(),
+                'errno' => $errno,
             ]);
 
             return false;
         }
+
+        if ($httpCode === 404) {
+            Log::warning('TUS file not found', ['url' => $url]);
+
+            return false;
+        }
+
+        return $httpCode === 200;
     }
 
     /**
-     * Upload file data to the TUS server.
+     * Upload file data to the TUS server (PATCH request).
+     * Always uploads from offset 0 for fresh uploads.
      */
     private function uploadData(string $url, string $data, string $chkAlgo, string $fileChk): ?string
     {
-        try {
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/offset+octet-stream',
-                'Tus-Resumable' => '1.0.0',
-                'Upload-Offset' => '0',
-                'Upload-Checksum' => "$chkAlgo $fileChk",
-            ])->withBody($data, 'application/offset+octet-stream')
-                ->patch($url);
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PATCH');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/offset+octet-stream',
+            'Tus-Resumable: 1.0.0',
+            'Upload-Offset: 0',
+            'Upload-Checksum: '.$chkAlgo.' '.$fileChk,
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
 
-            if ($response->status() === 200 || $response->status() === 204) {
-                return $url;
-            }
+        $result = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
-            Log::warning('TUS upload data failed', [
+        if ($errno) {
+            Log::error('TUS upload data curl error', [
                 'url' => $url,
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return null;
-        } catch (\Exception $e) {
-            Log::error('TUS upload data exception', [
-                'url' => $url,
-                'error' => $e->getMessage(),
+                'errno' => $errno,
             ]);
 
             return null;
         }
+
+        if ($httpCode === 200 || $httpCode === 204) {
+            return $url;
+        }
+
+        Log::warning('TUS upload data failed', [
+            'url' => $url,
+            'status' => $httpCode,
+            'result' => substr($result, 0, 500),
+        ]);
+
+        return null;
+    }
+
+    /**
+     * Parse HTTP headers from curl response.
+     * Matches the legacy Tus::getHeaders() implementation.
+     */
+    private function getHeaders(string $respHeaders): array
+    {
+        $headers = [];
+
+        $headerText = substr($respHeaders, 0, strpos($respHeaders, "\r\n\r\n"));
+        if (! $headerText) {
+            $headerText = $respHeaders;
+        }
+
+        foreach (explode("\r\n", $headerText) as $i => $line) {
+            if ($i === 0) {
+                $headers['http_code'] = $line;
+            } else {
+                $parts = explode(': ', $line, 2);
+                if (count($parts) === 2) {
+                    $headers[strtolower($parts[0])] = $parts[1];
+                }
+            }
+        }
+
+        return $headers;
     }
 
     /**
