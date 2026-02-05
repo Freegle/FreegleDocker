@@ -273,11 +273,28 @@ class MailParserService
             stripos($envelopeFrom, 'mailer-daemon') !== false ||
             stripos($envelopeFrom, 'postmaster') !== false;
 
-        $contentType = $message->getHeaderValue('Content-Type') ?? '';
+        // Get the full Content-Type header including parameters
+        // Use getRawHeaderValue to ensure we get the complete header with continuation lines
+        $contentTypeHeader = $message->getHeader('Content-Type');
+        $contentType = $contentTypeHeader ? $contentTypeHeader->getRawValue() : '';
         $isDeliveryReport = stripos($contentType, 'multipart/report') !== false &&
             stripos($contentType, 'delivery-status') !== false;
 
-        if (! $isFromBounceSource && ! $isDeliveryReport) {
+        // Check subject for bounce patterns (legacy compatibility)
+        // This must be checked BEFORE the early return so we don't miss bounces
+        // that only have indicative subjects without proper DSN format
+        $subject = $message->getHeaderValue('Subject') ?? '';
+        $isBounceSubject = $this->isBounceSubject($subject);
+
+        if (! $isFromBounceSource && ! $isDeliveryReport && ! $isBounceSubject) {
+            return $result;
+        }
+
+        // If only detected by subject (no DSN format), set generic bounce status
+        if ($isBounceSubject && ! $isFromBounceSource && ! $isDeliveryReport) {
+            $result['status'] = '5.0.0';  // Generic permanent failure
+            $result['diagnostic'] = 'Detected by subject pattern: '.$subject;
+
             return $result;
         }
 
@@ -304,18 +321,6 @@ class MailParserService
             $textBody = $message->getTextContent();
             if ($textBody) {
                 $result = $this->extractBounceFromBody($textBody);
-            }
-        }
-
-        // Fallback: Check subject for bounce patterns (legacy compatibility)
-        // Legacy code (iznik-server/include/message/Message.php) uses subject heuristics
-        if ($result['status'] === null) {
-            $subject = $message->getHeaderValue('Subject') ?? '';
-            if ($this->isBounceSubject($subject)) {
-                // Set a generic bounce status so isBounce() returns true
-                // We don't have the specific status code, but we know it's a bounce
-                $result['status'] = '5.0.0';  // Generic permanent failure
-                $result['diagnostic'] = 'Detected by subject pattern: '.$subject;
             }
         }
 
