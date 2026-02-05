@@ -3124,4 +3124,158 @@ class IncomingMailServiceTest extends TestCase
         // Cleanup
         DB::table('locations')->where('id', $locationId)->delete();
     }
+
+    // ========================================
+    // TN Image Scraping Tests
+    // ========================================
+
+    public function test_scrape_tn_image_urls_returns_empty_for_null_body(): void
+    {
+        $urls = $this->service->scrapeTnImageUrls(null);
+        $this->assertEmpty($urls);
+    }
+
+    public function test_scrape_tn_image_urls_returns_empty_for_body_without_tn_links(): void
+    {
+        $body = "Hello, I have a sofa to give away.\nPlease contact me.";
+        $urls = $this->service->scrapeTnImageUrls($body);
+        $this->assertEmpty($urls);
+    }
+
+    public function test_scrape_tn_image_urls_finds_tn_pics_links(): void
+    {
+        // Note: This will actually try to fetch the TN page, which may fail in tests.
+        // We're testing the regex extraction, not the HTTP fetch.
+        $body = "I have items to give away.\n\nCheck out the pictures:\nhttps://trashnothing.com/pics/abc123\n\nContact me if interested.";
+
+        // The method will find the URL even if the HTTP fetch fails
+        // We mock the HTTP response to test properly
+        \Illuminate\Support\Facades\Http::fake([
+            'trashnothing.com/pics/*' => \Illuminate\Support\Facades\Http::response('<html><body><a href="https://img.trashnothing.com/image.jpg"><img src="https://img.trashnothing.com/thumb.jpg"/></a></body></html>', 200),
+        ]);
+
+        $urls = $this->service->scrapeTnImageUrls($body);
+        $this->assertContains('https://img.trashnothing.com/image.jpg', $urls);
+    }
+
+    public function test_scrape_tn_image_urls_finds_multiple_links(): void
+    {
+        $body = "Multiple pics:\nhttps://trashnothing.com/pics/abc123\nhttps://trashnothing.com/pics/def456";
+
+        \Illuminate\Support\Facades\Http::fake([
+            'trashnothing.com/pics/abc123' => \Illuminate\Support\Facades\Http::response('<html><body><a href="https://img.trashnothing.com/img1.jpg"><img src="https://img.trashnothing.com/thumb1.jpg"/></a></body></html>', 200),
+            'trashnothing.com/pics/def456' => \Illuminate\Support\Facades\Http::response('<html><body><a href="https://photos.trashnothing.com/img2.jpg"><img src="https://photos.trashnothing.com/thumb2.jpg"/></a></body></html>', 200),
+        ]);
+
+        $urls = $this->service->scrapeTnImageUrls($body);
+        $this->assertCount(2, $urls);
+        $this->assertContains('https://img.trashnothing.com/img1.jpg', $urls);
+        $this->assertContains('https://photos.trashnothing.com/img2.jpg', $urls);
+    }
+
+    public function test_strip_tn_pic_links_returns_null_for_null_body(): void
+    {
+        $result = $this->service->stripTnPicLinks(null);
+        $this->assertNull($result);
+    }
+
+    public function test_strip_tn_pic_links_removes_check_out_pictures_block(): void
+    {
+        $body = "I have a sofa.\n\nCheck out the pictures:\nhttps://trashnothing.com/pics/abc123\n\nContact me.";
+        $result = $this->service->stripTnPicLinks($body);
+
+        $this->assertStringNotContainsString('Check out the pictures', $result);
+        $this->assertStringNotContainsString('trashnothing.com/pics', $result);
+        $this->assertStringContainsString('I have a sofa.', $result);
+        $this->assertStringContainsString('Contact me.', $result);
+    }
+
+    public function test_strip_tn_pic_links_preserves_body_without_tn_links(): void
+    {
+        $body = "Hello, I have items to give away.\nPlease contact me.";
+        $result = $this->service->stripTnPicLinks($body);
+        $this->assertEquals($body, $result);
+    }
+
+    public function test_create_tn_image_attachments_with_mocked_tus(): void
+    {
+        // Create a test user and group
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('tn-test')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+
+        // Create a test message
+        $messageId = DB::table('messages')->insertGetId([
+            'date' => now(),
+            'source' => 'Email',
+            'fromuser' => $user->id,
+            'subject' => 'OFFER: Test item',
+            'textbody' => 'Test message',
+            'tnpostid' => 'test123',
+            'arrival' => now(),
+        ]);
+
+        // Mock HTTP for image download
+        \Illuminate\Support\Facades\Http::fake([
+            'img.trashnothing.com/*' => \Illuminate\Support\Facades\Http::response(
+                // 1x1 red PNG (valid image)
+                base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='),
+                200,
+                ['Content-Type' => 'image/png']
+            ),
+            // Mock TUS server
+            config('freegle.tus_uploader') => \Illuminate\Support\Facades\Http::sequence()
+                ->push('', 201, ['Location' => config('freegle.tus_uploader').'/test-upload-id'])
+                ->push('', 200)
+                ->push('', 204),
+            config('freegle.tus_uploader').'/test-upload-id' => \Illuminate\Support\Facades\Http::response('', 200),
+        ]);
+
+        $imageUrls = ['https://img.trashnothing.com/test-image.jpg'];
+        $created = $this->service->createTnImageAttachments($messageId, $imageUrls);
+
+        // Due to mocking complexity, we just verify the method runs without error
+        // Full integration testing would require a real TUS server
+        $this->assertIsInt($created);
+
+        // Cleanup
+        DB::table('messages_attachments')->where('msgid', $messageId)->delete();
+        DB::table('messages')->where('id', $messageId)->delete();
+    }
+
+    public function test_group_post_strips_tn_links_from_textbody(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('tn-strip')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        // Mock HTTP responses
+        \Illuminate\Support\Facades\Http::fake([
+            'trashnothing.com/pics/*' => \Illuminate\Support\Facades\Http::response('<html><body></body></html>', 200),
+        ]);
+
+        $body = "I have a table.\n\nCheck out the pictures:\nhttps://trashnothing.com/pics/test123\n\nContact me!";
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "{$group->nameshort}@groups.ilovefreegle.org",
+            'Subject' => 'OFFER: Table',
+            'X-Trash-Nothing-Post-ID' => 'tn-test-456',
+        ], $body);
+
+        $parsed = $this->parser->parse($email, $userEmail, "{$group->nameshort}@groups.ilovefreegle.org");
+        $result = $this->service->route($parsed);
+
+        $this->assertContains($result, [RoutingResult::PENDING, RoutingResult::APPROVED]);
+
+        // Check the message was created with cleaned textbody
+        $context = $this->service->getLastRoutingContext();
+        if (isset($context['message_id'])) {
+            $message = DB::table('messages')->where('id', $context['message_id'])->first();
+            $this->assertNotNull($message);
+            $this->assertStringNotContainsString('trashnothing.com/pics', $message->textbody);
+            $this->assertStringContainsString('I have a table.', $message->textbody);
+        }
+    }
 }

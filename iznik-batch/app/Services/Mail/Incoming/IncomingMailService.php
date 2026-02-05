@@ -2096,6 +2096,12 @@ class IncomingMailService
                     ->update(['lastlocation' => $locationId]);
             }
 
+            // Scrape TN image URLs before processing textbody
+            $tnImageUrls = $this->scrapeTnImageUrls($email->textBody);
+
+            // Strip TN pic links from textbody
+            $cleanedTextBody = $this->stripTnPicLinks($email->textBody);
+
             // Create the message record
             $message = Message::create([
                 'date' => now(),
@@ -2113,7 +2119,7 @@ class IncomingMailService
                 'suggestedsubject' => $email->subject, // TODO: implement subject suggestion
                 'messageid' => $messageId,
                 'tnpostid' => $email->getTrashNothingPostId(),
-                'textbody' => $email->textBody,
+                'textbody' => $cleanedTextBody,
                 'type' => $type,
                 'lat' => $lat,
                 'lng' => $lng,
@@ -2160,6 +2166,11 @@ class IncomingMailService
 
             // Note: messages_spatial is added when message is APPROVED, not at creation
             // (matches legacy Message.php:3127 where addToSpatialIndex is called in approve())
+
+            // Process TN images: download, upload to tusd, create attachments
+            if (! empty($tnImageUrls)) {
+                $this->createTnImageAttachments($message->id, $tnImageUrls);
+            }
 
             return $message->id;
 
@@ -2835,5 +2846,255 @@ class IncomingMailService
         }
 
         return [$type, $item, $location];
+    }
+
+    /**
+     * Scrape TN (Trash Nothing) image URLs from text body.
+     *
+     * TN sends image links in the format https://trashnothing.com/pics/...
+     * which link to pages containing the actual high-res image URLs.
+     *
+     * Port from iznik-server Message.php scrapePhotos()
+     *
+     * @param  string|null  $textBody  Message text body
+     * @return array Array of image URLs to download
+     */
+    public function scrapeTnImageUrls(?string $textBody): array
+    {
+        if (! $textBody) {
+            return [];
+        }
+
+        $imageUrls = [];
+
+        // Find TN pic page URLs
+        if (preg_match_all('/(https:\/\/trashnothing\.com\/pics\/.*)$/m', $textBody, $matches)) {
+            $pageUrls = [];
+            foreach ($matches[1] as $url) {
+                $pageUrls[] = trim($url);
+            }
+            $pageUrls = array_unique($pageUrls);
+
+            foreach ($pageUrls as $pageUrl) {
+                // Fetch the TN pics page to extract actual image URLs
+                $extractedUrls = $this->extractTnImageUrlsFromPage($pageUrl);
+                $imageUrls = array_merge($imageUrls, $extractedUrls);
+            }
+        }
+
+        return array_unique($imageUrls);
+    }
+
+    /**
+     * Extract image URLs from a TN pics page.
+     *
+     * @param  string  $pageUrl  TN pics page URL
+     * @return array Array of image URLs
+     */
+    private function extractTnImageUrlsFromPage(string $pageUrl): array
+    {
+        $imageUrls = [];
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(120)->get($pageUrl);
+
+            if (! $response->successful()) {
+                Log::warning('Failed to fetch TN pics page', [
+                    'url' => $pageUrl,
+                    'status' => $response->status(),
+                ]);
+
+                return [];
+            }
+
+            $html = $response->body();
+            $doc = new \DOMDocument;
+            @$doc->loadHTML($html);
+            $imgs = $doc->getElementsByTagName('img');
+
+            foreach ($imgs as $img) {
+                $src = $img->getAttribute('src');
+
+                // Check if it's a TN image URL
+                if (strpos($src, 'https://') === 0 &&
+                    (strpos($src, '/img/') !== false ||
+                     strpos($src, 'img.trashnothing.com') !== false ||
+                     strpos($src, '/tn-photos/') !== false ||
+                     strpos($src, '/pics/') !== false ||
+                     strpos($src, 'photos.trashnothing.com') !== false)) {
+                    // The highest resolution is in the parent anchor tag's href
+                    $parent = $img->parentNode;
+                    if ($parent && $parent->nodeName === 'a') {
+                        $href = $parent->getAttribute('href');
+                        if ($href && strpos($href, 'https://') === 0 &&
+                            (strpos($href, '/img/') !== false ||
+                             strpos($href, 'img.trashnothing.com') !== false ||
+                             strpos($href, '/tn-photos/') !== false ||
+                             strpos($href, '/pics/') !== false ||
+                             strpos($href, 'photos.trashnothing.com') !== false)) {
+                            $imageUrls[] = $href;
+                        }
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception fetching TN pics page', [
+                'url' => $pageUrl,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $imageUrls;
+    }
+
+    /**
+     * Strip TN pic links from text body.
+     *
+     * Removes the "Check out the pictures..." text and TN pic URLs.
+     *
+     * Port from iznik-server Message.php scrapePhotos() return statement.
+     *
+     * @param  string|null  $textBody  Message text body
+     * @return string|null Cleaned text body
+     */
+    public function stripTnPicLinks(?string $textBody): ?string
+    {
+        if (! $textBody) {
+            return $textBody;
+        }
+
+        // Remove "Check out the pictures..." block with TN URLs
+        return preg_replace(
+            '/Check out the pictures[\s\S]*?https:\/\/trashnothing[\s\S]*?pics\/[a-zA-Z0-9]*/',
+            '',
+            $textBody
+        );
+    }
+
+    /**
+     * Download and upload TN images to tusd, creating attachment records.
+     *
+     * @param  int  $messageId  The message ID to attach images to
+     * @param  array  $imageUrls  Array of image URLs to download
+     * @return int Number of attachments created
+     */
+    public function createTnImageAttachments(int $messageId, array $imageUrls): int
+    {
+        $tusService = app(\App\Services\TusService::class);
+        $created = 0;
+        $isFirst = true;
+
+        foreach ($imageUrls as $url) {
+            try {
+                // Download the image
+                $response = \Illuminate\Support\Facades\Http::timeout(120)->get($url);
+
+                if (! $response->successful()) {
+                    Log::warning('Failed to download TN image', [
+                        'url' => $url,
+                        'status' => $response->status(),
+                    ]);
+
+                    continue;
+                }
+
+                $imageData = $response->body();
+                $contentType = $response->header('Content-Type') ?? 'image/jpeg';
+
+                // Compute perceptual hash for deduplication
+                $hash = $this->computeImageHash($imageData);
+
+                // Check if we already have this image (by hash)
+                $existing = \App\Models\MessageAttachment::where('msgid', $messageId)
+                    ->where('hash', $hash)
+                    ->first();
+
+                if ($existing) {
+                    Log::debug('Skipping duplicate TN image', [
+                        'message_id' => $messageId,
+                        'hash' => $hash,
+                    ]);
+
+                    continue;
+                }
+
+                // Upload to tusd
+                $tusUrl = $tusService->upload($imageData, $contentType);
+
+                if (! $tusUrl) {
+                    Log::warning('Failed to upload TN image to tusd', [
+                        'url' => $url,
+                    ]);
+
+                    continue;
+                }
+
+                $externalUid = \App\Services\TusService::urlToExternalUid($tusUrl);
+
+                // Create attachment record
+                \App\Models\MessageAttachment::create([
+                    'msgid' => $messageId,
+                    'externaluid' => $externalUid,
+                    'hash' => $hash,
+                    'primary' => $isFirst,
+                ]);
+
+                $created++;
+                $isFirst = false;
+
+                Log::debug('Created TN image attachment', [
+                    'message_id' => $messageId,
+                    'url' => $url,
+                    'externaluid' => $externalUid,
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Exception processing TN image', [
+                    'url' => $url,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $created;
+    }
+
+    /**
+     * Compute perceptual hash for an image.
+     *
+     * Uses ImageHash library to generate a 16-character hex hash
+     * that can be used to detect duplicate/similar images.
+     *
+     * @param  string  $imageData  Binary image data
+     * @return string|null 16-character hex hash, or null if failed
+     */
+    private function computeImageHash(string $imageData): ?string
+    {
+        try {
+            $img = @imagecreatefromstring($imageData);
+            if (! $img) {
+                return null;
+            }
+
+            // Use Jenssegers\ImageHash if available, otherwise return md5 truncated
+            if (class_exists(\Jenssegers\ImageHash\ImageHash::class)) {
+                $hasher = new \Jenssegers\ImageHash\ImageHash;
+                $hash = $hasher->hash($img)->toHex();
+                imagedestroy($img);
+
+                return substr($hash, 0, 16);
+            }
+
+            imagedestroy($img);
+
+            // Fallback: use md5 of image data (not perceptual but still useful)
+            return substr(md5($imageData), 0, 16);
+        } catch (\Exception $e) {
+            Log::warning('Failed to compute image hash', [
+                'error' => $e->getMessage(),
+            ]);
+
+            // Fallback: use md5 of image data
+            return substr(md5($imageData), 0, 16);
+        }
     }
 }
