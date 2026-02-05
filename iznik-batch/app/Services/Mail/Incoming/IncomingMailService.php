@@ -2888,6 +2888,13 @@ class IncomingMailService
     /**
      * Extract image URLs from a TN pics page.
      *
+     * TN page structure has changed over time:
+     * - Old: img inside anchor tag (parent href has high-res)
+     * - New: anchor with high-res href separate from img tag
+     *
+     * We prioritize finding anchor hrefs with TN image URLs as they
+     * typically have higher resolution than img src attributes.
+     *
      * @param  string  $pageUrl  TN pics page URL
      * @return array Array of image URLs
      */
@@ -2910,30 +2917,23 @@ class IncomingMailService
             $html = $response->body();
             $doc = new \DOMDocument;
             @$doc->loadHTML($html);
-            $imgs = $doc->getElementsByTagName('img');
 
-            foreach ($imgs as $img) {
-                $src = $img->getAttribute('src');
+            // Strategy 1: Look for anchor tags with TN image URLs (high-res)
+            $anchors = $doc->getElementsByTagName('a');
+            foreach ($anchors as $anchor) {
+                $href = $anchor->getAttribute('href');
+                if ($this->isTnImageUrl($href)) {
+                    $imageUrls[] = $href;
+                }
+            }
 
-                // Check if it's a TN image URL
-                if (strpos($src, 'https://') === 0 &&
-                    (strpos($src, '/img/') !== false ||
-                     strpos($src, 'img.trashnothing.com') !== false ||
-                     strpos($src, '/tn-photos/') !== false ||
-                     strpos($src, '/pics/') !== false ||
-                     strpos($src, 'photos.trashnothing.com') !== false)) {
-                    // The highest resolution is in the parent anchor tag's href
-                    $parent = $img->parentNode;
-                    if ($parent && $parent->nodeName === 'a') {
-                        $href = $parent->getAttribute('href');
-                        if ($href && strpos($href, 'https://') === 0 &&
-                            (strpos($href, '/img/') !== false ||
-                             strpos($href, 'img.trashnothing.com') !== false ||
-                             strpos($href, '/tn-photos/') !== false ||
-                             strpos($href, '/pics/') !== false ||
-                             strpos($href, 'photos.trashnothing.com') !== false)) {
-                            $imageUrls[] = $href;
-                        }
+            // Strategy 2: Fall back to img src if no anchors found
+            if (empty($imageUrls)) {
+                $imgs = $doc->getElementsByTagName('img');
+                foreach ($imgs as $img) {
+                    $src = $img->getAttribute('src');
+                    if ($this->isTnImageUrl($src)) {
+                        $imageUrls[] = $src;
                     }
                 }
             }
@@ -2944,7 +2944,22 @@ class IncomingMailService
             ]);
         }
 
-        return $imageUrls;
+        return array_unique($imageUrls);
+    }
+
+    /**
+     * Check if a URL is a TN image URL.
+     */
+    private function isTnImageUrl(?string $url): bool
+    {
+        if (! $url || strpos($url, 'https://') !== 0) {
+            return false;
+        }
+
+        return strpos($url, 'trashnothing.com/img/') !== false ||
+               strpos($url, 'img.trashnothing.com') !== false ||
+               strpos($url, '/tn-photos/') !== false ||
+               strpos($url, 'photos.trashnothing.com') !== false;
     }
 
     /**
