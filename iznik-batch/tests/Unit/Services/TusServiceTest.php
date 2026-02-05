@@ -3,7 +3,6 @@
 namespace Tests\Unit\Services;
 
 use App\Services\TusService;
-use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class TusServiceTest extends TestCase
@@ -16,17 +15,21 @@ class TusServiceTest extends TestCase
         $this->service = new TusService('https://test-tus-server.example.com');
     }
 
+    protected function tearDown(): void
+    {
+        TusService::clearFake();
+        parent::tearDown();
+    }
+
     public function test_upload_returns_url_on_success(): void
     {
-        Http::fake([
-            'test-tus-server.example.com' => Http::sequence()
-                // POST to create file
-                ->push('', 201, ['Location' => 'https://test-tus-server.example.com/files/abc123'])
-                // HEAD to verify
-                ->push('', 200, ['Upload-Offset' => '0'])
-                // PATCH to upload
-                ->push('', 204),
-            'test-tus-server.example.com/files/abc123' => Http::response('', 200),
+        TusService::fake([
+            // POST to create file
+            ['status' => 201, 'headers' => ['Location' => 'https://test-tus-server.example.com/files/abc123']],
+            // HEAD to verify
+            ['status' => 200, 'headers' => ['Upload-Offset' => '0']],
+            // PATCH to upload
+            ['status' => 204],
         ]);
 
         $data = 'test image data';
@@ -37,8 +40,8 @@ class TusServiceTest extends TestCase
 
     public function test_upload_returns_null_when_create_fails(): void
     {
-        Http::fake([
-            'test-tus-server.example.com' => Http::response('', 500),
+        TusService::fake([
+            ['status' => 500],
         ]);
 
         $data = 'test image data';
@@ -49,11 +52,11 @@ class TusServiceTest extends TestCase
 
     public function test_upload_returns_null_when_verify_fails(): void
     {
-        Http::fake([
-            'test-tus-server.example.com' => Http::sequence()
-                // POST to create file
-                ->push('', 201, ['Location' => 'https://test-tus-server.example.com/files/abc123']),
-            'test-tus-server.example.com/files/abc123' => Http::response('', 404),
+        TusService::fake([
+            // POST to create file
+            ['status' => 201, 'headers' => ['Location' => 'https://test-tus-server.example.com/files/abc123']],
+            // HEAD to verify - 404 not found
+            ['status' => 404],
         ]);
 
         $data = 'test image data';
@@ -64,15 +67,13 @@ class TusServiceTest extends TestCase
 
     public function test_upload_returns_null_when_patch_fails(): void
     {
-        Http::fake([
-            'test-tus-server.example.com' => Http::sequence()
-                // POST to create file
-                ->push('', 201, ['Location' => 'https://test-tus-server.example.com/files/abc123']),
-            'test-tus-server.example.com/files/abc123' => Http::sequence()
-                // HEAD to verify
-                ->push('', 200, ['Upload-Offset' => '0'])
-                // PATCH to upload
-                ->push('', 500),
+        TusService::fake([
+            // POST to create file
+            ['status' => 201, 'headers' => ['Location' => 'https://test-tus-server.example.com/files/abc123']],
+            // HEAD to verify
+            ['status' => 200, 'headers' => ['Upload-Offset' => '0']],
+            // PATCH to upload - fails
+            ['status' => 500],
         ]);
 
         $data = 'test image data';

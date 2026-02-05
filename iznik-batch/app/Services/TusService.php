@@ -17,6 +17,36 @@ class TusService
 {
     private string $tusUploader;
 
+    /**
+     * Mock responses for testing. When set, curl calls are bypassed.
+     * Format: array of ['status' => int, 'headers' => array, 'body' => string]
+     *
+     * @var array|null
+     */
+    private static ?array $mockResponses = null;
+
+    private static int $mockIndex = 0;
+
+    /**
+     * Set mock responses for testing.
+     *
+     * @param  array  $responses  Array of mock responses in order they'll be used
+     */
+    public static function fake(array $responses): void
+    {
+        self::$mockResponses = $responses;
+        self::$mockIndex = 0;
+    }
+
+    /**
+     * Clear mock responses.
+     */
+    public static function clearFake(): void
+    {
+        self::$mockResponses = null;
+        self::$mockIndex = 0;
+    }
+
     public function __construct(?string $tusUploader = null)
     {
         $this->tusUploader = $tusUploader ?? config('freegle.tus_uploader');
@@ -75,37 +105,35 @@ class TusService
         ]);
         curl_setopt($ch, CURLOPT_TIMEOUT, 120);
 
-        $result = curl_exec($ch);
-        $errno = curl_errno($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $response = $this->executeCurl($ch);
 
-        if ($errno) {
+        if ($response['errno']) {
             Log::warning('TUS create file curl error', [
-                'errno' => $errno,
-                'error' => curl_error($ch),
+                'errno' => $response['errno'],
             ]);
 
             return null;
         }
 
-        if ($httpCode !== 201) {
+        if ($response['status'] !== 201) {
             Log::warning('TUS create file failed', [
-                'status' => $httpCode,
-                'result' => $result,
+                'status' => $response['status'],
+                'result' => $response['body'],
             ]);
 
             return null;
         }
 
-        // Extract Location header using same approach as legacy code
-        $headers = $this->getHeaders($result);
-        $location = $headers['location'] ?? null;
+        // Extract Location header - from mock or parsed from body
+        $location = $response['headers']['Location'] ?? $response['headers']['location'] ?? null;
+        if (! $location) {
+            $headers = $this->getHeaders($response['body']);
+            $location = $headers['location'] ?? null;
+        }
 
         if (! $location) {
             Log::warning('TUS create file no location header', [
-                'result' => $result,
-                'headers' => $headers,
+                'result' => $response['body'],
             ]);
 
             return null;
@@ -131,27 +159,24 @@ class TusService
         ]);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
 
-        $result = curl_exec($ch);
-        $errno = curl_errno($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $response = $this->executeCurl($ch);
 
-        if ($errno) {
+        if ($response['errno']) {
             Log::warning('TUS verify file curl error', [
                 'url' => $url,
-                'errno' => $errno,
+                'errno' => $response['errno'],
             ]);
 
             return false;
         }
 
-        if ($httpCode === 404) {
+        if ($response['status'] === 404) {
             Log::warning('TUS file not found', ['url' => $url]);
 
             return false;
         }
 
-        return $httpCode === 200;
+        return $response['status'] === 200;
     }
 
     /**
@@ -174,28 +199,25 @@ class TusService
         ]);
         curl_setopt($ch, CURLOPT_TIMEOUT, 120);
 
-        $result = curl_exec($ch);
-        $errno = curl_errno($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $response = $this->executeCurl($ch);
 
-        if ($errno) {
+        if ($response['errno']) {
             Log::error('TUS upload data curl error', [
                 'url' => $url,
-                'errno' => $errno,
+                'errno' => $response['errno'],
             ]);
 
             return null;
         }
 
-        if ($httpCode === 200 || $httpCode === 204) {
+        if ($response['status'] === 200 || $response['status'] === 204) {
             return $url;
         }
 
         Log::warning('TUS upload data failed', [
             'url' => $url,
-            'status' => $httpCode,
-            'result' => substr($result, 0, 500),
+            'status' => $response['status'],
+            'result' => substr($response['body'], 0, 500),
         ]);
 
         return null;
@@ -226,6 +248,46 @@ class TusService
         }
 
         return $headers;
+    }
+
+    /**
+     * Execute a curl request or return mock response in test mode.
+     *
+     * @return array ['status' => int, 'body' => string, 'headers' => array, 'errno' => int]
+     */
+    private function executeCurl($ch): array
+    {
+        // If mocking is enabled, return mock response
+        if (self::$mockResponses !== null && isset(self::$mockResponses[self::$mockIndex])) {
+            $mock = self::$mockResponses[self::$mockIndex++];
+            $headerString = "HTTP/1.1 {$mock['status']} OK\r\n";
+            foreach ($mock['headers'] ?? [] as $key => $value) {
+                $headerString .= "{$key}: {$value}\r\n";
+            }
+            $headerString .= "\r\n";
+
+            curl_close($ch);
+
+            return [
+                'status' => $mock['status'],
+                'body' => $headerString.($mock['body'] ?? ''),
+                'headers' => $mock['headers'] ?? [],
+                'errno' => 0,
+            ];
+        }
+
+        // Real curl execution
+        $result = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return [
+            'status' => $httpCode,
+            'body' => $result,
+            'headers' => [],
+            'errno' => $errno,
+        ];
     }
 
     /**
