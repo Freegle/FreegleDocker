@@ -2063,13 +2063,17 @@ class IncomingMailService
             }
 
             // Fall back to user's location if no TN coordinates
+            $locationId = null;
             if ($lat === null || $lng === null) {
                 [$lat, $lng] = $user->getLatLng();
+                // If user has lastlocation, use that as locationid
+                if ($user->lastlocation) {
+                    $locationId = $user->lastlocation;
+                }
             }
 
-            // Find the closest postcode location to get locationid
-            $locationId = null;
-            if ($lat !== null && $lng !== null) {
+            // Find the closest postcode location to get locationid (if not already set from user)
+            if ($lat !== null && $lng !== null && $locationId === null) {
                 $locationId = $this->findClosestPostcodeId($lat, $lng);
 
                 // Update user's lastlocation if we found one
