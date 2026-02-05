@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    libwebp-dev \
     libonig-dev \
     libxml2-dev \
     libzip-dev \
@@ -17,6 +20,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Configure and install GD with JPEG/PNG/WebP support
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp
+
 # Install PHP extensions
 RUN docker-php-ext-install \
     pdo_mysql \
@@ -26,7 +32,8 @@ RUN docker-php-ext-install \
     bcmath \
     gmp \
     zip \
-    intl
+    intl \
+    gd
 
 # Install Redis and PCOV PHP extensions (PCOV is faster than Xdebug for coverage)
 RUN pecl install redis pcov && docker-php-ext-enable redis pcov

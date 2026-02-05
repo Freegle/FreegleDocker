@@ -3085,30 +3085,30 @@ class IncomingMailService
     private function computeImageHash(string $imageData): ?string
     {
         try {
-            $img = @imagecreatefromstring($imageData);
+            $img = @\imagecreatefromstring($imageData);
             if (! $img) {
-                return null;
+                // Fall back to md5 if GD can't parse the image
+                return substr(md5($imageData), 0, 16);
             }
 
-            // Use Jenssegers\ImageHash if available, otherwise return md5 truncated
+            // Use Jenssegers\ImageHash if available for perceptual hashing
             if (class_exists(\Jenssegers\ImageHash\ImageHash::class)) {
                 $hasher = new \Jenssegers\ImageHash\ImageHash;
                 $hash = $hasher->hash($img)->toHex();
-                imagedestroy($img);
+                \imagedestroy($img);
 
                 return substr($hash, 0, 16);
             }
 
-            imagedestroy($img);
+            \imagedestroy($img);
 
-            // Fallback: use md5 of image data (not perceptual but still useful)
+            // Fallback: use md5 of image data
             return substr(md5($imageData), 0, 16);
         } catch (\Exception $e) {
             Log::warning('Failed to compute image hash', [
                 'error' => $e->getMessage(),
             ]);
 
-            // Fallback: use md5 of image data
             return substr(md5($imageData), 0, 16);
         }
     }
