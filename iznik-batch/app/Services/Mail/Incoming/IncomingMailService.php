@@ -2158,17 +2158,8 @@ class IncomingMailService
                 'msgid' => $message->id,
             ]);
 
-            // Add to messages_spatial for map/browse queries (matches legacy Message.php:3143)
-            if ($lat !== null && $lng !== null) {
-                $srid = config('freegle.srid', 3857);
-                $point = "POINT($lng $lat)";
-                DB::statement(
-                    "INSERT INTO messages_spatial (msgid, point, groupid, msgtype, arrival)
-                     VALUES (?, ST_GeomFromText(?, ?), ?, ?, ?)
-                     ON DUPLICATE KEY UPDATE point = ST_GeomFromText(?, ?), groupid = ?, msgtype = ?, arrival = ?",
-                    [$message->id, $point, $srid, $group->id, $type, now(), $point, $srid, $group->id, $type, now()]
-                );
-            }
+            // Note: messages_spatial is added when message is APPROVED, not at creation
+            // (matches legacy Message.php:3127 where addToSpatialIndex is called in approve())
 
             return $message->id;
 
