@@ -2984,4 +2984,144 @@ class IncomingMailServiceTest extends TestCase
             'Bounce should mark user email as bounced'
         );
     }
+
+    // ========================================
+    // Subject Location Parsing Tests
+    // ========================================
+
+    public function test_parseSubject_extracts_type_item_and_location(): void
+    {
+        $method = new \ReflectionMethod(IncomingMailService::class, 'parseSubject');
+        $method->setAccessible(true);
+
+        // Standard format: "OFFER: item (location)"
+        [$type, $item, $location] = $method->invoke($this->service, 'OFFER: Sofa (Edinburgh)');
+        $this->assertEquals('OFFER', $type);
+        $this->assertEquals('Sofa', $item);
+        $this->assertEquals('Edinburgh', $location);
+    }
+
+    public function test_parseSubject_handles_location_with_brackets(): void
+    {
+        $method = new \ReflectionMethod(IncomingMailService::class, 'parseSubject');
+        $method->setAccessible(true);
+
+        // Location with brackets inside: "OFFER: item (location (area))"
+        [$type, $item, $location] = $method->invoke($this->service, 'WANTED: Books (London (Central))');
+        $this->assertEquals('WANTED', $type);
+        $this->assertEquals('Books', $item);
+        $this->assertEquals('London (Central)', $location);
+    }
+
+    public function test_parseSubject_handles_no_location(): void
+    {
+        $method = new \ReflectionMethod(IncomingMailService::class, 'parseSubject');
+        $method->setAccessible(true);
+
+        // No location in parentheses
+        [$type, $item, $location] = $method->invoke($this->service, 'OFFER: Sofa');
+        $this->assertNull($location);
+    }
+
+    public function test_parseSubject_handles_no_colon(): void
+    {
+        $method = new \ReflectionMethod(IncomingMailService::class, 'parseSubject');
+        $method->setAccessible(true);
+
+        // No colon in subject
+        [$type, $item, $location] = $method->invoke($this->service, 'Free sofa available');
+        $this->assertNull($type);
+        $this->assertNull($item);
+        $this->assertNull($location);
+    }
+
+    public function test_extractLocationFromSubject_finds_location(): void
+    {
+        $method = new \ReflectionMethod(IncomingMailService::class, 'extractLocationFromSubject');
+        $method->setAccessible(true);
+
+        // Create a test location
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'TestLocation' . uniqid(),
+            'type' => 'Postcode',
+            'lat' => 55.9533,
+            'lng' => -3.1883,
+        ]);
+
+        $locationName = DB::table('locations')->where('id', $locationId)->value('name');
+
+        $group = $this->createTestGroup();
+
+        $result = $method->invoke($this->service, "OFFER: Sofa ({$locationName})", $group->id);
+
+        $this->assertNotNull($result);
+        $this->assertEquals($locationId, $result['id']);
+        $this->assertEquals(55.9533, $result['lat']);
+        $this->assertEquals(-3.1883, $result['lng']);
+
+        // Cleanup
+        DB::table('locations')->where('id', $locationId)->delete();
+    }
+
+    public function test_extractLocationFromSubject_returns_null_for_unknown_location(): void
+    {
+        $method = new \ReflectionMethod(IncomingMailService::class, 'extractLocationFromSubject');
+        $method->setAccessible(true);
+
+        $group = $this->createTestGroup();
+
+        $result = $method->invoke($this->service, 'OFFER: Sofa (NonExistentPlace12345)', $group->id);
+
+        $this->assertNull($result);
+    }
+
+    public function test_group_post_sets_lat_lng_from_subject_location(): void
+    {
+        // Create a test location
+        $locationId = DB::table('locations')->insertGetId([
+            'name' => 'SubjectTestLoc' . uniqid(),
+            'type' => 'Postcode',
+            'lat' => 51.5074,
+            'lng' => -0.1278,
+        ]);
+
+        $locationName = DB::table('locations')->where('id', $locationId)->value('name');
+
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        // Clear user's lastlocation to ensure we test subject parsing
+        DB::table('users')->where('id', $user->id)->update(['lastlocation' => null]);
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "{$group->nameshort}@groups.ilovefreegle.org",
+            'Subject' => "OFFER: Test item ({$locationName})",
+        ], 'Test body');
+
+        $parsed = $this->parser->parse($email, $userEmail, "{$group->nameshort}@groups.ilovefreegle.org");
+        $result = $this->service->route($parsed);
+
+        // Should route to pending or approved (not dropped)
+        $this->assertContains($result, [RoutingResult::PENDING, RoutingResult::APPROVED]);
+
+        // Check the message was created with lat/lng
+        $context = $this->service->getLastRoutingContext();
+        if (isset($context['message_id'])) {
+            $message = DB::table('messages')->where('id', $context['message_id'])->first();
+            $this->assertNotNull($message);
+            $this->assertEquals(51.5074, (float) $message->lat);
+            $this->assertEquals(-0.1278, (float) $message->lng);
+            $this->assertEquals($locationId, $message->locationid);
+
+            // Check messages_spatial entry
+            $spatial = DB::table('messages_spatial')->where('msgid', $context['message_id'])->first();
+            $this->assertNotNull($spatial, 'Message should be in messages_spatial');
+        }
+
+        // Cleanup
+        DB::table('locations')->where('id', $locationId)->delete();
+    }
 }
