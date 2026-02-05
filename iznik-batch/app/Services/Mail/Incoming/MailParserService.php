@@ -324,6 +324,13 @@ class MailParserService
             }
         }
 
+        // Final fallback: if we still have no status but have a bounce subject, set generic status
+        // This handles cases like postmaster@ with bounce subject but no proper DSN format
+        if ($result['status'] === null && $isBounceSubject) {
+            $result['status'] = '5.0.0';  // Generic permanent failure
+            $result['diagnostic'] = 'Detected by subject pattern: '.$subject;
+        }
+
         return $result;
     }
 
