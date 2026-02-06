@@ -2285,7 +2285,7 @@ class IncomingMailServiceTest extends TestCase
     // Volunteers Spam Check Tests
     // ========================================
 
-    public function test_volunteers_message_from_spammer_flagged_for_review(): void
+    public function test_volunteers_message_from_spammer_is_dropped(): void
     {
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-spammer')]);
@@ -2315,16 +2315,8 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // Known spammer to volunteers: goes to review, not rejected
-        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
-
-        // Chat message should be flagged for review
-        $lastMessage = DB::table('chat_messages')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        $this->assertEquals(1, $lastMessage->reviewrequired);
-        $this->assertEquals('Spam', $lastMessage->reportreason);
+        // Known spammers are dropped unconditionally before routing
+        $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
     public function test_volunteers_spam_keyword_flagged_for_review(): void

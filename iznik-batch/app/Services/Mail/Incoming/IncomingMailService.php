@@ -147,8 +147,9 @@ class IncomingMailService
             return $this->dropped('Self-sent message');
         }
 
-        // Check if sender is a known spammer (skip for volunteers - they go to review instead)
-        if (! $email->isToVolunteers && ! $email->isToAuto && $this->isKnownSpammer($email)) {
+        // Check if sender is a known spammer - drop unconditionally, matching legacy behavior.
+        // Spammers cannot email anyone, including volunteers.
+        if ($this->isKnownSpammer($email)) {
             Log::debug('Dropping message from known spammer');
 
             return $this->dropped('Known spammer');
@@ -2027,9 +2028,9 @@ class IncomingMailService
      * Processing flow:
      * 1. Run SpamAssassin check first
      * 2. Run checkMessage() for our own spam checks
-     * 3. Check if sender is a known spammer
-     * 4. Filter auto-replies (for -auto@ addresses, not -volunteers@)
-     * 5. Create User2Mod chat message
+     * 3. Filter auto-replies (for -auto@ addresses, not -volunteers@)
+     * 4. Create User2Mod chat message
+     * Note: Known spammers are dropped before reaching this method.
      */
     private function handleVolunteersMessage(ParsedEmail $email): RoutingResult
     {
@@ -2100,21 +2101,8 @@ class IncomingMailService
             }
         }
 
-        // Known spammer check
-        if (! $spamDetected) {
-            $isSpammer = DB::table('spam_users')
-                ->where('userid', $user->id)
-                ->where('collection', 'Spammer')
-                ->exists();
-
-            if ($isSpammer) {
-                $spamDetected = true;
-                $spamReason = 'Known spammer';
-                Log::info('Volunteers message from known spammer (for review)', [
-                    'user_id' => $user->id,
-                ]);
-            }
-        }
+        // Note: Known spammer check is not needed here because spammers are
+        // dropped unconditionally before routing (matching legacy behavior).
 
         // Get or create User2Mod chat between user and group moderators
         $chat = $this->getOrCreateUser2ModChat($user->id, $group->id);
