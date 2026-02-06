@@ -890,6 +890,156 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::TO_USER, $result);
     }
 
+    public function test_replyto_creates_interested_type_with_refmsgid(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with TYPE_INTERESTED and correct refmsgid
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->where('refmsgid', $message->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Chat message should be TYPE_INTERESTED with refmsgid');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
+        $this->assertEquals(ChatMessage::TYPE_INTERESTED, $chatMsg->type);
+    }
+
+    public function test_direct_mail_creates_interested_type_with_fd_msgid_header(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+        $posterEmail = $poster->emails->first()->email;
+        // TN uses slug-based address: slug-{userid}@users.ilovefreegle.org
+        $posterSlugAddr = "someslug-{$poster->id}@users.ilovefreegle.org";
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $posterSlugAddr,
+            'Subject' => $message->subject,
+            'x-fd-msgid' => (string) $message->id,
+        ], 'I would love this item!');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            $posterSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with TYPE_INTERESTED and correct refmsgid
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Direct mail should create TYPE_INTERESTED message');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
+        $this->assertEquals(ChatMessage::TYPE_INTERESTED, $chatMsg->type);
+    }
+
+    public function test_direct_mail_finds_refmsgid_by_subject(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group, [
+            'subject' => 'OFFER: Wooden bookshelf (Test Town)',
+        ]);
+
+        $replierEmail = $replier->emails->first()->email;
+        $posterSlugAddr = "someslug-{$poster->id}@users.ilovefreegle.org";
+
+        // Reply with similar subject but no x-fd-msgid header
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $posterSlugAddr,
+            'Subject' => 'Re: OFFER: Wooden bookshelf (Test Town)',
+        ], 'Can I collect this today?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            $posterSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with refmsgid found by subject matching
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Direct mail should create TYPE_INTERESTED message');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
+    }
+
+    public function test_notify_reply_creates_default_type(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Thanks for the reply');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with TYPE_DEFAULT (not INTERESTED)
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->where('userid', $user1->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+        $this->assertEquals(ChatMessage::TYPE_DEFAULT, $chatMsg->type);
+        $this->assertNull($chatMsg->refmsgid);
+    }
+
     public function test_chat_reply_creates_chat_message(): void
     {
         $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);

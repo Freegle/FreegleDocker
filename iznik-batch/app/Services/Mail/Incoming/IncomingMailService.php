@@ -1420,8 +1420,16 @@ class IncomingMailService
             return $this->dropped("Could not create chat for reply");
         }
 
-        // Create the chat message
-        $this->createChatMessageFromEmail($chat, $fromUser->id, $email);
+        // Create the chat message as TYPE_INTERESTED with refmsgid, matching
+        // legacy MailRouter::toUser() which uses TYPE_INTERESTED for first replies
+        // to messages (not TYPE_DEFAULT which is for chat notification replies).
+        $this->createChatMessageFromEmail(
+            $chat,
+            $fromUser->id,
+            $email,
+            refMsgId: $messageId,
+            type: ChatMessage::TYPE_INTERESTED
+        );
 
         // Track email reply in email_tracking for AMP comparison stats.
         $this->trackEmailReply($chat->id, $fromUser->id);
@@ -1604,7 +1612,9 @@ class IncomingMailService
         int $userId,
         ParsedEmail $email,
         bool $forceReview = false,
-        ?string $forceReviewReason = null
+        ?string $forceReviewReason = null,
+        ?int $refMsgId = null,
+        string $type = ChatMessage::TYPE_DEFAULT
     ): void {
         // Get body text, converting HTML to plain text if no text part exists.
         // This handles email clients like Apple Mail that may send HTML-only emails.
@@ -1662,7 +1672,8 @@ class IncomingMailService
             'chatid' => $chat->id,
             'userid' => $userId,
             'message' => $body,
-            'type' => ChatMessage::TYPE_DEFAULT,
+            'type' => $type,
+            'refmsgid' => $refMsgId,
             'date' => now(),
             'platform' => 0, // Email source
             'reviewrequired' => $reviewRequired ? 1 : 0,
@@ -2428,8 +2439,21 @@ class IncomingMailService
             return $this->dropped("Could not create chat for direct mail");
         }
 
-        // Create the chat message
-        $this->createChatMessageFromEmail($chat, $senderUser->id, $email);
+        // Try to find the original message this email is replying to.
+        // Legacy MailRouter::directMailToUser() uses findFromReply() which:
+        // 1. Checks x-fd-msgid header (TN provides this for initial replies)
+        // 2. Falls back to subject matching against recipient's recent posts
+        $refMsgId = $this->findRefMessage($email, $recipientUser->id);
+
+        // Create the chat message as TYPE_INTERESTED (matching legacy behaviour).
+        // Legacy code uses TYPE_MODMAIL for modmail, TYPE_INTERESTED for everything else.
+        $this->createChatMessageFromEmail(
+            $chat,
+            $senderUser->id,
+            $email,
+            refMsgId: $refMsgId,
+            type: ChatMessage::TYPE_INTERESTED
+        );
 
         // Track email reply in email_tracking for AMP comparison stats.
         $this->trackEmailReply($chat->id, $senderUser->id);
@@ -2447,6 +2471,99 @@ class IncomingMailService
         ]);
 
         return RoutingResult::TO_USER;
+    }
+
+    /**
+     * Find the original message that an email is replying to.
+     *
+     * Matches legacy Message::findFromReply() which:
+     * 1. Checks x-fd-msgid header (TN provides this for initial replies to posts)
+     * 2. Falls back to subject matching against the recipient user's recent messages
+     */
+    private function findRefMessage(ParsedEmail $email, int $recipientUserId): ?int
+    {
+        // TN puts a useful header in for the initial reply to a post.
+        $fdMsgId = $email->getHeader('x-fd-msgid');
+        if ($fdMsgId) {
+            $msgId = (int) $fdMsgId;
+            $exists = DB::table('messages')->where('id', $msgId)->exists();
+            if ($exists) {
+                Log::info('Found refmsgid from x-fd-msgid header', ['refmsgid' => $msgId]);
+
+                return $msgId;
+            }
+        }
+
+        // Fall back to subject matching against the recipient's recent posts.
+        // Legacy code uses Damerau-Levenshtein distance for fuzzy matching.
+        $subject = $email->subject ?? '';
+        if (empty($subject)) {
+            return null;
+        }
+
+        // Canonicalise the subject (strip Re:, punctuation, whitespace)
+        $thisSubj = $this->canonicaliseSubject($subject);
+        $thisSubj = preg_replace('/^re:/i', '', $thisSubj);
+        $thisSubj = preg_replace('/[\-,.\s]/', '', $thisSubj);
+
+        if (empty($thisSubj)) {
+            return null;
+        }
+
+        // Get the recipient's recent messages (last 90 days)
+        $messages = DB::table('messages')
+            ->join('messages_groups', 'messages_groups.msgid', '=', 'messages.id')
+            ->join('groups', 'groups.id', '=', 'messages_groups.groupid')
+            ->where('messages.fromuser', $recipientUserId)
+            ->whereIn('groups.type', ['Freegle', 'Reuse'])
+            ->where('messages.arrival', '>', now()->subDays(90))
+            ->select('messages.id', 'messages.subject')
+            ->limit(1000)
+            ->get();
+
+        $bestMatch = null;
+        $bestDist = PHP_INT_MAX;
+
+        foreach ($messages as $msg) {
+            $msgSubj = $this->canonicaliseSubject($msg->subject ?? '');
+            $msgSubj = preg_replace('/[\-,.\s]/', '', $msgSubj);
+
+            if (empty($msgSubj)) {
+                continue;
+            }
+
+            $dist = levenshtein(strtolower($thisSubj), strtolower($msgSubj));
+            $threshold = strlen($thisSubj) * 3 / 4;
+
+            if ($dist <= $bestDist && $dist <= $threshold) {
+                $bestDist = $dist;
+                $bestMatch = $msg->id;
+            }
+        }
+
+        if ($bestMatch !== null) {
+            Log::info('Found refmsgid from subject matching', [
+                'refmsgid' => $bestMatch,
+                'distance' => $bestDist,
+            ]);
+        }
+
+        return $bestMatch;
+    }
+
+    /**
+     * Canonicalise a message subject for matching.
+     * Matches legacy Message::canonSubj() - removes group tags and duplicate spaces.
+     */
+    private function canonicaliseSubject(string $subject): string
+    {
+        // Remove group tag [GroupName]
+        $subject = preg_replace('/^\[.*?\](.*)/', '$1', $subject);
+
+        // Remove duplicate spaces
+        $subject = preg_replace('/\s+/', ' ', $subject);
+
+        return trim($subject);
     }
 
     /**
