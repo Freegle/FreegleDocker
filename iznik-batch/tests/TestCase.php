@@ -19,6 +19,14 @@ abstract class TestCase extends BaseTestCase
     // This rolls back each test's changes, ensuring test isolation.
     use DatabaseTransactions;
 
+    /**
+     * Safety: refuse to run tests against a production database.
+     *
+     * The batch-prod container connects to the live database. Even with
+     * DatabaseTransactions, running tests there risks live data corruption.
+     * This check uses the actual PDO connection, so it cannot be bypassed
+     * by setting environment variables.
+     */
     protected function setUp(): void
     {
         parent::setUp();
@@ -27,21 +35,33 @@ abstract class TestCase extends BaseTestCase
         // Docker's MAIL_MAILER=smtp would otherwise override phpunit.xml's setting.
         config(['mail.default' => 'array']);
         \Illuminate\Support\Facades\Mail::forgetMailers();
+
+        // Hard check: verify we are connected to the test database, not production.
+        // This runs AFTER Laravel boots, so it checks the real PDO connection.
+        $dbName = \DB::connection()->getDatabaseName();
+        if ($dbName !== 'iznik_batch_test') {
+            fwrite(STDERR, "\n\n");
+            fwrite(STDERR, "╔════════════════════════════════════════════════════════════════════╗\n");
+            fwrite(STDERR, "║  FATAL: Tests are connected to '{$dbName}', not 'iznik_batch_test'! ║\n");
+            fwrite(STDERR, "║                                                                    ║\n");
+            fwrite(STDERR, "║  Running tests against the production database would corrupt data.  ║\n");
+            fwrite(STDERR, "║  This check cannot be bypassed.                                     ║\n");
+            fwrite(STDERR, "╚════════════════════════════════════════════════════════════════════╝\n");
+            fwrite(STDERR, "\n");
+            exit(1);
+        }
     }
 
     /**
      * Ensure tests are run via the status container, not directly.
      *
-     * This prevents Claude from accidentally running tests directly with
-     * `docker exec freegle-batch php artisan test` instead of via the
-     * status container API which manages test isolation and reporting.
+     * This prevents accidentally running tests with `docker exec` instead
+     * of via the status container API which manages test isolation and reporting.
      */
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
 
-        // Use getenv() instead of Laravel's env() helper because the Laravel app
-        // may not be fully bootstrapped yet in setUpBeforeClass().
         if (! getenv('VIA_STATUS_CONTAINER')) {
             fwrite(STDERR, "\n\n");
             fwrite(STDERR, "╔════════════════════════════════════════════════════════════════╗\n");

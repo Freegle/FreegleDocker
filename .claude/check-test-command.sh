@@ -27,6 +27,8 @@ TEST_PATTERNS=(
   '\bartisan test\b'
   '\bartisan dusk\b'
   '\bvendor/bin/phpunit\b'
+  '\bvendor/phpunit/phpunit/phpunit\b'
+  '\bphp\b.*\bphpunit\b'
   '\bvitest\b'
   '\bnpx vitest\b'
 )
@@ -49,6 +51,10 @@ if echo "$COMMAND" | grep -qE '\bdocker (top|logs)\b'; then
 fi
 # grep/ps commands looking at processes
 if echo "$COMMAND" | grep -qE '\b(ps|pgrep)\b'; then
+  IS_DATA_COMMAND=true
+fi
+# git commands (commit messages may mention test tools)
+if echo "$COMMAND" | grep -qE '^\s*git\b'; then
   IS_DATA_COMMAND=true
 fi
 
