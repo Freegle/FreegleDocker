@@ -1676,6 +1676,8 @@ class IncomingMailService
             'platform' => 0, // Email source
             'reviewrequired' => $reviewRequired ? 1 : 0,
             'reportreason' => $dbReportReason,
+            'processingrequired' => 1, // Background chat_process.php cron handles visibility, roster, push notifications
+            'replyreceived' => 0,
         ]);
 
         // Store the raw incoming email in the messages table so moderators can
@@ -1801,6 +1803,8 @@ class IncomingMailService
                     'type' => ChatMessage::TYPE_IMAGE,
                     'date' => now(),
                     'platform' => 0,
+                    'processingrequired' => 1, // Background chat_process.php cron handles visibility, roster, push notifications
+                    'replyreceived' => 0,
                 ]);
 
                 if (! $imageMsg || ! $imageMsg->id) {
