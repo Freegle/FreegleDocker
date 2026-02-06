@@ -2,6 +2,7 @@
 
 namespace App\Services\Mail\Incoming;
 
+use App\Models\ChatImage;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\Group;
@@ -1681,16 +1682,15 @@ class IncomingMailService
         // view the original SMTP message when reviewing chat messages.
         $this->storeChatEmailMessage($chatMsg, $email, $userId);
 
+        // Extract image attachments and create TYPE_IMAGE chat messages for each.
+        $this->addPhotosToChat($chat->id, $userId, $email);
+
         Log::info('Created chat message from email', [
             'chat_id' => $chat->id,
             'chat_message_id' => $chatMsg->id,
             'user_id' => $userId,
             'review_required' => $reviewRequired,
         ]);
-
-        // Check image attachments for repeated hash spam.
-        // If the same image hash has been used too many times recently, flag for review.
-        $this->checkChatImageSpam($chatMsg);
     }
 
     /**
@@ -1743,35 +1743,126 @@ class IncomingMailService
     }
 
     /**
-     * Check chat message image attachments for repeated hash spam.
+     * Extract image attachments from the email and create TYPE_IMAGE chat messages for each.
      *
-     * If the same image hash has been used more than IMAGE_THRESHOLD times
-     * in 24 hours, flag the message for review.
+     * Each image is uploaded to TUS and gets its own chat message with a chat_images record.
+     * Images with hashes matching the Freegle logo are suppressed.
+     * Images that have been used too many times recently are flagged for review.
      */
-    private function checkChatImageSpam(ChatMessage $chatMsg): void
+    private function addPhotosToChat(int $chatRoomId, int $userId, ParsedEmail $email): int
     {
-        if ($chatMsg->imageid === null) {
-            return;
+        // Suppressed image hashes (e.g. Freegle logo)
+        $suppressedHashes = ['61e4d4a2e4bb8a5d', '61e4d4a2e4bb8a59'];
+
+        try {
+            // Re-parse the raw message to extract MIME attachment parts.
+            $message = \ZBateson\MailMimeParser\Message::from($email->rawMessage, FALSE);
+            $attachments = $message->getAllAttachmentParts();
+
+            if (empty($attachments)) {
+                return 0;
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to parse email for attachments', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
         }
 
-        $image = DB::table('chat_images')->where('id', $chatMsg->imageid)->first();
-        if ($image === null || empty($image->hash)) {
-            return;
-        }
+        $tusService = app(\App\Services\TusService::class);
+        $count = 0;
 
-        if ($this->spamCheck->checkImageSpam($image->hash)) {
-            DB::table('chat_messages')
-                ->where('id', $chatMsg->id)
-                ->update([
-                    'reviewrequired' => 1,
-                    'reportreason' => SpamCheckService::REASON_IMAGE_SENT_MANY_TIMES,
+        foreach ($attachments as $part) {
+            try {
+                $contentType = $part->getContentType() ?? '';
+
+                // Only process image attachments
+                if (! str_starts_with($contentType, 'image/')) {
+                    continue;
+                }
+
+                $imageData = $part->getContent();
+                if (empty($imageData)) {
+                    continue;
+                }
+
+                $hash = $this->computeImageHash($imageData);
+
+                // Skip suppressed images (e.g. Freegle logo)
+                if ($hash && in_array($hash, $suppressedHashes)) {
+                    continue;
+                }
+
+                // Create a TYPE_IMAGE chat message
+                $imageMsg = ChatMessage::create([
+                    'chatid' => $chatRoomId,
+                    'userid' => $userId,
+                    'type' => ChatMessage::TYPE_IMAGE,
+                    'date' => now(),
+                    'platform' => 0,
                 ]);
 
-            Log::info('Chat image flagged for review (repeated hash)', [
-                'chat_message_id' => $chatMsg->id,
-                'hash' => $image->hash,
-            ]);
+                if (! $imageMsg || ! $imageMsg->id) {
+                    continue;
+                }
+
+                // Upload to TUS
+                $tusUrl = $tusService->upload($imageData, $contentType);
+
+                if (! $tusUrl) {
+                    Log::warning('Failed to upload email image to tusd');
+                    // Delete the orphaned chat message
+                    $imageMsg->delete();
+
+                    continue;
+                }
+
+                $externalUid = \App\Services\TusService::urlToExternalUid($tusUrl);
+
+                // Create chat_images record
+                $chatImage = ChatImage::create([
+                    'chatmsgid' => $imageMsg->id,
+                    'contenttype' => $contentType,
+                    'externaluid' => $externalUid,
+                    'hash' => $hash,
+                ]);
+
+                // Link chat message to image
+                $imageMsg->update(['imageid' => $chatImage->id]);
+
+                // Check for repeated hash spam
+                if ($hash) {
+                    $recentUsage = DB::table('chat_images')
+                        ->join('chat_messages', 'chat_images.id', '=', 'chat_messages.imageid')
+                        ->where('chat_images.hash', $hash)
+                        ->where('chat_messages.date', '>=', now()->subHours(24))
+                        ->count();
+
+                    if ($recentUsage > 20) {
+                        $imageMsg->update([
+                            'reviewrequired' => 1,
+                            'reportreason' => 'SameImage',
+                        ]);
+                    }
+                }
+
+                $count++;
+
+                Log::debug('Created chat image from email attachment', [
+                    'chat_room_id' => $chatRoomId,
+                    'chat_message_id' => $imageMsg->id,
+                    'content_type' => $contentType,
+                    'hash' => $hash,
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to process email image attachment', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
+
+        return $count;
     }
 
     /**
