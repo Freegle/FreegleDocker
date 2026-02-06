@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Mail as MailFacade;
  * It determines the appropriate handler based on the envelope address
  * and message content.
  *
- * Routing order (matching iznik-server MailRouter.php):
+ * Routing order:
  * 1. System addresses (digestoff, readreceipt, subscribe, etc.)
  * 2. Spam detection
  * 3. Destination-based routing (group, user, volunteers)
@@ -100,10 +100,10 @@ class IncomingMailService
         }
 
         // Phase 2: Check for chat/message replies BEFORE global bounce/auto-reply filters.
-        // Legacy code (MailRouter.php:267-276) routes notify- and replyto- addresses first,
-        // with each handler applying its own nuanced bounce/auto-reply logic internally.
-        // The global filters must not intercept these or we'll drop legitimate chat replies
-        // from TN autoreplies, Nextdoor bounces, etc.
+        // We route notify- and replyto- addresses first, with each handler applying its
+        // own nuanced bounce/auto-reply logic internally. The global filters must not
+        // intercept these or we'll drop legitimate chat replies from TN autoreplies,
+        // Nextdoor bounces, etc.
         if ($email->isChatNotificationReply()) {
             return $this->handleChatNotificationReply($email);
         }
@@ -1229,7 +1229,7 @@ class IncomingMailService
             // For unparseable DSNs, only return ERROR if we expected valid DSN data.
             // If the parser already determined there's no bounceRecipient, this might
             // be a human reply that was incorrectly flagged as a bounce. Return TO_SYSTEM
-            // to match legacy behavior and allow the routing to continue to other handlers.
+            // to allow the routing to continue to other handlers.
             if ($error === 'unparseable') {
                 if ($email->bounceRecipient !== null) {
                     // We had recipient info but couldn't parse - this is a real error
@@ -1326,7 +1326,6 @@ class IncomingMailService
 
         // Check for bounces FIRST - bounces to replyto addresses happen when the
         // original What's New notification email bounces. Process as bounce, not chat.
-        // Legacy code (MailRouter.php:1212) had this check.
         if ($email->isBounce()) {
             Log::info('Bounce detected at replyto address, routing to bounce handler', [
                 'envelope_to' => $email->envelopeTo,
@@ -1369,7 +1368,7 @@ class IncomingMailService
             return $this->dropped("Reply to expired message");
         }
 
-        // Check if message is on a closed group (legacy: replyToSingleMessage checks group closed setting)
+        // Check if message is on a closed group (replies to closed groups are silently swallowed)
         $messageGroups = DB::table('messages_groups')
             ->where('msgid', $messageId)
             ->pluck('groupid');
@@ -1420,9 +1419,9 @@ class IncomingMailService
             return $this->dropped("Could not create chat for reply");
         }
 
-        // Create the chat message as TYPE_INTERESTED with refmsgid, matching
-        // legacy MailRouter::toUser() which uses TYPE_INTERESTED for first replies
-        // to messages (not TYPE_DEFAULT which is for chat notification replies).
+        // Create the chat message as TYPE_INTERESTED with refmsgid.
+        // Reply-to addresses are first replies to posts, so use TYPE_INTERESTED
+        // (not TYPE_DEFAULT which is for ongoing chat notification replies).
         $this->createChatMessageFromEmail(
             $chat,
             $fromUser->id,
@@ -1464,7 +1463,7 @@ class IncomingMailService
             'message_id' => $email->chatMessageId,
         ]);
 
-        // Drop misdirected read receipts (legacy: isReceipt check in replyToChatNotification)
+        // Drop misdirected read receipts (MDNs sent to chat notification addresses)
         if ($this->isReadReceipt($email)) {
             Log::debug('Dropping misdirected read receipt in chat reply');
 
@@ -1473,7 +1472,7 @@ class IncomingMailService
 
         // Check for bounces FIRST - bounces to notify addresses happen when the original
         // chat notification email bounces. These should be processed as bounces, not
-        // as chat messages. Legacy code (MailRouter.php:1364) had this check.
+        // as chat messages.
         if ($email->isBounce()) {
             Log::info('Bounce detected at notify address, routing to bounce handler', [
                 'chat_id' => $chatId,
@@ -1602,10 +1601,11 @@ class IncomingMailService
     /**
      * Create a chat message from an incoming email.
      *
-     * Matches legacy MailRouter behaviour:
      * - Runs spam checks; if spam found, sets reviewrequired=1 (not rejected)
-     * - Runs checkReview for review-level content checks
-     * - After creation, checks image attachments for repeated hash spam
+     * - Runs review-level content checks (scripts, money, links, etc.)
+     * - Stores raw email in messages table for moderator viewing
+     * - Links chat message to stored email via chat_messages_byemail
+     * - Checks image attachments for repeated hash spam
      */
     private function createChatMessageFromEmail(
         ChatRoom $chat,
@@ -1628,11 +1628,9 @@ class IncomingMailService
         // Strip quoted reply text and signatures before storing.
         $body = $this->stripQuoted->strip($body);
 
-        // Determine if this chat message needs review (matching legacy flow).
-        // In the legacy code, MailRouter::checkSpam() is called first. If spam is
-        // found and the email is destined for chat (@users domain), the message is
-        // NOT rejected - instead $spamfound is passed to ChatMessage::create() as
-        // $forcereview, setting reviewrequired=1.
+        // Determine if this chat message needs review.
+        // If spam is detected for a chat-destined email, we don't reject it - instead
+        // we flag reviewrequired=1 so moderators can review it.
         $reviewRequired = $forceReview;
         $reportReason = $forceReviewReason;
 
@@ -1651,7 +1649,6 @@ class IncomingMailService
         }
 
         // Check for review-level issues (scripts, money, links, language, etc.)
-        // Matches legacy ChatMessage::process() calling Spam::checkReview()
         if (! $reviewRequired && strlen($body) > 0) {
             $reviewReason = $this->spamCheck->checkReview($body, true);
             if ($reviewReason !== null) {
@@ -1680,6 +1677,10 @@ class IncomingMailService
             'reportreason' => $dbReportReason,
         ]);
 
+        // Store the raw incoming email in the messages table so moderators can
+        // view the original SMTP message when reviewing chat messages.
+        $this->storeChatEmailMessage($chatMsg, $email, $userId);
+
         Log::info('Created chat message from email', [
             'chat_id' => $chat->id,
             'chat_message_id' => $chatMsg->id,
@@ -1687,17 +1688,65 @@ class IncomingMailService
             'review_required' => $reviewRequired,
         ]);
 
-        // Check image attachments for repeated hash spam (matching legacy addPhotosToChat).
+        // Check image attachments for repeated hash spam.
         // If the same image hash has been used too many times recently, flag for review.
         $this->checkChatImageSpam($chatMsg);
     }
 
     /**
+     * Store the raw incoming email in the messages table and link it to the chat message
+     * via chat_messages_byemail. This allows moderators to view the original SMTP email
+     * when reviewing chat messages in ModTools.
+     */
+    private function storeChatEmailMessage(ChatMessage $chatMsg, ParsedEmail $email, int $userId): void
+    {
+        try {
+            $rawMessage = $email->rawMessage;
+
+            // Truncate very large messages to avoid bloating the database.
+            if (strlen($rawMessage) > 100000) {
+                $rawMessage = substr($rawMessage, 0, 100000);
+            }
+
+            // Ensure we have a message ID for the unique key constraint.
+            $messageId = $email->messageId ?? (microtime(TRUE).'@'.config('freegle.mail.user_domain', 'users.ilovefreegle.org'));
+
+            $msgId = DB::table('messages')->insertGetId([
+                'date' => now(),
+                'source' => Message::SOURCE_EMAIL,
+                'sourceheader' => $this->determineSourceHeader($email),
+                'message' => $rawMessage,
+                'fromuser' => $userId,
+                'envelopefrom' => $email->envelopeFrom,
+                'envelopeto' => $email->envelopeTo,
+                'fromname' => $email->fromName,
+                'fromaddr' => $email->fromAddress,
+                'fromip' => $email->senderIp,
+                'subject' => $email->subject,
+                'messageid' => $messageId,
+                'textbody' => $email->textBody,
+            ]);
+
+            if ($msgId) {
+                DB::table('chat_messages_byemail')->insert([
+                    'chatmsgid' => $chatMsg->id,
+                    'msgid' => $msgId,
+                ]);
+            }
+        } catch (\Exception $e) {
+            // Non-fatal - don't fail chat message creation if email storage fails.
+            Log::warning('Failed to store chat email message', [
+                'chat_message_id' => $chatMsg->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Check chat message image attachments for repeated hash spam.
      *
-     * Matches legacy MailRouter::addPhotosToChat() which checks each image
-     * hash against recent usage and flags the message for review if the
-     * same image has been used more than IMAGE_THRESHOLD times in 24 hours.
+     * If the same image hash has been used more than IMAGE_THRESHOLD times
+     * in 24 hours, flag the message for review.
      */
     private function checkChatImageSpam(ChatMessage $chatMsg): void
     {
@@ -1750,7 +1799,7 @@ class IncomingMailService
     /**
      * Handle messages to group volunteers.
      *
-     * Matches legacy toVolunteers() flow:
+     * Processing flow:
      * 1. Run SpamAssassin check first
      * 2. Run checkMessage() for our own spam checks
      * 3. Check if sender is a known spammer
@@ -1785,7 +1834,7 @@ class IncomingMailService
             return $this->dropped("Volunteers message from unknown user");
         }
 
-        // Filter auto-replies for -auto@ addresses (legacy: !isAutoreply() check for non-volunteers)
+        // Filter auto-replies for -auto@ addresses (only -volunteers@ allows auto-replies through)
         if (! $email->isToVolunteers && $email->isAutoReply()) {
             Log::debug('Dropping auto-reply to auto address');
 
@@ -1918,7 +1967,7 @@ class IncomingMailService
             return $this->dropped("Post from non-member");
         }
 
-        // Check for TAKEN/RECEIVED subjects - swallow silently (legacy toGroup: paired TAKEN/RECEIVED → TO_SYSTEM)
+        // Check for TAKEN/RECEIVED subjects - swallow silently (mods don't need to review completion markers)
         if ($this->isTakenOrReceivedSubject($email->subject)) {
             Log::info('TAKEN/RECEIVED post swallowed', [
                 'subject' => $email->subject,
@@ -1961,7 +2010,7 @@ class IncomingMailService
         }
 
         // Check posting status (column is camelCase: ourPostingStatus)
-        // Legacy defaults NULL to MODERATED (→ PENDING). Only explicit 'DEFAULT' or
+        // NULL defaults to MODERATED (goes to PENDING). Only explicit 'DEFAULT' or
         // 'UNMODERATED' posting status means approved.
         $postingStatus = $membership->ourPostingStatus;
 
@@ -2057,7 +2106,7 @@ class IncomingMailService
 
             // Generate a unique message ID if not present
             $messageId = $email->messageId ?? (microtime(true) . '@' . config('freegle.mail.user_domain', 'users.ilovefreegle.org'));
-            // Append group ID to make message ID unique per group (matches legacy behavior)
+            // Append group ID to make message ID unique per group
             $messageId = $messageId . '-' . $group->id;
 
             // Determine lat/lng - prefer TN coordinates header, then subject location, then user location
@@ -2076,7 +2125,6 @@ class IncomingMailService
             }
 
             // 2. Try to extract location from subject (e.g., "OFFER: Sofa (Edinburgh)")
-            // This matches legacy suggestSubject() behavior in Message.php:3940-3942
             if ($lat === null || $lng === null) {
                 $subjectLocation = $this->extractLocationFromSubject($email->subject, $group->id);
                 if ($subjectLocation) {
@@ -2146,7 +2194,7 @@ class IncomingMailService
             }
 
             // Create the messages_groups entry
-            // Spam messages go to Pending for moderator review (matches legacy markAsSpam behavior)
+            // Spam messages go to Pending for moderator review
             $collection = $spamType !== null
                 ? MessageGroup::COLLECTION_PENDING
                 : MessageGroup::COLLECTION_INCOMING;
@@ -2175,8 +2223,8 @@ class IncomingMailService
                 'msgid' => $message->id,
             ]);
 
-            // Note: messages_spatial is added when message is APPROVED, not at creation
-            // (matches legacy Message.php:3127 where addToSpatialIndex is called in approve())
+            // Note: messages_spatial is added when message is APPROVED, not at creation.
+            // The spatial index is populated during the approval step.
 
             // Process TN images: download, upload to tusd, create attachments
             if (! empty($tnImageUrls)) {
@@ -2248,9 +2296,8 @@ class IncomingMailService
     /**
      * Check if email is spam using the SpamCheckService.
      *
-     * Runs all spam detection checks from legacy Spam::checkMessage() and
-     * Spam::checkSpam(): keywords, IP checks, subject reuse, greeting spam,
-     * Spamhaus DBL, known spammer references, and more.
+     * Runs all spam detection checks: keywords, IP checks, subject reuse, greeting spam,
+     * Spamhaus DBL, known spammer references, and more. Also runs SpamAssassin if available.
      *
      * @return array{bool, ?string, ?string} [isSpam, spamType, spamReason]
      */
@@ -2268,7 +2315,7 @@ class IncomingMailService
             return [true, $reason, $detail];
         }
 
-        // Also run SpamAssassin if available (matches legacy MailRouter::checkSpam)
+        // Also run SpamAssassin if available
         // Note: checkForSpam() is only called when shouldSkipSpamCheck() is false,
         // so SpamAssassin always runs here.
         [$score, $isSpam] = $this->spamCheck->checkSpamAssassin(
@@ -2290,7 +2337,7 @@ class IncomingMailService
     }
 
     /**
-     * Legacy wrapper for checkForSpam() - returns boolean only.
+     * Simple wrapper for checkForSpam() - returns boolean only.
      */
     private function isSpam(ParsedEmail $email): bool
     {
@@ -2440,19 +2487,18 @@ class IncomingMailService
         }
 
         // Try to find the original message this email is replying to.
-        // Legacy MailRouter::directMailToUser() uses findFromReply() which:
-        // 1. Checks x-fd-msgid header (TN provides this for initial replies)
-        // 2. Falls back to subject matching against recipient's recent posts
+        // 1. Check x-fd-msgid header (TN provides this for initial replies)
+        // 2. Fall back to subject matching against recipient's recent posts
         $refMsgId = $this->findRefMessage($email, $recipientUser->id);
 
-        // Create the chat message as TYPE_INTERESTED (matching legacy behaviour).
-        // Legacy code uses TYPE_MODMAIL for modmail, TYPE_INTERESTED for everything else.
+        // Use TYPE_INTERESTED only when we found the post being replied to.
+        // Without a refmsgid, use TYPE_DEFAULT since we can't link to a specific post.
         $this->createChatMessageFromEmail(
             $chat,
             $senderUser->id,
             $email,
             refMsgId: $refMsgId,
-            type: ChatMessage::TYPE_INTERESTED
+            type: $refMsgId !== null ? ChatMessage::TYPE_INTERESTED : ChatMessage::TYPE_DEFAULT
         );
 
         // Track email reply in email_tracking for AMP comparison stats.
@@ -2478,9 +2524,8 @@ class IncomingMailService
     /**
      * Find the original message that an email is replying to.
      *
-     * Matches legacy Message::findFromReply() which:
-     * 1. Checks x-fd-msgid header (TN provides this for initial replies to posts)
-     * 2. Falls back to subject matching against the recipient user's recent messages
+     * 1. Check x-fd-msgid header (TN provides this for initial replies to posts)
+     * 2. Fall back to subject matching against the recipient user's recent messages
      */
     private function findRefMessage(ParsedEmail $email, int $recipientUserId): ?int
     {
@@ -2496,8 +2541,8 @@ class IncomingMailService
             }
         }
 
-        // Fall back to subject matching against the recipient's recent posts.
-        // Legacy code uses Damerau-Levenshtein distance for fuzzy matching.
+        // Fall back to subject matching against the recipient's recent posts
+        // using Levenshtein distance for fuzzy matching.
         $subject = $email->subject ?? '';
         if (empty($subject)) {
             return null;
@@ -2554,8 +2599,7 @@ class IncomingMailService
     }
 
     /**
-     * Canonicalise a message subject for matching.
-     * Matches legacy Message::canonSubj() - removes group tags and duplicate spaces.
+     * Canonicalise a subject for matching - removes group tags like [GroupName] and duplicate spaces.
      */
     private function canonicaliseSubject(string $subject): string
     {
@@ -2585,7 +2629,7 @@ class IncomingMailService
      *
      * Handles Freegle-formatted addresses (*-UID@users.ilovefreegle.org) by
      * extracting the UID directly. Also uses canonical email matching for
-     * TN variant addresses (matching legacy User::findByEmail behaviour).
+     * TN variant addresses and canonical email matching.
      */
     private function findUserByEmail(?string $email): ?User
     {
@@ -2618,9 +2662,9 @@ class IncomingMailService
     }
 
     /**
-     * Canonicalize an email address to match legacy User::canonMail().
+     * Canonicalize an email address for matching.
      *
-     * Handles: TN group suffixes, googlemail→gmail, plus addressing, gmail dots.
+     * Handles: TN group suffixes, googlemail->gmail, plus addressing, gmail dots.
      */
     private function canonicalizeEmail(string $email): string
     {
@@ -2652,7 +2696,7 @@ class IncomingMailService
                 $lhs = str_replace('.', '', $lhs);
             }
 
-            // Remove dots from RHS (matches legacy behaviour)
+            // Remove dots from RHS for canonical comparison
             $email = $lhs.str_replace('.', '', $rhs);
         }
 
@@ -2699,8 +2743,8 @@ class IncomingMailService
     /**
      * Check if subject indicates a TAKEN or RECEIVED post.
      *
-     * These are completion markers in the legacy format: "TAKEN: item (location)" or "RECEIVED: item (location)".
-     * Legacy toGroup() swallows these silently as TO_SYSTEM since mods don't need to review them.
+     * These are completion markers in the format: "TAKEN: item (location)" or "RECEIVED: item (location)".
+     * They are swallowed silently as TO_SYSTEM since mods don't need to review them.
      */
     private function isTakenOrReceivedSubject(?string $subject): bool
     {
@@ -2715,7 +2759,7 @@ class IncomingMailService
      * Check if email is a read receipt (MDN).
      *
      * Read receipts sent to chat notification addresses are misdirected and should be dropped.
-     * Legacy: MailRouter::replyToChatNotification checks $this->msg->isReceipt().
+     * We check for MDN content-type and disposition-notification headers.
      */
     private function isReadReceipt(ParsedEmail $email): bool
     {
@@ -2769,8 +2813,8 @@ class IncomingMailService
     /**
      * Determine the source header for a message based on email headers.
      *
-     * This matches the logic from iznik-server Message.php to properly identify
-     * the source of incoming emails (TrashNothing, Yahoo, Platform, etc.).
+     * Identifies the source of incoming emails (TrashNothing, Yahoo, Platform, etc.)
+     * based on email headers.
      *
      * The priority order is:
      * 1. X-Freegle-Source header (explicit source)
@@ -2819,7 +2863,7 @@ class IncomingMailService
      * Find the closest postcode location ID for given coordinates.
      *
      * Uses spatial index to efficiently find the nearest postcode.
-     * Matches the logic from iznik-server Location::closestPostcode().
+     * Uses an expanding spatial search to find the nearest postcode.
      *
      * @param  float  $lat  Latitude
      * @param  float  $lng  Longitude
@@ -2869,7 +2913,7 @@ class IncomingMailService
      *
      * Parses subjects like "OFFER: Sofa (Edinburgh)" to extract "Edinburgh"
      * then looks it up in the locations for this group.
-     * Matches legacy Message.php:suggestSubject() behavior.
+     * Parses subjects like "OFFER: Sofa (Edinburgh)" to extract the location name.
      *
      * @param  string  $subject  The email subject
      * @param  int  $groupId  The group ID to search locations for
@@ -2923,7 +2967,7 @@ class IncomingMailService
      *
      * Subject format: "TYPE: item (location)"
      * Location may contain brackets so we count backwards.
-     * Matches legacy Message::parseSubject() in Message.php:5773
+     * Handles nested parentheses by counting backwards from the end.
      *
      * @param  string  $subj  The subject line
      * @return array [type, item, location] - any may be null
@@ -2972,8 +3016,6 @@ class IncomingMailService
      *
      * TN sends image links in the format https://trashnothing.com/pics/...
      * which link to pages containing the actual high-res image URLs.
-     *
-     * Port from iznik-server Message.php scrapePhotos()
      *
      * @param  string|null  $textBody  Message text body
      * @return array Array of image URLs to download
@@ -3085,8 +3127,6 @@ class IncomingMailService
      * Strip TN pic links from text body.
      *
      * Removes the "Check out the pictures..." text and TN pic URLs.
-     *
-     * Port from iznik-server Message.php scrapePhotos() return statement.
      *
      * @param  string|null  $textBody  Message text body
      * @return string|null Cleaned text body

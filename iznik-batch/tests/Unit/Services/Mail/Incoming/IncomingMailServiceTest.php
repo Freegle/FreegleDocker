@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Services\Mail\Incoming;
 
+use App\Models\ChatMessage;
 use App\Models\Group;
 use App\Models\User;
 use App\Services\Mail\Incoming\IncomingMailService;
@@ -3428,5 +3429,139 @@ class IncomingMailServiceTest extends TestCase
             $this->assertStringNotContainsString('trashnothing.com/pics', $message->textbody);
             $this->assertStringContainsString('I have a dining table', $message->textbody);
         }
+    }
+
+    // ========================================
+    // Chat Email Storage Tests
+    // ========================================
+
+    public function test_replyto_stores_raw_email_in_messages_and_chat_messages_byemail(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $rawEmail,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Find the chat message that was created
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+
+        // Verify the raw email was stored in messages table and linked via chat_messages_byemail
+        $byEmail = DB::table('chat_messages_byemail')
+            ->where('chatmsgid', $chatMsg->id)
+            ->first();
+
+        $this->assertNotNull($byEmail, 'chat_messages_byemail record should exist');
+
+        $storedMsg = DB::table('messages')
+            ->where('id', $byEmail->msgid)
+            ->first();
+
+        $this->assertNotNull($storedMsg, 'Raw email should be stored in messages table');
+        $this->assertStringContainsString('Is this still available?', $storedMsg->message);
+        $this->assertEquals($replier->id, $storedMsg->fromuser);
+        $this->assertEquals($replierEmail, $storedMsg->fromaddr);
+    }
+
+    public function test_notify_reply_stores_raw_email_in_messages_and_chat_messages_byemail(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Thanks for the reply');
+
+        $parsed = $this->parser->parse(
+            $rawEmail,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Find the chat message
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->where('userid', $user1->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+
+        // Verify the raw email was stored and linked
+        $byEmail = DB::table('chat_messages_byemail')
+            ->where('chatmsgid', $chatMsg->id)
+            ->first();
+
+        $this->assertNotNull($byEmail, 'chat_messages_byemail record should exist for notify replies too');
+
+        $storedMsg = DB::table('messages')
+            ->where('id', $byEmail->msgid)
+            ->first();
+
+        $this->assertNotNull($storedMsg);
+        $this->assertStringContainsString('Thanks for the reply', $storedMsg->message);
+    }
+
+    public function test_direct_mail_without_refmsgid_uses_default_type(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+
+        $replierEmail = $replier->emails->first()->email;
+        $posterSlugAddr = "someslug-{$poster->id}@users.ilovefreegle.org";
+
+        // No x-fd-msgid header and subject won't match any post
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $posterSlugAddr,
+            'Subject' => 'Random unrelated subject',
+        ], 'Hello there');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            $posterSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        // Without a refmsgid, type should be DEFAULT not INTERESTED
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+        $this->assertEquals(ChatMessage::TYPE_DEFAULT, $chatMsg->type);
+        $this->assertNull($chatMsg->refmsgid);
     }
 }
