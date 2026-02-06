@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
     docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
 
     echo "Running Laravel tests with coverage..."
-    docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=${testsuite}${filter ? ` --filter="${filter}"` : ''} --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+    docker exec -e VIA_STATUS_CONTAINER=1 -e DB_DATABASE=iznik_batch_test freegle-batch vendor/bin/phpunit --testsuite=${testsuite}${filter ? ` --filter="${filter}"` : ''} --coverage-clover=/tmp/laravel-coverage.xml 2>&1
   `], { stdio: 'pipe' })
 
   testProcess.stdout.on('data', (data) => {
