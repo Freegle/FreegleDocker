@@ -2468,6 +2468,8 @@ class IncomingMailService
             'chat_id' => $chat->id,
             'from_user' => $senderUser->id,
             'to_user' => $recipientUser->id,
+            'refmsgid' => $refMsgId,
+            'x_fd_msgid' => $email->getHeader('x-fd-msgid'),
         ]);
 
         return RoutingResult::TO_USER;
