@@ -357,6 +357,11 @@ class IncomingMailService
                         'user_id' => $user->id,
                         'email' => $recipientEmail,
                     ]);
+
+                    // Send FBL notification email to the user.
+                    // Matches legacy User::FBL() - tells user their emails
+                    // have been turned off and provides settings/unsubscribe links.
+                    $this->sendFblNotificationEmail($user, $recipientEmail);
                 }
             }
         } else {
@@ -1520,6 +1525,12 @@ class IncomingMailService
             // They can still see replies on the site.
             Log::info('Message has outcome - suppressing email notification via mailedLastForUser', [
                 'message_id' => $messageId,
+            ]);
+
+            // Ensure roster entry exists (may not yet for a newly created chat)
+            DB::table('chat_roster')->insertOrIgnore([
+                'chatid' => $chat->id,
+                'userid' => $messageOwner,
             ]);
 
             DB::table('chat_roster')
@@ -3581,6 +3592,47 @@ class IncomingMailService
     }
 
     /**
+     * Send FBL notification email to the user.
+     *
+     * Matches legacy User::FBL() - tells the user their emails have been
+     * turned off because they marked a Freegle email as spam. Provides
+     * links to settings page and unsubscribe.
+     */
+    private function sendFblNotificationEmail(User $user, string $recipientEmail): void
+    {
+        try {
+            $userSite = config('freegle.sites.user', 'https://www.ilovefreegle.org');
+            $settingsUrl = $userSite . '/settings';
+            $noreplyAddr = config('freegle.mail.noreply_addr', 'noreply@ilovefreegle.org');
+            $siteName = config('freegle.branding.name', 'Freegle');
+
+            $plainText = "You marked a mail as spam, so we've turned off your emails. "
+                . "You can leave {$siteName} completely from {$settingsUrl} "
+                . "or turn them back on from {$settingsUrl}.";
+
+            MailFacade::raw(
+                $plainText,
+                function ($message) use ($recipientEmail, $noreplyAddr, $siteName) {
+                    $message->to($recipientEmail)
+                        ->from($noreplyAddr, $siteName)
+                        ->subject("We've turned off emails for you");
+                }
+            );
+
+            Log::info('Sent FBL notification email', [
+                'user_id' => $user->id,
+                'to' => $recipientEmail,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send FBL notification email', [
+                'user_id' => $user->id,
+                'to' => $recipientEmail,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Send notification email about closed group to the sender.
      *
      * Matches legacy MailRouter behaviour for replies to messages on closed groups.
@@ -3668,18 +3720,27 @@ class IncomingMailService
     }
 
     /**
-     * Notify group moderators of new pending work.
+     * Notify group moderators of new pending work via push notification.
      *
-     * The legacy PushNotifications::notifyGroupMods() sends web push notifications
-     * to individual moderators. Since iznik-server cron still handles push notifications,
-     * we just log the pending event here. ModTools polling picks up pending messages
-     * automatically.
-     *
-     * TODO: Implement direct push notification sending when fully migrated.
+     * Uses PushNotificationService to send FCM notifications to moderators
+     * who have registered for ModTools push notifications.
      */
     private function notifyGroupMods(int $groupId): void
     {
-        Log::info('Pending message for group moderator review', ['group_id' => $groupId]);
+        try {
+            $pushService = app(\App\Services\PushNotificationService::class);
+            $count = $pushService->notifyGroupMods($groupId);
+            Log::info('Notified group mods of pending work', [
+                'group_id' => $groupId,
+                'notifications_sent' => $count,
+            ]);
+        } catch (\Throwable $e) {
+            // Non-fatal - don't fail mail processing if push notification fails
+            Log::warning('Failed to notify group mods', [
+                'group_id' => $groupId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

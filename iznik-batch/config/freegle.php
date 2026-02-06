@@ -60,6 +60,11 @@ return [
         'trashnothing_secret' => env('FREEGLE_TRASHNOTHING_SECRET', ''),
     ],
 
+    // Firebase Cloud Messaging for push notifications
+    'firebase' => [
+        'credentials_path' => env('FIREBASE_CREDENTIALS_PATH', '/etc/firebase.json'),
+    ],
+
     'images' => [
         // Image domain for user profile images
         'domain' => env('FREEGLE_IMAGES_DOMAIN', 'https://images.ilovefreegle.org'),
