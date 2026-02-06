@@ -12,6 +12,7 @@
 /ssl/
 /.env
 /.env.background
+/firebase.json
 /rebuild-monitor.log
 yesterday/.env
 yesterday/data/
