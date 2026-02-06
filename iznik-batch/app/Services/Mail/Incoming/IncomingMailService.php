@@ -2,6 +2,7 @@
 
 namespace App\Services\Mail\Incoming;
 
+use App\Mail\Fbl\FblNotification;
 use App\Models\ChatImage;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
@@ -3594,30 +3595,14 @@ class IncomingMailService
     /**
      * Send FBL notification email to the user.
      *
-     * Matches legacy User::FBL() - tells the user their emails have been
+     * Sends branded MJML email telling the user their emails have been
      * turned off because they marked a Freegle email as spam. Provides
      * links to settings page and unsubscribe.
      */
     private function sendFblNotificationEmail(User $user, string $recipientEmail): void
     {
         try {
-            $userSite = config('freegle.sites.user', 'https://www.ilovefreegle.org');
-            $settingsUrl = $userSite . '/settings';
-            $noreplyAddr = config('freegle.mail.noreply_addr', 'noreply@ilovefreegle.org');
-            $siteName = config('freegle.branding.name', 'Freegle');
-
-            $plainText = "You marked a mail as spam, so we've turned off your emails. "
-                . "You can leave {$siteName} completely from {$settingsUrl} "
-                . "or turn them back on from {$settingsUrl}.";
-
-            MailFacade::raw(
-                $plainText,
-                function ($message) use ($recipientEmail, $noreplyAddr, $siteName) {
-                    $message->to($recipientEmail)
-                        ->from($noreplyAddr, $siteName)
-                        ->subject("We've turned off emails for you");
-                }
-            );
+            MailFacade::send(new FblNotification($user, $recipientEmail));
 
             Log::info('Sent FBL notification email', [
                 'user_id' => $user->id,

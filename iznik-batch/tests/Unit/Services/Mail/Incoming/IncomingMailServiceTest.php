@@ -9,6 +9,7 @@ use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
 use Illuminate\Support\Facades\DB;
+use App\Mail\Fbl\FblNotification;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\EmailFixtures;
 use Tests\TestCase;
@@ -3910,9 +3911,7 @@ class IncomingMailServiceTest extends TestCase
 
     public function test_fbl_sends_notification_email(): void
     {
-        // Mail::spy() captures ALL method calls including raw(), unlike Mail::fake()
-        // which only captures Mailable instances.
-        Mail::spy();
+        Mail::fake();
 
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('fbl-notif')]);
         $userEmail = $user->emails->first()->email;
@@ -3927,12 +3926,11 @@ class IncomingMailServiceTest extends TestCase
 
         $this->service->route($parsed);
 
-        // Verify the FBL notification email was sent via Mail::raw()
-        Mail::shouldHaveReceived('raw')
-            ->once()
-            ->withArgs(function ($text, $callback) {
-                return str_contains($text, 'turned off');
-            });
+        // Verify the FBL notification email was sent as a branded Mailable
+        Mail::assertSent(FblNotification::class, function (FblNotification $mail) use ($user, $userEmail) {
+            return $mail->user->id === $user->id
+                && $mail->recipientEmail === $userEmail;
+        });
     }
 
     // ========================================
