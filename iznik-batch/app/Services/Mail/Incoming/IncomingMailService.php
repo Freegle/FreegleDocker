@@ -319,21 +319,43 @@ class IncomingMailService
             if ($userEmail) {
                 $user = User::find($userEmail->userid);
                 if ($user) {
-                    // Log old values for reversibility.
-                    $oldFrequencies = DB::table('memberships')
-                        ->where('userid', $user->id)
-                        ->pluck('emailfrequency', 'id')
-                        ->toArray();
+                    // Comprehensive email shutoff matching legacy setSimpleMail(SIMPLE_MAIL_NONE).
+                    // Turn off ALL email types, not just digests.
 
-                    // Turn off email digests for all their memberships
+                    // Turn off digests, events, volunteering on all memberships
                     DB::table('memberships')
                         ->where('userid', $user->id)
-                        ->update(['emailfrequency' => 0]);
+                        ->update([
+                            'emailfrequency' => 0,
+                            'eventsallowed' => 0,
+                            'volunteeringallowed' => 0,
+                        ]);
 
-                    Log::info('Turned off emails due to FBL', [
+                    // Turn off relevant and newsletters on users table
+                    DB::table('users')
+                        ->where('id', $user->id)
+                        ->update([
+                            'relevantallowed' => 0,
+                            'newslettersallowed' => 0,
+                        ]);
+
+                    // Turn off notification emails and engagement in user settings
+                    $settings = json_decode($user->settings ?? '{}', TRUE) ?: [];
+                    if (! isset($settings['notifications'])) {
+                        $settings['notifications'] = [];
+                    }
+                    $settings['notifications']['email'] = FALSE;
+                    $settings['notifications']['emailmine'] = FALSE;
+                    $settings['notificationmails'] = FALSE;
+                    $settings['engagement'] = FALSE;
+
+                    DB::table('users')
+                        ->where('id', $user->id)
+                        ->update(['settings' => json_encode($settings)]);
+
+                    Log::info('Turned off all emails due to FBL', [
                         'user_id' => $user->id,
                         'email' => $recipientEmail,
-                        'old_frequencies' => $oldFrequencies,
                     ]);
                 }
             }
@@ -581,6 +603,51 @@ class IncomingMailService
         $oldFrequency = $membership->emailfrequency;
         $membership->emailfrequency = 0;
         $membership->save();
+
+        // Log to logs table (matches legacy Digest::off())
+        $group = Group::find($groupId);
+        $groupName = $group->namefull ?? $group->nameshort ?? "Group #$groupId";
+
+        DB::table('logs')->insert([
+            'timestamp' => now(),
+            'type' => 'User',
+            'subtype' => 'MailOff',
+            'user' => $userId,
+            'groupid' => $groupId,
+        ]);
+
+        // Send confirmation email (matches legacy Digest::off())
+        $user = User::find($userId);
+        if ($user) {
+            $preferredEmail = $this->getPreferredEmail($userId);
+            if ($preferredEmail) {
+                try {
+                    $userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+                    $noreplyAddr = 'noreply@' . $userDomain;
+                    $siteName = config('freegle.site_name', 'Freegle');
+
+                    MailFacade::raw(
+                        "We've turned your emails off on $groupName.",
+                        function ($message) use ($preferredEmail, $user, $noreplyAddr, $siteName, $userId, $userDomain) {
+                            $message->to($preferredEmail, $user->fullname ?? $user->firstname ?? '')
+                                ->from($noreplyAddr, 'Do Not Reply')
+                                ->returnPath("bounce-$userId-" . time() . "@$userDomain")
+                                ->subject('Email Change Confirmation');
+                        }
+                    );
+
+                    Log::info('Sent digest off confirmation email', [
+                        'user_id' => $userId,
+                        'email' => $preferredEmail,
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to send digest off confirmation', [
+                        'user_id' => $userId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
 
         Log::info('Turned off digest for user', [
             'user_id' => $userId,
@@ -1369,24 +1436,33 @@ class IncomingMailService
             return $this->dropped("Reply to expired message");
         }
 
-        // Check if message is on a closed group (replies to closed groups are silently swallowed)
+        // Check if message is on a closed group
         $messageGroups = DB::table('messages_groups')
             ->where('msgid', $messageId)
             ->pluck('groupid');
 
+        $closed = FALSE;
         foreach ($messageGroups as $groupId) {
             $group = Group::find($groupId);
             if ($group !== null) {
-                $settings = json_decode($group->settings ?? '{}', true) ?: [];
+                $settings = is_array($group->settings) ? $group->settings : (json_decode($group->settings ?? '{}', TRUE) ?: []);
                 if (! empty($settings['closed'])) {
-                    Log::info('Reply to message on closed group', [
-                        'message_id' => $messageId,
-                        'group_id' => $groupId,
-                    ]);
-
-                    return RoutingResult::TO_SYSTEM;
+                    $closed = TRUE;
+                    break;
                 }
             }
+        }
+
+        if ($closed) {
+            Log::info('Reply to message on closed group', [
+                'message_id' => $messageId,
+                'group_id' => $groupId,
+            ]);
+
+            // #21: Send notification email to sender about closed group (matches legacy)
+            $this->sendClosedGroupEmail($email->fromAddress);
+
+            return RoutingResult::TO_SYSTEM;
         }
 
         // Find the sender user
@@ -1398,6 +1474,9 @@ class IncomingMailService
 
             return $this->dropped("Reply from unknown user");
         }
+
+        // #6: Add unrecognised sender email to user profile (email forwarding scenario)
+        $this->addEmailToUser($fromUser->id, $email->envelopeFrom);
 
         // Get the message owner
         $messageOwner = $message->fromuser;
@@ -1431,6 +1510,27 @@ class IncomingMailService
             type: ChatMessage::TYPE_INTERESTED
         );
 
+        // #7: Check if message has outcome (TAKEN/RECEIVED) - don't email if so
+        $hasOutcome = DB::table('messages_outcomes')
+            ->where('msgid', $messageId)
+            ->exists();
+
+        if ($hasOutcome) {
+            // Don't pester the poster with more emails for completed items.
+            // They can still see replies on the site.
+            Log::info('Message has outcome - suppressing email notification via mailedLastForUser', [
+                'message_id' => $messageId,
+            ]);
+
+            DB::table('chat_roster')
+                ->where('chatid', $chat->id)
+                ->where('userid', $messageOwner)
+                ->update([
+                    'lastemailed' => now(),
+                    'lastmsgemailed' => DB::raw("(SELECT MAX(id) FROM chat_messages WHERE chatid = {$chat->id})"),
+                ]);
+        }
+
         // Track email reply in email_tracking for AMP comparison stats.
         $this->trackEmailReply($chat->id, $fromUser->id);
 
@@ -1445,6 +1545,7 @@ class IncomingMailService
             'message_id' => $messageId,
             'chat_id' => $chat->id,
             'from_user' => $fromUser->id,
+            'has_outcome' => $hasOutcome,
         ]);
 
         return RoutingResult::TO_USER;
@@ -1513,6 +1614,9 @@ class IncomingMailService
 
             return $this->dropped("User not part of chat");
         }
+
+        // #6: Add unrecognised sender email to user profile (email forwarding scenario)
+        $this->addEmailToUser($userId, $email->envelopeFrom);
 
         // Create chat message
         $this->createChatMessageFromEmail($chat, $userId, $email);
@@ -1615,7 +1719,9 @@ class IncomingMailService
         bool $forceReview = false,
         ?string $forceReviewReason = null,
         ?int $refMsgId = null,
-        string $type = ChatMessage::TYPE_DEFAULT
+        string $type = ChatMessage::TYPE_DEFAULT,
+        ?float $spamScore = null,
+        ?string $prependSubject = null
     ): void {
         // Get body text, converting HTML to plain text if no text part exists.
         // This handles email clients like Apple Mail that may send HTML-only emails.
@@ -1625,6 +1731,11 @@ class IncomingMailService
             $body = $html2text->getText();
         }
         $body = $body ?? '';
+
+        // #20: Prepend subject to body for unpaired direct messages
+        if ($prependSubject !== null) {
+            $body = $prependSubject . "\r\n\r\n" . $body;
+        }
 
         // Strip quoted reply text and signatures before storing.
         $body = $this->stripQuoted->strip($body);
@@ -1666,7 +1777,7 @@ class IncomingMailService
         // Our spam check reasons are more detailed, so map them to the enum.
         $dbReportReason = $this->mapReportReason($reportReason);
 
-        $chatMsg = ChatMessage::create([
+        $chatMsgData = [
             'chatid' => $chat->id,
             'userid' => $userId,
             'message' => $body,
@@ -1678,7 +1789,14 @@ class IncomingMailService
             'reportreason' => $dbReportReason,
             'processingrequired' => 1, // Background chat_process.php cron handles visibility, roster, push notifications
             'replyreceived' => 0,
-        ]);
+        ];
+
+        // #22: Store SpamAssassin score on chat message if provided
+        if ($spamScore !== null) {
+            $chatMsgData['spamscore'] = $spamScore;
+        }
+
+        $chatMsg = ChatMessage::create($chatMsgData);
 
         // Store the raw incoming email in the messages table so moderators can
         // view the original SMTP message when reviewing chat messages.
@@ -2093,6 +2211,28 @@ class IncomingMailService
                     $this->lastRoutingContext['spam_type'] = $spamType;
                     $this->lastRoutingContext['spam_reason'] = $spamReason;
 
+                    // #23: Log spam classification to logs table (matches legacy MailRouter)
+                    DB::table('logs')->insert([
+                        'timestamp' => now(),
+                        'type' => 'Message',
+                        'subtype' => 'ClassifiedSpam',
+                        'msgid' => $messageId,
+                        'text' => $spamReason,
+                        'groupid' => $group->id,
+                    ]);
+
+                    // #12: Record posting in messages_postings even for spam
+                    DB::table('messages_postings')->insert([
+                        'msgid' => $messageId,
+                        'groupid' => $group->id,
+                        'repost' => 0,
+                        'autorepost' => 0,
+                        'date' => now(),
+                    ]);
+
+                    // #15: Notify group moderators of new pending spam
+                    $this->notifyGroupMods($group->id);
+
                     Log::info('Spam message created for moderator review', [
                         'message_id' => $messageId,
                         'spam_type' => $spamType,
@@ -2108,6 +2248,34 @@ class IncomingMailService
         // NULL defaults to MODERATED (goes to PENDING). Only explicit 'DEFAULT' or
         // 'UNMODERATED' posting status means approved.
         $postingStatus = $membership->ourPostingStatus;
+
+        // #9: Check Big Switch (overridemoderation) - forces ALL posts through moderation
+        $overrideModeration = $group->overridemoderation ?? 'None';
+        if ($overrideModeration === 'ModerateAll') {
+            $postingStatus = 'MODERATED';
+            Log::info('Big Switch active - forcing post to moderated', [
+                'group_id' => $group->id,
+            ]);
+        }
+
+        // #10: Mod posts forced to PENDING - mods posting by email go to pending
+        // so other mods can review (matches legacy behaviour)
+        if ($user->isModeratorOf($group->id)) {
+            $postingStatus = 'MODERATED';
+            Log::info('Moderator post - forcing to pending', [
+                'user_id' => $user->id,
+                'group_id' => $group->id,
+            ]);
+        }
+
+        // #11: Check group 'moderated' setting - forces all posts to pending
+        $groupSettings = is_array($group->settings) ? $group->settings : (json_decode($group->settings ?? '{}', TRUE) ?: []);
+        if (! empty($groupSettings['moderated'])) {
+            $postingStatus = 'MODERATED';
+            Log::info('Group is moderated - forcing post to pending', [
+                'group_id' => $group->id,
+            ]);
+        }
 
         // Determine routing result first
         $routingResult = RoutingResult::PENDING;  // Default
@@ -2149,11 +2317,26 @@ class IncomingMailService
         if ($messageId !== null) {
             $this->lastRoutingContext['message_id'] = $messageId;
 
+            // #12: Record posting in messages_postings (for repost logic)
+            DB::table('messages_postings')->insert([
+                'msgid' => $messageId,
+                'groupid' => $group->id,
+                'repost' => 0,
+                'autorepost' => 0,
+                'date' => now(),
+            ]);
+
             // Update the collection based on routing result
             if ($routingResult === RoutingResult::APPROVED) {
                 // Message is approved - update collection to Approved
                 MessageGroup::where('msgid', $messageId)
-                    ->update(['collection' => MessageGroup::COLLECTION_APPROVED]);
+                    ->update([
+                        'collection' => MessageGroup::COLLECTION_APPROVED,
+                        'approvedat' => now(),
+                    ]);
+
+                // #14: Add to spatial index so message appears in search results
+                $this->addToSpatialIndex($messageId, $group->id);
 
                 Log::info('Message approved and posted to group', [
                     'message_id' => $messageId,
@@ -2163,6 +2346,9 @@ class IncomingMailService
                 // Message is pending - collection is already Incoming, update to Pending
                 MessageGroup::where('msgid', $messageId)
                     ->update(['collection' => MessageGroup::COLLECTION_PENDING]);
+
+                // #15: Notify group moderators of new pending work
+                $this->notifyGroupMods($group->id);
 
                 Log::info('Message pending moderator review', [
                     'message_id' => $messageId,
@@ -2570,6 +2756,9 @@ class IncomingMailService
             return $this->dropped("Direct mail to self");
         }
 
+        // #6: Add unrecognised sender email to user profile (email forwarding scenario)
+        $this->addEmailToUser($senderUser->id, $email->envelopeFrom);
+
         // Get or create chat between sender and recipient
         $chat = $this->getOrCreateUserChat($senderUser->id, $recipientUser->id);
         if ($chat === null) {
@@ -2586,6 +2775,14 @@ class IncomingMailService
         // 2. Fall back to subject matching against recipient's recent posts
         $refMsgId = $this->findRefMessage($email, $recipientUser->id);
 
+        // #22: Get SpamAssassin score for chat message
+        $spamScore = $this->getSpamAssassinScore($email);
+
+        // #20: Prepend subject to body when no refmsgid found.
+        // When the email isn't paired to a specific post, the subject provides
+        // important context that would otherwise be lost in the chat message.
+        $prependSubject = ($refMsgId === null && ! empty($email->subject)) ? $email->subject : null;
+
         // Use TYPE_INTERESTED only when we found the post being replied to.
         // Without a refmsgid, use TYPE_DEFAULT since we can't link to a specific post.
         $this->createChatMessageFromEmail(
@@ -2593,7 +2790,9 @@ class IncomingMailService
             $senderUser->id,
             $email,
             refMsgId: $refMsgId,
-            type: $refMsgId !== null ? ChatMessage::TYPE_INTERESTED : ChatMessage::TYPE_DEFAULT
+            type: $refMsgId !== null ? ChatMessage::TYPE_INTERESTED : ChatMessage::TYPE_DEFAULT,
+            spamScore: $spamScore,
+            prependSubject: $prependSubject
         );
 
         // Track email reply in email_tracking for AMP comparison stats.
@@ -3325,6 +3524,199 @@ class IncomingMailService
         }
 
         return $created;
+    }
+
+    /**
+     * Add an email address to a user's profile if not already present.
+     *
+     * This handles email forwarding scenarios where a user replies from an
+     * address we don't know about. Legacy: User::addEmail($email, 0, false)
+     */
+    private function addEmailToUser(int $userId, ?string $email): void
+    {
+        if (empty($email)) {
+            return;
+        }
+
+        $email = trim($email);
+
+        // Don't add system addresses
+        $groupDomain = config('freegle.mail.group_domain', 'groups.ilovefreegle.org');
+        $userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+
+        if (stripos($email, '-owner@yahoogroups.co') !== FALSE ||
+            stripos($email, '-volunteers@' . $groupDomain) !== FALSE ||
+            stripos($email, '-auto@' . $groupDomain) !== FALSE ||
+            stripos($email, 'replyto-') !== FALSE ||
+            stripos($email, 'notify-') !== FALSE) {
+            return;
+        }
+
+        // Check if this email is already known
+        $existing = UserEmail::where('email', $email)->first();
+        if ($existing !== null) {
+            return;
+        }
+
+        try {
+            DB::table('users_emails')->insert([
+                'userid' => $userId,
+                'email' => $email,
+                'preferred' => 0,
+                'canon' => $this->canonicalizeEmail($email),
+            ]);
+
+            Log::info('Added forwarding email to user', [
+                'user_id' => $userId,
+                'email' => $email,
+            ]);
+        } catch (\Exception $e) {
+            // Duplicate key or other constraint - not fatal
+            Log::debug('Could not add email to user', [
+                'user_id' => $userId,
+                'email' => $email,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Send notification email about closed group to the sender.
+     *
+     * Matches legacy MailRouter behaviour for replies to messages on closed groups.
+     */
+    private function sendClosedGroupEmail(?string $toAddress): void
+    {
+        if (empty($toAddress)) {
+            return;
+        }
+
+        try {
+            $userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+            $noreplyAddr = 'noreply@' . $userDomain;
+
+            MailFacade::raw(
+                "This Freegle community is currently closed.\r\n\r\nThis is an automated message - please do not reply.",
+                function ($message) use ($toAddress, $noreplyAddr) {
+                    $message->to($toAddress)
+                        ->from($noreplyAddr)
+                        ->subject('This community is currently closed');
+                }
+            );
+
+            Log::info('Sent closed group notification', ['to' => $toAddress]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send closed group notification', [
+                'to' => $toAddress,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Add a message to the spatial index for search results.
+     *
+     * Called when a message is approved. Matches legacy Message::addToSpatialIndex().
+     */
+    private function addToSpatialIndex(int $messageId, int $groupId): void
+    {
+        $message = Message::find($messageId);
+        if (! $message || (! $message->lat && ! $message->lng)) {
+            return;
+        }
+
+        $srid = config('freegle.srid', 3857);
+
+        // Get arrival from messages_groups
+        $mg = DB::table('messages_groups')
+            ->where('msgid', $messageId)
+            ->where('groupid', $groupId)
+            ->first();
+
+        $arrival = $mg->arrival ?? now();
+        $msgType = $message->type;
+
+        try {
+            $sql = "INSERT INTO messages_spatial (msgid, point, groupid, msgtype, arrival)
+                    VALUES (?, ST_GeomFromText('POINT({$message->lng} {$message->lat})', ?), ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                    point = ST_GeomFromText('POINT({$message->lng} {$message->lat})', ?),
+                    groupid = ?, msgtype = ?, arrival = ?";
+
+            DB::statement($sql, [
+                $messageId,
+                $srid,
+                $groupId,
+                $msgType,
+                $arrival,
+                $srid,
+                $groupId,
+                $msgType,
+                $arrival,
+            ]);
+
+            Log::debug('Added message to spatial index', [
+                'message_id' => $messageId,
+                'group_id' => $groupId,
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to add to spatial index', [
+                'message_id' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Notify group moderators of new pending work.
+     *
+     * The legacy PushNotifications::notifyGroupMods() sends web push notifications
+     * to individual moderators. Since iznik-server cron still handles push notifications,
+     * we just log the pending event here. ModTools polling picks up pending messages
+     * automatically.
+     *
+     * TODO: Implement direct push notification sending when fully migrated.
+     */
+    private function notifyGroupMods(int $groupId): void
+    {
+        Log::info('Pending message for group moderator review', ['group_id' => $groupId]);
+    }
+
+    /**
+     * Get SpamAssassin score for an email.
+     *
+     * Returns the score as a float, or null if SpamAssassin is not available.
+     */
+    private function getSpamAssassinScore(ParsedEmail $email): ?float
+    {
+        try {
+            [$score, ] = $this->spamCheck->checkSpamAssassin(
+                $email->rawMessage,
+                $email->subject ?? ''
+            );
+
+            return $score;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Get the preferred email address for a user.
+     */
+    private function getPreferredEmail(int $userId): ?string
+    {
+        $email = UserEmail::where('userid', $userId)
+            ->where('preferred', 1)
+            ->first();
+
+        if ($email) {
+            return $email->email;
+        }
+
+        // Fall back to any email
+        $email = UserEmail::where('userid', $userId)->first();
+        return $email?->email;
     }
 
     /**
