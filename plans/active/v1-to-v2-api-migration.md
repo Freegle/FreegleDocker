@@ -302,10 +302,10 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|
-| 12 | /address | PATCH, PUT | 5 | ⬜ Pending | `Migrate /address write ops to v2` |
+| 12 | /address | PATCH, PUT | 5 | ✅ Done | PR #45, branch: feature/v2-address-writes |
 | 13 | /isochrone | PUT, POST, PATCH | 2 | ⬜ Pending | `Migrate /isochrone write ops to v2` |
-| 14 | /notification POST | Seen, AllSeen | 3 | ⬜ Pending | `Migrate /notification POST to v2` |
-| 15 | /messages POST | MarkSeen | 1 | ⬜ Pending | `Migrate /messages MarkSeen to v2` |
+| 14 | /notification POST | Seen, AllSeen | 3 | ✅ Already done | Migrated 2025-12-13 |
+| 15 | /messages POST | MarkSeen | 1 | ✅ Done | PR #44, branch: feature/v2-messages-markseen |
 | 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ⬜ Pending | `Migrate /newsfeed POST to v2` |
 | 17 | /volunteering | POST, PATCH, DELETE | 5 | ⬜ Pending | `Migrate /volunteering write ops to v2` |
 | 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ⬜ Pending | `Migrate /communityevent write ops to v2` |
