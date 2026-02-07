@@ -575,6 +575,11 @@ feature/v2-migration-phase4b-complex            (tasks 34-37)
 - Backend (Go) and frontend (client switch) can be in the same PR if the Go changes are backwards-compatible (i.e. new endpoints, not replacing).
 - If Go changes require deployment before client switch, split into separate PRs.
 
+**No v2 API work on master (CRITICAL):**
+- NEVER commit v2 API migration work directly to master. Only bug fixes required to keep master CI green belong on master.
+- All v2 migration work (Go endpoints, client switches, tests for new endpoints) stays on feature branches until the full migration is complete and reviewed.
+- Deprecation comments and plan/docs updates are OK on master since they don't change runtime behaviour.
+
 **Branch Chaining (CRITICAL):**
 - Each feature branch MUST be based on the previous successful branch, not independently on master.
 - Chain: `master` → `migration-foundation` → `phase1` → `phase2a` → `phase2b` → etc.
