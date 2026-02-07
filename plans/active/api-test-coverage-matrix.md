@@ -228,13 +228,12 @@ Generated 2026-02-07. Updated as part of Phase 0B of the V1-to-V2 API migration 
 | test-user-ratings.spec.js | 1 | Rating endpoints, User fetch |
 | test-modtools-login.spec.js | 2 | ModTools auth |
 | test-ai-illustration.spec.js | 4 | AI illustration fetch |
+| test-v2-api-pages.spec.js | 6 | Story GET, CommunityEvent GET, Volunteering GET, Job GET, Donations GET, Group GET (v2) |
 
 ### Playwright Gaps (endpoints with no E2E coverage)
 
 - Address CRUD
 - Isochrone operations
-- Volunteering CRUD
-- Community events
 - Newsfeed operations
 - Noticeboard operations
 - All admin/moderation endpoints
@@ -246,11 +245,11 @@ Generated 2026-02-07. Updated as part of Phase 0B of the V1-to-V2 API migration 
 
 ## Recommendations
 
-### Immediate (Phase 0B.5-6)
+### Immediate (Phase 0B.5-6) — ✅ Complete
 
-1. Write Go tests for 8 untested v2 endpoints
-2. Write at least 1 Playwright test for address, volunteering, and community event flows
-3. Add auth tests to 30+ Go endpoints that lack them
+1. ✅ Write Go tests for 8 untested v2 endpoints (44 tests in 5 files)
+2. ✅ Write Playwright tests for volunteering, community event, stories, jobs, donations, group flows (6 tests)
+3. ✅ Add auth tests to 19 Go endpoints that lacked them (32 tests in 9 files)
 
 ### During Migration (per endpoint)
 

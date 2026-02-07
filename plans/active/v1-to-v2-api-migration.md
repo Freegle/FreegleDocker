@@ -244,7 +244,7 @@ Before migrating any endpoint, audit existing test coverage to identify gaps. Th
 | 0B.4 | Build coverage gap matrix | ✅ Done | `plans/active/api-test-coverage-matrix.md` |
 | 0B.5 | Write missing Go tests for existing v2 endpoints | ✅ Done | 5 test files, 44 tests covering all 8 untested endpoints |
 | 0B.5b | Add auth/error tests to partial-coverage endpoints | ✅ Done | 32 tests across 9 files, 19 endpoints improved |
-| 0B.6 | Write missing Playwright tests for existing v2 endpoints | ⬜ Pending | At least one E2E test per migrated endpoint |
+| 0B.6 | Write missing Playwright tests for existing v2 endpoints | ✅ Done | 6 E2E tests in test-v2-api-pages.spec.js covering stories, events, volunteering, jobs, donations, explore group |
 
 **Output:** A coverage gap matrix markdown file at `plans/active/api-test-coverage-matrix.md`.
 
