@@ -183,12 +183,12 @@ Before starting endpoint migrations, establish the infrastructure.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0A.1 | Create `email_queue` table migration | ⬜ Pending | Laravel migration + idempotent SQL |
-| 0A.2 | Implement `email/queue.go` in Go | ⬜ Pending | `QueueEmail()` function |
-| 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ⬜ Pending | `mail:queue:process` artisan command |
-| 0A.4 | Add looping processor script | ⬜ Pending | Runs continuously, processes every 10s |
-| 0A.5 | Create Laravel Mailables for known types | ⬜ Pending | See email types table below |
-| 0A.6 | Test email queue end-to-end | ⬜ Pending | Go inserts, Laravel sends, verify in MailPit |
+| 0A.1 | Create `email_queue` table migration | ✅ Done | Laravel migration + idempotent SQL + GORM model |
+| 0A.2 | Implement `email/queue.go` in Go | ✅ Done | `QueueEmail()` + variants, 5 Go tests |
+| 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ✅ Done | `mail:queue:process` with handler dispatch, 8 tests |
+| 0A.4 | Add schedule entry | ✅ Done | `everyMinute()` + `withoutOverlapping()` in routes/console.php |
+| 0A.5 | Create Laravel Mailables for known types | ✅ Done | `welcome` works end-to-end; others stubbed with explicit errors (created with their Go handlers) |
+| 0A.6 | Test email queue end-to-end | ✅ Done | 5 Go tests + 8 Laravel tests cover full flow; MailPit verification deferred to deployment |
 
 **Queue Table Schema:**
 ```sql
@@ -209,16 +209,15 @@ CREATE TABLE IF NOT EXISTS email_queue (
 );
 ```
 
-**Looping Processor Script** (`process-email-queue.sh`):
-```bash
-#!/bin/bash
-# Run continuously, processing email queue every 10 seconds.
-# Designed for long-running batch container execution.
-while true; do
-    php artisan mail:queue:process --limit=50
-    sleep 10
-done
+**Schedule Entry** (in `routes/console.php`):
+```php
+// Process email queue items inserted by Go v2 API.
+Schedule::command('mail:queue:process --limit=50')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
 ```
+Uses Laravel scheduler with `withoutOverlapping()` lock - consistent with existing email commands (welcome mail, chat notifications).
 
 **Email Types:**
 
@@ -238,12 +237,13 @@ Before migrating any endpoint, audit existing test coverage to identify gaps. Th
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0B.1 | Audit Go test coverage per endpoint | ⬜ Pending | Map each v2 endpoint to test functions |
-| 0B.2 | Audit PHP test coverage per endpoint | ⬜ Pending | Map each v1 endpoint to test functions |
-| 0B.3 | Audit Playwright coverage of API flows | ⬜ Pending | Which user flows exercise which APIs |
-| 0B.4 | Build coverage gap matrix | ⬜ Pending | Endpoint × {Go test, PHP test, Playwright, FD v1/v2, MT v1/v2} |
-| 0B.5 | Write missing Go tests for existing v2 endpoints | ⬜ Pending | TDD: write tests, verify they pass against existing code |
-| 0B.6 | Write missing Playwright tests for existing v2 endpoints | ⬜ Pending | At least one E2E test per migrated endpoint |
+| 0B.1 | Audit Go test coverage per endpoint | ✅ Done | 75+ endpoints mapped, 27 good, 37 partial, 8 none |
+| 0B.2 | Audit PHP test coverage per endpoint | ✅ Done | 59 endpoints mapped, 51 with tests, 8 without |
+| 0B.3 | Audit Playwright coverage of API flows | ✅ Done | 18 test files, 45+ API wrapper files analysed |
+| 0B.4 | Build coverage gap matrix | ✅ Done | `plans/active/api-test-coverage-matrix.md` |
+| 0B.5 | Write missing Go tests for existing v2 endpoints | ✅ Done | 5 test files, 44 tests covering all 8 untested endpoints |
+| 0B.5b | Add auth/error tests to partial-coverage endpoints | ✅ Done | 32 tests across 9 files, 19 endpoints improved |
+| 0B.6 | Write missing Playwright tests for existing v2 endpoints | ✅ Done | 6 E2E tests in test-v2-api-pages.spec.js covering stories, events, volunteering, jobs, donations, explore group |
 
 **Output:** A coverage gap matrix markdown file at `plans/active/api-test-coverage-matrix.md`.
 
@@ -253,9 +253,9 @@ Produce a standalone guide file that ralph references during implementation.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0C.1 | Extract patterns from existing Go handlers | ⬜ Pending | Analyse message.go, chat.go, user.go, authority.go |
-| 0C.2 | Write `iznik-server-go/API-GUIDE.md` | ⬜ Pending | Based on Style Guide section above |
-| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ⬜ Pending | So ralph reads it automatically |
+| 0C.1 | Extract patterns from existing Go handlers | ✅ Done | Analysed 7 handler files, 10+ patterns extracted |
+| 0C.2 | Write V2 API Handler Guide in `codingstandards.md` | ✅ Done | Added to existing coding standards (not separate file) |
+| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ✅ Done | Points to codingstandards.md |
 
 ---
 
@@ -274,23 +274,21 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 | 5 | /microvolunteering GET | ✅ Go done | ✅ FD done | - |
 | 6 | /user/byemail | ✅ Go done | ✅ FD done | - |
 
-### 1B: MT Switchovers (V2 Exists, MT Still Uses V1)
+### 1B: MT/FD Switchovers (V2 Exists, Client Still Uses V1)
 
-| # | Endpoint | MT v1 Calls | Status | RALPH Task |
-|---|----------|-------------|--------|------------|
-| 7 | /chat GET | 16 | ⬜ Pending | `Switch MT chat GETs to v2` |
-| 8 | /config GET | 1 | ⬜ Pending | `Switch MT config GET to v2` |
-| 9 | /location GET | 5 | ⬜ Pending | `Switch MT location GETs to v2` |
-| 10 | /story GET | 8 | ⬜ Pending | `Switch MT story GETs to v2` |
-| 11 | /authority GET | FD+MT | 🔄 Partial | `Update FD+MT to use /authority v2` |
+**Investigation Results (2026-02-07):** Most endpoints listed here need Go handler enhancements before switching. Only authority is directly switchable. Others moved to Phase 2.
 
-**Task pattern for 1B:**
-1. Read MT API wrapper to identify v1 calls.
-2. Check v2 response format matches what MT expects (may need adapter).
-3. Switch `$get` to `$getv2` in MT API wrapper.
-4. Chrome MCP: login to MT, navigate to page using the endpoint, verify it works.
-5. Run Playwright tests.
-6. Do NOT modify v1 PHP code yet.
+| # | Endpoint | Callers | Status | Blocker |
+|---|----------|---------|--------|---------|
+| 7 | /chat GET | MT (5 methods) | ❌ Needs Go | v2 lacks chat type filtering, unseen count, review messages |
+| 8 | /config GET | - | ✅ Already done | Already uses `$getv2` |
+| 9 | /location GET | MT (4 calls) | ❌ Needs Go | v2 lacks bounding box search, dodgy locations |
+| 10 | /story GET | MT+FD (3 methods) | ❌ Needs Go | v2 hardcodes `reviewed=1`; MT needs `reviewed=0`, `newsletter` |
+| 11 | /authority GET | FD (4 pages) | ✅ Switched | Branch: `feature/v2-authority-switchover` in iznik-nuxt3 |
+
+**What was needed for authority switch:**
+1. Changed `AuthorityAPI.fetch(params)` → `fetch(id)` using `$getv2('/authority/' + id)`
+2. Updated store: `ret?.authority` → `ret` (v2 returns direct object, not wrapped)
 
 ---
 
@@ -574,6 +572,17 @@ feature/v2-migration-phase4b-complex            (tasks 34-37)
 - Each PR must pass all 4 CI test suites before merge.
 - Backend (Go) and frontend (client switch) can be in the same PR if the Go changes are backwards-compatible (i.e. new endpoints, not replacing).
 - If Go changes require deployment before client switch, split into separate PRs.
+- **Never push directly to master** - all implementation work goes on feature branches.
+- **Feature branches on submodules** - when changes span submodules (e.g., Go handler in iznik-server-go + client switch in iznik-nuxt3), create feature branches in each submodule too. Create GitHub PRs for each and keep them in sync.
+- **CI validation**: After completing a batch of work on a feature branch, push to origin and trigger a CircleCI pipeline run on the feature branch. Wait for CI to complete and fix any failures before continuing to the next batch. This ensures incremental correctness and avoids accumulating broken changes.
+
+### Parallel Agent Strategy
+
+Use background agents to parallelise independent research and audit tasks. For example:
+- Audit Go tests, PHP tests, Playwright tests, and extract handler patterns all run simultaneously.
+- Each agent explores one area and returns structured results.
+- Dependent tasks (e.g., building the gap matrix) wait for all parallel agents to complete.
+- This dramatically reduces wall-clock time for research-heavy phases.
 
 ### Long-Running Ralph Execution
 

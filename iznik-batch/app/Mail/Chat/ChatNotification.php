@@ -397,10 +397,14 @@ class ChatNotification extends MjmlMailable
             $messageId = "chat-{$this->chatRoom->id}-msg-{$this->message->id}@{$this->userDomain}";
             $threadAnchor = "chat-{$this->chatRoom->id}-thread@{$this->userDomain}";
 
-            // Replace the auto-generated Message-ID with our deterministic one.
-            if ($headers->has('Message-ID')) {
-                $headers->remove('Message-ID');
+            // Replace existing headers before adding (build() may be called multiple
+            // times, e.g. render() then send(), which re-registers this callback).
+            foreach (['Message-ID', 'References', 'In-Reply-To'] as $headerName) {
+                if ($headers->has($headerName)) {
+                    $headers->remove($headerName);
+                }
             }
+
             $headers->addIdHeader('Message-ID', $messageId);
 
             // Build References chain: thread anchor + previous message IDs.
