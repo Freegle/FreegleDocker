@@ -4,7 +4,6 @@ namespace Tests\Feature\Console;
 
 use App\Models\UserEmail;
 use App\Services\EmailSpoolerService;
-use App\Services\MjmlCompilerService;
 use Tests\TestCase;
 
 class TestMailCommandTest extends TestCase
@@ -14,13 +13,6 @@ class TestMailCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Mock the MJML compiler since the MJML server is not available in CI.
-        // Return valid HTML so render() and spool() succeed without the external service.
-        $mockCompiler = $this->createMock(MjmlCompilerService::class);
-        $mockCompiler->method('compile')
-            ->willReturn('<html><body><p>Test User sent you a message</p></body></html>');
-        $this->app->instance(MjmlCompilerService::class, $mockCompiler);
 
         // Use a unique spool directory for each test to avoid race conditions
         // when running tests in parallel with ParaTest.
@@ -226,8 +218,7 @@ class TestMailCommandTest extends TestCase
         $this->assertContains($testDeliveryEmail, $toAddresses);
         $this->assertNotContains($realUserEmail, $toAddresses);
 
-        // Verify the email content still references the real user (not the override).
-        // The HTML should contain the sender's name (Test User from createTestUser helper).
-        $this->assertStringContainsString('Test User', $spoolData['html']);
+        // Verify the email content still references the sender (not the override address).
+        $this->assertStringContainsString('Test Sender', $spoolData['html']);
     }
 }

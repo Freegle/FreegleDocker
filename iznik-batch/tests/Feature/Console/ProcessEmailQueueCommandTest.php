@@ -4,7 +4,6 @@ namespace Tests\Feature\Console;
 
 use App\Models\EmailQueueItem;
 use App\Services\EmailSpoolerService;
-use App\Services\MjmlCompilerService;
 use Tests\TestCase;
 
 class ProcessEmailQueueCommandTest extends TestCase
@@ -14,12 +13,6 @@ class ProcessEmailQueueCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Mock the MJML compiler since the MJML server is not available in CI.
-        $mockCompiler = $this->createMock(MjmlCompilerService::class);
-        $mockCompiler->method('compile')
-            ->willReturn('<html><body><p>Test email content</p></body></html>');
-        $this->app->instance(MjmlCompilerService::class, $mockCompiler);
 
         // Use a unique spool directory for each test.
         $this->spoolDir = storage_path('spool/mail-queue-test-' . uniqid());
