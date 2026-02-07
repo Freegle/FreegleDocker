@@ -4,7 +4,6 @@ namespace Tests\Feature\Console;
 
 use App\Models\UserEmail;
 use App\Services\EmailSpoolerService;
-use App\Services\MjmlCompilerService;
 use Tests\TestCase;
 
 class TestMailCommandTest extends TestCase
@@ -55,16 +54,6 @@ class TestMailCommandTest extends TestCase
 
         // Array mail driver (set in phpunit.xml) prevents actual sending.
         // Don't use Mail::fake() here - it interferes with the spooler's Mail::html() call.
-
-        // Mock MJML to avoid BoundedPool capacity issues in tests.
-        // The mail:test command triggers multiple MJML compilations which
-        // exceed the pool capacity of 1 in the test environment.
-        $this->mock(MjmlCompilerService::class, function ($mock) {
-            $mock->shouldReceive('compile')
-                ->andReturnUsing(function ($mjml) {
-                    return '<html><body>' . strip_tags($mjml) . '</body></html>';
-                });
-        });
     }
 
     protected function tearDown(): void
