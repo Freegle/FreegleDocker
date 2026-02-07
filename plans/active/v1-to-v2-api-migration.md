@@ -238,10 +238,10 @@ Before migrating any endpoint, audit existing test coverage to identify gaps. Th
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0B.1 | Audit Go test coverage per endpoint | ⬜ Pending | Map each v2 endpoint to test functions |
-| 0B.2 | Audit PHP test coverage per endpoint | ⬜ Pending | Map each v1 endpoint to test functions |
-| 0B.3 | Audit Playwright coverage of API flows | ⬜ Pending | Which user flows exercise which APIs |
-| 0B.4 | Build coverage gap matrix | ⬜ Pending | Endpoint × {Go test, PHP test, Playwright, FD v1/v2, MT v1/v2} |
+| 0B.1 | Audit Go test coverage per endpoint | ✅ Done | 75+ endpoints mapped, 27 good, 37 partial, 8 none |
+| 0B.2 | Audit PHP test coverage per endpoint | ✅ Done | 59 endpoints mapped, 51 with tests, 8 without |
+| 0B.3 | Audit Playwright coverage of API flows | ✅ Done | 18 test files, 45+ API wrapper files analysed |
+| 0B.4 | Build coverage gap matrix | ✅ Done | `plans/active/api-test-coverage-matrix.md` |
 | 0B.5 | Write missing Go tests for existing v2 endpoints | ⬜ Pending | TDD: write tests, verify they pass against existing code |
 | 0B.6 | Write missing Playwright tests for existing v2 endpoints | ⬜ Pending | At least one E2E test per migrated endpoint |
 
@@ -253,9 +253,9 @@ Produce a standalone guide file that ralph references during implementation.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0C.1 | Extract patterns from existing Go handlers | ⬜ Pending | Analyse message.go, chat.go, user.go, authority.go |
-| 0C.2 | Write `iznik-server-go/API-GUIDE.md` | ⬜ Pending | Based on Style Guide section above |
-| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ⬜ Pending | So ralph reads it automatically |
+| 0C.1 | Extract patterns from existing Go handlers | ✅ Done | Analysed 7 handler files, 10+ patterns extracted |
+| 0C.2 | Write V2 API Handler Guide in `codingstandards.md` | ✅ Done | Added to existing coding standards (not separate file) |
+| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ✅ Done | Points to codingstandards.md |
 
 ---
 
@@ -574,6 +574,17 @@ feature/v2-migration-phase4b-complex            (tasks 34-37)
 - Each PR must pass all 4 CI test suites before merge.
 - Backend (Go) and frontend (client switch) can be in the same PR if the Go changes are backwards-compatible (i.e. new endpoints, not replacing).
 - If Go changes require deployment before client switch, split into separate PRs.
+- **Never push directly to master** - all implementation work goes on feature branches.
+- **Feature branches on submodules** - when changes span submodules (e.g., Go handler in iznik-server-go + client switch in iznik-nuxt3), create feature branches in each submodule too. Create GitHub PRs for each and keep them in sync.
+- **CI validation**: After completing a batch of work on a feature branch, push to origin and trigger a CircleCI pipeline run on the feature branch. Wait for CI to complete and fix any failures before continuing to the next batch. This ensures incremental correctness and avoids accumulating broken changes.
+
+### Parallel Agent Strategy
+
+Use background agents to parallelise independent research and audit tasks. For example:
+- Audit Go tests, PHP tests, Playwright tests, and extract handler patterns all run simultaneously.
+- Each agent explores one area and returns structured results.
+- Dependent tasks (e.g., building the gap matrix) wait for all parallel agents to complete.
+- This dramatically reduces wall-clock time for research-heavy phases.
 
 ### Long-Running Ralph Execution
 
