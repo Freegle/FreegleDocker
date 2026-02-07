@@ -302,15 +302,15 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|
-| 12 | /address | PATCH, PUT | 5 | ⬜ Pending | `Migrate /address write ops to v2` |
-| 13 | /isochrone | PUT, POST, PATCH | 2 | ⬜ Pending | `Migrate /isochrone write ops to v2` |
-| 14 | /notification POST | Seen, AllSeen | 3 | ⬜ Pending | `Migrate /notification POST to v2` |
-| 15 | /messages POST | MarkSeen | 1 | ⬜ Pending | `Migrate /messages MarkSeen to v2` |
-| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ⬜ Pending | `Migrate /newsfeed POST to v2` |
-| 17 | /volunteering | POST, PATCH, DELETE | 5 | ⬜ Pending | `Migrate /volunteering write ops to v2` |
-| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ⬜ Pending | `Migrate /communityevent write ops to v2` |
-| 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
-| 20 | /comment | POST, PATCH, DELETE | MT | ⬜ Pending | `Migrate /comment write ops to v2` |
+| 12 | /address | PATCH, PUT | 5 | ✅ Done | `Migrate /address write ops to v2` |
+| 13 | /isochrone | PUT, POST, PATCH | 2 | ❌ Blocked | `Migrate /isochrone write ops to v2` (external API calls) |
+| 14 | /notification POST | Seen, AllSeen | 3 | ✅ Done | `Migrate /notification POST to v2` |
+| 15 | /messages POST | MarkSeen | 1 | ✅ Done | `Migrate /messages MarkSeen to v2` |
+| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ✅ Done | `Migrate /newsfeed POST to v2` |
+| 17 | /volunteering | POST, PATCH, DELETE | 5 | ✅ Done | `Migrate /volunteering write ops to v2` |
+| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ✅ Done | `Migrate /communityevent write ops to v2` |
+| 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` (multipart upload) |
+| 20 | /comment | POST, PATCH, DELETE | MT | ✅ Done | `Migrate /comment write ops to v2` |
 
 ---
 
