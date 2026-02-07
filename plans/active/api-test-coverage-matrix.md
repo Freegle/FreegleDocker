@@ -10,9 +10,9 @@ Generated 2026-02-07. Updated as part of Phase 0B of the V1-to-V2 API migration 
 | Total v2 Go endpoints | ~75 |
 | PHP endpoints with tests | 51 (86%) |
 | PHP endpoints with no tests | 8 (14%) |
-| Go endpoints with good coverage | 27 (36%) |
+| Go endpoints with good coverage | 35 (47%) |
 | Go endpoints with partial coverage | 37 (49%) |
-| Go endpoints with no tests | 8 (11%) |
+| Go endpoints with no tests | 0 (0%) |
 | API wrappers still using v1 only | 15 files |
 | API wrappers using v2 only | 8 files |
 | API wrappers using both v1+v2 | 19 files |
@@ -93,18 +93,18 @@ Generated 2026-02-07. Updated as part of Phase 0B of the V1-to-V2 API migration 
 | /volunteering/{id} | GET | volunteering.Single | No auth test |
 | /volunteering/group/{id} | GET | volunteering.ListGroup | No auth test |
 
-### No Test Coverage
+### Previously No Coverage → Now Covered (added 2026-02-07)
 
-| Endpoint | Method | Handler | Priority |
-|----------|--------|---------|----------|
-| /config/{key} | GET | config.Get | Medium |
-| /email/stats/timeseries | GET | emailtracking.TimeSeries | Low |
-| /email/stats/bytype | GET | emailtracking.StatsByType | Low |
-| /email/stats/clicks | GET | emailtracking.TopClickedLinks | Low |
-| /user/{id}/publiclocation | GET | user.GetPublicLocation | Medium |
-| /user/{id}/search | GET | user.GetSearchesForUser | Low |
-| /systemlogs | GET | systemlogs.GetLogs | Low (admin only) |
-| /systemlogs/counts | GET | systemlogs.GetLogCounts | Low (admin only) |
+| Endpoint | Method | Handler | Test File | Tests Added |
+|----------|--------|---------|-----------|-------------|
+| /config/{key} | GET | config.Get | config_get_test.go | 4 tests (existing key, missing, v2 path, no-auth) |
+| /email/stats/timeseries | GET | emailtracking.TimeSeries | emailtracking_stats_test.go | 4 tests (auth, forbidden, support access, type filter) |
+| /email/stats/bytype | GET | emailtracking.StatsByType | emailtracking_stats_test.go | 3 tests (auth, forbidden, support access) |
+| /email/stats/clicks | GET | emailtracking.TopClickedLinks | emailtracking_stats_test.go | 6 tests (auth, forbidden, aggregated, limit, admin) |
+| /user/{id}/publiclocation | GET | user.GetPublicLocation | user_publiclocation_test.go | 6 tests (valid, no-auth, invalid ID, v2 path, structure) |
+| /user/{id}/search | GET | user.GetSearchesForUser | user_search_test.go | 8 tests (auth, own/other, deleted, dedup, limit, v2 path) |
+| /systemlogs | GET | systemlogs.GetLogs | systemlogs_test.go | 8 tests (auth cascade, mod/support/admin ACLs) |
+| /systemlogs/counts | GET | systemlogs.GetLogCounts | systemlogs_test.go | 5 tests (auth, validation, moderator access) |
 
 ---
 
