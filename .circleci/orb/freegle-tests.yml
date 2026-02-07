@@ -882,7 +882,19 @@ commands:
     steps:
       - run:
           name: Set up test database and environment
-          command: ~/scripts/setup-test-database.sh
+          command: |
+            # Find the script in either FreegleDocker clone or project checkout
+            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+              "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+            elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
+              "$HOME/project/scripts/setup-test-database.sh"
+            else
+              echo "❌ setup-test-database.sh not found!"
+              echo "Checked: $HOME/FreegleDocker/scripts/ and $HOME/project/scripts/"
+              ls -la "$HOME/FreegleDocker/scripts/" 2>/dev/null || echo "$HOME/FreegleDocker/scripts/ not found"
+              ls -la "$HOME/project/scripts/" 2>/dev/null || echo "$HOME/project/scripts/ not found"
+              exit 1
+            fi
 
   run-vitest-tests:
     description: "Run Vitest unit tests for iznik-nuxt3 components"
