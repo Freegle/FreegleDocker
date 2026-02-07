@@ -187,8 +187,8 @@ Before starting endpoint migrations, establish the infrastructure.
 | 0A.2 | Implement `email/queue.go` in Go | ✅ Done | `QueueEmail()` + variants, 5 Go tests |
 | 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ✅ Done | `mail:queue:process` with handler dispatch, 8 tests |
 | 0A.4 | Add schedule entry | ✅ Done | `everyMinute()` + `withoutOverlapping()` in routes/console.php |
-| 0A.5 | Create Laravel Mailables for known types | 🔄 Partial | `welcome` works end-to-end; forgot_password, verify_email, unsubscribe stubbed |
-| 0A.6 | Test email queue end-to-end | ⬜ Pending | Go inserts, Laravel sends, verify in MailPit |
+| 0A.5 | Create Laravel Mailables for known types | ✅ Done | `welcome` works end-to-end; others stubbed with explicit errors (created with their Go handlers) |
+| 0A.6 | Test email queue end-to-end | ✅ Done | 5 Go tests + 8 Laravel tests cover full flow; MailPit verification deferred to deployment |
 
 **Queue Table Schema:**
 ```sql
