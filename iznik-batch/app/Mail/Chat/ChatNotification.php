@@ -377,9 +377,45 @@ class ChatNotification extends MjmlMailable
             $this->renderAmpContent();
         }
 
-        // Add custom X-Freegle headers and read receipts.
+        // Add custom X-Freegle headers, threading headers, and read receipts.
         $this->withSymfonyMessage(function (Email $symfonyMessage) {
             $headers = $symfonyMessage->getHeaders();
+
+            // Add RFC 2822 threading headers so email clients (especially Gmail)
+            // correctly thread chat notifications per conversation.
+            //
+            // Without these, Gmail sees multiple notifications with the same subject,
+            // same sender, and same structure, and collapses the body of subsequent
+            // ones as "quoted text" - hiding the actual new message content.
+            //
+            // With proper threading headers, Gmail threads them into one conversation
+            // but displays each message's body separately.
+            //
+            // Message-ID: Unique per chat message, deterministic from chatid + message id.
+            // References: Thread anchor (stable per chat room) + previous message IDs.
+            // In-Reply-To: The most recent previous message's ID.
+            $messageId = "chat-{$this->chatRoom->id}-msg-{$this->message->id}@{$this->userDomain}";
+            $threadAnchor = "chat-{$this->chatRoom->id}-thread@{$this->userDomain}";
+
+            // Replace the auto-generated Message-ID with our deterministic one.
+            if ($headers->has('Message-ID')) {
+                $headers->remove('Message-ID');
+            }
+            $headers->addIdHeader('Message-ID', $messageId);
+
+            // Build References chain: thread anchor + previous message IDs.
+            $references = [$threadAnchor];
+            foreach ($this->previousMessages as $prevMsg) {
+                $references[] = "chat-{$this->chatRoom->id}-msg-{$prevMsg->id}@{$this->userDomain}";
+            }
+            $headers->addIdHeader('References', $references);
+
+            // In-Reply-To: the most recent previous message, or the thread anchor if none.
+            $lastPrevMsg = $this->previousMessages->last();
+            $inReplyTo = $lastPrevMsg
+                ? "chat-{$this->chatRoom->id}-msg-{$lastPrevMsg->id}@{$this->userDomain}"
+                : $threadAnchor;
+            $headers->addIdHeader('In-Reply-To', $inReplyTo);
 
             // Add mail type header for tracking.
             $headers->addTextHeader('X-Freegle-Mail-Type', 'ChatNotification');

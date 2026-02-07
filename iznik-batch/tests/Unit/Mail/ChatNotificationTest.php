@@ -1447,4 +1447,186 @@ class ChatNotificationTest extends TestCase
         $this->assertNotNull($ampHtml2, 'Gmail should have AMP HTML rendered');
         $this->assertStringContainsString('<!doctype html>', $ampHtml2);
     }
+
+    // ===== Email Threading Header Tests =====
+
+    /**
+     * Helper to extract Symfony email headers from a built ChatNotification.
+     *
+     * After build(), the withSymfonyMessage callbacks are stored in $mail->callbacks.
+     * We create a Symfony Email and execute the callbacks to capture the headers.
+     */
+    protected function getSymfonyHeaders(ChatNotification $mail): \Symfony\Component\Mime\Header\Headers
+    {
+        $mail->build();
+        $symfonyEmail = new \Symfony\Component\Mime\Email();
+        foreach ($mail->callbacks as $callback) {
+            $callback($symfonyEmail);
+        }
+        return $symfonyEmail->getHeaders();
+    }
+
+    public function test_threading_message_id_is_deterministic(): void
+    {
+        ['room' => $room, 'message' => $message, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expected = "chat-{$room->id}-msg-{$message->id}@{$domain}";
+
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertNotNull($messageId);
+        $this->assertStringContainsString($expected, $messageId);
+    }
+
+    public function test_threading_in_reply_to_uses_thread_anchor_when_no_previous(): void
+    {
+        ['room' => $room, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expectedAnchor = "chat-{$room->id}-thread@{$domain}";
+
+        $inReplyTo = $headers->get('In-Reply-To')?->getBodyAsString();
+        $this->assertNotNull($inReplyTo);
+        $this->assertStringContainsString($expectedAnchor, $inReplyTo);
+    }
+
+    public function test_threading_references_contains_thread_anchor(): void
+    {
+        ['room' => $room, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expectedAnchor = "chat-{$room->id}-thread@{$domain}";
+
+        $references = $headers->get('References')?->getBodyAsString();
+        $this->assertNotNull($references);
+        $this->assertStringContainsString($expectedAnchor, $references);
+    }
+
+    public function test_threading_with_previous_messages(): void
+    {
+        ['user1' => $user1, 'user2' => $user2, 'room' => $room] = $this->createUser2UserChatSetup();
+
+        // Create previous messages.
+        $prev1 = $this->createTestChatMessage($room, $user1, [
+            'message' => 'First message',
+            'date' => now()->subMinutes(10),
+        ]);
+        $prev2 = $this->createTestChatMessage($room, $user2, [
+            'message' => 'Second message',
+            'date' => now()->subMinutes(5),
+        ]);
+
+        // Create latest message.
+        $latest = $this->createTestChatMessage($room, $user1, [
+            'message' => 'Third message',
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $latest,
+            ChatRoom::TYPE_USER2USER,
+            collect([$prev1, $prev2])
+        );
+
+        $headers = $this->getSymfonyHeaders($mail);
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+
+        // Message-ID should be for the latest message.
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$latest->id}@{$domain}", $messageId);
+
+        // In-Reply-To should reference the most recent previous message (prev2).
+        $inReplyTo = $headers->get('In-Reply-To')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$prev2->id}@{$domain}", $inReplyTo);
+
+        // References should contain thread anchor + both previous message IDs.
+        $references = $headers->get('References')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-thread@{$domain}", $references);
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$prev1->id}@{$domain}", $references);
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$prev2->id}@{$domain}", $references);
+    }
+
+    public function test_threading_different_messages_get_different_message_ids(): void
+    {
+        ['user1' => $user1, 'user2' => $user2, 'room' => $room] = $this->createUser2UserChatSetup();
+
+        $msg1 = $this->createTestChatMessage($room, $user1, ['message' => 'Hello']);
+        $msg2 = $this->createTestChatMessage($room, $user2, ['message' => 'Hi back']);
+
+        $mail1 = new ChatNotification($user2, $user1, $room, $msg1, ChatRoom::TYPE_USER2USER);
+        $mail2 = new ChatNotification($user1, $user2, $room, $msg2, ChatRoom::TYPE_USER2USER);
+
+        $headers1 = $this->getSymfonyHeaders($mail1);
+        $headers2 = $this->getSymfonyHeaders($mail2);
+
+        $id1 = $headers1->get('Message-ID')?->getBodyAsString();
+        $id2 = $headers2->get('Message-ID')?->getBodyAsString();
+
+        $this->assertNotEquals($id1, $id2, 'Different chat messages should have different Message-IDs');
+    }
+
+    public function test_threading_same_chat_room_shares_thread_anchor(): void
+    {
+        ['user1' => $user1, 'user2' => $user2, 'room' => $room] = $this->createUser2UserChatSetup();
+
+        $msg1 = $this->createTestChatMessage($room, $user1, ['message' => 'Hello']);
+        $msg2 = $this->createTestChatMessage($room, $user2, ['message' => 'Hi back']);
+
+        $mail1 = new ChatNotification($user2, $user1, $room, $msg1, ChatRoom::TYPE_USER2USER);
+        $mail2 = new ChatNotification($user1, $user2, $room, $msg2, ChatRoom::TYPE_USER2USER);
+
+        $headers1 = $this->getSymfonyHeaders($mail1);
+        $headers2 = $this->getSymfonyHeaders($mail2);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expectedAnchor = "chat-{$room->id}-thread@{$domain}";
+
+        // Both should share the same thread anchor in References.
+        $refs1 = $headers1->get('References')?->getBodyAsString();
+        $refs2 = $headers2->get('References')?->getBodyAsString();
+
+        $this->assertStringContainsString($expectedAnchor, $refs1);
+        $this->assertStringContainsString($expectedAnchor, $refs2);
+    }
+
+    public function test_threading_works_for_user2mod_chat(): void
+    {
+        ['room' => $room, 'message' => $message, 'mail' => $mail] = $this->createUser2ModChatSetup([
+            'member_attrs' => ['fullname' => 'Alice'],
+        ]);
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$message->id}@{$domain}", $messageId);
+
+        $inReplyTo = $headers->get('In-Reply-To')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-thread@{$domain}", $inReplyTo);
+
+        $references = $headers->get('References')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-thread@{$domain}", $references);
+    }
+
+    public function test_threading_uses_configured_domain(): void
+    {
+        ['room' => $room, 'message' => $message, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        // Verify domain comes from config, not hardcoded.
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertStringContainsString("@{$domain}", $messageId);
+    }
 }
