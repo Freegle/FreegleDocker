@@ -575,6 +575,13 @@ feature/v2-migration-phase4b-complex            (tasks 34-37)
 - Backend (Go) and frontend (client switch) can be in the same PR if the Go changes are backwards-compatible (i.e. new endpoints, not replacing).
 - If Go changes require deployment before client switch, split into separate PRs.
 
+**Branch Chaining (CRITICAL):**
+- Each feature branch MUST be based on the previous successful branch, not independently on master.
+- Chain: `master` → `migration-foundation` → `phase1` → `phase2a` → `phase2b` → etc.
+- When a fix is needed: fix on the earliest affected branch (ideally master), then merge forward through the chain.
+- This ensures no fixes are lost and each branch includes all prior work.
+- NEVER create a new feature branch from master if there's an existing chain - always branch from the tip.
+
 ### Long-Running Ralph Execution
 
 For unattended multi-hour sessions, use ralph's `-t` flag with high iteration counts:
