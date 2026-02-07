@@ -274,23 +274,21 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 | 5 | /microvolunteering GET | ✅ Go done | ✅ FD done | - |
 | 6 | /user/byemail | ✅ Go done | ✅ FD done | - |
 
-### 1B: MT Switchovers (V2 Exists, MT Still Uses V1)
+### 1B: MT/FD Switchovers (V2 Exists, Client Still Uses V1)
 
-| # | Endpoint | MT v1 Calls | Status | RALPH Task |
-|---|----------|-------------|--------|------------|
-| 7 | /chat GET | 16 | ⬜ Pending | `Switch MT chat GETs to v2` |
-| 8 | /config GET | 1 | ⬜ Pending | `Switch MT config GET to v2` |
-| 9 | /location GET | 5 | ⬜ Pending | `Switch MT location GETs to v2` |
-| 10 | /story GET | 8 | ⬜ Pending | `Switch MT story GETs to v2` |
-| 11 | /authority GET | FD+MT | 🔄 Partial | `Update FD+MT to use /authority v2` |
+**Investigation Results (2026-02-07):** Most endpoints listed here need Go handler enhancements before switching. Only authority is directly switchable. Others moved to Phase 2.
 
-**Task pattern for 1B:**
-1. Read MT API wrapper to identify v1 calls.
-2. Check v2 response format matches what MT expects (may need adapter).
-3. Switch `$get` to `$getv2` in MT API wrapper.
-4. Chrome MCP: login to MT, navigate to page using the endpoint, verify it works.
-5. Run Playwright tests.
-6. Do NOT modify v1 PHP code yet.
+| # | Endpoint | Callers | Status | Blocker |
+|---|----------|---------|--------|---------|
+| 7 | /chat GET | MT (5 methods) | ❌ Needs Go | v2 lacks chat type filtering, unseen count, review messages |
+| 8 | /config GET | - | ✅ Already done | Already uses `$getv2` |
+| 9 | /location GET | MT (4 calls) | ❌ Needs Go | v2 lacks bounding box search, dodgy locations |
+| 10 | /story GET | MT+FD (3 methods) | ❌ Needs Go | v2 hardcodes `reviewed=1`; MT needs `reviewed=0`, `newsletter` |
+| 11 | /authority GET | FD (4 pages) | ✅ Switched | Branch: `feature/v2-authority-switchover` in iznik-nuxt3 |
+
+**What was needed for authority switch:**
+1. Changed `AuthorityAPI.fetch(params)` → `fetch(id)` using `$getv2('/authority/' + id)`
+2. Updated store: `ret?.authority` → `ret` (v2 returns direct object, not wrapped)
 
 ---
 
