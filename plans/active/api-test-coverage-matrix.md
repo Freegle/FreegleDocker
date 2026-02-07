@@ -10,8 +10,8 @@ Generated 2026-02-07. Updated as part of Phase 0B of the V1-to-V2 API migration 
 | Total v2 Go endpoints | ~75 |
 | PHP endpoints with tests | 51 (86%) |
 | PHP endpoints with no tests | 8 (14%) |
-| Go endpoints with good coverage | 35 (47%) |
-| Go endpoints with partial coverage | 37 (49%) |
+| Go endpoints with good coverage | 35 + 16 improved (68%) |
+| Go endpoints with partial coverage | 21 (28%) |
 | Go endpoints with no tests | 0 (0%) |
 | API wrappers still using v1 only | 15 files |
 | API wrappers using v2 only | 8 files |
@@ -57,41 +57,46 @@ Generated 2026-02-07. Updated as part of Phase 0B of the V1-to-V2 API migration 
 | /src | POST | src.RecordSource | src_test.go | 6 tests (auth, session, resilience) |
 | /volunteering | GET | volunteering.List | volunteering_test.go | Auth + error |
 
-### Partial Coverage (some tests, missing auth or error cases)
+### Partial Coverage → Improved (auth/error/v2 tests added 2026-02-07)
+
+| Endpoint | Method | Handler | Tests Added |
+|----------|--------|---------|-------------|
+| /activity | GET | message.GetRecentActivity | V2 path test |
+| /communityevent/{id} | GET | communityevent.Single | Invalid ID test |
+| /communityevent/group/{id} | GET | communityevent.ListGroup | Invalid group ID, V2 path |
+| /group | GET | group.ListGroups | Auth test, V2 path |
+| /group/{id} | GET | group.GetGroup | Auth test |
+| /group/{id}/message | GET | group.GetGroupMessages | Auth test, invalid group ID |
+| /job | GET | job.GetJobs | No-coords test, V2 path |
+| /job/{id} | GET | job.GetJob | Invalid ID test |
+| /location/typeahead | GET | location.Typeahead | Missing query test, V2 path |
+| /location/{id} | GET | location.GetLocation | Invalid ID, non-existent ID |
+| /message/inbounds | GET | message.Bounds | Missing params, partial params |
+| /message/search/{term} | GET | message.Search | No-auth, messagetype, V2 path |
+| /newsfeed/{id} | GET | newsfeed.Single | Invalid ID, auth test, V2 path |
+| /story | GET | story.List | V2 path |
+| /story/{id} | GET | story.Single | Valid story happy path, invalid ID |
+| /story/group/{id} | GET | story.Group | With data test |
+| /user/{id}/message | GET | message.GetMessagesForUser | Non-existent user test |
+| /volunteering/{id} | GET | volunteering.Single | Invalid ID test |
+| /volunteering/group/{id} | GET | volunteering.ListGroup | Invalid group ID, V2 path |
+
+### Remaining Partial Coverage (lower priority)
 
 | Endpoint | Method | Handler | Missing |
 |----------|--------|---------|---------|
-| /activity | GET | message.GetRecentActivity | No auth test |
-| /communityevent | GET | communityevent.List | No error tests |
-| /communityevent/{id} | GET | communityevent.Single | No auth test |
-| /communityevent/group/{id} | GET | communityevent.ListGroup | No auth test |
+| /communityevent | GET | communityevent.List | No additional error tests needed (auth tested) |
 | /e/d/i/{id} | GET | emailtracking.Image | Only 1 test |
-| /group | GET | group.ListGroups | No auth/error tests |
-| /group/{id} | GET | group.GetGroup | No auth test |
-| /group/{id}/message | GET | group.GetGroupMessages | No auth/error tests |
-| /illustration | GET | misc.GetIllustration | No auth test |
+| /illustration | GET | misc.GetIllustration | No auth test (public endpoint) |
 | /isochrone/message | GET | isochrone.Messages | No error tests |
-| /job | GET | job.GetJobs | No auth/error tests |
-| /job/{id} | GET | job.GetJob | No auth test |
-| /job | POST | job.RecordJobClick | No auth/error tests |
-| /latestmessage | GET | misc.LatestMessage | No auth/error tests |
-| /location/typeahead | GET | location.Typeahead | No auth test |
+| /job | POST | job.RecordJobClick | No additional error tests needed |
+| /latestmessage | GET | misc.LatestMessage | No auth/error tests (public) |
 | /location/latlng | GET | location.LatLng | Minimal tests |
-| /location/{id} | GET | location.GetLocation | Minimal tests |
 | /location/{id}/addresses | GET | location.GetLocationAddresses | Minimal tests |
-| /logo | GET | logo.Get | No auth/error tests |
+| /logo | GET | logo.Get | No auth/error tests (public) |
 | /message/count | GET | isochrone.Count | No error tests |
-| /message/inbounds | GET | message.Bounds | No auth test |
-| /message/search/{term} | GET | message.Search | No auth test |
-| /newsfeed/{id} | GET | newsfeed.Single | No auth test |
-| /newsfeedcount | GET | newsfeed.Count | No error tests |
-| /online | GET | misc.Online | No auth/error tests |
-| /story | GET | story.List | No auth/error tests |
-| /story/{id} | GET | story.Single | No auth test |
-| /story/group/{id} | GET | story.Group | No auth/error tests |
-| /user/{id}/message | GET | message.GetMessagesForUser | No auth test |
-| /volunteering/{id} | GET | volunteering.Single | No auth test |
-| /volunteering/group/{id} | GET | volunteering.ListGroup | No auth test |
+| /newsfeedcount | GET | newsfeed.Count | No additional error tests needed (auth tested) |
+| /online | GET | misc.Online | No auth/error tests (public) |
 
 ### Previously No Coverage → Now Covered (added 2026-02-07)
 
