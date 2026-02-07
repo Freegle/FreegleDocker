@@ -408,14 +408,105 @@ A dedicated review phase to catch missed functionality.
 | 5C.6 | Verify email side effects | ⬜ Pending | Ensure all emails sent by v1 are also queued by v2 |
 | 5C.7 | Check MT-specific behaviours | ⬜ Pending | Moderation actions, bulk operations, review queues |
 
-**Adversarial review checklist per endpoint:**
-- [ ] Every `case` in the PHP `switch` statement has a corresponding Go handler
-- [ ] Every `if ($me->isAdminOrSupport())` check is replicated
-- [ ] Every `Mail::send()` is replaced with `email.QueueEmail()`
-- [ ] Every `$dbhm->exec()` (write) operation exists in Go
-- [ ] Error codes and messages match (clients may depend on specific error codes)
-- [ ] Rate limiting / abuse prevention is equivalent
-- [ ] Pagination / context parameters work identically
+---
+
+## Phase 6: Migration Review & Validation Gate
+
+This phase runs **after all endpoint migrations** and acts as a go/no-go gate before retiring v1 code. Execute this systematically for every migrated endpoint. Nothing is considered done until it passes this phase.
+
+### 6A: Per-Endpoint Migration Checklist
+
+For **each** migrated endpoint, complete every item. Track in a separate file `plans/active/api-migration-review-log.md` with a section per endpoint.
+
+#### Functional Completeness
+- [ ] Every `case` in the PHP `switch($action)` has a corresponding Go handler or documented reason for omission
+- [ ] Every PHP method/function called within the endpoint has been accounted for
+- [ ] All query parameters accepted by v1 are accepted by v2 (compare `$_REQUEST` keys)
+- [ ] All POST/PATCH body fields accepted by v1 are accepted by v2
+- [ ] Default values match (when parameter omitted, same behaviour)
+- [ ] Return value structure matches (field names, nesting, types)
+- [ ] Empty/null return handling matches (empty array `[]` not `null`, etc.)
+
+#### Authentication & Authorization
+- [ ] Anonymous access: v1 allows it ↔ v2 allows it (or both deny)
+- [ ] Logged-in user: same permissions required
+- [ ] `$me->isAdminOrSupport()` checks replicated as `user.IsAdmin(c)` or equivalent
+- [ ] `$me->isModerator()` checks replicated with correct group scope
+- [ ] Owner-only checks: `$me->getId() == $resource->getUserId()` → `myid == resource.Userid`
+- [ ] Session/JWT: v2 correctly reads auth from both cookie sessions and Bearer tokens
+
+#### Database Operations
+- [ ] Every `$dbhm->exec()` / `$dbhm->preExec()` write operation exists in Go
+- [ ] Every `$dbhr->preQuery()` read operation exists in Go
+- [ ] Transaction boundaries match (v1 transaction → v2 transaction, not split)
+- [ ] Auto-increment ID return: if v1 returns `$dbhm->lastInsertId()`, v2 returns equivalent
+
+#### Side Effects
+- [ ] Every `Mail::send()` / `$this->mailer->send()` → `email.QueueEmail()` with correct type
+- [ ] Every `error_log()` or logging call → Loki log or equivalent
+- [ ] Cache invalidation: if v1 clears cache, v2 does too
+- [ ] External API calls (e.g., Stripe, Google) → replicated in v2
+- [ ] Notification creation (push, email digest triggers) → replicated
+- [ ] Activity logging (logs table entries) → replicated
+
+#### Data Transformation & Privacy
+- [ ] Date/time formats match in response JSON
+- [ ] Null vs missing field handling matches
+- [ ] Privacy filtering: emails/phones/addresses hidden from non-owners
+- [ ] HTML encoding/escaping: same treatment of user-generated content
+- [ ] Pagination: offset/limit/context parameters produce same results
+
+#### Error Handling
+- [ ] Error HTTP status codes match (400, 401, 403, 404, 500)
+- [ ] Error response body format matches (clients may parse error messages)
+- [ ] Specific error strings match if clients depend on them (e.g., "Not logged in")
+- [ ] Rate limiting / abuse prevention is equivalent or better
+
+#### Client Integration
+- [ ] FD client switched to `$getv2`/`$postv2` (or confirmed not using this endpoint)
+- [ ] MT client switched or documented as deferred to separate task
+- [ ] No remaining `$get`/`$post` calls to this endpoint in client code (grep verified)
+- [ ] Response adapter not needed (or adapter in place and tested if format differs)
+
+#### Testing
+- [ ] Go unit tests cover happy path, auth failure, validation errors, edge cases
+- [ ] Go test coverage ≥90% on new handler code
+- [ ] At least one Playwright E2E test exercises the v2 codepath end-to-end
+- [ ] Chrome MCP sanity check completed and documented (screenshot or notes)
+- [ ] Swagger annotations present and `generate-swagger.sh` run
+
+#### Deprecation
+- [ ] PHP file has deprecation comment with date and v2 endpoint paths
+- [ ] PHP code is **not** deleted (kept functional until production confirmation)
+- [ ] Plan status table updated to show completion
+
+### 6B: Cross-Cutting Review
+
+After individual endpoint reviews, check system-wide concerns.
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 6B.1 | Grep FD codebase for remaining `$get(` / `$post(` v1 calls | ⬜ Pending | Should be zero for migrated endpoints |
+| 6B.2 | Grep MT codebase for remaining v1 calls | ⬜ Pending | Document any intentionally deferred |
+| 6B.3 | Check Loki logs for v1 traffic to migrated endpoints | ⬜ Pending | 30-day window post-deploy |
+| 6B.4 | Verify email queue processes all email types end-to-end | ⬜ Pending | Send test email for each type |
+| 6B.5 | Run full Playwright suite against v2-only config | ⬜ Pending | Disable v1 fallback temporarily |
+| 6B.6 | Load test key endpoints (message, chat, user) | ⬜ Pending | Verify goroutine parallelism delivers |
+| 6B.7 | Check for orphaned v1 routes still registered | ⬜ Pending | Review PHP router config |
+| 6B.8 | Verify Swagger docs are complete and accurate | ⬜ Pending | Every v2 endpoint documented |
+| 6B.9 | Review error monitoring (Sentry) for v2 errors post-deploy | ⬜ Pending | New error patterns? |
+| 6B.10 | Confirm no hardcoded v1 URLs in external integrations | ⬜ Pending | TN, webhooks, email links |
+
+### 6C: Sign-Off
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 6C.1 | All per-endpoint checklists 100% complete | ⬜ Pending | No unchecked items |
+| 6C.2 | Cross-cutting review items all pass | ⬜ Pending | |
+| 6C.3 | CI green on all 4 test suites | ⬜ Pending | Final run on master |
+| 6C.4 | Production deploy of v2 confirmed | ⬜ Pending | Swagger accessible at prod URL |
+| 6C.5 | 30-day monitoring period complete | ⬜ Pending | No regressions |
+| 6C.6 | v1 retirement approved by human | ⬜ Pending | Only then remove PHP code |
 
 ---
 
@@ -439,6 +530,7 @@ A dedicated review phase to catch missed functionality.
 13. DEPRECATE v1: Add deprecation comment to PHP file (keep code functional).
 14. COMMIT & PUSH: Wait for CI green.
 15. UPDATE PLAN: Mark endpoint status in this document.
+16. REVIEW CHECKLIST: Complete Phase 6A checklist for this endpoint in api-migration-review-log.md.
 ```
 
 ### Deprecation Comment Format
