@@ -416,27 +416,26 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-02-07 19:15 - V1-to-V2 API Migration: Phase 2 Address Writes
-- **Status**: 🔄 In Progress - CI pipelines 1767 (markseen), 1769 (address) running
-- **Branches**:
-  - `feature/v2-migration-foundation` (FreegleDocker PR #43) - Phase 0 + 1B, CI FAILED (authority playwright test 404)
-  - `feature/v2-messages-markseen` (FreegleDocker PR #44) - MarkSeen, CI running
-  - `feature/v2-address-writes` (FreegleDocker PR #45) - Address writes, CI running
-- **PRs Created This Session**:
-  - FreegleDocker #45: Migrate /address write ops to v2 Go API
-  - iznik-server-go #8: Add address write handlers (POST, PATCH, DELETE)
-  - iznik-nuxt3 #149: Switch address API writes to v2
-- **Completed**:
-  - ✅ Phase 2 #12: /address writes - Go handlers + 11 tests + client switch + Playwright tests
-  - ✅ Added $patchv2 and $delv2 to BaseAPI.js (reusable for future migrations)
-  - ✅ Fixed $patchv2 to use params (not data) for $requestv2 non-POST path
-  - ✅ PHP deprecation comment on address.php write actions
-- **CI Status**:
-  - Pipeline 1766 (foundation): FAILED - authority playwright test: GET /api/authority/117233 returns 404
-  - Pipeline 1767 (markseen): Running
-  - Pipeline 1769 (address): Running
-- **Next**:
-  - Fix authority Playwright test (hardcoded ID 117233 doesn't exist in CI DB)
-  - Monitor CI for pipelines 1767, 1769
-  - Continue Phase 2: /isochrone writes (item #13)
+### 2026-02-07 15:25 - V1-to-V2 API Migration Phase 0 COMPLETE
+- **Status**: 🔄 Waiting for CI pipeline 1758 to verify all tests pass
+- **Branch**: `feature/v2-migration-foundation` (FreegleDocker + iznik-server-go + iznik-nuxt3)
+- **Goal**: Complete Phase 0 of the V1-to-V2 API migration plan
+- **All Phase 0 Tasks Complete**:
+  - ✅ Phase 0A: Email Queue System
+    - 0A.1: email_queue table (Laravel migration + idempotent production SQL)
+    - 0A.2: Go emailqueue package (QueueEmail + variants, 5 tests)
+    - 0A.3: Laravel ProcessEmailQueueCommand (handler dispatch, 8 tests)
+    - 0A.4: Scheduler entry (everyMinute + withoutOverlapping)
+    - 0A.5: Welcome Mailable works end-to-end; others stubbed for future PRs
+    - 0A.6: Test coverage sufficient; MailPit E2E deferred to deployment
+  - ✅ Phase 0B: Test Audit & Gap Analysis (coverage matrix, 44+32 Go tests, 6 Playwright tests)
+  - ✅ Phase 0C: V2 API Coding Guide (in codingstandards.md)
+  - ✅ Code Quality Review: Extracted marshalExtraData() Go helper, removed duplication
+- **PRs**: FreegleDocker #43, iznik-server-go #6 (both updated)
+- **CI**: Pipeline 1758 running (latest with all changes including Go refactoring)
+- **Key Commits**:
+  - Go: 19ceb0b (refactor marshalExtraData), 1e6030f (email queue + tests)
+  - FreegleDocker: fef96cba (latest), 9c5a2277 (scheduler), 9235f19c (email queue command)
+  - iznik-nuxt3: fb9fdb92 (Playwright v2 API tests)
+- **Next**: Wait for CI 1758 results. If all pass, Phase 0 is complete and ready for merge.
 
