@@ -416,24 +416,27 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-02-07 - V1-to-V2 API Migration Phase 0 In Progress
-- **Status**: 🔄 In Progress
+### 2026-02-07 14:50 - V1-to-V2 API Migration Phase 0B/0C Complete, CI Go Tests Passing
+- **Status**: 🔄 In Progress - Go tests passing, investigating pre-existing Laravel failure
 - **Branch**: `feature/v2-migration-foundation` (FreegleDocker + iznik-server-go)
 - **Goal**: Complete Phase 0 of the V1-to-V2 API migration plan
 - **Completed**:
   - ✅ Phase 0B.1-0B.4: Test audit & gap analysis (coverage matrix created)
+  - ✅ Phase 0B.5: 44 tests for 8 previously untested endpoints (commit 770ff50)
+  - ✅ Phase 0B.5b: 32 auth/error tests for 19 partial-coverage endpoints (commit e3cacda)
   - ✅ Phase 0C.1-0C.3: V2 API coding guide (added to codingstandards.md)
-  - ✅ Plan file: `plans/active/v1-to-v2-api-migration.md` with Phase 6 review checklist
-  - ✅ Coverage matrix: `plans/active/api-test-coverage-matrix.md`
-  - ✅ PRs created: FreegleDocker #43, iznik-server-go #6
-- **In Progress**:
-  - 🔄 Phase 0B.5: Write missing Go tests for 8 untested v2 endpoints
+  - ✅ PRs updated: FreegleDocker #43, iznik-server-go #6
+  - ✅ CI pipelines 1747, 1749: Fixed 4 Go test issues (tracking ID, location handler, stories table, search dedup)
+  - ✅ CI pipeline 1751: Go: true, PHP: true, Playwright: true (all our changes pass)
+- **Pending**:
+  - 🔄 Fix pre-existing TestMailCommandTest failures (also failing on master pipeline 1739)
   - ⬜ Phase 0B.6: Write missing Playwright tests
   - ⬜ Phase 0A: Email Queue System
-- **CI**: Pipeline 1742 running on master (re-run after Playwright network failure)
-- **Key Files**:
-  - `plans/active/v1-to-v2-api-migration.md` (main plan)
-  - `plans/active/api-test-coverage-matrix.md` (coverage gaps)
-  - `codingstandards.md` (V2 Go API Handler Guide section)
-- **Next**: Write Go tests for untested endpoints, then check CI
+- **CI Results**:
+  - Pipeline 1751: Go ✅, PHP ✅, Playwright ✅, Laravel ❌ (pre-existing, same on master 1739)
+  - Master 1738 (Feb 6): ✅ All passed. Master 1739 (Feb 7): ❌ Same Laravel failure
+- **Key Commits**:
+  - iznik-server-go: 770ff50, e3cacda, a25504f (tracking fix), 69b22a8 (3 test fixes)
+  - FreegleDocker: f377ab4f, 602a276d, 4412a740, 055f85b3
+- **Next**: Investigate TestMailCommandTest failure, then Phase 0B.6 or 0A
 

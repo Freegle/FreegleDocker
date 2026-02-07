@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Models\UserEmail;
 use App\Services\EmailSpoolerService;
+use App\Services\MjmlCompilerService;
 use Tests\TestCase;
 
 class TestMailCommandTest extends TestCase
@@ -13,6 +14,13 @@ class TestMailCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Mock the MJML compiler since the MJML server is not available in CI.
+        // Return valid HTML so render() and spool() succeed without the external service.
+        $mockCompiler = $this->createMock(MjmlCompilerService::class);
+        $mockCompiler->method('compile')
+            ->willReturn('<html><body><p>Test User sent you a message</p></body></html>');
+        $this->app->instance(MjmlCompilerService::class, $mockCompiler);
 
         // Use a unique spool directory for each test to avoid race conditions
         // when running tests in parallel with ParaTest.
@@ -90,8 +98,8 @@ class TestMailCommandTest extends TestCase
     public function test_send_to_option_overrides_delivery_address(): void
     {
         // Create test users using helper methods.
-        $recipient = $this->createTestUser(['displayname' => 'Test Recipient']);
-        $sender = $this->createTestUser(['displayname' => 'Test Sender']);
+        $recipient = $this->createTestUser(['fullname' => 'Test Recipient']);
+        $sender = $this->createTestUser(['fullname' => 'Test Sender']);
 
         // Use unique emails for this test to avoid parallel test collisions.
         $originalEmail = $this->uniqueEmail('original');
@@ -135,8 +143,8 @@ class TestMailCommandTest extends TestCase
     public function test_without_send_to_uses_original_address(): void
     {
         // Create test users using helper methods.
-        $recipient = $this->createTestUser(['displayname' => 'Test Recipient']);
-        $sender = $this->createTestUser(['displayname' => 'Test Sender']);
+        $recipient = $this->createTestUser(['fullname' => 'Test Recipient']);
+        $sender = $this->createTestUser(['fullname' => 'Test Sender']);
 
         // Use unique email for this test to avoid parallel test collisions.
         $originalEmail = $this->uniqueEmail('original');
@@ -180,8 +188,8 @@ class TestMailCommandTest extends TestCase
     public function test_send_to_replaces_mailable_to_address(): void
     {
         // Create test users using helper methods.
-        $recipient = $this->createTestUser(['displayname' => 'Real User']);
-        $sender = $this->createTestUser(['displayname' => 'Test Sender']);
+        $recipient = $this->createTestUser(['fullname' => 'Real User']);
+        $sender = $this->createTestUser(['fullname' => 'Test Sender']);
 
         // Use unique emails for this test to avoid parallel test collisions.
         $realUserEmail = $this->uniqueEmail('realuser');
