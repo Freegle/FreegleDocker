@@ -306,7 +306,7 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 | 13 | /isochrone | PUT, POST, PATCH | 2 | ❌ Blocked | External API calls (Mapbox/ORS) - too complex for now |
 | 14 | /notification POST | Seen, AllSeen | 3 | ✅ Already done | Migrated 2025-12-13 |
 | 15 | /messages POST | MarkSeen | 1 | ✅ Done | PR #44, branch: feature/v2-messages-markseen |
-| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ⬜ Pending | `Migrate /newsfeed POST to v2` |
+| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ✅ Done | PR #48, branch: feature/v2-newsfeed-writes |
 | 17 | /volunteering | POST, PATCH, DELETE | 5 | ✅ Done | PR #46, branch: feature/v2-volunteering-writes |
 | 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ✅ Done | PR #47, branch: feature/v2-communityevent-writes |
 | 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
