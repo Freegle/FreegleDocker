@@ -183,11 +183,11 @@ Before starting endpoint migrations, establish the infrastructure.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0A.1 | Create `email_queue` table migration | ⬜ Pending | Laravel migration + idempotent SQL |
-| 0A.2 | Implement `email/queue.go` in Go | ⬜ Pending | `QueueEmail()` function |
-| 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ⬜ Pending | `mail:queue:process` artisan command |
-| 0A.4 | Add looping processor script | ⬜ Pending | Runs continuously, processes every 10s |
-| 0A.5 | Create Laravel Mailables for known types | ⬜ Pending | See email types table below |
+| 0A.1 | Create `email_queue` table migration | ✅ Done | Laravel migration + idempotent SQL + GORM model |
+| 0A.2 | Implement `email/queue.go` in Go | ✅ Done | `QueueEmail()` + variants, 5 Go tests |
+| 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ✅ Done | `mail:queue:process` with handler dispatch, 8 tests |
+| 0A.4 | Add schedule entry | ✅ Done | `everyMinute()` + `withoutOverlapping()` in routes/console.php |
+| 0A.5 | Create Laravel Mailables for known types | 🔄 Partial | `welcome` works end-to-end; forgot_password, verify_email, unsubscribe stubbed |
 | 0A.6 | Test email queue end-to-end | ⬜ Pending | Go inserts, Laravel sends, verify in MailPit |
 
 **Queue Table Schema:**
@@ -209,16 +209,15 @@ CREATE TABLE IF NOT EXISTS email_queue (
 );
 ```
 
-**Looping Processor Script** (`process-email-queue.sh`):
-```bash
-#!/bin/bash
-# Run continuously, processing email queue every 10 seconds.
-# Designed for long-running batch container execution.
-while true; do
-    php artisan mail:queue:process --limit=50
-    sleep 10
-done
+**Schedule Entry** (in `routes/console.php`):
+```php
+// Process email queue items inserted by Go v2 API.
+Schedule::command('mail:queue:process --limit=50')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
 ```
+Uses Laravel scheduler with `withoutOverlapping()` lock - consistent with existing email commands (welcome mail, chat notifications).
 
 **Email Types:**
 
