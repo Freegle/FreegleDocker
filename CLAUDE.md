@@ -416,6 +416,21 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
+**Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
+
+### 2026-02-08 - CI fixes for v2 PRs + reply-flow investigation
+- **Status**: All v2 PRs green. Adversarial review NOT done yet. Reply-flow fix pending.
+- **Active Plan Phase**: Phase 2 (Simple Write Endpoints) - Go handlers + tests + client switches done on feature branches but NOT reviewed per Phase 6A checklist
+- **V2 Feature Branches (all CI green)**: migration-foundation, comment-writes, address-writes, communityevent-writes, messages-markseen, newsfeed-writes, volunteering-writes
+- **CI Fixes Done**: Cross-repo branch alignment in orb, DLC rebuild, Go test DB setup, orb v1.1.160
+- **Reply-flow**: Pre-existing flaky test on master. Root cause: PDOException in ChatRoom::createConversation (SELECT FOR UPDATE under CI load). Fix needed in iznik-server on separate branch.
+- **Next Steps**:
+  1. Fix reply-flow on iznik-server branch
+  2. Audit what each v2 feature branch actually implements (agent running)
+  3. Do adversarial review (Phase 5C) for each implemented endpoint
+  4. Complete per-endpoint migration checklist (Phase 6A)
+  5. Only then move to next migration phase
+
 ### 2026-02-07 - Fix CI: Duplicate Threading Headers in ChatNotification
 - **Status**: ✅ Complete
 - **Branch**: master (fix), then merged into all v2 feature branches
