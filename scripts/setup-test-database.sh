@@ -69,4 +69,26 @@ if docker inspect -f '{{.State.Running}}' freegle-batch 2>/dev/null | grep -q "t
     echo "✅ iznik_go_test migrations complete"
 fi
 
+# Create email_queue table in both databases (needed by Go v2 API, migration
+# may not exist on master yet since it's on the v2-migration-foundation branch)
+echo "Ensuring email_queue table exists..."
+EMAIL_QUEUE_SQL="CREATE TABLE IF NOT EXISTS email_queue (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    email_type VARCHAR(50) NOT NULL,
+    user_id BIGINT UNSIGNED NULL,
+    group_id BIGINT UNSIGNED NULL,
+    message_id BIGINT UNSIGNED NULL,
+    chat_id BIGINT UNSIGNED NULL,
+    extra_data JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL,
+    failed_at TIMESTAMP NULL,
+    error_message TEXT NULL,
+    INDEX idx_pending (processed_at, created_at),
+    INDEX idx_type (email_type)
+);"
+docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik iznik -e \"$EMAIL_QUEUE_SQL\""
+docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik iznik_go_test -e \"$EMAIL_QUEUE_SQL\""
+echo "✅ email_queue table ready"
+
 echo "✅ Test database and environment ready!"
