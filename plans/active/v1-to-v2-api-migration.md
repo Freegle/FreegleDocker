@@ -584,6 +584,18 @@ Use background agents to parallelise independent research and audit tasks. For e
 - Dependent tasks (e.g., building the gap matrix) wait for all parallel agents to complete.
 - This dramatically reduces wall-clock time for research-heavy phases.
 
+**No v2 API work on master (CRITICAL):**
+- NEVER commit v2 API migration work directly to master. Only bug fixes required to keep master CI green belong on master.
+- All v2 migration work (Go endpoints, client switches, tests for new endpoints) stays on feature branches until the full migration is complete and reviewed.
+- Deprecation comments and plan/docs updates are OK on master since they don't change runtime behaviour.
+
+**Branch Chaining (CRITICAL):**
+- Each feature branch MUST be based on the previous successful branch, not independently on master.
+- Chain: `master` → `migration-foundation` → `phase1` → `phase2a` → `phase2b` → etc.
+- When a fix is needed: fix on the earliest affected branch (ideally master), then merge forward through the chain.
+- This ensures no fixes are lost and each branch includes all prior work.
+- NEVER create a new feature branch from master if there's an existing chain - always branch from the tip.
+
 ### Long-Running Ralph Execution
 
 For unattended multi-hour sessions, use ralph's `-t` flag with high iteration counts:
