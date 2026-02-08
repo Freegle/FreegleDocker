@@ -278,10 +278,10 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 
 | # | Endpoint | MT v1 Calls | Status | RALPH Task |
 |---|----------|-------------|--------|------------|
-| 7 | /chat GET | 16 | ❌ Blocked | `Switch MT chat GETs to v2` - v2 missing chattype filtering, unseen count, review listing. Needs Go handler changes first. |
+| 7 | /chat GET | 16 | ⏳ Deferred | `Switch MT chat GETs to v2` - Deferred to dedicated phase. 16+ v1 calls, complex UNION SQL with hardcoded chattypes, review system, unseen counts. Too complex for this PR. |
 | 8 | /config GET | 1 | ✅ Done | ConfigAPI.js already uses `$getv2` |
-| 9 | /location GET | 5 | ❌ Blocked | `Switch MT location GETs to v2` - v2 missing: bounds+dodgy spatial query, typeahead response format differs (array vs {locations:[]}), ClosestGroup missing `ontn` field. Needs Go handler changes. |
-| 10 | /story GET | 8 | ❌ Blocked | `Switch MT story GETs to v2` - v2 hardcodes reviewed=1, MT needs reviewed=0 for review workflow. Needs Go handler changes. |
+| 9 | /location GET | 5 | 🔄 Partial | `Switch MT location GETs to v2` - LatLng + typeahead switched. Added ontn to ClosestGroup, area info to Typeahead. Bounds/dodgy spatial queries remain on v1 (complex). |
+| 10 | /story GET | 8 | ✅ Done | `Switch MT story GETs to v2` - Go: added reviewed/public/newsletterreviewed filters, dynamic SQL. Nuxt: fetchMT uses v2 list→fetch pattern, ModStoryReview fetches user separately. |
 | 11 | /authority GET | FD+MT | ✅ Done | `Update FD+MT to use /authority v2` - Switched fetch() to $getv2, updated store to handle unwrapped response. Branch: feature/v2-mt-switchovers |
 
 **Task pattern for 1B:**
