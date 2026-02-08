@@ -418,18 +418,29 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-08 - CI fixes for v2 PRs + reply-flow investigation
-- **Status**: All v2 PRs green. Adversarial review NOT done yet. Reply-flow fix pending.
-- **Active Plan Phase**: Phase 2 (Simple Write Endpoints) - Go handlers + tests + client switches done on feature branches but NOT reviewed per Phase 6A checklist
-- **V2 Feature Branches (all CI green)**: migration-foundation, comment-writes, address-writes, communityevent-writes, messages-markseen, newsfeed-writes, volunteering-writes
-- **CI Fixes Done**: Cross-repo branch alignment in orb, DLC rebuild, Go test DB setup, orb v1.1.160
-- **Reply-flow**: Pre-existing flaky test on master. Root cause: PDOException in ChatRoom::createConversation (SELECT FOR UPDATE under CI load). Fix needed in iznik-server on separate branch.
+### 2026-02-08 - Adversarial review fixes + CI fix round
+- **Status**: Adversarial review DONE. CI fixes in progress for remaining branches.
+- **Active Plan Phase**: Phase 2 (Simple Write Endpoints) - Adversarial review complete, fixing CI
+- **CI Status (FreegleDocker)**:
+  - migration-foundation ✅ (#1802)
+  - messages-markseen ✅ (#1803)
+  - address-writes ✅ (#1804)
+  - comment-writes ✅ (#1813)
+  - newsfeed-writes 🔄 retrigger pushed #1819 (fixed iznik-nuxt3 submodule ref, same as volunteering/communityevent)
+  - volunteering-writes 🔄 running #1817 (fixed iznik-nuxt3 submodule ref from comment-writes → volunteering branch)
+  - communityevent-writes 🔄 running #1818 (same fix as volunteering)
+- **CI Status (Submodule PRs)**:
+  - All iznik-nuxt3 PRs: ✅ (all 6 green)
+  - iznik-server-go: address-writes #731 🔄, newsfeed-writes #732 🔄 (retriggered with fixed orb)
+  - All other Go PRs: ✅
+- **Root Causes Fixed**:
+  - Go #719/#720: Failed because orb was published after pipeline started (permission denied on setup-test-database.sh). Retriggered as #731/#732 with orb 1.1.160.
+  - Volunteering/communityevent #1814/#1815: iznik-nuxt3 submodule was pointing to comment-writes branch commit (f02ec311) which includes test-v2-comment-writes.spec.js. Those tests expect /api/comment routes that don't exist on these branches (404 vs expected 401). Fixed by pointing to correct nuxt3 feature branch tips.
+  - Nuxt #4725: Auto-canceled by #4726 which passed ✅
+- **Deferred Items**: AddGroup side effects (newsfeed entry + push notif), ConvertToStory, Report email
 - **Next Steps**:
-  1. Fix reply-flow on iznik-server branch
-  2. Audit what each v2 feature branch actually implements (agent running)
-  3. Do adversarial review (Phase 5C) for each implemented endpoint
-  4. Complete per-endpoint migration checklist (Phase 6A)
-  5. Only then move to next migration phase
+  1. Wait for all CI to pass
+  2. If all green → all v2 PRs ready for merge (next phase of migration)
 
 ### 2026-02-07 - Fix CI: Duplicate Threading Headers in ChatNotification
 - **Status**: ✅ Complete
