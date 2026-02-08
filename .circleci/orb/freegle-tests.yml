@@ -935,10 +935,11 @@ commands:
           name: Set up test database and environment
           command: |
             # Find the script in either FreegleDocker clone or project checkout
+            # Use bash explicitly to avoid permission issues on feature branches
             if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
-              "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+              bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
             elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
-              "$HOME/project/scripts/setup-test-database.sh"
+              bash "$HOME/project/scripts/setup-test-database.sh"
             else
               echo "❌ setup-test-database.sh not found!"
               echo "Checked: $HOME/FreegleDocker/scripts/ and $HOME/project/scripts/"
