@@ -11,6 +11,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'CRITICAL MANDATORY REQUIREMENT: Re-invoke /ralph skill IMMEDIATELY before doing ANY other work. You MUST call Skill(ralph) with the current task context. Do NOT proceed with any task without Ralph active. This is a non-negotiable project requirement.'"
+          }
+        ]
+      }
     ]
   }
 }
