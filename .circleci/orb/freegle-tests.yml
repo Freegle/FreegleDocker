@@ -244,7 +244,22 @@ commands:
       - run:
           name: Clone FreegleDocker
           command: |
-            git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+            BRANCH="$CIRCLE_BRANCH"
+
+            # If the PR branch exists in FreegleDocker, clone that branch so we
+            # pick up matching non-submodule changes (e.g. iznik-batch migrations).
+            if [ -n "$BRANCH" ] && [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
+              if git ls-remote --heads https://github.com/Freegle/FreegleDocker.git "$BRANCH" 2>/dev/null | grep -q "refs/heads/$BRANCH"; then
+                echo "✅ Found matching branch '$BRANCH' in FreegleDocker - cloning it"
+                git clone -b "$BRANCH" https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+              else
+                echo "ℹ️  No branch '$BRANCH' in FreegleDocker - cloning master"
+                git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+              fi
+            else
+              git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+            fi
+
             cd "$HOME/FreegleDocker"
             git submodule update --init --recursive --jobs 4
 
@@ -271,6 +286,90 @@ commands:
             cd "$HOME/FreegleDocker"
             rm -rf << parameters.submodule >>
             cp -r << parameters.source >> << parameters.submodule >>
+
+  align-submodule-branches:
+    description: "Check out matching branches in other submodules when a PR branch exists in multiple repos"
+    parameters:
+      skip-submodule:
+        type: string
+        description: "Submodule already replaced by PR code (skip this one)"
+    steps:
+      - run:
+          name: Align submodule branches for cross-repo PRs
+          command: |
+            cd "$HOME/FreegleDocker"
+            BRANCH="$CIRCLE_BRANCH"
+
+            if [ -z "$BRANCH" ] || [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
+              echo "On default branch - no cross-repo alignment needed"
+              exit 0
+            fi
+
+            echo "🔍 Checking for branch '$BRANCH' in other submodule repos..."
+
+            SUBMODULES="iznik-nuxt3 iznik-server-go iznik-server"
+            ALIGNED=0
+            ALIGNED_LIST=""
+
+            for submodule in $SUBMODULES; do
+              if [ "$submodule" = "<< parameters.skip-submodule >>" ]; then
+                echo "⏭️  Skipping $submodule (already replaced with PR code)"
+                continue
+              fi
+
+              # Check if branch exists in remote
+              if git ls-remote --heads "https://github.com/Freegle/${submodule}.git" "$BRANCH" 2>/dev/null | grep -q "refs/heads/$BRANCH"; then
+                echo "✅ Found branch '$BRANCH' in $submodule - checking out..."
+                cd "$submodule"
+                git fetch origin "$BRANCH"
+                git checkout "origin/$BRANCH"
+                cd "$HOME/FreegleDocker"
+                ALIGNED=$((ALIGNED + 1))
+                ALIGNED_LIST="$ALIGNED_LIST $submodule"
+              else
+                echo "ℹ️  No branch '$BRANCH' in $submodule - using default"
+              fi
+            done
+
+            if [ "$ALIGNED" -gt 0 ]; then
+              echo "🔗 Aligned $ALIGNED submodule(s) to branch '$BRANCH'"
+              # Write marker so downstream steps know containers need rebuilding
+              echo "$ALIGNED_LIST" > /tmp/aligned-submodules.txt
+            else
+              echo "ℹ️  No matching branches found in other repos"
+            fi
+
+  rebuild-aligned-containers:
+    description: "Rebuild Docker containers for submodules that were aligned to feature branches"
+    steps:
+      - run:
+          name: Rebuild containers for aligned submodules
+          command: |
+            if [ ! -f /tmp/aligned-submodules.txt ]; then
+              echo "ℹ️  No submodules were aligned - no rebuild needed"
+              exit 0
+            fi
+
+            ALIGNED=$(cat /tmp/aligned-submodules.txt)
+            cd "$HOME/FreegleDocker"
+
+            for submodule in $ALIGNED; do
+              case "$submodule" in
+                iznik-server-go)
+                  echo "🔨 Rebuilding apiv2 container (iznik-server-go was aligned)..."
+                  docker-compose -f docker-compose.yml build apiv2
+                  echo "✅ apiv2 rebuilt"
+                  ;;
+                iznik-server)
+                  echo "🔨 Rebuilding apiv1 container (iznik-server was aligned)..."
+                  docker-compose -f docker-compose.yml build apiv1
+                  echo "✅ apiv1 rebuilt"
+                  ;;
+                *)
+                  echo "ℹ️  No container rebuild needed for $submodule"
+                  ;;
+              esac
+            done
 
   build-submodule-container:
     description: "Build the container for a replaced submodule"
@@ -834,64 +933,19 @@ commands:
     steps:
       - run:
           name: Set up test database and environment
-          command: ~/scripts/setup-test-database.sh
-
-  run-vitest-tests:
-    description: "Run Vitest unit tests for iznik-nuxt3 components"
-    parameters:
-      reason:
-        type: string
-        default: "Running Vitest unit tests"
-    steps:
-      - run:
-          name: Install Node.js 22 for Vitest
           command: |
-            echo "📦 Installing Node.js 22..."
-            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-            echo "✅ Node.js $(node --version) installed"
-      - run:
-          name: Run Vitest unit tests
-          command: |
-            echo "🧪 << parameters.reason >>..."
-
-            # Determine the iznik-nuxt3 directory
-            if [ -d "$HOME/FreegleDocker/iznik-nuxt3" ]; then
-              NUXT_DIR="$HOME/FreegleDocker/iznik-nuxt3"
-            elif [ -d "$HOME/project/iznik-nuxt3" ]; then
-              NUXT_DIR="$HOME/project/iznik-nuxt3"
+            # Find the script in either FreegleDocker clone or project checkout
+            # Use bash explicitly to avoid permission issues on feature branches
+            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+            elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/project/scripts/setup-test-database.sh"
             else
-              echo "❌ Could not find iznik-nuxt3 directory"
+              echo "❌ setup-test-database.sh not found!"
+              echo "Checked: $HOME/FreegleDocker/scripts/ and $HOME/project/scripts/"
+              ls -la "$HOME/FreegleDocker/scripts/" 2>/dev/null || echo "$HOME/FreegleDocker/scripts/ not found"
+              ls -la "$HOME/project/scripts/" 2>/dev/null || echo "$HOME/project/scripts/ not found"
               exit 1
-            fi
-
-            echo "📂 Using iznik-nuxt3 at: $NUXT_DIR"
-            cd "$NUXT_DIR"
-
-            # Check if vitest is configured
-            if ! grep -q '"test:unit:run"' package.json; then
-              echo "⚠️ Vitest not configured in package.json, skipping unit tests"
-              exit 0
-            fi
-
-            # Install dependencies (using npm ci for faster, deterministic installs)
-            echo "📦 Installing npm dependencies..."
-            npm ci --prefer-offline --no-audit
-
-            # Generate .nuxt directory (required for tsconfig.json extends)
-            echo "🔧 Running nuxi prepare..."
-            npx nuxi prepare
-
-            # Run vitest
-            echo "🧪 Running Vitest unit tests..."
-            npm run test:unit:run -- --reporter=verbose 2>&1 | tee /tmp/vitest-output.log
-            VITEST_EXIT_CODE=${PIPESTATUS[0]}
-
-            if [ $VITEST_EXIT_CODE -eq 0 ]; then
-              echo "✅ Vitest unit tests passed!"
-            else
-              echo "❌ Vitest unit tests failed with exit code: $VITEST_EXIT_CODE"
-              exit $VITEST_EXIT_CODE
             fi
 
   run-vitest-tests:
@@ -1569,6 +1623,9 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-server"
+      - align-submodule-branches:
+          skip-submodule: "iznik-server"
+      - rebuild-aligned-containers
       - start-services
       - wait-for-basic-services
       - run-php-tests:
@@ -1584,10 +1641,14 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-server-go"
+      - align-submodule-branches:
+          skip-submodule: "iznik-server-go"
       - build-submodule-container:
           container: "apiv2"
       - start-services
       - wait-for-basic-services
+      - wait-for-batch-container
+      - setup-test-database
       - run-go-tests:
           reason: "Running Go tests for PR"
       # Coverage uploaded inline by status API
@@ -1601,6 +1662,9 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-nuxt3"
+      - align-submodule-branches:
+          skip-submodule: "iznik-nuxt3"
+      - rebuild-aligned-containers
       # Run Vitest unit tests first (doesn't need Docker services)
       - run-vitest-tests:
           reason: "Running Vitest unit tests for PR"
