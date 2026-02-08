@@ -278,11 +278,11 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 
 | # | Endpoint | MT v1 Calls | Status | RALPH Task |
 |---|----------|-------------|--------|------------|
-| 7 | /chat GET | 16 | ⬜ Pending | `Switch MT chat GETs to v2` |
-| 8 | /config GET | 1 | ⬜ Pending | `Switch MT config GET to v2` |
-| 9 | /location GET | 5 | ⬜ Pending | `Switch MT location GETs to v2` |
-| 10 | /story GET | 8 | ⬜ Pending | `Switch MT story GETs to v2` |
-| 11 | /authority GET | FD+MT | 🔄 Partial | `Update FD+MT to use /authority v2` |
+| 7 | /chat GET | 16 | ❌ Blocked | `Switch MT chat GETs to v2` - v2 missing chattype filtering, unseen count, review listing. Needs Go handler changes first. |
+| 8 | /config GET | 1 | ✅ Done | ConfigAPI.js already uses `$getv2` |
+| 9 | /location GET | 5 | ❌ Blocked | `Switch MT location GETs to v2` - v2 missing: bounds+dodgy spatial query, typeahead response format differs (array vs {locations:[]}), ClosestGroup missing `ontn` field. Needs Go handler changes. |
+| 10 | /story GET | 8 | ❌ Blocked | `Switch MT story GETs to v2` - v2 hardcodes reviewed=1, MT needs reviewed=0 for review workflow. Needs Go handler changes. |
+| 11 | /authority GET | FD+MT | ✅ Done | `Update FD+MT to use /authority v2` - Switched fetch() to $getv2, updated store to handle unwrapped response. Branch: feature/v2-mt-switchovers |
 
 **Task pattern for 1B:**
 1. Read MT API wrapper to identify v1 calls.
