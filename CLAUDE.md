@@ -416,26 +416,15 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-02-07 15:25 - V1-to-V2 API Migration Phase 0 COMPLETE
-- **Status**: 🔄 Waiting for CI pipeline 1758 to verify all tests pass
-- **Branch**: `feature/v2-migration-foundation` (FreegleDocker + iznik-server-go + iznik-nuxt3)
-- **Goal**: Complete Phase 0 of the V1-to-V2 API migration plan
-- **All Phase 0 Tasks Complete**:
-  - ✅ Phase 0A: Email Queue System
-    - 0A.1: email_queue table (Laravel migration + idempotent production SQL)
-    - 0A.2: Go emailqueue package (QueueEmail + variants, 5 tests)
-    - 0A.3: Laravel ProcessEmailQueueCommand (handler dispatch, 8 tests)
-    - 0A.4: Scheduler entry (everyMinute + withoutOverlapping)
-    - 0A.5: Welcome Mailable works end-to-end; others stubbed for future PRs
-    - 0A.6: Test coverage sufficient; MailPit E2E deferred to deployment
-  - ✅ Phase 0B: Test Audit & Gap Analysis (coverage matrix, 44+32 Go tests, 6 Playwright tests)
-  - ✅ Phase 0C: V2 API Coding Guide (in codingstandards.md)
-  - ✅ Code Quality Review: Extracted marshalExtraData() Go helper, removed duplication
-- **PRs**: FreegleDocker #43, iznik-server-go #6 (both updated)
-- **CI**: Pipeline 1758 running (latest with all changes including Go refactoring)
-- **Key Commits**:
-  - Go: 19ceb0b (refactor marshalExtraData), 1e6030f (email queue + tests)
-  - FreegleDocker: fef96cba (latest), 9c5a2277 (scheduler), 9235f19c (email queue command)
-  - iznik-nuxt3: fb9fdb92 (Playwright v2 API tests)
-- **Next**: Wait for CI 1758 results. If all pass, Phase 0 is complete and ready for merge.
+### 2026-02-08 - Fix CI: Cross-repo branch alignment and Go test DB setup
+- **Status**: 🔄 In Progress - merging master CI fixes into feature branches
+- **Branch**: master (CI fixes), merging into all v2 feature branches
+- **Changes**: Added `align-submodule-branches` orb command, `clone-freegle-docker` now checks for matching FreegleDocker branch, `rebuild-aligned-containers` for DLC cache, `iznik_go_test` DB setup, bash invocation for permissions
+- **Orb**: Published v1.1.160
+
+### 2026-02-07 - Fix CI: Duplicate Threading Headers in ChatNotification
+- **Status**: ✅ Complete
+- **Branch**: master (fix), then merged into all v2 feature branches
+- **Fix**: Remove existing threading headers before re-adding them (same pattern already used for Message-ID)
+- **Commit**: cbba4602 on master
 
