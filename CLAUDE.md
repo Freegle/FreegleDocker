@@ -418,6 +418,23 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+### 2026-02-08 16:00 - Phase 1B MT Switchovers Assessment + Authority v2 Switchover
+- **Status**: ✅ Phase 1B assessment complete, authority switchover done
+- **Active Plan Phase**: Phase 1B (MT Switchovers)
+- **Branch**: `feature/v2-mt-switchovers` (FreegleDocker + iznik-nuxt3)
+- **PR**: https://github.com/Freegle/FreegleDocker/pull/50
+- **Completed**:
+  - Switched authority GET from v1 to v2 (AuthorityAPI.js + stores/authority.js)
+  - Assessed all 5 Phase 1B endpoints for v2 compatibility
+  - CORS fix committed to master (added PATCH to Traefik CORS allowed methods)
+- **Phase 1B Results**:
+  - #7 /chat GET: ❌ Blocked - v2 missing chattype filtering, unseen count, review listing
+  - #8 /config GET: ✅ Already done
+  - #9 /location GET: ❌ Blocked - v2 missing bounds+dodgy spatial query, typeahead format differs, ontn field missing
+  - #10 /story GET: ❌ Blocked - v2 hardcodes reviewed=1, MT needs reviewed=0
+  - #11 /authority GET: ✅ Done (this session, PR #50)
+- **Next**: Wait for CI on PR #50. 3 blocked endpoints need Go handler changes before client switchover.
+
 ### 2026-02-08 - Adversarial review fixes + CI fix round
 - **Status**: Adversarial review DONE. CI fixes in progress for remaining branches.
 - **Active Plan Phase**: Phase 2 (Simple Write Endpoints) - Adversarial review complete, fixing CI
