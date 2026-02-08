@@ -45,4 +45,28 @@ docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
 echo "Setting up test environment (FreeglePlayground group, test users, etc.)..."
 docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
+# Run Laravel migrations to create tables not in schema.sql (e.g. email_queue)
+# schema.sql drops/recreates tables, so migrations must run AFTER it.
+echo "Running Laravel migrations against iznik database..."
+if docker inspect -f '{{.State.Running}}' freegle-batch 2>/dev/null | grep -q "true"; then
+    docker exec freegle-batch php artisan migrate --force --no-interaction 2>&1 || echo "⚠️ Laravel migrations had warnings (may be OK if tables already exist)"
+    echo "✅ Laravel migrations complete"
+else
+    echo "⚠️ Batch container not running - skipping Laravel migrations"
+fi
+
+# Set up iznik_go_test database for Go API tests (uses a separate DB)
+echo "Setting up iznik_go_test database for Go tests..."
+docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
+    mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \
+    mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \
+    mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \
+    mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql"
+
+# Run Laravel migrations against iznik_go_test too
+if docker inspect -f '{{.State.Running}}' freegle-batch 2>/dev/null | grep -q "true"; then
+    docker exec -e DB_DATABASE=iznik_go_test freegle-batch php artisan migrate --force --no-interaction 2>&1 || echo "⚠️ Go test DB migrations had warnings"
+    echo "✅ iznik_go_test migrations complete"
+fi
+
 echo "✅ Test database and environment ready!"
