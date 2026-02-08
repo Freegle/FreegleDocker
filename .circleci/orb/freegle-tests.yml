@@ -244,7 +244,22 @@ commands:
       - run:
           name: Clone FreegleDocker
           command: |
-            git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+            BRANCH="$CIRCLE_BRANCH"
+
+            # If the PR branch exists in FreegleDocker, clone that branch so we
+            # pick up matching non-submodule changes (e.g. iznik-batch migrations).
+            if [ -n "$BRANCH" ] && [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
+              if git ls-remote --heads https://github.com/Freegle/FreegleDocker.git "$BRANCH" 2>/dev/null | grep -q "refs/heads/$BRANCH"; then
+                echo "✅ Found matching branch '$BRANCH' in FreegleDocker - cloning it"
+                git clone -b "$BRANCH" https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+              else
+                echo "ℹ️  No branch '$BRANCH' in FreegleDocker - cloning master"
+                git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+              fi
+            else
+              git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+            fi
+
             cd "$HOME/FreegleDocker"
             git submodule update --init --recursive --jobs 4
 
