@@ -294,6 +294,7 @@ commands:
 
             SUBMODULES="iznik-nuxt3 iznik-server-go iznik-server"
             ALIGNED=0
+            ALIGNED_LIST=""
 
             for submodule in $SUBMODULES; do
               if [ "$submodule" = "<< parameters.skip-submodule >>" ]; then
@@ -309,6 +310,7 @@ commands:
                 git checkout "origin/$BRANCH"
                 cd "$HOME/FreegleDocker"
                 ALIGNED=$((ALIGNED + 1))
+                ALIGNED_LIST="$ALIGNED_LIST $submodule"
               else
                 echo "ℹ️  No branch '$BRANCH' in $submodule - using default"
               fi
@@ -316,9 +318,43 @@ commands:
 
             if [ "$ALIGNED" -gt 0 ]; then
               echo "🔗 Aligned $ALIGNED submodule(s) to branch '$BRANCH'"
+              # Write marker so downstream steps know containers need rebuilding
+              echo "$ALIGNED_LIST" > /tmp/aligned-submodules.txt
             else
               echo "ℹ️  No matching branches found in other repos"
             fi
+
+  rebuild-aligned-containers:
+    description: "Rebuild Docker containers for submodules that were aligned to feature branches"
+    steps:
+      - run:
+          name: Rebuild containers for aligned submodules
+          command: |
+            if [ ! -f /tmp/aligned-submodules.txt ]; then
+              echo "ℹ️  No submodules were aligned - no rebuild needed"
+              exit 0
+            fi
+
+            ALIGNED=$(cat /tmp/aligned-submodules.txt)
+            cd "$HOME/FreegleDocker"
+
+            for submodule in $ALIGNED; do
+              case "$submodule" in
+                iznik-server-go)
+                  echo "🔨 Rebuilding apiv2 container (iznik-server-go was aligned)..."
+                  docker-compose -f docker-compose.yml build apiv2
+                  echo "✅ apiv2 rebuilt"
+                  ;;
+                iznik-server)
+                  echo "🔨 Rebuilding apiv1 container (iznik-server was aligned)..."
+                  docker-compose -f docker-compose.yml build apiv1
+                  echo "✅ apiv1 rebuilt"
+                  ;;
+                *)
+                  echo "ℹ️  No container rebuild needed for $submodule"
+                  ;;
+              esac
+            done
 
   build-submodule-container:
     description: "Build the container for a replaced submodule"
@@ -1573,6 +1609,7 @@ jobs:
           submodule: "iznik-server"
       - align-submodule-branches:
           skip-submodule: "iznik-server"
+      - rebuild-aligned-containers
       - start-services
       - wait-for-basic-services
       - run-php-tests:
@@ -1611,6 +1648,7 @@ jobs:
           submodule: "iznik-nuxt3"
       - align-submodule-branches:
           skip-submodule: "iznik-nuxt3"
+      - rebuild-aligned-containers
       # Run Vitest unit tests first (doesn't need Docker services)
       - run-vitest-tests:
           reason: "Running Vitest unit tests for PR"
