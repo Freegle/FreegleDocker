@@ -55,4 +55,18 @@ else
     echo "⚠️ Batch container not running - skipping Laravel migrations"
 fi
 
+# Set up iznik_go_test database for Go API tests (uses a separate DB)
+echo "Setting up iznik_go_test database for Go tests..."
+docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
+    mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \
+    mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \
+    mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \
+    mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql"
+
+# Run Laravel migrations against iznik_go_test too
+if docker inspect -f '{{.State.Running}}' freegle-batch 2>/dev/null | grep -q "true"; then
+    docker exec -e DB_DATABASE=iznik_go_test freegle-batch php artisan migrate --force --no-interaction 2>&1 || echo "⚠️ Go test DB migrations had warnings"
+    echo "✅ iznik_go_test migrations complete"
+fi
+
 echo "✅ Test database and environment ready!"
