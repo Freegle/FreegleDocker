@@ -327,7 +327,7 @@ These require the email queue (Phase 0A) to be complete first.
 | # | Endpoint | Email Types | Status | RALPH Task |
 |---|----------|-------------|--------|------------|
 | 21 | /session | forgot_password, unsubscribe | 🔄 PR Ready | Go PR #18, FD PR #55, Nuxt3 PR #158. LostPassword + Unsubscribe migrated. Login/PATCH/DELETE deferred. |
-| 22 | /user writes | welcome, verify_email | ⬜ Pending | `Migrate /user write ops to v2` |
+| 22 | /user writes | welcome, verify_email | 🔄 PR Ready | Go PR #21, FD PR #58, Nuxt3 PR #161. Rate, AddEmail, RemoveEmail, RatingReviewed, Engaged migrated. PUT (signUp), PATCH (save), DELETE (purge), MT ops deferred. |
 | 23 | /memberships | modmail | ⬜ Pending | `Migrate /memberships to v2` |
 | 24 | /message writes | modmail, welcome | ⬜ Pending | `Migrate /message write ops to v2` |
 | 25 | /chatmessages POST | chat_notification | 🔄 PR Ready | Go PR #20, FD PR #57, Nuxt3 PR #160. PATCH (rsvp) + DELETE (soft-delete) migrated. POST create already on v2. MT moderation actions deferred. |
