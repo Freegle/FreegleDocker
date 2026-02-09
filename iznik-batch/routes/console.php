@@ -158,6 +158,13 @@ Schedule::command('users:retention-stats')
 // See docker/supervisor.conf for the mail-spooler program.
 */
 
+// Process email queue items inserted by Go v2 API.
+// Reads pending rows from email_queue table, builds Mailables, spools for sending.
+Schedule::command('mail:queue:process --limit=50')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Clean up old sent emails - run daily.
 Schedule::command('mail:spool:process --cleanup --cleanup-days=7')
     ->dailyAt('04:00')
