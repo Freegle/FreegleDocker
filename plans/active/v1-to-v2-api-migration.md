@@ -256,9 +256,9 @@ Produce a standalone guide file that ralph references during implementation.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0C.1 | Extract patterns from existing Go handlers | ⬜ Pending | Analyse message.go, chat.go, user.go, authority.go |
-| 0C.2 | Write `iznik-server-go/API-GUIDE.md` | ⬜ Pending | Based on Style Guide section above |
-| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ⬜ Pending | So ralph reads it automatically |
+| 0C.1 | Extract patterns from existing Go handlers | ✅ Done | Analysed message.go, address.go, user.go, authority.go, volunteering.go, newsfeed.go |
+| 0C.2 | Write `iznik-server-go/API-GUIDE.md` | ✅ Done | Covers auth, parsing, DB, goroutines, responses, privacy, writes, testing, routes |
+| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ✅ Done | Added prominent reference at top of file |
 
 ---
 
@@ -306,7 +306,7 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|
 | 12 | /address | PATCH, PUT | 5 | 🔄 PR Ready | Go PR #8, FD PR #45, Nuxt3 PR #149. CI green. Awaiting merge. |
-| 13 | /isochrone | PUT, POST, PATCH | 2 | ⬜ Pending | `Migrate /isochrone write ops to v2` |
+| 13 | /isochrone | PUT, POST, PATCH | 2 | ⏳ Deferred | Create/Edit need Mapbox/ORS API calls for polygon generation. DELETE is simple but useless alone. Move to Phase 4. |
 | 14 | /notification POST | Seen, AllSeen | 3 | ✅ Done | Already migrated (2025-12-13). See "Already Migrated" section. |
 | 15 | /messages POST | MarkSeen | 1 | 🔄 PR Ready | Go PR #7, FD PR #44, Nuxt3 PR #148. CI green. Awaiting merge. |
 | 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | 🔄 PR Ready | Go PR #11, FD PR #48, Nuxt3 PR #152. CI green. Awaiting merge. |
