@@ -1,1674 +1,1096 @@
-# State-of-the-Art Image Recognition for Object Analysis
-## Research Review for Freegle Item Attribute Extraction
+# AI Image Recognition for EEE Detection on Freegle
 
-**Date:** November 2025
-**Research Focus:** Capabilities for extracting object attributes from images relevant to reuse/donation platforms
+**Date:** February 2026 (revised from November 2025 original)
+**Primary Focus:** Identifying Electrical and Electronic Equipment (EEE) from item photos
+**Secondary Focus:** Extracting item attributes (type, condition, material, size)
 
 ---
 
 ## Executive Summary
 
-This document reviews state-of-the-art computer vision and AI technologies for extracting attributes from images of household items, furniture, appliances, and other objects commonly shared on Freegle. The research covers both specialized models and general-purpose multimodal AI systems, assessing their reliability and practical applicability.
+This document covers the research, planning, risk assessment, and cost tracking for using AI to detect EEE items from photos posted on Freegle. It consolidates and replaces three earlier documents (research, critical review, and cost tracking) into a single reference.
 
-**Key Finding:** Modern vision AI has made remarkable progress, with different approaches suited to different attributes. Multimodal foundation models (GPT-4V, Claude 3.5 Sonnet, Gemini) offer the most flexible general-purpose solution, while specialized models achieve higher accuracy for specific tasks.
+**Core finding:** Modern multimodal AI models (Gemini 2.5 Flash, Claude Sonnet 4.5, GPT-4o) can now identify EEE items from photos with high reliability at low cost. The hybrid multi-model pipeline originally proposed is no longer necessary — a single multimodal model call handles EEE detection, object classification, and attribute extraction in one pass, at a fraction of the cost and complexity.
 
-**Critical Insight for Freegle:** Since items are shared via photos without readable barcodes, visual product recognition and similarity search (using embeddings like CLIP/SigLIP) are essential. Services like API4.AI, Google Lens API, and custom embedding-based solutions can match products from images alone and extract metadata from existing product databases.
+**Key change from 2025 research:** The original plan proposed a three-tier routing pipeline (Roboflow -> API4.AI -> multimodal AI). Since then, multimodal model costs have dropped significantly and accuracy has improved substantially. A single API call to Gemini 2.5 Flash or Claude Sonnet 4.5 now achieves better results than the entire multi-model pipeline, at lower cost and far less complexity.
 
----
-
-## 1. Object Classification & Detection
-
-### Current State-of-the-Art (2024-2025)
-
-**Leading Models:**
-- **YOLOv10** - Latest in the YOLO series, state-of-the-art speed and accuracy
-- **RT-DETR** (CVPR 2024) - First 30 FPS transformer-based detector beating YOLO-X
-- **Mask R-CNN** - Region-based CNN with instance segmentation
-- **YOLOv8** - Widely deployed, excellent balance of speed/accuracy
-
-**Capabilities:**
-- Real-time object detection (30+ FPS)
-- Instance segmentation (pixel-level object boundaries)
-- Multi-scale detection (small to large objects)
-- 1000+ object categories in trained datasets
-
-**Reliability for Freegle:**
-- ✅ **Excellent (95%+)** - Common household items, furniture, appliances
-- ✅ **Excellent (95%+)** - Basic categorization (chair, table, lamp, etc.)
-- ⚠️ **Good (85-90%)** - Specific subcategories (office chair vs dining chair)
-- ⚠️ **Moderate (70-80%)** - Unusual or uncommon items
-
-**Dataset Resources:**
-- **LVIS** - 2.2M+ annotations, 1000+ categories with detailed attributes
-- **COCO** - Industry standard with 80 common categories
+**Recommendation:** Start with an ultra-minimal MVP (500 items, single model, 6-8 weeks, ~£500) to validate the concept before committing to a larger system.
 
 ---
 
-## 2. Material Recognition
+## 1. Why This Matters
 
-### Research Status
+Users don't self-categorise items as EEE. Peer-to-peer reuse platforms are overlooked in EEE statistics. AI detection would:
 
-Material recognition remains a challenging problem in computer vision. Unlike object detection, finding reliable features that distinguish materials is difficult.
+- Capture EEE items that users wouldn't classify as electrical (aquariums with heaters, salt lamps, baby bouncers with music, dimmer switches, clocks)
+- Generate reliable statistics on types, quantity, and state of EEE items passing through Freegle
+- Enable recycling communications for non-reusable EEE items
+- Provide data to local authorities for waste prevention targets
+- Support WEEE compliance reporting
 
-**Recognized Material Categories:**
-- Fabric/textiles
-- Wood
-- Metal
-- Plastic
-- Glass
-- Leather
-- Paper
-- Stone
-- Concrete
-
-**Current Approaches:**
-
-1. **Perceptually-Inspired Features**
-   - Color and texture analysis
-   - Micro-texture patterns
-   - Outline shape characteristics
-   - Reflectance properties
-
-2. **Deep Learning Methods**
-   - Transfer learning from CNNs
-   - Multi-scale texture analysis
-   - Physics-based modeling of material appearance
-
-3. **Industrial Applications**
-   - Construction material classification (plastics, metals, wood, concrete)
-   - Manufacturing quality control
-   - Waste sorting systems
-
-**Reliability for Freegle:**
-- ✅ **Good (80-85%)** - High-contrast materials (metal vs wood vs fabric)
-- ⚠️ **Moderate (70-75%)** - Similar materials (plastic vs painted wood)
-- ❌ **Limited (50-65%)** - Mixed materials, coated/painted surfaces
-- ⚠️ **Context-dependent** - Performance varies significantly with lighting and image quality
-
-**Challenges:**
-- Material appearance varies with lighting conditions
-- Coatings/finishes obscure underlying materials
-- Mixed-material objects require component-level analysis
-- Limited recent research (most work from 2010-2022)
+**Scale:** ~8,000 posts/month on Freegle, of which an estimated 10-15% are EEE (800-1,200 items/month).
 
 ---
 
-## 3. Condition Assessment
+## 2. Current State of the Art (2026)
 
-### Current Capabilities
+### 2.1 Multimodal Foundation Models
 
-AI-powered condition assessment is actively used in manufacturing quality control, with emerging applications in e-commerce and reuse sectors.
+The landscape has shifted dramatically since 2024. Multimodal models are now the recommended primary approach rather than a fallback.
 
-**Detectable Condition Issues:**
-- Dents and deformations
-- Scratches and surface damage
-- Discoloration and staining
-- Misalignments
-- Missing components
-- Structural damage
-- Wear patterns
+**Leading Models (February 2026):**
 
-**Application Areas:**
-- Manufacturing defect detection (real-time)
-- Furniture assembly verification
-- Appliance quality inspection
-- E-waste condition classification
+| Model | Strengths | Vision Quality | Cost per Image | Speed |
+|-------|-----------|---------------|----------------|-------|
+| **Gemini 2.5 Flash** | Fast, cheap, excellent vision | Excellent | ~£0.002-0.005 | <2s |
+| **Claude Sonnet 4.5** | Strong reasoning, reliable JSON output | Excellent | ~£0.01-0.02 | 2-4s |
+| **Claude Opus 4.6** | Best reasoning, handles ambiguity | Best available | ~£0.05-0.10 | 3-6s |
+| **GPT-4o** | Good all-rounder, widely available | Very Good | ~£0.01-0.03 | 2-4s |
+| **Gemini 2.5 Pro** | Strong reasoning, large context | Excellent | ~£0.01-0.03 | 2-4s |
 
-**Technical Approaches:**
-1. **Deep Learning Inspection**
-   - Neural networks trained on defect datasets
-   - Real-time defect detection and classification
-   - Anomaly detection for unusual damage
-
-2. **Image Recognition APIs**
-   - Automated quality assessment
-   - Dimension measurement
-   - Assembly verification
-
-**Reliability for Freegle:**
-- ✅ **Very Good (85-90%)** - Obvious damage (broken, heavily scratched)
-- ✅ **Good (80-85%)** - Structural issues (bent, warped, dented)
-- ⚠️ **Moderate (70-75%)** - Surface wear assessment
-- ⚠️ **Moderate (65-75%)** - Functional condition (requires context)
-- ❌ **Poor (40-60%)** - Subtle quality differences ("good" vs "very good")
-
-**Limitations:**
-- Cannot assess functional condition (does it work?)
-- Requires multiple angles for comprehensive assessment
-- Subjective quality judgments remain difficult
-- Hidden damage not visible in photos
-
----
-
-## 4. Size & Dimension Estimation
-
-### Monocular Depth Estimation
-
-Recent advances in estimating depth and size from single images show promise but with significant limitations.
-
-**State-of-the-Art Models (2024):**
-
-1. **Apple Depth Pro** (2024)
-   - High-resolution depth maps with sharp details
-   - Metric depth with absolute scale
-   - No camera metadata required
-   - Sub-second processing time
-
-2. **Academic Research**
-   - 160+ papers published (2012-2024)
-   - Supervised and unsupervised approaches
-   - Deep learning-based estimation
-
-**Capabilities:**
-- Relative depth estimation (near vs far)
-- Metric depth prediction (actual distances)
-- 3D object localization
-- Size, position, and orientation estimation
-
-**Reliability for Freegle:**
-- ⚠️ **Moderate (70-75%)** - Relative size (large vs small)
-- ⚠️ **Moderate-Low (60-70%)** - Approximate dimensions with scale reference
-- ❌ **Poor (30-50%)** - Absolute measurements without reference
-- ✅ **Good (80-85%)** - Size categories (small/medium/large)
-
-**Critical Challenges:**
-- **Scale ambiguity** - Cannot determine absolute size without reference
-- **Occlusions** - Partially hidden objects reduce accuracy
-- **Low-texture regions** - Plain surfaces are difficult to measure
-- **Reference requirements** - Need known-size objects for calibration
-
-**Practical Solutions:**
-- Request reference objects in photos (coin, ruler, hand)
-- Use standardized size categories instead of measurements
-- Multiple photo angles improve accuracy
-- Context clues (furniture in room, item on table)
-
----
-
-## 5. Weight Estimation
-
-### Research Status
-
-No dedicated research found for weight estimation from images alone. This remains a largely unsolved problem.
-
-**Possible Approaches:**
-
-1. **Indirect Estimation**
-   - Material identification + volume estimation → weight
-   - Object category + size → typical weight range
-   - Historical data correlation
-
-2. **Multimodal AI Inference**
-   - Large language models with vision can make educated guesses
-   - Based on object type, material, and apparent size
-   - Provides ranges rather than precise values
-
-**Reliability for Freegle:**
-- ⚠️ **Moderate (60-70%)** - Weight categories (light/medium/heavy) for known object types
-- ❌ **Poor (30-50%)** - Specific weight estimates
-- ⚠️ **Context-dependent** - Works better for standard objects (books, furniture)
-
-**Recommendation:**
-Weight should be user-provided or estimated through category-based ranges rather than computer vision.
-
----
-
-## 6. Value & Price Estimation
-
-### Visual Price Prediction
-
-Emerging research area with practical applications in e-commerce and secondary markets.
-
-**Research Findings (2024):**
-
-1. **Image-Based Approaches**
-   - Transfer learning on deep CNNs
-   - Visual feature extraction + regression models
-   - Ensemble methods (multiple model combination)
-
-2. **Hybrid Multi-Modal Systems**
-   - CLIP for image features
-   - SBERT for text descriptions
-   - XGBoost for fusion and prediction
-
-3. **Domain-Specific Models**
-   - Vehicle valuation ("AI Blue Book")
-   - Property price estimation
-   - E-commerce product pricing
-   - Art market prediction
-
-**Key Finding:** Social signals and metadata (brand, age, condition) predict price better than visual features alone, especially for non-commodity items.
-
-**Reliability for Freegle:**
-- ⚠️ **Moderate (65-75%)** - Price range for commodity items (books, common electronics)
-- ⚠️ **Low-Moderate (50-65%)** - Unique/used items with condition variations
-- ❌ **Poor (40-50%)** - Unusual items, antiques, handmade goods
-- ✅ **Good (75-85%)** - New/like-new items with clear brand identification
-
-**Challenges:**
-- Condition heavily affects value but is hard to assess
-- Local market variations
-- Emotional/sentimental value unmeasurable
-- Brand recognition required for accurate pricing
-
-**Note:** For a reuse platform like Freegle (free items), absolute value estimation is less critical than relative desirability or "gift value."
-
----
-
-## 7. Electrical vs Non-Electrical Classification
-
-### WEEE Detection
-
-Specific research exists for identifying Waste Electrical and Electronic Equipment (WEEE).
-
-**Available Resources:**
-
-1. **E-Waste Dataset** (Roboflow)
-   - 19,613 annotated images
-   - 77 classes of electronic devices
-   - Active as of April 2024
-
-2. **WEEE Categories**
-   - Large household appliances
-   - Small household appliances
-   - IT and telecommunications equipment
-   - Consumer electronics
-   - Lighting equipment
-
-**Research Applications:**
-- Deep learning CNNs for WEEE classification
-- Mobile robot identification systems
-- Household appliance recognition
-- Automated waste sorting
-
-**Detectable Electrical Items:**
-- Refrigerators, washing machines
-- TVs, monitors, computers
-- Small appliances (toasters, kettles)
-- Consumer electronics (phones, tablets)
-- Lighting fixtures
-
-**Reliability for Freegle:**
-- ✅ **Excellent (90-95%)** - Obvious electrical items (appliances, electronics)
-- ✅ **Very Good (85-90%)** - Items with visible power cords/plugs
-- ⚠️ **Good (75-85%)** - Battery-operated items
-- ⚠️ **Moderate (70-75%)** - Ambiguous items (some tools, toys)
-
-**Regulatory Context:**
-- WEEE Directive governs electrical waste in EU
-- Household appliances + consumer electronics = 55.7% of e-waste in India
-- Automated classification supports proper disposal/recycling
-
----
-
-## 8. Multimodal Foundation Models
-
-### General-Purpose Vision AI (2024-2025)
-
-Large multimodal models offer flexible, general-purpose vision understanding without task-specific training.
-
-**Leading Models:**
-
-1. **GPT-4o (OpenAI)**
-   - Best overall performer on vision benchmarks
-   - Excellent object detection and classification
-   - Strong resilience to image corruptions
-   - ❌ Struggles with precise object detection in complex scenes
-   - ❌ Specialized domain analysis remains challenging
-
-2. **Gemini 2.0 Flash & 1.5 Pro (Google)**
-   - Second-best performance (after GPT-4o)
-   - Fast inference with Gemini 2.0 Flash
-   - Good balance of speed and accuracy
-
-3. **Claude 3.5 Sonnet (Anthropic)**
-   - Fourth in benchmark rankings
-   - 200K token context window
-   - State-of-the-art vision subsystem
-   - Excels at complex chart interpretation and visual reasoning
-   - Claude 3.7 Sonnet (Feb 2025) adds hybrid reasoning modes
-
-4. **Qwen2-VL, Llama 3.2, GPT-4o-mini**
-   - Competitive mid-tier options
-   - Various trade-offs between speed and accuracy
-
-**Benchmark Performance:**
-Tested on standard CV tasks (COCO, ImageNet):
-- Object detection
-- Semantic segmentation
-- Image classification
-- Depth estimation
-- Surface normal prediction
+**Why multimodal-first is now viable:**
+- A single API call extracts all attributes (EEE status, type, condition, material, size) in one pass
+- No model routing logic, no multiple API integrations, no complex failure handling
+- Structured JSON output is now reliable from all major models
+- Costs have dropped 5-10x since 2024
+- Accuracy on household item recognition is now 90%+ for leading models
 
 **Capabilities for Freegle:**
-- ✅ Natural language queries about images
-- ✅ Multi-attribute extraction in single pass
-- ✅ Context-aware reasoning
-- ✅ Handles unusual/unknown objects
-- ✅ Can provide explanations and confidence levels
-
-**Advantages:**
-- No training required
-- Flexible prompting for specific needs
-- Handles edge cases and unusual items
-- Provides reasoning about assessments
-- Can combine multiple attributes
+- Natural language queries about images ("Is this item electrical?")
+- Multi-attribute extraction in single pass
+- Handles unusual/unknown items well
+- Provides reasoning and confidence levels
+- Can combine image analysis with text description analysis
 
 **Limitations:**
-- Slower than specialized models
-- Less accurate for specialized tasks
-- May hallucinate details
-- API rate limits may apply
+- May hallucinate details (mitigated by confidence thresholds)
+- Slight variability between calls (mitigated by structured prompts)
+- Cannot assess functional condition (does it work?)
+- Hidden damage not visible in photos
+
+### 2.2 Specialised Models (For Reference)
+
+These remain available but are no longer recommended as the primary approach given multimodal improvements:
+
+**Object Detection:**
+- YOLOv11, RT-DETR v2 — real-time object detection, 95%+ on common items
+- Best for high-throughput scenarios (thousands per second)
+- Overkill for Freegle's volume (~11 items/hour average)
+
+**WEEE-Specific:**
+- Roboflow E-Waste Dataset: 19,613 images, 77 classes
+- Purpose-built for electronic waste classification
+- Could supplement multimodal models if needed
+
+**Household Item APIs:**
+- API4.AI: 200+ categories of furniture and household items
+- Dragoneye, FurnishRec: Furniture-specific recognition
+
+**Assessment:** At Freegle's volume, the complexity of integrating multiple specialised models is not justified. A single multimodal API call is simpler, cheaper, and more accurate for the combined task.
+
+### 2.3 Existing Freegle AI Infrastructure
+
+Freegle already has working integrations that can be leveraged:
+
+- **Gemini API** (`iznik-server/include/ai/GeminiHelper.php`, `iznik-batch/app/Services/GeminiService.php`) — dynamic model selection, caching, JSON output
+- **OpenAI API** (`iznik-server/include/misc/Pollinations.php`) — GPT-4o-mini vision for people detection
+- **AI image storage** (`ai_images` table) — caching and deduplication
+- **Batch processing** infrastructure in iznik-batch
+
+This means the integration effort is significantly reduced — the API plumbing already exists.
 
 ---
 
-## 9. Visual Product Databases & Matching Services
-
-### Overview
-
-Since Freegle works from photos of used items where barcodes are not visible or readable, visual product recognition services are essential. These services match products from images alone without requiring barcode scans.
-
-### Commercial Visual Recognition APIs
-
-#### API4.AI Furniture & Household Items Recognition
-- **Coverage:** 200+ distinct categories of furniture and household items
-- **Capabilities:**
-  - Automatic item counting
-  - Detailed JSON outputs with item quantities
-  - Interior design, real estate, retail applications
-- **Relevance to Freegle:** ✅ **High** - Direct household item recognition
-- **Access:** Commercial API
-- **API:** `https://api4.ai/apis/household-stuff`
-
-#### Google Cloud Vision API - Product Search
-- **Approach:** Custom product catalog matching
-- **How it works:**
-  - Retailers create product sets with reference images
-  - Query images are matched against the catalog using ML
-  - Returns ranked list of visually and semantically similar results
-- **Product Categories:** Home goods, apparel, toys, packaged goods, general
-- **Relevance to Freegle:** ⚠️ **Medium** - Requires building custom product catalog
-- **Limitation:** Need to maintain your own product database with reference images
-- **Access:** Google Cloud Platform API
-
-#### Dragoneye Furniture Recognition API
-- **Capabilities:**
-  - Identifies furniture types (sofa, table, chair)
-  - Returns specific features of each item
-  - REST API integration
-- **Relevance to Freegle:** ✅ **High** for furniture items
-- **Implementation:** Simple REST API call from backend
-
-#### FurnishRec - Furniture Category Recognition (Azure Marketplace)
-- **Categories:** Baby beds, bar chairs, bathroom cabinets, kitchen cabinets, and more
-- **Platform:** Available on Microsoft Azure Marketplace
-- **Relevance to Freegle:** ✅ **Medium-High** for furniture-specific recognition
-
-#### Roboflow Pre-trained Models
-- **Household Items Model** (Lowe's Innovation Labs)
-  - 50+ open source images
-  - Pre-trained API available
-- **Furniture Detection Model**
-  - Trained 2024-06-28
-  - 90.8% mAP, 72.0% Precision, 85.6% Recall
-- **Relevance to Freegle:** ✅ **High** - Good accuracy, accessible
-- **Advantage:** Can self-host models for cost savings
-
-### Visual Similarity Search Architecture
-
-#### Embedding-Based Product Matching
-
-Modern visual product search uses **embedding models** that convert images into numerical "fingerprints" (vectors). Similar products have similar fingerprints and cluster together geometrically.
-
-**Key Technologies:**
-
-1. **CLIP (Contrastive Language-Image Pre-training) - OpenAI**
-   - Multimodal: understands both images and text
-   - Can search with text queries or images
-   - Industry standard for visual search
-
-2. **SigLIP (Sigmoid Language-Image Pre-training)**
-   - Uses sigmoid loss for image-text matching
-   - Improved efficiency over CLIP
-
-3. **SimCLR (Simple Contrastive Learning of Visual Representations)**
-   - Pure visual similarity
-   - Good for "find similar items" features
-
-**Implementation Pattern:**
-```
-1. Extract embeddings from product images using CLIP/SigLIP
-2. Store embeddings in vector database (Milvus, FAISS, Annoy)
-3. When user uploads photo:
-   - Extract embedding from user's image
-   - Find nearest neighbors in vector database
-   - Return most similar products with metadata
-```
-
-**Real-World Examples:**
-- **Pinterest:** 200B+ product embeddings, hundreds of millions of searches/month
-- **eBay:** Visual similarity for product categorization and matching
-- **Major retailers:** "More like this" search features
-
-**Relevance to Freegle:**
-- ✅ **Very High** - Best approach for matching against product catalogs
-- ✅ **Scalable** - Can handle millions of products efficiently
-- ✅ **Flexible** - Works with any product type
-- ⚠️ **Requires:** Product database with images to match against
-
-#### Vector Database Options
-
-**FAISS (Facebook AI Similarity Search)**
-- Open source, highly optimized
-- Handles massive datasets (100M+ vectors)
-- Sub-linear retrieval times
-- Self-hosted
-
-**Milvus**
-- Optimized vector database
-- 200M+ item catalogs supported
-- High-precision similarity search
-- Cloud or self-hosted
-
-**Annoy (Spotify)**
-- Approximate nearest neighbors
-- Memory-efficient
-- Good for smaller datasets (<10M)
-
-### Google Lens API (Unofficial)
-
-**Capabilities:**
-- Product recognition from photos
-- Shopping product discovery
-- Finding similar and exact match images
-- Price comparison data
-
-**Available Through:**
-- SerpApi Google Lens API
-- SearchAPI.io
-- Scrapingdog
-- Apify
-- Oxylabs
-
-**How it Works:**
-- Upload image to API
-- Returns recognized products with:
-  - Product names and descriptions
-  - Prices and availability
-  - Similar products
-  - Shopping links
-
-**Relevance to Freegle:**
-- ✅ **High** - Can identify branded products
-- ✅ **Product metadata** - Get specifications from recognized items
-- ⚠️ **Unofficial** - May have reliability/legal considerations
-- ⚠️ **API Dependency** - Requires third-party service
-
-### Amazon Solutions
-
-#### Amazon Rekognition API
-- Image and video analysis service (AWS)
-- Object and scene detection
-- Custom label training available
-
-#### Amazon Titan Multimodal Embeddings
-- Powers accurate multimodal search
-- Recommendations and personalization
-- Reverse image search capabilities
-- Integrated with AWS Bedrock
-
-**Relevance to Freegle:**
-- ✅ **Good** for custom solutions
-- ⚠️ **Requires:** AWS infrastructure and setup
-
-### Available Product Datasets
-
-#### IKEA Datasets
-
-1. **IKEA Product Dataset**
-   - 12,600+ household object images
-   - Room category separation
-   - Size descriptions for most items
-   - Available on GitHub/Kaggle
-
-2. **IKEA Interior Design Dataset**
-   - 298 room photos with descriptions
-   - 2,193 individual product photos with text
-   - Scraped from IKEA.com
-   - Built for style search engines
-
-3. **IKEA Multimodal Dataset (2017)**
-   - All IKEA products from 2017
-   - Product descriptions + images
-   - Multi-language support
-
-4. **Roboflow IKEA Furnitures**
-   - 872 annotated images
-   - Object detection format
-   - Open source
-
-**Relevance to Freegle:**
-- ✅ **High** - Representative of common furniture items
-- ✅ **Free** - Can use for training/matching
-- ⚠️ **Limited** - Only covers IKEA products
-- **Use case:** Training baseline models for furniture recognition
-
-#### Energy Star Product Database
-- Official appliance database
-- Specifications, efficiency ratings
-- API available: data.energystar.gov/developers
-- **Relevance:** ✅ Good for appliance metadata
-
-#### Lowe's / Home Depot Datasets
-- Some open-source datasets available
-- Home improvement and household items
-- **Relevance:** ⚠️ Limited availability
-
-### Practical Implementation Approaches for Freegle
-
-#### Approach 1: API-First (Quickest)
-**Stack:**
-- API4.AI for initial recognition
-- Google Lens API (via SerpApi) for product identification
-- Multimodal AI (GPT-4V/Claude) for edge cases
-
-**Pros:**
-- ✅ Fast implementation
-- ✅ No ML expertise required
-- ✅ Handles diverse products
-
-**Cons:**
-- ❌ Dependent on external services
-- ❌ No control over accuracy improvements
-
-#### Approach 2: Hybrid (Recommended)
-**Stack:**
-- Roboflow household items model (self-hosted) for basic detection
-- CLIP embeddings + FAISS for similarity search
-- Custom product database with common items
-- Multimodal AI fallback for unknowns
-
-**Pros:**
-- ✅ More control over accuracy
-- ✅ Can improve over time
-- ✅ Works offline once deployed
-- ✅ Better scalability
-
-**Cons:**
-- ⚠️ Requires ML engineering
-- ⚠️ Need to build/maintain product database
-- ⚠️ Initial development time
-
-#### Approach 3: Crowd-Sourced Product Database
-**Concept:**
-- Build Freegle-specific product database from user submissions
-- Each verified item becomes a reference for future matches
-- Community helps label and categorize
-- Grows more accurate over time
-
-**Implementation:**
-1. Start with API-based recognition
-2. Store successful recognitions with embeddings
-3. Match future items against this growing database
-4. Users confirm/correct matches
-5. Database improves with every transaction
-
-**Pros:**
-- ✅ Custom to Freegle's actual inventory
-- ✅ Improves over time automatically
-- ✅ Community-driven accuracy
-- ✅ Highly scalable
-
-**Cons:**
-- ⚠️ Slow initial growth
-- ⚠️ Needs good UX for user feedback
-- ⚠️ Quality control required
-
-### Extracting Product Metadata
-
-Once a product is visually identified, metadata can be enriched from:
-
-1. **Product Recognition Services**
-   - Google Lens: Price, availability, specs
-   - Amazon Rekognition: Product labels
-   - Visual search APIs: Similar products with specs
-
-2. **Structured Data Sources**
-   - Energy Star: Appliance efficiency, dimensions, weight
-   - Manufacturer APIs: Technical specifications
-   - Wikipedia/DBpedia: General product information
-
-3. **E-commerce Scraping (Legal Considerations)**
-   - Product dimensions from retail sites
-   - Typical prices (for value estimation)
-   - User reviews (condition language)
-
-4. **Multimodal AI Inference**
-   - GPT-4V can estimate attributes from product identification
-   - Example: "This appears to be an IKEA POÄNG chair, which is typically 68cm wide, 82cm deep, 100cm high, weighs about 10kg, and is made of bent birch veneer with foam cushioning"
-
-### Recommended Strategy for Freegle
-
-**Phase 1: Proof of Concept (Months 1-2)**
-- Use API4.AI for household items recognition
-- Use multimodal AI (Claude/GPT-4V) for attribution
-- No custom database required
-- Validate user acceptance and accuracy
-
-**Phase 2: Optimization (Months 3-4)**
-- Deploy Roboflow models for common categories
-- Implement CLIP embeddings + FAISS
-- Build initial product database from successful recognitions
-- Reduce external API dependency for high-volume categories
-
-**Phase 3: Custom Database (Months 5-6)**
-- Launch crowd-sourced product database
-- Collect user confirmations/corrections
-- Build Freegle-specific product knowledge
-- Achieve 80%+ recognition without external APIs
-
-**Phase 4: Metadata Enrichment (Months 7+)**
-- Link recognized products to specification databases
-- Auto-populate dimensions, materials, typical weight
-- Provide helpful context (WEEE status, safety info)
-- Enable advanced search/filtering
-
-### Key Considerations
-
-1. **Data Privacy**
-   - Process images server-side
-   - Don't permanently store in third-party services
-   - Clear user consent for visual recognition
-
-2. **Accuracy Communication**
-   - Show confidence scores
-   - "We think this might be..." not "This is..."
-   - Easy correction mechanisms
-
-3. **Fallback Strategy**
-   - Always allow manual entry
-   - Don't block posting if recognition fails
-   - Use AI as assistant, not gatekeeper
-
-4. **System Efficiency**
-   - Cache recognition results
-   - Use specialized models for high-volume categories
-   - Reserve multimodal AI for edge cases and complex analysis
-
----
-
-## 10. Waste Classification & Recycling
-
-### Application to Reuse Platforms
-
-Active research area in 2024 with direct relevance to Freegle.
-
-**Current Systems:**
-
-1. **YOLOv8-Based Classification**
-   - 28 distinct recyclable categories
-   - 10,406+ training images
-   - Feature Pyramid Network (FPN) for multi-scale detection
-   - Path Aggregation Network (PAN) enhancements
-
-2. **Integrated Robotic Systems**
-   - Computer vision + robotic arm sorting
-   - Real-time classification and segregation
-   - Multi-class waste categorization
-
-3. **WasteNet (Recycleye)**
-   - Commercial AI waste recognition system
-   - Trained on diverse waste streams
-
-**Object Categories:**
-- Dry waste classification
-- Mixed material handling
-- Complex-shaped items
-- E-waste identification and reuse potential
-
-**Reliability:**
-- ✅ **Very Good (85-90%)** - Clear, separated items
-- ⚠️ **Moderate (70-75%)** - Mixed or overlapping items
-- ⚠️ **Challenge** - Complex shapes and dirty/damaged items
-
-**Key Insight:** Classification serves as the initial crucial phase for recycling and reuse, with automation reducing labor costs and improving sorting accuracy.
-
----
-
-## 11. Reliability Assessment by Attribute
-
-### Summary Table
-
-| Attribute | Reliability | Confidence | Best Approach | Notes |
-|-----------|-------------|------------|---------------|-------|
-| **Object Type** | 95%+ | Excellent | YOLO, Multimodal AI | Standard household items |
-| **Category** | 90-95% | Excellent | YOLO, Multimodal AI | Furniture, appliances, etc. |
+## 3. Reliability Assessment by Attribute
+
+### 3.1 Summary Table
+
+| Attribute | Expected Accuracy | Confidence | Best Approach | Notes |
+|-----------|------------------|------------|---------------|-------|
+| **Is it EEE?** | 90-95% | Excellent | Multimodal AI | Core use case |
+| **EEE Type / WEEE Category** | 85-90% | Very Good | Multimodal AI | Aligned with WEEE directive |
+| **Object Type** | 90-95% | Excellent | Multimodal AI | Standard household items |
 | **Subcategory** | 80-90% | Good | Multimodal AI | Dining chair vs office chair |
-| **Electrical/Not** | 90-95% | Excellent | WEEE models, Multimodal AI | Clear for obvious electronics |
-| **Primary Material** | 70-85% | Moderate-Good | Material CNNs, Multimodal AI | Varies with material contrast |
-| **Condition (obvious)** | 85-90% | Very Good | Defect detection, Multimodal AI | Broken, damaged, scratched |
+| **Condition (obvious)** | 85-90% | Very Good | Multimodal AI | Broken, damaged, scratched |
 | **Condition (subtle)** | 60-75% | Moderate | Multimodal AI | Wear level, quality grade |
-| **Size Category** | 80-85% | Good | Depth estimation, Context | Large/medium/small |
-| **Dimensions** | 60-70% | Moderate | Depth + reference | Needs scale reference |
-| **Weight Category** | 60-70% | Moderate | Inference from type + size | Light/medium/heavy |
+| **Primary Material** | 70-85% | Moderate-Good | Multimodal AI | Varies with lighting |
+| **Transport Category** | 85-90% | Very Good | Multimodal AI | Pocket/Carry/Bike/Car/Van |
+| **Approx Dimensions** | 50-70% | Moderate | Multimodal AI | Capture for future use; cross-check against transport |
+| **Brand** | 60-80% | Moderate | Multimodal AI | Only when visible |
+| **Weight Category** | 50-70% | Moderate-Low | Category lookup | Light/Medium/Heavy |
 | **Weight (actual)** | 30-50% | Poor | Not recommended | Too many unknowns |
-| **Value Range** | 50-75% | Moderate | Price prediction + metadata | Better for branded items |
-| **Unusual Items** | 60-80% | Moderate | Multimodal AI only | Specialized models fail |
+
+### 3.2 EEE Detection Detail
+
+**What works well:**
+- Obvious electrical items (appliances, TVs, computers): 95%+
+- Items with visible cords/plugs: 90%+
+- Battery-operated items: 85%+
+- Unusual EEE (aquariums with heaters, salt lamps): 80-90% with multimodal AI
+
+**Challenging cases:**
+- Items that can be electrical or not (some toys, tools): 70-80%
+- Items without visible electrical components in photo: 65-75%
+- Multi-function items (furniture with built-in lights): 75-85%
+
+**Important caveat from critical review:** These accuracy figures are estimates from benchmark testing, not validated on Freegle data. Actual accuracy on Freegle's mix of used, poorly-lit, varied-angle photos will likely be lower. This is why validation on real Freegle data is essential before committing to production.
+
+### 3.3 Ground Truth Challenges
+
+Many attributes are inherently subjective:
+- Is a baby bouncer with music EEE? (Yes, but many wouldn't classify it that way)
+- Is a salt lamp EEE? (Yes, but looks like decor)
+- Is a clock EEE? (Depends: battery vs plug-in vs mechanical)
+- Is furniture with built-in lights EEE? (Both furniture and EEE)
+
+Human reviewers typically agree only 80-90% on subjective classifications. AI achieving 85% may actually match human performance. The validation phase must measure inter-rater reliability to establish the ceiling.
 
 ---
 
-## 12. Recommendations for Freegle
+## 4. Recommended Architecture
 
-### High-Priority Opportunities
+### 4.1 Simplified Single-Model Approach
 
-1. **Automatic Category Tagging**
-   - ✅ **High reliability** (90-95%)
-   - ✅ **Fast processing** (<1 second)
-   - ✅ **Reduces user effort**
-   - **Implementation:** YOLO or multimodal API
-   - **Value:** Improves search, reduces mis-categorization
+```
+Item Photo + Text Description
+        ↓
+  Multimodal AI (Gemini 2.5 Flash)
+        ↓
+  Structured JSON Response:
+  {
+    "is_eee": true/false,
+    "eee_confidence": 0.0-1.0,
+    "object_type": "Microwave oven",
+    "weee_category": "Small household appliances",
+    "condition": "working",
+    "primary_material": "metal/plastic",
+    "transport_category": "carry",  // pocket | carry | bike | car | van
+    "approx_dimensions_cm": "50x35x30",  // wxhxd estimate, may be inaccurate
+    "approx_weight_kg": 12.0,
+    "brand": "Samsung" | null,
+    "reasoning": "Visible power cord, digital display, door handle..."
+  }
+```
 
-2. **Electrical Item Flagging**
-   - ✅ **High reliability** (90-95%)
-   - ✅ **Regulatory importance** (WEEE)
-   - ✅ **Safety information**
-   - **Implementation:** WEEE classification model or multimodal
-   - **Value:** Proper handling instructions, safety warnings
+**Why this is better than the original three-tier pipeline:**
 
-3. **Condition Pre-Assessment**
-   - ⚠️ **Moderate reliability** (70-85%)
-   - ✅ **Valuable context for recipients**
-   - ⚠️ **Should not replace user description**
-   - **Implementation:** Defect detection + multimodal AI
-   - **Value:** Sets expectations, reduces disappointment
+| Aspect | Original Pipeline | Single-Model Approach |
+|--------|------------------|----------------------|
+| API integrations | 3-4 services | 1 service |
+| Routing logic | Complex waterfall | None |
+| Failure modes | Many (each service can fail) | One |
+| Cost per item | £0.07-0.22 | £0.002-0.01 |
+| Latency | 1-10s depending on route | 1-3s consistent |
+| Maintenance | High (multiple APIs, keys, DPAs) | Low |
+| Accuracy | Good (but routing adds error) | Good-to-better |
 
-4. **Smart Size Categories**
-   - ✅ **Good reliability** (80-85%)
-   - ✅ **Practical for logistics**
-   - ⚠️ **Better with user confirmation**
-   - **Implementation:** Depth estimation or category-based
-   - **Value:** Helps with transport planning
+### 4.2 Text + Image Hybrid
 
-### Medium-Priority Opportunities
+The original research overlooked a simpler first pass: **analysing the text description**.
 
-5. **Material Identification**
-   - ⚠️ **Moderate reliability** (70-85%)
-   - ✅ **Environmental impact tracking**
-   - ✅ **Recycling information**
-   - **Implementation:** Material CNN or multimodal
-   - **Value:** Circular economy metrics, end-of-life info
+Users already write descriptions like:
+- "Old microwave, still works"
+- "Broken lamp, needs rewiring"
+- "IKEA bookshelf, good condition"
 
-6. **Quality Scoring**
-   - ⚠️ **Moderate reliability** (65-75%)
-   - ⚠️ **Subjective nature**
-   - ✅ **Helps matching**
-   - **Implementation:** Multimodal AI with careful prompting
-   - **Value:** Better matches between donors and recipients
+A combined approach:
+1. **Text analysis** — scan the item title and description for electrical keywords ("plug", "battery", "charger", "switch", "motor", "cable", "power", "USB", etc.)
+2. **Image analysis** — run multimodal AI on the photo
+3. **Combine signals** — text + image agreement = high confidence; disagreement = flag for review
 
-### Lower-Priority / Not Recommended
+Text analysis is essentially free (regex or simple NLP) and can catch many obvious cases before spending on API calls.
 
-7. **Precise Dimensions**
-   - ❌ **Low reliability** without reference (30-50%)
-   - ⚠️ **Needs user-provided scale reference**
-   - **Recommendation:** User-provided with AI assistance
+### 4.3 Processing Mode: Async Batch
 
-8. **Weight Estimation**
-   - ❌ **Low reliability** (30-50%)
-   - **Recommendation:** User-provided or category ranges
+The original plan proposed real-time detection during posting (2-3 seconds). The critical review correctly identified this as problematic:
+- 10% of items would take 5-10 seconds (poor UX)
+- Failure handling during posting flow is complex
+- User doesn't need instant EEE classification
 
-9. **Value Estimation**
-   - ⚠️ **Moderate reliability** (50-75%)
-   - ❌ **Less relevant for free items**
-   - **Alternative:** "Desirability score" based on demand patterns
+**Recommended approach:** Async batch processing.
+- User posts as normal (no waiting)
+- Background job processes photos within minutes
+- Results stored against the item record
+- EEE tagging appears after processing
+- If item doesn't get taken, recycling info sent later
 
----
+This eliminates all real-time latency concerns and simplifies the architecture enormously.
 
-## 13. Implementation Strategy
+### 4.4 Failure Handling
 
-### Phased Approach
+| Failure | Response |
+|---------|----------|
+| API timeout | Retry once after 30s, then skip |
+| API rate limit | Queue and retry with exponential backoff |
+| API down | Skip item, flag for retry next batch |
+| Malformed image | Log and skip |
+| All retries exhausted | Mark as "unprocessed", include in next run |
+| Budget exceeded | Pause processing, alert operator |
 
-**Phase 1: Core Classification (Months 1-2)**
-- Object type/category detection
-- Electrical vs non-electrical
-- Size category (small/medium/large)
-- **Technology:** YOLO or commercial API (GPT-4V/Claude)
-
-**Phase 2: Enhanced Attributes (Months 3-4)**
-- Material recognition
-- Basic condition assessment
-- Obvious damage detection
-- **Technology:** Add specialized models or use multimodal AI
-
-**Phase 3: Advanced Features (Months 5-6)**
-- Quality scoring
-- Multi-angle analysis
-- Confidence-weighted suggestions
-- **Technology:** Multimodal AI with sophisticated prompting
-
-### Technology Choice Considerations
-
-**Option A: Specialized Models**
-- ✅ Pros: Higher accuracy per task, faster inference, efficient at scale
-- ❌ Cons: Requires integration of multiple models, limited flexibility, poor with edge cases
-
-**Option B: Multimodal Foundation Model (GPT-4V, Claude, Gemini)**
-- ✅ Pros: Flexible, handles unusual items, natural language output, single integration
-- ❌ Cons: Slightly lower accuracy for specialized tasks, potential hallucinations, API dependencies
-
-**Option C: Hybrid Approach**
-- Use specialized models for high-volume, high-reliability tasks (object detection, WEEE)
-- Use multimodal AI for edge cases, quality assessment, and multi-attribute analysis
-- **Recommended approach** for production deployment
-
-### Quality Assurance
-
-1. **Confidence Thresholds**
-   - Only show AI suggestions above reliability thresholds
-   - Allow user override/correction
-   - Learn from corrections
-
-2. **User Verification**
-   - Present AI suggestions as helpful hints, not facts
-   - "We think this might be..." rather than "This is..."
-   - Easy correction mechanisms
-
-3. **Multi-Image Analysis**
-   - Request multiple angles when confidence is low
-   - Combine information across images
-   - Flag inconsistencies
-
-4. **Feedback Loop**
-   - Track correction rates by attribute
-   - Identify systematic failures
-   - Retrain or adjust thresholds
+Items that fail processing simply don't get EEE tags. No user-facing impact.
 
 ---
 
-## 14. Specific Plan for EEE Identification Project
-
-### Project Overview & Alignment
-
-This section addresses the specific **Identifying EEE project** proposal to investigate AI application for identifying Electrical and Electronic Equipment (EEE) items passing through the Freegle platform.
-
-**Project Goals:**
-1. Identify EEE items from photos (including unusual items users wouldn't classify as EEE)
-2. Generate reliable statistics on types, quantity, and state of EEE items
-3. Extract metadata: weight, material, brand where possible
-4. Run analysis on historical data (1 year)
-5. Create EEE-specific data page on Freegle website
-6. Assess reliability of different data types for production use
-
-**Why This Matters:**
-- Users don't self-categorize items as EEE
-- Peer-to-peer reuse platforms are overlooked in EEE statistics
-- Captures unusual EEE items (aquariums, dimmer switches, salt lamps, baby bouncers)
-- Enables recycling communications for non-reusable items
-- Provides data to local authorities for waste prevention
-
-### Research Findings Relevant to EEE Project
-
-Based on the comprehensive research in this document, here's what we know about EEE identification:
-
-#### EEE Detection Reliability: ✅ **90-95% (Excellent)**
-
-**Existing Resources:**
-- **E-Waste Dataset** (Roboflow): 19,613 images, 77 classes of EEE items
-- **WEEE Classification Models**: Specifically trained for electrical items
-- **Household Items APIs**: API4.AI covers 200+ categories including appliances
-- **Multimodal AI**: GPT-4V, Claude, Gemini excel at identifying unusual electrical items
-
-**What Works Well:**
-- ✅ Obvious electrical items (appliances, TVs, computers) - 95%+ accuracy
-- ✅ Items with visible cords/plugs - 90%+ accuracy
-- ✅ Battery-operated items - 85%+ accuracy
-- ✅ Unusual EEE (aquariums, salt lamps, etc.) - 80-90% with multimodal AI
-
-**Challenging Cases:**
-- ⚠️ Items that can be electrical or not (some toys, tools) - 70-80%
-- ⚠️ Items without visible electrical components in photo - 65-75%
-- ⚠️ Multi-function items (furniture with lights, etc.) - 75-85%
-
-### Attribute Extraction for EEE Project
-
-Based on project requirements, here's reliability for each requested attribute:
-
-| Attribute | Reliability | Confidence | Recommendation for EEE Project |
-|-----------|-------------|------------|-------------------------------|
-| **Is it EEE?** | 90-95% | Excellent | ✅ Use for statistics |
-| **EEE Type** | 85-90% | Very Good | ✅ Use for categorization |
-| **WEEE Category** | 85-90% | Very Good | ✅ Use for compliance reporting |
-| **Condition/State** | 70-85% | Good-Moderate | ⚠️ Use with confidence scores |
-| **Brand** | 60-80% | Moderate-Good | ⚠️ Use for branded items only |
-| **Material** | 70-85% | Good-Moderate | ⚠️ General categories reliable |
-| **Size Category** | 80-85% | Good | ✅ Use (small/medium/large/very large) |
-| **Weight Estimate** | 50-70% | Moderate-Low | ❌ Category ranges only |
-| **Dimensions** | 40-60% | Low | ❌ Not recommended without reference |
-
-### Recommended Implementation Approach
-
-#### Phase 1: Proof of Concept & Validation (Months 1-2)
-
-**Objectives:**
-- Validate AI reliability on sample of Freegle data
-- Test multiple approaches
-- Establish accuracy baselines
-- Identify edge cases
-
-**Technical Approach:**
-1. **Sample Selection**: Extract 1,000 diverse items from last 12 months
-   - Include known EEE items (manual verification)
-   - Include edge cases from project examples
-   - Include non-EEE items for false positive testing
-
-2. **Multi-Model Testing**:
-   - **Roboflow E-Waste model** - Specialized, fast, free/low-cost
-   - **API4.AI Household Items** - Broad coverage, commercial
-   - **GPT-4V/Claude** - Best for unusual items, flexible
-   - **Google Lens API** (via SerpApi) - Product identification + metadata
-
-3. **Accuracy Assessment**:
-   - Manual verification of results
-   - Measure precision (% of flagged items that are truly EEE)
-   - Measure recall (% of EEE items successfully detected)
-   - Identify systematic failures
-
-4. **Attribute Testing**:
-   - For detected EEE, test extraction of: type, state, brand, material, size
-   - Document confidence levels for each attribute
-   - Identify which attributes are reliable enough for statistics
-
-**Manual Validation Interface:**
-
-To measure accuracy, we need a simple web interface for manual classification:
-
-**Features:**
-- Display item photo and description
-- Show ALL AI predictions with confidence scores
-- Review each characteristic independently:
-
-**1. Is it EEE?**
-  - ✅ Correct - It is EEE
-  - ❌ Wrong - Not EEE
-  - ⚠️ Unsure - Need expert review
-
-**2. Object Type/Category** (reviewed for ALL items, not just EEE):
-  - AI prediction: "Office chair" (85% confidence)
-  - ✅ Correct / ❌ Wrong (specify correct type: _____) / ⚠️ Unsure
-
-**3. WEEE Category** (if item is EEE):
-  - AI prediction: "Small household appliances"
-  - Dropdown to correct if wrong
-  - Mark as correct/incorrect
-
-**4. State/Condition** (all items):
-  - AI prediction: "Working" (75% confidence)
-  - Options: Working / Broken / Worn / Like New / Cannot determine from photo
-  - Mark AI prediction as correct/incorrect
-
-**5. Brand** (if visible):
-  - AI prediction: "IKEA" (60% confidence)
-  - ✅ Correct / ❌ Wrong (specify: _____) / ⚠️ Not visible in photo
-
-**6. Material** (all items):
-  - AI prediction: "Plastic" (70% confidence)
-  - Options: Wood / Metal / Plastic / Fabric / Glass / Mixed / Cannot determine
-  - Mark AI prediction as correct/incorrect
-
-**7. Size Category** (all items):
-  - AI prediction: "Large" (80% confidence)
-  - Options: Small / Medium / Large / Very Large
-  - Mark AI prediction as correct/incorrect
-
-**8. Weight Estimate** (if AI provides one):
-  - AI prediction: "5-10kg" (50% confidence)
-  - Reviewer provides estimate: _____ kg (or range)
-  - Mark AI prediction as: Accurate / Underestimate / Overestimate / Cannot determine
-
-**General:**
-- Progress tracker (e.g., "Reviewed 150/1000")
-- Overall item difficulty: Easy / Medium / Hard to classify
-- Notes field for interesting cases or ambiguities
-- Batch assignment (assign sets of 100 to different reviewers)
-- Inter-rater reliability: 10% of items reviewed by 2+ people
-- Export results to CSV with all fields
-
-**Implementation:**
-- Simple Vue.js or React frontend
-- API endpoint to fetch next item to review
-- Store validations in database
-- Authentication for reviewers
-- Can be reused for ongoing QA
-
-**Development Time:** 3-5 days for validation interface
-
-**Deliverable:** Validation report with accuracy metrics, recommended approach, and validation interface
-
-#### Phase 2: Historical Data Analysis (Months 2-4)
-
-**Objectives:**
-- Process 1 year of historical Freegle data
-- Generate EEE statistics
-- Validate findings against known patterns
-- Identify data quality issues
-
-**Technical Approach:**
-
-1. **Hybrid Detection System** (Recommended):
-   ```
-   For each item photo:
-   1. Run Roboflow E-Waste detection (fast, cheap)
-      - If high confidence EEE detected → Tag item
-      - If uncertain → Pass to step 2
-
-   2. Run API4.AI Household Items (if not already EEE)
-      - Check for electrical appliances
-      - If found → Tag item
-      - If uncertain → Pass to step 3
-
-   3. Run Multimodal AI (GPT-4V/Claude) for remaining items
-      - Best at unusual EEE
-      - Extract all attributes in single call
-      - Store with confidence scores
-   ```
-
-2. **Batch Processing Pipeline**:
-   - Process in batches of 10,000 items
-   - Store results in structured database
-   - Track processing costs and times
-   - Implement retry logic for failures
-
-3. **Attribute Extraction** (for confirmed EEE):
-   - **EEE Type**: Categories aligned with WEEE directive
-   - **State**: Working/Broken/Unknown (from image + description analysis)
-   - **Brand**: Where visible or identifiable
-   - **Material**: Primary material (plastic/metal/mixed)
-   - **Size Category**: Small/Medium/Large/Very Large
-   - **Weight Range**: Estimate from type + size (e.g., "5-10kg")
-
-4. **Quality Control**:
-   - Sample 500 items for manual verification using validation interface
-   - Focus sample on:
-     - Low-confidence predictions
-     - Edge cases (unusual items)
-     - Random sample across all categories
-   - Adjust confidence thresholds based on accuracy
-   - Flag uncertain items for review
-   - Document failure modes
-   - Calculate final precision/recall metrics per category
-
-**Expected Scale:**
-- Assume 100,000 items posted in 1 year
-- Assume 10-15% are EEE (10,000-15,000 items)
-- Processing time: 2-4 weeks
-- Manual QA: 1 week
-
-**Deliverable:**
-- EEE statistics for 1 year
-- Confidence ratings for each attribute type
-- Database of detected EEE items with metadata
-
-#### Phase 3: EEE Data Page Development (Months 4-5)
-
-**Objectives:**
-- Create public-facing EEE statistics page
-- Display reliable data only
-- Enable filtering and exploration
-- Provide context and explanations
-
-**Recommended Page Structure:**
-
-1. **Overview Dashboard**:
-   - Total EEE items in period
-   - Breakdown by WEEE category (pie chart)
-   - Trend over time (line graph)
-   - Most common EEE types (bar chart)
-
-2. **Category Deep-Dive**:
-   - Large household appliances (washing machines, fridges)
-   - Small household appliances (toasters, kettles)
-   - IT & telecommunications (computers, phones)
-   - Consumer electronics (TVs, cameras)
-   - Lighting equipment
-   - Electrical tools
-   - Toys & leisure equipment
-   - Medical devices
-   - Unusual/Other EEE
-
-3. **State Analysis** (if reliability sufficient):
-   - Working vs Broken vs Unknown
-   - Implications for reuse potential
-   - Recycling pathway recommendations
-
-4. **Environmental Impact** (calculated):
-   - Estimated weight of EEE reused
-   - CO2 savings (based on reuse vs manufacturing)
-   - Resources diverted from waste
-
-5. **Interactive Features**:
-   - Date range selection
-   - Filter by category, state, size
-   - Download data (CSV/JSON)
-   - Example items with photos (anonymized)
-
-6. **Methodology Section**:
-   - Explain AI detection approach
-   - Confidence levels and accuracy rates
-   - Limitations and exclusions
-   - How to interpret the data
-
-**Technical Implementation**:
-- Backend: Store aggregated statistics in database
-- Frontend: JavaScript visualization (D3.js or Chart.js)
-- Update frequency: Monthly or quarterly
-- API endpoint for external access (future)
-
-**Deliverable:** Live EEE data page on Freegle website
-
-**Development Time:** 2-3 weeks
-
-#### Phase 4: Production System (Months 5-6)
-
-**Objectives:**
-- Deploy real-time EEE detection on new posts
-- Integrate with Freegle posting flow
-- Enable recycling communications
-- Automate statistics generation
-
-**System Architecture:**
-
-1. **Real-Time Detection**:
-   - Trigger on photo upload during posting
-   - Run hybrid detection pipeline
-   - Return results within 2-3 seconds
-   - Store results with post
-
-2. **User Experience**:
-   - **No blocking**: Detection runs in background
-   - **Optional tagging**: "We think this might be electrical - is that right?"
-   - **Recycling info**: If item doesn't get taken, show recycling options
-   - **User correction**: Allow users to confirm/deny EEE status
-
-3. **Data Collection**:
-   - Store detection results with confidence
-   - Store user corrections (valuable accuracy feedback!)
-   - Use corrections to improve accuracy over time
-   - Generate statistics automatically
-   - Track accuracy metrics from user feedback
-   - Periodic manual QA using validation interface (quarterly sample of 200 items)
-
-4. **Communication Integration**:
-   - If EEE item not taken after 7 days → Send recycling info
-   - Link to local authority recycling centers
-   - Explain WEEE regulations
-   - Provide manufacturer take-back options
-
-**Deliverable:** Production EEE detection system
-
-#### Phase 5: Data Sharing & Partnerships (Months 6+)
-
-**Objectives:**
-- Make EEE data available to local authorities
-- Support policy development
-- Integrate with broader waste prevention
-
-**Capabilities to Enable**:
-
-1. **Data Export API**:
-   - Local authority authentication
-   - Geographic filtering (by region)
-   - Time period selection
-   - Anonymized item-level or aggregated data
-
-2. **Regular Reports**:
-   - Quarterly EEE statistics by region
-   - Types of EEE most commonly reused
-   - Success rates (taken vs not taken)
-   - Unusual items captured
-
-3. **Policy Insights**:
-   - Which EEE items are successfully reused?
-   - Which need better recycling communications?
-   - Geographic variations in EEE reuse
-   - Seasonal patterns
-
-4. **Integration Opportunities**:
-   - WEEE compliance reporting
-   - EPR (Extended Producer Responsibility) data
-   - Circular economy metrics
-   - Local authority waste prevention targets
-
-### Accuracy Measurement Methodology
-
-**Sampling Strategy:**
-
-To measure accuracy properly, we need representative samples at each phase:
-
-**Phase 1 Validation (1,000 items):**
-- 200 known EEE items (manually pre-verified)
-- 200 edge case items from project examples (aquariums, salt lamps, baby bouncers, dimmer switches)
-- 400 random items from Freegle (mix of categories)
-- 200 obviously non-EEE items (furniture, books, clothing)
-
-**Phase 2 Historical QA (500 items):**
-- Stratified sampling across AI confidence levels:
-  - 100 high confidence EEE (>90%)
-  - 100 medium confidence EEE (70-90%)
-  - 100 low confidence EEE (50-70%)
-  - 100 borderline cases (40-60%)
-  - 100 predicted non-EEE for false negative check
-- Include unusual WEEE categories specifically
-- Ensure geographic distribution
-
-**Ongoing Production QA (200 items/quarter):**
-- 50 user-corrected items (where user disagreed with AI)
-- 50 high-confidence predictions (verify they're accurate)
-- 50 low-confidence predictions (test threshold appropriateness)
+## 5. Implementation Plan
+
+### Phase 0: Micro-Validation (2-3 weeks, ~£2 API cost)
+
+**Start very small. Prove the concept works before investing in anything larger.**
+
+**Goal:** Quick, cheap validation on a tiny dataset to check the approach is viable.
+
+**Step 0a — External dataset sanity check (no manual work needed):**
+1. Download 50 images from Roboflow E-Waste dataset (all known EEE)
+2. Download 50 household item images from COCO/IKEA datasets (known non-EEE)
+3. Run all 100 through Gemini 2.5 Flash with the structured prompt
+4. Check: does AI correctly identify EEE items as EEE and non-EEE items as not?
+5. Check: are transport categories and dimensions plausible for the known item types?
+6. **Cost: ~£0.50.** No manual classification needed — ground truth comes from the datasets.
+
+**If Step 0a shows >80% accuracy, proceed to Step 0b.**
+
+**Step 0b — Small Freegle sample with automated accuracy checks (minimal manual work):**
+1. Extract 100 recent Freegle items with photos and text descriptions
+2. Run through AI prompt
+3. Run automated consistency checks:
+   - Does the AI object type match keywords in the user's title? (e.g., AI says "microwave", title says "microwave")
+   - Are transport category and dimensions consistent? (e.g., not "pocket" with 100cm dimensions)
+   - Are transport category and object type consistent? (e.g., not "van" for a book)
+   - Does EEE status match electrical keywords in description?
+4. Run a subset (20 items) through Google Lens via SerpApi to get product matches — compare AI attributes against real product specs
+5. **Manually spot-check only the ~10-20 items where automated checks flag inconsistencies**
+6. **Cost: ~£2.50** (£0.50 AI + £2.00 Google Lens for 20 items). Manual effort: ~30 minutes reviewing flagged items only.
+
+**If Step 0b shows reasonable consistency (>85% of items have no flags), proceed to Step 0c.**
+
+**Step 0c — Slightly larger Freegle sample (500 items):**
+1. Extract 500 diverse items (stratified: some obvious EEE, some edge cases, some random)
+2. Run through AI, run all automated checks
+3. Manually review flagged inconsistencies (~50-100 items)
+4. Calculate agreement rates, consistency rates, and estimated precision/recall
+5. **Cost: ~£2.50.** Manual effort: ~2-3 hours on flagged items only.
+
+**Go/no-go criteria after Phase 0:**
+- Automated consistency rate > 85% (most items have internally consistent attributes)
+- Image-vs-text agreement on object type > 80%
+- External dataset EEE precision > 85%, recall > 80%
+- Spot-checked flagged items show AI was wrong < 50% of the time (i.e., some flags are just ambiguous, not errors)
+
+**Deliverable:** Quick accuracy report with go/no-go recommendation. Total cost: ~£3-5 in API calls, ~3-4 hours of human time.
+
+### Phase 1: Scaled Validation (2-3 months, ~£50-70 API cost)
+
+**Only proceed if Phase 0 succeeds.**
+
+**Goal:** Validate on a larger, statistically significant sample using the same automated-first approach.
+
+**Steps:**
+1. Extract 3,000-5,000 diverse items from last 12 months
+   - Stratified by category, time period, photo quality
+   - Ensure edge cases are represented (unusual EEE, ambiguous items)
+2. Process all through AI
+3. Run all automated accuracy checks (consistency, text comparison)
+4. **Manual review only the flagged items** (~300-500 expected, not all 5,000)
+5. Use external dataset benchmarks (Roboflow, IKEA, COCO) for absolute precision/recall numbers
+6. Build simple validation interface for the manual review portion
+
+**Validation Interface (for flagged items only):**
+- Display item photo and description alongside AI predictions
+- Show which automated check flagged it and why
+- For each attribute: Correct / Wrong / Unsure buttons
+- Progress tracker and export to CSV
+
+**Cost breakdown:**
+| Item | Cost |
+|------|------|
+| Gemini 2.5 Flash: 5,000 images | ~£25-50 |
+| Fallback model (Claude Sonnet 4.5): 500 edge cases | ~£10-20 |
+| Validation interface development | Internal |
+| Manual review: ~400 flagged items @ 2 min = ~13 hours | Volunteer time |
+| **Total API cost** | **~£50-70** |
+
+**Key insight:** By using automated checks to triage, manual review effort drops from ~170 hours (reviewing all 5,000) to ~13 hours (reviewing only flagged items). This makes the validation practical without a large team of reviewers.
+
+**Metrics to track:**
+
+For EEE classification:
+- **Precision** — of items flagged as EEE, what % are truly EEE? Target: >90%
+- **Recall** — of all EEE items, what % detected? Target: >85%
+- **F1 Score** — balanced accuracy. Target: >87%
+- **Per-WEEE-category accuracy** — identify weak spots
+
+For transport categories:
+- Agreement rate with object-type plausibility rules
+- Agreement rate with dimension cross-check
+- Agreement rate with text description clues
+- Manual accuracy on spot-checked subset
+
+For other attributes:
+- Object type accuracy vs user title (target >85% agreement)
+- Condition accuracy (target >75%, acknowledging subjectivity)
+- Material accuracy (target >75%)
+- Brand identification precision (target >70% when visible)
+
+**Confidence calibration:** When AI says 90% confident, is it actually right 90% of the time? Plot calibration curves per attribute.
+
+**Deliverable:** Comprehensive validation report with accuracy metrics, failure analysis, and recommendation for production.
+
+### Phase 2: MVP Production System (3 months, ~£500/month)
+
+**Only proceed if Phase 1 validation meets targets.**
+
+**Goal:** Process all new posts and start collecting real EEE statistics.
+
+**Scope (deliberately limited):**
+- EEE detection only (defer material, condition, size to later)
+- Async batch processing (not real-time)
+- Internal dashboard (not public page yet)
+- Single AI model (Gemini 2.5 Flash, with Claude Sonnet as fallback)
+
+**Technical approach:**
+1. Background job triggered on new item creation (or hourly batch)
+2. For each item with photos:
+   a. Quick text scan for electrical keywords (free)
+   b. If keyword found: high prior probability, still confirm with AI
+   c. Send photo + description to Gemini 2.5 Flash
+   d. Parse structured JSON response
+   e. Store results in database (new table: `item_eee_analysis`)
+3. User correction mechanism: optional "Is this electrical?" prompt
+4. Internal dashboard showing EEE statistics
+
+**Database schema:**
+```sql
+CREATE TABLE item_eee_analysis (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  msgid BIGINT UNSIGNED NOT NULL,
+  is_eee BOOLEAN,
+  eee_confidence DECIMAL(3,2),
+  object_type VARCHAR(255),
+  weee_category VARCHAR(100),
+  model_used VARCHAR(50),
+  raw_response JSON,
+  user_corrected BOOLEAN DEFAULT FALSE,
+  user_correction BOOLEAN,  -- NULL if not corrected, TRUE/FALSE if corrected
+  created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (msgid) REFERENCES messages(id) ON DELETE CASCADE,
+  KEY idx_is_eee (is_eee),
+  KEY idx_weee_category (weee_category),
+  KEY idx_created (created)
+);
+```
+
+**Monthly cost at 8,000 items/month:**
+| Item | Cost |
+|------|------|
+| Gemini 2.5 Flash: 8,000 images | ~£20-40 |
+| Fallback (Claude Sonnet): ~400 items (5%) | ~£8-16 |
+| Compute (existing infrastructure) | £0 |
+| **Total** | **~£30-60/month** |
+
+This is dramatically lower than the original £570/month estimate because:
+1. Multimodal model costs have dropped 5-10x
+2. Single-model approach eliminates multiple API subscriptions
+3. Freegle's existing infrastructure handles compute
+4. No need for self-hosted ML models, vector databases, or embedding storage
+
+**Deliverable:** Working EEE detection on all new posts, internal dashboard, 3 months of production data.
+
+### Phase 3: Validation and Expansion (2 months)
+
+**Goal:** Validate production accuracy and decide on expansion.
+
+**Steps:**
+1. Analyse 3 months of production data
+2. Sample 200 items from production for manual verification
+3. Use user corrections as accuracy signal
+4. Calculate production precision/recall
+5. If targets met: proceed to expand
+6. Optimise prompts based on failure patterns
+7. Add additional attributes (condition, material, size) if EEE detection is solid
+
+**Cost:** Same as Phase 2 ongoing (~£30-60/month)
+
+**Go/no-go for Phase 4:** Production precision >85% and recall >80%.
+
+### Phase 4: Public Data Page and Historical Analysis (2-3 months)
+
+**Goal:** Create public-facing EEE statistics and process historical data.
+
+**Steps:**
+1. Process sample of 10,000 historical items (not all 100,000 — use stratified sampling and extrapolate with confidence intervals)
+2. Build public EEE data page
+
+**Public page structure:**
+- Overview: total EEE items, trend over time
+- WEEE category breakdown (pie/bar charts)
+- Most common EEE types
+- Reuse success rates (taken vs not taken)
+- Environmental impact estimates (weight diverted, CO2 savings)
+- Methodology section explaining AI approach and accuracy
+- Data download (CSV/JSON)
+
+**Historical analysis cost:**
+| Item | Cost |
+|------|------|
+| Gemini 2.5 Flash: 10,000 images | ~£25-50 |
+| Manual QA sample: 500 items | Volunteer time |
+| **Total API cost** | **~£50** |
+
+3. Enable recycling communications for EEE items not taken after 7 days
+4. Data export API for local authorities
+
+**Deliverable:** Public EEE statistics page, historical analysis, recycling comms integration.
+
+### Phase 5: Data Sharing and Partnerships (Ongoing)
+
+- Data export API for local authorities
+- Quarterly EEE reports by region
+- Integration with WEEE compliance reporting
+- Extended Producer Responsibility (EPR) data
+
+---
+
+## 6. Cost Summary
+
+### API Costs by Phase
+
+| Phase | Duration | API Cost | Notes |
+|-------|----------|----------|-------|
+| 0: Ultra-MVP | 6-8 weeks | ~£10 | 500 items |
+| 1: Large Validation | 3-4 months | ~£50-70 | 5,000 items |
+| 2: MVP Production | 3 months | ~£90-180 | 8,000 items/month |
+| 3: Validation | 2 months | ~£60-120 | Ongoing + sampling |
+| 4: Historical + Public Page | 2-3 months | ~£50 + ongoing | 10,000 historical items |
+| **Year 1 Total API Costs** | | **~£500-800** | |
+
+### Comparison with Original Estimates
+
+| Item | Nov 2025 Estimate | Critical Review Revised | Feb 2026 Revised | Reason |
+|------|------------------|------------------------|-----------------|--------|
+| Phase 1 POC | £475 | £2,000 | £50-70 (API only) | Model costs dropped 10x |
+| Phase 2 Historical | £2,850 | £1,500-6,500 | £50 | Sampling + cheaper models |
+| Monthly Production | £570 | £1,200-1,800 | £30-60 | Single model, no infra |
+| Year 1 Total (API) | £9,690 | £22,000-30,000 | £500-800 | Architecture simplified |
+
+**Critical note:** API costs are now negligible. The real costs are:
+- **Developer time** — building integration, validation interface, dashboard
+- **Reviewer time** — manual validation of 5,000+ items
+- **Ongoing maintenance** — monitoring accuracy, updating prompts
+
+### Cost Controls
+
+| Control | Implementation |
+|---------|---------------|
+| Hard spending limits | Set on Gemini/Claude API dashboards |
+| Per-item cost monitoring | Track cost per API call in database |
+| Budget alerts | 50%, 90%, 100% of monthly budget |
+| Circuit breaker | Pause processing if monthly spend exceeds 2x budget |
+| Weekly review | Check actual vs budgeted costs |
+
+### Service Accounts
+
+| Service | Account | Budget | Dashboard |
+|---------|---------|--------|-----------|
+| Google Gemini API | Existing Freegle GCP project | £100/month | console.cloud.google.com |
+| Anthropic (Claude) | Existing account | £100/month | console.anthropic.com |
+| OpenAI (backup) | Existing account | £50/month | platform.openai.com |
+
+**Note:** Freegle already has accounts with Google (Gemini) and OpenAI. No new vendor relationships required for the primary approach.
+
+---
+
+## 7. Privacy, Legal, and GDPR
+
+### 7.1 Data Processing
+
+When photos are sent to external AI APIs, personal data is being transferred. This requires:
+
+**Before any processing:**
+- [ ] Review GDPR compliance of chosen AI service(s)
+- [ ] Verify where images are processed (EU/US/other)
+- [ ] Confirm images are not retained for model training
+- [ ] Confirm images can be deleted on request
+- [ ] Sign Data Processing Agreement (DPA) if required
+- [ ] Update Freegle privacy policy
+
+**Google Gemini:** Google's API terms state data is not used for model training when using the paid API. EU processing available. DPA available through Google Cloud terms.
+
+**Anthropic Claude:** Enterprise terms available. Data not used for training. DPA available.
+
+### 7.2 User Consent
+
+- Processing should be **opt-out** (analysis happens by default, users can opt out)
+- Or **implicit** if covered by updated privacy policy and legitimate interest basis
+- Clear explanation in privacy policy of what happens with photos
+- Right to deletion: must be able to remove AI analysis on request
+- Items should be anonymised in any published statistics
+
+### 7.3 Image Content Concerns
+
+- Photos may contain personal information (faces in reflections, addresses, plates)
+- AI services may detect and flag such content — handle gracefully
+- Freegle's existing moderation catches most problematic content before AI processing
+- No special preprocessing needed for the EEE use case
+
+### 7.4 Data Retention
+
+- AI predictions stored linked to item record
+- Follow same retention policy as item data
+- Anonymise/aggregate for long-term statistics
+- Delete AI analysis if user requests item deletion (CASCADE in schema handles this)
+
+---
+
+## 8. Risk Assessment
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Accuracy below target on Freegle data | Medium | High | Phase 0 ultra-MVP validates before commitment |
+| Model API pricing increases | Low | Medium | Multiple providers available; switch if needed |
+| Model API discontinued | Very Low | High | Gemini, Claude, GPT-4o all offer same capability |
+| GDPR compliance issues | Medium | High | Legal review before Phase 1 |
+| Model drift over time | Medium | Low | Quarterly sample review (200 items) |
+| Users reject/ignore AI tagging | Low | Medium | Make non-intrusive; use for statistics only initially |
+| Photo quality too poor | Medium | Medium | Combine with text analysis for redundancy |
+| Scope creep (too many attributes at once) | Medium | Medium | Strict Phase 2 scope: EEE only |
+| Developer time unavailable | Medium | High | Phase 0 requires minimal development |
+
+---
+
+## 9. Automated Accuracy Estimation
+
+A key challenge is measuring accuracy without expensive manual classification. Several automated and semi-automated approaches can provide accuracy signals with minimal human effort.
+
+### 9.1 Internal Cross-Validation (Fully Automated)
+
+Compare different attributes extracted from the **same item** for consistency. Inconsistencies indicate errors.
+
+**Transport vs Dimensions:**
+- AI says transport = "pocket" but dimensions = "120x80x60cm" → one is wrong
+- AI says transport = "van" but dimensions = "15x10x5cm" → one is wrong
+- Track inconsistency rate as a proxy for error rate
+
+**Transport vs Object Type:**
+- AI says object = "sofa" but transport = "carry" → implausible
+- AI says object = "mobile phone" but transport = "van" → implausible
+- Build plausibility rules: each object type has an expected transport range
+
+**Weight vs Transport vs Object Type:**
+- AI says weight = 200kg but transport = "pocket" → inconsistent
+- AI says object = "fridge" but weight = 0.5kg → inconsistent
+
+**EEE vs Object Type:**
+- AI says is_eee = true but object = "wooden bookshelf" → suspicious
+- AI says is_eee = false but object = "microwave" → suspicious
+
+**Implementation:** Run consistency checks on every processed item. Track:
+- % of items with at least one inconsistency (lower = better)
+- Which attribute pairs conflict most often (identifies weakest attribute)
+- Trend over time (degradation = model drift)
+
+### 9.2 Image vs Text Cross-Validation (Fully Automated)
+
+The user has already written a title and description. Compare what AI extracts from the **photo** against what's in the **text**.
+
+**Object type matching:**
+- Photo analysis says "microwave", user title says "microwave" → agreement ✓
+- Photo analysis says "chair", user title says "table" → disagreement ✗
+- Track agreement rate across all items
+
+**EEE keyword matching:**
+- Photo analysis says is_eee = true, description contains "plug" / "battery" / "charger" → consistent ✓
+- Photo analysis says is_eee = true, description says "wooden shelf" → flag for review
+
+**Transport category from text:**
+- Description says "too heavy to carry" → should not be "pocket" or "carry"
+- Description says "will fit in a car" → should be "car" or smaller
+- Description mentions "collection only" or "need a van" → should be "van"
+
+**Implementation:** This is essentially free — just string matching against the existing text. Already partially implemented in `image_recognise.php` which compares AI descriptions with final post content.
+
+### 9.3 Product Database Matching — The Gold Standard (Semi-Automated)
+
+The best accuracy validation is to match Freegle item photos against commercial product databases that have authoritative specs (dimensions, weight, materials, EEE status). If the AI says "40x30x25cm, 12kg" and the Amazon listing for the matched product says "45x32x28cm, 11.5kg", we know the AI is in the right ballpark — without any manual classification.
+
+**Google Lens via SerpApi (Recommended):**
+- Upload a Freegle item photo → Google matches it against its entire product index
+- Returns: product title, price, source links, shopping results
+- Follow source links to get authoritative specs (dimensions, weight, brand, materials)
+- **Cost:** ~£0.10 per search via [SerpApi Google Lens API](https://serpapi.com/google-lens-api)
+- **This is the gold standard** — Google has already solved product matching at massive scale
+- For 500 validation items: ~£50
+
+**eBay searchByImage:**
+- Official [eBay Browse API](https://developer.ebay.com/api-docs/buy/browse/resources/search_by_image/methods/searchByImage) with image upload
+- Returns matched eBay listings with title, price, condition, dimensions
+- **Cost:** Free (API access), but experimental — requires eBay developer approval
+- eBay listings for household items often include dimensions and weight
+- Particularly good for second-hand items (closer to Freegle's use case than Amazon)
+
+**Google Shopping via SerpApi (Cheaper alternative):**
+- Use the AI-identified product name (e.g., "IKEA KALLAX bookshelf") to search Google Shopping
+- Returns product listings with prices and specs
+- **Cost:** ~£0.05 per search via [SerpApi Google Shopping API](https://serpapi.com/google-shopping-api)
+- Doesn't require image upload — just text search based on AI's identification
+- For 500 validation items: ~£25
+
+**Two-Step Validation Pipeline:**
+```
+Freegle Photo
+     ↓
+Step 1: Gemini analyses photo → extracts attributes
+     (object_type, transport_category, dimensions, weight, is_eee, etc.)
+     ↓
+Step 2: Google Lens matches photo → returns real product
+     (with authoritative specs from retailer listing)
+     ↓
+Step 3: Compare AI attributes against retailer specs
+     (automated — no manual review needed)
+```
+
+**What this validates:**
+- Object type: does AI identification match Google Lens product match?
+- Dimensions: how close are AI estimates to listed product dimensions?
+- Weight: how close are AI estimates to listed product weight?
+- Transport category: is AI's category consistent with real dimensions?
+- EEE status: is the matched product electrical?
+- Brand: does AI correctly identify the brand?
+
+**Limitations:**
+- Not every Freegle item will get a Google Lens match (used/worn items, bundles, generic items)
+- Expect ~50-70% match rate — run more items to get enough matched pairs
+- Matched products may not be the exact model (similar but not identical)
+- Still useful: even a "similar product" match validates whether dimensions/category are in the right range
+
+**Note on Amazon:** Amazon's Product Advertising API is being deprecated in April 2026. Amazon doesn't offer image-based search. However, if the AI identifies a product name, a text search via third-party Amazon APIs (Rainforest, Oxylabs) can return detailed specs. These are commercial services with usage costs.
+
+### 9.4 External Dataset Benchmarking (Fully Automated, Free)
+
+Run the same AI prompt against labelled open datasets to measure accuracy without any cost.
+
+**Roboflow E-Waste Dataset (19,613 images, 77 classes):**
+- Every item in this dataset IS electrical → expected is_eee = true for all
+- If AI says is_eee = false for any, that's a false negative
+- Measures recall on obvious EEE items
+- Free to download and process
+
+**IKEA Product Dataset (12,600+ images):**
+- Known product types with specifications (including dimensions and weight)
+- Compare AI dimension estimates against actual IKEA specs
+- Compare AI transport categories against reasonable expectations for each product
+- Compare AI object type against IKEA's own categorisation
+
+**COCO Dataset (80 categories, subset):**
+- Take household-relevant categories (chair, sofa, TV, microwave, etc.)
+- Verify AI object classification matches COCO labels
+- Non-electrical COCO items (chair, bed) should get is_eee = false → measures false positive rate
+
+**Implementation:** Write a script that:
+1. Downloads a sample (e.g., 500 images) from each dataset
+2. Runs them through the same Gemini prompt used for Freegle items
+3. Compares AI output against the dataset's ground truth labels
+4. Reports precision/recall/F1 per attribute
+
+This gives a strong accuracy baseline without classifying any Freegle items manually. Run periodically (quarterly) to detect model drift.
+
+### 9.5 User Correction Signal (Passive, Ongoing)
+
+The existing prototype already has a rating mechanism (`messages_attachments_recognise.rating` = Good/Bad). Extend this:
+
+- Track what % of users change the AI-suggested description (already measured in `image_recognise.php`)
+- Track what % correct the object type
+- If a "correct EEE status" option is added, track correction rate
+- Low correction rate = high accuracy; rising correction rate = degradation
+
+### 9.6 Accuracy Estimation Without Manual Classification: Summary
+
+| Method | Measures | Cost | Coverage |
+|--------|----------|------|----------|
+| Internal cross-validation | Consistency / error rate | Free | Every item |
+| Image vs text comparison | Agreement rate | Free | Every item with text |
+| **Product database matching** | **Dimension/weight/type accuracy** | **~£50 per 500 items** | **Periodic (gold standard)** |
+| External dataset benchmark | Precision, recall, F1 | ~£5-10 per run | Periodic |
+| User corrections | Real-world accuracy | Free | Subset (users who engage) |
+
+**Combined approach:** Internal consistency and text comparison run on every item continuously. Product database matching and external dataset benchmarks run periodically (quarterly). User corrections provide ongoing signal. Together, these provide a robust accuracy picture with minimal manual classification effort.
+
+**The product database approach is the key insight:** Rather than paying humans to manually classify thousands of items, pay ~£0.10 per item to have Google Lens identify the real product, then automatically compare AI estimates against authoritative specs. This gives objective, quantitative accuracy measurement (e.g., "AI dimension estimates are within ±15% of listed specs for 73% of matched items") rather than subjective human judgement.
+
+---
+
+## 10. Existing Prototype Code
+
+Working prototype code already exists in the codebase:
+
+### Core Implementation
+- **`iznik-server/include/message/Attachment.php:677-717`** — `recognise()` method sends photos to Gemini 2.5 Flash Lite, extracts attributes including `ElectricalItem`, stores results as JSON
+- **`iznik-server/http/api/image.php`** — API endpoint with `recognise=true` parameter; currently **commented out** with TODO: "Not doing this here as slow and sometimes flaky; need to background"
+- **`iznik-server/include/ai/GeminiHelper.php`** — dynamic Gemini model selection with caching
+
+### Database
+- **`messages_attachments_recognise`** table — stores AI results (JSON `info` field) with `rating` (Good/Bad) for user feedback
+- Migration: `iznik-batch/database/migrations/2025_12_10_094529_create_messages_attachments_recognise_table.php`
+
+### Analysis Scripts
+- **`scripts/cli/image_recognise.php`** — compares AI descriptions with what users actually posted (passive accuracy measurement)
+- **`scripts/cli/image_recognise_wee.php`** — extracts and logs the `ElectricalItem` field across processed items
+- **`scripts/cli/image_recognise_weight_accuracy.php`** — compares AI weight estimates with item data
+
+### Current Prompt
+The existing prompt asks for: `primaryItem`, `shortDescription`, `longDescription`, `approximateWeightInKg`, `size` (as wxhxd cm dimensions), `condition`, `colour`, `estimatedValueInGBP`, `commonSynonyms`, `ElectricalItem`, `clarityOfImage`.
+
+### What Needs to Change
+1. Add `transportCategory` (pocket/carry/bike/car/van) to the prompt
+2. Keep `size` (dimensions) as secondary data for cross-validation
+3. Move processing to background job (the existing TODO)
+4. Add automated consistency checks between attributes
+5. Add text vs image cross-validation
+
+---
+
+## 11. Accuracy Monitoring (Ongoing)
+
+### Quarterly Validation (Post-Production)
+
+Sample 200 items per quarter:
+- 50 items where user corrected the AI (learn from disagreements)
+- 50 high-confidence predictions (verify accuracy is maintained)
+- 50 low-confidence predictions (check threshold appropriateness)
 - 50 random sample
 
-**Metrics to Track:**
+### Metrics Dashboard
 
-**For EEE Classification:**
+Track continuously:
+- Precision and recall (from user corrections)
+- Confidence calibration curves
+- Processing success rate (% of items successfully analysed)
+- API cost per item
+- Processing latency
+- Failure rate by error type
 
-1. **Precision** = True Positives / (True Positives + False Positives)
-   - Of items we flag as EEE, what % are actually EEE?
-   - Target: >90%
+### Drift Detection
 
-2. **Recall** = True Positives / (True Positives + False Negatives)
-   - Of all actual EEE items, what % do we detect?
-   - Target: >85%
+If any metric drops below threshold:
+1. Investigate: new product types? prompt degradation? API changes?
+2. Adjust prompt or confidence thresholds
+3. If systemic: run larger validation (500 items)
+4. Consider model switch if persistent
 
-3. **F1 Score** = 2 × (Precision × Recall) / (Precision + Recall)
-   - Balanced accuracy measure
-   - Target: >87%
+---
 
-4. **Per-Category Accuracy**:
-   - Track precision/recall for each WEEE category
-   - Identify weak spots
-   - Example: "Large household appliances: 95%, Unusual items: 82%"
+## 10. Alternative Approaches Considered
 
-**For All Characteristics (Applied to ALL Items):**
+### Text-Only Classification
 
-5. **Object Type/Category Accuracy**:
-   - % of items where predicted category matches reviewer
-   - Target: >85% overall
-   - Break down by: Furniture / Appliances / Electronics / Toys / Tools / Other
-   - Track confusion matrix (which categories get confused with each other)
+Analyse item titles and descriptions for electrical keywords without using AI vision.
 
-6. **State/Condition Accuracy**:
-   - % correct for: Working / Broken / Worn / Like New
-   - Target: >75% (acknowledge this is subjective)
-   - Track cases where "Cannot determine from photo"
-   - Analyze which conditions are easiest/hardest to detect
+**Pros:** Essentially free, instant, simple
+**Cons:** Misses items with poor descriptions, can't detect unlabelled EEE
+**Verdict:** Use as a complementary signal alongside image analysis, not a replacement. Useful as a first-pass filter.
 
-7. **Brand Identification**:
-   - Precision: Of brands AI identifies, what % are correct?
-   - Recall: Of items with visible brands, what % does AI detect?
-   - Target: >70% precision (only measure when brand is visible)
-   - Track most commonly identified brands
-   - False positive rate (claiming brand when none visible)
+### Specialised ML Pipeline (Original Proposal)
 
-8. **Material Classification**:
-   - % correct for: Wood / Metal / Plastic / Fabric / Glass / Mixed
-   - Target: >75% overall
-   - Break down by material type (metal likely easier than fabric)
-   - Track "Cannot determine" frequency
-   - Mixed materials are expected to be challenging
+Three-tier: Roboflow E-Waste -> API4.AI -> Multimodal AI fallback.
 
-9. **Size Category Accuracy**:
-   - % correct for: Small / Medium / Large / Very Large
-   - Target: >80%
-   - Allow ±1 category tolerance (e.g., Medium predicted as Large = minor error)
-   - Exact match rate vs tolerance match rate
+**Pros:** Theoretically optimised routing
+**Cons:** Complex, multiple vendor dependencies, higher maintenance, waterfall routing misses false positives, actually more expensive at Freegle's volume
+**Verdict:** Over-engineered for the use case. Was reasonable in 2024 when multimodal APIs were expensive; no longer necessary.
 
-10. **Weight Estimation**:
-   - Mean Absolute Error (MAE) between AI estimate and reviewer estimate
-   - % within ±20% of reviewer estimate
-   - % within ±50% of reviewer estimate
-   - Target: >60% within ±50% (this is expected to be difficult)
-   - Track by size category (should correlate)
-   - Identify systematic over/underestimation
+### Crowdsourced Classification
 
-**Confidence Calibration:**
+Show items to community members for voting.
 
-For each characteristic, measure:
-- When AI says 90% confident, is it actually right 90% of the time?
-- Calibration curves for each attribute
-- Over-confident vs under-confident patterns
+**Pros:** High accuracy (humans are 95%+), free, builds engagement
+**Cons:** Slow, needs active community participation, privacy concerns
+**Verdict:** Consider as a Phase 3 addition for validation and edge cases, not as the primary approach.
 
-**Reliability by Item Difficulty:**
+### Embedding-Based Product Matching (CLIP/FAISS)
 
-Track accuracy separately for:
-- Easy items (clear photos, obvious characteristics)
-- Medium items (some ambiguity)
-- Hard items (poor photos, unusual items, ambiguous attributes)
+Build a vector database of known products and match by visual similarity.
 
-**Inter-Rater Reliability:**
+**Pros:** Good for exact product identification, improves over time
+**Cons:** Requires building/maintaining product database, doesn't help with EEE classification directly
+**Verdict:** Not needed for EEE detection. Potentially useful for a future "what is this product?" feature.
 
-For the 10% of items with multiple reviewers:
-- Cohen's Kappa score (agreement beyond chance)
-- Identify characteristics with high disagreement
-- Use to estimate "ground truth" uncertainty
+---
 
-**Validation Interface Requirements:**
+## 11. Attribute-Specific Technical Notes
 
-The web interface should support:
-- Bulk review workflow (fast keyboard shortcuts)
-- Side-by-side comparison (AI prediction vs reviewer decision)
-- Inter-rater reliability (multiple reviewers for subset)
-- Notes field for interesting cases
-- Difficulty rating (easy/medium/hard)
-- Export for analysis (CSV with all fields)
+### Object Classification and Detection
 
-**Reporting:**
+Modern multimodal models achieve 90-95% accuracy on common household items without any specialised training. For reference, specialised models like YOLOv11 achieve similar accuracy but require training data and deployment infrastructure.
 
-After each validation phase, produce comprehensive accuracy report:
+Standard datasets:
+- **COCO** — 80 common object categories (industry standard)
+- **LVIS** — 2.2M+ annotations, 1,000+ categories with detailed attributes
+- **IKEA Product Dataset** — 12,600+ household object images (GitHub/Kaggle)
+- **E-Waste Dataset** (Roboflow) — 19,613 images, 77 classes of electronic devices
 
-**1. Executive Summary:**
-- Overall accuracy for each characteristic
-- Which attributes are reliable enough to publish
-- Key findings and recommendations
-- Threshold adjustments needed
+These are useful for benchmarking but not needed if using a multimodal API approach.
 
-**2. EEE Detection Report:**
-- Precision, Recall, F1 score
-- Confusion matrix (EEE vs non-EEE)
-- WEEE category breakdown
-- Examples of false positives (non-EEE flagged as EEE)
-- Examples of false negatives (EEE missed)
-- Unusual item performance (aquariums, salt lamps, etc.)
+### Material Recognition
 
-**3. Object Type Report:**
-- Accuracy by major category (Furniture/Appliances/Electronics/etc.)
-- Confusion matrix showing common mis-classifications
-- Examples: "Office chair" vs "Dining chair" confusion rate
-- Categories with highest/lowest accuracy
+Remains challenging. Performance varies significantly with lighting and image quality.
 
-**4. Condition/State Report:**
-- Accuracy for Working / Broken / Worn / Like New
-- % of items where condition cannot be determined from photo
-- Correlation with photo quality
-- Inter-rater agreement (how often do reviewers disagree?)
+- High-contrast materials (metal vs wood vs fabric): 80-85%
+- Similar materials (plastic vs painted wood): 70-75%
+- Mixed materials, coated/painted surfaces: 50-65%
 
-**5. Brand Identification Report:**
-- Brands successfully identified vs missed
-- False positive rate (claiming brands that aren't there)
-- Most commonly identified brands (IKEA, Samsung, etc.)
-- Brand visibility correlation with accuracy
+**Recommendation:** Report as broad categories only (metal, plastic, wood, fabric, mixed). Don't claim precision.
 
-**6. Material Classification Report:**
-- Accuracy by material type
-- Which materials are easiest/hardest to identify
-- Mixed material handling
-- "Cannot determine" frequency
+### Condition Assessment
 
-**7. Size Category Report:**
-- Exact match accuracy
-- ±1 category tolerance accuracy
-- Systematic biases (does AI tend to over/under estimate?)
-- Size vs object type correlation
+AI can detect obvious damage but struggles with subtle quality differences.
 
-**8. Weight Estimation Report:**
-- Mean Absolute Error
-- Distribution of errors
-- % within ±20%, ±50%, ±100%
-- Systematic over/underestimation patterns
-- Recommendation: Use weight or not?
+- Obvious damage (broken, heavily scratched): 85-90%
+- Structural issues (bent, warped, dented): 80-85%
+- Surface wear: 70-75%
+- Subtle quality ("good" vs "very good"): 40-60% — not reliable enough to report
 
-**9. Confidence Calibration Report:**
-- For each characteristic, calibration curves
-- Example: "When AI says 80% confident on material, it's actually right 73% of the time"
-- Recommendations for confidence thresholds
-- Which characteristics have well-calibrated confidence?
+**Recommendation:** Use three-level scale only: Working / Damaged / Cannot Determine.
 
-**10. Model Performance Comparison:**
-- Performance by model (Roboflow vs API4.AI vs GPT-4V)
-- Speed and accuracy for each approach
-- Recommended routing strategy for hybrid system
-- Where to use specialized vs general models
+### Size: Transport Categories (Primary)
 
-**11. Recommendations:**
-- Which attributes should be published on EEE data page?
-- Confidence thresholds for each attribute
-- Areas needing model improvement
-- Sample size needed for production validation
-- Manual review workflows for edge cases
+Rather than abstract size categories (small/medium/large) or unreliable exact dimensions, classify items by **how they'd be transported** — a practical question that maps to common-sense reasoning multimodal AI is good at.
 
-### Critical Success Factors
+| Category | Description | Max Approximate Size | Examples |
+|----------|-------------|---------------------|----------|
+| **Pocket** | Fits in a pocket or bag | ~30cm any dimension | Phone, book, small toy, jewellery |
+| **Carry** | One person can carry it | ~60cm, <15kg | Microwave, box of items, small chair |
+| **Bike** | Manageable on a bike or cargo bike | ~80cm, <20kg | Small table, bags, box of books |
+| **Car** | Fits in a car boot or back seat | ~150cm, <40kg | Bookshelf, desk, armchair, TV |
+| **Van** | Needs a van or large vehicle | >150cm or >40kg | Sofa, wardrobe, fridge, bed, piano |
 
-**1. Accuracy First**
-- Only publish data you're confident in
-- Be transparent about limitations
-- Show confidence levels where appropriate
-- Don't over-claim reliability
+**Expected accuracy: 85-90%.** This is much higher than exact dimensions because:
+- AI reasons about relative size ("this is a sofa, sofas don't fit in cars") rather than measuring
+- Transport category correlates with object type, which AI identifies at 90-95%
+- Ambiguous cases (e.g., small bookshelf: car or van?) fall on natural boundaries where either answer is reasonable
 
-**2. Handle Edge Cases**
-- Multimodal AI essential for unusual items (aquariums, salt lamps, baby bouncers)
-- Test specifically on project examples
-- Build manual review process for low-confidence items
-- Document failure modes
+### Size: Approximate Dimensions (Secondary)
 
-**3. User Trust**
-- Don't force EEE categorization on users
-- Present as helpful suggestion
-- Enable easy correction
-- Explain what happens with the data
+Capture approximate dimensions (wxhxd in cm) alongside transport category, even though they're less reliable (50-70% accuracy). Reasons to capture both:
 
-**4. Data Quality**
-- Validate on sample data first
-- Use user corrections to improve
-- Regular accuracy audits
-- Be honest about uncertainty
+1. **Dimensions may improve over time** as models get better at spatial reasoning
+2. **Cross-validation** — dimensions and transport category can sanity-check each other:
+   - Dimensions say 200x100x80cm but transport says "pocket" → flag as inconsistent
+   - Dimensions say 10x5x3cm but transport says "van" → flag as inconsistent
+3. **Accumulating data** — even noisy dimension data becomes useful in aggregate for statistics
 
-### Risk Mitigation
+### Weight Estimation
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| AI accuracy insufficient | High | Phase 1 validation before scale-up |
-| Users reject AI categorization | Medium | Make optional, enable corrections |
-| Unusual items missed | Medium | Use multimodal AI for edge cases |
-| Historical data incomplete | Low | Document coverage gaps |
-| Privacy concerns | High | Process server-side, anonymize examples |
+No reliable approach exists for weight estimation from images alone. Capture an estimate anyway for the same cross-validation reasons as dimensions.
 
-### Expected Outcomes
+**Recommendation:** Use AI estimate for cross-checking (a "carry" item shouldn't weigh 200kg) but do not present weight estimates to users. For user-facing purposes, use lookup tables based on object type (e.g., "microwave: typically 10-15kg").
 
-**Quantitative:**
-- Detect 85-95% of EEE items (up from ~30% user-tagged)
-- Capture 500-1,500 unusual EEE items annually (aquariums, salt lamps, etc.)
-- Generate accurate EEE statistics for 10,000-15,000 items/year
-- Provide reliable data for 4-6 key attributes per item
+---
 
-**Qualitative:**
-- First comprehensive EEE reuse statistics for peer-to-peer platforms
-- Evidence base for policy development
-- Better recycling communications for non-reused items
-- Increased visibility of reuse sector contribution
+## 12. EU Digital Product Passport (DPP)
 
-**Data That Will Be Reliable Enough to Publish:**
-- ✅ Total EEE item count (± 5-10%)
-- ✅ WEEE category breakdown (± 10-15%)
-- ✅ Common EEE types (high confidence)
-- ✅ Size categories (± 15%)
-- ⚠️ Condition (with caveats)
-- ⚠️ Material (general categories only)
-- ❌ Precise weights (not reliable enough)
-- ❌ Exact dimensions (not reliable enough)
+### What It Is
 
-### Recommended Technology Stack for EEE Project
+The EU's Ecodesign for Sustainable Products Regulation (ESPR), in force since July 2024, mandates Digital Product Passports — machine-readable digital records attached to products via QR codes, NFC chips, or RFID tags. Each DPP is a "digital twin" containing standardised data about a product's materials, dimensions, weight, carbon footprint, repairability, recycling instructions, and more.
 
-**Validation Phase:**
-- Roboflow E-Waste model
-- API4.AI Household Items
-- GPT-4V or Claude 3.5 Sonnet
-- Google Lens API (via SerpApi)
+### Why It Matters for This Project
 
-**Production Phase:**
-- **Primary**: Roboflow E-Waste (self-hosted) for speed
-- **Secondary**: API4.AI for broader coverage
-- **Tertiary**: GPT-4V/Claude for unusual items and full attribute extraction
-- **Database**: PostgreSQL with JSON fields for attributes
-- **Vector search**: FAISS for visual similarity (future product matching)
+DPPs will create exactly the kind of product characteristics database that this project needs for accuracy validation:
 
-**Hybrid Approach Routing:**
-- 70% detected by Roboflow (fast, self-hosted)
-- 20% detected by API4.AI (broader coverage)
-- 10% require GPT-4V (unusual items, full attribute extraction)
+1. **Free ground truth data** — if a product can be identified (by brand/model, or scanning a QR code on items that still have one), its DPP data provides authoritative dimensions, weight, materials, and EEE status
+2. **Accuracy validation** — compare AI estimates against DPP ground truth for identified products, no manual classification needed
+3. **EEE classification** — DPPs will explicitly categorise products under WEEE directives; battery passports mandatory from February 2027
+4. **Transport planning** — with real dimensions and weight from DPPs, transport category can be verified automatically
 
-### Timeline Summary
+### Timeline
 
-| Phase | Duration | Key Activities | Deliverable |
-|-------|----------|----------------|-------------|
-| 1. Validation | 1-2 months | Test approaches, measure accuracy | Validation report |
-| 2. Historical Analysis | 2-3 months | Process 1 year data, generate stats | EEE database & statistics |
-| 3. Website Development | 1-2 months | Build data page, visualizations | Public EEE data page |
-| 4. Production System | 1-2 months | Real-time detection, integration | Live detection system |
-| 5. Data Sharing | Ongoing | APIs, reports, partnerships | Authority access |
+| Date | Milestone |
+|------|-----------|
+| July 2024 | ESPR entered into force |
+| April 2025 | Working Plan 2025-2030 published; first delegated acts for priority product groups |
+| 2025-2026 | Harmonised standards for DPP data and interoperability (8 standards expected) |
+| **July 2026** | **Central DPP registry deployed** — public portal for searching and comparing product data |
+| Feb 2027 | Battery Passport mandatory for EV/industrial batteries >2kWh |
+| 2027 | Textiles, aluminium, tyres join; delegated acts with 12-18 month transitions |
+| 2027-2030 | Gradual expansion to construction materials, machinery, consumer electronics |
 
-**Total Project Duration: 5-9 months**
+### Priority Product Groups (First Wave)
 
-### Success Metrics
+- Textiles and footwear
+- **Furniture** (directly relevant to Freegle)
+- Iron and steel products
+- Aluminium products
+- Tyres
+- **Selected electronics** (directly relevant to EEE detection)
+- Energy-related products
+
+### How Freegle Could Use DPPs
+
+**Short term (2026-2027):**
+- Monitor the DPP registry API when it launches (July 2026)
+- If Freegle items have QR codes or identifiable brand/model numbers, look up their DPP data
+- Use DPP data as a validation dataset: compare AI-extracted attributes against DPP ground truth
+
+**Medium term (2027-2028):**
+- As more product groups get DPPs, the registry becomes increasingly useful
+- If AI identifies a product (e.g., "IKEA KALLAX"), look up its DPP for authoritative specs
+- Auto-populate dimensions, weight, materials, EEE status from DPP where available
+- Transport category can be derived from real dimensions/weight rather than estimated
+
+**Long term (2028+):**
+- Most new products on the EU market will have DPPs
+- Second-hand items on Freegle may still carry their original QR code/NFC tag
+- Scan-to-identify becomes possible: user scans QR → full product specs populated automatically
+- AI becomes a fallback for items without readable DPP markers
+
+### Implications for Architecture
+
+The DPP registry is not yet available (expected July 2026), so it doesn't change the current approach. But it's worth designing the system to accommodate DPP data when it becomes available:
+
+- Store a `dpp_id` field (nullable) alongside AI-extracted attributes
+- When DPP data is available for a product, prefer it over AI estimates
+- Use DPP data as ongoing accuracy validation: compare AI predictions against DPP ground truth for items where both exist
+
+Sources:
+- [ESPR Working Plan 2025-2030](https://www.tazaar.io/news/working-plan-2025-2030-eu-digital-product-passport-regulations)
+- [DPP Regulatory Overview](https://www.circularise.com/blogs/dpps-required-by-eu-legislation-across-sectors)
+- [CIRPASS DPP Pilot](https://cirpassproject.eu/dpp-in-a-nutshell/)
+- [EU Data Portal: DPP and Sustainability](https://data.europa.eu/en/news-events/news/eus-digital-product-passport-advancing-transparency-and-sustainability)
+
+---
+
+## 13. Future Developments to Monitor
+
+### Model Evolution
+- Costs will continue to drop; accuracy will continue to improve
+- On-device processing (Apple Intelligence, Google ML Kit) may eventually allow client-side analysis
+- Video analysis could provide better condition assessment from multiple angles
+
+### EU Digital Product Passport
+- Central registry API launch (July 2026) — monitor and integrate when available
+- Battery Passport (Feb 2027) — particularly relevant for EEE detection
+- Furniture and electronics delegated acts (2025-2027) — key product groups for Freegle
+
+### Freegle-Specific Opportunities
+- Build Freegle-specific product database from successful recognitions over time
+- Use user corrections as training signal for prompt refinement
+- Community validation for edge cases
+- Integration with manufacturer take-back schemes for detected EEE items
+- Integrate with DPP registry for product identification and metadata enrichment
+
+---
+
+## 13. Timeline Summary
+
+| Phase | Duration | Key Deliverable | Go/No-Go |
+|-------|----------|----------------|----------|
+| 0: Ultra-MVP | 6-8 weeks | Accuracy report on 500 items | Proceed if precision >85%, recall >80% |
+| 1: Large Validation | 3-4 months | Comprehensive validation on 3,000-5,000 items | Proceed if targets met per WEEE category |
+| 2: MVP Production | 3 months | EEE detection on all new posts + internal dashboard | Proceed if production accuracy meets targets |
+| 3: Validation & Expansion | 2 months | Production accuracy report, add attributes | Proceed if data quality sufficient for publication |
+| 4: Public Page & Historical | 2-3 months | Public EEE statistics page | — |
+| 5: Data Sharing | Ongoing | API for local authorities | — |
+
+**Total: 12-15 months** (with go/no-go gates after Phase 0, 1, and 3)
+
+---
+
+## 14. Success Metrics
 
 **Accuracy Targets:**
-- EEE detection precision: >90% (items flagged are truly EEE)
-- EEE detection recall: >85% (of all EEE items, we catch 85%+)
-- Unusual item detection: >80% (aquariums, salt lamps, etc.)
+- EEE detection precision: >90%
+- EEE detection recall: >85%
+- Unusual item detection (aquariums, salt lamps, etc.): >80%
 - WEEE category accuracy: >85%
 
 **Coverage Targets:**
 - Process 100% of posts with photos
-- Generate statistics for 12-month rolling window
-- Update public data page monthly/quarterly
+- 12-month rolling statistics window
+- Monthly/quarterly public data updates
 
 **Impact Targets:**
-- 3× increase in EEE items captured in statistics (vs user tagging)
-- Data referenced by 5+ local authorities
-- Recycling info delivered to 1,000+ non-taken EEE items
+- 3x increase in EEE items captured vs user self-tagging
+- Recycling info delivered to 1,000+ non-taken EEE items/year
+- Data referenced by local authorities for waste prevention
 - Published case study demonstrating reuse platform EEE contribution
 
 ---
 
-## 15. Privacy & Ethics
-
-### Considerations for Implementation
-
-1. **Image Processing**
-   - Process images server-side to protect privacy
-   - No permanent storage of images in third-party services
-   - Clear user consent for AI analysis
-
-2. **Bias & Fairness**
-   - AI models may have biases toward common/expensive items
-   - Underrepresentation of unusual or cultural-specific items
-   - Monitor for systematic failures in underserved categories
-
-3. **Accuracy Communication**
-   - Never present AI analysis as definitive truth
-   - Show confidence levels when appropriate
-   - Easy correction mechanisms empower users
-
-4. **Transparency**
-   - Explain that AI assists in categorization
-   - Users retain control over descriptions
-   - Document what data is sent to third parties
-
----
-
-## 16. Future Developments to Monitor
-
-### Emerging Technologies (2025-2026)
-
-1. **Improved Depth Estimation**
-   - Apple's Depth Pro shows direction of progress
-   - Better absolute scale without references
-   - Could enable reliable dimension measurement
-
-2. **Material Recognition Advances**
-   - Active research in construction/manufacturing
-   - Transfer to consumer goods likely
-   - Physics-based rendering integration
-
-3. **Multimodal Model Evolution**
-   - GPT-5, Claude 4, Gemini 3 expected
-   - Improved accuracy on vision tasks
-   - Lower costs through competition
-
-4. **On-Device Processing**
-   - Apple Vision frameworks
-   - Google ML Kit
-   - Reduces privacy concerns and API costs
-
-5. **Video Analysis**
-   - Assessment from video walkarounds
-   - Better condition/function evaluation
-   - Multiple angles automatically
-
-### Research Areas to Watch
-
-- Few-shot learning for unusual items
-- Compositional understanding (materials + structure)
-- Temporal analysis (wear patterns over time)
-- Cross-modal reasoning (image + text)
-
----
-
-## 17. References & Resources
+## 15. References
 
 ### Datasets
+- COCO — Common Objects in Context
+- LVIS — Large Vocabulary Instance Segmentation
+- E-Waste Dataset (Roboflow) — 19,613 images, 77 classes
+- IKEA Product Dataset — 12,600+ images (GitHub/Kaggle)
+- Energy Star Product Database — data.energystar.gov/developers
 
-- **LVIS** - Large Vocabulary Instance Segmentation
-- **COCO** - Common Objects in Context
-- **E-Waste Dataset** (Roboflow) - 19,613 images, 77 classes
-- **IKEA Product Dataset** - 12,600+ household object images (GitHub/Kaggle)
-- **IKEA Interior Design Dataset** - 298 rooms, 2,193 products with descriptions
-- **IKEA Multimodal Dataset** - All IKEA products from 2017 with text+images
-- **Roboflow IKEA Furnitures** - 872 annotated images, object detection format
+### Models and Services
+- Gemini 2.5 Flash/Pro — Google multimodal AI
+- Claude Sonnet 4.5 / Opus 4.6 — Anthropic multimodal AI
+- GPT-4o — OpenAI multimodal AI
+- YOLOv11 — Object detection (for reference)
+- Roboflow — Computer vision platform
+- API4.AI — Household items recognition
 
-### Models & Frameworks
-
-- **YOLOv8/v10** - Object detection
-- **RT-DETR** - Transformer-based detection
-- **Apple Depth Pro** - Monocular depth estimation
-- **GPT-4V, Claude 3.5, Gemini 2.0** - Multimodal AI
-- **CLIP** - OpenAI's language-image embeddings
-- **SigLIP** - Sigmoid language-image pre-training
-- **SimCLR** - Visual representation learning
-
-### Research Papers (Recent)
-
+### Research Papers
 - "How Well Does GPT-4o Understand Vision?" (2024)
-- "Measuring Object Size Using Depth Estimation from Monocular Images" (2024)
-- "Enhancing waste sorting and recycling efficiency" (2024)
 - "Application of deep learning object classifier to improve e-waste collection" (2024)
-
-### Commercial Solutions
-
-- **Roboflow** - Computer vision platform
-- **Recycleye WasteNet** - Waste classification
-- **API4AI** - Household items recognition (200+ categories)
-- **Google Cloud Vision API** - Product Search
-- **Dragoneye** - Furniture recognition API
-- **FurnishRec** - Furniture category recognition (Azure)
-- **SerpApi** - Google Lens API access
-- **Amazon Rekognition** - AWS image analysis
-
-### Vector Databases
-
-- **FAISS** - Facebook AI Similarity Search (open source)
-- **Milvus** - Optimized for 200M+ vectors
-- **Annoy** - Spotify's approximate nearest neighbors
+- "Enhancing waste sorting and recycling efficiency" (2024)
 
 ---
 
-## 18. Conclusion
+## Appendix A: Pre-Phase-1 Checklist
 
-Modern computer vision and AI have reached a point where automated attribute extraction from images is practical for many use cases relevant to Freegle. The key is matching the right technology to each attribute based on reliability requirements.
+- [ ] Phase 0 ultra-MVP completed with positive results
+- [ ] GDPR compliance reviewed for chosen AI service
+- [ ] Privacy policy update drafted
+- [ ] Developer time allocated for Phase 1
+- [ ] Reviewer volunteers identified (2+ people, ~85 hours each)
+- [ ] Validation interface requirements agreed
+- [ ] Sample extraction query written and tested
+- [ ] Structured prompt designed and tested
+- [ ] API account budget limits configured
+- [ ] Go/no-go criteria agreed by stakeholders
 
-**High-confidence attributes** (object type, electrical/not) can be automated with minimal user verification, while **moderate-confidence attributes** (material, condition) should be presented as helpful suggestions that users can confirm or correct.
+---
 
-**Visual product recognition** (without barcodes) is now commercially viable through multiple approaches:
-- **Commercial APIs** like API4.AI and Google Lens provide immediate recognition
-- **Embedding-based matching** using CLIP/SigLIP enables custom product databases
-- **Crowd-sourced databases** can grow organically from Freegle's own user base
+## Appendix B: Sample Prompt for EEE Detection
 
-A **hybrid approach** combining specialized models for core tasks, embedding-based product matching, and multimodal AI for flexibility represents the best balance of accuracy and capability for a platform like Freegle.
+```
+Analyse this photo of an item being given away on a reuse platform.
 
-The technology is mature enough for production deployment with appropriate confidence thresholds and user verification mechanisms. Starting with commercial APIs for proof-of-concept, then migrating to custom embedding-based solutions provides a practical path to scalable product recognition.
+Respond in JSON format with these fields:
+{
+  "is_eee": boolean,       // Is this an Electrical or Electronic Equipment item?
+  "eee_confidence": float, // 0.0 to 1.0
+  "object_type": string,   // What is this item? Be specific.
+  "weee_category": string | null, // If EEE, which WEEE category?
+    // Options: "Large household appliances", "Small household appliances",
+    // "IT and telecommunications", "Consumer electronics", "Lighting",
+    // "Electrical tools", "Toys/leisure/sports", "Medical devices",
+    // "Monitoring and control instruments", "Automatic dispensers"
+  "condition": string,     // "working", "damaged", "unknown"
+  "primary_material": string, // Main material visible
+  "transport_category": string, // How would someone collect this item?
+    // "pocket" = fits in a pocket or bag (phone, book, small toy)
+    // "carry" = one person can carry it (microwave, small chair)
+    // "bike" = manageable on a bike or cargo bike (small table, bags)
+    // "car" = fits in a car boot or back seat (bookshelf, desk, armchair)
+    // "van" = needs a van or large vehicle (sofa, wardrobe, fridge, bed)
+  "approx_dimensions_cm": string, // Estimated wxhxd in cm, e.g. "50x35x30"
+  "approx_weight_kg": float,      // Estimated weight in kg
+  "brand": string | null,  // Brand if visible
+  "reasoning": string      // Brief explanation of your assessment
+}
+
+Important: EEE includes any item with a plug, battery, motor, or electronic
+component. This includes unusual items like aquarium heaters, electric
+blankets, salt lamps, baby bouncers with music/vibration, dimmer switches,
+electric clocks, and powered garden tools.
+
+Item description from user: "{description}"
+```
+
+---
+
+**Document Status:** Consolidated and revised, February 2026
+**Replaces:** image-recognition-research.md (Nov 2025), image-recognition-critical-review.md (Nov 2025), image-recognition-costs-tracking.md (Nov 2025)
+**Next Review:** After Phase 0 completion
