@@ -219,6 +219,8 @@ CREATE TABLE IF NOT EXISTS background_tasks (
 |-----------|--------------|-------------|
 | `push_notify_group_mods` | addGroup (volunteering/communityevent) | `{group_id}` |
 | `email_chitchat_report` | POST /newsfeed (Report action) | `{user_id, user_name, user_email, newsfeed_id, reason}` |
+| `email_donate_external` | PUT /donations (external donation) | `{user_id, user_name, user_email, amount}` |
+| `email_invitation` | PUT /invitation (create invitation) | `{invite_id, sender_name, sender_email, to_email}` |
 
 **Future Task Types (to be added as endpoints migrate):**
 
@@ -312,7 +314,7 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 | 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | 🔄 PR Ready | Go PR #11, FD PR #48, Nuxt3 PR #152. CI green. Awaiting merge. |
 | 17 | /volunteering | POST, PATCH, DELETE | 5 | 🔄 PR Ready | Go PR #9, FD PR #46, Nuxt3 PR #150. CI green. Awaiting merge. |
 | 18 | /communityevent | POST, PATCH, DELETE | FD+MT | 🔄 PR Ready | Go PR #10, FD PR #47, Nuxt3 PR #151. CI green. Awaiting merge. |
-| 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
+| 19 | /image | POST | FD file upload | 🔄 PR Ready | Go PR #15, FD PR #52, Nuxt3 PR #155. External UID + rotate. |
 | 20 | /comment | POST, PATCH, DELETE | MT | 🔄 PR Ready | Go PR #12, FD PR #49, Nuxt3 PR #153. CI green. Awaiting merge. |
 
 ---
@@ -330,8 +332,8 @@ These require the email queue (Phase 0A) to be complete first.
 | 25 | /chatmessages POST | chat_notification | ⬜ Pending | `Migrate /chatmessages POST to v2` |
 | 26 | /chatrooms POST | Various actions | ⬜ Pending | `Migrate /chatrooms POST to v2` |
 | 27 | /merge | merge_offer | ⬜ Pending | `Migrate /merge to v2` |
-| 28 | /invitation | invitation | ⬜ Pending | `Migrate /invitation to v2` |
-| 29 | /donations PUT | donate_external | ⬜ Pending | `Migrate /donations PUT to v2` |
+| 28 | /invitation | invitation | 🔄 PR Ready | Go PR #17, FD PR #54, Nuxt3 PR #157. GET/PUT/PATCH migrated. DELETE stays v1 (rarely used). |
+| 29 | /donations PUT | donate_external | 🔄 PR Ready | Go PR #16, FD PR #53, Nuxt3 PR #156. External donation + GiftAid notif + email queue. |
 
 **Task pattern for Phase 3:**
 1. Verify Laravel Mailable exists for the email type (create if not).
