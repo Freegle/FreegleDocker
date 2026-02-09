@@ -787,6 +787,30 @@ class IncomingMailServiceTest extends TestCase
         Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
     }
 
+    public function test_auto_reply_misclassified_as_bounce_returns_to_system(): void
+    {
+        // Outlook auto-replies sometimes arrive with MAILER-DAEMON envelope-from,
+        // causing the parser to flag them as bounces. Since they have no DSN content,
+        // parseDsn() returns null. These should return TO_SYSTEM, not ERROR.
+        $autoReplyEmail = $this->createMinimalEmail([
+            'From' => 'someone@example.com',
+            'To' => 'bounce-12345-67890@users.ilovefreegle.org',
+            'Subject' => 'Automatic reply: [Test Freegle] OFFER: Item (Area AB1)',
+            'Auto-Submitted' => 'auto-replied',
+        ], 'I am currently out of the office.');
+
+        $parsed = $this->parser->parse(
+            $autoReplyEmail,
+            'MAILER-DAEMON',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should NOT be ERROR - auto-replies aren't real bounces
+        $this->assertNotEquals(RoutingResult::ERROR, $result);
+    }
+
     public function test_dsn_bounce_to_bounce_address_not_auto_replied(): void
     {
         // Actual DSN bounces should be handled by handleBounce, not auto-replied

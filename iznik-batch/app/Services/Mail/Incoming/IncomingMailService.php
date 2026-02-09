@@ -1306,6 +1306,18 @@ class IncomingMailService
             // be a human reply that was incorrectly flagged as a bounce. Return TO_SYSTEM
             // to allow the routing to continue to other handlers.
             if ($error === 'unparseable') {
+                // Auto-replies (OOO, vacation) sometimes arrive with MAILER-DAEMON
+                // envelope-from, causing them to be misclassified as bounces. They
+                // have no DSN content so parseDsn() returns null. Treat as TO_SYSTEM.
+                if ($email->isAutoReply()) {
+                    Log::debug('Auto-reply misclassified as bounce - treating as system message', [
+                        'subject' => $email->subject,
+                        'from' => $email->fromAddress,
+                    ]);
+
+                    return RoutingResult::TO_SYSTEM;
+                }
+
                 if ($email->bounceRecipient !== null) {
                     // We had recipient info but couldn't parse - this is a real error
                     $this->lastRoutingContext = [
