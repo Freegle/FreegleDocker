@@ -418,38 +418,21 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-08 - Adversarial review fixes + CI fix round
-- **Status**: Adversarial review DONE. CI fixes in progress for remaining branches.
-- **Active Plan Phase**: Phase 2 (Simple Write Endpoints) - Adversarial review complete, fixing CI
-- **CI Status (FreegleDocker)**:
-  - migration-foundation ✅ (#1802)
-  - messages-markseen ✅ (#1803)
-  - address-writes ✅ (#1804)
-  - comment-writes ✅ (#1813)
-  - newsfeed-writes 🔄 retrigger pushed #1819 (fixed iznik-nuxt3 submodule ref, same as volunteering/communityevent)
-  - volunteering-writes 🔄 running #1817 (fixed iznik-nuxt3 submodule ref from comment-writes → volunteering branch)
-  - communityevent-writes 🔄 running #1818 (same fix as volunteering)
-- **CI Status (Submodule PRs)**:
-  - All iznik-nuxt3 PRs: ✅ (all 6 green)
-  - iznik-server-go: address-writes #731 🔄, newsfeed-writes #732 🔄 (retriggered with fixed orb)
-  - All other Go PRs: ✅
-- **Root Causes Fixed**:
-  - Go #719/#720: Failed because orb was published after pipeline started (permission denied on setup-test-database.sh). Retriggered as #731/#732 with orb 1.1.160.
-  - Volunteering/communityevent #1814/#1815: iznik-nuxt3 submodule was pointing to comment-writes branch commit (f02ec311) which includes test-v2-comment-writes.spec.js. Those tests expect /api/comment routes that don't exist on these branches (404 vs expected 401). Fixed by pointing to correct nuxt3 feature branch tips.
-  - Nuxt #4725: Auto-canceled by #4726 which passed ✅
-- **Deferred Items**: AddGroup side effects (newsfeed entry + push notif), ConvertToStory, Report email
-- **Next Steps**:
-  1. Wait for all CI to pass
-  2. If all green → all v2 PRs ready for merge (next phase of migration)
+### 2026-02-09 - Phase 3: invitation + batch handlers + CI fixes
+- **Status**: Phase 3 #28 (invitation) and #29 (donations) PR ready. All Go PRs ✅ green.
+- **Completed**:
+  - Implemented /invitation Go handler (#28): GET/PUT/PATCH with quota, declined prevention, duplicate protection
+  - Created InvitationMail + MJML template, wired batch handler
+  - Created DonateExternalMail MJML template, wired batch handler
+  - Fixed Go PR #15 CI: FK constraint in image tests (created parent messages)
+  - Fixed Go PR #16 CI: Missing background_tasks table in test setup
+  - Created PRs: Go #17, Nuxt3 #157, FD #54 (invitation)
+- **CI**: Go #14-17 all ✅. FD #51-54 pending. Nuxt3 #157 retriggered (transient 502).
+- **PRs Awaiting Merge**: FD #43-#54, Go #6-#17, Nuxt3 #148-#157
+- **Next**: Monitor CI. Continue Phase 3 (/session next).
 
-### 2026-02-07 - Fix CI: Duplicate Threading Headers in ChatNotification
-- **Status**: ✅ Complete
-- **Branch**: master (fix), then merged into all v2 feature branches
-- **Root Cause**: `ChatNotification::build()` registers a `withSymfonyMessage` callback that adds RFC 2822 threading headers (References, In-Reply-To). When `TestMailCommand` calls `render()` then `spool()` (which calls `send()`), `build()` runs twice, registering the callback twice. The second invocation fails with "Impossible to set header References as it's already defined and must be unique."
-- **Fix**: Remove existing threading headers before re-adding them (same pattern already used for Message-ID). Also removed unnecessary MJML mock from TestMailCommandTest - use real MJML container.
-- **Commit**: cbba4602 on master
-- **Cascaded to**: All 6 v2 feature branches (migration-foundation, comment-writes, address-writes, communityevent-writes, messages-markseen, newsfeed-writes, volunteering-writes)
-- **Plan Updated**: Added branch chaining strategy to migration plan - each feature branch must be based on the previous successful branch, not independently on master
-- **CI**: Pipeline triggered on master, awaiting results
+### 2026-02-08 - CI fixes + adversarial review
+- **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.
+- **Key fixes**: FK constraint violations in newsfeed tests, user location query, ChatListEntry Pinia mocks, ProxyImage USER_SITE, MessageExpanded photoArea height
 
 
