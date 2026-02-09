@@ -439,18 +439,19 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 - **Test coverage**: Strong across all PRs (88 total tests). Newsfeed could use AttachToThread/ReferTo/spammer tests.
 - **No blocking issues found** - all gaps are documented as deferred items in the migration plan
 
-### 2026-02-09 - Phase 0A: Background task queue + wiring up side effects
-- **Status**: Phase 0A tasks 0A.1-0A.6 and 0A.8 ✅ Done. 0A.7 (end-to-end test) ⬜ Pending.
+### 2026-02-09 - Phase 0A: Background task queue + side effects + CI fix
+- **Status**: Phase 0A all tasks ✅ Done except 0A.7 (end-to-end test). CI fix for NuxtPicture stub pushed (#1835 running).
 - **Completed**:
   - Created `queue/queue.go` with generic QueueTask() function (Go PR #14)
-  - Created `newsfeed/create.go` with CreateNewsfeedEntry() (Go PR #14)
+  - Created `newsfeed/create.go` with CreateNewsfeedEntry() including spam/suppression check, duplicate protection, location display (Go PR #14)
   - Created ProcessBackgroundTasksCommand + ChitchatReportMail MJML (FD PR #51)
-  - Wired up newsfeed Report action → email_chitchat_report queue task (on feature/v2-newsfeed-writes)
-  - Wired up volunteering AddGroup → newsfeed entry + push_notify_group_mods queue task (on feature/v2-volunteering-writes)
-  - Wired up communityevent AddGroup → newsfeed entry + push_notify_group_mods queue task (on feature/v2-communityevent-writes)
-- **Branch Dependencies**: Phase 2 feature branches now depend on feature/v2-background-tasks (merged into each)
-- **Key Decision**: Branches can depend on other branches, not just master. Release order: background-tasks first, then Phase 2 branches.
-- **Next**: End-to-end test (0A.7), then push all branches and await CI
+  - Wired up newsfeed Report → email queue, volunteering/communityevent AddGroup → newsfeed+push queue
+  - Code quality review: fixed location fallback order, added spam check, duplicate protection, location field
+  - Removed PHP references from all Go comments
+  - Fixed CI: Added NuxtPicture global stub to Vitest setup.ts (iznik-nuxt3 c4a8a397)
+- **Branch Dependencies**: Phase 2 feature branches depend on feature/v2-background-tasks (merged into each)
+- **CI**: Pipeline #1835 running with NuxtPicture fix
+- **Next**: Wait for CI #1835, then end-to-end test (0A.7)
 
 ### 2026-02-09 - Phase 1B CI ✅ green + Plan restructured
 - **Status**: Phase 1B CI pipeline GREEN. Phase 2 all 7 pipelines ✅ green. Plan updated with Phase 1C for chat.

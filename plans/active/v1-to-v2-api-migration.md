@@ -232,13 +232,13 @@ CREATE TABLE IF NOT EXISTS background_tasks (
 - Max 3 retry attempts before permanent failure
 - Daemon mode via scheduler (every minute, 60 iterations per run)
 
-**Deferred `CreateNewsfeedEntry` improvements** (from code quality review):
+**`CreateNewsfeedEntry` improvements** (from code quality review):
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ⬜ Pending | PHP checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. Go always inserts with `hidden=NULL`. Without this, suppressed users' events appear in newsfeeds. |
-| 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ⬜ Pending | PHP checks if last post by user was same type to prevent double-submission. Go has no duplicate check. |
-| 0A.11 | Set `location` display name in CreateNewsfeedEntry | ⬜ Pending | PHP calls `getPublicLocation()` to set the location text column. Go leaves it NULL. Low priority - display may derive from coordinates. |
+| 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ✅ Done | Checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. |
+| 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ✅ Done | Skips if last entry by user was the same type. |
+| 0A.11 | Set `location` display name in CreateNewsfeedEntry | ✅ Done | Uses group nameshort as location display name. |
 
 ### 0B: Test Audit & Gap Analysis
 
