@@ -418,16 +418,18 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 3: user writes + chatmessages + chatrooms + image fix
-- **Status**: Phase 3 #22 (user writes), #25 (chatmessages), #26 (chatrooms POST), #21 (session) all PR ready.
+### 2026-02-09 - Phase 3: memberships + user writes + chatmessages + chatrooms + image fix
+- **Status**: Phase 3 #22-#29 all PR ready or deferred. Only #24 (/message writes) remains pending.
 - **Completed**:
+  - Implemented /memberships writes (#23): PUT join, DELETE leave, PATCH settings. 14 tests. Go PR #22, FD #59, Nuxt3 #162.
+  - Deferred /merge (#27): MT-only endpoint, no FD usage found.
   - Implemented /user POST (#22): Rate, RatingReviewed, AddEmail, RemoveEmail, Engaged with 11 tests
   - Implemented /chatmessages PATCH+DELETE (#25): ownership checks, 11 tests, $patchv2/$delv2 BaseAPI methods
   - Implemented /chatrooms POST (#26): Roster update, nudge, typing, hide/block/unhide migrated
   - Fixed image POST FK violation: NULL for parent ID when no message exists yet
-- **CI**: Monitoring. chatrooms-post ✅ green, image-post/chatmessages/user-writes running.
-- **PRs Awaiting Merge**: FD #43-#58, Go #6-#21, Nuxt3 #148-#161
-- **Next**: Monitor CI. Continue Phase 3 (#23 /memberships, #24 /message writes, #27 /merge remain).
+- **CI**: chatmessages retriggered (GitHub 500 transient). image-post ✅. user-writes running. memberships triggered.
+- **PRs Awaiting Merge**: FD #43-#59, Go #6-#22, Nuxt3 #148-#162
+- **Next**: Monitor CI. Implement #24 (/message writes) - the last remaining Phase 3 endpoint.
 
 ### 2026-02-08 - CI fixes + adversarial review
 - **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.
