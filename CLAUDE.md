@@ -418,23 +418,11 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-08 - Phase 1B Story + Location Switchover Implementation
-- **Status**: Story ✅, Location partial ✅, Chat deferred ⏳
-- **Active Plan Phase**: Phase 1B (MT Switchovers) - nearly complete
-- **Branch**: `feature/v2-mt-switchovers` (all 3 repos)
-- **Go commits** (iznik-server-go, 4 new):
-  - Story: reviewed/public/newsletterreviewed query params, dynamic SQL, Public/Reviewed struct fields
-  - Location: ontn in ClosestGroup, AreaInfo struct in Typeahead
-- **Nuxt3 commits** (iznik-nuxt3, 2 new):
-  - Story: fetchMT uses v2 list→fetch, ModStoryReview fetches user separately, newsletter.vue uses correct v2 params
-  - Location: ModMessage uses fetchByLatLng, ModGroupMap search uses typeahead (v2)
-- **Phase 1B Final Status**:
-  - #7 /chat: ⏳ Deferred (16+ v1 calls, complex UNION SQL, needs dedicated phase)
-  - #8 /config: ✅ Done
-  - #9 /location: 🔄 Partial (LatLng + typeahead switched; bounds/dodgy deferred)
-  - #10 /story: ✅ Done (Go filters + nuxt3 switchover)
-  - #11 /authority: ✅ Done
-- **Next**: Push all branches, create/update PR, run CI
+### 2026-02-09 - Phase 1B: Vitest fixes pushed, CI pipeline #1828 running
+- **Status**: Phase 1B PRs created, Vitest test fixes pushed, awaiting CI.
+- **PRs**: Go #13, Nuxt3 #154, FreegleDocker pipeline #1828
+- **Phase 2**: All 7 pipelines ✅ green — ready for merge
+- **Next**: Wait for #1828, then all v2 PRs ready for merge
 
 ### 2026-02-08 - Adversarial review fixes + CI fix round
 - **Status**: Adversarial review DONE. CI fixes in progress for remaining branches.
@@ -451,10 +439,6 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - All iznik-nuxt3 PRs: ✅ (all 6 green)
   - iznik-server-go: address-writes #731 🔄, newsfeed-writes #732 🔄 (retriggered with fixed orb)
   - All other Go PRs: ✅
-- **Root Causes Fixed**:
-  - Go #719/#720: Failed because orb was published after pipeline started (permission denied on setup-test-database.sh). Retriggered as #731/#732 with orb 1.1.160.
-  - Volunteering/communityevent #1814/#1815: iznik-nuxt3 submodule was pointing to comment-writes branch commit (f02ec311) which includes test-v2-comment-writes.spec.js. Those tests expect /api/comment routes that don't exist on these branches (404 vs expected 401). Fixed by pointing to correct nuxt3 feature branch tips.
-  - Nuxt #4725: Auto-canceled by #4726 which passed ✅
 - **Deferred Items**: AddGroup side effects (newsfeed entry + push notif), ConvertToStory, Report email
 - **Next Steps**:
   1. Wait for all CI to pass
