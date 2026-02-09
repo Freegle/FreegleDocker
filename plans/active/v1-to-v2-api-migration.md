@@ -331,7 +331,7 @@ These require the email queue (Phase 0A) to be complete first.
 | 23 | /memberships | modmail | ⬜ Pending | `Migrate /memberships to v2` |
 | 24 | /message writes | modmail, welcome | ⬜ Pending | `Migrate /message write ops to v2` |
 | 25 | /chatmessages POST | chat_notification | ⬜ Pending | `Migrate /chatmessages POST to v2` |
-| 26 | /chatrooms POST | Various actions | ⬜ Pending | `Migrate /chatrooms POST to v2` |
+| 26 | /chatrooms POST | Various actions | 🔄 PR Ready | Go PR #19, FD PR #56, Nuxt3 PR #159. Roster update, nudge, typing, hide/block/unhide migrated. ReferToSupport deferred. |
 | 27 | /merge | merge_offer | ⬜ Pending | `Migrate /merge to v2` |
 | 28 | /invitation | invitation | 🔄 PR Ready | Go PR #17, FD PR #54, Nuxt3 PR #157. GET/PUT/PATCH migrated. DELETE stays v1 (rarely used). |
 | 29 | /donations PUT | donate_external | 🔄 PR Ready | Go PR #16, FD PR #53, Nuxt3 PR #156. External donation + GiftAid notif + email queue. |
