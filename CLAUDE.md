@@ -418,19 +418,21 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 0A: Background task queue + side effects + CI fix
-- **Status**: Phase 0A all tasks ✅ Done except 0A.7 (end-to-end test). CI fix for NuxtPicture stub pushed (#1835 running).
-- **Completed**:
-  - Created `queue/queue.go` with generic QueueTask() function (Go PR #14)
-  - Created `newsfeed/create.go` with CreateNewsfeedEntry() including spam/suppression check, duplicate protection, location display (Go PR #14)
-  - Created ProcessBackgroundTasksCommand + ChitchatReportMail MJML (FD PR #51)
-  - Wired up newsfeed Report → email queue, volunteering/communityevent AddGroup → newsfeed+push queue
-  - Code quality review: fixed location fallback order, added spam check, duplicate protection, location field
-  - Removed PHP references from all Go comments
-  - Fixed CI: Added NuxtPicture global stub to Vitest setup.ts (iznik-nuxt3 c4a8a397)
+### 2026-02-09 - CI fixes round + all Go PRs green
+- **Status**: All 9 Go PRs ✅ green. All FD PRs #43-#50 ✅ green. FD PR #51 pending. Master #1839 pending.
+- **Fixes applied**:
+  - Go: Fixed FK constraint violations in newsfeed_create_test.go (fake eventID=999999 → real rows)
+  - Go: Fixed user location query in create.go (users table has no lat/lng → JOIN locations via lastlocation FK)
+  - Nuxt3: Fixed ChatListEntry.spec.js (added useUserStore/useMiscStore mocks for ModTools chat profile images)
+  - Nuxt3: Fixed ProxyImage.spec.js (added USER_SITE to useRuntimeConfig mock, removed 'class' from NuxtPicture stub props)
+  - Nuxt3: Fixed MessageExpanded.spec.js (set photoAreaHeight for promised overlay test)
+  - Merged fixes to all 4 affected Go branches, updated all branches with master
+- **Plan Updated**: Phase 2 status table updated to reflect PR-ready state
+- **Next**: Wait for master CI #1839 green, then continue with remaining Phase 2 items (#13 isochrone, #19 image)
+
+### 2026-02-09 - Phase 0A: Background task queue + side effects
+- **Status**: Phase 0A all tasks ✅ Done except 0A.7 (end-to-end test).
 - **Branch Dependencies**: Phase 2 feature branches depend on feature/v2-background-tasks (merged into each)
-- **CI**: Pipeline #1835 running with NuxtPicture fix
-- **Next**: Wait for CI #1835, then end-to-end test (0A.7)
 
 ### 2026-02-09 - Phase 1B CI ✅ green + Plan restructured
 - **Status**: Phase 1B CI pipeline GREEN. Phase 2 all 7 pipelines ✅ green.

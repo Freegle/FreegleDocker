@@ -305,15 +305,15 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|
-| 12 | /address | PATCH, PUT | 5 | ⬜ Pending | `Migrate /address write ops to v2` |
+| 12 | /address | PATCH, PUT | 5 | 🔄 PR Ready | Go PR #8, FD PR #45, Nuxt3 PR #149. CI green. Awaiting merge. |
 | 13 | /isochrone | PUT, POST, PATCH | 2 | ⬜ Pending | `Migrate /isochrone write ops to v2` |
-| 14 | /notification POST | Seen, AllSeen | 3 | ⬜ Pending | `Migrate /notification POST to v2` |
-| 15 | /messages POST | MarkSeen | 1 | ⬜ Pending | `Migrate /messages MarkSeen to v2` |
-| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ⬜ Pending | `Migrate /newsfeed POST to v2` |
-| 17 | /volunteering | POST, PATCH, DELETE | 5 | ⬜ Pending | `Migrate /volunteering write ops to v2` |
-| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ⬜ Pending | `Migrate /communityevent write ops to v2` |
+| 14 | /notification POST | Seen, AllSeen | 3 | ✅ Done | Already migrated (2025-12-13). See "Already Migrated" section. |
+| 15 | /messages POST | MarkSeen | 1 | 🔄 PR Ready | Go PR #7, FD PR #44, Nuxt3 PR #148. CI green. Awaiting merge. |
+| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | 🔄 PR Ready | Go PR #11, FD PR #48, Nuxt3 PR #152. CI green. Awaiting merge. |
+| 17 | /volunteering | POST, PATCH, DELETE | 5 | 🔄 PR Ready | Go PR #9, FD PR #46, Nuxt3 PR #150. CI green. Awaiting merge. |
+| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | 🔄 PR Ready | Go PR #10, FD PR #47, Nuxt3 PR #151. CI green. Awaiting merge. |
 | 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
-| 20 | /comment | POST, PATCH, DELETE | MT | ⬜ Pending | `Migrate /comment write ops to v2` |
+| 20 | /comment | POST, PATCH, DELETE | MT | 🔄 PR Ready | Go PR #12, FD PR #49, Nuxt3 PR #153. CI green. Awaiting merge. |
 
 ---
 
