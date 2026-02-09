@@ -418,18 +418,18 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 3: invitation + batch handlers + CI fixes
-- **Status**: Phase 3 #28 (invitation) and #29 (donations) PR ready. All Go PRs ✅ green.
+### 2026-02-09 - Phase 3: session actions + image auth fix + branch updates
+- **Status**: Phase 3 #21 (session) PR ready. #28 (invitation), #29 (donations) PR ready. All Go PRs ✅ green.
 - **Completed**:
-  - Implemented /invitation Go handler (#28): GET/PUT/PATCH with quota, declined prevention, duplicate protection
-  - Created InvitationMail + MJML template, wired batch handler
-  - Created DonateExternalMail MJML template, wired batch handler
-  - Fixed Go PR #15 CI: FK constraint in image tests (created parent messages)
-  - Fixed Go PR #16 CI: Missing background_tasks table in test setup
-  - Created PRs: Go #17, Nuxt3 #157, FD #54 (invitation)
-- **CI**: Go #14-17 all ✅. FD #51-54 pending. Nuxt3 #157 retriggered (transient 502).
-- **PRs Awaiting Merge**: FD #43-#54, Go #6-#17, Nuxt3 #148-#157
-- **Next**: Monitor CI. Continue Phase 3 (/session next).
+  - Implemented /session Go handler (#21): LostPassword + Unsubscribe with auto-login keys, email queue
+  - Created ForgotPasswordMail + UnsubscribeConfirmMail MJML templates, wired batch handlers
+  - Fixed image POST auth: removed auth requirement (uploads happen before login)
+  - Updated all 13 FD feature branches with master (resolved submodule/doc conflicts)
+  - Created PRs: Go #18, Nuxt3 #158, FD #55 (session)
+  - Earlier: Implemented /invitation (#28), /donations PUT (#29), batch handlers
+- **CI**: Go #6-18 all ✅. FD #49-55 pending (just pushed master merges). Nuxt3 PRs pending.
+- **PRs Awaiting Merge**: FD #43-#55, Go #6-#18, Nuxt3 #148-#158
+- **Next**: Monitor CI for all PRs. Continue Phase 3 (#22 /user writes or #25 /chatmessages next).
 
 ### 2026-02-08 - CI fixes + adversarial review
 - **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.

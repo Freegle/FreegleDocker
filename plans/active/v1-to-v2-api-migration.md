@@ -221,12 +221,13 @@ CREATE TABLE IF NOT EXISTS background_tasks (
 | `email_chitchat_report` | POST /newsfeed (Report action) | `{user_id, user_name, user_email, newsfeed_id, reason}` |
 | `email_donate_external` | PUT /donations (external donation) | `{user_id, user_name, user_email, amount}` |
 | `email_invitation` | PUT /invitation (create invitation) | `{invite_id, sender_name, sender_email, to_email}` |
+| `email_forgot_password` | POST /session (LostPassword) | `{user_id, email, reset_url}` |
+| `email_unsubscribe` | POST /session (Unsubscribe) | `{user_id, email, unsub_url}` |
 
 **Future Task Types (to be added as endpoints migrate):**
 
 | Task Type | Triggered By | Data Fields |
 |-----------|--------------|-------------|
-| `email_forgot_password` | POST /session (LostPassword) | `{user_id}` |
 | `email_verify` | PATCH /user | `{user_id, email}` |
 | `email_welcome` | PUT /user | `{user_id}` |
 | `email_modmail` | POST /user, /memberships, /message | `{user_id, group_id, subject, body}` |
@@ -325,7 +326,7 @@ These require the email queue (Phase 0A) to be complete first.
 
 | # | Endpoint | Email Types | Status | RALPH Task |
 |---|----------|-------------|--------|------------|
-| 21 | /session | forgot_password, unsubscribe | ⬜ Pending | `Migrate /session to v2 with email queue` |
+| 21 | /session | forgot_password, unsubscribe | 🔄 PR Ready | Go PR #18, FD PR #55, Nuxt3 PR #158. LostPassword + Unsubscribe migrated. Login/PATCH/DELETE deferred. |
 | 22 | /user writes | welcome, verify_email | ⬜ Pending | `Migrate /user write ops to v2` |
 | 23 | /memberships | modmail | ⬜ Pending | `Migrate /memberships to v2` |
 | 24 | /message writes | modmail, welcome | ⬜ Pending | `Migrate /message write ops to v2` |
