@@ -418,18 +418,19 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 3: memberships + user writes + chatmessages + chatrooms + image fix
-- **Status**: Phase 3 #22-#29 all PR ready or deferred. Only #24 (/message writes) remains pending.
-- **Completed**:
+### 2026-02-09 - Phase 3 COMPLETE: all endpoints PR ready
+- **Status**: Phase 3 #21-#29 ALL PR ready or deferred. Phase 3 is complete!
+- **Completed today**:
+  - Implemented /message writes (#24): Promise, Renege, Outcome, OutcomeIntended, AddBy, RemoveBy, View. 16 tests. Go PR #23, FD #60, Nuxt3 #163.
   - Implemented /memberships writes (#23): PUT join, DELETE leave, PATCH settings. 14 tests. Go PR #22, FD #59, Nuxt3 #162.
   - Deferred /merge (#27): MT-only endpoint, no FD usage found.
   - Implemented /user POST (#22): Rate, RatingReviewed, AddEmail, RemoveEmail, Engaged with 11 tests
   - Implemented /chatmessages PATCH+DELETE (#25): ownership checks, 11 tests, $patchv2/$delv2 BaseAPI methods
   - Implemented /chatrooms POST (#26): Roster update, nudge, typing, hide/block/unhide migrated
   - Fixed image POST FK violation: NULL for parent ID when no message exists yet
-- **CI**: chatmessages retriggered (GitHub 500 transient). image-post ✅. user-writes running. memberships triggered.
-- **PRs Awaiting Merge**: FD #43-#59, Go #6-#22, Nuxt3 #148-#162
-- **Next**: Monitor CI. Implement #24 (/message writes) - the last remaining Phase 3 endpoint.
+- **CI**: message-writes triggered. Earlier PRs: chatmessages retriggered (GitHub 500 transient), image-post ✅.
+- **PRs Awaiting Merge**: FD #43-#60, Go #6-#23, Nuxt3 #148-#163
+- **Next**: Monitor CI for message-writes and all other running pipelines. Phase 3 is complete - next is Phase 4 (Complex/MT-Heavy Endpoints).
 
 ### 2026-02-08 - CI fixes + adversarial review
 - **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.

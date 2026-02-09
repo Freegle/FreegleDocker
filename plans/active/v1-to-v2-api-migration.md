@@ -329,7 +329,7 @@ These require the email queue (Phase 0A) to be complete first.
 | 21 | /session | forgot_password, unsubscribe | 🔄 PR Ready | Go PR #18, FD PR #55, Nuxt3 PR #158. LostPassword + Unsubscribe migrated. Login/PATCH/DELETE deferred. |
 | 22 | /user writes | welcome, verify_email | 🔄 PR Ready | Go PR #21, FD PR #58, Nuxt3 PR #161. Rate, AddEmail, RemoveEmail, RatingReviewed, Engaged migrated. PUT (signUp), PATCH (save), DELETE (purge), MT ops deferred. |
 | 23 | /memberships | modmail | 🔄 PR Ready | Go PR #22, FD PR #59, Nuxt3 PR #162. PUT (joinGroup), DELETE (leaveGroup), PATCH (settings) migrated. MT-only POST actions (ban, unban, review, delete member) deferred. |
-| 24 | /message writes | modmail, welcome | ⬜ Pending | `Migrate /message write ops to v2` |
+| 24 | /message writes | modmail, welcome | 🔄 PR Ready | Go PR #23, FD PR #60, Nuxt3 PR #163. Promise, Renege, Outcome, OutcomeIntended, AddBy, RemoveBy, View migrated. MT-only moderation (Approve, Reject, etc.) and JoinAndPost deferred. |
 | 25 | /chatmessages POST | chat_notification | 🔄 PR Ready | Go PR #20, FD PR #57, Nuxt3 PR #160. PATCH (rsvp) + DELETE (soft-delete) migrated. POST create already on v2. MT moderation actions deferred. |
 | 26 | /chatrooms POST | Various actions | 🔄 PR Ready | Go PR #19, FD PR #56, Nuxt3 PR #159. Roster update, nudge, typing, hide/block/unhide migrated. ReferToSupport deferred. |
 | 27 | /merge | merge_offer | ⏳ Deferred | MT-only endpoint. No FD client usage found (all 5 MergeAPI methods used exclusively in ModTools). Defer to Phase 4. |
