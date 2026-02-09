@@ -418,17 +418,18 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 3 #29 donations PUT + image POST auth fix
-- **Status**: Phase 3 #29 (donations PUT) PR ready. Image POST auth fix pushed.
+### 2026-02-09 - Phase 3: invitation + batch handlers + CI fixes
+- **Status**: Phase 3 #28 (invitation) and #29 (donations) PR ready. All Go PRs ✅ green.
 - **Completed**:
-  - Fixed Go PR #15 CI failure: image tests used Authorization Bearer header instead of ?jwt= query param
-  - Implemented PUT /donations Go handler (Phase 3 #29): permission check, GiftAid notification, email queue
-  - Switched DonationsAPI.add() from $put to $putv2
-  - Created PRs: Go #16, Nuxt3 #156, FD #53
-  - Phase 0C complete (API guide), Phase 2 #19 (image POST) PR ready
-- **CI**: Master #2044 ✅ green. Image fix pushed to Go PR #15. Donations CI running.
-- **PRs Awaiting Merge**: FD #43-#53, Go #7-#16, Nuxt3 #148-#156
-- **Next**: Continue Phase 3 endpoints. Monitor CI for donations and image-post PRs.
+  - Implemented /invitation Go handler (#28): GET/PUT/PATCH with quota, declined prevention, duplicate protection
+  - Created InvitationMail + MJML template, wired batch handler
+  - Created DonateExternalMail MJML template, wired batch handler
+  - Fixed Go PR #15 CI: FK constraint in image tests (created parent messages)
+  - Fixed Go PR #16 CI: Missing background_tasks table in test setup
+  - Created PRs: Go #17, Nuxt3 #157, FD #54 (invitation)
+- **CI**: Go #14-17 all ✅. FD #51-54 pending. Nuxt3 #157 retriggered (transient 502).
+- **PRs Awaiting Merge**: FD #43-#54, Go #6-#17, Nuxt3 #148-#157
+- **Next**: Monitor CI. Continue Phase 3 (/session next).
 
 ### 2026-02-08 - CI fixes + adversarial review
 - **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.
