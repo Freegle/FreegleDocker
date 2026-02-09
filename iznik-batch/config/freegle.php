@@ -54,6 +54,12 @@ return [
         'enabled_types' => env('FREEGLE_MAIL_ENABLED_TYPES', ''),
         // GeekAlerts email for system alerts and failure notifications.
         'geek_alerts_addr' => env('FREEGLE_GEEK_ALERTS_ADDR', 'geek-alerts@ilovefreegle.org'),
+        // Geeks address for system emails (FROM address for reports etc).
+        'geeks_addr' => env('FREEGLE_GEEKS_ADDR', 'geeks@ilovefreegle.org'),
+        // Support address for user-facing support.
+        'support_addr' => env('FREEGLE_SUPPORT_ADDR', 'support@ilovefreegle.org'),
+        // ChitChat support - receives newsfeed report emails.
+        'chitchat_support_addr' => env('FREEGLE_CHITCHAT_SUPPORT_ADDR', 'support@ilovefreegle.org'),
         // Trash Nothing domain for incoming mail detection
         'trashnothing_domain' => env('FREEGLE_TRASHNOTHING_DOMAIN', 'trashnothing.com'),
         // Trash Nothing shared secret for mail authentication (skips spam check)
