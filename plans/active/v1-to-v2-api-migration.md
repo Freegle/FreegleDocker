@@ -372,14 +372,14 @@ These are more complex, often MT-specific, or have intricate business logic.
 
 | # | Endpoint | Status | Notes |
 |---|----------|--------|-------|
-| 38 | /dashboard | ⬜ Pending | MT admin dashboard |
-| 39 | /logs | ⬜ Pending | System logs (may keep v1 for compatibility) |
-| 40 | /team | ⬜ Pending | Team management |
-| 41 | /tryst | ⬜ Pending | User meetup scheduling |
-| 42 | /abtest | ⬜ Pending | A/B testing |
-| 43 | /visualise | ⬜ Pending | Data visualisation |
-| 44 | /usersearch | ⬜ Pending | MT user search |
-| 45 | /status | ⬜ Pending | System status |
+| 38 | /dashboard | ⏭️ Deferred | MT admin dashboard, GET only |
+| 39 | /logs | ⏭️ Deferred | No FD usage found |
+| 40 | /team | ⏭️ Deferred | No FD usage found |
+| 41 | /tryst | ⏭️ Deferred | No FD usage found |
+| 42 | /abtest | ✅ PR Ready | Go #26, Nuxt3 #166, FD #64 |
+| 43 | /visualise | ⏭️ Deferred | No FD usage found |
+| 44 | /usersearch | ⏭️ Deferred | No FD usage found |
+| 45 | /status | ⏭️ Deferred | MT-only, GET only |
 
 ### 5B: Candidates for Removal (No Client Usage Found)
 

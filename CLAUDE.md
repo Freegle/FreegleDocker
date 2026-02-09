@@ -418,15 +418,15 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 20:00 - Phase 4 FD-relevant tasks complete
-- **Status**: Phase 4 FD tasks done (#30 group PATCH, #36 noticeboard). MT-only and Stripe deferred.
+### 2026-02-09 21:00 - Phase 4+5 FD tasks complete, all CI green
+- **Status**: Phase 4 and 5 FD-relevant tasks done. All CI green.
 - **Completed**:
-  - #30 /group PATCH: Go handler with mod/owner + admin/support auth, 10 tests. PRs: Go #24, Nuxt3 #164, FD #61
-  - #36 /noticeboard: POST (create + 4 actions) and PATCH (fields + photo + newsfeed), 11 tests. PRs: Go #25, Nuxt3 #165, FD #63
-  - Phase 4 assessment: #31-33 MT-only, #34 zero FD usage, #35 MT-only, #37 requires Stripe SDK
-- **CI Running**: #1895 (chatmessages), #1896 (memberships), #1897 (message-writes), #1899 (group-patch), noticeboard pending
-- **PRs Awaiting Merge**: FD #43-#63, Go #6-#25, Nuxt3 #148-#165
-- **Next**: Monitor CI. All Phase 1-4 FD tasks are PR ready. Review Phase 5 for any remaining FD endpoints.
+  - Phase 4: #30 group PATCH (Go #24, Nuxt3 #164, FD #61), #36 noticeboard (Go #25, Nuxt3 #165, FD #63)
+  - Phase 5: #42 abtest/bandit (Go #26, Nuxt3 #166, FD #64) - GET+POST with bandit algorithm
+  - Phase 4/5 assessment: MT-only and no-FD-usage endpoints deferred
+  - CI: All 5 latest pipelines ✅ green (#1895-#1902). Group-patch had transient Playwright kill (141), passed on retrigger.
+- **PRs Awaiting Merge**: FD #43-#64, Go #6-#26, Nuxt3 #148-#166
+- **Next**: All FD-relevant write operations are migrated. Remaining work is MT-only endpoints, Stripe SDK integration, and Phase 6 review/validation.
 
 ### 2026-02-09 18:15 - Content-Type fix deployed, monitoring CI
 - **Status**: Phase 3 complete. Content-Type bug fix deployed across 3 branches. CI running.
