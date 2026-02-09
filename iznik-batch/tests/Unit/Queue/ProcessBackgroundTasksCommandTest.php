@@ -5,6 +5,8 @@ namespace Tests\Unit\Queue;
 use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Invitation\InvitationMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
+use App\Mail\Session\ForgotPasswordMail;
+use App\Mail\Session\UnsubscribeConfirmMail;
 use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -306,6 +308,72 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertNull($task->processed_at);
         $this->assertNotNull($task->error_message);
         $this->assertStringContains('email_donate_external requires', $task->error_message);
+    }
+
+    public function test_processes_email_forgot_password_task(): void
+    {
+        Mail::fake();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_forgot_password',
+            'data' => json_encode([
+                'user_id' => 11111,
+                'email' => 'forgetful@test.com',
+                'reset_url' => 'https://www.ilovefreegle.org/settings?u=11111&k=abc123&src=forgotpass',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify email was sent with correct data.
+        Mail::assertSent(ForgotPasswordMail::class, function (ForgotPasswordMail $mail) {
+            return $mail->userId === 11111
+                && $mail->email === 'forgetful@test.com'
+                && $mail->resetUrl === 'https://www.ilovefreegle.org/settings?u=11111&k=abc123&src=forgotpass';
+        });
+
+        // Verify task was marked as processed.
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_processes_email_unsubscribe_task(): void
+    {
+        Mail::fake();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_unsubscribe',
+            'data' => json_encode([
+                'user_id' => 22222,
+                'email' => 'leaving@test.com',
+                'unsub_url' => 'https://www.ilovefreegle.org/unsubscribe/22222?u=22222&k=def456&confirm=1',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify email was sent with correct data.
+        Mail::assertSent(UnsubscribeConfirmMail::class, function (UnsubscribeConfirmMail $mail) {
+            return $mail->userId === 22222
+                && $mail->email === 'leaving@test.com'
+                && $mail->unsubUrl === 'https://www.ilovefreegle.org/unsubscribe/22222?u=22222&k=def456&confirm=1';
+        });
+
+        // Verify task was marked as processed.
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
     }
 
     public function test_exits_after_max_iterations(): void

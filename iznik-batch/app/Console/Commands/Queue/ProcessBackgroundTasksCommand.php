@@ -6,6 +6,8 @@ use App\Console\Concerns\PreventsOverlapping;
 use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Invitation\InvitationMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
+use App\Mail\Session\ForgotPasswordMail;
+use App\Mail\Session\UnsubscribeConfirmMail;
 use App\Services\EmailSpoolerService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
@@ -162,6 +164,8 @@ class ProcessBackgroundTasksCommand extends Command
             'email_chitchat_report' => $this->handleEmailChitchatReport($data, $spooler, $shouldSpool),
             'email_donate_external' => $this->handleEmailDonateExternal($data, $spooler, $shouldSpool),
             'email_invitation' => $this->handleEmailInvitation($data, $spooler, $shouldSpool),
+            'email_forgot_password' => $this->handleEmailForgotPassword($data, $spooler, $shouldSpool),
+            'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -281,6 +285,70 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Sent invitation email', [
             'invite_id' => $data['invite_id'],
             'to_email' => $data['to_email'],
+        ]);
+    }
+
+    /**
+     * Send a forgot-password email with auto-login link.
+     */
+    protected function handleEmailForgotPassword(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $required = ['user_id', 'email', 'reset_url'];
+        foreach ($required as $field) {
+            if (empty($data[$field])) {
+                throw new \RuntimeException("email_forgot_password requires {$field}");
+            }
+        }
+
+        $mail = new ForgotPasswordMail(
+            userId: (int) $data['user_id'],
+            email: $data['email'],
+            resetUrl: $data['reset_url'],
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail);
+        } else {
+            Mail::send($mail);
+        }
+
+        Log::info('Sent forgot password email', [
+            'user_id' => $data['user_id'],
+        ]);
+    }
+
+    /**
+     * Send an unsubscribe confirmation email with auto-login link.
+     */
+    protected function handleEmailUnsubscribe(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $required = ['user_id', 'email', 'unsub_url'];
+        foreach ($required as $field) {
+            if (empty($data[$field])) {
+                throw new \RuntimeException("email_unsubscribe requires {$field}");
+            }
+        }
+
+        $mail = new UnsubscribeConfirmMail(
+            userId: (int) $data['user_id'],
+            email: $data['email'],
+            unsubUrl: $data['unsub_url'],
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail);
+        } else {
+            Mail::send($mail);
+        }
+
+        Log::info('Sent unsubscribe confirmation email', [
+            'user_id' => $data['user_id'],
         ]);
     }
 }
