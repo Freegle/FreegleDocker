@@ -312,7 +312,7 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 | 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | 🔄 PR Ready | Go PR #11, FD PR #48, Nuxt3 PR #152. CI green. Awaiting merge. |
 | 17 | /volunteering | POST, PATCH, DELETE | 5 | 🔄 PR Ready | Go PR #9, FD PR #46, Nuxt3 PR #150. CI green. Awaiting merge. |
 | 18 | /communityevent | POST, PATCH, DELETE | FD+MT | 🔄 PR Ready | Go PR #10, FD PR #47, Nuxt3 PR #151. CI green. Awaiting merge. |
-| 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
+| 19 | /image | POST | FD file upload | 🔄 PR Ready | Go PR #15, FD PR #52, Nuxt3 PR #155. External UID + rotate. |
 | 20 | /comment | POST, PATCH, DELETE | MT | 🔄 PR Ready | Go PR #12, FD PR #49, Nuxt3 PR #153. CI green. Awaiting merge. |
 
 ---
