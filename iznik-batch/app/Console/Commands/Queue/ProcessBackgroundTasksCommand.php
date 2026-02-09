@@ -4,6 +4,7 @@ namespace App\Console\Commands\Queue;
 
 use App\Console\Concerns\PreventsOverlapping;
 use App\Mail\Donation\DonateExternalMail;
+use App\Mail\Invitation\InvitationMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Services\EmailSpoolerService;
 use App\Services\PushNotificationService;
@@ -160,6 +161,7 @@ class ProcessBackgroundTasksCommand extends Command
             'push_notify_group_mods' => $this->handlePushNotifyGroupMods($data, $pushService),
             'email_chitchat_report' => $this->handleEmailChitchatReport($data, $spooler, $shouldSpool),
             'email_donate_external' => $this->handleEmailDonateExternal($data, $spooler, $shouldSpool),
+            'email_invitation' => $this->handleEmailInvitation($data, $spooler, $shouldSpool),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -245,6 +247,40 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Sent external donation email', [
             'user_id' => $data['user_id'],
             'amount' => $data['amount'],
+        ]);
+    }
+
+    /**
+     * Send an invitation email to a new user on behalf of an existing user.
+     */
+    protected function handleEmailInvitation(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $required = ['invite_id', 'sender_name', 'sender_email', 'to_email'];
+        foreach ($required as $field) {
+            if (empty($data[$field])) {
+                throw new \RuntimeException("email_invitation requires {$field}");
+            }
+        }
+
+        $mail = new InvitationMail(
+            inviteId: (int) $data['invite_id'],
+            senderName: $data['sender_name'],
+            senderEmail: $data['sender_email'],
+            toEmail: $data['to_email'],
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail);
+        } else {
+            Mail::send($mail);
+        }
+
+        Log::info('Sent invitation email', [
+            'invite_id' => $data['invite_id'],
+            'to_email' => $data['to_email'],
         ]);
     }
 }

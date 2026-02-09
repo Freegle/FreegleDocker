@@ -3,6 +3,7 @@
 namespace Tests\Unit\Queue;
 
 use App\Mail\Donation\DonateExternalMail;
+use App\Mail\Invitation\InvitationMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\DB;
@@ -169,6 +170,41 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertNull($task->processed_at);
         $this->assertNotNull($task->error_message);
         $this->assertEquals(1, $task->attempts);
+    }
+
+    public function test_processes_email_invitation_task(): void
+    {
+        Mail::fake();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_invitation',
+            'data' => json_encode([
+                'invite_id' => 99999,
+                'sender_name' => 'Test Sender',
+                'sender_email' => 'sender@test.com',
+                'to_email' => 'invited@test.com',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify email was sent with correct data.
+        Mail::assertSent(InvitationMail::class, function (InvitationMail $mail) {
+            return $mail->inviteId === 99999
+                && $mail->senderName === 'Test Sender'
+                && $mail->senderEmail === 'sender@test.com'
+                && $mail->toEmail === 'invited@test.com';
+        });
+
+        // Verify task was marked as processed.
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
     }
 
     public function test_processes_multiple_tasks_in_order(): void
