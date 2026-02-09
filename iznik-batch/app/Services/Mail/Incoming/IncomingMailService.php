@@ -1640,6 +1640,11 @@ class IncomingMailService
             return $this->dropped("User not part of chat");
         }
 
+        // Update user's last access
+        DB::table('users')
+            ->where('id', $userId)
+            ->update(['lastaccess' => now()]);
+
         // #6: Add unrecognised sender email to user profile (email forwarding scenario)
         $this->addEmailToUser($userId, $email->envelopeFrom);
 
