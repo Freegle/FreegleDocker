@@ -179,57 +179,63 @@ app.Get("/apiv2/domain/:id", domain.GetDomain)  // Always register both paths
 
 Before starting endpoint migrations, establish the infrastructure.
 
-### 0A: Email Queue System
+### 0A: Background Task Queue System
+
+Renamed from "Email Queue" to "Background Task Queue" - handles all async side effects (emails, push notifications) via a generic `background_tasks` table. Go inserts rows, iznik-batch processes them.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0A.1 | Create `email_queue` table migration | ✅ Done | Laravel migration + idempotent SQL + GORM model |
-| 0A.2 | Implement `email/queue.go` in Go | ✅ Done | `QueueEmail()` + variants, 5 Go tests |
-| 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ✅ Done | `mail:queue:process` with handler dispatch, 8 tests |
-| 0A.4 | Add schedule entry | ✅ Done | `everyMinute()` + `withoutOverlapping()` in routes/console.php |
-| 0A.5 | Create Laravel Mailables for known types | ✅ Done | `welcome` works end-to-end; others stubbed with explicit errors (created with their Go handlers) |
-| 0A.6 | Test email queue end-to-end | ✅ Done | 5 Go tests + 8 Laravel tests cover full flow; MailPit verification deferred to deployment |
+| 0A.1 | Create `background_tasks` table migration | ✅ Done | Laravel migration + idempotent SQL. Go PR #14, FD PR #51 |
+| 0A.2 | Implement `queue/queue.go` in Go | ✅ Done | `QueueTask()` function with typed constants. Go PR #14 |
+| 0A.3 | Create `ProcessBackgroundTasksCommand` in Laravel | ✅ Done | `queue:background-tasks` artisan command. FD PR #51 |
+| 0A.4 | Add to scheduler | ✅ Done | Runs every minute via scheduler with --spool |
+| 0A.5 | Create ChitchatReportMail (MJML) | ✅ Done | Freegle-branded MJML email for newsfeed reports. FD PR #51 |
+| 0A.6 | Create newsfeed entry helpers in Go | ✅ Done | `newsfeed.CreateNewsfeedEntry()` for addGroup side effects. Go PR #14 |
+| 0A.7 | Test end-to-end | ⬜ Pending | Go inserts → batch processes → verify in MailPit |
+| 0A.8 | Wire up Phase 2 Go handlers | ✅ Done | Newsfeed Report→email queue, Volunteering/CommunityEvent AddGroup→newsfeed+push queue |
+| 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ✅ Done | Checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. |
+| 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ✅ Done | Skips if last entry by user was the same type. |
+| 0A.11 | Set `location` display name in CreateNewsfeedEntry | ✅ Done | Uses group nameshort as location display name. |
 
 **Queue Table Schema:**
 ```sql
-CREATE TABLE IF NOT EXISTS email_queue (
+CREATE TABLE IF NOT EXISTS background_tasks (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    email_type VARCHAR(50) NOT NULL,
-    user_id BIGINT UNSIGNED NULL,
-    group_id BIGINT UNSIGNED NULL,
-    message_id BIGINT UNSIGNED NULL,
-    chat_id BIGINT UNSIGNED NULL,
-    extra_data JSON NULL,
+    task_type VARCHAR(50) NOT NULL,
+    data JSON NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP NULL,
     failed_at TIMESTAMP NULL,
     error_message TEXT NULL,
-    INDEX idx_pending (processed_at, created_at),
-    INDEX idx_type (email_type)
+    attempts INT UNSIGNED DEFAULT 0,
+    INDEX idx_task_type (task_type),
+    INDEX idx_pending (processed_at, created_at)
 );
 ```
 
-**Schedule Entry** (in `routes/console.php`):
-```php
-// Process email queue items inserted by Go v2 API.
-Schedule::command('mail:queue:process --limit=50')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->runInBackground();
-```
-Uses Laravel scheduler with `withoutOverlapping()` lock - consistent with existing email commands (welcome mail, chat notifications).
+**Current Task Types:**
 
-**Email Types:**
+| Task Type | Triggered By | Data Fields |
+|-----------|--------------|-------------|
+| `push_notify_group_mods` | addGroup (volunteering/communityevent) | `{group_id}` |
+| `email_chitchat_report` | POST /newsfeed (Report action) | `{user_id, user_name, user_email, newsfeed_id, reason}` |
+| `email_donate_external` | PUT /donations (external donation) | `{user_id, user_name, user_email, amount}` |
+| `email_invitation` | PUT /invitation (create invitation) | `{invite_id, sender_name, sender_email, to_email}` |
 
-| Email Type | Triggered By | Queue Data |
-|------------|--------------|------------|
-| `forgot_password` | POST /session (LostPassword) | user_id |
-| `verify_email` | PATCH /user | user_id, extra: {email} |
-| `welcome` | PUT /user | user_id |
-| `unsubscribe` | POST /session (Unsubscribe) | user_id |
-| `merge_offer` | PUT /merge | user_id, extra: {merge_user_id} |
-| `modmail` | POST /user, /memberships, /message | user_id, group_id, extra: {subject, body} |
-| `donate_external` | PUT /donations | user_id, extra: {amount} |
+**Future Task Types (to be added as endpoints migrate):**
+
+| Task Type | Triggered By | Data Fields |
+|-----------|--------------|-------------|
+| `email_forgot_password` | POST /session (LostPassword) | `{user_id}` |
+| `email_verify` | PATCH /user | `{user_id, email}` |
+| `email_welcome` | PUT /user | `{user_id}` |
+| `email_modmail` | POST /user, /memberships, /message | `{user_id, group_id, subject, body}` |
+
+**Design Principles:**
+- All emails use MJML templates with Freegle or ModTools branding (no plain text)
+- Push notifications route through existing `PushNotificationService`
+- Max 3 retry attempts before permanent failure
+- Daemon mode via scheduler (every minute, 60 iterations per run)
 
 ### 0B: Test Audit & Gap Analysis
 
@@ -237,13 +243,12 @@ Before migrating any endpoint, audit existing test coverage to identify gaps. Th
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0B.1 | Audit Go test coverage per endpoint | ✅ Done | 75+ endpoints mapped, 27 good, 37 partial, 8 none |
-| 0B.2 | Audit PHP test coverage per endpoint | ✅ Done | 59 endpoints mapped, 51 with tests, 8 without |
-| 0B.3 | Audit Playwright coverage of API flows | ✅ Done | 18 test files, 45+ API wrapper files analysed |
-| 0B.4 | Build coverage gap matrix | ✅ Done | `plans/active/api-test-coverage-matrix.md` |
-| 0B.5 | Write missing Go tests for existing v2 endpoints | ✅ Done | 5 test files, 44 tests covering all 8 untested endpoints |
-| 0B.5b | Add auth/error tests to partial-coverage endpoints | ✅ Done | 32 tests across 9 files, 19 endpoints improved |
-| 0B.6 | Write missing Playwright tests for existing v2 endpoints | ✅ Done | 6 E2E tests in test-v2-api-pages.spec.js covering stories, events, volunteering, jobs, donations, explore group |
+| 0B.1 | Audit Go test coverage per endpoint | ⬜ Pending | Map each v2 endpoint to test functions |
+| 0B.2 | Audit PHP test coverage per endpoint | ⬜ Pending | Map each v1 endpoint to test functions |
+| 0B.3 | Audit Playwright coverage of API flows | ⬜ Pending | Which user flows exercise which APIs |
+| 0B.4 | Build coverage gap matrix | ⬜ Pending | Endpoint × {Go test, PHP test, Playwright, FD v1/v2, MT v1/v2} |
+| 0B.5 | Write missing Go tests for existing v2 endpoints | ⬜ Pending | TDD: write tests, verify they pass against existing code |
+| 0B.6 | Write missing Playwright tests for existing v2 endpoints | ⬜ Pending | At least one E2E test per migrated endpoint |
 
 **Output:** A coverage gap matrix markdown file at `plans/active/api-test-coverage-matrix.md`.
 
@@ -253,9 +258,9 @@ Produce a standalone guide file that ralph references during implementation.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0C.1 | Extract patterns from existing Go handlers | ✅ Done | Analysed 7 handler files, 10+ patterns extracted |
-| 0C.2 | Write V2 API Handler Guide in `codingstandards.md` | ✅ Done | Added to existing coding standards (not separate file) |
-| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ✅ Done | Points to codingstandards.md |
+| 0C.1 | Extract patterns from existing Go handlers | ✅ Done | Analysed message.go, address.go, user.go, authority.go, volunteering.go, newsfeed.go |
+| 0C.2 | Write `iznik-server-go/API-GUIDE.md` | ✅ Done | Covers auth, parsing, DB, goroutines, responses, privacy, writes, testing, routes |
+| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ✅ Done | Added prominent reference at top of file |
 
 ---
 
@@ -274,21 +279,23 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 | 5 | /microvolunteering GET | ✅ Go done | ✅ FD done | - |
 | 6 | /user/byemail | ✅ Go done | ✅ FD done | - |
 
-### 1B: MT/FD Switchovers (V2 Exists, Client Still Uses V1)
+### 1B: MT Switchovers (V2 Exists, MT Still Uses V1)
 
-**Investigation Results (2026-02-07):** Most endpoints listed here need Go handler enhancements before switching. Only authority is directly switchable. Others moved to Phase 2.
+| # | Endpoint | MT v1 Calls | Status | RALPH Task |
+|---|----------|-------------|--------|------------|
+| 7 | /chat GET | 16 | ⏳ Deferred | `Switch MT chat GETs to v2` - Deferred to dedicated phase. 16+ v1 calls, complex UNION SQL with hardcoded chattypes, review system, unseen counts. Too complex for this PR. |
+| 8 | /config GET | 1 | ✅ Done | ConfigAPI.js already uses `$getv2` |
+| 9 | /location GET | 5 | 🔄 Partial | `Switch MT location GETs to v2` - LatLng + typeahead switched. Added ontn to ClosestGroup, area info to Typeahead. Bounds/dodgy spatial queries remain on v1 (complex). |
+| 10 | /story GET | 8 | ✅ Done | `Switch MT story GETs to v2` - Go: added reviewed/public/newsletterreviewed filters, dynamic SQL. Nuxt: fetchMT uses v2 list→fetch pattern, ModStoryReview fetches user separately. |
+| 11 | /authority GET | FD+MT | ✅ Done | `Update FD+MT to use /authority v2` - Switched fetch() to $getv2, updated store to handle unwrapped response. Branch: feature/v2-mt-switchovers |
 
-| # | Endpoint | Callers | Status | Blocker |
-|---|----------|---------|--------|---------|
-| 7 | /chat GET | MT (5 methods) | ❌ Needs Go | v2 lacks chat type filtering, unseen count, review messages |
-| 8 | /config GET | - | ✅ Already done | Already uses `$getv2` |
-| 9 | /location GET | MT (4 calls) | ❌ Needs Go | v2 lacks bounding box search, dodgy locations |
-| 10 | /story GET | MT+FD (3 methods) | ❌ Needs Go | v2 hardcodes `reviewed=1`; MT needs `reviewed=0`, `newsletter` |
-| 11 | /authority GET | FD (4 pages) | ✅ Switched | Branch: `feature/v2-authority-switchover` in iznik-nuxt3 |
-
-**What was needed for authority switch:**
-1. Changed `AuthorityAPI.fetch(params)` → `fetch(id)` using `$getv2('/authority/' + id)`
-2. Updated store: `ret?.authority` → `ret` (v2 returns direct object, not wrapped)
+**Task pattern for 1B:**
+1. Read MT API wrapper to identify v1 calls.
+2. Check v2 response format matches what MT expects (may need adapter).
+3. Switch `$get` to `$getv2` in MT API wrapper.
+4. Chrome MCP: login to MT, navigate to page using the endpoint, verify it works.
+5. Run Playwright tests.
+6. Do NOT modify v1 PHP code yet.
 
 ---
 
@@ -296,19 +303,19 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 
 These endpoints perform DB writes but don't send email. Straightforward Go implementation.
 
-**Branch strategy:** New feature branch per 3-4 endpoints.
+**Branch strategy:** New feature branch per 3-4 endpoints. Branches may depend on other branches (e.g., `feature/v2-volunteering-writes` depends on `feature/v2-background-tasks`). Merge order matters at release time.
 
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|
-| 12 | /address | PATCH, PUT | 5 | ✅ Done | PR #45, branch: feature/v2-address-writes |
-| 13 | /isochrone | PUT, POST, PATCH | 2 | ❌ Blocked | External API calls (Mapbox/ORS) - too complex for now |
-| 14 | /notification POST | Seen, AllSeen | 3 | ✅ Already done | Migrated 2025-12-13 |
-| 15 | /messages POST | MarkSeen | 1 | ✅ Done | PR #44, branch: feature/v2-messages-markseen |
-| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ✅ Done | PR #48, branch: feature/v2-newsfeed-writes |
-| 17 | /volunteering | POST, PATCH, DELETE | 5 | ✅ Done | PR #46, branch: feature/v2-volunteering-writes |
-| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ✅ Done | PR #47, branch: feature/v2-communityevent-writes |
-| 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
-| 20 | /comment | POST, PATCH, DELETE | MT | ⬜ Pending | `Migrate /comment write ops to v2` |
+| 12 | /address | PATCH, PUT | 5 | 🔄 PR Ready | Go PR #8, FD PR #45, Nuxt3 PR #149. CI green. Awaiting merge. |
+| 13 | /isochrone | PUT, POST, PATCH | 2 | ⏳ Deferred | Create/Edit need Mapbox/ORS API calls for polygon generation. DELETE is simple but useless alone. Move to Phase 4. |
+| 14 | /notification POST | Seen, AllSeen | 3 | ✅ Done | Already migrated (2025-12-13). See "Already Migrated" section. |
+| 15 | /messages POST | MarkSeen | 1 | 🔄 PR Ready | Go PR #7, FD PR #44, Nuxt3 PR #148. CI green. Awaiting merge. |
+| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | 🔄 PR Ready | Go PR #11, FD PR #48, Nuxt3 PR #152. CI green. Awaiting merge. |
+| 17 | /volunteering | POST, PATCH, DELETE | 5 | 🔄 PR Ready | Go PR #9, FD PR #46, Nuxt3 PR #150. CI green. Awaiting merge. |
+| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | 🔄 PR Ready | Go PR #10, FD PR #47, Nuxt3 PR #151. CI green. Awaiting merge. |
+| 19 | /image | POST | FD file upload | 🔄 PR Ready | Go PR #15, FD PR #52, Nuxt3 PR #155. External UID + rotate. |
+| 20 | /comment | POST, PATCH, DELETE | MT | 🔄 PR Ready | Go PR #12, FD PR #49, Nuxt3 PR #153. CI green. Awaiting merge. |
 
 ---
 
@@ -325,8 +332,8 @@ These require the email queue (Phase 0A) to be complete first.
 | 25 | /chatmessages POST | chat_notification | ⬜ Pending | `Migrate /chatmessages POST to v2` |
 | 26 | /chatrooms POST | Various actions | ⬜ Pending | `Migrate /chatrooms POST to v2` |
 | 27 | /merge | merge_offer | ⬜ Pending | `Migrate /merge to v2` |
-| 28 | /invitation | invitation | ⬜ Pending | `Migrate /invitation to v2` |
-| 29 | /donations PUT | donate_external | ⬜ Pending | `Migrate /donations PUT to v2` |
+| 28 | /invitation | invitation | 🔄 PR Ready | Go PR #17, FD PR #54, Nuxt3 PR #157. GET/PUT/PATCH migrated. DELETE stays v1 (rarely used). |
+| 29 | /donations PUT | donate_external | 🔄 PR Ready | Go PR #16, FD PR #53, Nuxt3 PR #156. External donation + GiftAid notif + email queue. |
 
 **Task pattern for Phase 3:**
 1. Verify Laravel Mailable exists for the email type (create if not).
@@ -572,17 +579,6 @@ feature/v2-migration-phase4b-complex            (tasks 34-37)
 - Each PR must pass all 4 CI test suites before merge.
 - Backend (Go) and frontend (client switch) can be in the same PR if the Go changes are backwards-compatible (i.e. new endpoints, not replacing).
 - If Go changes require deployment before client switch, split into separate PRs.
-- **Never push directly to master** - all implementation work goes on feature branches.
-- **Feature branches on submodules** - when changes span submodules (e.g., Go handler in iznik-server-go + client switch in iznik-nuxt3), create feature branches in each submodule too. Create GitHub PRs for each and keep them in sync.
-- **CI validation**: After completing a batch of work on a feature branch, push to origin and trigger a CircleCI pipeline run on the feature branch. Wait for CI to complete and fix any failures before continuing to the next batch. This ensures incremental correctness and avoids accumulating broken changes.
-
-### Parallel Agent Strategy
-
-Use background agents to parallelise independent research and audit tasks. For example:
-- Audit Go tests, PHP tests, Playwright tests, and extract handler patterns all run simultaneously.
-- Each agent explores one area and returns structured results.
-- Dependent tasks (e.g., building the gap matrix) wait for all parallel agents to complete.
-- This dramatically reduces wall-clock time for research-heavy phases.
 
 **No v2 API work on master (CRITICAL):**
 - NEVER commit v2 API migration work directly to master. Only bug fixes required to keep master CI green belong on master.
