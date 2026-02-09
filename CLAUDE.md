@@ -418,81 +418,21 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Adversarial review follow-up: issue assessment
-- **Status**: Issue 4 (LovedPost/LovedComment) was already fixed in earlier session (commit b41e97b). Added LovedComment test (commit e677be9) to ensure coverage.
-- **Other issues assessed**: All 3 remaining issues are dependent on later stages:
-  - Report email → needs email infrastructure (Phase 0A email queue)
-  - AddGroup side effects → needs push notification infrastructure
-  - ConvertToStory → needs Story domain in Go
-- **Action**: No further fixes needed now; gaps will surface when dependent features are migrated.
-
-### 2026-02-09 - Full adversarial review of all Phase 2 PRs
-- **Status**: Comprehensive adversarial review complete comparing all 6 Go PRs against PHP counterparts
-- **Findings Summary**:
-  - **MarkSeen (#7)**: LOW - no issues
-  - **Address (#8)**: LOW - Go actually fixes a PHP lat/lng bug
-  - **Volunteering (#9)**: MEDIUM - AddGroup side effects (newsfeed + push) deferred
-  - **CommunityEvent (#10)**: MEDIUM - AddGroup/AddDate side effects deferred
-  - **Newsfeed (#11)**: MEDIUM - Report email missing, ConvertToStory deferred, LovedPost/LovedComment ✅ fixed
-  - **Comment (#12)**: LOW - excellent replication of mod tools permissions
-- **Key mod tools concerns**: Report email to ChitChat support missing, moderator push notifs for new volunteering/events missing (all documented as deferred)
-- **Test coverage**: Strong across all PRs (88 total tests). Newsfeed could use AttachToThread/ReferTo/spammer tests.
-- **No blocking issues found** - all gaps are documented as deferred items in the migration plan
-
-### 2026-02-09 - Phase 0A: Background task queue + side effects + CI fix
-- **Status**: Phase 0A all tasks ✅ Done except 0A.7 (end-to-end test). CI fix for NuxtPicture stub pushed (#1835 running).
+### 2026-02-09 - Phase 3: invitation + batch handlers + CI fixes
+- **Status**: Phase 3 #28 (invitation) and #29 (donations) PR ready. All Go PRs ✅ green.
 - **Completed**:
-  - Created `queue/queue.go` with generic QueueTask() function (Go PR #14)
-  - Created `newsfeed/create.go` with CreateNewsfeedEntry() including spam/suppression check, duplicate protection, location display (Go PR #14)
-  - Created ProcessBackgroundTasksCommand + ChitchatReportMail MJML (FD PR #51)
-  - Wired up newsfeed Report → email queue, volunteering/communityevent AddGroup → newsfeed+push queue
-  - Code quality review: fixed location fallback order, added spam check, duplicate protection, location field
-  - Removed PHP references from all Go comments
-  - Fixed CI: Added NuxtPicture global stub to Vitest setup.ts (iznik-nuxt3 c4a8a397)
-- **Branch Dependencies**: Phase 2 feature branches depend on feature/v2-background-tasks (merged into each)
-- **CI**: Pipeline #1835 running with NuxtPicture fix
-- **Next**: Wait for CI #1835, then end-to-end test (0A.7)
+  - Implemented /invitation Go handler (#28): GET/PUT/PATCH with quota, declined prevention, duplicate protection
+  - Created InvitationMail + MJML template, wired batch handler
+  - Created DonateExternalMail MJML template, wired batch handler
+  - Fixed Go PR #15 CI: FK constraint in image tests (created parent messages)
+  - Fixed Go PR #16 CI: Missing background_tasks table in test setup
+  - Created PRs: Go #17, Nuxt3 #157, FD #54 (invitation)
+- **CI**: Go #14-17 all ✅. FD #51-54 pending. Nuxt3 #157 retriggered (transient 502).
+- **PRs Awaiting Merge**: FD #43-#54, Go #6-#17, Nuxt3 #148-#157
+- **Next**: Monitor CI. Continue Phase 3 (/session next).
 
-### 2026-02-09 - Phase 1B CI ✅ green + Plan restructured
-- **Status**: Phase 1B CI pipeline GREEN. Phase 2 all 7 pipelines ✅ green. Plan updated with Phase 1C for chat.
-- **Branch**: `feature/v2-mt-switchovers` across FreegleDocker, iznik-nuxt3, iznik-server-go
-- **PRs**: Go #13 ✅, Nuxt3 #154 ✅, FreegleDocker #1832 ✅ ALL GREEN
-- **CI Pipeline History**:
-  - #1827 ❌ Vitest: 44 failures → fixed (v1→v2 params)
-  - #1828 ❌ Vitest: 59 errors → fixed (fetchByLatLng mock)
-  - #1831 ❌ Playwright timeouts (environmental)
-  - #1832 ✅ ALL TESTS PASSED - auto-merged to production
-- **Plan Update**: Added Phase 1C (MT Chat Migration) with 15 subtasks covering Go handler changes, client switchover, and validation. Chat has 16+ v1 calls, 6 methods, 20+ call sites.
-- **Next**: Phase 1B PR ready for merge. Then Phase 1C (chat) or Phase 2 (write endpoints) next.
-
-### 2026-02-08 - Adversarial review fixes + CI fix round
-- **Status**: Adversarial review DONE. CI fixes in progress for remaining branches.
-- **Active Plan Phase**: Phase 2 (Simple Write Endpoints) - Adversarial review complete, fixing CI
-- **CI Status (FreegleDocker)**:
-  - migration-foundation ✅ (#1802)
-  - messages-markseen ✅ (#1803)
-  - address-writes ✅ (#1804)
-  - comment-writes ✅ (#1813)
-  - newsfeed-writes 🔄 retrigger pushed #1819 (fixed iznik-nuxt3 submodule ref, same as volunteering/communityevent)
-  - volunteering-writes 🔄 running #1817 (fixed iznik-nuxt3 submodule ref from comment-writes → volunteering branch)
-  - communityevent-writes 🔄 running #1818 (same fix as volunteering)
-- **CI Status (Submodule PRs)**:
-  - All iznik-nuxt3 PRs: ✅ (all 6 green)
-  - iznik-server-go: address-writes #731 🔄, newsfeed-writes #732 🔄 (retriggered with fixed orb)
-  - All other Go PRs: ✅
-- **Deferred Items**: AddGroup side effects (newsfeed entry + push notif), ConvertToStory, Report email
-- **Next Steps**:
-  1. Wait for all CI to pass
-  2. If all green → all v2 PRs ready for merge (next phase of migration)
-
-### 2026-02-07 - Fix CI: Duplicate Threading Headers in ChatNotification
-- **Status**: ✅ Complete
-- **Branch**: master (fix), then merged into all v2 feature branches
-- **Root Cause**: `ChatNotification::build()` registers a `withSymfonyMessage` callback that adds RFC 2822 threading headers (References, In-Reply-To). When `TestMailCommand` calls `render()` then `spool()` (which calls `send()`), `build()` runs twice, registering the callback twice. The second invocation fails with "Impossible to set header References as it's already defined and must be unique."
-- **Fix**: Remove existing threading headers before re-adding them (same pattern already used for Message-ID). Also removed unnecessary MJML mock from TestMailCommandTest - use real MJML container.
-- **Commit**: cbba4602 on master
-- **Cascaded to**: All 6 v2 feature branches (migration-foundation, comment-writes, address-writes, communityevent-writes, messages-markseen, newsfeed-writes, volunteering-writes)
-- **Plan Updated**: Added branch chaining strategy to migration plan - each feature branch must be based on the previous successful branch, not independently on master
-- **CI**: Pipeline triggered on master, awaiting results
+### 2026-02-08 - CI fixes + adversarial review
+- **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.
+- **Key fixes**: FK constraint violations in newsfeed tests, user location query, ChatListEntry Pinia mocks, ProxyImage USER_SITE, MessageExpanded photoArea height
 
 

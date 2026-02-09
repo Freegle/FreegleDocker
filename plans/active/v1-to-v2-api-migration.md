@@ -193,6 +193,9 @@ Renamed from "Email Queue" to "Background Task Queue" - handles all async side e
 | 0A.6 | Create newsfeed entry helpers in Go | ✅ Done | `newsfeed.CreateNewsfeedEntry()` for addGroup side effects. Go PR #14 |
 | 0A.7 | Test end-to-end | ⬜ Pending | Go inserts → batch processes → verify in MailPit |
 | 0A.8 | Wire up Phase 2 Go handlers | ✅ Done | Newsfeed Report→email queue, Volunteering/CommunityEvent AddGroup→newsfeed+push queue |
+| 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ✅ Done | Checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. |
+| 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ✅ Done | Skips if last entry by user was the same type. |
+| 0A.11 | Set `location` display name in CreateNewsfeedEntry | ✅ Done | Uses group nameshort as location display name. |
 
 **Queue Table Schema:**
 ```sql
@@ -216,6 +219,8 @@ CREATE TABLE IF NOT EXISTS background_tasks (
 |-----------|--------------|-------------|
 | `push_notify_group_mods` | addGroup (volunteering/communityevent) | `{group_id}` |
 | `email_chitchat_report` | POST /newsfeed (Report action) | `{user_id, user_name, user_email, newsfeed_id, reason}` |
+| `email_donate_external` | PUT /donations (external donation) | `{user_id, user_name, user_email, amount}` |
+| `email_invitation` | PUT /invitation (create invitation) | `{invite_id, sender_name, sender_email, to_email}` |
 
 **Future Task Types (to be added as endpoints migrate):**
 
@@ -231,14 +236,6 @@ CREATE TABLE IF NOT EXISTS background_tasks (
 - Push notifications route through existing `PushNotificationService`
 - Max 3 retry attempts before permanent failure
 - Daemon mode via scheduler (every minute, 60 iterations per run)
-
-**`CreateNewsfeedEntry` improvements** (from code quality review):
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ✅ Done | Checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. |
-| 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ✅ Done | Skips if last entry by user was the same type. |
-| 0A.11 | Set `location` display name in CreateNewsfeedEntry | ✅ Done | Uses group nameshort as location display name. |
 
 ### 0B: Test Audit & Gap Analysis
 
@@ -261,9 +258,9 @@ Produce a standalone guide file that ralph references during implementation.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0C.1 | Extract patterns from existing Go handlers | ⬜ Pending | Analyse message.go, chat.go, user.go, authority.go |
-| 0C.2 | Write `iznik-server-go/API-GUIDE.md` | ⬜ Pending | Based on Style Guide section above |
-| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ⬜ Pending | So ralph reads it automatically |
+| 0C.1 | Extract patterns from existing Go handlers | ✅ Done | Analysed message.go, address.go, user.go, authority.go, volunteering.go, newsfeed.go |
+| 0C.2 | Write `iznik-server-go/API-GUIDE.md` | ✅ Done | Covers auth, parsing, DB, goroutines, responses, privacy, writes, testing, routes |
+| 0C.3 | Add guide reference to `iznik-server-go/CLAUDE.md` | ✅ Done | Added prominent reference at top of file |
 
 ---
 
@@ -286,7 +283,7 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 
 | # | Endpoint | MT v1 Calls | Status | RALPH Task |
 |---|----------|-------------|--------|------------|
-| 7 | /chat GET | 16 | ⏳ Phase 1C | `Switch MT chat GETs to v2` - Moved to dedicated Phase 1C below. 16+ v1 calls, complex UNION SQL with hardcoded chattypes, review system, unseen counts. |
+| 7 | /chat GET | 16 | ⏳ Deferred | `Switch MT chat GETs to v2` - Deferred to dedicated phase. 16+ v1 calls, complex UNION SQL with hardcoded chattypes, review system, unseen counts. Too complex for this PR. |
 | 8 | /config GET | 1 | ✅ Done | ConfigAPI.js already uses `$getv2` |
 | 9 | /location GET | 5 | 🔄 Partial | `Switch MT location GETs to v2` - LatLng + typeahead switched. Added ontn to ClosestGroup, area info to Typeahead. Bounds/dodgy spatial queries remain on v1 (complex). |
 | 10 | /story GET | 8 | ✅ Done | `Switch MT story GETs to v2` - Go: added reviewed/public/newsletterreviewed filters, dynamic SQL. Nuxt: fetchMT uses v2 list→fetch pattern, ModStoryReview fetches user separately. |
@@ -300,56 +297,6 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 5. Run Playwright tests.
 6. Do NOT modify v1 PHP code yet.
 
-### 1C: MT Chat Migration (Dedicated Phase)
-
-MT's chat system uses 16+ v1 API calls across 6 methods and 20+ call sites. The existing v2 chat endpoints serve FD (User2User chats) but lack MT-specific features. This phase extends the v2 Go handlers and switches MT to use them.
-
-**Branch:** `feature/v2-mt-chat`
-
-#### Go Handler Changes Required
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 1C.1 | Add `chattypes` filter to GET `/chat` | ⬜ Pending | V1 filters User2Mod + Mod2Mod for MT. V2 must accept `chattypes` query param and apply WHERE clause. |
-| 1C.2 | Add `count=true` mode to GET `/chat` | ⬜ Pending | V1 `/chatrooms?count=true` returns `{count: N}` for unseen messages. V2 needs equivalent. Used for MT badge counts. |
-| 1C.3 | Create GET `/chat/:id/message` MT variant | ⬜ Pending | V1 `fetchMessagesMT` passes `{modtools: true}`. Check if v2 already handles this or needs MT-specific logic. |
-| 1C.4 | Create GET `/chatmessages` review endpoint | ⬜ Pending | V1 returns messages with nested `chatroom` and `refmsg` objects for moderation review queue. V2 needs equivalent or adapted response. |
-| 1C.5 | Go unit tests for all new chat parameters | ⬜ Pending | TDD: write tests first for chattypes filter, count mode, review endpoint. |
-
-#### Nuxt Client Switchover
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 1C.6 | Switch `ChatAPI.listChatsMT` to `$getv2` | ⬜ Pending | 6+ call sites. Needs chattypes support in v2 first. |
-| 1C.7 | Switch `ChatAPI.fetchChatMT` to `$getv2` | ⬜ Pending | 3+ call sites. Uses `$get('/chatrooms', {id, chattypes})`. |
-| 1C.8 | Switch `ChatAPI.unseenCountMT` to `$getv2` | ⬜ Pending | 1 call site. Needs count mode in v2. |
-| 1C.9 | Switch `ChatAPI.fetchMessagesMT` to `$getv2` | ⬜ Pending | 2 call sites in ModChatPane/Footer. |
-| 1C.10 | Switch `ChatAPI.fetchReviewChatsMT` to `$getv2` | ⬜ Pending | 2 call sites. Review queue page + store. |
-| 1C.11 | Update `stores/chat.js` MT paths | ⬜ Pending | Store has conditional v1/v2 paths (miscStore.modtools check). Update MT paths to use v2 methods. |
-
-#### Validation & Testing
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 1C.12 | Chrome MCP: MT chat list page | ⬜ Pending | Login to MT, verify chat list loads with User2Mod + Mod2Mod chats. |
-| 1C.13 | Chrome MCP: MT chat review page | ⬜ Pending | Verify `/chats/review` loads and shows messages for moderation. |
-| 1C.14 | Chrome MCP: MT chat pane | ⬜ Pending | Open a chat, verify messages load, mark read works. |
-| 1C.15 | Vitest: Update chat store tests | ⬜ Pending | Update unit tests for v2 response format in MT paths. |
-
-**Key files:**
-- `api/ChatAPI.js` - 6 v1 methods to switch (lines 8-57)
-- `stores/chat.js` - MT-conditional paths (lines 38-260)
-- `modtools/pages/chats/[[id]].vue` - Chat list page
-- `modtools/pages/chats/review.vue` - Review queue
-- `modtools/components/ModChatPane.vue` - Chat display (5+ API calls)
-- `modtools/components/ModChatHeader.vue` - Mark read, actions
-- `modtools/components/ModChatFooter.vue` - Send message, fetch
-
-**V1 → V2 Response format changes:**
-- V1 `/chat/rooms` returns `{chatrooms: [...]}` → V2 `/chat` returns `[...]` (unwrapped)
-- V1 `/chatrooms?count=true` returns `{count: N}` → V2 TBD
-- V1 `/chatmessages` returns `{chatmessages: [{..., chatroom: {...}, refmsg: {...}}]}` → V2 will return IDs, client fetches nested data separately
-
 ---
 
 ## Phase 2: Simple Write Endpoints (No Email)
@@ -360,17 +307,15 @@ These endpoints perform DB writes but don't send email. Straightforward Go imple
 
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|
-| 12 | /address | PATCH, PUT | 5 | ✅ PR ready | Go #8, Nuxt3 #149, FD CI #1804 ✅ |
-| 13 | /isochrone | PUT, POST, PATCH | 2 | ⬜ Pending | `Migrate /isochrone write ops to v2` |
-| 14 | /notification POST | Seen, AllSeen | 3 | ⬜ Pending | `Migrate /notification POST to v2` |
-| 15 | /messages POST | MarkSeen | 1 | ✅ PR ready | Go #7, Nuxt3 #148, FD CI #1803 ✅ |
-| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ✅ PR ready | Go #11, Nuxt3 #152, FD CI #1821 ✅ |
-| 17 | /volunteering | POST, PATCH, DELETE | 5 | ✅ PR ready | Go #9, Nuxt3 #150, FD CI #1817 ✅ |
-| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ✅ PR ready | Go #10, Nuxt3 #151, FD CI #1818 ✅ |
-| 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
-| 20 | /comment | POST, PATCH, DELETE | MT | ✅ PR ready | Go #12, Nuxt3 #153, FD CI #1813 ✅ |
-
-**Migration foundation:** Go #6 (tests + email queue infrastructure), FD CI #1802 ✅
+| 12 | /address | PATCH, PUT | 5 | 🔄 PR Ready | Go PR #8, FD PR #45, Nuxt3 PR #149. CI green. Awaiting merge. |
+| 13 | /isochrone | PUT, POST, PATCH | 2 | ⏳ Deferred | Create/Edit need Mapbox/ORS API calls for polygon generation. DELETE is simple but useless alone. Move to Phase 4. |
+| 14 | /notification POST | Seen, AllSeen | 3 | ✅ Done | Already migrated (2025-12-13). See "Already Migrated" section. |
+| 15 | /messages POST | MarkSeen | 1 | 🔄 PR Ready | Go PR #7, FD PR #44, Nuxt3 PR #148. CI green. Awaiting merge. |
+| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | 🔄 PR Ready | Go PR #11, FD PR #48, Nuxt3 PR #152. CI green. Awaiting merge. |
+| 17 | /volunteering | POST, PATCH, DELETE | 5 | 🔄 PR Ready | Go PR #9, FD PR #46, Nuxt3 PR #150. CI green. Awaiting merge. |
+| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | 🔄 PR Ready | Go PR #10, FD PR #47, Nuxt3 PR #151. CI green. Awaiting merge. |
+| 19 | /image | POST | FD file upload | 🔄 PR Ready | Go PR #15, FD PR #52, Nuxt3 PR #155. External UID + rotate. |
+| 20 | /comment | POST, PATCH, DELETE | MT | 🔄 PR Ready | Go PR #12, FD PR #49, Nuxt3 PR #153. CI green. Awaiting merge. |
 
 ---
 
@@ -387,8 +332,8 @@ These require the email queue (Phase 0A) to be complete first.
 | 25 | /chatmessages POST | chat_notification | ⬜ Pending | `Migrate /chatmessages POST to v2` |
 | 26 | /chatrooms POST | Various actions | ⬜ Pending | `Migrate /chatrooms POST to v2` |
 | 27 | /merge | merge_offer | ⬜ Pending | `Migrate /merge to v2` |
-| 28 | /invitation | invitation | ⬜ Pending | `Migrate /invitation to v2` |
-| 29 | /donations PUT | donate_external | ⬜ Pending | `Migrate /donations PUT to v2` |
+| 28 | /invitation | invitation | 🔄 PR Ready | Go PR #17, FD PR #54, Nuxt3 PR #157. GET/PUT/PATCH migrated. DELETE stays v1 (rarely used). |
+| 29 | /donations PUT | donate_external | 🔄 PR Ready | Go PR #16, FD PR #53, Nuxt3 PR #156. External donation + GiftAid notif + email queue. |
 
 **Task pattern for Phase 3:**
 1. Verify Laravel Mailable exists for the email type (create if not).
