@@ -179,58 +179,61 @@ app.Get("/apiv2/domain/:id", domain.GetDomain)  // Always register both paths
 
 Before starting endpoint migrations, establish the infrastructure.
 
-### 0A: Email Queue System
+### 0A: Background Task Queue System
+
+Renamed from "Email Queue" to "Background Task Queue" - handles all async side effects (emails, push notifications) via a generic `background_tasks` table. Go inserts rows, iznik-batch processes them.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0A.1 | Create `email_queue` table migration | ⬜ Pending | Laravel migration + idempotent SQL |
-| 0A.2 | Implement `email/queue.go` in Go | ⬜ Pending | `QueueEmail()` function |
-| 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ⬜ Pending | `mail:queue:process` artisan command |
-| 0A.4 | Add looping processor script | ⬜ Pending | Runs continuously, processes every 10s |
-| 0A.5 | Create Laravel Mailables for known types | ⬜ Pending | See email types table below |
-| 0A.6 | Test email queue end-to-end | ⬜ Pending | Go inserts, Laravel sends, verify in MailPit |
+| 0A.1 | Create `background_tasks` table migration | ✅ Done | Laravel migration + idempotent SQL. Go PR #14, FD PR #51 |
+| 0A.2 | Implement `queue/queue.go` in Go | ✅ Done | `QueueTask()` function with typed constants. Go PR #14 |
+| 0A.3 | Create `ProcessBackgroundTasksCommand` in Laravel | ✅ Done | `queue:background-tasks` artisan command. FD PR #51 |
+| 0A.4 | Add to scheduler | ✅ Done | Runs every minute via scheduler with --spool |
+| 0A.5 | Create ChitchatReportMail (MJML) | ✅ Done | Freegle-branded MJML email for newsfeed reports. FD PR #51 |
+| 0A.6 | Create newsfeed entry helpers in Go | ✅ Done | `newsfeed.CreateNewsfeedEntry()` for addGroup side effects. Go PR #14 |
+| 0A.7 | Test end-to-end | ⬜ Pending | Go inserts → batch processes → verify in MailPit |
+| 0A.8 | Wire up Phase 2 Go handlers | ✅ Done | Newsfeed Report→email queue, Volunteering/CommunityEvent AddGroup→newsfeed+push queue |
+| 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ✅ Done | Checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. |
+| 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ✅ Done | Skips if last entry by user was the same type. |
+| 0A.11 | Set `location` display name in CreateNewsfeedEntry | ✅ Done | Uses group nameshort as location display name. |
 
 **Queue Table Schema:**
 ```sql
-CREATE TABLE IF NOT EXISTS email_queue (
+CREATE TABLE IF NOT EXISTS background_tasks (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    email_type VARCHAR(50) NOT NULL,
-    user_id BIGINT UNSIGNED NULL,
-    group_id BIGINT UNSIGNED NULL,
-    message_id BIGINT UNSIGNED NULL,
-    chat_id BIGINT UNSIGNED NULL,
-    extra_data JSON NULL,
+    task_type VARCHAR(50) NOT NULL,
+    data JSON NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP NULL,
     failed_at TIMESTAMP NULL,
     error_message TEXT NULL,
-    INDEX idx_pending (processed_at, created_at),
-    INDEX idx_type (email_type)
+    attempts INT UNSIGNED DEFAULT 0,
+    INDEX idx_task_type (task_type),
+    INDEX idx_pending (processed_at, created_at)
 );
 ```
 
-**Looping Processor Script** (`process-email-queue.sh`):
-```bash
-#!/bin/bash
-# Run continuously, processing email queue every 10 seconds.
-# Designed for long-running batch container execution.
-while true; do
-    php artisan mail:queue:process --limit=50
-    sleep 10
-done
-```
+**Current Task Types:**
 
-**Email Types:**
+| Task Type | Triggered By | Data Fields |
+|-----------|--------------|-------------|
+| `push_notify_group_mods` | addGroup (volunteering/communityevent) | `{group_id}` |
+| `email_chitchat_report` | POST /newsfeed (Report action) | `{user_id, user_name, user_email, newsfeed_id, reason}` |
 
-| Email Type | Triggered By | Queue Data |
-|------------|--------------|------------|
-| `forgot_password` | POST /session (LostPassword) | user_id |
-| `verify_email` | PATCH /user | user_id, extra: {email} |
-| `welcome` | PUT /user | user_id |
-| `unsubscribe` | POST /session (Unsubscribe) | user_id |
-| `merge_offer` | PUT /merge | user_id, extra: {merge_user_id} |
-| `modmail` | POST /user, /memberships, /message | user_id, group_id, extra: {subject, body} |
-| `donate_external` | PUT /donations | user_id, extra: {amount} |
+**Future Task Types (to be added as endpoints migrate):**
+
+| Task Type | Triggered By | Data Fields |
+|-----------|--------------|-------------|
+| `email_forgot_password` | POST /session (LostPassword) | `{user_id}` |
+| `email_verify` | PATCH /user | `{user_id, email}` |
+| `email_welcome` | PUT /user | `{user_id}` |
+| `email_modmail` | POST /user, /memberships, /message | `{user_id, group_id, subject, body}` |
+
+**Design Principles:**
+- All emails use MJML templates with Freegle or ModTools branding (no plain text)
+- Push notifications route through existing `PushNotificationService`
+- Max 3 retry attempts before permanent failure
+- Daemon mode via scheduler (every minute, 60 iterations per run)
 
 ### 0B: Test Audit & Gap Analysis
 
@@ -298,7 +301,7 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 
 These endpoints perform DB writes but don't send email. Straightforward Go implementation.
 
-**Branch strategy:** New feature branch per 3-4 endpoints.
+**Branch strategy:** New feature branch per 3-4 endpoints. Branches may depend on other branches (e.g., `feature/v2-volunteering-writes` depends on `feature/v2-background-tasks`). Merge order matters at release time.
 
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|

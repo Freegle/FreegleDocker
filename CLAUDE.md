@@ -418,11 +418,24 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 1B: Vitest fixes pushed, CI pipeline #1828 running
-- **Status**: Phase 1B PRs created, Vitest test fixes pushed, awaiting CI.
-- **PRs**: Go #13, Nuxt3 #154, FreegleDocker pipeline #1828
-- **Phase 2**: All 7 pipelines ✅ green — ready for merge
-- **Next**: Wait for #1828, then all v2 PRs ready for merge
+### 2026-02-09 - Phase 0A: Background task queue + side effects + CI fix
+- **Status**: Phase 0A all tasks ✅ Done except 0A.7 (end-to-end test). CI fix for NuxtPicture stub pushed (#1835 running).
+- **Completed**:
+  - Created `queue/queue.go` with generic QueueTask() function (Go PR #14)
+  - Created `newsfeed/create.go` with CreateNewsfeedEntry() including spam/suppression check, duplicate protection, location display (Go PR #14)
+  - Created ProcessBackgroundTasksCommand + ChitchatReportMail MJML (FD PR #51)
+  - Wired up newsfeed Report → email queue, volunteering/communityevent AddGroup → newsfeed+push queue
+  - Code quality review: fixed location fallback order, added spam check, duplicate protection, location field
+  - Removed PHP references from all Go comments
+  - Fixed CI: Added NuxtPicture global stub to Vitest setup.ts (iznik-nuxt3 c4a8a397)
+- **Branch Dependencies**: Phase 2 feature branches depend on feature/v2-background-tasks (merged into each)
+- **CI**: Pipeline #1835 running with NuxtPicture fix
+- **Next**: Wait for CI #1835, then end-to-end test (0A.7)
+
+### 2026-02-09 - Phase 1B CI ✅ green + Plan restructured
+- **Status**: Phase 1B CI pipeline GREEN. Phase 2 all 7 pipelines ✅ green.
+- **PRs**: Go #13, Nuxt3 #154, FreegleDocker #1832 ALL GREEN
+- **Next**: Phase 1B PR ready for merge. Then Phase 1C (chat) or Phase 2 (write endpoints) next.
 
 ### 2026-02-08 - Adversarial review fixes + CI fix round
 - **Status**: Adversarial review DONE. CI fixes in progress for remaining branches.
