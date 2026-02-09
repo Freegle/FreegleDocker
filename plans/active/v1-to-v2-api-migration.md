@@ -330,7 +330,7 @@ These require the email queue (Phase 0A) to be complete first.
 | 22 | /user writes | welcome, verify_email | ⬜ Pending | `Migrate /user write ops to v2` |
 | 23 | /memberships | modmail | ⬜ Pending | `Migrate /memberships to v2` |
 | 24 | /message writes | modmail, welcome | ⬜ Pending | `Migrate /message write ops to v2` |
-| 25 | /chatmessages POST | chat_notification | ⬜ Pending | `Migrate /chatmessages POST to v2` |
+| 25 | /chatmessages POST | chat_notification | 🔄 PR Ready | Go PR #20, FD PR #57, Nuxt3 PR #160. PATCH (rsvp) + DELETE (soft-delete) migrated. POST create already on v2. MT moderation actions deferred. |
 | 26 | /chatrooms POST | Various actions | 🔄 PR Ready | Go PR #19, FD PR #56, Nuxt3 PR #159. Roster update, nudge, typing, hide/block/unhide migrated. ReferToSupport deferred. |
 | 27 | /merge | merge_offer | ⬜ Pending | `Migrate /merge to v2` |
 | 28 | /invitation | invitation | 🔄 PR Ready | Go PR #17, FD PR #54, Nuxt3 PR #157. GET/PUT/PATCH migrated. DELETE stays v1 (rarely used). |

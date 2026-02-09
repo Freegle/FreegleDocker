@@ -418,18 +418,17 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 3: session actions + image auth fix + branch updates
-- **Status**: Phase 3 #21 (session) PR ready. #28 (invitation), #29 (donations) PR ready. All Go PRs ✅ green.
+### 2026-02-09 - Phase 3: chatmessages PATCH/DELETE + chatrooms POST + image fix
+- **Status**: Phase 3 #25 (chatmessages), #26 (chatrooms POST), #21 (session) all PR ready.
 - **Completed**:
-  - Implemented /session Go handler (#21): LostPassword + Unsubscribe with auto-login keys, email queue
-  - Created ForgotPasswordMail + UnsubscribeConfirmMail MJML templates, wired batch handlers
-  - Fixed image POST auth: removed auth requirement (uploads happen before login)
-  - Updated all 13 FD feature branches with master (resolved submodule/doc conflicts)
-  - Created PRs: Go #18, Nuxt3 #158, FD #55 (session)
-  - Earlier: Implemented /invitation (#28), /donations PUT (#29), batch handlers
-- **CI**: Go #6-18 all ✅. FD #49-55 pending (just pushed master merges). Nuxt3 PRs pending.
-- **PRs Awaiting Merge**: FD #43-#55, Go #6-#18, Nuxt3 #148-#158
-- **Next**: Monitor CI for all PRs. Continue Phase 3 (#22 /user writes or #25 /chatmessages next).
+  - Implemented /chatmessages PATCH+DELETE (#25): Go handlers with ownership checks, 11 tests, $patchv2/$delv2 BaseAPI methods
+  - Implemented /chatrooms POST (#26): Roster update, nudge, typing, hide/block/unhide migrated
+  - Implemented /session Go handler (#21): LostPassword + Unsubscribe with auto-login keys
+  - Fixed image POST FK violation: NULL for parent ID when no message exists yet
+  - Updated all feature branches with master
+- **CI**: Monitoring. Go #6-20, FD #43-57, Nuxt3 #148-160.
+- **PRs Awaiting Merge**: FD #43-#57, Go #6-#20, Nuxt3 #148-#160
+- **Next**: Monitor CI. Continue Phase 3 (#22 /user writes, #23 /memberships, #24 /message writes, #27 /merge remain).
 
 ### 2026-02-08 - CI fixes + adversarial review
 - **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.
