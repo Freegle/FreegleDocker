@@ -418,6 +418,18 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+### 2026-02-09 18:15 - Content-Type fix deployed, monitoring CI
+- **Status**: Phase 3 complete. Content-Type bug fix deployed across 3 branches. CI running.
+- **Completed**:
+  - Fixed ROOT CAUSE of memberships-writes CI failure: $putv2/$patchv2/$delv2 missing Content-Type: application/json header
+  - Fiber's BodyParser requires Content-Type header to parse JSON bodies; $postv2 had it but other v2 write methods did not
+  - Fix pushed to: nuxt3 feature/v2-memberships-writes, feature/v2-message-writes, feature/v2-chatmessages-patch-delete
+  - FD submodule refs updated on all 3 branches, triggering new CI: #1895, #1896, #1897
+- **CI Running**: chatmessages-patch-delete #1895, memberships-writes #1896, message-writes #1897
+- **All Other Branches**: ✅ green (image-post, user-writes, session-actions, newsfeed, chatrooms, comment, communityevent, volunteering, address, donations, invitation, background-tasks, messages-markseen, mt-switchovers)
+- **PRs Awaiting Merge**: FD #43-#60, Go #6-#23, Nuxt3 #148-#163
+- **Next**: Wait for CI #1895-#1897. If green, all Phase 1-3 PRs are fully CI-verified. Then begin Phase 4 (#30 /group PATCH).
+
 ### 2026-02-09 - Phase 3 COMPLETE: all endpoints PR ready
 - **Status**: Phase 3 #21-#29 ALL PR ready or deferred. Phase 3 is complete!
 - **Completed today**:
