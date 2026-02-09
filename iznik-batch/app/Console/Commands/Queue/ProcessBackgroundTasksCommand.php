@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Queue;
 
 use App\Console\Concerns\PreventsOverlapping;
+use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Services\EmailSpoolerService;
 use App\Services\PushNotificationService;
@@ -158,6 +159,7 @@ class ProcessBackgroundTasksCommand extends Command
         match ($taskType) {
             'push_notify_group_mods' => $this->handlePushNotifyGroupMods($data, $pushService),
             'email_chitchat_report' => $this->handleEmailChitchatReport($data, $spooler, $shouldSpool),
+            'email_donate_external' => $this->handleEmailDonateExternal($data, $spooler, $shouldSpool),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -209,6 +211,40 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Sent ChitChat report email', [
             'reporter_id' => $data['user_id'],
             'newsfeed_id' => $data['newsfeed_id'],
+        ]);
+    }
+
+    /**
+     * Send an external donation notification email to the info address.
+     */
+    protected function handleEmailDonateExternal(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $required = ['user_id', 'user_name', 'user_email', 'amount'];
+        foreach ($required as $field) {
+            if (empty($data[$field])) {
+                throw new \RuntimeException("email_donate_external requires {$field}");
+            }
+        }
+
+        $mail = new DonateExternalMail(
+            userName: $data['user_name'],
+            userId: (int) $data['user_id'],
+            userEmail: $data['user_email'],
+            amount: (float) $data['amount'],
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail);
+        } else {
+            Mail::send($mail);
+        }
+
+        Log::info('Sent external donation email', [
+            'user_id' => $data['user_id'],
+            'amount' => $data['amount'],
         ]);
     }
 }

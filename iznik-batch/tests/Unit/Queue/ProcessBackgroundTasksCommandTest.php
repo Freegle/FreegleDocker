@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Queue;
 
+use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\DB;
@@ -212,6 +213,63 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         foreach ($tasks as $task) {
             $this->assertNotNull($task->processed_at);
         }
+    }
+
+    public function test_processes_email_donate_external_task(): void
+    {
+        Mail::fake();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_donate_external',
+            'data' => json_encode([
+                'user_id' => 54321,
+                'user_name' => 'Generous Donor',
+                'user_email' => 'donor@test.com',
+                'amount' => 25.50,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify email was sent with correct data.
+        Mail::assertSent(DonateExternalMail::class, function (DonateExternalMail $mail) {
+            return $mail->userName === 'Generous Donor'
+                && $mail->userId === 54321
+                && $mail->userEmail === 'donor@test.com'
+                && $mail->amount === 25.50;
+        });
+
+        // Verify task was marked as processed.
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_email_donate_external_fails_with_missing_fields(): void
+    {
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_donate_external',
+            'data' => json_encode(['user_id' => 123]),  // Missing user_name, user_email, amount.
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Should have recorded the error.
+        $task = DB::table('background_tasks')->first();
+        $this->assertNull($task->processed_at);
+        $this->assertNotNull($task->error_message);
+        $this->assertStringContains('email_donate_external requires', $task->error_message);
     }
 
     public function test_exits_after_max_iterations(): void
