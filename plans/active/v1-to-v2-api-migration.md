@@ -179,58 +179,66 @@ app.Get("/apiv2/domain/:id", domain.GetDomain)  // Always register both paths
 
 Before starting endpoint migrations, establish the infrastructure.
 
-### 0A: Email Queue System
+### 0A: Background Task Queue System
+
+Renamed from "Email Queue" to "Background Task Queue" - handles all async side effects (emails, push notifications) via a generic `background_tasks` table. Go inserts rows, iznik-batch processes them.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 0A.1 | Create `email_queue` table migration | ⬜ Pending | Laravel migration + idempotent SQL |
-| 0A.2 | Implement `email/queue.go` in Go | ⬜ Pending | `QueueEmail()` function |
-| 0A.3 | Create `ProcessEmailQueueCommand` in Laravel | ⬜ Pending | `mail:queue:process` artisan command |
-| 0A.4 | Add looping processor script | ⬜ Pending | Runs continuously, processes every 10s |
-| 0A.5 | Create Laravel Mailables for known types | ⬜ Pending | See email types table below |
-| 0A.6 | Test email queue end-to-end | ⬜ Pending | Go inserts, Laravel sends, verify in MailPit |
+| 0A.1 | Create `background_tasks` table migration | ✅ Done | Laravel migration + idempotent SQL. Go PR #14, FD PR #51 |
+| 0A.2 | Implement `queue/queue.go` in Go | ✅ Done | `QueueTask()` function with typed constants. Go PR #14 |
+| 0A.3 | Create `ProcessBackgroundTasksCommand` in Laravel | ✅ Done | `queue:background-tasks` artisan command. FD PR #51 |
+| 0A.4 | Add to scheduler | ✅ Done | Runs every minute via scheduler with --spool |
+| 0A.5 | Create ChitchatReportMail (MJML) | ✅ Done | Freegle-branded MJML email for newsfeed reports. FD PR #51 |
+| 0A.6 | Create newsfeed entry helpers in Go | ✅ Done | `newsfeed.CreateNewsfeedEntry()` for addGroup side effects. Go PR #14 |
+| 0A.7 | Test end-to-end | ⬜ Pending | Go inserts → batch processes → verify in MailPit |
+| 0A.8 | Wire up Phase 2 Go handlers | ✅ Done | Newsfeed Report→email queue, Volunteering/CommunityEvent AddGroup→newsfeed+push queue |
 
 **Queue Table Schema:**
 ```sql
-CREATE TABLE IF NOT EXISTS email_queue (
+CREATE TABLE IF NOT EXISTS background_tasks (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    email_type VARCHAR(50) NOT NULL,
-    user_id BIGINT UNSIGNED NULL,
-    group_id BIGINT UNSIGNED NULL,
-    message_id BIGINT UNSIGNED NULL,
-    chat_id BIGINT UNSIGNED NULL,
-    extra_data JSON NULL,
+    task_type VARCHAR(50) NOT NULL,
+    data JSON NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP NULL,
     failed_at TIMESTAMP NULL,
     error_message TEXT NULL,
-    INDEX idx_pending (processed_at, created_at),
-    INDEX idx_type (email_type)
+    attempts INT UNSIGNED DEFAULT 0,
+    INDEX idx_task_type (task_type),
+    INDEX idx_pending (processed_at, created_at)
 );
 ```
 
-**Looping Processor Script** (`process-email-queue.sh`):
-```bash
-#!/bin/bash
-# Run continuously, processing email queue every 10 seconds.
-# Designed for long-running batch container execution.
-while true; do
-    php artisan mail:queue:process --limit=50
-    sleep 10
-done
-```
+**Current Task Types:**
 
-**Email Types:**
+| Task Type | Triggered By | Data Fields |
+|-----------|--------------|-------------|
+| `push_notify_group_mods` | addGroup (volunteering/communityevent) | `{group_id}` |
+| `email_chitchat_report` | POST /newsfeed (Report action) | `{user_id, user_name, user_email, newsfeed_id, reason}` |
 
-| Email Type | Triggered By | Queue Data |
-|------------|--------------|------------|
-| `forgot_password` | POST /session (LostPassword) | user_id |
-| `verify_email` | PATCH /user | user_id, extra: {email} |
-| `welcome` | PUT /user | user_id |
-| `unsubscribe` | POST /session (Unsubscribe) | user_id |
-| `merge_offer` | PUT /merge | user_id, extra: {merge_user_id} |
-| `modmail` | POST /user, /memberships, /message | user_id, group_id, extra: {subject, body} |
-| `donate_external` | PUT /donations | user_id, extra: {amount} |
+**Future Task Types (to be added as endpoints migrate):**
+
+| Task Type | Triggered By | Data Fields |
+|-----------|--------------|-------------|
+| `email_forgot_password` | POST /session (LostPassword) | `{user_id}` |
+| `email_verify` | PATCH /user | `{user_id, email}` |
+| `email_welcome` | PUT /user | `{user_id}` |
+| `email_modmail` | POST /user, /memberships, /message | `{user_id, group_id, subject, body}` |
+
+**Design Principles:**
+- All emails use MJML templates with Freegle or ModTools branding (no plain text)
+- Push notifications route through existing `PushNotificationService`
+- Max 3 retry attempts before permanent failure
+- Daemon mode via scheduler (every minute, 60 iterations per run)
+
+**Deferred `CreateNewsfeedEntry` improvements** (from code quality review):
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ⬜ Pending | PHP checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. Go always inserts with `hidden=NULL`. Without this, suppressed users' events appear in newsfeeds. |
+| 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ⬜ Pending | PHP checks if last post by user was same type to prevent double-submission. Go has no duplicate check. |
+| 0A.11 | Set `location` display name in CreateNewsfeedEntry | ⬜ Pending | PHP calls `getPublicLocation()` to set the location text column. Go leaves it NULL. Low priority - display may derive from coordinates. |
 
 ### 0B: Test Audit & Gap Analysis
 
@@ -278,7 +286,7 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 
 | # | Endpoint | MT v1 Calls | Status | RALPH Task |
 |---|----------|-------------|--------|------------|
-| 7 | /chat GET | 16 | ⏳ Deferred | `Switch MT chat GETs to v2` - Deferred to dedicated phase. 16+ v1 calls, complex UNION SQL with hardcoded chattypes, review system, unseen counts. Too complex for this PR. |
+| 7 | /chat GET | 16 | ⏳ Phase 1C | `Switch MT chat GETs to v2` - Moved to dedicated Phase 1C below. 16+ v1 calls, complex UNION SQL with hardcoded chattypes, review system, unseen counts. |
 | 8 | /config GET | 1 | ✅ Done | ConfigAPI.js already uses `$getv2` |
 | 9 | /location GET | 5 | 🔄 Partial | `Switch MT location GETs to v2` - LatLng + typeahead switched. Added ontn to ClosestGroup, area info to Typeahead. Bounds/dodgy spatial queries remain on v1 (complex). |
 | 10 | /story GET | 8 | ✅ Done | `Switch MT story GETs to v2` - Go: added reviewed/public/newsletterreviewed filters, dynamic SQL. Nuxt: fetchMT uses v2 list→fetch pattern, ModStoryReview fetches user separately. |
@@ -292,25 +300,77 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 5. Run Playwright tests.
 6. Do NOT modify v1 PHP code yet.
 
+### 1C: MT Chat Migration (Dedicated Phase)
+
+MT's chat system uses 16+ v1 API calls across 6 methods and 20+ call sites. The existing v2 chat endpoints serve FD (User2User chats) but lack MT-specific features. This phase extends the v2 Go handlers and switches MT to use them.
+
+**Branch:** `feature/v2-mt-chat`
+
+#### Go Handler Changes Required
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1C.1 | Add `chattypes` filter to GET `/chat` | ⬜ Pending | V1 filters User2Mod + Mod2Mod for MT. V2 must accept `chattypes` query param and apply WHERE clause. |
+| 1C.2 | Add `count=true` mode to GET `/chat` | ⬜ Pending | V1 `/chatrooms?count=true` returns `{count: N}` for unseen messages. V2 needs equivalent. Used for MT badge counts. |
+| 1C.3 | Create GET `/chat/:id/message` MT variant | ⬜ Pending | V1 `fetchMessagesMT` passes `{modtools: true}`. Check if v2 already handles this or needs MT-specific logic. |
+| 1C.4 | Create GET `/chatmessages` review endpoint | ⬜ Pending | V1 returns messages with nested `chatroom` and `refmsg` objects for moderation review queue. V2 needs equivalent or adapted response. |
+| 1C.5 | Go unit tests for all new chat parameters | ⬜ Pending | TDD: write tests first for chattypes filter, count mode, review endpoint. |
+
+#### Nuxt Client Switchover
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1C.6 | Switch `ChatAPI.listChatsMT` to `$getv2` | ⬜ Pending | 6+ call sites. Needs chattypes support in v2 first. |
+| 1C.7 | Switch `ChatAPI.fetchChatMT` to `$getv2` | ⬜ Pending | 3+ call sites. Uses `$get('/chatrooms', {id, chattypes})`. |
+| 1C.8 | Switch `ChatAPI.unseenCountMT` to `$getv2` | ⬜ Pending | 1 call site. Needs count mode in v2. |
+| 1C.9 | Switch `ChatAPI.fetchMessagesMT` to `$getv2` | ⬜ Pending | 2 call sites in ModChatPane/Footer. |
+| 1C.10 | Switch `ChatAPI.fetchReviewChatsMT` to `$getv2` | ⬜ Pending | 2 call sites. Review queue page + store. |
+| 1C.11 | Update `stores/chat.js` MT paths | ⬜ Pending | Store has conditional v1/v2 paths (miscStore.modtools check). Update MT paths to use v2 methods. |
+
+#### Validation & Testing
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1C.12 | Chrome MCP: MT chat list page | ⬜ Pending | Login to MT, verify chat list loads with User2Mod + Mod2Mod chats. |
+| 1C.13 | Chrome MCP: MT chat review page | ⬜ Pending | Verify `/chats/review` loads and shows messages for moderation. |
+| 1C.14 | Chrome MCP: MT chat pane | ⬜ Pending | Open a chat, verify messages load, mark read works. |
+| 1C.15 | Vitest: Update chat store tests | ⬜ Pending | Update unit tests for v2 response format in MT paths. |
+
+**Key files:**
+- `api/ChatAPI.js` - 6 v1 methods to switch (lines 8-57)
+- `stores/chat.js` - MT-conditional paths (lines 38-260)
+- `modtools/pages/chats/[[id]].vue` - Chat list page
+- `modtools/pages/chats/review.vue` - Review queue
+- `modtools/components/ModChatPane.vue` - Chat display (5+ API calls)
+- `modtools/components/ModChatHeader.vue` - Mark read, actions
+- `modtools/components/ModChatFooter.vue` - Send message, fetch
+
+**V1 → V2 Response format changes:**
+- V1 `/chat/rooms` returns `{chatrooms: [...]}` → V2 `/chat` returns `[...]` (unwrapped)
+- V1 `/chatrooms?count=true` returns `{count: N}` → V2 TBD
+- V1 `/chatmessages` returns `{chatmessages: [{..., chatroom: {...}, refmsg: {...}}]}` → V2 will return IDs, client fetches nested data separately
+
 ---
 
 ## Phase 2: Simple Write Endpoints (No Email)
 
 These endpoints perform DB writes but don't send email. Straightforward Go implementation.
 
-**Branch strategy:** New feature branch per 3-4 endpoints.
+**Branch strategy:** New feature branch per 3-4 endpoints. Branches may depend on other branches (e.g., `feature/v2-volunteering-writes` depends on `feature/v2-background-tasks`). Merge order matters at release time.
 
 | # | Endpoint | Verbs | FD Usages | Status | RALPH Task |
 |---|----------|-------|-----------|--------|------------|
-| 12 | /address | PATCH, PUT | 5 | ⬜ Pending | `Migrate /address write ops to v2` |
+| 12 | /address | PATCH, PUT | 5 | ✅ PR ready | Go #8, Nuxt3 #149, FD CI #1804 ✅ |
 | 13 | /isochrone | PUT, POST, PATCH | 2 | ⬜ Pending | `Migrate /isochrone write ops to v2` |
 | 14 | /notification POST | Seen, AllSeen | 3 | ⬜ Pending | `Migrate /notification POST to v2` |
-| 15 | /messages POST | MarkSeen | 1 | ⬜ Pending | `Migrate /messages MarkSeen to v2` |
-| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ⬜ Pending | `Migrate /newsfeed POST to v2` |
-| 17 | /volunteering | POST, PATCH, DELETE | 5 | ⬜ Pending | `Migrate /volunteering write ops to v2` |
-| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ⬜ Pending | `Migrate /communityevent write ops to v2` |
+| 15 | /messages POST | MarkSeen | 1 | ✅ PR ready | Go #7, Nuxt3 #148, FD CI #1803 ✅ |
+| 16 | /newsfeed POST | Love, Unlove, Report, etc | 10 | ✅ PR ready | Go #11, Nuxt3 #152, FD CI #1821 ✅ |
+| 17 | /volunteering | POST, PATCH, DELETE | 5 | ✅ PR ready | Go #9, Nuxt3 #150, FD CI #1817 ✅ |
+| 18 | /communityevent | POST, PATCH, DELETE | FD+MT | ✅ PR ready | Go #10, Nuxt3 #151, FD CI #1818 ✅ |
 | 19 | /image | POST | FD file upload | ⬜ Pending | `Migrate /image POST to v2` |
-| 20 | /comment | POST, PATCH, DELETE | MT | ⬜ Pending | `Migrate /comment write ops to v2` |
+| 20 | /comment | POST, PATCH, DELETE | MT | ✅ PR ready | Go #12, Nuxt3 #153, FD CI #1813 ✅ |
+
+**Migration foundation:** Go #6 (tests + email queue infrastructure), FD CI #1802 ✅
 
 ---
 

@@ -418,11 +418,51 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 1B: Vitest fixes pushed, CI pipeline #1828 running
-- **Status**: Phase 1B PRs created, Vitest test fixes pushed, awaiting CI.
-- **PRs**: Go #13, Nuxt3 #154, FreegleDocker pipeline #1828
-- **Phase 2**: All 7 pipelines ✅ green — ready for merge
-- **Next**: Wait for #1828, then all v2 PRs ready for merge
+### 2026-02-09 - Adversarial review follow-up: issue assessment
+- **Status**: Issue 4 (LovedPost/LovedComment) was already fixed in earlier session (commit b41e97b). Added LovedComment test (commit e677be9) to ensure coverage.
+- **Other issues assessed**: All 3 remaining issues are dependent on later stages:
+  - Report email → needs email infrastructure (Phase 0A email queue)
+  - AddGroup side effects → needs push notification infrastructure
+  - ConvertToStory → needs Story domain in Go
+- **Action**: No further fixes needed now; gaps will surface when dependent features are migrated.
+
+### 2026-02-09 - Full adversarial review of all Phase 2 PRs
+- **Status**: Comprehensive adversarial review complete comparing all 6 Go PRs against PHP counterparts
+- **Findings Summary**:
+  - **MarkSeen (#7)**: LOW - no issues
+  - **Address (#8)**: LOW - Go actually fixes a PHP lat/lng bug
+  - **Volunteering (#9)**: MEDIUM - AddGroup side effects (newsfeed + push) deferred
+  - **CommunityEvent (#10)**: MEDIUM - AddGroup/AddDate side effects deferred
+  - **Newsfeed (#11)**: MEDIUM - Report email missing, ConvertToStory deferred, LovedPost/LovedComment ✅ fixed
+  - **Comment (#12)**: LOW - excellent replication of mod tools permissions
+- **Key mod tools concerns**: Report email to ChitChat support missing, moderator push notifs for new volunteering/events missing (all documented as deferred)
+- **Test coverage**: Strong across all PRs (88 total tests). Newsfeed could use AttachToThread/ReferTo/spammer tests.
+- **No blocking issues found** - all gaps are documented as deferred items in the migration plan
+
+### 2026-02-09 - Phase 0A: Background task queue + wiring up side effects
+- **Status**: Phase 0A tasks 0A.1-0A.6 and 0A.8 ✅ Done. 0A.7 (end-to-end test) ⬜ Pending.
+- **Completed**:
+  - Created `queue/queue.go` with generic QueueTask() function (Go PR #14)
+  - Created `newsfeed/create.go` with CreateNewsfeedEntry() (Go PR #14)
+  - Created ProcessBackgroundTasksCommand + ChitchatReportMail MJML (FD PR #51)
+  - Wired up newsfeed Report action → email_chitchat_report queue task (on feature/v2-newsfeed-writes)
+  - Wired up volunteering AddGroup → newsfeed entry + push_notify_group_mods queue task (on feature/v2-volunteering-writes)
+  - Wired up communityevent AddGroup → newsfeed entry + push_notify_group_mods queue task (on feature/v2-communityevent-writes)
+- **Branch Dependencies**: Phase 2 feature branches now depend on feature/v2-background-tasks (merged into each)
+- **Key Decision**: Branches can depend on other branches, not just master. Release order: background-tasks first, then Phase 2 branches.
+- **Next**: End-to-end test (0A.7), then push all branches and await CI
+
+### 2026-02-09 - Phase 1B CI ✅ green + Plan restructured
+- **Status**: Phase 1B CI pipeline GREEN. Phase 2 all 7 pipelines ✅ green. Plan updated with Phase 1C for chat.
+- **Branch**: `feature/v2-mt-switchovers` across FreegleDocker, iznik-nuxt3, iznik-server-go
+- **PRs**: Go #13 ✅, Nuxt3 #154 ✅, FreegleDocker #1832 ✅ ALL GREEN
+- **CI Pipeline History**:
+  - #1827 ❌ Vitest: 44 failures → fixed (v1→v2 params)
+  - #1828 ❌ Vitest: 59 errors → fixed (fetchByLatLng mock)
+  - #1831 ❌ Playwright timeouts (environmental)
+  - #1832 ✅ ALL TESTS PASSED - auto-merged to production
+- **Plan Update**: Added Phase 1C (MT Chat Migration) with 15 subtasks covering Go handler changes, client switchover, and validation. Chat has 16+ v1 calls, 6 methods, 20+ call sites.
+- **Next**: Phase 1B PR ready for merge. Then Phase 1C (chat) or Phase 2 (write endpoints) next.
 
 ### 2026-02-08 - Adversarial review fixes + CI fix round
 - **Status**: Adversarial review DONE. CI fixes in progress for remaining branches.
