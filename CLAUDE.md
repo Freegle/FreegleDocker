@@ -416,14 +416,23 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-### 2026-02-07 - Fix CI: Duplicate Threading Headers in ChatNotification
-- **Status**: ✅ Complete
-- **Branch**: master (fix), then merged into all v2 feature branches
-- **Root Cause**: `ChatNotification::build()` registers a `withSymfonyMessage` callback that adds RFC 2822 threading headers (References, In-Reply-To). When `TestMailCommand` calls `render()` then `spool()` (which calls `send()`), `build()` runs twice, registering the callback twice. The second invocation fails with "Impossible to set header References as it's already defined and must be unique."
-- **Fix**: Remove existing threading headers before re-adding them (same pattern already used for Message-ID). Also removed unnecessary MJML mock from TestMailCommandTest - use real MJML container.
-- **Commit**: cbba4602 on master
-- **Cascaded to**: All 6 v2 feature branches (migration-foundation, comment-writes, address-writes, communityevent-writes, messages-markseen, newsfeed-writes, volunteering-writes)
-- **Plan Updated**: Added branch chaining strategy to migration plan - each feature branch must be based on the previous successful branch, not independently on master
-- **CI**: Pipeline triggered on master, awaiting results
+**Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
+
+### 2026-02-09 - Phase 3: invitation + batch handlers + CI fixes
+- **Status**: Phase 3 #28 (invitation) and #29 (donations) PR ready. All Go PRs ✅ green.
+- **Completed**:
+  - Implemented /invitation Go handler (#28): GET/PUT/PATCH with quota, declined prevention, duplicate protection
+  - Created InvitationMail + MJML template, wired batch handler
+  - Created DonateExternalMail MJML template, wired batch handler
+  - Fixed Go PR #15 CI: FK constraint in image tests (created parent messages)
+  - Fixed Go PR #16 CI: Missing background_tasks table in test setup
+  - Created PRs: Go #17, Nuxt3 #157, FD #54 (invitation)
+- **CI**: Go #14-17 all ✅. FD #51-54 pending. Nuxt3 #157 retriggered (transient 502).
+- **PRs Awaiting Merge**: FD #43-#54, Go #6-#17, Nuxt3 #148-#157
+- **Next**: Monitor CI. Continue Phase 3 (/session next).
+
+### 2026-02-08 - CI fixes + adversarial review
+- **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.
+- **Key fixes**: FK constraint violations in newsfeed tests, user location query, ChatListEntry Pinia mocks, ProxyImage USER_SITE, MessageExpanded photoArea height
 
 
