@@ -418,18 +418,17 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Phase 0C done + Phase 2 #19 image POST implemented
-- **Status**: Phase 0C ✅ complete. Phase 2 #19 (image POST) PR ready. Master CI #2044 ✅ green.
+### 2026-02-09 - Phase 3 #29 donations PUT + image POST auth fix
+- **Status**: Phase 3 #29 (donations PUT) PR ready. Image POST auth fix pushed.
 - **Completed**:
-  - Wrote `iznik-server-go/API-GUIDE.md` with comprehensive handler patterns
-  - Added guide reference to `iznik-server-go/CLAUDE.md`
-  - Implemented POST /image handler (external UID creation + rotation) - Go PR #15
-  - Switched `ImageAPI.post()` to v2 - Nuxt3 PR #155
-  - Created FD PR #52 for image POST migration
-  - Fixed all CI failures from previous session (Vitest + Go tests)
-- **CI**: Master #2044 ✅ green. FD PR #52 pipeline running.
-- **PRs Awaiting Merge**: #43-#52 (FD), Go #7-#15, Nuxt3 #148-#155
-- **Next**: Monitor CI for image POST PRs. Phase 2 complete (all items done or deferred). Phase 3 (email-dependent) is next.
+  - Fixed Go PR #15 CI failure: image tests used Authorization Bearer header instead of ?jwt= query param
+  - Implemented PUT /donations Go handler (Phase 3 #29): permission check, GiftAid notification, email queue
+  - Switched DonationsAPI.add() from $put to $putv2
+  - Created PRs: Go #16, Nuxt3 #156, FD #53
+  - Phase 0C complete (API guide), Phase 2 #19 (image POST) PR ready
+- **CI**: Master #2044 ✅ green. Image fix pushed to Go PR #15. Donations CI running.
+- **PRs Awaiting Merge**: FD #43-#53, Go #7-#16, Nuxt3 #148-#156
+- **Next**: Continue Phase 3 endpoints. Monitor CI for donations and image-post PRs.
 
 ### 2026-02-08 - CI fixes + adversarial review
 - **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.

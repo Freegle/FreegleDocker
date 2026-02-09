@@ -219,6 +219,7 @@ CREATE TABLE IF NOT EXISTS background_tasks (
 |-----------|--------------|-------------|
 | `push_notify_group_mods` | addGroup (volunteering/communityevent) | `{group_id}` |
 | `email_chitchat_report` | POST /newsfeed (Report action) | `{user_id, user_name, user_email, newsfeed_id, reason}` |
+| `email_donate_external` | PUT /donations (external donation) | `{user_id, user_name, user_email, amount}` |
 
 **Future Task Types (to be added as endpoints migrate):**
 
@@ -331,7 +332,7 @@ These require the email queue (Phase 0A) to be complete first.
 | 26 | /chatrooms POST | Various actions | ⬜ Pending | `Migrate /chatrooms POST to v2` |
 | 27 | /merge | merge_offer | ⬜ Pending | `Migrate /merge to v2` |
 | 28 | /invitation | invitation | ⬜ Pending | `Migrate /invitation to v2` |
-| 29 | /donations PUT | donate_external | ⬜ Pending | `Migrate /donations PUT to v2` |
+| 29 | /donations PUT | donate_external | 🔄 PR Ready | Go PR #16, FD PR #53, Nuxt3 PR #156. External donation + GiftAid notif + email queue. |
 
 **Task pattern for Phase 3:**
 1. Verify Laravel Mailable exists for the email type (create if not).
