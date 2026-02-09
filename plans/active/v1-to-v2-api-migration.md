@@ -355,14 +355,14 @@ These are more complex, often MT-specific, or have intricate business logic.
 
 | # | Endpoint | Verbs | Complexity | Status | RALPH Task |
 |---|----------|-------|------------|--------|------------|
-| 30 | /group PATCH | Update settings | High (many fields) | ⬜ Pending | `Migrate /group PATCH to v2` |
-| 31 | /modconfig | GET, PATCH, POST, DELETE | MT-specific | ⬜ Pending | `Migrate /modconfig to v2` |
-| 32 | /stdmsg | GET, PATCH, POST, DELETE | MT-specific | ⬜ Pending | `Migrate /stdmsg to v2` |
-| 33 | /spammers | All | Complex MT moderation | ⬜ Pending | `Migrate /spammers to v2` |
-| 34 | /socialactions | POST | FD social | ⬜ Pending | `Migrate /socialactions to v2` |
-| 35 | /shortlink | POST | URL shortening | ⬜ Pending | `Migrate /shortlink to v2` |
-| 36 | /noticeboard | POST, PATCH, DELETE | FD+MT | ⬜ Pending | `Migrate /noticeboard write ops to v2` |
-| 37 | /stripe* | POST | Payment integration | ⬜ Pending | `Migrate /stripe endpoints to v2` |
+| 30 | /group PATCH | Update settings | High (many fields) | ✅ PR Ready | Go #24, Nuxt3 #164, FD #61 |
+| 31 | /modconfig | GET, PATCH, POST, DELETE | MT-specific | ⏭️ Deferred | MT-only, defer to MT phase |
+| 32 | /stdmsg | GET, PATCH, POST, DELETE | MT-specific | ⏭️ Deferred | MT-only, defer to MT phase |
+| 33 | /spammers | All | Complex MT moderation | ⏭️ Deferred | MT-only, defer to MT phase |
+| 34 | /socialactions | POST | FD social | ⏭️ Skip | Zero FD usage found |
+| 35 | /shortlink | POST | URL shortening | ⏭️ Deferred | MT-only, defer to MT phase |
+| 36 | /noticeboard | POST, PATCH, DELETE | FD+MT | ✅ PR Ready | Go #25, Nuxt3 #165, FD #63 |
+| 37 | /stripe* | POST | Payment integration | ⏭️ Deferred | Requires Stripe Go SDK integration |
 
 ---
 
