@@ -489,7 +489,7 @@ services:
       - "traefik.http.services.apiv1-localhost-freegledocker.loadbalancer.server.port=80"
       - "traefik.http.middlewares.limit.buffering.maxRequestBodyBytes=8000000"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
-      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
       # Retry middleware for connection resilience
@@ -614,7 +614,7 @@ services:
       - "traefik.http.routers.apiv2.middlewares=apiv2-cors,retry-api"
       - "traefik.http.services.apiv2.loadbalancer.server.port=8192"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
-      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
       # Retry middleware for connection resilience
