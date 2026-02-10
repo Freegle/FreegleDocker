@@ -356,11 +356,11 @@ These are more complex, often MT-specific, or have intricate business logic.
 | # | Endpoint | Verbs | Complexity | Status | RALPH Task |
 |---|----------|-------|------------|--------|------------|
 | 30 | /group PATCH | Update settings | High (many fields) | ✅ PR Ready | Go #24, Nuxt3 #164, FD #61 |
-| 31 | /modconfig | GET, PATCH, POST, DELETE | MT-specific | 🔄 Go Done | Go handlers in PR #27 (Batch 3). MT client switchover needed. |
-| 32 | /stdmsg | GET, PATCH, POST, DELETE | MT-specific | 🔄 Go Done | Go handlers in PR #27 (Batch 3). MT client switchover needed. |
-| 33 | /spammers | All | Complex MT moderation | 🔄 Go Done | Go handlers in PR #27 (Batch 2). MT client switchover needed. |
+| 31 | /modconfig | GET, PATCH, POST, DELETE | MT-specific | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
+| 32 | /stdmsg | GET, PATCH, POST, DELETE | MT-specific | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
+| 33 | /spammers | All | Complex MT moderation | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
 | 34 | /socialactions | POST | FD social | ⏭️ Skip | Zero FD usage found |
-| 35 | /shortlink | POST | URL shortening | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
+| 35 | /shortlink | POST | URL shortening | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
 | 36 | /noticeboard | POST, PATCH, DELETE | FD+MT | ✅ PR Ready | Go #25, Nuxt3 #165, FD #63 |
 | 37 | /stripe* | POST | Payment integration | ⏭️ Deferred | Requires Stripe Go SDK integration |
 
@@ -372,14 +372,14 @@ These are more complex, often MT-specific, or have intricate business logic.
 
 | # | Endpoint | Status | Notes |
 |---|----------|--------|-------|
-| 38 | /dashboard | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
-| 39 | /logs | 🔄 Go Done | Go handler in PR #27 (Batch 2). MT client switchover needed. |
-| 40 | /team | 🔄 Go Done | Go handler in PR #27 (Batch 2). MT client switchover needed. |
-| 41 | /tryst | 🔄 Go Done | Go handler in PR #27 (Batch 3). MT client switchover needed. |
+| 38 | /dashboard | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. Heatmap stays v1. |
+| 39 | /logs | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
+| 40 | /team | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
+| 41 | /tryst | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
 | 42 | /abtest | ✅ PR Ready | Go #26, Nuxt3 #166, FD #64 |
-| 43 | /visualise | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
-| 44 | /usersearch | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
-| 45 | /status | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
+| 43 | /visualise | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
+| 44 | /usersearch | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
+| 45 | /status | 🔄 PR Ready | Go #27, Nuxt3 #168, FD #67. MT client switchover done. |
 
 ### 5B: Candidates for Removal (No Client Usage Found)
 
@@ -406,13 +406,14 @@ A dedicated review phase to catch missed functionality.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 5C.1 | Compare v1 vs v2 for each migrated endpoint | ⬜ Pending | Line-by-line PHP→Go comparison |
-| 5C.2 | Check for side effects in v1 not replicated in v2 | ⬜ Pending | DB updates, cache invalidation, logging |
-| 5C.3 | Check for permission/authorization differences | ⬜ Pending | Mod-only, admin-only, owner-only checks |
-| 5C.4 | Check for data transformation differences | ⬜ Pending | Date formats, null handling, privacy filtering |
+| 5C.1 | Compare v1 vs v2 for each migrated endpoint | ✅ Done | 33 endpoints reviewed. 4 CRITICAL, 6 HIGH, 17 MODERATE, 13 LOW issues found. See api-migration-review-log.md |
+| 5C.2 | Check for side effects in v1 not replicated in v2 | ✅ Done | Key gaps: newsfeed Seen guard, messages_by insert, chat room creation, typing email delay |
+| 5C.3 | Check for permission/authorization differences | ✅ Done | Key gaps: AddBy/RemoveBy no ownership, RatingReviewed no mod check, group settings/rules missing |
+| 5C.4 | Check for data transformation differences | ✅ Done | Key gap: donations GET response wrapper mismatch |
 | 5C.5 | Write adversarial tests | ⬜ Pending | Edge cases: empty data, large payloads, concurrent requests |
-| 5C.6 | Verify email side effects | ⬜ Pending | Ensure all emails sent by v1 are also queued by v2 |
-| 5C.7 | Check MT-specific behaviours | ⬜ Pending | Moderation actions, bulk operations, review queues |
+| 5C.8 | Fix must-fix-before-merge bugs | ✅ Done | All 6 must-fix items resolved: C1 (newsfeed Seen), C2 (outcome type validation), C3 (AddBy/RemoveBy ownership), C4 (group settings/rules), H5 (typing date bump), H6 (false positive - client already switched) |
+| 5C.6 | Verify email side effects | ✅ Done | All email sends correctly use background_tasks queue. Minor: CC address for donations handled by batch worker |
+| 5C.7 | Check MT-specific behaviours | ✅ Done | Key gaps: chatmessage approve doesn't notify, hold/release don't notify mods |
 
 ---
 
@@ -492,16 +493,16 @@ After individual endpoint reviews, check system-wide concerns.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 6B.1 | Grep FD codebase for remaining `$get(` / `$post(` v1 calls | ⬜ Pending | Should be zero for migrated endpoints |
-| 6B.2 | Grep MT codebase for remaining v1 calls | ⬜ Pending | Document any intentionally deferred |
+| 6B.1 | Grep FD codebase for remaining `$get(` / `$post(` v1 calls | ✅ Done | PASS. 20 API files fully v2. 26 remaining v1 calls all intentionally deferred. |
+| 6B.2 | Grep MT codebase for remaining v1 calls | ✅ Done | PASS. Same codebase as FD. All deferred calls documented. |
 | 6B.3 | Check Loki logs for v1 traffic to migrated endpoints | ⬜ Pending | 30-day window post-deploy |
 | 6B.4 | Verify email queue processes all email types end-to-end | ⬜ Pending | Send test email for each type |
 | 6B.5 | Run full Playwright suite against v2-only config | ⬜ Pending | Disable v1 fallback temporarily |
 | 6B.6 | Load test key endpoints (message, chat, user) | ⬜ Pending | Verify goroutine parallelism delivers |
-| 6B.7 | Check for orphaned v1 routes still registered | ⬜ Pending | Review PHP router config |
-| 6B.8 | Verify Swagger docs are complete and accurate | ⬜ Pending | Every v2 endpoint documented |
+| 6B.7 | Check for orphaned v1 routes still registered | ✅ Done | `adview` is dead code (overdue since 2021). 10+ endpoints to verify via Loki logs. |
+| 6B.8 | Verify Swagger docs are complete and accurate | ✅ Done | FAIL. Only 11/120+ routes in spec. Two annotation styles mixed. See review log. |
 | 6B.9 | Review error monitoring (Sentry) for v2 errors post-deploy | ⬜ Pending | New error patterns? |
-| 6B.10 | Confirm no hardcoded v1 URLs in external integrations | ⬜ Pending | TN, webhooks, email links |
+| 6B.10 | Confirm no hardcoded v1 URLs in external integrations | ✅ Done | PASS. Well-architected with env vars. 3 low-priority items noted. |
 
 ### 6C: Sign-Off
 
