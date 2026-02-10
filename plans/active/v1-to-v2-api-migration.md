@@ -284,7 +284,7 @@ These endpoints already have v2 Go implementations. Only client code changes nee
 
 | # | Endpoint | MT v1 Calls | Status | RALPH Task |
 |---|----------|-------------|--------|------------|
-| 7 | /chat GET | 16 | ⏳ Deferred | `Switch MT chat GETs to v2` - Deferred to dedicated phase. 16+ v1 calls, complex UNION SQL with hardcoded chattypes, review system, unseen counts. Too complex for this PR. |
+| 7 | /chat GET | 16 | 🔄 Go Done | Go handlers for MT chat GETs implemented in Go PR #27. Chat rooms unseen count, single chat fetch, listing with enrichment, review queue. MT client switchover still needed. |
 | 8 | /config GET | 1 | ✅ Done | ConfigAPI.js already uses `$getv2` |
 | 9 | /location GET | 5 | 🔄 Partial | `Switch MT location GETs to v2` - LatLng + typeahead switched. Added ontn to ClosestGroup, area info to Typeahead. Bounds/dodgy spatial queries remain on v1 (complex). |
 | 10 | /story GET | 8 | ✅ Done | `Switch MT story GETs to v2` - Go: added reviewed/public/newsletterreviewed filters, dynamic SQL. Nuxt: fetchMT uses v2 list→fetch pattern, ModStoryReview fetches user separately. |
@@ -356,11 +356,11 @@ These are more complex, often MT-specific, or have intricate business logic.
 | # | Endpoint | Verbs | Complexity | Status | RALPH Task |
 |---|----------|-------|------------|--------|------------|
 | 30 | /group PATCH | Update settings | High (many fields) | ✅ PR Ready | Go #24, Nuxt3 #164, FD #61 |
-| 31 | /modconfig | GET, PATCH, POST, DELETE | MT-specific | ⏭️ Deferred | MT-only, defer to MT phase |
-| 32 | /stdmsg | GET, PATCH, POST, DELETE | MT-specific | ⏭️ Deferred | MT-only, defer to MT phase |
-| 33 | /spammers | All | Complex MT moderation | ⏭️ Deferred | MT-only, defer to MT phase |
+| 31 | /modconfig | GET, PATCH, POST, DELETE | MT-specific | 🔄 Go Done | Go handlers in PR #27 (Batch 3). MT client switchover needed. |
+| 32 | /stdmsg | GET, PATCH, POST, DELETE | MT-specific | 🔄 Go Done | Go handlers in PR #27 (Batch 3). MT client switchover needed. |
+| 33 | /spammers | All | Complex MT moderation | 🔄 Go Done | Go handlers in PR #27 (Batch 2). MT client switchover needed. |
 | 34 | /socialactions | POST | FD social | ⏭️ Skip | Zero FD usage found |
-| 35 | /shortlink | POST | URL shortening | ⏭️ Deferred | MT-only, defer to MT phase |
+| 35 | /shortlink | POST | URL shortening | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
 | 36 | /noticeboard | POST, PATCH, DELETE | FD+MT | ✅ PR Ready | Go #25, Nuxt3 #165, FD #63 |
 | 37 | /stripe* | POST | Payment integration | ⏭️ Deferred | Requires Stripe Go SDK integration |
 
@@ -372,14 +372,14 @@ These are more complex, often MT-specific, or have intricate business logic.
 
 | # | Endpoint | Status | Notes |
 |---|----------|--------|-------|
-| 38 | /dashboard | ⏭️ Deferred | MT admin dashboard, GET only |
-| 39 | /logs | ⏭️ Deferred | No FD usage found |
-| 40 | /team | ⏭️ Deferred | No FD usage found |
-| 41 | /tryst | ⏭️ Deferred | No FD usage found |
+| 38 | /dashboard | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
+| 39 | /logs | 🔄 Go Done | Go handler in PR #27 (Batch 2). MT client switchover needed. |
+| 40 | /team | 🔄 Go Done | Go handler in PR #27 (Batch 2). MT client switchover needed. |
+| 41 | /tryst | 🔄 Go Done | Go handler in PR #27 (Batch 3). MT client switchover needed. |
 | 42 | /abtest | ✅ PR Ready | Go #26, Nuxt3 #166, FD #64 |
-| 43 | /visualise | ⏭️ Deferred | No FD usage found |
-| 44 | /usersearch | ⏭️ Deferred | No FD usage found |
-| 45 | /status | ⏭️ Deferred | MT-only, GET only |
+| 43 | /visualise | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
+| 44 | /usersearch | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
+| 45 | /status | 🔄 Go Done | Go handler in PR #27 (Batch 1). MT client switchover needed. |
 
 ### 5B: Candidates for Removal (No Client Usage Found)
 
