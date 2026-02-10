@@ -418,6 +418,7 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+<<<<<<< Updated upstream
 ### 2026-02-09 - Fixed should-fix-before-deploy items
 - **Plan Phase**: 5C.9 ✅
 - **Completed**: Resolved all should-fix-before-deploy review items:
