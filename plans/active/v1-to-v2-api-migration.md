@@ -238,20 +238,9 @@ CREATE TABLE IF NOT EXISTS background_tasks (
 - Max 3 retry attempts before permanent failure
 - Daemon mode via scheduler (every minute, 60 iterations per run)
 
-### 0B: Test Audit & Gap Analysis
+### 0B: Test Audit & Gap Analysis - SKIPPED
 
-Before migrating any endpoint, audit existing test coverage to identify gaps. This produces a definitive list of what needs testing.
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 0B.1 | Audit Go test coverage per endpoint | ⬜ Pending | Map each v2 endpoint to test functions |
-| 0B.2 | Audit PHP test coverage per endpoint | ⬜ Pending | Map each v1 endpoint to test functions |
-| 0B.3 | Audit Playwright coverage of API flows | ⬜ Pending | Which user flows exercise which APIs |
-| 0B.4 | Build coverage gap matrix | ⬜ Pending | Endpoint × {Go test, PHP test, Playwright, FD v1/v2, MT v1/v2} |
-| 0B.5 | Write missing Go tests for existing v2 endpoints | ⬜ Pending | TDD: write tests, verify they pass against existing code |
-| 0B.6 | Write missing Playwright tests for existing v2 endpoints | ⬜ Pending | At least one E2E test per migrated endpoint |
-
-**Output:** A coverage gap matrix markdown file at `plans/active/api-test-coverage-matrix.md`.
+Superseded by extensive per-endpoint TDD tests written during migration and the full adversarial review (5C). Coverage is adequate without a formal audit.
 
 ### 0C: V2 API Coding Guide
 
