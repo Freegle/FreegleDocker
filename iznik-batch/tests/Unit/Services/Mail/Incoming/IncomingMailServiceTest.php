@@ -953,6 +953,117 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(ChatMessage::TYPE_INTERESTED, $chatMsg->type);
     }
 
+    public function test_replyto_creates_roster_entries_for_both_users(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Find the chat that was created
+        $chat = DB::table('chat_rooms')
+            ->where('chattype', 'User2User')
+            ->where('user1', min($poster->id, $replier->id))
+            ->where('user2', max($poster->id, $replier->id))
+            ->first();
+
+        $this->assertNotNull($chat, 'Chat should be created');
+
+        // Both users must have roster entries so the notification system
+        // can track seen/emailed state and send email notifications.
+        $posterRoster = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $poster->id)
+            ->first();
+
+        $replierRoster = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $replier->id)
+            ->first();
+
+        $this->assertNotNull($posterRoster, 'Poster (message owner) must have a roster entry');
+        $this->assertNotNull($replierRoster, 'Replier (sender) must have a roster entry');
+    }
+
+    public function test_replyto_does_not_duplicate_roster_on_second_reply(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        // Send first reply
+        $email1 = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed1 = $this->parser->parse(
+            $email1,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed1);
+
+        // Send second reply to same chat
+        $email2 = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Can I collect today?');
+
+        $parsed2 = $this->parser->parse(
+            $email2,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed2);
+
+        // Find the chat
+        $chat = DB::table('chat_rooms')
+            ->where('chattype', 'User2User')
+            ->where('user1', min($poster->id, $replier->id))
+            ->where('user2', max($poster->id, $replier->id))
+            ->first();
+
+        // Should still have exactly one roster entry per user, not duplicates
+        $posterRosterCount = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $poster->id)
+            ->count();
+
+        $replierRosterCount = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $replier->id)
+            ->count();
+
+        $this->assertEquals(1, $posterRosterCount, 'Poster should have exactly one roster entry');
+        $this->assertEquals(1, $replierRosterCount, 'Replier should have exactly one roster entry');
+    }
+
     public function test_direct_mail_creates_interested_type_with_fd_msgid_header(): void
     {
         $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);

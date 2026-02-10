@@ -3041,6 +3041,21 @@ class IncomingMailService
             'user2' => $userId2,
         ]);
 
+        // Create roster entries for both users so the notification system can
+        // track seen/emailed state. The legacy iznik-server code does this in
+        // ChatRoom::createConversation() via updateRoster() for both users.
+        // Without roster entries, users never receive email notifications
+        // about new messages in this chat.
+        DB::table('chat_roster')->insertOrIgnore([
+            'chatid' => $chat->id,
+            'userid' => $userId1,
+        ]);
+
+        DB::table('chat_roster')->insertOrIgnore([
+            'chatid' => $chat->id,
+            'userid' => $userId2,
+        ]);
+
         Log::info('Created new User2User chat', [
             'chat_id' => $chat->id,
             'user1' => $userId1,
