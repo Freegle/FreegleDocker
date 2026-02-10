@@ -418,61 +418,26 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-<<<<<<< Updated upstream
-### 2026-02-09 - Fixed should-fix-before-deploy items
-- **Plan Phase**: 5C.9 ✅
-- **Completed**: Resolved all should-fix-before-deploy review items:
-  1. H1: createSystemChatMessage now creates chat room if missing (64fa895 on feature/v2-message-writes)
-  2. H2: False positive - PHP also inserts processingrequired=1
-  3. H3: handleOutcome now inserts messages_by for Taken/Received with userid (64fa895)
-  4. H4: Withdrawn now deletes pending messages instead of recording outcome (64fa895)
-  5. M1: False positive - PHP also allows any logged-in user
-  6. M5/M6: N/A - Go doesn't have membership PUT/DELETE handlers yet
-- **Tests added**: 4 new tests (Promise creates chat, Outcome records messages_by, Withdrawn pending deletes, Withdrawn approved records)
-- **Next**: All review items resolved. PRs await human merge. 5C.5 adversarial tests remaining.
-
-### 2026-02-09 - Fixed all 6 must-fix-before-merge bugs
-- **Plan Phase**: 5C.8 ✅
-- **Completed**: All 6 must-fix-before-merge bugs from adversarial review:
-  1. C1: Newsfeed Seen higher-ID guard (6de4259 on feature/v2-newsfeed-writes)
-  2. C2: Message writes handleOutcome type validation (b6601b3 on feature/v2-message-writes)
-  3. C3: Message writes AddBy/RemoveBy ownership check (b6601b3 on feature/v2-message-writes)
-  4. C4: Group PATCH settings+rules fields (a2de67a on feature/v2-group-patch)
-  5. H5: Chatrooms typing date bump (ee35cfc on feature/v2-chatrooms-post)
-  6. H6: Donations GET response - false positive, client already uses flat format
-- **Tests added**: 6 new tests across 4 branches
-- **Next**: 5 should-fix-before-deploy items (H1-H4, M1, M5/M6). Then 5C.5 adversarial tests. Then remaining 6B items (post-deploy).
-
-### 2026-02-10 - Phase 5C + 6B adversarial review complete
-- **Plan Phase**: 5C (1-4,6-7 ✅), 6B (1,2,7,8,10 ✅)
+### 2026-02-09 - Adversarial tests complete + 0A.7 deferred
+- **Plan Phase**: 5C.5 ✅, 0A.7 deferred to post-merge
 - **Completed**:
-  - 8 parallel review agents: 3 adversarial (simple, email, complex) + 5 cross-cutting (6B.1, 6B.2, 6B.7, 6B.8, 6B.10)
-  - Found 4 CRITICAL, 6 HIGH, 17 MODERATE, 13 LOW issues across 33 endpoints
-  - Wrote consolidated findings to `plans/active/api-migration-review-log.md`
-  - Updated plan status tables for 5C and 6B
-  - Triaged: 6 must-fix-before-merge, 5 should-fix-before-deploy, remainder post-merge
-- **Key CRITICAL findings**: newsfeed Seen guard, message type validation, AddBy/RemoveBy ownership, group settings/rules
-- **Key PASS results**: 6B.1 FD grep, 6B.2 MT grep, 6B.10 hardcoded URLs
-- **Key FAIL**: 6B.8 Swagger (11/120+ routes in spec - two annotation styles mixed)
-- **Next**: Fix must-fix-before-merge bugs (6 items). Then 5C.5 adversarial tests. Then remaining 6B items (post-deploy).
-- **PRs Awaiting Merge**: FD #43-#67 (25 PRs), Go #14-#28 (15 PRs), Nuxt3 #148-#168 (21 PRs)
+  - 5C.5 adversarial tests: 37 tests across 7 branches (message-writes 9, chatrooms-post 6, newsfeed-writes 4, noticeboard-writes 6, user-writes 7, markseen 2, abtest 3)
+  - 11 other branches already had adequate adversarial coverage
+  - 0A.7 E2E email queue test: Cannot run until PRs merged (Go queue + Laravel processor + MJML templates all in pending PRs)
+- **Next**: All pre-merge tasks complete. PRs await human merge. 0A.7 to be tested post-merge.
 
-### 2026-02-10 13:55 - ALL CI GREEN. Implementation complete.
-- **Status**: ALL implementation complete. ALL CI green across all 61 PRs.
-- **CI Results**: ALL GREEN
-  - Go #14-28 (15 PRs): ✅
-  - FD #43-67 (25 PRs): ✅ (FD #61 retriggered after webhook miss, FD #67 retriggered after transient failure - both pass)
-  - Nuxt3 #148-168 (21 PRs): ✅ (Nuxt3 #168 Netlify Freegle deploy preview failed but CircleCI ✅)
-- **PRs Awaiting Merge**: FD #43-#67 (25 PRs), Go #14-#28 (15 PRs), Nuxt3 #148-#168 (21 PRs)
-- **Deferred**: /isochrone (Mapbox/ORS), /merge (MT-only), /stripe (Go SDK), dashboard heatmap, SimulationAPI, GiftAidAPI writes, DomainAPI
-- **Next**: Phase 5C adversarial review + Phase 6 validation gate (post-merge). All PRs ready for human review and merge.
+### 2026-02-09 - Fixed should-fix-before-deploy items + must-fix bugs
+- **Plan Phase**: 5C.8 + 5C.9 ✅
+- **Completed**: Resolved all review items from adversarial review (10 must-fix + should-fix items)
+- **Next**: 5C.5 adversarial tests remaining.
 
-### 2026-02-10 - Chatmessage moderation + CI fixes for PR #27 and #28
+### 2026-02-10 - Phase 5C + 6B adversarial review + CI green + chatmessage moderation
 - **Completed**:
-  - Chatmessage moderation: All 6 actions (Approve, ApproveAllFuture, Reject, Hold, Release, Redact) in Go with 15 tests
-  - Created PRs: Go #28, FD #66, Nuxt3 #167 (chatmessage moderation)
-  - Fixed Go PR #28: TestRejectChatMessage assertion (rejected msgs count as invalid)
-  - Fixed Go PR #27: dashboard map scan, isochrone polygon NOT NULL, TestEditIsochrone (missing locationid), TestUnseenCountMTZeroWhenSeen (ON DUPLICATE KEY UPDATE for chat_roster), EditIsochrone handler polygon NOT NULL
+  - Adversarial review: 4 CRITICAL, 6 HIGH, 17 MODERATE, 13 LOW issues across 33 endpoints
+  - ALL CI green across 61 PRs
+  - Chatmessage moderation: 6 actions in Go with 15 tests (Go #28, FD #66, Nuxt3 #167)
+  - Fixed Go PR #27 and #28 CI issues
+- **PRs Awaiting Merge**: FD #43-#67 (25 PRs), Go #14-#28 (15 PRs), Nuxt3 #148-#168 (21 PRs)
 
 ### 2026-02-09 21:00 - Phase 4+5 FD tasks complete, all CI green
 - **Status**: Phase 4 and 5 FD-relevant tasks done. All CI green.

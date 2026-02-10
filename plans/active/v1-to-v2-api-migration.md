@@ -191,7 +191,7 @@ Renamed from "Email Queue" to "Background Task Queue" - handles all async side e
 | 0A.4 | Add to scheduler | ✅ Done | Runs every minute via scheduler with --spool |
 | 0A.5 | Create ChitchatReportMail (MJML) | ✅ Done | Freegle-branded MJML email for newsfeed reports. FD PR #51 |
 | 0A.6 | Create newsfeed entry helpers in Go | ✅ Done | `newsfeed.CreateNewsfeedEntry()` for addGroup side effects. Go PR #14 |
-| 0A.7 | Test end-to-end | ⬜ Pending | Go inserts → batch processes → verify in MailPit |
+| 0A.7 | Test end-to-end | ⏳ Post-merge | Requires merged PRs: Go queue code + Laravel processor + MJML templates. Test after all PRs merged. |
 | 0A.8 | Wire up Phase 2 Go handlers | ✅ Done | Newsfeed Report→email queue, Volunteering/CommunityEvent AddGroup→newsfeed+push queue |
 | 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ✅ Done | Checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. |
 | 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ✅ Done | Skips if last entry by user was the same type. |
@@ -399,7 +399,7 @@ A dedicated review phase to catch missed functionality.
 | 5C.2 | Check for side effects in v1 not replicated in v2 | ✅ Done | Key gaps: newsfeed Seen guard, messages_by insert, chat room creation, typing email delay |
 | 5C.3 | Check for permission/authorization differences | ✅ Done | Key gaps: AddBy/RemoveBy no ownership, RatingReviewed no mod check, group settings/rules missing |
 | 5C.4 | Check for data transformation differences | ✅ Done | Key gap: donations GET response wrapper mismatch |
-| 5C.5 | Write adversarial tests | ⬜ Pending | Edge cases: empty data, large payloads, concurrent requests |
+| 5C.5 | Write adversarial tests | ✅ Done | 7 branches: message-writes(9), chatrooms-post(6), newsfeed-writes(4), noticeboard-writes(6), user-writes(7), markseen(2), abtest(3) = 37 tests |
 | 5C.8 | Fix must-fix-before-merge bugs | ✅ Done | All 6 must-fix items resolved: C1 (newsfeed Seen), C2 (outcome type validation), C3 (AddBy/RemoveBy ownership), C4 (group settings/rules), H5 (typing date bump), H6 (false positive - client already switched) |
 | 5C.9 | Fix should-fix-before-deploy bugs | ✅ Done | H1 (chat room creation), H3 (messages_by insert), H4 (pending withdrawal delete) fixed in 64fa895. H2, M1 false positives. M5/M6 N/A (endpoints not yet migrated). |
 | 5C.6 | Verify email side effects | ✅ Done | All email sends correctly use background_tasks queue. Minor: CC address for donations handled by batch worker |
