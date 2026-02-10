@@ -209,7 +209,8 @@ class ProcessBackgroundTasksCommand extends Command
         );
 
         if ($shouldSpool) {
-            $spooler->spool($mail);
+            $recipients = array_map('trim', explode(',', config('freegle.mail.chitchat_support_addr')));
+            $spooler->spool($mail, $recipients);
         } else {
             Mail::send($mail);
         }
@@ -243,7 +244,7 @@ class ProcessBackgroundTasksCommand extends Command
         );
 
         if ($shouldSpool) {
-            $spooler->spool($mail);
+            $spooler->spool($mail, config('freegle.mail.info_addr'));
         } else {
             Mail::send($mail);
         }
@@ -277,7 +278,7 @@ class ProcessBackgroundTasksCommand extends Command
         );
 
         if ($shouldSpool) {
-            $spooler->spool($mail);
+            $spooler->spool($mail, $data['to_email']);
         } else {
             Mail::send($mail);
         }
@@ -310,7 +311,7 @@ class ProcessBackgroundTasksCommand extends Command
         );
 
         if ($shouldSpool) {
-            $spooler->spool($mail);
+            $spooler->spool($mail, $data['email']);
         } else {
             Mail::send($mail);
         }
@@ -342,7 +343,7 @@ class ProcessBackgroundTasksCommand extends Command
         );
 
         if ($shouldSpool) {
-            $spooler->spool($mail);
+            $spooler->spool($mail, $data['email']);
         } else {
             Mail::send($mail);
         }
