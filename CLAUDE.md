@@ -418,16 +418,16 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-10 - Chatmessage moderation + MT endpoints CI fixes
-- **Status**: Chatmessage moderation POST handlers implemented. MT endpoints branch CI fixed.
+### 2026-02-10 - Chatmessage moderation + CI fixes for PR #27 and #28
+- **Status**: CI fixes pushed for both branches. Waiting for CI results.
 - **Completed**:
   - Chatmessage moderation: All 6 actions (Approve, ApproveAllFuture, Reject, Hold, Release, Redact) in Go with 15 tests
   - Created PRs: Go #28, FD #66, Nuxt3 #167 (chatmessage moderation)
-  - Fixed Go PR #27 CI: dashboard map scan compile error + isochrone polygon NOT NULL
-  - MT endpoints branch: batches 1-4 with 12 endpoints
+  - Fixed Go PR #28: TestRejectChatMessage assertion (rejected msgs count as invalid)
+  - Fixed Go PR #27: dashboard map scan, isochrone polygon NOT NULL, TestEditIsochrone (missing locationid), TestUnseenCountMTZeroWhenSeen (ON DUPLICATE KEY UPDATE for chat_roster), EditIsochrone handler polygon NOT NULL
 - **PRs Awaiting Merge**: FD #43-#66, Go #6-#28, Nuxt3 #148-#167
-- **CI**: Go #27 (job 767) and Go #28 (job 768) running. FD #65 (pipeline 2110) and FD #66 running.
-- **Next**: Monitor CI. Continue Phase 3 remaining tasks or Phase 6 review.
+- **CI**: FD #65 (pipeline 2115) and FD #66 (pipeline 2114) running. Go #27 (job 770) and Go #28 (job 769) running.
+- **Next**: Monitor CI. TestJobs may still fail (pre-existing flaky test due to goroutine timing).
 
 ### 2026-02-09 21:00 - Phase 4+5 FD tasks complete, all CI green
 - **Status**: Phase 4 and 5 FD-relevant tasks done. All CI green.
