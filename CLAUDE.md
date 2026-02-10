@@ -418,13 +418,22 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-09 - Adversarial tests complete + 0A.7 deferred
-- **Plan Phase**: 5C.5 ✅, 0A.7 deferred to post-merge
+### 2026-02-10 - 0A.7 E2E email queue test PASSED
+- **Plan Phase**: 0A.7 ✅ Done
+- **Completed**:
+  - Created temp integration branches, merged Go+batch code, rebuilt containers
+  - Full E2E flow: Go API Report→background_tasks→batch processor→spool→MailPit
+  - Found & fixed bug: spool() missing `$to` param in all handlers (all sent to support)
+  - Fixed recipients: ChitchatReport→support, DonateExternal→info_addr, Invitation→to_email, ForgotPassword/Unsubscribe→user email
+  - Committed fix to feature/v2-background-tasks, pushed
+  - Cleaned up temp branches
+- **Next**: All pre-merge tasks complete. PRs await human merge.
+
+### 2026-02-09 - Adversarial tests complete
+- **Plan Phase**: 5C.5 ✅
 - **Completed**:
   - 5C.5 adversarial tests: 37 tests across 7 branches (message-writes 9, chatrooms-post 6, newsfeed-writes 4, noticeboard-writes 6, user-writes 7, markseen 2, abtest 3)
   - 11 other branches already had adequate adversarial coverage
-  - 0A.7 E2E email queue test: Cannot run until PRs merged (Go queue + Laravel processor + MJML templates all in pending PRs)
-- **Next**: All pre-merge tasks complete. PRs await human merge. 0A.7 to be tested post-merge.
 
 ### 2026-02-09 - Fixed should-fix-before-deploy items + must-fix bugs
 - **Plan Phase**: 5C.8 + 5C.9 ✅

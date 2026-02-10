@@ -191,7 +191,7 @@ Renamed from "Email Queue" to "Background Task Queue" - handles all async side e
 | 0A.4 | Add to scheduler | ✅ Done | Runs every minute via scheduler with --spool |
 | 0A.5 | Create ChitchatReportMail (MJML) | ✅ Done | Freegle-branded MJML email for newsfeed reports. FD PR #51 |
 | 0A.6 | Create newsfeed entry helpers in Go | ✅ Done | `newsfeed.CreateNewsfeedEntry()` for addGroup side effects. Go PR #14 |
-| 0A.7 | Test end-to-end | ⏳ Post-merge | Requires merged PRs: Go queue code + Laravel processor + MJML templates. Test after all PRs merged. |
+| 0A.7 | Test end-to-end | ✅ Done | Tested via temp integration branches. Go API Report→background_tasks→batch processor→spool→MailPit. Found & fixed spool() missing `$to` param bug. |
 | 0A.8 | Wire up Phase 2 Go handlers | ✅ Done | Newsfeed Report→email queue, Volunteering/CommunityEvent AddGroup→newsfeed+push queue |
 | 0A.9 | Add spam/suppression check to CreateNewsfeedEntry | ✅ Done | Checks `newsfeedmodstatus=Suppressed` and spammer list, sets `hidden=NOW()`. |
 | 0A.10 | Add duplicate protection to CreateNewsfeedEntry | ✅ Done | Skips if last entry by user was the same type. |
@@ -486,7 +486,7 @@ After individual endpoint reviews, check system-wide concerns.
 | 6B.1 | Grep FD codebase for remaining `$get(` / `$post(` v1 calls | ✅ Done | PASS. 20 API files fully v2. 26 remaining v1 calls all intentionally deferred. |
 | 6B.2 | Grep MT codebase for remaining v1 calls | ✅ Done | PASS. Same codebase as FD. All deferred calls documented. |
 | 6B.3 | Check Loki logs for v1 traffic to migrated endpoints | ⬜ Pending | 30-day window post-deploy |
-| 6B.4 | Verify email queue processes all email types end-to-end | ⬜ Pending | Send test email for each type |
+| 6B.4 | Verify email queue processes all email types end-to-end | 🔄 Partial | ChitchatReport verified via E2E (0A.7). Other types need post-merge testing. |
 | 6B.5 | Run full Playwright suite against v2-only config | ⬜ Pending | Disable v1 fallback temporarily |
 | 6B.6 | Load test key endpoints (message, chat, user) | ⬜ Pending | Verify goroutine parallelism delivers |
 | 6B.7 | Check for orphaned v1 routes still registered | ✅ Done | `adview` is dead code (overdue since 2021). 10+ endpoints to verify via Loki logs. |
