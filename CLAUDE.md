@@ -418,16 +418,16 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-10 - MT-only Go endpoints branch complete
-- **Status**: All MT-only Go handlers implemented. Go PR #27, FD PR #65 created. CI pending.
+### 2026-02-10 - Chatmessage moderation + MT endpoints CI fixes
+- **Status**: Chatmessage moderation POST handlers implemented. MT endpoints branch CI fixed.
 - **Completed**:
-  - Batch 4: Chat MT GETs - chatrooms unseen count, single chat fetch, listing with enrichment, review queue (14 tests + 3 V2 path tests)
-  - Code quality review: parameterized SQL constants in review queue query
-  - Created PRs: Go #27, FD #65
-  - Updated plan status: 12 endpoints moved from "Deferred" to "Go Done"
-  - Batches 5 (merge, stripe) deferred: merge needs 40+ table User::merge() rewrite, stripe needs SDK integration
-- **PRs Awaiting Merge**: FD #43-#65, Go #6-#27, Nuxt3 #148-#166
-- **Next**: Monitor CI for Go PR #27 / FD #65. All FD+MT Go handlers are now implemented. Remaining: MT client switchovers, Stripe SDK, Phase 6 review.
+  - Chatmessage moderation: All 6 actions (Approve, ApproveAllFuture, Reject, Hold, Release, Redact) in Go with 15 tests
+  - Created PRs: Go #28, FD #66, Nuxt3 #167 (chatmessage moderation)
+  - Fixed Go PR #27 CI: dashboard map scan compile error + isochrone polygon NOT NULL
+  - MT endpoints branch: batches 1-4 with 12 endpoints
+- **PRs Awaiting Merge**: FD #43-#66, Go #6-#28, Nuxt3 #148-#167
+- **CI**: Go #27 (job 767) and Go #28 (job 768) running. FD #65 (pipeline 2110) and FD #66 running.
+- **Next**: Monitor CI. Continue Phase 3 remaining tasks or Phase 6 review.
 
 ### 2026-02-09 21:00 - Phase 4+5 FD tasks complete, all CI green
 - **Status**: Phase 4 and 5 FD-relevant tasks done. All CI green.
