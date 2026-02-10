@@ -412,6 +412,7 @@ A dedicated review phase to catch missed functionality.
 | 5C.4 | Check for data transformation differences | ✅ Done | Key gap: donations GET response wrapper mismatch |
 | 5C.5 | Write adversarial tests | ⬜ Pending | Edge cases: empty data, large payloads, concurrent requests |
 | 5C.8 | Fix must-fix-before-merge bugs | ✅ Done | All 6 must-fix items resolved: C1 (newsfeed Seen), C2 (outcome type validation), C3 (AddBy/RemoveBy ownership), C4 (group settings/rules), H5 (typing date bump), H6 (false positive - client already switched) |
+| 5C.9 | Fix should-fix-before-deploy bugs | ✅ Done | H1 (chat room creation), H3 (messages_by insert), H4 (pending withdrawal delete) fixed in 64fa895. H2, M1 false positives. M5/M6 N/A (endpoints not yet migrated). |
 | 5C.6 | Verify email side effects | ✅ Done | All email sends correctly use background_tasks queue. Minor: CC address for donations handled by batch worker |
 | 5C.7 | Check MT-specific behaviours | ✅ Done | Key gaps: chatmessage approve doesn't notify, hold/release don't notify mods |
 

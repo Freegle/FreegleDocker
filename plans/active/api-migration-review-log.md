@@ -597,15 +597,16 @@ These will cause data corruption or client-breaking errors:
 5. **H5** /chatrooms Typing: Bump chat message dates (not just roster) - ✅ Fixed (ee35cfc on feature/v2-chatrooms-post)
 6. **H6** /donations GET: Add `donations` wrapper to match PHP response - ✅ False positive (client already uses $getv2 with flat response)
 
-## Should Fix Before Production Deploy (6 items)
+## Should Fix Before Production Deploy - ALL RESOLVED 2026-02-09
 
 These cause incorrect behavior but won't corrupt data:
 
-7. **H1/H2** /message writes Promise/Renege: Create chat room if missing + fix processingrequired
-8. **H3** /message writes handleOutcome: Insert messages_by records
-9. **H4** /message writes Withdrawn: Handle pending messages
-10. **M1** /user writes RatingReviewed: Add moderator check
-11. **M5/M6** /memberships: Fix emailid and collection handling
+7. **H1** /message writes Promise/Renege: Create chat room if missing - ✅ Fixed (64fa895 on feature/v2-message-writes)
+8. **H2** /message writes Promise/Renege: processingrequired mismatch - ✅ False positive (PHP also inserts processingrequired=1, both defer to background worker)
+9. **H3** /message writes handleOutcome: Insert messages_by records - ✅ Fixed (64fa895 on feature/v2-message-writes)
+10. **H4** /message writes Withdrawn: Handle pending messages - ✅ Fixed (64fa895 on feature/v2-message-writes)
+11. **M1** /user writes RatingReviewed: Add moderator check - ✅ False positive (PHP also allows any logged-in user, no moderator check)
+12. **M5/M6** /memberships: Fix emailid and collection handling - ✅ N/A (Go doesn't have membership PUT/DELETE handlers yet; these are future migration items)
 
 ## Can Fix Post-Merge (remainder)
 

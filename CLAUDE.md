@@ -418,6 +418,18 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+### 2026-02-09 - Fixed should-fix-before-deploy items
+- **Plan Phase**: 5C.9 ✅
+- **Completed**: Resolved all should-fix-before-deploy review items:
+  1. H1: createSystemChatMessage now creates chat room if missing (64fa895 on feature/v2-message-writes)
+  2. H2: False positive - PHP also inserts processingrequired=1
+  3. H3: handleOutcome now inserts messages_by for Taken/Received with userid (64fa895)
+  4. H4: Withdrawn now deletes pending messages instead of recording outcome (64fa895)
+  5. M1: False positive - PHP also allows any logged-in user
+  6. M5/M6: N/A - Go doesn't have membership PUT/DELETE handlers yet
+- **Tests added**: 4 new tests (Promise creates chat, Outcome records messages_by, Withdrawn pending deletes, Withdrawn approved records)
+- **Next**: All review items resolved. PRs await human merge. 5C.5 adversarial tests remaining.
+
 ### 2026-02-09 - Fixed all 6 must-fix-before-merge bugs
 - **Plan Phase**: 5C.8 ✅
 - **Completed**: All 6 must-fix-before-merge bugs from adversarial review:
