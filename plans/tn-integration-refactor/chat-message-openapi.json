@@ -16,8 +16,6 @@
       "post": {
         "summary": "Receive a chat message",
         "description": "Receive a message from TN to be delivered to a Freegle user. Creates a chat message in an existing chat room, or creates a new User2User chat if needed.",
-        "operationId": "receiveMessage",
-        "tags": ["Messages"],
         "requestBody": {
           "required": true,
           "content": {
@@ -81,8 +79,6 @@
       "post": {
         "summary": "Receive a read receipt",
         "description": "Mark a message as read by a user. Updates the chat roster to indicate the user has seen messages up to this point.",
-        "operationId": "receiveReadReceipt",
-        "tags": ["Read Receipts"],
         "parameters": [
           {
             "name": "messageId",
@@ -158,8 +154,6 @@
       "delete": {
         "summary": "Receive message deletion notification",
         "description": "Mark a message as deleted. Used when a message is removed by moderation on TN's side.",
-        "operationId": "receiveMessageDeleted",
-        "tags": ["Messages"],
         "parameters": [
           {
             "name": "messageId",
@@ -405,15 +399,5 @@
         "description": "API key for TN integration authentication"
       }
     }
-  },
-  "tags": [
-    {
-      "name": "Messages",
-      "description": "Chat message operations"
-    },
-    {
-      "name": "Read Receipts",
-      "description": "Read receipt operations"
-    }
-  ]
+  }
 }
