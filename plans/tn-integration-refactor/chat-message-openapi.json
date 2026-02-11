@@ -12,10 +12,73 @@
     }
   ],
   "paths": {
+    "/chat": {
+      "post": {
+        "summary": "Create a new chat between users",
+        "description": "Creates a new chat with a random chat ID by default, but a desired chat ID can be specified.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewChat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Chat created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "User not authorized to create this chat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chat room or user not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ]
+      }
+    },
     "/chat/messages": {
       "post": {
         "summary": "Receive a chat message",
-        "description": "Receive a message from TN to be delivered to a Freegle user. Creates a chat message in an existing chat room, or creates a new User2User chat if needed.",
+        "description": "Receive a message from TN to be delivered to a Freegle user",
         "requestBody": {
           "required": true,
           "content": {
@@ -228,6 +291,27 @@
   },
   "components": {
     "schemas": {
+      "NewChat": {
+        "type": "object",
+        "required": ["initiatorUserID", "receiverUserID"],
+        "properties": {
+          "initiatorUserID": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The Freegle user ID of the participant initiating the chat (i.e. sending the first message)"
+          },
+          "receiverUserID": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The Freegle user ID of the participant not initiating the chat (i.e. receiving the first message)"
+          },
+          "chatId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The requested ID of the chat room. If specified but invalid, will return an error."
+          }
+        }
+      },
       "IncomingMessage": {
         "type": "object",
         "required": ["chatId", "userId", "message"],
@@ -235,17 +319,12 @@
           "chatId": {
             "type": "integer",
             "format": "int64",
-            "description": "The ID of the chat room. If null with userId and toUserId, a new User2User chat will be created."
+            "description": "The ID of the chat room"
           },
           "userId": {
             "type": "integer",
             "format": "int64",
             "description": "The Freegle user ID of the sender"
-          },
-          "toUserId": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The Freegle user ID of the recipient (required when creating a new User2User chat)"
           },
           "message": {
             "type": "string",
@@ -315,6 +394,19 @@
           }
         }
       },
+      "ChatResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "chatId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The chat room ID of the newly-created chat"
+          }
+        }
+      },
       "MessageResponse": {
         "type": "object",
         "properties": {
@@ -329,7 +421,7 @@
           "chatId": {
             "type": "integer",
             "format": "int64",
-            "description": "The chat room ID (useful when a new chat was created)"
+            "description": "The chat room ID"
           },
           "reviewRequired": {
             "type": "boolean",
