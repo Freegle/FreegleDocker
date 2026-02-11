@@ -1,0 +1,419 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Freegle Chat Message API",
+    "description": "API for TN integration to send chat messages, read receipts, and deletion notifications to Freegle",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.ilovefreegle.org/v1",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/chat/messages": {
+      "post": {
+        "summary": "Receive a chat message",
+        "description": "Receive a message from TN to be delivered to a Freegle user. Creates a chat message in an existing chat room, or creates a new User2User chat if needed.",
+        "operationId": "receiveMessage",
+        "tags": ["Messages"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomingMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Message created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "User not authorized to send to this chat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chat room or user not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ]
+      }
+    },
+    "/chat/messages/{messageId}/read": {
+      "post": {
+        "summary": "Receive a read receipt",
+        "description": "Mark a message as read by a user. Updates the chat roster to indicate the user has seen messages up to this point.",
+        "operationId": "receiveReadReceipt",
+        "tags": ["Read Receipts"],
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the message that was read",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadReceipt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Read receipt processed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadReceiptResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "User not authorized for this chat",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chat room or message not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ]
+      }
+    },
+    "/chat/messages/{messageId}": {
+      "delete": {
+        "summary": "Receive message deletion notification",
+        "description": "Mark a message as deleted. Used when a message is removed by moderation on TN's side.",
+        "operationId": "receiveMessageDeleted",
+        "tags": ["Messages"],
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the message to delete",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageDeletion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message marked as deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not authorized to delete this message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "IncomingMessage": {
+        "type": "object",
+        "required": ["chatId", "userId", "message"],
+        "properties": {
+          "chatId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The ID of the chat room. If null with userId and toUserId, a new User2User chat will be created."
+          },
+          "userId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The Freegle user ID of the sender"
+          },
+          "toUserId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The Freegle user ID of the recipient (required when creating a new User2User chat)"
+          },
+          "message": {
+            "type": "string",
+            "description": "The message text content"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Default",
+              "Interested",
+              "Promised",
+              "Reneged",
+              "Completed",
+              "Image",
+              "Address",
+              "Nudge",
+              "ReportedUser"
+            ],
+            "default": "Default",
+            "description": "The type of chat message"
+          },
+          "refmsgid": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Reference to a Freegle post/message ID (for context, e.g., expressing interest in a specific item)"
+          },
+          "imageUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of an image attachment"
+          },
+          "externalMessageId": {
+            "type": "string",
+            "description": "TN's external message ID for correlation"
+          }
+        }
+      },
+      "ReadReceipt": {
+        "type": "object",
+        "required": ["chatId", "userId"],
+        "properties": {
+          "chatId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The ID of the chat room"
+          },
+          "userId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The Freegle user ID of the user who read the message"
+          }
+        }
+      },
+      "MessageDeletion": {
+        "type": "object",
+        "required": ["chatId"],
+        "properties": {
+          "chatId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The ID of the chat room containing the message"
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["Spam", "Other", "User"],
+            "description": "Reason for deletion (e.g., moderation action)"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "messageId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The Freegle chat message ID"
+          },
+          "chatId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The chat room ID (useful when a new chat was created)"
+          },
+          "reviewRequired": {
+            "type": "boolean",
+            "description": "Whether the message was flagged for moderator review"
+          }
+        }
+      },
+      "ReadReceiptResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "chatId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "userId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastMsgSeen": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The message ID that was marked as seen"
+          }
+        }
+      },
+      "DeletionResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "messageId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "default": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Error code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key for TN integration authentication"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages",
+      "description": "Chat message operations"
+    },
+    {
+      "name": "Read Receipts",
+      "description": "Read receipt operations"
+    }
+  ]
+}
