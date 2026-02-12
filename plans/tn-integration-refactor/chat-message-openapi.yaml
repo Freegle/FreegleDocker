@@ -225,6 +225,8 @@ components:
           type: string
           enum:
             - Default
+            - System
+            - ModMail
             - Interested
             - Promised
             - Reneged
@@ -232,6 +234,7 @@ components:
             - Image
             - Address
             - Nudge
+            - Reminder
             - ReportedUser
           default: Default
           description: The type of chat message
@@ -262,10 +265,11 @@ components:
         reason:
           type: string
           enum:
-            - Spam
-            - Other
             - User
-          description: Reason for deletion (e.g., moderation action)
+            - Spam
+            - Moderator
+            - Other
+          description: Reason for deletion
     ChatResponse:
       type: object
       properties:
