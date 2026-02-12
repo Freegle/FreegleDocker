@@ -14,6 +14,7 @@ paths:
       summary: Create a new chat between users
       description: Creates a new chat with a random chat ID by default, but a desired
         chat ID can be specified.
+        # TODO: move chat id and message id to components to be reused
       requestBody:
         required: true
         content:
@@ -52,13 +53,7 @@ paths:
       summary: Receive a chat message
       description: Receive a message from TN to be delivered to a Freegle user
       parameters:
-        - name: chatId
-          in: path
-          required: true
-          description: The ID of the chat
-          schema:
-            type: integer
-            format: int64
+        - $ref: "#/components/parameters/chatId"
       requestBody:
         required: true
         content:
@@ -98,20 +93,8 @@ paths:
       description: Mark a message as read by a user. Updates the chat roster to
         indicate the user has seen messages up to this point.
       parameters:
-        - name: chatId
-          in: path
-          required: true
-          description: The ID of the chat
-          schema:
-            type: integer
-            format: int64
-        - name: messageId
-          in: path
-          required: true
-          description: The ID of the message that was read
-          schema:
-            type: integer
-            format: int64
+        - $ref: "#/components/parameters/chatId"
+        - $ref: "#/components/parameters/messageId"
       requestBody:
         required: true
         content:
@@ -151,20 +134,8 @@ paths:
       description: Mark a message as deleted. Used when a message is removed by
         moderation on TN's side.
       parameters:
-        - name: chatId
-          in: path
-          required: true
-          description: The ID of the chat
-          schema:
-            type: integer
-            format: int64
-        - name: messageId
-          in: path
-          required: true
-          description: The ID of the message to delete
-          schema:
-            type: integer
-            format: int64
+        - $ref: "#/components/parameters/chatId"
+        - $ref: "#/components/parameters/messageId"
       requestBody:
         required: true
         content:
@@ -199,6 +170,23 @@ paths:
       security:
         - apiKey: []
 components:
+  parameters:
+    chatId:
+      name: chatId
+      in: path
+      required: true
+      description: The ID of the chat
+      schema:
+        type: integer
+        format: int64
+    messageId:
+      name: messageId
+      in: path
+      required: true
+      description: The ID of the message
+      schema:
+        type: integer
+        format: int64
   schemas:
     NewChat:
       type: object
