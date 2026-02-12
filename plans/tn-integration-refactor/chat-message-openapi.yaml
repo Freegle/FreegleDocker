@@ -47,10 +47,18 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       security:
         - apiKey: []
-  /chat/messages:
+  /chat/{chatId}/messages:
     post:
       summary: Receive a chat message
       description: Receive a message from TN to be delivered to a Freegle user
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          description: The ID of the chat
+          schema:
+            type: integer
+            format: int64
       requestBody:
         required: true
         content:
@@ -84,12 +92,19 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       security:
         - apiKey: []
-  /chat/messages/{messageId}/read:
+  /chat/{chatId}/messages/{messageId}/read:
     post:
       summary: Receive a read receipt
       description: Mark a message as read by a user. Updates the chat roster to
         indicate the user has seen messages up to this point.
       parameters:
+        - name: chatId
+          in: path
+          required: true
+          description: The ID of the chat
+          schema:
+            type: integer
+            format: int64
         - name: messageId
           in: path
           required: true
@@ -130,12 +145,19 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       security:
         - apiKey: []
-  /chat/messages/{messageId}:
+  /chat/{chatId}/messages/{messageId}:
     delete:
       summary: Receive message deletion notification
       description: Mark a message as deleted. Used when a message is removed by
         moderation on TN's side.
       parameters:
+        - name: chatId
+          in: path
+          required: true
+          description: The ID of the chat
+          schema:
+            type: integer
+            format: int64
         - name: messageId
           in: path
           required: true
@@ -202,14 +224,9 @@ components:
     IncomingMessage:
       type: object
       required:
-        - chatId
         - userId
         - message
       properties:
-        chatId:
-          type: integer
-          format: int64
-          description: The ID of the chat room
         userId:
           type: integer
           format: int64
@@ -246,26 +263,15 @@ components:
     ReadReceipt:
       type: object
       required:
-        - chatId
         - userId
       properties:
-        chatId:
-          type: integer
-          format: int64
-          description: The ID of the chat room
         userId:
           type: integer
           format: int64
           description: The Freegle user ID of the user who read the message
     MessageDeletion:
       type: object
-      required:
-        - chatId
       properties:
-        chatId:
-          type: integer
-          format: int64
-          description: The ID of the chat room containing the message
         reason:
           type: string
           enum:
@@ -287,14 +293,14 @@ components:
       properties:
         success:
           type: boolean
-        messageId:
-          type: integer
-          format: int64
-          description: The Freegle chat message ID
         chatId:
           type: integer
           format: int64
           description: The chat room ID
+        messageId:
+          type: integer
+          format: int64
+          description: The Freegle chat message ID
         reviewRequired:
           type: boolean
           description: Whether the message was flagged for moderator review
@@ -318,6 +324,10 @@ components:
       properties:
         success:
           type: boolean
+        chatId:
+          type: integer
+          format: int64
+          description: The chat room ID
         messageId:
           type: integer
           format: int64
