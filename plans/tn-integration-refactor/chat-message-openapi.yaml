@@ -41,7 +41,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Chat room or user not found
+          description: Chat or user not found
           content:
             application/json:
               schema:
@@ -50,8 +50,8 @@ paths:
         - apiKey: []
   /chat/{chatId}/messages:
     post:
-      summary: Receive a chat message
-      description: Receive a message from TN to be delivered to a Freegle user
+      summary: Send a message
+      description: Send a message to a specified chat
       parameters:
         - $ref: "#/components/parameters/chatId"
       requestBody:
@@ -80,7 +80,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Chat room or user not found
+          description: Chat or user not found
           content:
             application/json:
               schema:
@@ -89,7 +89,7 @@ paths:
         - apiKey: []
   /chat/{chatId}/messages/{messageId}/read:
     post:
-      summary: Receive a read receipt
+      summary: Send a message read receipt
       description: Mark a message as read by a user. Updates the chat roster to
         indicate the user has seen messages up to this point.
       parameters:
@@ -121,7 +121,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Chat room or message not found
+          description: Chat or message not found
           content:
             application/json:
               schema:
@@ -130,9 +130,8 @@ paths:
         - apiKey: []
   /chat/{chatId}/messages/{messageId}:
     delete:
-      summary: Receive message deletion notification
-      description: Mark a message as deleted. Used when a message is removed by
-        moderation on TN's side.
+      summary: Delete a message
+      description: Mark a message as deleted. Used when a message is removed on TN's side.
       parameters:
         - $ref: "#/components/parameters/chatId"
         - $ref: "#/components/parameters/messageId"
@@ -275,7 +274,7 @@ components:
         chatId:
           type: integer
           format: int64
-          description: The chat room ID of the newly-created chat
+          description: The chat ID of the newly-created chat
     MessageResponse:
       type: object
       properties:
@@ -284,7 +283,7 @@ components:
         chatId:
           type: integer
           format: int64
-          description: The chat room ID
+          description: The chat ID
         messageId:
           type: integer
           format: int64
@@ -315,7 +314,7 @@ components:
         chatId:
           type: integer
           format: int64
-          description: The chat room ID
+          description: The chat ID
         messageId:
           type: integer
           format: int64
