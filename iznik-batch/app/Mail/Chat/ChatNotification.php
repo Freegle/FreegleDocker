@@ -757,6 +757,29 @@ class ChatNotification extends MjmlMailable
     }
 
     /**
+     * Get the display name of the other user in the chat (not the recipient).
+     *
+     * For Promise/Reneged messages we need the actual other user in the chat,
+     * not $this->sender, because in copy-to-self notifications the sender is
+     * the same as the recipient which would show "You promised this to yourself".
+     */
+    protected function getOtherUserName(): string
+    {
+        if ($this->chatRoom && $this->chatType === ChatRoom::TYPE_USER2USER) {
+            $otherUserId = $this->chatRoom->user1 === $this->recipient->id
+                ? $this->chatRoom->user2
+                : $this->chatRoom->user1;
+            $otherUser = User::find($otherUserId);
+
+            if ($otherUser) {
+                return $otherUser->displayname ?? 'Someone';
+            }
+        }
+
+        return $this->sender?->displayname ?? 'Someone';
+    }
+
+    /**
      * Get display text for a message based on its type.
      */
     protected function getMessageDisplayText(ChatMessage $message): string
@@ -770,18 +793,18 @@ class ChatNotification extends MjmlMailable
                 return $text ?: 'Interested in this:';
 
             case ChatMessage::TYPE_PROMISED:
-                $otherUser = $this->sender?->displayname ?? 'Someone';
+                $otherName = $this->getOtherUserName();
                 if ($message->userid === $this->recipient->id) {
-                    return "You promised this to {$otherUser}:";
+                    return "You promised this to {$otherName}:";
                 }
-                return "{$otherUser} promised this to you:";
+                return "{$otherName} promised this to you:";
 
             case ChatMessage::TYPE_RENEGED:
-                $otherUser = $this->sender?->displayname ?? 'Someone';
+                $otherName = $this->getOtherUserName();
                 if ($message->userid === $this->recipient->id) {
                     return "You cancelled your promise for:";
                 }
-                return "{$otherUser} cancelled their promise for:";
+                return "{$otherName} cancelled their promise for:";
 
             case ChatMessage::TYPE_COMPLETED:
                 return "This item is no longer available:";

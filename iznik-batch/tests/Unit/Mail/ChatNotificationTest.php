@@ -1629,4 +1629,96 @@ class ChatNotificationTest extends TestCase
         $messageId = $headers->get('Message-ID')?->getBodyAsString();
         $this->assertStringContainsString("@{$domain}", $messageId);
     }
+
+    public function test_promised_copy_to_self_shows_other_user_name(): void
+    {
+        // When the promiser gets a copy of their own Promise notification,
+        // it should show the OTHER user's name, not their own.
+        $user1 = $this->createTestUser(['fullname' => 'Alice Promiser']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob Promisee']);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        // Promise message created by user1 (Alice, the promiser)
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_PROMISED,
+        ]);
+
+        // Copy-to-self: recipient IS the message author, sender is also the author
+        // (this is how ChatNotificationService sets it up for copy-to-self)
+        $mail = new ChatNotification(
+            $user1,  // recipient = promiser (copy-to-self)
+            $user1,  // sender = promiser (same person in copy-to-self)
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "You promised this to Bob Promisee:" not "You promised this to Alice Promiser:"
+        $this->assertStringContainsString('Bob Promisee', $html);
+        $this->assertStringNotContainsString('You promised this to Alice', $html);
+    }
+
+    public function test_reneged_copy_to_self_shows_other_user_name(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice Promiser']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob Promisee']);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_RENEGED,
+        ]);
+
+        // Copy-to-self
+        $mail = new ChatNotification(
+            $user1,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Reneged copy-to-self should say "You cancelled your promise for:"
+        // and NOT show Alice's name as the other user
+        $this->assertStringContainsString('cancelled', $html);
+    }
+
+    public function test_promised_notification_to_promisee_shows_promiser_name(): void
+    {
+        // The promisee should see the promiser's name
+        $user1 = $this->createTestUser(['fullname' => 'Alice Promiser']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob Promisee']);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_PROMISED,
+        ]);
+
+        // Normal notification: recipient is Bob, sender is Alice
+        $mail = new ChatNotification(
+            $user2,  // recipient = promisee
+            $user1,  // sender = promiser
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "Alice Promiser promised this to you:"
+        $this->assertStringContainsString('Alice Promiser', $html);
+        $this->assertStringContainsString('promised this to you', $html);
+    }
 }
