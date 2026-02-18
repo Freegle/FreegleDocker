@@ -4226,4 +4226,98 @@ class IncomingMailServiceTest extends TestCase
 
         $this->assertNotNull($logEntry, 'Digest off should create a log entry');
     }
+
+    public function test_tn_reporting_member_preserves_conversation_transcript(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('tnreporter')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        // Simulate a TN "Reporting member" email with conversation transcript.
+        // The transcript contains Subject:/From:/To: lines that the strip logic
+        // would previously eat from those headers to end-of-string.
+        $body = "Reporting member \"baduser\" baduser-12345@users.ilovefreegle.org (#12345)\r\n"
+            . "\r\n"
+            . "No response to my messages\r\n"
+            . "\r\n"
+            . "\r\n"
+            . "---------- Conversation Transcript (ordered newest to oldest) ----------\r\n"
+            . "\r\n"
+            . "--- 2026-02-09 14:26:50 --\r\n"
+            . "Subject: OFFER: Test item (AB1)\r\n"
+            . "From: {$userEmail}\r\n"
+            . "To: baduser-12345@users.ilovefreegle.org\r\n"
+            . "\r\n"
+            . "Hi, is this still available? I can collect tomorrow.\r\n"
+            . "\r\n"
+            . "Possible collection times: tomorrow afternoon";
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Reporting member "baduser" baduser-12345@users.ilovefreegle.org (#12345)',
+        ], $body);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // The chat message should preserve the full conversation transcript
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($lastMessage);
+        $this->assertStringContainsString('No response to my messages', $lastMessage->message);
+        $this->assertStringContainsString('Conversation Transcript', $lastMessage->message);
+        $this->assertStringContainsString('Subject: OFFER: Test item (AB1)', $lastMessage->message);
+        $this->assertStringContainsString('Hi, is this still available?', $lastMessage->message);
+        $this->assertStringContainsString('Possible collection times: tomorrow afternoon', $lastMessage->message);
+    }
+
+    public function test_non_reporting_volunteer_message_still_strips_quoted(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volreply')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        // A regular volunteer message (not a TN report) should still strip quoted text
+        $body = "I have a question about posting rules.\r\n"
+            . "\r\n"
+            . "On Mon, Feb 10, 2026 at 3:00 PM Someone wrote:\r\n"
+            . "This is the original quoted message that should be stripped.";
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Question about posting',
+        ], $body);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($lastMessage);
+        $this->assertStringContainsString('question about posting rules', $lastMessage->message);
+        // The "On ... wrote:" quoted text should be stripped for non-report messages
+        $this->assertStringNotContainsString('original quoted message that should be stripped', $lastMessage->message);
+    }
 }

@@ -1751,7 +1751,8 @@ class IncomingMailService
         ?int $refMsgId = null,
         string $type = ChatMessage::TYPE_DEFAULT,
         ?float $spamScore = null,
-        ?string $prependSubject = null
+        ?string $prependSubject = null,
+        bool $skipStripQuoted = false
     ): void {
         // Get body text, converting HTML to plain text if no text part exists.
         // This handles email clients like Apple Mail that may send HTML-only emails.
@@ -1768,7 +1769,12 @@ class IncomingMailService
         }
 
         // Strip quoted reply text and signatures before storing.
-        $body = $this->stripQuoted->strip($body);
+        // For volunteer messages, the quoted text (conversation transcript, reported post)
+        // is the useful content - don't strip it. Matches legacy iznik-server behavior:
+        // "Don't strip quoted as it might be useful."
+        if (! $skipStripQuoted) {
+            $body = $this->stripQuoted->strip($body);
+        }
 
         // Determine if this chat message needs review.
         // If spam is detected for a chat-destined email, we don't reject it - instead
@@ -2132,8 +2138,16 @@ class IncomingMailService
             return $this->dropped("Could not create User2Mod chat");
         }
 
+        // TN "Reporting member/post" emails include a conversation transcript that
+        // is valuable context for moderators. Don't strip quoted text for these -
+        // the transcript contains From:/To:/Subject:/Date: lines that the strip
+        // logic would eat. Matches legacy iznik-server behavior which says
+        // "Don't strip quoted as it might be useful" for volunteer messages,
+        // but we still want to strip for other volunteer messages like digest replies.
+        $isTnReport = str_starts_with($email->subject ?? '', 'Reporting ');
+
         // Create the chat message, flagging for review if spam was detected
-        $this->createChatMessageFromEmail($chat, $user->id, $email, $spamDetected, $spamReason);
+        $this->createChatMessageFromEmail($chat, $user->id, $email, $spamDetected, $spamReason, skipStripQuoted: $isTnReport);
 
         $this->lastRoutingContext = [
             'group_id' => $group->id,
