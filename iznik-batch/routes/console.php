@@ -158,6 +158,12 @@ Schedule::command('users:retention-stats')
 // See docker/supervisor.conf for the mail-spooler program.
 */
 
+// Background task queue - processes tasks queued by Go API server.
+// Runs continuously with internal looping. Handles push notifications and emails.
+Schedule::command('queue:background-tasks --max-iterations=60 --spool')
+    ->everyMinute()
+    ->runInBackground();
+
 // Clean up old sent emails - run daily.
 Schedule::command('mail:spool:process --cleanup --cleanup-days=7')
     ->dailyAt('04:00')
