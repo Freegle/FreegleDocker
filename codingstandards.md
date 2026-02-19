@@ -53,6 +53,177 @@ When adding or modifying v2 API (Go) features:
 - Production deployment must complete before client code changes.
 - To verify live deployment, check Swagger on production: `https://apiv2.ilovefreegle.org/swagger/`
 
+## V2 Go API Handler Guide
+
+This is the canonical guide for all new Go API handlers. Follow these patterns exactly.
+
+### Handler Structure
+
+Every handler follows this sequence: AUTH → PARSE → DB → PRIVACY → RESPOND.
+
+```go
+func GetThing(c *fiber.Ctx) error {
+    // 1. AUTH
+    myid := user.WhoAmI(c)
+
+    // 2. PARSE parameters
+    id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+    if err != nil {
+        return fiber.NewError(fiber.StatusBadRequest, "Invalid ID")
+    }
+
+    // 3. DB fetch (goroutines for 2+ independent queries)
+    db := database.DBConn
+    var thing ThingType
+    db.Raw("SELECT ... FROM thing WHERE id = ?", id).Scan(&thing)
+
+    // 4. PRIVACY filter for non-owners
+    if thing.Userid != myid {
+        thing.Textbody = er.ReplaceAllString(thing.Textbody, "***@***.com")
+    }
+
+    // 5. RESPOND
+    return c.JSON(thing)
+}
+```
+
+### Write Handler Pattern
+
+```go
+func CreateThing(c *fiber.Ctx) error {
+    myid := user.WhoAmI(c)
+    if myid == 0 {
+        return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
+    }
+
+    type CreateRequest struct {
+        Name string `json:"name"`
+    }
+    var req CreateRequest
+    if err := c.BodyParser(&req); err != nil {
+        return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+    }
+
+    db := database.DBConn
+    result := db.Exec("INSERT INTO thing (...) VALUES (?)", ...)
+
+    return c.JSON(fiber.Map{"ret": 0, "id": result.RowsAffected})
+}
+```
+
+### Mandatory Patterns
+
+| Pattern | Requirement |
+|---------|-------------|
+| **Auth** | `myid := user.WhoAmI(c)` at start. Returns 0 if anonymous. |
+| **Goroutines** | Use `sync.WaitGroup` for 2+ independent DB queries. |
+| **Mutex** | Use `sync.Mutex` when goroutines write to shared slices/maps. |
+| **Empty arrays** | Return `make([]T, 0)` not `nil` for empty collections. |
+| **Errors** | Use `fiber.NewError(statusCode, message)` consistently. |
+| **Privacy** | Check `myid` vs owner before returning emails/phones. Use `utils.Blur()` for locations. |
+| **Swagger** | Add `@Summary`, `@Tags`, `@Router` annotations. Run `./generate-swagger.sh`. |
+| **Struct tags** | `json:"field"` for API, `json:"-"` for hidden, `gorm:"-"` for computed. |
+| **Raw SQL** | Prefer `db.Raw()` for performance. Use GORM only for simple queries. |
+| **Route registration** | Register both `/api/` and `/apiv2/` paths in `router/routes.go`. |
+| **Rate limiting** | Validate array lengths: `if len(ids) > 20 { return fiber.NewError(400, "Steady on") }` |
+
+### Authentication
+
+```go
+// Get current user (0 if anonymous)
+myid := user.WhoAmI(c)
+
+// Require login
+if myid == 0 {
+    return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
+}
+
+// Check admin/support role (set by auth middleware)
+userRole := c.Locals("userRole")
+if userRole != nil && (userRole.(string) == utils.SYSTEMROLE_ADMIN || userRole.(string) == utils.SYSTEMROLE_SUPPORT) {
+    // admin logic
+}
+```
+
+### Parallel DB Fetching
+
+```go
+var wg sync.WaitGroup
+var mu sync.Mutex
+var results []Message
+
+for _, id := range ids {
+    wg.Add(1)
+    go func(id string) {
+        defer wg.Done()
+        var msg Message
+        db.Raw("SELECT * FROM messages WHERE id = ?", id).First(&msg)
+
+        mu.Lock()
+        results = append(results, msg)
+        mu.Unlock()
+    }(id)
+}
+wg.Wait()
+```
+
+### Privacy Filtering
+
+```go
+import "regexp"
+import "github.com/freegle/iznik-server-go/utils"
+
+var er = regexp.MustCompile(utils.EMAIL_REGEXP)
+var ep = regexp.MustCompile(utils.PHONE_REGEXP)
+
+// Hide contact info from anonymous users
+if myid == 0 {
+    msg.Textbody = er.ReplaceAllString(msg.Textbody, "***@***.com")
+    msg.Textbody = ep.ReplaceAllString(msg.Textbody, "***")
+}
+
+// Blur location
+msg.Lat, msg.Lng = utils.Blur(msg.Lat, msg.Lng, utils.BLUR_USER)
+```
+
+### Go Test Pattern
+
+```go
+func TestGetThing(t *testing.T) {
+    // ARRANGE
+    prefix := uniquePrefix("thing")
+    groupID := CreateTestGroup(t, prefix)
+    userID := CreateTestUser(t, prefix, "Member")
+    CreateTestMembership(t, userID, groupID, "Member")
+
+    // ACT
+    req := httptest.NewRequest("GET", "/api/thing/"+strconv.FormatUint(id, 10), nil)
+    resp, _ := getApp().Test(req)
+
+    // ASSERT
+    assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+    body := rsp(resp)
+    assert.Equal(t, expectedValue, body["field"])
+}
+
+func TestGetThingUnauthorized(t *testing.T) {
+    req := httptest.NewRequest("GET", "/api/thing/1", nil)
+    resp, _ := getApp().Test(req)
+    assert.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+```
+
+### Common Constants (utils/utils.go)
+
+```go
+const OFFER = "Offer"
+const WANTED = "Wanted"
+const CHAT_TYPE_USER2USER = "User2User"
+const CHAT_TYPE_USER2MOD = "User2Mod"
+const BLUR_USER = 400    // meters
+const OPEN_AGE = 90      // days
+```
+
 ## Go Code Style
 
 - Use goroutines for independent database queries to minimize API latency.
