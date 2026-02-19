@@ -13,6 +13,7 @@ executors:
     environment:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
+      COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
 
   android-executor:
     docker:
@@ -144,6 +145,9 @@ commands:
           auto_rerun_delay: 10s
           command: |
             echo "<< parameters.reason >>"
+
+            # Ensure COMPOSE_PROFILES is set for all docker-compose commands
+            export COMPOSE_PROFILES="${COMPOSE_PROFILES:-frontend,database,backend,dev,monitoring}"
 
             # Clean up any existing containers first
             docker-compose -f docker-compose.yml down --remove-orphans || true
@@ -460,6 +464,9 @@ commands:
           name: Start Docker services (two-phase)
           command: |
             cd "$HOME/FreegleDocker"
+
+            # Ensure COMPOSE_PROFILES is set (may not be in .env if profiles branch not merged yet)
+            export COMPOSE_PROFILES="${COMPOSE_PROFILES:-frontend,database,backend,dev,monitoring}"
 
             # Two-phase startup: all databases must exist before application containers start.
             #

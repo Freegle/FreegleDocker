@@ -11,6 +11,8 @@ services:
 
   reverse-proxy:
     container_name: freegle-traefik
+    profiles:
+      - dev
     networks:
       - default
     image: traefik:latest
@@ -46,6 +48,8 @@ services:
 
   percona:
     container_name: freegle-percona
+    profiles:
+      - database
     networks:
       - default
     image: percona:8.0.43-34
@@ -65,6 +69,8 @@ services:
 
   postgres:
     container_name: freegle-postgres
+    profiles:
+      - database
     networks:
       - default
     image: postgis/postgis:13-3.1
@@ -82,6 +88,8 @@ services:
 
   phpmyadmin:
     container_name: freegle-phpmyadmin
+    profiles:
+      - dev
     networks:
       - default
     image: phpmyadmin
@@ -90,6 +98,7 @@ services:
     depends_on:
       percona:
         condition: service_started
+        required: false
       reverse-proxy:
         condition: service_started
     restart: "no"
@@ -106,6 +115,8 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     container_name: freegle-mailpit
+    profiles:
+      - dev
     networks:
       - default
     ports:
@@ -114,12 +125,16 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       beanstalkd:
         condition: service_healthy
+        required: false
       spamassassin-app:
         condition: service_healthy
       rspamd:
@@ -145,6 +160,8 @@ services:
   beanstalkd:
     image: schickling/beanstalkd
     container_name: freegle-beanstalkd
+    profiles:
+      - frontend
     networks:
       - default
     healthcheck:
@@ -157,6 +174,9 @@ services:
   spamassassin-app:
     image: tiredofit/spamassassin
     container_name: freegle-spamassassin
+    profiles:
+      - backend
+      - dev
     networks:
       - default
     ports:
@@ -178,6 +198,9 @@ services:
   rspamd:
     image: rspamd/rspamd:latest
     container_name: freegle-rspamd
+    profiles:
+      - backend
+      - dev
     networks:
       - default
     ports:
@@ -188,6 +211,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+        required: false
     environment:
       - REDIS_SERVERS=redis:6379
     restart: "no"
@@ -205,6 +229,9 @@ services:
 
   redis:
     container_name: freegle-redis
+    profiles:
+      - backend
+      - frontend
     networks:
       - default
     image: redis:6.2-alpine
@@ -221,6 +248,8 @@ services:
   # API: POST raw MJML text to / with Content-Type: text/plain, returns compiled HTML
   mjml:
     container_name: freegle-mjml
+    profiles:
+      - backend
     networks:
       - default
     image: adrianrudnik/mjml-server:latest
@@ -235,15 +264,22 @@ services:
 
   delivery:
     container_name: freegle-delivery
+    profiles:
+      - frontend
     networks:
       - default
     image: ghcr.io/weserv/images:5.x
     restart: "no"
     shm_size: 1gb
     depends_on:
-      - tusd
-      - freegle-prod-local
-      - modtools-prod-local
+      tusd:
+        condition: service_started
+      freegle-prod-local:
+        condition: service_started
+        required: false
+      modtools-prod-local:
+        condition: service_started
+        required: false
     extra_hosts:
       - "tusd.localhost:host-gateway"
       - "freegle-dev-local.localhost:host-gateway"
@@ -270,6 +306,8 @@ services:
   tusd:
     image: tusproject/tusd:latest
     container_name: freegle-tusd
+    profiles:
+      - frontend
     networks:
       default:
         aliases:
@@ -280,6 +318,7 @@ services:
     depends_on:
       reverse-proxy:
         condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/tus/ 2>&1 | grep -E '(200|405)' || exit 1"]
       interval: 5s
@@ -327,6 +366,8 @@ services:
       context: ./status-nuxt
       network: host
     container_name: freegle-status
+    profiles:
+      - dev
     networks:
       - default
     ports:
@@ -350,6 +391,9 @@ services:
       context: ./claude-agent-sdk
       network: host
     container_name: freegle-ai-support-helper
+    profiles:
+      - backend
+      - dev
     networks:
       - default
     ports:
@@ -373,6 +417,8 @@ services:
   host-scripts:
     image: alpine:latest
     container_name: freegle-host-scripts
+    profiles:
+      - dev
     environment:
       - CI=${CI:-false}
     volumes:
@@ -428,6 +474,8 @@ services:
   # Freegle images.
   apiv1:
     container_name: freegle-apiv1
+    profiles:
+      - frontend
     networks:
       - default
     build:
@@ -436,18 +484,23 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
       batch:
         condition: service_healthy
+        required: false
       beanstalkd:
         condition: service_started
       mailpit:
         condition: service_started
+        required: false
       redis:
         condition: service_started
       spamassassin-app:
         condition: service_started
+        required: false
       reverse-proxy:
         condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -512,6 +565,8 @@ services:
   # Separate container for PHPUnit tests - uses isolated database to run in parallel with Playwright
   apiv1-phpunit:
     container_name: freegle-apiv1-phpunit
+    profiles:
+      - dev
     networks:
       - default
     build:
@@ -520,16 +575,21 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
       batch:
         condition: service_healthy
       beanstalkd:
         condition: service_started
+        required: false
       redis:
         condition: service_started
+        required: false
       tusd:
         condition: service_started
+        required: false
       delivery:
         condition: service_started
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -565,6 +625,8 @@ services:
 
   apiv2:
     container_name: freegle-apiv2
+    profiles:
+      - frontend
     networks:
       default:
         aliases:
@@ -577,16 +639,20 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
       batch:
         condition: service_healthy
+        required: false
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
       beanstalkd:
         condition: service_healthy
       reverse-proxy:
         condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -650,10 +716,13 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+        required: false
       beanstalkd:
         condition: service_healthy
+        required: false
       reverse-proxy:
         condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=db-live
@@ -696,6 +765,8 @@ services:
   # Development build with local APIs - standard dev workflow
   freegle-dev-local:
     container_name: freegle-dev-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
@@ -719,8 +790,10 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
@@ -755,9 +828,15 @@ services:
   freegle-dev-live:
     container_name: freegle-dev-live
     depends_on:
-      - host-scripts
-      - status
-      - reverse-proxy
+      host-scripts:
+        condition: service_started
+        required: false
+      status:
+        condition: service_started
+        required: false
+      reverse-proxy:
+        condition: service_started
+        required: false
     profiles:
       - dev-live
     networks:
@@ -800,6 +879,8 @@ services:
   # Production build with local APIs - for testing production builds locally
   freegle-prod-local:
     container_name: freegle-prod-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
@@ -825,8 +906,10 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     healthcheck:
       # Health check for production container - verifies nginx is responding
@@ -870,6 +953,8 @@ services:
   # Development build with local APIs - ModTools
   modtools-dev-local:
     container_name: modtools-dev-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
@@ -894,8 +979,10 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
@@ -928,9 +1015,15 @@ services:
   modtools-dev-live:
     container_name: modtools-dev-live
     depends_on:
-      - host-scripts
-      - status
-      - reverse-proxy
+      host-scripts:
+        condition: service_started
+        required: false
+      status:
+        condition: service_started
+        required: false
+      reverse-proxy:
+        condition: service_started
+        required: false
     profiles:
       - dev-live
     networks:
@@ -974,6 +1067,8 @@ services:
   # Production build with local APIs - ModTools
   modtools-prod-local:
     container_name: modtools-prod-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
@@ -999,8 +1094,10 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     healthcheck:
       # Health check for ModTools production container - verifies nginx is responding
@@ -1039,6 +1136,8 @@ services:
 
   playwright:
     container_name: freegle-playwright
+    profiles:
+      - dev
     network_mode: "host"
     shm_size: 2gb  # Chrome needs more shared memory for parallel browser instances
     build:
@@ -1073,20 +1172,27 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
       reverse-proxy:
         condition: service_healthy
       percona:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       beanstalkd:
         condition: service_healthy
+        required: false
 
   # Loki - Log aggregation
   loki:
     container_name: freegle-loki
+    profiles:
+      - backend
     image: grafana/loki:3.0.0
     networks:
       - default
@@ -1115,6 +1221,8 @@ services:
   # For production: batch-prod writes to host /var/log/freegle, ship separately
   alloy:
     container_name: freegle-alloy
+    profiles:
+      - monitoring
     image: grafana/alloy:v1.4.2
     networks:
       - default
@@ -1127,6 +1235,7 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+        required: false
     restart: unless-stopped
 
   # Loki backup - runs on-demand: docker compose run --rm loki-backup
@@ -1142,6 +1251,7 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+        required: false
     volumes:
       - loki-data:/loki:ro
       # Mount host gcloud config for credentials (user account or ADC)
@@ -1155,6 +1265,8 @@ services:
   # Batch jobs processor (Laravel)
   batch:
     container_name: freegle-batch
+    profiles:
+      - dev
     networks:
       - default
     build:
@@ -1167,12 +1279,15 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       mailpit:
         condition: service_started
       mjml:
         condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - APP_NAME=Freegle Batch Jobs
@@ -1224,14 +1339,17 @@ services:
   batch-prod:
     container_name: freegle-batch-prod
     profiles:
-      - production
+      - backend
     networks:
       - default
     build:
       context: ./iznik-batch
       dockerfile: docker/Dockerfile
+    # IMPORTANT: .env.background MUST exist on the live backend server with all secrets.
+    # required: false only so docker compose config works in dev (where batch-prod isn't used).
     env_file:
-      - .env.background
+      - path: .env.background
+        required: false
     volumes:
       - ./iznik-batch:/var/www/html
       - ./iznik-server:/var/www/iznik:ro
@@ -1343,7 +1461,7 @@ services:
   postfix:
     container_name: freegle-postfix
     profiles:
-      - mail
+      - backend
     build:
       context: ./conf/postfix
       dockerfile: Dockerfile
@@ -1369,6 +1487,8 @@ services:
   # Container 0: Query Sanitizer - Frontend-facing, extracts and tokenizes PII
   mcp-query-sanitizer:
     container_name: freegle-mcp-sanitizer
+    profiles:
+      - dev
     build:
       context: ./support-tools/query-sanitizer
       network: host
@@ -1398,6 +1518,8 @@ services:
   # Container 2: MCP Interface - Stateless proxy, NO key, forwards to pseudonymizer
   mcp-interface:
     container_name: freegle-mcp-interface
+    profiles:
+      - dev
     build:
       context: ./support-tools/mcp-interface
       network: host
@@ -1420,6 +1542,8 @@ services:
   # Container 3: Pseudonymizer - Has the key, queries Loki, pseudonymizes results
   mcp-pseudonymizer:
     container_name: freegle-mcp-pseudonymizer
+    profiles:
+      - dev
     build:
       context: ./support-tools/pseudonymizer
       network: host
@@ -1436,6 +1560,7 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+        required: false
     restart: "no"
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
