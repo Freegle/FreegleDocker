@@ -1,17 +1,20 @@
 #!/bin/bash
-# Set up test database schema and test environment
+# Set up test databases via Laravel migrations (single source of truth)
+#
+# Laravel migrations in iznik-batch are the authoritative schema definition.
+# Test databases are created by running migrations, then cloned via mysqldump.
 
 # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
 if [ -d "$HOME/FreegleDocker" ]; then
     cd "$HOME/FreegleDocker"
 fi
-echo "🗄️ Setting up test database and environment..."
+echo "Setting up test database and environment..."
 
 # Verify required containers are still running
 echo "Verifying required containers..."
-for container in freegle-apiv1 freegle-percona; do
+for container in freegle-apiv1 freegle-percona freegle-batch; do
     if ! docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -q "true"; then
-    echo "❌ Container $container is not running!"
+    echo "Container $container is not running!"
     echo ""
     echo "=== Container status ==="
     docker ps -a --filter "name=$container" --format "table {{.Names}}\t{{.Status}}\t{{.State}}"
@@ -23,50 +26,40 @@ for container in freegle-apiv1 freegle-percona; do
     docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.State}}" | head -30
     exit 1
     fi
-    echo "✅ $container is running"
+    echo "$container is running"
 done
 
-# Load database schema first (use container name directly for reliability)
-echo "Loading database schema..."
-docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
-    sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
-    sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
-    sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
-    sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-    sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-    mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
-    mysql -h percona -u root -piznik iznik < install/schema.sql && \
-    mysql -h percona -u root -piznik iznik < install/functions.sql && \
-    mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
-    mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
-    mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
+# 1. Create database and run Laravel migrations (single source of truth)
+echo "Creating iznik database and running Laravel migrations..."
+docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;'"
+docker exec freegle-batch php artisan migrate --force --no-interaction 2>&1
+echo "Laravel migrations complete"
 
-# Set up test environment using testenv.php from iznik-server
+# 2. Set SQL mode (disable ONLY_FULL_GROUP_BY)
+echo "Setting SQL mode..."
+docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik \
+  -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
+  mysql -h percona -u root -piznik \
+  -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
+
+# 3. Run testenv.php for fixture data (still needs apiv1 PHP classes)
 echo "Setting up test environment (FreeglePlayground group, test users, etc.)..."
 docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
-# Run Laravel migrations to create tables not in schema.sql (e.g. email_queue)
-# schema.sql drops/recreates tables, so migrations must run AFTER it.
-echo "Running Laravel migrations against iznik database..."
-if docker inspect -f '{{.State.Running}}' freegle-batch 2>/dev/null | grep -q "true"; then
-    docker exec freegle-batch php artisan migrate --force --no-interaction 2>&1 || echo "⚠️ Laravel migrations had warnings (may be OK if tables already exist)"
-    echo "✅ Laravel migrations complete"
-else
-    echo "⚠️ Batch container not running - skipping Laravel migrations"
-fi
-
-# Set up iznik_go_test database for Go API tests (uses a separate DB)
+# 4. Create iznik_go_test by cloning schema from migrated iznik DB
 echo "Setting up iznik_go_test database for Go tests..."
-docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
-    mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik_go_test;' && \
-    mysql -h percona -u root -piznik iznik_go_test < install/schema.sql && \
-    mysql -h percona -u root -piznik iznik_go_test < install/functions.sql && \
-    mysql -h percona -u root -piznik iznik_go_test < install/damlevlim.sql"
+docker exec freegle-apiv1 sh -c "\
+    mysql -h percona -u root -piznik -e 'DROP DATABASE IF EXISTS iznik_go_test; CREATE DATABASE iznik_go_test;' && \
+    mysqldump -h percona -u root -piznik --no-data --routines --triggers iznik | \
+      mysql -h percona -u root -piznik iznik_go_test"
+echo "iznik_go_test ready (cloned from migrated iznik)"
 
-# Run Laravel migrations against iznik_go_test too
-if docker inspect -f '{{.State.Running}}' freegle-batch 2>/dev/null | grep -q "true"; then
-    docker exec -e DB_DATABASE=iznik_go_test freegle-batch php artisan migrate --force --no-interaction 2>&1 || echo "⚠️ Go test DB migrations had warnings"
-    echo "✅ iznik_go_test migrations complete"
-fi
+# 5. Create iznik_phpunit_test by cloning schema from migrated iznik DB
+echo "Setting up iznik_phpunit_test database for PHPUnit tests..."
+docker exec freegle-apiv1 sh -c "\
+    mysql -h percona -u root -piznik -e 'DROP DATABASE IF EXISTS iznik_phpunit_test; CREATE DATABASE iznik_phpunit_test;' && \
+    mysqldump -h percona -u root -piznik --no-data --routines --triggers iznik | \
+      mysql -h percona -u root -piznik iznik_phpunit_test"
+echo "iznik_phpunit_test ready (cloned from migrated iznik)"
 
-echo "✅ Test database and environment ready!"
+echo "Test database and environment ready!"
