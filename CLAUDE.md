@@ -256,7 +256,9 @@ source .env
 
 Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
 
-**See [.circleci/README.md](.circleci/README.md)** for full CircleCI documentation including SSH debugging via API (the preferred method for diagnosing CI failures).
+**See [.circleci/README.md](.circleci/README.md)** for full CircleCI documentation including SSH debugging via API.
+
+**MANDATORY: After every `git push` to master that triggers CI, immediately cancel the auto-triggered pipeline and rerun it with SSH enabled.** This ensures you can SSH into the CI machine to diagnose and fix test failures live, rather than iterating blind. Never just push and passively wait for results. See `.circleci/README.md` "SSH Debugging" section for the API commands.
 
 ## Docker Build Caching
 
