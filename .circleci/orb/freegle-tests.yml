@@ -212,7 +212,7 @@ commands:
             echo "=== Phase 1: Starting infrastructure + batch for migrations ==="
             docker-compose -f docker-compose.yml up -d \
               percona postgres redis beanstalkd mailpit \
-              spamassassin traefik tusd delivery loki mjml \
+              spamassassin-app reverse-proxy tusd delivery loki mjml \
               batch status host-scripts
 
             echo "Waiting for percona to be healthy..."
@@ -470,7 +470,7 @@ commands:
             echo "=== Phase 1: Infrastructure + migrations ==="
             docker-compose -f docker-compose.yml up -d \
               percona postgres redis beanstalkd mailpit \
-              spamassassin traefik tusd delivery loki mjml \
+              spamassassin-app reverse-proxy tusd delivery loki mjml \
               batch status host-scripts
 
             echo "Waiting for percona to be healthy..."
