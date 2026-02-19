@@ -56,7 +56,11 @@ services:
     deploy:
       replicas: 0
 
-  # Remap apiv2 port to avoid conflict with yesterday-traefik (which uses 8193)
+  # Remap API ports to avoid conflicts with yesterday-traefik (which uses 8181 and 8193)
+  apiv1:
+    ports: !reset
+      - "8182:80"
+
   apiv2:
     ports: !reset
       - "8195:8192"
