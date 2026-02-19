@@ -340,6 +340,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./ssl/certs:/app/ssl:ro
       - .:/project:ro
+      - ./.env:/app/dotenv:rw
       - rebuild-requests:/rebuild-requests
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
@@ -621,6 +622,71 @@ services:
       - "traefik.http.middlewares.retry-api.retry.attempts=3"
       - "traefik.http.middlewares.retry-api.retry.initialinterval=100ms"
 
+  # V2 API with LIVE production database via tunnel
+  # Start with: docker compose --profile prod-live up -d apiv2-live
+  # Requires: SSH tunnel to production DB on local port 1234
+  # WARNING: This connects to the REAL production database!
+  apiv2-live:
+    container_name: freegle-apiv2-live
+    profiles:
+      - prod-live
+    networks:
+      default:
+        aliases:
+          - apiv2-live.localhost
+    build:
+      context: ./iznik-server-go
+      network: host
+      args:
+        IZNIK_SERVER_GO_BRANCH: ${IZNIK_SERVER_GO_BRANCH:-master}
+    extra_hosts:
+      - "db-live:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      beanstalkd:
+        condition: service_healthy
+      reverse-proxy:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      - MYSQL_HOST=db-live
+      - MYSQL_PORT=${LIVE_DB_PORT:-1234}
+      - MYSQL_USER=${LIVE_DB_USER:-root}
+      - MYSQL_PASSWORD=${LIVE_DB_PASSWORD:-}
+      - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
+      - LOKI_ENABLED=true
+      - LOKI_URL=http://loki:3100
+      - LOKI_JSON_PATH=/var/log/freegle
+      - USER_SITE=www.ilovefreegle.org
+      - IMAGE_DOMAIN=images.ilovefreegle.org
+      - GROUP_DOMAIN=groups.ilovefreegle.org
+      - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
+    volumes:
+      - apiv2_logs:/var/log/freegle
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8192/apiv2/online || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    ports:
+      - "8194:8192"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.apiv2-live.rule=Host(`apiv2-live.localhost`)"
+      - "traefik.http.routers.apiv2-live.entrypoints=web"
+      - "traefik.http.routers.apiv2-live.middlewares=apiv2-live-cors,apiv2-live-retry"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
+      - "traefik.http.middlewares.apiv2-live-retry.retry.attempts=3"
+      - "traefik.http.middlewares.apiv2-live-retry.retry.initialinterval=100ms"
+      - "traefik.http.services.apiv2-live.loadbalancer.server.port=8192"
+
   # Development build with local APIs - standard dev workflow
   freegle-dev-local:
     container_name: freegle-dev-local
@@ -694,6 +760,8 @@ services:
           - freegle-dev-live.localhost
     ports:
       - "0.0.0.0:3005:3002"
+    extra_hosts:
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       network: host
@@ -705,7 +773,7 @@ services:
     environment:
       # LIVE/Production APIs - REAL DATA!
       - IZNIK_API_V1=https://fdapilive.ilovefreegle.org/api
-      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      - IZNIK_API_V2=${LIVE_FREEGLE_API_V2:-https://api.ilovefreegle.org/apiv2}
       # Use production delivery and USER_SITE - local delivery won't work
       # from mobile devices since they can't resolve localhost hostnames
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
@@ -735,6 +803,7 @@ services:
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.prod
@@ -763,7 +832,7 @@ services:
       start_period: 900s  # 15 minutes for npm run build
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
+      - IZNIK_API_V2=${PROD_FREEGLE_API_V2:-http://apiv2.localhost/api}
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://tusd.localhost/tus/
       - USER_SITE=http://freegle-prod-local.localhost:3003
@@ -864,6 +933,8 @@ services:
           - modtools-dev-live.localhost
     ports:
       - "0.0.0.0:3006:3000"
+    extra_hosts:
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: .
       dockerfile: ./iznik-nuxt3/modtools/Dockerfile
@@ -876,7 +947,7 @@ services:
     environment:
       # LIVE/Production APIs - REAL DATA!
       - IZNIK_API_V1=https://fdapilive.ilovefreegle.org/api
-      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      - IZNIK_API_V2=${LIVE_MT_API_V2:-https://api.ilovefreegle.org/apiv2}
       # Use production delivery and USER_SITE - local delivery won't work
       # from mobile devices since they can't resolve localhost hostnames
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
@@ -906,6 +977,7 @@ services:
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       dockerfile: modtools/Dockerfile.prod
@@ -934,7 +1006,7 @@ services:
       start_period: 900s  # 15 minutes for npm run build
     environment:
       - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
+      - IZNIK_API_V2=${PROD_MT_API_V2:-http://apiv2.localhost/api}
       - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://tusd.localhost/tus/
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus

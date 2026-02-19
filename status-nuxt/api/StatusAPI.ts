@@ -34,6 +34,14 @@ export default class StatusAPI extends BaseAPI {
     return await this.$post('/api/container/start-modtools-live')
   }
 
+  async toggleLiveV2(target: 'freegle' | 'modtools', enable: boolean): Promise<{ success: boolean; message: string }> {
+    return await this.$post('/api/container/toggle-live-v2', { target, enable })
+  }
+
+  async getLiveV2Status(): Promise<{ freegle: boolean; modtools: boolean; apiv2LiveRunning: boolean; liveDbPort: string }> {
+    return await this.$get('/api/container/live-v2-status')
+  }
+
   // Test operations
   async startGoTests(withCoverage?: boolean): Promise<{ status: string }> {
     return await this.$post('/api/tests/go', { coverage: withCoverage })

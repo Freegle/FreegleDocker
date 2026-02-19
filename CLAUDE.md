@@ -418,6 +418,50 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+### 2026-02-19 - Added Live V2 API container for production DB testing
+- **Status**: Implementation complete, status page not loading from Windows (WSL2 networking issue)
+- **Completed**:
+  - Added `apiv2-live` container in docker-compose.yml (profile: `prod-live`), connects to production DB via SSH tunnel
+  - Made prod containers' V2 API URL configurable via `PROD_FREEGLE_API_V2` / `PROD_MT_API_V2` env vars
+  - Added `LIVE_DB_PORT`, `LIVE_DB_USER`, `LIVE_DB_PASSWORD` to .env (port corrected to 11234)
+  - Added `apiv2-live.localhost:host-gateway` extra_hosts to freegle-prod-local and modtools-prod-local
+  - Status page: new `apiv2-live` service, toggle API (`toggle-live-v2.post.ts`, `live-v2-status.get.ts`), updated production.vue with toggle UI and explanation text
+  - Port is configurable (read from .env, displayed dynamically on status page)
+  - `apiv2-live` container is healthy and connected to production DB
+  - Status container rebuilt and restarted
+- **Issue**: Status page shows blank screen when accessed from Windows browser. WSL2 uses `networkingMode=mirrored`. Port 8081 is listening, curl works from inside WSL, but Windows browser gets blank page. Need to investigate.
+- **Files changed**:
+  - `docker-compose.yml` - apiv2-live service, extra_hosts, configurable IZNIK_API_V2
+  - `.env` - LIVE_DB_PORT=11234, LIVE_DB_USER, LIVE_DB_PASSWORD, PROD_*_API_V2
+  - `status-nuxt/types/service.ts` - added 'production' to ServiceCategory
+  - `status-nuxt/server/utils/services.ts` - added apiv2-live service
+  - `status-nuxt/server/api/container/toggle-live-v2.post.ts` - NEW
+  - `status-nuxt/server/api/container/live-v2-status.get.ts` - NEW
+  - `status-nuxt/api/StatusAPI.ts` - toggleLiveV2, getLiveV2Status methods
+  - `status-nuxt/stores/status.ts` - liveV2 state, refreshLiveV2Status, toggleLiveV2 actions
+  - `status-nuxt/pages/production.vue` - toggle UI, explanatory text, dynamic port
+- **Next**: Debug why status page blank from Windows. Then test the toggle buttons work end-to-end.
+
+### 2026-02-19 - Go PR review, CI fixes, unified test branch
+- **Status**: CI monitoring in progress, then 3 tests to add
+- **Completed**:
+  - Reviewed all 23 Go PRs (#6-#28) for existing behavior changes using agent team
+  - Found changes to existing behavior only in PRs #9/#10/#13/#17/#27 (heldby IS NULL removal, story public=1 removal, location response shape changes) - all intentional for MT
+  - Fixed PR #11 (newsfeed-writes): empty message validation in createPost
+  - Fixed PR #25 (noticeboard-writes): FK constraint (addedby=0→NULL) + noticeboards_checks.inactive NOT NULL
+  - Created unified test branch `test/unified-go-v2` merging all 23 PRs (125 commits, 1 conflict resolved in routes.go)
+  - PR #25 CI: ✅ PASSED. PR #11 CI: running (job #789). Unified branch CI: running (job #788)
+  - Test coverage audit: 33/36 handlers FULL, 2 PARTIAL, 1 NONE
+- **Next**:
+  1. Wait for CI jobs #788 and #789 to complete - monitor background task b2ca4f2
+  2. If CI passes: add missing tests for CreateChatMessage (auth+error), EditIsochrone (auth+non-owner), CreateChatMessageLoveJunk (auth+error)
+  3. Push tests to relevant PR branches, merge into unified branch
+  4. Verify all Go CI green
+- **Key files**:
+  - Unified branch: `test/unified-go-v2` on iznik-server-go
+  - Coverage matrix: PR #43 in FreegleDocker, file `plans/active/api-test-coverage-matrix.md`
+  - Background CI monitor: `/tmp/claude-1000/-home-edward-FreegleDockerWSL/tasks/b2ca4f2.output`
+
 ### 2026-02-10 - 0A.7 E2E email queue test PASSED
 - **Plan Phase**: 0A.7 ✅ Done
 - **Completed**:

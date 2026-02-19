@@ -131,5 +131,7 @@ const visitLabel = computed(() => {
         </button>
       </div>
     </div>
+
+    <slot name="footer" />
   </div>
 </template>

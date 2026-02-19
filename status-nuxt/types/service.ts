@@ -5,6 +5,7 @@ export type ServiceCategory =
   | 'devtools'
   | 'infrastructure'
   | 'mcp'
+  | 'production'
 
 export type ServiceStatus = 'online' | 'offline' | 'loading' | 'unknown'
 

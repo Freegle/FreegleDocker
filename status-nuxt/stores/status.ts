@@ -2,12 +2,20 @@ import { defineStore } from 'pinia'
 import { api } from '~/api'
 import type { ServiceState, ServiceStatus } from '~/types/service'
 
+interface LiveV2State {
+  freegle: boolean
+  modtools: boolean
+  apiv2LiveRunning: boolean
+  liveDbPort: string
+}
+
 interface StatusStoreState {
   serviceStates: Map<string, ServiceState>
   cpuStats: Map<string, number>
   isLoading: boolean
   lastUpdated: Date | null
   error: string | null
+  liveV2: LiveV2State
 }
 
 export const useStatusStore = defineStore('status', {
@@ -17,6 +25,7 @@ export const useStatusStore = defineStore('status', {
     isLoading: false,
     lastUpdated: null,
     error: null,
+    liveV2: { freegle: false, modtools: false, apiv2LiveRunning: false, liveDbPort: '1234' },
   }),
 
   getters: {
@@ -134,6 +143,28 @@ export const useStatusStore = defineStore('status', {
       }
       catch (err) {
         console.error('Start ModTools live error:', err)
+        throw err
+      }
+    },
+
+    async refreshLiveV2Status() {
+      try {
+        this.liveV2 = await api().status.getLiveV2Status()
+      }
+      catch (err) {
+        console.error('Live V2 status error:', err)
+      }
+    },
+
+    async toggleLiveV2(target: 'freegle' | 'modtools', enable: boolean) {
+      try {
+        await api().status.toggleLiveV2(target, enable)
+        // Refresh both live V2 status and container status
+        await this.refreshLiveV2Status()
+        setTimeout(() => this.refreshStatus(), 5000)
+      }
+      catch (err) {
+        console.error('Toggle live V2 error:', err)
         throw err
       }
     },
