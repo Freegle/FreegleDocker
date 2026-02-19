@@ -56,6 +56,11 @@ services:
     deploy:
       replicas: 0
 
+  # Remap apiv2 port to avoid conflict with yesterday-traefik (which uses 8193)
+  apiv2:
+    ports: !reset
+      - "8195:8192"
+
   # Expose dev containers on external ports for yesterday server
   freegle-dev-local:
     ports:
