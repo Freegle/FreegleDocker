@@ -26,12 +26,6 @@
       </mj-column>
     </mj-section>
 
-    <mj-section background-color="#f5f5f5" padding="20px">
-      <mj-column>
-        <mj-text font-size="11px" color="#666666" align="center" line-height="1.5">
-          {{ $siteName }} is registered as a charity with HMRC (ref. XT32865) and is run by volunteers.
-        </mj-text>
-      </mj-column>
-    </mj-section>
+    @include('emails.mjml.partials.footer', ['email' => $email])
   </mj-body>
 </mjml>

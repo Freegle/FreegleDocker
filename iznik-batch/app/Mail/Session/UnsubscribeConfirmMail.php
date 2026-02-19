@@ -47,6 +47,7 @@ class UnsubscribeConfirmMail extends MjmlMailable
             'emails.mjml.session.unsubscribe-confirm',
             [
                 'unsubUrl' => $this->unsubUrl,
+                'email' => $this->email,
             ]
         )->to($this->email)
             ->applyLogging('Unsubscribe');

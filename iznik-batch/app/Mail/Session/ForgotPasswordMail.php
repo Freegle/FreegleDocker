@@ -46,6 +46,7 @@ class ForgotPasswordMail extends MjmlMailable
             'emails.mjml.session.forgot-password',
             [
                 'resetUrl' => $this->resetUrl,
+                'email' => $this->email,
             ]
         )->to($this->email)
             ->applyLogging('ForgotPassword');
