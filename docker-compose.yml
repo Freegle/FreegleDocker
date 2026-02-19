@@ -1472,6 +1472,7 @@ services:
     depends_on:
       batch-prod:
         condition: service_healthy
+        required: false
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "postfix status || exit 1"]
