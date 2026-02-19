@@ -45,7 +45,7 @@ docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
 echo "Setting up test environment (FreeglePlayground group, test users, etc.)..."
 docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
 
-# Run Laravel migrations to create tables not in schema.sql (e.g. email_queue)
+# Run Laravel migrations to create tables not in schema.sql (e.g. background_tasks)
 # schema.sql drops/recreates tables, so migrations must run AFTER it.
 echo "Running Laravel migrations against iznik database..."
 if docker inspect -f '{{.State.Running}}' freegle-batch 2>/dev/null | grep -q "true"; then
