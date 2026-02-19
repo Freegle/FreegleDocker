@@ -64,3 +64,9 @@ services:
   modtools-dev-local:
     ports:
       - "3003:3000"
+
+# Use the pre-existing external volume for the yesterday database
+# (created before docker-compose added project name prefix)
+volumes:
+  freegle_db:
+    external: true
