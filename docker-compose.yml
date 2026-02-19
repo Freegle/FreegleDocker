@@ -436,6 +436,8 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+      batch:
+        condition: service_healthy
       beanstalkd:
         condition: service_started
       mailpit:
@@ -518,6 +520,8 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+      batch:
+        condition: service_healthy
       beanstalkd:
         condition: service_started
       redis:
@@ -572,6 +576,8 @@ services:
         IZNIK_SERVER_GO_BRANCH: ${IZNIK_SERVER_GO_BRANCH:-master}
     depends_on:
       percona:
+        condition: service_healthy
+      batch:
         condition: service_healthy
       postgres:
         condition: service_healthy
