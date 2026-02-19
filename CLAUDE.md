@@ -256,6 +256,8 @@ source .env
 
 Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
 
+**See [.circleci/README.md](.circleci/README.md)** for full CircleCI documentation including SSH debugging via API (the preferred method for diagnosing CI failures).
+
 ## Docker Build Caching
 
 Production containers use BuildKit cache-from and CircleCI save_cache for faster builds.
@@ -471,15 +473,14 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - Coverage matrix: PR #43 in FreegleDocker, file `plans/active/api-test-coverage-matrix.md`
   - Background CI monitor: `/tmp/claude-1000/-home-edward-FreegleDockerWSL/tasks/b2ca4f2.output`
 
-### 2026-02-19 - Remove schema.sql dependency
-- **Status**: Implementation complete on `feature/remove-schema-sql-dependency` branch.
+### 2026-02-19 - Schema.sql removal + V2 batch consolidation
+- **Status**: All V2 batch work merged to master, CI build triggered, waiting for results.
 - **Completed**:
-  - Created stored functions Laravel migration (`2026_02_20_000002_create_stored_functions.php`)
-  - Rewrote `scripts/setup-test-database.sh` to use migrations + mysqldump cloning
-  - Updated apiv1 Dockerfile CMD to wait for migrations instead of loading schema.sql
-  - Removed Go test duplicate table creation (main_test.go, queue_test.go), added verifyRequiredTables()
-  - Deleted superseded live_migration.sql files (queue/, emailtracking/)
-  - Updated CircleCI orb to remove schema.sql fallback
-  - Added "Database Schema Management" section to CLAUDE.md
-  - Updated iznik-server-go/CLAUDE.md to reference migrations
-- **Next**: Push branch, create PR, verify CI. Then update all V2 API migration PRs to include this change.
+  - Schema.sql removal: stored functions migration, setup script rewrite, Dockerfile update, Go test cleanup, orb update
+  - Merged schema-sql branches to master in iznik-server, iznik-server-go, FreegleDocker
+  - Merged all 23 FreegleDocker V2 PRs (#43-#67) to master (iznik-batch changes)
+  - Published orb v1.1.161 (schema.sql fallback removed)
+  - Closed all merged FreegleDocker V2 PRs (#48-#65)
+  - Committed HelpChatFlow client logging to iznik-nuxt3 master
+  - iznik-nuxt3 V2 client PRs (#148-#168) intentionally left open
+- **Next**: Monitor CI build. Debug and fix any failures.
