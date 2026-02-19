@@ -1356,8 +1356,8 @@ services:
       - /var/log/freegle:/var/log/freegle
       - ${FIREBASE_CREDENTIALS_PATH:-/dev/null}:/etc/firebase.json:ro
     extra_hosts:
-      - "db-host:${DB_HOST_IP}"
-      - "mail-host:${MAIL_HOST_IP}"
+      - "db-host:${DB_HOST_IP:-127.0.0.1}"
+      - "mail-host:${MAIL_HOST_IP:-127.0.0.1}"
     depends_on:
       loki:
         condition: service_healthy
