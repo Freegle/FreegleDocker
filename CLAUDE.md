@@ -83,6 +83,15 @@ After confirming batch-prod works, disable the crontab on bulk3-internal:
 # Comment out: * * * * * cd /var/www/iznik-batch && php8.5 artisan schedule:run
 ```
 
+## Database Schema Management
+
+- **Laravel migrations are the single source of truth** for the database schema. All table definitions live in `iznik-batch/database/migrations/`.
+- **schema.sql is retired** - `iznik-server/install/schema.sql` is kept in git for historical reference but is no longer loaded anywhere.
+- **Stored functions** (GetMaxDimension, GetMaxDimensionT, haversine, damlevlim) are managed by the migration `2026_02_20_000002_create_stored_functions.php`.
+- **To add a new table**: Create a Laravel migration in `iznik-batch/database/migrations/`. It will automatically be picked up in CI and local dev.
+- **Test databases** are created by `scripts/setup-test-database.sh` which runs `php artisan migrate`, then clones the schema to `iznik_go_test` and `iznik_phpunit_test` via `mysqldump --no-data --routines --triggers`.
+- **testenv.php** still runs in the apiv1 container for fixture data (FreeglePlayground group, test users, etc.).
+
 ## Networking Configuration
 
 ### No Hardcoded IP Addresses
@@ -462,60 +471,15 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - Coverage matrix: PR #43 in FreegleDocker, file `plans/active/api-test-coverage-matrix.md`
   - Background CI monitor: `/tmp/claude-1000/-home-edward-FreegleDockerWSL/tasks/b2ca4f2.output`
 
-### 2026-02-10 - 0A.7 E2E email queue test PASSED
-- **Plan Phase**: 0A.7 ✅ Done
+### 2026-02-19 - Remove schema.sql dependency
+- **Status**: Implementation complete on `feature/remove-schema-sql-dependency` branch.
 - **Completed**:
-  - Created temp integration branches, merged Go+batch code, rebuilt containers
-  - Full E2E flow: Go API Report→background_tasks→batch processor→spool→MailPit
-  - Found & fixed bug: spool() missing `$to` param in all handlers (all sent to support)
-  - Fixed recipients: ChitchatReport→support, DonateExternal→info_addr, Invitation→to_email, ForgotPassword/Unsubscribe→user email
-  - Committed fix to feature/v2-background-tasks, pushed
-  - Cleaned up temp branches
-- **Next**: All pre-merge tasks complete. PRs await human merge.
-
-### 2026-02-09 - Adversarial tests complete
-- **Plan Phase**: 5C.5 ✅
-- **Completed**:
-  - 5C.5 adversarial tests: 37 tests across 7 branches (message-writes 9, chatrooms-post 6, newsfeed-writes 4, noticeboard-writes 6, user-writes 7, markseen 2, abtest 3)
-  - 11 other branches already had adequate adversarial coverage
-
-### 2026-02-09 - Fixed should-fix-before-deploy items + must-fix bugs
-- **Plan Phase**: 5C.8 + 5C.9 ✅
-- **Completed**: Resolved all review items from adversarial review (10 must-fix + should-fix items)
-- **Next**: 5C.5 adversarial tests remaining.
-
-### 2026-02-10 - Phase 5C + 6B adversarial review + CI green + chatmessage moderation
-- **Completed**:
-  - Adversarial review: 4 CRITICAL, 6 HIGH, 17 MODERATE, 13 LOW issues across 33 endpoints
-  - ALL CI green across 61 PRs
-  - Chatmessage moderation: 6 actions in Go with 15 tests (Go #28, FD #66, Nuxt3 #167)
-  - Fixed Go PR #27 and #28 CI issues
-- **PRs Awaiting Merge**: FD #43-#67 (25 PRs), Go #14-#28 (15 PRs), Nuxt3 #148-#168 (21 PRs)
-
-### 2026-02-09 21:00 - Phase 4+5 FD tasks complete, all CI green
-- **Status**: Phase 4 and 5 FD-relevant tasks done. All CI green.
-- **Completed**:
-  - Phase 4: #30 group PATCH (Go #24, Nuxt3 #164, FD #61), #36 noticeboard (Go #25, Nuxt3 #165, FD #63)
-  - Phase 5: #42 abtest/bandit (Go #26, Nuxt3 #166, FD #64) - GET+POST with bandit algorithm
-  - Phase 4/5 assessment: MT-only and no-FD-usage endpoints deferred
-  - CI: All 5 latest pipelines ✅ green (#1895-#1902). Group-patch had transient Playwright kill (141), passed on retrigger.
-- **PRs Awaiting Merge**: FD #43-#64, Go #6-#26, Nuxt3 #148-#166
-- **Next**: All FD-relevant write operations are migrated. Remaining work is MT-only endpoints, Stripe SDK integration, and Phase 6 review/validation.
-
-### 2026-02-09 - Phase 3 COMPLETE: all endpoints PR ready
-- **Status**: Phase 3 #21-#29 ALL PR ready or deferred. Phase 3 is complete!
-- **Completed today**:
-  - Implemented /message writes (#24): Promise, Renege, Outcome, OutcomeIntended, AddBy, RemoveBy, View. 16 tests. Go PR #23, FD #60, Nuxt3 #163.
-  - Implemented /memberships writes (#23): PUT join, DELETE leave, PATCH settings. 14 tests. Go PR #22, FD #59, Nuxt3 #162.
-  - Deferred /merge (#27): MT-only endpoint, no FD usage found.
-  - Implemented /user POST (#22): Rate, RatingReviewed, AddEmail, RemoveEmail, Engaged with 11 tests
-  - Implemented /chatmessages PATCH+DELETE (#25): ownership checks, 11 tests, $patchv2/$delv2 BaseAPI methods
-  - Implemented /chatrooms POST (#26): Roster update, nudge, typing, hide/block/unhide migrated
-  - Fixed image POST FK violation: NULL for parent ID when no message exists yet
-- **CI**: message-writes triggered. Earlier PRs: chatmessages retriggered (GitHub 500 transient), image-post ✅.
-- **PRs Awaiting Merge**: FD #43-#60, Go #6-#23, Nuxt3 #148-#163
-- **Next**: Monitor CI for message-writes and all other running pipelines. Phase 3 is complete - next is Phase 4 (Complex/MT-Heavy Endpoints).
-
-### 2026-02-08 - CI fixes + adversarial review
-- **Status**: All Go PRs ✅ green. All FD PRs ✅ green. Adversarial review complete.
-- **Key fixes**: FK constraint violations in newsfeed tests, user location query, ChatListEntry Pinia mocks, ProxyImage USER_SITE, MessageExpanded photoArea height
+  - Created stored functions Laravel migration (`2026_02_20_000002_create_stored_functions.php`)
+  - Rewrote `scripts/setup-test-database.sh` to use migrations + mysqldump cloning
+  - Updated apiv1 Dockerfile CMD to wait for migrations instead of loading schema.sql
+  - Removed Go test duplicate table creation (main_test.go, queue_test.go), added verifyRequiredTables()
+  - Deleted superseded live_migration.sql files (queue/, emailtracking/)
+  - Updated CircleCI orb to remove schema.sql fallback
+  - Added "Database Schema Management" section to CLAUDE.md
+  - Updated iznik-server-go/CLAUDE.md to reference migrations
+- **Next**: Push branch, create PR, verify CI. Then update all V2 API migration PRs to include this change.

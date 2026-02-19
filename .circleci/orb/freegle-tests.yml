@@ -723,24 +723,14 @@ commands:
               sleep 30
             fi
 
-            # Database schema and test environment already set up by setup-test-database step
+            # Database schema set up by setup-test-database step (Laravel migrations)
             # Just verify the database is accessible
             echo "Verifying database connection..."
             docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik -e 'SELECT 1 FROM iznik.groups LIMIT 1'" || {
-              echo "Database not ready, setting up..."
-              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
-                sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
-                sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
-                sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
-                sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-                sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-                mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
-                mysql -h percona -u root -piznik iznik < install/schema.sql && \
-                mysql -h percona -u root -piznik iznik < install/functions.sql && \
-                mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
-                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
-                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
-              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+              echo "Database not ready after setup-test-database - this should not happen"
+              echo "Check that freegle-batch migrations ran successfully"
+              docker logs freegle-batch --tail 30 2>&1 || true
+              exit 1
             }
 
             # Trigger tests via API
@@ -1737,9 +1727,8 @@ jobs:
 
       - wait-for-prod-container
 
-      # Wait for batch container migrations to complete BEFORE loading schema.sql
-      # This prevents race conditions where schema.sql's DROP TABLE statements interfere with
-      # migrations that are still running.
+      # Wait for batch container migrations to complete before setup-test-database
+      # Migrations are the single source of truth for the database schema.
       - wait-for-batch-container
       - setup-test-database
 
