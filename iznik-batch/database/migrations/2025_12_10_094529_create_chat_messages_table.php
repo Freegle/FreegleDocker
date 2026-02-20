@@ -19,7 +19,7 @@ return new class extends Migration
             $table->bigIncrements('id');
             $table->unsignedBigInteger('chatid')->index('chatid');
             $table->unsignedBigInteger('userid')->index('userid')->comment('From');
-            $table->enum('type', ['Default', 'System', 'ModMail', 'Interested', 'Promised', 'Reneged', 'ReportedUser', 'Completed', 'Image', 'Address', 'Nudge', 'Schedule', 'ScheduleUpdated', 'Reminder'])->default('Default');
+            $table->enum('type', ['Default', 'System', 'ModMail', 'Interested', 'Promised', 'Reneged', 'ReportedUser', 'Completed', 'Image', 'Address', 'Nudge', 'Schedule', 'ScheduleUpdated', 'Reminder', 'ReferToSupport'])->default('Default');
             $table->enum('reportreason', ['Spam', 'Other', 'Last', 'Force', 'Fully', 'TooMany', 'User', 'UnknownMessage', 'SameImage', 'DodgyImage'])->nullable();
             $table->unsignedBigInteger('refmsgid')->nullable()->index('msgid');
             $table->unsignedBigInteger('refchatid')->nullable()->index('refchatid');
