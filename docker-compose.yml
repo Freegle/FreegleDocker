@@ -1339,7 +1339,7 @@ services:
   batch-prod:
     container_name: freegle-batch-prod
     profiles:
-      - backend
+      - production
     networks:
       - default
     build:
@@ -1461,7 +1461,7 @@ services:
   postfix:
     container_name: freegle-postfix
     profiles:
-      - backend
+      - mail
     build:
       context: ./conf/postfix
       dockerfile: Dockerfile

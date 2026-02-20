@@ -53,7 +53,9 @@ Every service in docker-compose.yml has at least one profile. `COMPOSE_PROFILES`
 | Profile | Purpose | Key Services |
 |---------|---------|-------------|
 | `frontend` | Web-facing APIs | apiv1, apiv2, delivery, tusd, redis, beanstalkd |
-| `backend` | Background processing | batch-prod, postfix, loki, mjml, redis, rspamd, spamassassin, ai-support-helper |
+| `backend` | Background processing | loki, mjml, redis, rspamd, spamassassin, ai-support-helper |
+| `production` | Production batch jobs | batch-prod (requires .env.background) |
+| `mail` | Incoming mail | postfix (requires MX records pointing to host) |
 | `database` | Local databases | percona (MySQL), postgres (PostGIS) |
 | `dev` | Development/testing tools | Traefik, status, dev containers, mailpit, phpmyadmin, batch, playwright, MCP tools |
 | `monitoring` | Log shipping | alloy |
@@ -67,7 +69,7 @@ Every service in docker-compose.yml has at least one profile. `COMPOSE_PROFILES`
 | Scenario | COMPOSE_PROFILES |
 |----------|-----------------|
 | **Local dev** | `frontend,database,backend,dev,monitoring` |
-| **Live backend** | `backend` |
+| **Live backend** | `backend,production,mail` |
 | **Live frontend** | `frontend` |
 | **Yesterday** | `frontend,database,backend,dev,monitoring` (+ override file) |
 | **CircleCI** | `frontend,database,backend,dev,monitoring` |
