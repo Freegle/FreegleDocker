@@ -117,19 +117,6 @@ foreach ($allItems as $idx => $item) {
     error_log("Created: [$type] $subject (ID: $msgId, $daysAgo days ago)");
 }
 
-// Also index for search
-foreach ($createdIds as $msgId) {
-    $m = new Message($dbhr, $dbhm);
-    $m->fetch($msgId);
-    if ($m->getMessage()) {
-        try {
-            $m->index();
-        } catch (\Exception $e) {
-            error_log("Search index failed for $msgId: " . $e->getMessage());
-        }
-    }
-}
-
 $total = count($createdIds);
 echo "Created $total test messages in FreeglePlayground (Edinburgh area)\n";
 echo "Messages are spread across the past 7 days\n";

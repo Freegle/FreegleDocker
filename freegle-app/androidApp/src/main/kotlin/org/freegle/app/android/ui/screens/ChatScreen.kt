@@ -3,6 +3,7 @@ package org.freegle.app.android.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -15,9 +16,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.freegle.app.android.ui.components.ChatBubble
+import org.freegle.app.android.ui.components.cleanTitle
+import org.freegle.app.model.MessageSummary
 import org.freegle.app.repository.ChatRepository
+import org.freegle.app.repository.MessageRepository
 import org.freegle.app.repository.UserRepository
 import org.koin.compose.koinInject
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,6 +36,7 @@ fun ChatScreen(
     onBack: () -> Unit,
     chatRepository: ChatRepository = koinInject(),
     userRepository: UserRepository = koinInject(),
+    messageRepository: MessageRepository = koinInject(),
 ) {
     val messages by chatRepository.currentMessages.collectAsState()
     val isLoading by chatRepository.isLoading.collectAsState()
@@ -36,6 +47,10 @@ fun ChatScreen(
 
     var messageText by remember { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
+    var sendError by remember { mutableStateOf<String?>(null) }
+
+    // Item context: find the referenced message from chat messages
+    var contextItem by remember { mutableStateOf<MessageSummary?>(null) }
 
     // Get chat room info for the title and item context
     val chatRoom = chatRooms.find { it.id == chatId }
@@ -43,6 +58,16 @@ fun ChatScreen(
 
     LaunchedEffect(chatId) {
         chatRepository.loadMessages(chatId)
+    }
+
+    // Load the referenced item for context header
+    LaunchedEffect(messages) {
+        if (contextItem == null) {
+            val refMsgId = messages.firstNotNullOfOrNull { it.refmsgid }
+            if (refMsgId != null) {
+                contextItem = messageRepository.getMessageDetail(refMsgId)
+            }
+        }
     }
 
     LaunchedEffect(messages.size) {
@@ -83,6 +108,56 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
+            // Item context header - shows which item is being discussed
+            contextItem?.let { item ->
+                val imageUrl = item.messageAttachments?.firstOrNull()?.paththumb
+                    ?: item.messageAttachments?.firstOrNull()?.path
+                val title = cleanTitle(item.subject ?: "Item")
+                val isOffer = item.type == "Offer"
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (imageUrl != null) {
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = title,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            Surface(
+                                modifier = Modifier.size(44.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isOffer) Color(0xFF008040).copy(alpha = 0.15f)
+                                else Color(0xFF1565C0).copy(alpha = 0.15f),
+                            ) {}
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                            )
+                            Text(
+                                text = if (isOffer) "Free item" else "Wanted",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider()
+            }
+
             // Messages list
             LazyColumn(
                 state = listState,
@@ -92,10 +167,9 @@ fun ChatScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(messages) { message ->
+                itemsIndexed(messages) { idx, message ->
                     val isMe = message.userid == (currentUser?.id ?: 0L)
                     // Only show timestamp on last message or when sender changes
-                    val idx = messages.indexOf(message)
                     val isLastFromSender = idx == messages.lastIndex ||
                         messages[idx + 1].userid != message.userid
                     ChatBubble(
@@ -129,6 +203,22 @@ fun ChatScreen(
                 }
             }
 
+            // Send error
+            if (sendError != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        sendError ?: "",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+
             // Input bar
             HorizontalDivider()
             Row(
@@ -152,8 +242,18 @@ fun ChatScreen(
                             val text = messageText
                             messageText = ""
                             isSending = true
+                            sendError = null
                             scope.launch {
-                                chatRepository.sendMessage(chatId, text)
+                                try {
+                                    val success = chatRepository.sendMessage(chatId, text)
+                                    if (!success) {
+                                        messageText = text // Restore the message
+                                        sendError = "Couldn\u2019t send. Tap to retry."
+                                    }
+                                } catch (_: Exception) {
+                                    messageText = text
+                                    sendError = "No connection. Check your internet."
+                                }
                                 isSending = false
                             }
                         }

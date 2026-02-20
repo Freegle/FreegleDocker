@@ -34,7 +34,11 @@ import kotlinx.coroutines.launch
 private enum class GiveStep { TYPE, PHOTO, TITLE, LOCATION, DONE }
 
 @Composable
-fun GiveScreen() {
+fun GiveScreen(
+    userPostcode: String = "",
+    userLocationName: String = "",
+    onLocationChange: (() -> Unit)? = null,
+) {
     var step by remember { mutableStateOf(GiveStep.TYPE) }
     var isOffer by remember { mutableStateOf(true) }
     var title by remember { mutableStateOf("") }
@@ -102,8 +106,10 @@ fun GiveScreen() {
                     onBack = { back(if (isOffer) GiveStep.PHOTO else GiveStep.TYPE) },
                 )
                 GiveStep.LOCATION -> LocationStep(
+                    locationName = userLocationName.ifEmpty { userPostcode },
                     onPost = { advance(GiveStep.DONE) },
                     onBack = { back(GiveStep.TITLE) },
+                    onChangeLocation = onLocationChange,
                 )
                 GiveStep.DONE -> SuccessStep(
                     isOffer = isOffer,
@@ -393,7 +399,7 @@ private fun PhotoStep(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "Photos get 3× more replies",
+                "A good photo helps items find a home faster",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.7f),
             )
@@ -533,8 +539,10 @@ private fun TitleStep(
 
 @Composable
 private fun LocationStep(
+    locationName: String = "",
     onPost: () -> Unit,
     onBack: () -> Unit,
+    onChangeLocation: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -580,17 +588,19 @@ private fun LocationStep(
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Edinburgh area",
+                        locationName.ifEmpty { "Set your location" },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "From your saved postcode",
+                        if (locationName.isNotEmpty()) "From your saved postcode" else "Tap Change to set your area",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
                     )
                 }
-                TextButton(onClick = {}) { Text("Change") }
+                if (onChangeLocation != null) {
+                    TextButton(onClick = onChangeLocation) { Text("Change") }
+                }
             }
         }
 
@@ -623,7 +633,7 @@ private fun LocationStep(
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Share it!", fontWeight = FontWeight.Bold)
+                Text("Post it!", fontWeight = FontWeight.Bold)
             }
         }
     }

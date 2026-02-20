@@ -150,7 +150,7 @@ private fun NotLoggedInContent(onLoginClick: () -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Thousands of Freeglers across the UK are sharing, giving, and receiving items every day.",
+                    "Freeglers across the UK are giving and receiving items every day.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                 )

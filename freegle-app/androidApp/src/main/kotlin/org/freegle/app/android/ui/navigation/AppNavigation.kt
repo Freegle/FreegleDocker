@@ -3,6 +3,7 @@ package org.freegle.app.android.ui.navigation
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -10,8 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.*
@@ -28,12 +31,16 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
+import org.freegle.app.android.data.FreeglePreferences
+import org.freegle.app.android.ui.components.FreegleHeartArrows
 import org.freegle.app.android.ui.screens.*
 import org.freegle.app.repository.ChatRepository
 import org.koin.compose.koinInject
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
+    data object Explore : Screen("explore")
     data object Give : Screen("give")
     data object ChatList : Screen("chat_list")
     data object Profile : Screen("profile")
@@ -53,8 +60,10 @@ data class BottomNavItem(
     val unselectedIcon: ImageVector,
 )
 
+// 5-tab layout with Give centred: Home | Explore | Give | Chat | Me
 val bottomNavItems = listOf(
-    BottomNavItem(Screen.Home, "Browse", Icons.Filled.Home, Icons.Outlined.Home),
+    BottomNavItem(Screen.Home, "Home", Icons.Filled.Home, Icons.Outlined.Home),
+    BottomNavItem(Screen.Explore, "Explore", Icons.Filled.Explore, Icons.Outlined.Explore),
     BottomNavItem(Screen.Give, "Give", Icons.Filled.Add, Icons.Filled.Add),
     BottomNavItem(Screen.ChatList, "Chat", Icons.AutoMirrored.Filled.Chat, Icons.AutoMirrored.Outlined.Chat),
     BottomNavItem(Screen.Profile, "Me", Icons.Filled.Person, Icons.Outlined.Person),
@@ -63,13 +72,22 @@ val bottomNavItems = listOf(
 @Composable
 fun FreegleNavHost(
     chatRepository: ChatRepository = koinInject(),
+    prefs: FreeglePreferences = koinInject(),
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val scope = rememberCoroutineScope()
 
     val chatRooms by chatRepository.chatRooms.collectAsState()
     val totalUnread = chatRooms.sumOf { it.unseen }.coerceAtMost(99)
+
+    // Onboarding state
+    var showOnboarding by remember { mutableStateOf<Boolean?>(null) }
+    var tourStep by remember { mutableIntStateOf(-1) } // -1 = no tour
+    LaunchedEffect(Unit) {
+        showOnboarding = !prefs.isOnboardingComplete()
+    }
 
     val showBottomBar = bottomNavItems.any { item ->
         currentDestination?.hierarchy?.any { it.route == item.screen.route } == true
@@ -86,6 +104,25 @@ fun FreegleNavHost(
         ),
         label = "pulse_scale",
     )
+
+    // Show onboarding on first launch
+    if (showOnboarding == null) {
+        // Still loading preference
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+    if (showOnboarding == true) {
+        OnboardingScreen(
+            onComplete = {
+                scope.launch { prefs.setOnboardingComplete() }
+                showOnboarding = false
+                tourStep = 0 // Start feature tour after onboarding
+            },
+        )
+        return
+    }
 
     Scaffold(
         bottomBar = {
@@ -123,11 +160,10 @@ fun FreegleNavHost(
                                             ),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Add,
-                                            contentDescription = "Give something away",
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(26.dp),
+                                        // Heart-shaped recycling arrows from Freegle logo
+                                        FreegleHeartArrows(
+                                            modifier = Modifier.size(34.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary,
                                         )
                                     }
                                 },
@@ -182,10 +218,10 @@ fun FreegleNavHost(
             }
         },
     ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
-            modifier = Modifier.padding(innerPadding),
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
@@ -203,8 +239,33 @@ fun FreegleNavHost(
                     },
                 )
             }
+            composable(Screen.Explore.route) {
+                HomeScreen(
+                    onMessageClick = { messageId ->
+                        navController.navigate(Screen.PostDetail.createRoute(messageId))
+                    },
+                    onPostWantedClick = {
+                        navController.navigate(Screen.Give.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
+            }
             composable(Screen.Give.route) {
-                GiveScreen()
+                var postcode by remember { mutableStateOf("") }
+                var locationName by remember { mutableStateOf("") }
+                LaunchedEffect(Unit) {
+                    postcode = prefs.getPostcode()
+                    locationName = prefs.getLocationName()
+                }
+                GiveScreen(
+                    userPostcode = postcode,
+                    userLocationName = locationName,
+                )
             }
             composable(Screen.ChatList.route) {
                 ChatListScreen(
@@ -258,5 +319,24 @@ fun FreegleNavHost(
                 )
             }
         }
+
+        // Feature tour overlay (z-ordered above NavHost inside the Box)
+        if (tourStep >= 0) {
+            FeatureTourOverlay(
+                currentStep = tourStep,
+                onNext = {
+                    tourStep++
+                    if (tourStep >= 5) {
+                        tourStep = -1
+                        scope.launch { prefs.setTourComplete() }
+                    }
+                },
+                onSkip = {
+                    tourStep = -1
+                    scope.launch { prefs.setTourComplete() }
+                },
+            )
+        }
+        } // end Box
     }
 }

@@ -39,6 +39,7 @@ fun ChatListScreen(
 ) {
     val chatRooms by chatRepository.chatRooms.collectAsState()
     val isLoading by chatRepository.isLoading.collectAsState()
+    val error by chatRepository.error.collectAsState()
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -58,6 +59,30 @@ fun ChatListScreen(
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
+        }
+
+        // Error banner
+        if (error != null) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        error ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { scope.launch { chatRepository.loadChatRooms() } }) {
+                        Text("Retry", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
         }
 
         PullToRefreshBox(
@@ -128,8 +153,8 @@ private fun StoryAvatar(
     val hasUnread = chat.unseen > 0
     val initial = (chat.name ?: "?").firstOrNull()?.uppercase() ?: "?"
     val avatarColors = listOf(
-        listOf(Color(0xFF00B050), Color(0xFF4CD681)),
-        listOf(Color(0xFFFF6B35), Color(0xFFFFAB00)),
+        listOf(Color(0xFF008040), Color(0xFF4CD681)),
+        listOf(Color(0xFF1565C0), Color(0xFF42A5F5)),
         listOf(Color(0xFF2196F3), Color(0xFF64B5F6)),
         listOf(Color(0xFF9C27B0), Color(0xFFCE93D8)),
         listOf(Color(0xFFFF5722), Color(0xFFFF8A65)),

@@ -473,6 +473,78 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
   - Coverage matrix: PR #43 in FreegleDocker, file `plans/active/api-test-coverage-matrix.md`
   - Background CI monitor: `/tmp/claude-1000/-home-edward-FreegleDockerWSL/tasks/b2ca4f2.output`
 
+### 2026-02-20 - Freegle Mobile App: Adversarial Review Round 2 + Competitor Patterns
+- **Active plan**: `plans/active/freegle-mobile-app.md`
+- **Status**: All fixes applied, APK builds clean, ready to commit
+- **Completed**:
+  - Ran test data script: 20 more Edinburgh items (IDs 45-64) in Docker DB
+  - APK build verified (BUILD SUCCESSFUL)
+  - Full adversarial review: 11 issues identified across all screens
+  - Competitor research: top 10 patterns from Olio/Nextdoor/FB Marketplace/TGTG/Depop/Vinted/OfferUp/Buy Nothing
+  - **Fixes applied**:
+    - AppNavigation: Pass saved postcode/locationName to GiveScreen (was receiving empty strings)
+    - ChatScreen: Added error handling for message send failure (try/catch, restore message on error)
+    - ChatScreen: Added send error display banner
+    - ChatScreen: Fixed stale Color(0xFF00B050) → 0xFF008040
+    - ChatListScreen: Added error state with retry button (ChatRepository now exposes error flow)
+    - ChatListScreen: Fixed stale Color(0xFF00B050) → 0xFF008040
+    - ChatRepository: Added `_error` StateFlow for error reporting
+    - HomeScreen: Added search debounce (300ms LaunchedEffect instead of per-keystroke)
+    - HomeScreen: Added search loading indicator (CircularProgressIndicator)
+    - HomeScreen: Added shimmer skeleton loading state (replacing plain CircularProgressIndicator)
+    - GiveScreen: Wired "Change" location button (was no-op `onClick = {}`)
+    - GiveScreen: Replaced unverified "Photos get 3× more replies" claim
+    - PostDetailScreen: Added quick reply suggestion chips (3 for Offer, 2 for Wanted)
+  - **Competitor patterns incorporated**:
+    - Skeleton loading states (Facebook Marketplace/Instagram pattern)
+    - Quick reply chips on PostDetailScreen (OfferUp/Olio pattern)
+    - Error states and retry UX across all screens
+- **Next**: Auth persistence with DataStore, CameraX photo capture, map/list toggle
+
+### 2026-02-20 - Freegle Mobile App: Branding & Design Refinements
+- **Active plan**: `plans/active/freegle-mobile-app.md`
+- **Status**: Both branding issues fixed, APK builds and runs on emulator
+- **Completed**:
+  - **Onboarding logo placement**: Moved Freegle logo from top of background photo to the icon badge position (between photo and title). Page 1 shows logo where other pages show themed icons.
+  - **Custom Give button**: Extracted the two heart-shaped recycling arrow paths from the Freegle SVG logo (`user_logo_vector.svg`). Created `FreegleHeartArrows.kt` composable that uses Compose `PathParser` + `Canvas` to draw just the arrows as vectors. Applied SVG coordinate transforms (translate + matrix Y-flip). Replaced the "slapped on" PNG logo in the Give button with the custom-drawn arrow motif.
+  - Both changes verified on emulator — builds clean, visuals correct
+- **Files changed**:
+  - `freegle-app/androidApp/.../ui/components/FreegleHeartArrows.kt` - NEW: Custom composable drawing heart arrows from SVG paths
+  - `freegle-app/androidApp/.../ui/screens/OnboardingScreen.kt` - Logo moved to icon badge position
+  - `freegle-app/androidApp/.../ui/navigation/AppNavigation.kt` - Give button uses FreegleHeartArrows instead of Image
+- **Next**: Continue with remaining app improvements (auth persistence, camera capture, Give flow API)
+
+### 2026-02-20 - Freegle Mobile App: Adversarial Review & Fixes
+- **Active plan**: `plans/active/freegle-mobile-app.md`
+- **Status**: Adversarial review complete, critical fixes applied, APK builds clean
+- **Completed**:
+  - Ran test data script: 20 Edinburgh items created in Docker DB (IDs 25-44)
+  - APK build verified (BUILD SUCCESSFUL)
+  - Full adversarial review: 18 issues identified (4 critical, 5 high, 5 medium, 4 low)
+  - Competitor research: 15 actionable patterns from Olio/Depop/Nextdoor/FB Marketplace/TGTG
+  - **Fixes applied**:
+    - LoginScreen: Added missing back button (users were trapped)
+    - GiveScreen LocationStep: Replaced hardcoded "Edinburgh area" with dynamic location from user's postcode
+    - HomeScreen: Added error state display with retry button
+    - HomeScreen: Added expandable search bar with live results overlay
+    - PostDetailScreen: "I'd love this!" now sends real API message via `replyToMessage` endpoint
+    - ChatScreen: Added in-chat item context header (top competitor pattern)
+    - ChatScreen: Fixed O(n²) indexOf → O(n) itemsIndexed
+    - PostCard.kt: Removed dead PostCard/PostCardSkeleton code, deduplicated date parsing
+    - FreegleApi: Added `replyToMessage` method
+    - create-test-data.php: Removed broken search indexing call
+    - README-APP.md: Updated features documentation
+  - **Still outstanding** (documented, not yet fixed):
+    - GiveScreen posting flow doesn't call any API (needs endpoint design)
+    - Swipe-right doesn't express interest via API (needs UX decision)
+    - AuthManager doesn't persist credentials (needs DataStore integration)
+    - Photo capture is entirely mocked (needs CameraX)
+    - Settings/Notifications rows are no-ops
+    - No pull-to-refresh on HomeScreen
+- **Architecture**: `freegle-app/shared/` (KMP) + `freegle-app/androidApp/` (Compose)
+- **APK**: `freegle-app/androidApp/build/outputs/apk/debug/androidApp-debug.apk`
+- **Next**: Auth persistence with DataStore, CameraX photo capture, Give flow API integration
+
 ### 2026-02-19 - Schema.sql removal + V2 batch consolidation
 - **Status**: All V2 batch work merged to master, CI build triggered, waiting for results.
 - **Completed**:

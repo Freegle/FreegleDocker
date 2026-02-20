@@ -24,6 +24,11 @@ fun LoginScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Sign in") },
+                navigationIcon = {
+                    IconButton(onClick = onLoginSuccess) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
             )
         },
     ) { innerPadding ->

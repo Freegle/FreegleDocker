@@ -161,6 +161,16 @@ class FreegleApi(
         return response.status.isSuccess()
     }
 
+    // Reply to a message (creates a chat room if needed and sends initial message)
+    suspend fun replyToMessage(messageId: Long, message: String): Boolean {
+        val response = client.post("$baseUrl/message/$messageId/reply") {
+            addAuth()
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("message" to message))
+        }
+        return response.status.isSuccess()
+    }
+
     // === User ===
 
     // V2 returns bare User object
@@ -175,6 +185,16 @@ class FreegleApi(
     suspend fun getMe(): User? {
         val myId = authManager.userId.value ?: return null
         return getUser(myId)
+    }
+
+    // V2 returns bare array of messages for a specific user
+    suspend fun getUserMessages(userId: Long, active: Boolean = true): List<MessageSummary> {
+        val response = client.get("$baseUrl/user/$userId/message") {
+            addAuth()
+            if (active) parameter("active", true)
+        }
+        if (!response.status.isSuccess()) return emptyList()
+        return response.body()
     }
 
     // === Notifications ===

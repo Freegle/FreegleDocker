@@ -3,29 +3,37 @@ package org.freegle.app.android.ui.screens
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import org.freegle.app.android.data.FreeglePreferences
 import org.freegle.app.android.ui.components.cleanTitle
 import org.freegle.app.android.ui.components.formatTimeAgo
 import org.freegle.app.api.FreegleApi
@@ -36,7 +44,7 @@ import org.koin.compose.koinInject
 
 enum class MessageFilter(val label: String, val types: List<String>?) {
     ALL("All", null),
-    OFFERS("Free", listOf("Offer")),
+    OFFERS("Offer", listOf("Offer")),
     WANTED("Wanted", listOf("Wanted")),
 }
 
@@ -46,10 +54,13 @@ fun HomeScreen(
     onPostWantedClick: () -> Unit = {},
     messageRepository: MessageRepository = koinInject(),
     api: FreegleApi = koinInject(),
+    prefs: FreeglePreferences = koinInject(),
 ) {
     val messages by messageRepository.messages.collectAsState()
     val isLoading by messageRepository.isLoading.collectAsState()
+    val error by messageRepository.error.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var postcode by remember { mutableStateOf("") }
     var locationName by remember { mutableStateOf("") }
@@ -57,13 +68,86 @@ fun HomeScreen(
     var lng by remember { mutableStateOf(0.0) }
     var showPostcodeDialog by remember { mutableStateOf(false) }
     var searchRadius by remember { mutableStateOf(20.0) }
-    var currentCardIndex by remember { mutableIntStateOf(0) }
     var selectedFilter by remember { mutableStateOf(MessageFilter.ALL) }
+    var showSearch by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf<List<MessageSummary>?>(null) }
+    var isSearching by remember { mutableStateOf(false) }
+    var isDetectingLocation by remember { mutableStateOf(false) }
+
+    // Restore saved location on first launch, or auto-detect GPS
+    LaunchedEffect(Unit) {
+        val savedPostcode = prefs.getPostcode()
+        if (savedPostcode.isNotEmpty()) {
+            postcode = savedPostcode
+            locationName = prefs.getLocationName()
+            lat = prefs.getLat()
+            lng = prefs.getLng()
+        } else {
+            // Auto-detect: check if we already have location permission
+            val hasPermission = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (hasPermission) {
+                isDetectingLocation = true
+                detectAndSetLocation(context, api, prefs) { pc, name, newLat, newLng ->
+                    if (pc.isNotEmpty()) {
+                        postcode = pc
+                        locationName = name
+                        lat = newLat
+                        lng = newLng
+                    }
+                    isDetectingLocation = false
+                }
+            }
+        }
+    }
+
+    // GPS location permission launcher
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            isDetectingLocation = true
+            scope.launch {
+                detectAndSetLocation(context, api, prefs) { pc, name, newLat, newLng ->
+                    if (pc.isNotEmpty()) {
+                        postcode = pc
+                        locationName = name
+                        lat = newLat
+                        lng = newLng
+                    } else {
+                        showPostcodeDialog = true
+                    }
+                    isDetectingLocation = false
+                }
+            }
+        } else {
+            // Permission denied - show manual postcode dialog
+            showPostcodeDialog = true
+        }
+    }
+
+    // Cache user info (userId -> displayname, profileUrl)
+    val userCache = remember { mutableStateMapOf<Long, Pair<String?, String?>>() }
 
     LaunchedEffect(lat, lng, selectedFilter, searchRadius) {
         if (lat != 0.0 && lng != 0.0) {
-            currentCardIndex = 0
             messageRepository.loadLocalMessages(lat, lng, radiusKm = searchRadius, types = selectedFilter.types)
+        }
+    }
+
+    // Pre-fetch user info for visible messages
+    LaunchedEffect(messages) {
+        val userIds = messages.mapNotNull { it.fromuser }.distinct()
+        for (userId in userIds) {
+            if (userId !in userCache) {
+                val user = api.getUser(userId)
+                userCache[userId] = Pair(
+                    user?.displayname ?: user?.firstname,
+                    user?.profile?.url ?: user?.profile?.paththumb,
+                )
+            }
         }
     }
 
@@ -78,18 +162,44 @@ fun HomeScreen(
                 lat = newLat
                 lng = newLng
                 showPostcodeDialog = false
-                currentCardIndex = 0
+                scope.launch { prefs.saveLocation(pc, name, newLat, newLng) }
             },
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         when {
             postcode.isEmpty() -> {
-                LocationEmptyState(onSetPostcode = { showPostcodeDialog = true })
+                LocationEmptyState(
+                    isDetecting = isDetectingLocation,
+                    onDetectLocation = {
+                        val hasPermission = ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (hasPermission) {
+                            isDetectingLocation = true
+                            scope.launch {
+                                detectAndSetLocation(context, api, prefs) { pc, name, newLat, newLng ->
+                                    if (pc.isNotEmpty()) {
+                                        postcode = pc
+                                        locationName = name
+                                        lat = newLat
+                                        lng = newLng
+                                    } else {
+                                        showPostcodeDialog = true
+                                    }
+                                    isDetectingLocation = false
+                                }
+                            }
+                        } else {
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        }
+                    },
+                    onSetPostcode = { showPostcodeDialog = true },
+                )
             }
             isLoading && messages.isEmpty() -> {
-                CardStackLoadingState()
+                FeedSkeletonLoading()
             }
             messages.isEmpty() && !isLoading -> {
                 NoItemsState(
@@ -98,260 +208,237 @@ fun HomeScreen(
                     onChangePostcode = { showPostcodeDialog = true },
                 )
             }
-            currentCardIndex >= messages.size -> {
-                EndOfStackState(
-                    onRestart = {
-                        currentCardIndex = 0
-                        scope.launch {
-                            messageRepository.loadLocalMessages(lat, lng, radiusKm = searchRadius, types = selectedFilter.types)
-                        }
-                    },
-                )
-            }
             else -> {
-                SwipeCardStack(
-                    messages = messages,
-                    currentIndex = currentCardIndex,
-                    onAdvance = { currentCardIndex++ },
-                    onCardClick = onMessageClick,
-                )
-            }
-        }
-
-        // Overlay: location + filter chips at top
-        if (postcode.isNotEmpty() && !isLoading) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                MessageFilter.entries.forEach { filter ->
-                    FilterChip(
-                        selected = selectedFilter == filter,
-                        onClick = {
-                            selectedFilter = filter
-                            currentCardIndex = 0
-                        },
-                        label = { Text(filter.label, style = MaterialTheme.typography.labelSmall) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        ),
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                FilledTonalIconButton(
-                    onClick = { showPostcodeDialog = true },
-                    modifier = Modifier.size(36.dp),
+                // Header: location + filter chips + search
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = if (locationName.isNotEmpty()) locationName else "Location",
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SwipeCardStack(
-    messages: List<MessageSummary>,
-    currentIndex: Int,
-    onAdvance: () -> Unit,
-    onCardClick: (Long) -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val offsetX = remember { Animatable(0f) }
-    val offsetY = remember { Animatable(0f) }
-
-    LaunchedEffect(currentIndex) {
-        offsetX.snapTo(0f)
-        offsetY.snapTo(0f)
-    }
-
-    val swipeThreshold = 130f
-    val rightAlpha = (offsetX.value / swipeThreshold).coerceIn(0f, 1f)
-    val leftAlpha = (-offsetX.value / swipeThreshold).coerceIn(0f, 1f)
-    val rotationDeg = offsetX.value * 0.035f
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Background cards (depth effect: 2nd and 3rd cards behind)
-        val backCount = minOf(2, messages.size - currentIndex - 1)
-        for (i in backCount downTo 1) {
-            val bgMessage = messages[currentIndex + i]
-            val scale = 1f - i * 0.05f
-            val yTranslate = (-i * 18).toFloat()
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.78f)
-                    .align(Alignment.Center)
-                    .padding(horizontal = 20.dp)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        translationY = yTranslate
+                    // Location header
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Your community",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    locationName.ifEmpty { postcode },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
+                        FilledTonalIconButton(
+                            onClick = { showSearch = !showSearch },
+                            modifier = Modifier.size(38.dp),
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        FilledTonalIconButton(
+                            onClick = { showPostcodeDialog = true },
+                            modifier = Modifier.size(38.dp),
+                        ) {
+                            Icon(Icons.Default.EditLocationAlt, contentDescription = "Change location", modifier = Modifier.size(20.dp))
+                        }
                     }
-                    .clip(RoundedCornerShape(28.dp)),
-            ) {
-                BackgroundCard(message = bgMessage)
-            }
-        }
 
-        // Top swipeable card
-        if (currentIndex < messages.size) {
-            val message = messages[currentIndex]
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.78f)
-                    .align(Alignment.Center)
-                    .padding(horizontal = 16.dp)
-                    .graphicsLayer {
-                        translationX = offsetX.value
-                        translationY = offsetY.value
-                        rotationZ = rotationDeg
+                    Spacer(Modifier.height(10.dp))
+
+                    // Filter chips
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        MessageFilter.entries.forEach { filter ->
+                            FilterChip(
+                                selected = selectedFilter == filter,
+                                onClick = {
+                                    selectedFilter = filter
+                                    searchResults = null
+                                    searchQuery = ""
+                                    showSearch = false
+                                },
+                                label = { Text(filter.label) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                ),
+                            )
+                        }
                     }
-                    .clip(RoundedCornerShape(28.dp))
-                    .pointerInput(currentIndex) {
-                        detectDragGestures(
-                            onDragEnd = {
-                                scope.launch {
-                                    when {
-                                        offsetX.value > swipeThreshold -> {
-                                            offsetX.animateTo(2200f, tween(280, easing = FastOutLinearInEasing))
-                                            onAdvance()
-                                        }
-                                        offsetX.value < -swipeThreshold -> {
-                                            offsetX.animateTo(-2200f, tween(280, easing = FastOutLinearInEasing))
-                                            onAdvance()
-                                        }
-                                        else -> {
-                                            launch { offsetX.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 700f)) }
-                                            launch { offsetY.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 700f)) }
-                                        }
+
+                    // Search bar
+                    if (showSearch) {
+                        Spacer(Modifier.height(8.dp))
+                        // Debounced search
+                        LaunchedEffect(searchQuery) {
+                            if (searchQuery.length >= 2) {
+                                isSearching = true
+                                kotlinx.coroutines.delay(300) // Debounce 300ms
+                                searchResults = messageRepository.searchMessages(searchQuery)
+                                isSearching = false
+                            } else {
+                                searchResults = null
+                                isSearching = false
+                            }
+                        }
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Search for items\u2026") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = ""; searchResults = null }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
                                     }
                                 }
                             },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                scope.launch {
-                                    offsetX.snapTo(offsetX.value + dragAmount.x)
-                                    offsetY.snapTo(offsetY.value + dragAmount.y)
-                                }
-                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
                         )
-                    },
-            ) {
-                SwipeCard(message = message, onClick = { onCardClick(message.id) })
+                    }
+                }
 
-                // "YES!" green overlay when swiping right
-                if (rightAlpha > 0.05f) {
+                // Person-centred feed
+                val giverGroups = remember(messages, userCache.size) {
+                    val (withUser, noUser) = messages.partition { it.fromuser != null }
+                    val groups = withUser
+                        .groupBy { it.fromuser!! }
+                        .map { (userId, msgs) ->
+                            GiverGroup(
+                                userId = userId,
+                                userName = userCache[userId]?.first,
+                                userProfileUrl = userCache[userId]?.second,
+                                messages = msgs.sortedByDescending { it.arrival ?: it.date },
+                                location = msgs.firstOrNull()?.location?.areaname
+                                    ?: msgs.firstOrNull()?.messageGroups?.firstOrNull()?.namedisplay,
+                            )
+                        }
+                        .sortedByDescending { it.messages.size }
+                        .toMutableList()
+
+                    // Include messages with no user info in a generic group
+                    if (noUser.isNotEmpty()) {
+                        groups.add(GiverGroup(
+                            userId = 0L,
+                            userName = null,
+                            userProfileUrl = null,
+                            messages = noUser.sortedByDescending { it.arrival ?: it.date },
+                            location = noUser.firstOrNull()?.location?.areaname,
+                        ))
+                    }
+                    groups.toList()
+                }
+
+                // Search results overlay
+                if (isSearching) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF00B050).copy(alpha = (rightAlpha * 0.45f).coerceAtMost(0.45f))),
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (rightAlpha > 0.5f) {
-                            Text(
-                                "YES!",
-                                style = MaterialTheme.typography.displaySmall,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White,
-                            )
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
+                } else if (searchResults != null) {
+                    SearchResultsList(
+                        results = searchResults!!,
+                        query = searchQuery,
+                        onMessageClick = { id ->
+                            onMessageClick(id)
+                            showSearch = false
+                            searchQuery = ""
+                            searchResults = null
+                        },
+                    )
+                } else {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    PullToRefreshBox(
+                        isRefreshing = isLoading,
+                        onRefresh = {
+                            scope.launch {
+                                messageRepository.loadLocalMessages(lat, lng, radiusKm = searchRadius, types = selectedFilter.types)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        LazyColumn(
+                            contentPadding = PaddingValues(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            items(giverGroups, key = { it.userId }) { group ->
+                                GiverSection(
+                                    group = group,
+                                    onMessageClick = onMessageClick,
+                                )
+                            }
+
+                            // End of feed
+                            item {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Icon(
+                                        Icons.Default.DoneAll,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(40.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        "You\u2019ve seen all nearby items",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    OutlinedButton(onClick = onPostWantedClick) {
+                                        Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Post a Wanted")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                // "SKIP" gray overlay when swiping left
-                if (leftAlpha > 0.05f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = (leftAlpha * 0.4f).coerceAtMost(0.4f))),
-                        contentAlignment = Alignment.Center,
+                // Error snackbar
+                if (error != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
                     ) {
-                        if (leftAlpha > 0.5f) {
-                            Text(
-                                "SKIP",
-                                style = MaterialTheme.typography.displaySmall,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White,
-                            )
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(error ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                scope.launch { messageRepository.loadLocalMessages(lat, lng, radiusKm = searchRadius, types = selectedFilter.types) }
+                            }) { Text("Retry", style = MaterialTheme.typography.labelSmall) }
                         }
-                    }
-                }
-            }
-
-            // Action buttons and counter beneath the card
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    "${currentIndex + 1} / ${messages.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Skip
-                    FloatingActionButton(
-                        onClick = {
-                            scope.launch {
-                                offsetX.animateTo(-2200f, tween(280, easing = FastOutLinearInEasing))
-                                onAdvance()
-                            }
-                        },
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(54.dp),
-                        elevation = FloatingActionButtonDefaults.elevation(2.dp),
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Skip")
-                    }
-                    // Interested
-                    FloatingActionButton(
-                        onClick = {
-                            scope.launch {
-                                offsetX.animateTo(2200f, tween(280, easing = FastOutLinearInEasing))
-                                onAdvance()
-                            }
-                        },
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(68.dp),
-                        elevation = FloatingActionButtonDefaults.elevation(6.dp),
-                    ) {
-                        Icon(Icons.Default.Favorite, contentDescription = "Interested!", modifier = Modifier.size(30.dp))
-                    }
-                    // Save / Bookmark
-                    FloatingActionButton(
-                        onClick = {
-                            scope.launch {
-                                offsetY.animateTo(-2200f, tween(280, easing = FastOutLinearInEasing))
-                                onAdvance()
-                            }
-                        },
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(54.dp),
-                        elevation = FloatingActionButtonDefaults.elevation(2.dp),
-                    ) {
-                        Icon(Icons.Default.Bookmark, contentDescription = "Save for later")
                     }
                 }
             }
@@ -360,7 +447,228 @@ private fun SwipeCardStack(
 }
 
 @Composable
-private fun SwipeCard(
+private fun FeedSkeletonLoading() {
+    val shimmerColors = listOf(
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+    )
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shimmer_translate",
+    )
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = androidx.compose.ui.geometry.Offset(translateAnim - 200f, 0f),
+        end = androidx.compose.ui.geometry.Offset(translateAnim, 0f),
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+    ) {
+        // Header skeleton
+        Box(
+            modifier = Modifier
+                .width(180.dp)
+                .height(28.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(brush),
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .width(120.dp)
+                .height(16.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(brush),
+        )
+        Spacer(Modifier.height(16.dp))
+
+        // Skeleton cards
+        repeat(4) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(brush),
+                        )
+                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .height(14.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(brush),
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .width(100.dp)
+                                    .height(10.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(brush),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        repeat(3) {
+                            Box(
+                                modifier = Modifier
+                                    .width(130.dp)
+                                    .height(100.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(brush),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class GiverGroup(
+    val userId: Long,
+    val userName: String?,
+    val userProfileUrl: String?,
+    val messages: List<MessageSummary>,
+    val location: String?,
+)
+
+@Composable
+private fun GiverSection(
+    group: GiverGroup,
+    onMessageClick: (Long) -> Unit,
+) {
+    val name = group.userName ?: "A Freegler"
+    val offerCount = group.messages.count { it.type == "Offer" }
+    val wantedCount = group.messages.count { it.type == "Wanted" }
+    val subtitle = buildString {
+        if (offerCount > 0) append("$offerCount ${if (offerCount == 1) "item" else "items"} to give away")
+        if (offerCount > 0 && wantedCount > 0) append(" \u00b7 ")
+        if (wantedCount > 0) append("$wantedCount wanted")
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Person header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // Avatar
+                if (group.userProfileUrl != null) {
+                    AsyncImage(
+                        model = group.userProfileUrl,
+                        contentDescription = name,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            name.first().uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // Location
+                if (group.location != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            group.location,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Item thumbnails - horizontal scroll
+            if (group.messages.size == 1) {
+                // Single item — show as a full-width card
+                val msg = group.messages.first()
+                SingleItemCard(message = msg, onClick = { onMessageClick(msg.id) })
+            } else {
+                // Multiple items — horizontal row
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(group.messages, key = { it.id }) { msg ->
+                        ItemThumbnail(message = msg, onClick = { onMessageClick(msg.id) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SingleItemCard(
     message: MessageSummary,
     onClick: () -> Unit,
 ) {
@@ -368,129 +676,91 @@ private fun SwipeCard(
         ?: message.messageAttachments?.firstOrNull()?.paththumb
     val title = cleanTitle(message.subject ?: "Item")
     val isOffer = message.type == "Offer"
-    val location = message.location?.areaname
-        ?: message.messageGroups?.firstOrNull()?.namedisplay
     val timeStr = message.arrival ?: message.date
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF1C1B1A)),
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        if (imageUrl != null) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            // Gradient placeholder using initials
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = if (isOffer)
-                                listOf(Color(0xFF003318), Color(0xFF00B050))
-                            else
-                                listOf(Color(0xFF3D1800), Color(0xFFFF6B35)),
-                        ),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = title.take(2).uppercase(),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = Color.White.copy(alpha = 0.25f),
-                    fontWeight = FontWeight.Black,
-                )
-            }
-        }
-
-        // Tap to view detail - subtle hint top-right
-        Surface(
-            onClick = onClick,
+        Row(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(14.dp),
-            shape = CircleShape,
-            color = Color.Black.copy(alpha = 0.28f),
-        ) {
-            Icon(
-                Icons.Default.OpenInFull,
-                contentDescription = "View details",
-                modifier = Modifier
-                    .padding(8.dp)
-                    .size(16.dp),
-                tint = Color.White,
-            )
-        }
-
-        // Bottom gradient + info
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
-                        startY = 0f,
-                        endY = Float.POSITIVE_INFINITY,
-                    ),
-                )
-                .padding(horizontal = 20.dp, vertical = 20.dp),
+                .height(IntrinsicSize.Min),
         ) {
-            Column {
-                // Type badge
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isOffer) Color(0xFF00B050) else Color(0xFFFF6B35),
-                    modifier = Modifier.padding(bottom = 10.dp),
+            // Thumbnail
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    modifier = Modifier
+                        .width(100.dp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .width(100.dp)
+                        .fillMaxHeight()
+                        .background(
+                            if (isOffer) Color(0xFF008040).copy(alpha = 0.15f)
+                            else Color(0xFF1565C0).copy(alpha = 0.15f),
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (isOffer) "FREE" else "WANTED",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        title.take(2).uppercase(),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+
+            // Details
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(12.dp),
+            ) {
+                // Type badge
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+                ) {
+                    Text(
+                        if (isOffer) "OFFER" else "WANTED",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                     )
                 }
-
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                )
-
                 Spacer(Modifier.height(6.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (location != null) {
-                        Icon(
-                            Icons.Default.LocationOn,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = Color.White.copy(alpha = 0.75f),
-                        )
-                        Text(
-                            text = location,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.75f),
-                        )
-                    }
-                    if (timeStr != null) {
-                        Text(
-                            text = "· ${formatTimeAgo(timeStr)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.55f),
-                        )
-                    }
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (timeStr != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        formatTimeAgo(timeStr),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (message.replycount > 0) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "${message.replycount} ${if (message.replycount == 1) "reply" else "replies"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -498,38 +768,141 @@ private fun SwipeCard(
 }
 
 @Composable
-private fun BackgroundCard(message: MessageSummary) {
+private fun ItemThumbnail(
+    message: MessageSummary,
+    onClick: () -> Unit,
+) {
     val imageUrl = message.messageAttachments?.firstOrNull()?.paththumb
         ?: message.messageAttachments?.firstOrNull()?.path
+    val title = cleanTitle(message.subject ?: "Item")
     val isOffer = message.type == "Offer"
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF1C1B1A)),
+    Card(
+        onClick = onClick,
+        modifier = Modifier.width(130.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        if (imageUrl != null) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
+        Column {
+            // Image
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        if (isOffer) Color(0xFF00B050).copy(alpha = 0.4f)
-                        else Color(0xFFFF6B35).copy(alpha = 0.4f),
-                    ),
+                    .fillMaxWidth()
+                    .height(100.dp),
+            ) {
+                if (imageUrl != null) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                if (isOffer) Color(0xFF008040).copy(alpha = 0.12f)
+                                else Color(0xFF1565C0).copy(alpha = 0.12f),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            title.take(2).uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+
+                // Type badge overlay
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+                ) {
+                    Text(
+                        if (isOffer) "OFFER" else "WANTED",
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.85),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+
+            // Title
+            Text(
+                title,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.Medium,
             )
         }
     }
 }
 
 @Composable
-private fun LocationEmptyState(onSetPostcode: () -> Unit) {
+private fun SearchResultsList(
+    results: List<MessageSummary>,
+    query: String,
+    onMessageClick: (Long) -> Unit,
+) {
+    if (results.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "No results for \u201c$query\u201d",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    } else {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(results) { msg ->
+                ListItem(
+                    headlineContent = {
+                        Text(cleanTitle(msg.subject ?: "Item"), maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+                    },
+                    supportingContent = {
+                        Text(msg.location?.areaname ?: "", style = MaterialTheme.typography.bodySmall)
+                    },
+                    leadingContent = {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (msg.type == "Offer") Color(0xFF008040) else Color(0xFF1565C0),
+                        ) {
+                            Text(
+                                if (msg.type == "Offer") "OFFER" else "WANTED",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                            )
+                        }
+                    },
+                    modifier = Modifier.clickable { onMessageClick(msg.id) },
+                )
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationEmptyState(
+    isDetecting: Boolean,
+    onDetectLocation: () -> Unit,
+    onSetPostcode: () -> Unit,
+) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -541,54 +914,53 @@ private fun LocationEmptyState(onSetPostcode: () -> Unit) {
                     .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    Icons.Default.LocationOn,
-                    contentDescription = null,
-                    modifier = Modifier.size(60.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                if (isDetecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(60.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             Spacer(Modifier.height(32.dp))
             Text(
-                "What's free nearby?",
+                if (isDetecting) "Finding your location..." else "What's free nearby?",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                "Thousands of items are being given away near you right now. Swipe through them like you would photos.",
+                if (isDetecting) "We're detecting your location so we can show you free items nearby."
+                else "Items are being given away near you right now. Browse what your neighbours are offering.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(32.dp))
-            Button(
-                onClick = onSetPostcode,
-                modifier = Modifier
-                    .fillMaxWidth(0.75f)
-                    .height(52.dp),
-            ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Find items near me", style = MaterialTheme.typography.titleSmall)
+            if (!isDetecting) {
+                Button(
+                    onClick = onDetectLocation,
+                    modifier = Modifier
+                        .fillMaxWidth(0.75f)
+                        .height(52.dp),
+                ) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Find items near me", style = MaterialTheme.typography.titleSmall)
+                }
+                Spacer(Modifier.height(12.dp))
+                TextButton(onClick = onSetPostcode) {
+                    Text("Enter postcode instead")
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun CardStackLoadingState() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.78f)
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -626,36 +998,38 @@ private fun NoItemsState(
     }
 }
 
-@Composable
-private fun EndOfStackState(onRestart: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(40.dp),
-        ) {
-            Icon(
-                Icons.Default.DoneAll,
-                contentDescription = null,
-                modifier = Modifier.size(72.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "All caught up!",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "You've seen all nearby items. Check back soon - new things appear every day.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = onRestart) { Text("Start over") }
+/**
+ * Attempts GPS-based location detection, reverse-geocodes to a postcode via the API,
+ * and calls [onResult] with the resolved location data.
+ */
+@Suppress("MissingPermission") // Caller checks permission before invoking
+private suspend fun detectAndSetLocation(
+    context: android.content.Context,
+    api: FreegleApi,
+    prefs: FreeglePreferences,
+    onResult: (postcode: String, locationName: String, lat: Double, lng: Double) -> Unit,
+) {
+    try {
+        val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as LocationManager
+        // Try GPS first, then network
+        val lastLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+
+        if (lastLocation != null) {
+            val response = api.resolveLocation(lastLocation.latitude, lastLocation.longitude)
+            val loc = response?.location ?: response?.locations?.firstOrNull()
+            if (loc != null) {
+                val pc = loc.name ?: ""
+                val name = loc.areaname ?: loc.area?.name ?: ""
+                prefs.saveLocation(pc, name, loc.lat, loc.lng)
+                onResult(pc, name, loc.lat, loc.lng)
+                return
+            }
         }
+        // No GPS fix or API couldn't resolve - callback with empty to show manual entry
+        onResult("", "", 0.0, 0.0)
+    } catch (_: Exception) {
+        onResult("", "", 0.0, 0.0)
     }
 }
 

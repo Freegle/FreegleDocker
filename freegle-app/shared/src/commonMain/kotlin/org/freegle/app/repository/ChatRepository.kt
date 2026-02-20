@@ -18,11 +18,16 @@ class ChatRepository(private val api: FreegleApi) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
     suspend fun loadChatRooms() {
         _isLoading.value = true
+        _error.value = null
         try {
             _chatRooms.value = api.getChatRooms()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            _error.value = e.message ?: "Couldn\u2019t load conversations"
         } finally {
             _isLoading.value = false
         }
@@ -30,9 +35,11 @@ class ChatRepository(private val api: FreegleApi) {
 
     suspend fun loadMessages(chatId: Long) {
         _isLoading.value = true
+        _error.value = null
         try {
             _currentMessages.value = api.getChatMessages(chatId)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            _error.value = e.message ?: "Couldn\u2019t load messages"
         } finally {
             _isLoading.value = false
         }

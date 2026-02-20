@@ -3,10 +3,12 @@ package org.freegle.app.android.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Freegle brand colours
-val FreegleGreen = Color(0xFF00B050)
-val FreegleGreenDark = Color(0xFF008A3E)
+// Primary green — darkened to pass WCAG AA (5:1 contrast with white)
+val FreegleGreen = Color(0xFF008040)
+val FreegleGreenDark = Color(0xFF005C2E)
 val FreegleGreenLight = Color(0xFF4CD681)
-val FreegleAccent = Color(0xFFFF6B35) // Warm orange for CTAs / Wanted items
+val FreegleGreenBright = Color(0xFF00B050) // Original bright green — decorative only
+val FreegleBlue = Color(0xFF1565C0)        // Blue for Wanted items
 val FreegleError = Color(0xFFD32F2F)
 
 // Warm surface tones (not grey!)
@@ -27,5 +29,5 @@ val DarkSurfaceVariant = Color(0xFF3D3A36)
 // Containers
 val GreenContainer = Color(0xFFD4F5E0)
 val OnGreenContainer = Color(0xFF003E1C)
-val OrangeContainer = Color(0xFFFFE0CC)
-val OnOrangeContainer = Color(0xFF5C2600)
+val BlueContainer = Color(0xFFE3F2FD)
+val OnBlueContainer = Color(0xFF0D47A1)
