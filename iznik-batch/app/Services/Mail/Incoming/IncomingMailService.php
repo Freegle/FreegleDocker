@@ -1808,6 +1808,26 @@ class IncomingMailService
             }
         }
 
+        // If the last message in this chat is held for review, hold this one too.
+        // This includes messages by any user. For example, suppose we add a Mod Note
+        // to a user2user chat - we don't want to send out that chat until the messages
+        // that triggered it have been reviewed.
+        if (! $reviewRequired) {
+            $lastHeld = DB::table('chat_messages')
+                ->where('chatid', $chat->id)
+                ->orderByDesc('id')
+                ->limit(1)
+                ->value('reviewrequired');
+
+            if ($lastHeld) {
+                $reviewRequired = true;
+                $reportReason = 'Last';
+                Log::info('Chat message held for review (previous message in chat is held)', [
+                    'chat_id' => $chat->id,
+                ]);
+            }
+        }
+
         // Map reportreason to valid enum values for the chat_messages table.
         // The DB column is enum('Spam','Other','Last','Force','Fully','TooMany','User','UnknownMessage','SameImage','DodgyImage').
         // Our spam check reasons are more detailed, so map them to the enum.
