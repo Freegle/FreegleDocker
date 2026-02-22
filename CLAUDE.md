@@ -44,6 +44,44 @@ The Yesterday server (yesterday.ilovefreegle.org) runs with specific configurati
 - 8181: API v1 (not accessible externally via firewall)
 - 8193: API v2 (not accessible externally via firewall)
 
+## Docker Compose Profiles
+
+Every service in docker-compose.yml has at least one profile. `COMPOSE_PROFILES` must be set in `.env` or nothing starts.
+
+### Profile Definitions
+
+| Profile | Purpose | Key Services |
+|---------|---------|-------------|
+| `frontend` | Web-facing APIs | apiv1, apiv2, delivery, tusd, redis, beanstalkd |
+| `backend` | Background processing | loki, mjml, redis, rspamd, spamassassin, ai-support-helper |
+| `production` | Production batch jobs | batch-prod (requires .env.background) |
+| `mail` | Incoming mail | postfix (requires MX records pointing to host) |
+| `database` | Local databases | percona (MySQL), postgres (PostGIS) |
+| `dev` | Development/testing tools | Traefik, status, dev containers, mailpit, phpmyadmin, batch, playwright, MCP tools |
+| `monitoring` | Log shipping | alloy |
+| `build` | Base image build only | base |
+| `dev-live` | Dev with production APIs | freegle-dev-live, modtools-dev-live |
+| `prod-live` | API v2 with production DB | apiv2-live |
+| `backup` | Loki backup | loki-backup |
+
+### COMPOSE_PROFILES Per Scenario
+
+| Scenario | COMPOSE_PROFILES |
+|----------|-----------------|
+| **Local dev** | `frontend,database,backend,dev,monitoring` |
+| **Live backend** | `backend,production,mail` |
+| **Live frontend** | `frontend` |
+| **Yesterday** | `frontend,database,backend,dev,monitoring` (+ override file) |
+| **CircleCI** | `frontend,database,backend,dev,monitoring` |
+
+### Cross-Profile Dependencies
+
+Dependencies between services in different profiles use `required: false` so they're ignored when the dependency's profile is inactive. This allows `frontend` to run standalone without `database` services (using external DB on live).
+
+### Yesterday Override
+
+The yesterday override uses `deploy.replicas: 0` (not profile overrides) to disable services, because Docker Compose merges profile arrays instead of replacing them.
+
 ## Container Architecture
 
 ### Freegle Development vs Production
@@ -64,7 +102,7 @@ The Yesterday server (yesterday.ilovefreegle.org) runs with specific configurati
 The `batch-prod` container runs Laravel scheduled jobs against the production database. It replaces the crontab entry on bulk3-internal.
 
 **Configuration:**
-- Uses `profiles: [production]` - only starts when production profile is enabled
+- Uses `profiles: [backend]` - only starts when backend profile is enabled
 - Secrets stored in `.env.background` (gitignored) - see `.env.background.example` for template
 - Infrastructure IPs configured in `.env` (DB_HOST_IP, MAIL_HOST_IP)
 - Connects to production database via `db-host` (extra_hosts mapping)
@@ -256,7 +294,9 @@ source .env
 
 Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
 
-**See [.circleci/README.md](.circleci/README.md)** for full CircleCI documentation including SSH debugging via API (the preferred method for diagnosing CI failures).
+**See [.circleci/README.md](.circleci/README.md)** for full CircleCI documentation including SSH debugging via API.
+
+**MANDATORY: After every `git push` to master that triggers CI, immediately cancel the auto-triggered pipeline and rerun it with SSH enabled.** This ensures you can SSH into the CI machine to diagnose and fix test failures live, rather than iterating blind. Never just push and passively wait for results. See `.circleci/README.md` "SSH Debugging" section for the API commands.
 
 ## Docker Build Caching
 

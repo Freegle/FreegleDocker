@@ -1,43 +1,62 @@
 # Yesterday Server Override Configuration
 # Copy this to docker-compose.override.yml on the yesterday server
 #
+# Set in .env: COMPOSE_PROFILES=frontend,database,backend,dev,monitoring
+#
 # This configuration:
-# - Disables production containers (freegle-prod-local, modtools-prod-local)
+# - Disables production-build containers (not needed on Yesterday, dev containers are faster)
 # - Disables MCP containers (not needed on Yesterday, and port 8084 conflicts with 2FA)
+# - Disables playwright and apiv1-phpunit (not needed on Yesterday)
 # - Exposes dev containers on external ports for yesterday access
-# - Uses the updated container names (freegle-dev-local, modtools-dev-local)
+#
+# Note: We use deploy.replicas: 0 instead of overriding profiles because
+# Docker Compose merges profile arrays (so profiles: [disabled] gets combined
+# with the base profile, not replaced).
 
 services:
-  # Disable production containers by assigning them to a profile that won't run
+  # Disable production-build containers (dev containers are sufficient for Yesterday)
   freegle-prod-local:
-    profiles:
-      - disabled
+    deploy:
+      replicas: 0
 
   modtools-prod-local:
-    profiles:
-      - disabled
+    deploy:
+      replicas: 0
 
   # Disable MCP support tools (not needed on Yesterday, mcp-query-sanitizer uses port 8084
   # which conflicts with yesterday-2fa)
   mcp-query-sanitizer:
-    profiles:
-      - disabled
+    deploy:
+      replicas: 0
 
   mcp-interface:
-    profiles:
-      - disabled
+    deploy:
+      replicas: 0
 
   mcp-pseudonymizer:
-    profiles:
-      - disabled
+    deploy:
+      replicas: 0
 
-  mcp-pseudonymizer-data:
-    profiles:
-      - disabled
+  # Note: batch-prod (profile: production) and postfix (profile: mail) don't start
+  # because Yesterday doesn't enable those profiles.
 
-  mcp-audit-logs:
-    profiles:
-      - disabled
+  # Disable test containers (not needed on Yesterday)
+  playwright:
+    deploy:
+      replicas: 0
+
+  apiv1-phpunit:
+    deploy:
+      replicas: 0
+
+  # Remap API ports to avoid conflicts with yesterday-traefik (which uses 8181 and 8193)
+  apiv1:
+    ports: !reset
+      - "8182:80"
+
+  apiv2:
+    ports: !reset
+      - "8195:8192"
 
   # Expose dev containers on external ports for yesterday server
   freegle-dev-local:
@@ -47,3 +66,4 @@ services:
   modtools-dev-local:
     ports:
       - "3003:3000"
+

@@ -1931,52 +1931,76 @@ const httpServer = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === "/api/tests/laravel" && req.method === "POST") {
     console.log("Starting Laravel tests...");
 
-    // Check if already running
-    if (testStatuses.laravelTests && testStatuses.laravelTests.status === "running") {
-      res.writeHead(409, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Laravel tests are already running" }));
-      return;
-    }
+    // Parse request body for filter parameter
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
 
-    // Initialize test status
-    testStatuses.laravelTests = {
-      status: "running",
-      message: "Starting Laravel tests...",
-      logs: "",
-      progress: { completed: 0, total: 0, passed: 0, failed: 0, current: "" },
-      startTime: Date.now(),
-    };
+    req.on("end", () => {
+      let filter = "";
+      if (body) {
+        try {
+          const data = JSON.parse(body);
+          if (data.filter) {
+            filter = ` --filter "${data.filter}"`;
+            console.log(`Running Laravel tests with filter: ${data.filter}`);
+          }
+        } catch (e) {
+          console.log("Error parsing request body:", e);
+        }
+      }
 
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "started" }));
+      // Check if already running
+      if (testStatuses.laravelTests && testStatuses.laravelTests.status === "running") {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Laravel tests are already running" }));
+        return;
+      }
 
-    // Run tests asynchronously
-    const { spawn } = require("child_process");
-    const testProcess = spawn(
-      "sh",
-      [
-        "-c",
-        `
-        set -e
-        echo "Setting up Laravel test environment..."
+      // Initialize test status
+      testStatuses.laravelTests = {
+        status: "running",
+        message: filter ? `Starting Laravel test (filtered)...` : "Starting Laravel tests...",
+        logs: "",
+        progress: { completed: 0, total: 0, passed: 0, failed: 0, current: "" },
+        startTime: Date.now(),
+      };
 
-        # Stop supervisor workers before running tests.
-        # In CI, supervisor isn't running (CI=true skips it in entrypoint.sh).
-        # In local dev, this stops background workers to prevent interference.
-        echo "Stopping supervisor workers..."
-        docker exec freegle-batch supervisorctl stop all 2>&1 || true
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "started", filter: filter ? filter.trim() : undefined }));
 
-        # Set up fresh test database
-        echo "Setting up fresh test database..."
-        docker exec freegle-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
-        docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
+      // Build the phpunit command - skip coverage when filtering for speed
+      const coverageFlag = filter ? "" : " --coverage-clover=/tmp/laravel-coverage.xml";
+      const phpunitCmd = `docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature${filter}${coverageFlag} 2>&1`;
 
-        echo "Running Laravel tests with coverage..."
-        docker exec -e VIA_STATUS_CONTAINER=1 freegle-batch vendor/bin/phpunit --testsuite=Unit,Feature --coverage-clover=/tmp/laravel-coverage.xml 2>&1
-      `,
-      ],
-      { stdio: "pipe" }
-    );
+      // Run tests asynchronously
+      const { spawn } = require("child_process");
+      const testProcess = spawn(
+        "sh",
+        [
+          "-c",
+          `
+          set -e
+          echo "Setting up Laravel test environment..."
+
+          # Stop supervisor workers before running tests.
+          # In CI, supervisor isn't running (CI=true skips it in entrypoint.sh).
+          # In local dev, this stops background workers to prevent interference.
+          echo "Stopping supervisor workers..."
+          docker exec freegle-batch supervisorctl stop all 2>&1 || true
+
+          # Set up fresh test database
+          echo "Setting up fresh test database..."
+          docker exec freegle-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
+          docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
+
+          echo "Running Laravel tests${filter ? ' (filtered)' : ' with coverage'}..."
+          ${phpunitCmd}
+        `,
+        ],
+        { stdio: "pipe" }
+      );
 
     testProcess.stdout.on("data", (data) => {
       const text = data.toString();
@@ -2097,6 +2121,8 @@ const httpServer = http.createServer(async (req, res) => {
       testStatuses.laravelTests.message = `Error: ${error.message}`;
       testStatuses.laravelTests.endTime = Date.now();
     });
+
+    }); // end req.on("end")
 
     return;
   }

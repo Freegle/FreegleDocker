@@ -2416,6 +2416,56 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
+    public function test_clean_chat_reply_held_when_previous_message_held_for_review(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        // Insert a chat message that is held for review (simulates a previous spam message).
+        DB::table('chat_messages')->insert([
+            'chatid' => $chat->id,
+            'userid' => $user2->id,
+            'message' => 'Send money via Western Union',
+            'type' => 'Default',
+            'date' => now()->subMinute(),
+            'reviewrequired' => 1,
+            'reportreason' => 'Spam',
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+        ]);
+
+        // Now send a clean email reply to the same chat
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Yes, it is still available! When would you like to collect?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // The clean message should ALSO be held for review because the previous
+        // message in this chat is held. This prevents bypassing moderation by
+        // sending follow-up messages after a held one.
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired, 'Clean message should be held when previous message is held for review');
+        $this->assertEquals('Last', $lastMessage->reportreason, 'Report reason should be Last when held due to previous message');
+    }
+
     // ========================================
     // Volunteers Spam Check Tests
     // ========================================

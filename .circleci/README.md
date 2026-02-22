@@ -162,7 +162,19 @@ The configuration uses these environment variables:
 
 ## SSH Debugging (Preferred Method)
 
-When CI fails, **always rerun with SSH** to diagnose and fix issues on the live CI machine rather than iterating with blind pushes. This is the default debugging workflow.
+**IMPORTANT**: When pushing changes that will trigger CI, ALWAYS cancel the auto-triggered run and rerun with SSH enabled. This ensures you can diagnose and fix failures on the live CI machine instead of iterating blind.
+
+### Standard Push-and-Monitor Workflow
+
+After every `git push` that triggers CI:
+
+1. Find the auto-triggered pipeline
+2. Get its workflow and job IDs
+3. Cancel the workflow
+4. Rerun with `enable_ssh: true`
+5. SSH in and monitor tests
+
+**Never just push and wait** - always ensure SSH access is available.
 
 ### Authentication
 

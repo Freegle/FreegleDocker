@@ -13,6 +13,7 @@ executors:
     environment:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
+      COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
 
   android-executor:
     docker:
@@ -145,6 +146,9 @@ commands:
           command: |
             echo "<< parameters.reason >>"
 
+            # Ensure COMPOSE_PROFILES is set for all docker-compose commands
+            export COMPOSE_PROFILES="${COMPOSE_PROFILES:-frontend,database,backend,dev,monitoring}"
+
             # Clean up any existing containers first
             docker-compose -f docker-compose.yml down --remove-orphans || true
             docker system prune -f || true
@@ -202,10 +206,64 @@ commands:
               fi
             done
 
-            # Start all services
+            # Two-phase startup: databases must exist before application containers start.
+            #
+            # Phase 1: Start infrastructure + batch (runs Laravel migrations to create iznik DB)
+            # Then run setup-test-database.sh to clone iznik → iznik_phpunit_test, iznik_go_test
+            #
+            # Phase 2: Start all remaining containers (all databases already exist)
+
+            echo "=== Phase 1: Starting infrastructure + batch for migrations ==="
+            docker-compose -f docker-compose.yml up -d \
+              percona postgres redis beanstalkd mailpit \
+              spamassassin-app reverse-proxy tusd delivery loki mjml \
+              batch status host-scripts
+
+            echo "Waiting for percona to be healthy..."
+            for i in $(seq 1 60); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-percona 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Percona is healthy"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "❌ Percona did not become healthy within 2 minutes"
+                docker logs freegle-percona --tail 20 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "Waiting for batch container to be healthy (running migrations)..."
+            for i in $(seq 1 120); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Batch is healthy (migrations complete)"
+                break
+              fi
+              if [ "$i" -eq 120 ]; then
+                echo "❌ Batch did not become healthy within 4 minutes"
+                docker logs freegle-batch --tail 30 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "=== Creating test databases (before application containers start) ==="
+            # Find and run setup-test-database.sh
+            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+            elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/project/scripts/setup-test-database.sh"
+            else
+              echo "❌ setup-test-database.sh not found!"
+              exit 1
+            fi
+
+            echo "=== Phase 2: Starting all remaining containers ==="
             docker-compose -f docker-compose.yml up -d
 
-            echo "Waiting for basic services to start..."
+            echo "Waiting for application services to start..."
             sleep 30
 
             echo "Service status:"
@@ -403,26 +461,69 @@ commands:
           name: Fix memory overcommit for Redis
           command: sudo sysctl vm.overcommit_memory=1 || true
       - run:
-          name: Start Docker services
+          name: Start Docker services (two-phase)
           command: |
             cd "$HOME/FreegleDocker"
-            if ! docker-compose -f docker-compose.yml up -d; then
-              echo "❌ Docker Compose failed to start services"
-              echo ""
-              echo "=== Container Status ==="
-              docker-compose -f docker-compose.yml ps -a
-              echo ""
-              echo "=== freegle-apiv1 logs ==="
-              docker logs freegle-apiv1 2>&1 || echo "No logs available"
-              echo ""
-              echo "=== freegle-apiv2 logs ==="
-              docker logs freegle-apiv2 2>&1 || echo "No logs available"
-              echo ""
-              echo "=== All container logs ==="
-              docker-compose -f docker-compose.yml logs --tail 50 2>&1 || true
+
+            # Ensure COMPOSE_PROFILES is set (may not be in .env if profiles branch not merged yet)
+            export COMPOSE_PROFILES="${COMPOSE_PROFILES:-frontend,database,backend,dev,monitoring}"
+
+            # Two-phase startup: all databases must exist before application containers start.
+            #
+            # Phase 1: Infrastructure + batch (migrations create iznik DB)
+            #          Then setup-test-database.sh clones iznik → test databases
+            # Phase 2: All remaining containers (databases already waiting for them)
+
+            echo "=== Phase 1: Infrastructure + migrations ==="
+            docker-compose -f docker-compose.yml up -d \
+              percona postgres redis beanstalkd mailpit \
+              spamassassin-app reverse-proxy tusd delivery loki mjml \
+              batch status host-scripts
+
+            echo "Waiting for percona to be healthy..."
+            for i in $(seq 1 60); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-percona 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Percona is healthy"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "❌ Percona did not become healthy within 2 minutes"
+                docker logs freegle-percona --tail 20 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "Waiting for batch container to be healthy (migrations)..."
+            for i in $(seq 1 120); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Batch is healthy (migrations complete)"
+                break
+              fi
+              if [ "$i" -eq 120 ]; then
+                echo "❌ Batch did not become healthy within 4 minutes"
+                docker logs freegle-batch --tail 30 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "=== Creating test databases ==="
+            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+            elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/project/scripts/setup-test-database.sh"
+            else
+              echo "❌ setup-test-database.sh not found!"
               exit 1
             fi
-            echo "Waiting for basic services to start..."
+
+            echo "=== Phase 2: Starting all remaining containers ==="
+            docker-compose -f docker-compose.yml up -d
+
+            echo "Waiting for application services to start..."
             sleep 30
             echo "Service status:"
             docker-compose -f docker-compose.yml ps
@@ -1637,8 +1738,6 @@ jobs:
           container: "apiv2"
       - start-services
       - wait-for-basic-services
-      - wait-for-batch-container
-      - setup-test-database
       - run-go-tests:
           reason: "Running Go tests for PR"
       # Coverage uploaded inline by status API
@@ -1661,8 +1760,6 @@ jobs:
       - start-services
       - wait-for-basic-services
       - wait-for-prod-container
-      - wait-for-batch-container
-      - setup-test-database
       - run-playwright-tests:
           reason: "Running Playwright tests for PR"
       # Coverage uploaded inline by status API
@@ -1723,14 +1820,12 @@ jobs:
       - start-docker-services:
           reason: "Starting all Docker services"
 
+      # Two-phase startup in start-docker-services handles:
+      # 1. Infrastructure + batch (migrations) + test database creation
+      # 2. All application containers (databases already exist)
+      # So we just need to wait for the application containers to be ready.
       - wait-for-basic-services
-
       - wait-for-prod-container
-
-      # Wait for batch container migrations to complete before setup-test-database
-      # Migrations are the single source of truth for the database schema.
-      - wait-for-batch-container
-      - setup-test-database
 
       # Run Vitest unit tests first (fast, fail-fast before slower tests)
       - run-vitest-tests:
