@@ -103,26 +103,37 @@ All must pass for auto-merge to production (merges master to production in iznik
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
-### 2026-02-22 - Implement v2 API stubs, push to master
-- **Status**: Pushed to master (commit 5a29b5a on iznik-server-go). CI rerun with SSH: workflow a626b767, job 2251.
+### 2026-02-22 - Phase 2 Go changes + client V1→V2 switches
+- **Status**: Tasks 6-8 ✅ complete. Go changes pushed to master, client changes pushed to feature/v2-unified-migration.
 - **Completed**:
-  - Implemented 5 v2 API stubs: Discourse topics HTTP client, LoveJunk avatar creation, LoveJunk chat image linking, clarified AddMembership/email scroll depth TODOs
-  - Added 4 tests: TestGetDashboardDiscourseTopicsNotMod, TestGetDashboardDiscourseTopicsNoConfig, TestCreateChatMessageLoveJunkWithProfileUrl, TestCreateChatMessageLoveJunkWithImageid
-  - Extracted 5 sections from CLAUDE.md to skills (circleci-ssh-rerun, docker-build-caching, loki-querying, circleci-submodules, yesterday-config, sentry-integration) reducing from ~548 to ~160 lines
-- **Next**: Monitor CI, fix any failures.
+  - Go: Isochrone auto-create in ListIsochrones (matches PHP behavior)
+  - Go: Session work counts (8 parallel goroutine queries), discourse stats (external API), configid in memberships
+  - Go: Stripe endpoints (CreateIntent + CreateSubscription with stripe-go/v82)
+  - Client: Fixed V2 session response unwrapping bug (me/groups/work/discourse now properly extracted)
+  - Client: Switched stripe calls to V2, removed isochrone V1 fallback, cleaned up donations store
+  - Client: Both ModTools and non-ModTools now use V2 first; V1 only for permissions (ModTools) and fallback
+- **Remaining V1 calls**: SessionAPI.fetch (permissions + fallback), ImageAPI.postForm (Go needs multipart), MessageAPI illustration fallback
+- **Key Decisions**: Kept ModTools V1 background call for permissions only (Go doesn't return permissions yet). Fixed auth store V2 response unwrapping bug that was masked by V1 background sync.
+
+### 2026-02-22 17:51 - Comprehensive V1→V2 migration complete
+- **Status**: PR #187 updated with comprehensive migration. 35 files changed, ~170 methods switched. Pushed to `feature/v2-unified-migration`.
+- **Completed**: Migrated all switchable V1 API calls to V2 across 34 API classes. Verified Go handler response formats. Added response wrappers for UserAPI.fetchMT and MessageAPI.fetchMT where Go returns flat objects. Reverted MembershipsAPI.fetch/fetchMembers and SessionAPI.fetch/lostPassword/unsubscribe to V1 (incompatible response formats or callback side effects).
+- **Next**: Monitor CI on PR #187. Ready for manual testing on dev containers.
+- **Key Decisions**: Kept ~20 V1 methods with documented reasons (no Go endpoint, response format mismatch, callback side effects). Path changes for MessageAPI (fetchMT→/message/:id, markSeen→/messages/markseen, del→/message/:id) and ChatAPI.fetchMessagesMT (/chat/:id/message).
+
+### 2026-02-22 16:22 - All iznik-nuxt3 v2 PRs passing CI
+- **Status**: ALL 7 open iznik-nuxt3 v2 PRs passing CI. All ready for merge.
+  - PASSED: PR #174 (tryst-bandit), #176 (remaining-switches), #180 (dashboard-fix), #181 (comment-get), #182 (noticeboard-get), #183 (ce-vol-fetchmt), #184 (story-fetchmt)
+  - MERGED (earlier): PR #179, #185
+- **PR #176 fix**: Reverted all premature v2 write switches to v1. Root cause was Go API returning HTTP 401 for unauthenticated writes (vs PHP returning HTTP 200 with {ret: 1}). Playwright test fixture catches 401 as console error. PR now only contains BaseAPI.js v2 write method definitions + formatting fixes.
+- **Key learning**: Write API switches require Phase 2/3 (email queue integration) before switching. GET switches are safe.
+
+### 2026-02-22 - Implement v2 API stubs, push to master
+- **Completed**: 5 v2 API stubs implemented, 4 tests added, CLAUDE.md extracted to skills.
 
 ### 2026-02-21 - PR #36 code review fixes - CI GREEN
 - **Status**: CI PASSED. PR #36 ready for merge.
 - **Completed**: PR #36 (`fix/v2-code-review-fixes`): security checks, auth package, parallel cluster writes. Fixed 11 test failures across 6 CI iterations.
 
-### 2026-02-19 - Added Live V2 API container for production DB testing
-- **Status**: Implementation complete, status page blank from Windows (WSL2 networking).
-- **Completed**: `apiv2-live` container, configurable V2 API URLs, toggle UI on status page.
-
-### 2026-02-19 - Go PR review, CI fixes, unified test branch
-- **Status**: CI monitoring, then 3 tests to add.
-- **Completed**: Reviewed 23 Go PRs, fixed PR #11 and #25, created unified test branch, coverage audit (33/36 full).
-
-### 2026-02-19 - Schema.sql removal + V2 batch consolidation
-- **Status**: All V2 batch work merged to master.
-- **Completed**: Schema.sql removal, merged 23 FreegleDocker V2 PRs, published orb v1.1.161.
+### 2026-02-19 - Go PR review, CI fixes, V2 batch consolidation
+- **Completed**: Reviewed 23 Go PRs, fixed PR #11/#25, unified test branch, schema.sql removal, merged 23 FreegleDocker V2 PRs, published orb v1.1.161.
