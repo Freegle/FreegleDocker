@@ -58,6 +58,13 @@ services:
     ports: !reset
       - "8195:8192"
 
+  # Disable batch container - scheduled jobs should not run against backup database
+  # Uses deploy.replicas: 0 because Docker Compose merges profile arrays
+  # (profiles: [disabled] would merge with profiles: [dev] and still start)
+  batch:
+    deploy:
+      replicas: 0
+
   # Expose dev containers on external ports for yesterday server
   freegle-dev-local:
     ports:
