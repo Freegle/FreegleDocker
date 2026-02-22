@@ -14,41 +14,18 @@
 - The API v2 (Go) container requires a full rebuild to pick up code changes: `docker-compose build apiv2 && docker-compose up -d apiv2`
 - After making changes to the status code, remember to restart the container
 - When running in a docker compose environment and making changes, be careful to copy them to the container.
-
-## Yesterday Environment Configuration
-
-The Yesterday server (yesterday.ilovefreegle.org) runs with specific configuration:
-
-### Active Containers
-- **Only dev containers run** - Production containers (freegle-prod-local, modtools-prod-local) are disabled in docker-compose.override.yml
-- Dev containers exposed on external ports: 3002 (freegle-dev-local), 3003 (modtools-dev-local)
-- A template override file is provided: `docker-compose.override.yesterday.yml` - copy to `docker-compose.override.yml` on yesterday
-- **Why dev containers?** They start up much faster (seconds vs 10+ minutes for production builds)
-  - Dev mode uses `npm run dev` which starts immediately
-  - Production mode requires full `npm run build` which is very slow
-  - For Yesterday's use case (testing, data recovery), dev containers are sufficient and much more practical
-
-### Database Configuration
-- Database runs **without** innodb_force_recovery mode
-- Config file: ./conf/percona-my.cnf contains InnoDB settings from backup (persists across reboots)
-- SQL_MODE is set without ONLY_FULL_GROUP_BY to allow flexible GROUP BY queries
-- If database has corruption issues, temporarily add `innodb_force_recovery=1` to the config
-- Note: force_recovery mode prevents all database modifications (INSERT/UPDATE/DELETE)
-
-### Port Mappings (Yesterday)
-- 3002: Freegle Dev (externally accessible)
-- 3003: ModTools Dev (externally accessible)
-- 3012: Freegle Prod (if enabled, not accessible externally)
-- 3013: ModTools Prod (if enabled, not accessible externally)
-- 8095: Image Delivery (externally accessible - weserv/images for resizing/converting)
-- 8181: API v1 (not accessible externally via firewall)
-- 8193: API v2 (not accessible externally via firewall)
+- When making app changes, remember to update README-APP.md.
+- Never merge the whole of the app-ci-fd branch into master.
+- When making changes to the tests, don't forget to update the orb.
+- We should always create plans/ md files in FreegleDocker, never in submodules.
+- When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
+- **Browser Testing**: See `BROWSER-TESTING.md` for Chrome DevTools MCP usage, login flow, debugging computed styles, and injecting CSS fixes.
+- **Yesterday**: Use the `yesterday-config` skill when working on the yesterday server. Don't break local dev and CircleCI - we have a docker override file to help with this.
+- **Sentry**: Use the `sentry-integration` skill when configuring or triggering Sentry error analysis.
 
 ## Docker Compose Profiles
 
 Every service in docker-compose.yml has at least one profile. `COMPOSE_PROFILES` must be set in `.env` or nothing starts.
-
-### Profile Definitions
 
 | Profile | Purpose | Key Services |
 |---------|---------|-------------|
@@ -64,8 +41,6 @@ Every service in docker-compose.yml has at least one profile. `COMPOSE_PROFILES`
 | `prod-live` | API v2 with production DB | apiv2-live |
 | `backup` | Loki backup | loki-backup |
 
-### COMPOSE_PROFILES Per Scenario
-
 | Scenario | COMPOSE_PROFILES |
 |----------|-----------------|
 | **Local dev** | `frontend,database,backend,dev,monitoring` |
@@ -74,453 +49,80 @@ Every service in docker-compose.yml has at least one profile. `COMPOSE_PROFILES`
 | **Yesterday** | `frontend,database,backend,dev,monitoring` (+ override file) |
 | **CircleCI** | `frontend,database,backend,dev,monitoring` |
 
-### Cross-Profile Dependencies
-
-Dependencies between services in different profiles use `required: false` so they're ignored when the dependency's profile is inactive. This allows `frontend` to run standalone without `database` services (using external DB on live).
-
-### Yesterday Override
-
-The yesterday override uses `deploy.replicas: 0` (not profile overrides) to disable services, because Docker Compose merges profile arrays instead of replacing them.
+Cross-profile dependencies use `required: false` so they're ignored when the dependency's profile is inactive. The yesterday override uses `deploy.replicas: 0` (not profile overrides) to disable services.
 
 ## Container Architecture
 
-### Freegle Development vs Production
-- **freegle-dev-local** (`freegle-dev-local.localhost`): Development mode with local test APIs, fast startup, hot reloading
-- **freegle-dev-live** (`freegle-dev-live.localhost`, port 3004): Development mode with PRODUCTION APIs - use with caution
-- **freegle-prod-local** (`freegle-prod-local.localhost`): Production build with local test APIs, slower startup
-- Both dev containers use the same codebase but different Dockerfiles and environment configurations
-- Production container uses `Dockerfile.prod` with hardcoded production build process
-
-### ModTools Development vs Production
-- **modtools-dev-local** (`modtools-dev-local.localhost`): Development mode with local test APIs, fast startup, hot reloading
-- **modtools-prod-local** (`modtools-prod-local.localhost`): Production build with local test APIs, slower startup
-- Both containers use the same codebase but different Dockerfiles and environment configurations
-- Development container uses `modtools/Dockerfile` and production container uses `Dockerfile.prod`
-- Production container requires a full rebuild to pick up code changes since it runs a production build
-
-### Production Batch Container (batch-prod)
-The `batch-prod` container runs Laravel scheduled jobs against the production database. It replaces the crontab entry on bulk3-internal.
-
-**Configuration:**
-- Uses `profiles: [backend]` - only starts when backend profile is enabled
-- Secrets stored in `.env.background` (gitignored) - see `.env.background.example` for template
-- Infrastructure IPs configured in `.env` (DB_HOST_IP, MAIL_HOST_IP)
-- Connects to production database via `db-host` (extra_hosts mapping)
-- Sends mail via `mail-host` smarthost (SPF/DMARC verified)
-- Logs to Loki container (`LOKI_URL=http://loki:3100`)
-- Auto-restarts on crash/reboot (`restart: unless-stopped`)
-
-**To enable:**
-1. Copy `.env.background.example` to `.env.background` and fill in secrets
-2. Set `COMPOSE_PROFILES=monitoring,production` in `.env`
-3. Run `docker compose up -d`
-
-**Migration from bulk3-internal:**
-After confirming batch-prod works, disable the crontab on bulk3-internal:
-```
-# Comment out: * * * * * cd /var/www/iznik-batch && php8.5 artisan schedule:run
-```
+- **freegle-dev-local** (`freegle-dev-local.localhost`): Dev mode, local APIs, hot reloading
+- **freegle-dev-live** (`freegle-dev-live.localhost`, port 3004): Dev mode, PRODUCTION APIs - use with caution
+- **freegle-prod-local** (`freegle-prod-local.localhost`): Production build, local APIs, slower startup
+- **modtools-dev-local** / **modtools-prod-local**: Same pattern as Freegle containers
+- Production containers use `Dockerfile.prod` and require full rebuild for code changes
+- **batch-prod**: Laravel scheduled jobs against production DB. Needs `.env.background` (see `.env.background.example`). Uses `profiles: [backend]`.
 
 ## Database Schema Management
 
-- **Laravel migrations are the single source of truth** for the database schema. All table definitions live in `iznik-batch/database/migrations/`.
-- **schema.sql is retired** - `iznik-server/install/schema.sql` is kept in git for historical reference but is no longer loaded anywhere.
-- **Stored functions** (GetMaxDimension, GetMaxDimensionT, haversine, damlevlim) are managed by the migration `2026_02_20_000002_create_stored_functions.php`.
-- **To add a new table**: Create a Laravel migration in `iznik-batch/database/migrations/`. It will automatically be picked up in CI and local dev.
-- **Test databases** are created by `scripts/setup-test-database.sh` which runs `php artisan migrate`, then clones the schema to `iznik_go_test` and `iznik_phpunit_test` via `mysqldump --no-data --routines --triggers`.
-- **testenv.php** still runs in the apiv1 container for fixture data (FreeglePlayground group, test users, etc.).
+- **Laravel migrations** in `iznik-batch/database/migrations/` are the single source of truth
+- **schema.sql is retired** - kept for historical reference only
+- **Stored functions** managed by migration `2026_02_20_000002_create_stored_functions.php`
+- **To add a table**: Create a Laravel migration. Picked up automatically in CI and local dev.
+- **Test databases**: Created by `scripts/setup-test-database.sh` (runs migrations, clones schema via mysqldump)
 
-## Networking Configuration
+## Networking
 
-### No Hardcoded IP Addresses
 - **Never use hardcoded IP addresses** in docker-compose.yml - Docker assigns IPs dynamically
-- All services use `networks: - default` without specific IP addresses
-- Services communicate using container names and aliases through Docker's internal DNS
-- **No hosts file entries needed**: Traefik handles routing for `.localhost` domains automatically
+- Services communicate via container names/aliases through Docker's internal DNS
+- Traefik handles `.localhost` domain routing automatically
+- Never add specific IP addresses as extra_hosts - won't survive rebuilds
+- Container changes are lost on restart - always make changes locally too
 
-### Image Delivery Service Configuration
-The delivery container uses weserv/images. For local development:
-- **Custom nginx config**: `delivery-nginx.conf` overrides the default config to allow Docker network access
-- **Environment variables**: `USER_SITE` and `IMAGE_BASE_URL` use hostnames for browser accessibility
-- **Routing through Traefik**: All services route through the reverse proxy using `host-gateway`
+Test URLs: `http://freegle-dev-local.localhost/`, `http://freegle-prod-local.localhost/`, `http://apiv2.localhost:8192/`
 
-### Playwright Testing Container
-The Playwright container is configured with special networking to behave exactly like a browser:
-- **Host network mode**: `network_mode: "host"` allows access to localhost services
-- **No extra_hosts needed**: Direct access to production and development sites
-- **Volume mounts**: Test files are mounted for automatic sync without container rebuilds
-- **Base URL**: Uses `http://freegle-prod.localhost` to test against production build
-- **Testing Target**: **IMPORTANT** - Tests run against the **production container** to ensure testing matches production behavior
-- **Container Lifecycle**: Container is restarted for each test run to ensure clean state, but report server persists using `nohup`
+- **Loki logs**: Use the `loki-querying` skill when investigating errors or querying system logs.
+- **Playwright**: Tests run against production container. Host network mode. Container restarted per test run. If debugging failures, check for reload-triggering logs.
 
-Test URLs work properly:
-- `http://freegle-dev-local.localhost/` - Development Freegle site (fast, hot-reload, local APIs)
-- `http://freegle-dev-live.localhost/` - Development Freegle site with PRODUCTION APIs (use with caution)
-- `http://freegle-prod-local.localhost/` - Production Freegle build (optimized, tested by Playwright)
-- `http://apiv2.localhost:8192/` - API v2 access  
-- `http://delivery.localhost/?url=http://freegle-prod.localhost/icon.png&w=116&output=png` - Image delivery
-- Never add specific IP addresses in as extra_hosts in docker-compose config. That will not work when a rebuild happens.
-- Remember that if you make changes directly to a container, they will be lost on restart. Any container changes must also be made locally.
-- If debugging Playwright test failures, check the Freegle container for logs triggering a reload. Those will break tests. Add anything shown to the pre-optimization in nuxt.config.js and rebuild the container to pick it up.
+## CircleCI
 
-## Loki Log Querying
+- Use the `circleci-submodules` skill for submodule integration, GitHub tokens, adding submodules, and orb publishing.
+- Use the `docker-build-caching` skill for cache configuration, invalidation, performance, and rollback.
+- **MANDATORY: After every `git push` to master that triggers CI, immediately cancel the auto-triggered pipeline and rerun it with SSH enabled.** Use the `circleci-ssh-rerun` skill for the cancel/rerun workflow.
+- See [.circleci/README.md](.circleci/README.md) for full CircleCI documentation.
 
-Logs from all Freegle services are collected in Loki. The Go API v2 provides a `/api/systemlogs` endpoint that wraps Loki queries for ModTools.
+## Testing
 
-### Available Labels
-Query `http://localhost:3100/loki/api/v1/labels` for current labels. Common ones:
-- `app` - Always "freegle"
-- `source` - Log source: `api`, `client`, `chat_reply`, `email`, `incoming_mail`, `logs_table`
-- `user_id` - User ID (indexed, fast for filtering)
-- `level` - Log level: `info`, `error`, etc.
-- `type`, `subtype` - Event categorization
-
-### Direct Loki Query Examples
-
-**IMPORTANT**: Always use `-G` with `--data-urlencode` for proper query encoding:
-
-```bash
-# Query logs for a specific user
-curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
-  --data-urlencode 'query={app="freegle", user_id="503028"}' \
-  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
-  --data-urlencode "end=$(date +%s)000000000" \
-  --data-urlencode 'limit=50'
-
-# Search all sources for errors
-curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
-  --data-urlencode 'query={app="freegle", level="error"}' \
-  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
-  --data-urlencode "end=$(date +%s)000000000"
-
-# Text search across all logs
-curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
-  --data-urlencode 'query={app="freegle"} |~ "search text"' \
-  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
-  --data-urlencode "end=$(date +%s)000000000"
-```
-
-### Common Pitfalls
-1. **Timestamps are nanoseconds** - Multiply Unix seconds by 1000000000
-2. **Use localhost:3100**, not the docker network name `loki`
-3. **jq may silently fail** - Store result in variable first to verify data exists
-4. **Label values must be quoted** - `user_id="503028"` not `user_id=503028`
-
-### Via Go API
-ModTools uses `/api/systemlogs?userid=503028&sources=api,client&start=1h` - see `iznik-server-go/systemlogs/systemlogs.go` for implementation.
-
-## CircleCI Submodule Integration
-
-This repository uses CircleCI to automatically test submodule changes. Each submodule is configured with a GitHub Actions workflow that triggers the parent repository's CircleCI pipeline.
-
-### Current Submodule Configuration
-
-The following submodules have `.github/workflows/trigger-parent-ci.yml` configured:
-- `iznik-nuxt3`
-- `iznik-server`
-- `iznik-server-go`
-
-### How Submodule Updates Work
-
-When code is pushed to a submodule's master branch:
-
-1. **GitHub Actions workflow** (`trigger-parent-ci.yml`) runs in the submodule
-2. The workflow clones FreegleDocker and updates the submodule reference
-3. The updated reference is pushed back to FreegleDocker master
-4. This push triggers CircleCI to run the full test suite
-
-### GitHub Token Configuration
-
-The submodule workflows use a **fine-grained Personal Access Token (PAT)** from the FreegleGeeks service account.
-
-**Important**: The PAT must be scoped to the **Freegle organization**, not a personal account.
-
-To create/update the PAT:
-1. Log in as FreegleGeeks
-2. Settings → Developer settings → Fine-grained personal access tokens
-3. **Resource owner**: Select **Freegle** (the organization) - NOT FreegleGeeks
-4. **Repository access**: Select "Only select repositories" → choose `FreegleDocker`
-5. **Permissions**: Contents (Read and write), Metadata (Read-only)
-
-The PAT is stored as `FREEGLE_DOCKER_TOKEN` secret in each submodule repo.
-
-**Troubleshooting**: "Permission denied to FreegleGeeks" means the PAT is scoped to the user account instead of the Freegle organization.
-
-### Adding New Submodules
-
-When adding new submodules to this repository, follow these steps:
-
-1. **Add the submodule** to the repository using `git submodule add`
-
-2. **Create webhook workflow** in the new submodule repository:
-   ```bash
-   mkdir -p NEW_SUBMODULE/.github/workflows
-   ```
-
-3. **Copy the trigger workflow** from an existing submodule:
-   ```bash
-   cp iznik-nuxt3/.github/workflows/trigger-parent-ci.yml NEW_SUBMODULE/.github/workflows/
-   ```
-
-4. **Add FREEGLE_DOCKER_TOKEN secret** to the new submodule repository:
-   - Go to Settings → Secrets and Variables → Actions
-   - Add repository secret named `FREEGLE_DOCKER_TOKEN`
-   - Use the fine-grained PAT from FreegleGeeks (scoped to Freegle org)
-
-5. **Update documentation** in:
-   - Main `README.md` (add to webhook integration list)
-   - `.circleci/README.md` (add to configured submodules list)
-   - This `CLAUDE.md` file (add to current configuration list)
-
-6. **Test the integration** by making a test commit to the new submodule and verifying it triggers the FreegleDocker CircleCI pipeline.
-
-### Publishing the CircleCI Orb
-
-**IMPORTANT**: After making changes to `.circleci/orb/freegle-tests.yml`, you must publish the orb to CircleCI for the changes to take effect:
-
-```bash
-# Load the CircleCI token from .env
-source .env
-
-# Configure the CLI (one-time setup)
-~/.local/bin/circleci setup --token "$CIRCLECI_TOKEN" --host https://circleci.com --no-prompt
-
-# Validate the orb YAML
-~/.local/bin/circleci orb validate .circleci/orb/freegle-tests.yml
-
-# Publish a new version (increment the patch version)
-~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x
-```
-
-Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
-
-**See [.circleci/README.md](.circleci/README.md)** for full CircleCI documentation including SSH debugging via API.
-
-**MANDATORY: After every `git push` to master that triggers CI, immediately cancel the auto-triggered pipeline and rerun it with SSH enabled.** This ensures you can SSH into the CI machine to diagnose and fix test failures live, rather than iterating blind. Never just push and passively wait for results. See `.circleci/README.md` "SSH Debugging" section for the API commands.
-
-## Docker Build Caching
-
-Production containers use BuildKit cache-from and CircleCI save_cache for faster builds.
-
-### Feature Flag
-
-Caching is controlled by the `ENABLE_DOCKER_CACHE` environment variable in CircleCI:
-
-- **Enable**: Set `ENABLE_DOCKER_CACHE=true` in CircleCI project settings → Environment Variables
-- **Disable**: Set `ENABLE_DOCKER_CACHE=false` (rollback to old docker-compose build)
-- **Default**: If not set, caching defaults to `false` (safe fallback)
-
-### How It Works
-
-**Two-layer caching strategy**:
-
-1. **CircleCI save_cache** (Nuxt build artifacts):
-   - Caches `.output/` directory (production build output)
-   - Skips `npm run build` if code unchanged
-   - ~10-16 minute savings on cache hit
-
-2. **BuildKit cache-from** (Docker layers):
-   - Caches npm dependencies and build layers in GHCR
-   - Reuses unchanged layers (npm ci, Nuxt build)
-   - ~3-5 minute additional savings
-
-### Cache Versions
-
-Current cache versions (bump to invalidate):
-
-- **BuildKit cache**: `buildcache-v1`
-- **Nuxt artifacts**: `nuxt-output-v2`
-
-### Cache Strategy
-
-- **Master branch**: Pulls cache, builds, pushes updated cache
-- **Feature branches**: Pulls cache from master, builds, does NOT push (avoids conflicts)
-
-### How to Invalidate Cache
-
-When cache appears stale or corrupted:
-
-1. Edit `.circleci/orb/freegle-tests.yml`
-2. Change version suffixes:
-   - `buildcache-v1` → `buildcache-v2` (find/replace all instances)
-   - `nuxt-v1` → `nuxt-v2` (find/replace all instances)
-3. Publish updated orb: `~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x`
-4. Push changes to trigger rebuild
-
-### Build Performance
-
-**Expected times**:
-
-| Scenario | Without Cache | With Cache | Savings |
-|----------|---------------|------------|---------|
-| No code changes | 51 min | ~25 min | 26 min (51%) |
-| Code changes only | 51 min | ~35 min | 16 min (31%) |
-| Dependency changes | 51 min | ~37 min | 14 min (27%) |
-| **Average (75% cache hit)** | **51 min** | **~28 min** | **23 min (45%)** |
-
-### Rollback Instructions
-
-**Immediate rollback** (no code changes needed):
-
-1. Go to CircleCI project settings → Environment Variables
-2. Set `ENABLE_DOCKER_CACHE=false`
-3. Retrigger failed build
-4. **Result**: Falls back to old docker-compose build (no caching)
-
-**Full rollback** (if Dockerfiles cause issues):
-
-```bash
-cd /tmp/FreegleDocker
-git checkout HEAD~1 -- iznik-nuxt3/Dockerfile.prod
-git checkout HEAD~1 -- iznik-nuxt3/modtools/Dockerfile.prod
-git commit -m "Rollback: Restore old Dockerfiles"
-git push
-```
-
-### Cache Locations
-
-**CircleCI save_cache**:
-- Freegle: `~/nuxt-cache/freegle/` (`.output/`, `.nuxt/`)
-- ModTools: `~/nuxt-cache/modtools/` (`.output/`, `.nuxt/`)
-
-**GHCR BuildKit cache**:
-- Freegle: `ghcr.io/freegle/freegle-prod:buildcache-v1`
-- ModTools: `ghcr.io/freegle/modtools-prod:buildcache-v1`
-
-### Monitoring Cache Performance
-
-Check CircleCI logs for cache status:
-
-```
-✅ Found cached Freegle build (245M)
-✅ Pulled Freegle cache in 45s (size: 3.2GB)
-✅ Freegle build completed in 120s
-📊 Total build time: 180s
-```
-
-**Warning signs** (indicates cache not working):
-
-- ⚠️ No cached build found (expected on first run)
-- ⚠️ Pull time >120s (slow network, consider disabling)
-- ⚠️ Build time not improving (cache invalidated or not hitting)
-
-## Testing Consolidation
-
-All testing is now consolidated in the FreegleDocker CircleCI pipeline for consistency and efficiency:
-
-### Test Suites
-- **Go API Tests**: Test the fast v2 API (iznik-server-go)
-- **PHPUnit Tests**: Test v1 API and background functions (iznik-server)
-- **Playwright E2E Tests**: End-to-end browser testing against production build (iznik-nuxt3)
-
-### Test Execution
-- Tests run via the status page API endpoints for consistency
-- All tests must pass for auto-merge to production
-- Tests can be triggered manually via the status page at `http://status.localhost`
-- CircleCI tests are disabled in individual submodule repositories to avoid duplication
-
-### Auto-merge Logic
-When all tests pass successfully in CircleCI, the system automatically:
-1. Merges master to production branch in iznik-nuxt3
-2. Triggers production deployment
-3. Only proceeds if all three test suites pass (Go, PHPUnit, Playwright)
-4. Auto-merge only happens on master branch builds
-5. The merge commit message is "Auto-merge master to production after successful tests"
-
-### Test Commands
+All testing consolidated in the FreegleDocker CircleCI pipeline:
 - **Go Tests**: `curl -X POST http://localhost:8081/api/tests/go`
 - **PHPUnit Tests**: `curl -X POST http://localhost:8081/api/tests/php`
 - **Playwright Tests**: `curl -X POST http://localhost:8081/api/tests/playwright`
 
-- When making app changes, remember to update README-APP.md.
-- Remember that when working on the yesterday system you need to make sure you don't break local dev and CircleCI. We have a docker override file to help with this.
-- Never merge the whole of the app-ci-fd branch into master.
-
-## Sentry Auto-Fix Integration
-
-The status container includes automated Sentry error analysis and fixing:
-
-- **Uses Task Agents via Claude CLI** - deep analysis with Explore agent for finding code
-- **Manual trigger only** by default (click button on status page)
-- **SQLite tracking** at `/project/sentry-issues.db` prevents reprocessing (gitignored)
-- **Automatic retries** up to 2 times on timeout
-- **Skips local tests** - full suite runs on CircleCI after PR creation
-- **Creates PRs** automatically with test cases and fixes
-
-### Configuration
-
-Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for full setup).
-
-### Important Notes
-
-- Database at `/project/sentry-issues.db` tracks processed issues (persists across container restarts)
-- Status page has "Analyze Sentry Issues Now" button for manual triggering
-- API endpoints: `/api/sentry/status`, `/api/sentry/poll`, `/api/sentry/clear`
-- Integration invokes `claude` CLI with `--dangerously-skip-permissions` for automation
-- Each Sentry issue analysis uses your Claude Code quota (no additional costs)
-- When making changes to the tests, don't forget to update the orb.
-- We should always create plans/ md files in FreegleDocker, never in submodules.
-- When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
-- **Browser Testing**: See `BROWSER-TESTING.md` for Chrome DevTools MCP usage, login flow, debugging computed styles, and injecting CSS fixes.
+All must pass for auto-merge to production (merges master to production in iznik-nuxt3).
 
 ## Session Log
 
 **Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
 
-**Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
+**Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
+
+### 2026-02-22 - Implement v2 API stubs, push to master
+- **Status**: Pushed to master (commit 5a29b5a on iznik-server-go). CI rerun with SSH: workflow a626b767, job 2251.
+- **Completed**:
+  - Implemented 5 v2 API stubs: Discourse topics HTTP client, LoveJunk avatar creation, LoveJunk chat image linking, clarified AddMembership/email scroll depth TODOs
+  - Added 4 tests: TestGetDashboardDiscourseTopicsNotMod, TestGetDashboardDiscourseTopicsNoConfig, TestCreateChatMessageLoveJunkWithProfileUrl, TestCreateChatMessageLoveJunkWithImageid
+  - Extracted 5 sections from CLAUDE.md to skills (circleci-ssh-rerun, docker-build-caching, loki-querying, circleci-submodules, yesterday-config, sentry-integration) reducing from ~548 to ~160 lines
+- **Next**: Monitor CI, fix any failures.
+
+### 2026-02-21 - PR #36 code review fixes - CI GREEN
+- **Status**: CI PASSED. PR #36 ready for merge.
+- **Completed**: PR #36 (`fix/v2-code-review-fixes`): security checks, auth package, parallel cluster writes. Fixed 11 test failures across 6 CI iterations.
 
 ### 2026-02-19 - Added Live V2 API container for production DB testing
-- **Status**: Implementation complete, status page not loading from Windows (WSL2 networking issue)
-- **Completed**:
-  - Added `apiv2-live` container in docker-compose.yml (profile: `prod-live`), connects to production DB via SSH tunnel
-  - Made prod containers' V2 API URL configurable via `PROD_FREEGLE_API_V2` / `PROD_MT_API_V2` env vars
-  - Added `LIVE_DB_PORT`, `LIVE_DB_USER`, `LIVE_DB_PASSWORD` to .env (port corrected to 11234)
-  - Added `apiv2-live.localhost:host-gateway` extra_hosts to freegle-prod-local and modtools-prod-local
-  - Status page: new `apiv2-live` service, toggle API (`toggle-live-v2.post.ts`, `live-v2-status.get.ts`), updated production.vue with toggle UI and explanation text
-  - Port is configurable (read from .env, displayed dynamically on status page)
-  - `apiv2-live` container is healthy and connected to production DB
-  - Status container rebuilt and restarted
-- **Issue**: Status page shows blank screen when accessed from Windows browser. WSL2 uses `networkingMode=mirrored`. Port 8081 is listening, curl works from inside WSL, but Windows browser gets blank page. Need to investigate.
-- **Files changed**:
-  - `docker-compose.yml` - apiv2-live service, extra_hosts, configurable IZNIK_API_V2
-  - `.env` - LIVE_DB_PORT=11234, LIVE_DB_USER, LIVE_DB_PASSWORD, PROD_*_API_V2
-  - `status-nuxt/types/service.ts` - added 'production' to ServiceCategory
-  - `status-nuxt/server/utils/services.ts` - added apiv2-live service
-  - `status-nuxt/server/api/container/toggle-live-v2.post.ts` - NEW
-  - `status-nuxt/server/api/container/live-v2-status.get.ts` - NEW
-  - `status-nuxt/api/StatusAPI.ts` - toggleLiveV2, getLiveV2Status methods
-  - `status-nuxt/stores/status.ts` - liveV2 state, refreshLiveV2Status, toggleLiveV2 actions
-  - `status-nuxt/pages/production.vue` - toggle UI, explanatory text, dynamic port
-- **Next**: Debug why status page blank from Windows. Then test the toggle buttons work end-to-end.
+- **Status**: Implementation complete, status page blank from Windows (WSL2 networking).
+- **Completed**: `apiv2-live` container, configurable V2 API URLs, toggle UI on status page.
 
 ### 2026-02-19 - Go PR review, CI fixes, unified test branch
-- **Status**: CI monitoring in progress, then 3 tests to add
-- **Completed**:
-  - Reviewed all 23 Go PRs (#6-#28) for existing behavior changes using agent team
-  - Found changes to existing behavior only in PRs #9/#10/#13/#17/#27 (heldby IS NULL removal, story public=1 removal, location response shape changes) - all intentional for MT
-  - Fixed PR #11 (newsfeed-writes): empty message validation in createPost
-  - Fixed PR #25 (noticeboard-writes): FK constraint (addedby=0→NULL) + noticeboards_checks.inactive NOT NULL
-  - Created unified test branch `test/unified-go-v2` merging all 23 PRs (125 commits, 1 conflict resolved in routes.go)
-  - PR #25 CI: ✅ PASSED. PR #11 CI: running (job #789). Unified branch CI: running (job #788)
-  - Test coverage audit: 33/36 handlers FULL, 2 PARTIAL, 1 NONE
-- **Next**:
-  1. Wait for CI jobs #788 and #789 to complete - monitor background task b2ca4f2
-  2. If CI passes: add missing tests for CreateChatMessage (auth+error), EditIsochrone (auth+non-owner), CreateChatMessageLoveJunk (auth+error)
-  3. Push tests to relevant PR branches, merge into unified branch
-  4. Verify all Go CI green
-- **Key files**:
-  - Unified branch: `test/unified-go-v2` on iznik-server-go
-  - Coverage matrix: PR #43 in FreegleDocker, file `plans/active/api-test-coverage-matrix.md`
-  - Background CI monitor: `/tmp/claude-1000/-home-edward-FreegleDockerWSL/tasks/b2ca4f2.output`
+- **Status**: CI monitoring, then 3 tests to add.
+- **Completed**: Reviewed 23 Go PRs, fixed PR #11 and #25, created unified test branch, coverage audit (33/36 full).
 
 ### 2026-02-19 - Schema.sql removal + V2 batch consolidation
-- **Status**: All V2 batch work merged to master, CI build triggered, waiting for results.
-- **Completed**:
-  - Schema.sql removal: stored functions migration, setup script rewrite, Dockerfile update, Go test cleanup, orb update
-  - Merged schema-sql branches to master in iznik-server, iznik-server-go, FreegleDocker
-  - Merged all 23 FreegleDocker V2 PRs (#43-#67) to master (iznik-batch changes)
-  - Published orb v1.1.161 (schema.sql fallback removed)
-  - Closed all merged FreegleDocker V2 PRs (#48-#65)
-  - Committed HelpChatFlow client logging to iznik-nuxt3 master
-  - iznik-nuxt3 V2 client PRs (#148-#168) intentionally left open
-- **Next**: Monitor CI build. Debug and fix any failures.
+- **Status**: All V2 batch work merged to master.
+- **Completed**: Schema.sql removal, merged 23 FreegleDocker V2 PRs, published orb v1.1.161.
