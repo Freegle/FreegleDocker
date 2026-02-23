@@ -838,7 +838,7 @@ class ChatNotification extends MjmlMailable
      */
     protected function getAddressDisplayText(ChatMessage $message): string
     {
-        $otherUser = $this->sender?->displayname ?? 'Someone';
+        $otherUser = $this->getOtherUserName();
         $isFromRecipient = $message->userid === $this->recipient->id;
 
         // Build the intro text based on who sent the address.

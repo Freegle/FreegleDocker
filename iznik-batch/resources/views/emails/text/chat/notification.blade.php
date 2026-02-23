@@ -18,6 +18,9 @@ About your post: {!! $refMessage->subject !!}
 ----------------------------------------
 {!! $chatMessage['userName'] !!}{{ $chatMessage['isFromRecipient'] ? ' (you)' : '' }}:
 {!! $chatMessage['text'] !!}
+@if(!empty($chatMessage['refMessage']))
+{{ $chatMessage['refMessage']['subject'] }}
+@endif
 @if($chatMessage['imageUrl'])
 [Image: {{ $chatMessage['imageUrl'] }}]
 @endif
@@ -40,6 +43,9 @@ Has this item gone?
 Earlier in this conversation:
 @foreach($previousMessages as $prevMessage)
 {!! $prevMessage['userName'] !!} ({{ $prevMessage['formattedDate'] }}): {!! $prevMessage['text'] !!}
+@if(!empty($prevMessage['refMessage']))
+  {{ $prevMessage['refMessage']['subject'] }}
+@endif
 @endforeach
 @endif
 @if($sender && $sender->aboutme)
