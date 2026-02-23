@@ -450,6 +450,26 @@ for vol in freegle_db loki-data; do
 done
 
 echo ""
+echo "=========================================="
+echo "Building containers from scratch..."
+echo "=========================================="
+update_status "building" "Building containers..."
+# Build containers to pick up code changes (new Go dependencies, Nuxt changes, etc.)
+# Without this, docker compose up -d reuses stale images and containers may crash
+# on missing modules or run outdated code.
+# Only build services that Yesterday actually uses and that compile code into the image:
+# - base: shared base image for apiv1
+# - apiv1: PHP API (rarely changes but uses base)
+# - apiv2: Go API (compiles at startup, needs go modules in image)
+# - freegle-dev-local/modtools-dev-local: Nuxt dev containers (need npm deps in image)
+# - status: Status page
+echo "Building base image..."
+docker compose build base 2>&1 | tail -3
+echo "Building application containers..."
+docker compose build apiv1 apiv2 freegle-dev-local modtools-dev-local status 2>&1 | tail -5
+echo "✅ Container build complete"
+
+echo ""
 echo "Starting all Docker containers..."
 update_status "starting" "Starting containers..."
 docker compose up -d
