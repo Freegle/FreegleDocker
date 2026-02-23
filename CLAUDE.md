@@ -469,9 +469,41 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+### 2026-02-23 - Adversarial review fixes for V2 Go endpoints
+- **Status**: Fixes committed and pushed to iznik-server-go master. CI running.
+- **Completed**: Fixed 4 CRITICAL, 4 HIGH, 14 MEDIUM issues across 6 Go files:
+  - Stripe: mutex for global stripe.Key, auth checks, amount validation, error sanitization
+  - ModConfig: auth on single fetch, LAST_INSERT_ID removal, explicit columns, batched UPDATE
+  - Isochrone: LAST_INSERT_ID removal, transport validation, error checking
+  - Export: LAST_INSERT_ID removal, decompression limit, duplicate prevention
+  - Session: PatchSession race fix (single UPDATE), per-goroutine wg2.Add, JWT error check, volunteering scope
+  - GroupWork: deterministic sort, proper 401 error
+- **Next**: Monitor CI. Also monitoring client PR #187 CI.
+
+### 2026-02-23 - Fix V2 fetchUser flat response handling
+- **Status**: CI running (workflow b7875719). Fixed critical auth bug.
+- **Root cause**: `fetchUser()` checked `sessionData.me` but GET /user returns flat User object (no `.me` wrapper). In passing commit e096571c, V2 silently failed and V1 fallback did all auth. After V1 removal in 4b17908f, auth was never established → 401 on writes.
+- **Fix**: Changed fetchUser to check `userData.id` (flat User) instead of `sessionData.me`. Reverted fetchv2 to GET /user (V2 pattern: flat responses).
+
+### 2026-02-22 - ALL V1 API calls eliminated
+- **Status**: Zero V1 method calls remain in iznik-nuxt3. PR #187 updated.
+- **Completed**:
+  - Removed all V1 methods from BaseAPI.js ($request, $get, $post, $put, $patch, $del, $postForm, $postOverride)
+  - Switched auth.js to V2-only (permissions from Go session, no V1 fallback)
+  - Added Go endpoints: modconfig list, per-group work counts, GDPR export
+  - Created ExportAPI class, switched mydata.vue to use it
+  - Switched modconfig.js, modgroup.js, ModSettingsGroup.vue to V2
+  - Removed APIv1 from config.js, nuxt.config.ts, test mocks
+  - Removed dead code: ImageAPI.postForm, MessageAPI illustration V1 fallback
+  - Switched authorities.vue to V2
+- **Key Decisions**: Download link in mydata.vue uses APIv2 + jwt query param (Go supports JWT via query).
+
 ### 2026-02-22 - PR #186 perf: Verified production build locally
 - **Branch**: `feature/bootstrap-lean-imports` in iznik-nuxt3
 - **Status**: Production build verified working, manualChunks removed, ready for CI
+
+### 2026-02-22 - Phase 2 Go changes + client V1→V2 switches
+- **Status**: Tasks 6-8 ✅ complete. Go changes pushed to master, client changes pushed to feature/v2-unified-migration.
 - **Completed**:
   - Removed manualChunks vendor splitting from nuxt.config.ts (caused production hydration failures)
   - Rebuilt production container with --no-cache
