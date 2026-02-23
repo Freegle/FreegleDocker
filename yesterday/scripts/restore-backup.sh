@@ -472,6 +472,28 @@ wait_for_container_health "percona" 240 || {
     exit 1
 }
 
+# Reset MySQL root password to 'iznik' for local container access.
+# The restored production backup has a different root password baked into the data volume.
+# We use --skip-grant-tables to bypass auth, reset the password, then restart normally.
+echo "Resetting MySQL root password for local container access..."
+docker compose stop percona
+echo "skip-grant-tables" >> /var/www/FreegleDocker/conf/percona-my.cnf
+docker compose start percona
+sleep 10
+docker exec freegle-percona mysql -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null
+if [ $? -eq 0 ]; then
+    echo "✅ MySQL root password reset to 'iznik'"
+else
+    echo "⚠️ Failed to reset MySQL root password - containers may not connect to DB"
+fi
+sed -i '/skip-grant-tables/d' /var/www/FreegleDocker/conf/percona-my.cnf
+docker compose restart percona
+wait_for_container_health "percona" 120 || {
+    echo "❌ Percona failed to restart after password reset"
+    exit 1
+}
+echo "✅ Percona restarted with normal authentication"
+
 wait_for_container_health "reverse-proxy" 120 || {
     echo "❌ Traefik failed to start. Checking logs..."
     docker logs freegle-traefik --tail 20

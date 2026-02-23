@@ -195,7 +195,19 @@ services:
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
       - TUS_UPLOADER=https://uploads.ilovefreegle.org/
 
+  # Disable test containers (not needed on Yesterday)
+  playwright:
+    deploy:
+      replicas: 0
+
+  apiv1-phpunit:
+    deploy:
+      replicas: 0
+
   batch:
+    # Disable batch on Yesterday - scheduled jobs should not run against backup database
+    deploy:
+      replicas: 0
     # Override database password for Yesterday's restored production database
     environment:
       - DB_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}

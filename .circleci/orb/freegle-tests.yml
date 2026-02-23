@@ -1754,6 +1754,17 @@ jobs:
       - align-submodule-branches:
           skip-submodule: "iznik-nuxt3"
       - rebuild-aligned-containers
+      # Force rebuild prod containers to pick up replaced submodule code.
+      # Without this, Docker Layer Caching reuses stale images from previous builds.
+      - run:
+          name: Rebuild production containers with PR code
+          command: |
+            cd "$HOME/FreegleDocker"
+            echo "Force rebuilding production containers to pick up PR code..."
+            docker-compose -f docker-compose.yml build --no-cache \
+              freegle-prod-local modtools-prod-local playwright
+            echo "✅ Production containers rebuilt with PR code"
+          no_output_timeout: 15m
       # Run Vitest unit tests first (doesn't need Docker services)
       - run-vitest-tests:
           reason: "Running Vitest unit tests for PR"
