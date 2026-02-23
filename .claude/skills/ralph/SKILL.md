@@ -362,4 +362,21 @@ When working on a multi-phase plan (e.g., an API migration):
 ### Common Mistake: Losing Plan Context
 After context compaction, you may only remember "get CI green" but forget that the plan requires adversarial review, per-endpoint checklists, etc. **Always re-read the plan file** - it contains steps you may have forgotten.
 
+## 12. Automated Execution with Ralphy
+
+For unattended/autonomous execution, use `ralphy-cli` (community-maintained) via the thin wrapper:
+
+```bash
+# Execute a plan file
+./ralph.sh plans/active/my-feature.md
+
+# Execute a single task
+./ralph.sh -t "Fix failing tests" --fast
+
+# All ralphy options supported (--parallel, --model, --max-iterations, etc.)
+./ralph.sh --help
+```
+
+Project-specific rules are in `.ralphy/config.yaml`. The ralph.sh wrapper adds Freegle pre-flight checks (Docker containers, git status) before delegating to ralphy.
+
 Now analyse the user's request and create your status table to begin work.

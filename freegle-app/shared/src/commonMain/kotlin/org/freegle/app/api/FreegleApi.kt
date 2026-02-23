@@ -13,6 +13,7 @@ import org.freegle.app.model.*
 
 class FreegleApi(
     private val baseUrl: String,
+    private val v1BaseUrl: String,
     private val authManager: AuthManager,
 ) {
     private val json = Json {
@@ -34,6 +35,44 @@ class FreegleApi(
         authManager.token.value?.let { jwt ->
             parameter("jwt", jwt)
         }
+        // Persistent token as fallback (supported by Go V2 API via Authorization2 header)
+        authManager.persistentToken.value?.let { persistent ->
+            header("Authorization2", persistent)
+        }
+    }
+
+    // === V1 API - User creation and session management ===
+
+    /** Create a new user via V1 PHP API. Returns JWT + persistent token. */
+    suspend fun createDeviceUser(email: String): V1UserResponse? {
+        val response = client.put("$v1BaseUrl/user") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("email" to email))
+        }
+        if (!response.status.isSuccess()) return null
+        return response.body()
+    }
+
+    /** Add or verify email on the current session via V1 PHP API. */
+    suspend fun addEmailToSession(email: String): V1SessionResponse? {
+        val response = client.patch("$v1BaseUrl/session") {
+            addAuth()
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("email" to email))
+        }
+        if (!response.status.isSuccess()) return null
+        return response.body()
+    }
+
+    /** Confirm email verification with key via V1 PHP API. */
+    suspend fun confirmEmailVerification(key: String): V1SessionResponse? {
+        val response = client.patch("$v1BaseUrl/session") {
+            addAuth()
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("key" to key))
+        }
+        if (!response.status.isSuccess()) return null
+        return response.body()
     }
 
     // === Messages ===
@@ -299,5 +338,19 @@ class FreegleApi(
             setBody(mapOf("groupid" to groupId.toString()))
         }
         return response.status.isSuccess()
+    }
+
+    // === AI Illustrations ===
+
+    /** Fetch a cached AI illustration for an item name. Returns the image URL or null. */
+    suspend fun getIllustration(itemName: String): String? {
+        val response = client.get("$baseUrl/illustration") {
+            addAuth()
+            parameter("item", itemName)
+        }
+        if (!response.status.isSuccess()) return null
+        val result: IllustrationResponse = response.body()
+        if (result.ret != 0) return null
+        return result.url
     }
 }

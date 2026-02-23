@@ -27,14 +27,32 @@ class MessageRepository(private val api: FreegleApi) {
             // Convert center + radius to bounding box
             val latDelta = radiusKm / 111.0
             val lngDelta = radiusKm / (111.0 * kotlin.math.cos(Math.toRadians(lat)))
-            val messages = api.getLocalMessages(
+            val summaries = api.getLocalMessages(
                 swlat = lat - latDelta,
                 swlng = lng - lngDelta,
                 nelat = lat + latDelta,
                 nelng = lng + lngDelta,
                 types = types,
             )
-            _messages.value = messages
+
+            if (summaries.isEmpty()) {
+                _messages.value = emptyList()
+                return
+            }
+
+            // The inbounds endpoint returns minimal data (id, type, lat/lng).
+            // Fetch full message details (subject, fromuser, attachments, etc.)
+            // in batches (API allows max 19 IDs per request).
+            val ids = summaries.map { it.id }
+            val fullMessages = ids.chunked(19).flatMap { batch ->
+                if (batch.size == 1) {
+                    // Single ID returns a bare object, not an array — use getMessage
+                    listOfNotNull(api.getMessage(batch.first()))
+                } else {
+                    api.getMessages(batch)
+                }
+            }
+            _messages.value = fullMessages
         } catch (e: Exception) {
             _error.value = e.message ?: "Network error"
         } finally {

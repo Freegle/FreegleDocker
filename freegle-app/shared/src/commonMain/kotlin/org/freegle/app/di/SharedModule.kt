@@ -9,9 +9,9 @@ import org.freegle.app.repository.UserRepository
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
-fun sharedModule(baseUrl: String) = module {
+fun sharedModule(baseUrl: String, v1BaseUrl: String) = module {
     single { AuthManager() }
-    single { FreegleApi(baseUrl, get()) }
+    single { FreegleApi(baseUrl, v1BaseUrl, get()) }
     singleOf(::MessageRepository)
     singleOf(::ChatRepository)
     singleOf(::NotificationRepository)

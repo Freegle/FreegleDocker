@@ -8,6 +8,13 @@ fun cleanTitle(subject: String): String {
         .trim()
 }
 
+/** Extract the location from a subject like "OFFER: Sofa (Edinburgh EH1)" → "Edinburgh EH1" */
+fun extractLocation(subject: String?): String? {
+    if (subject == null) return null
+    val match = Regex("\\(([^)]+)\\)\\s*$").find(subject)
+    return match?.groupValues?.get(1)
+}
+
 // Parse ISO 8601 date string to approximate epoch millis (UTC)
 private fun parseToMillis(dateStr: String): Long {
     val cleaned = dateStr.replace("T", " ").replace("Z", "").trim()

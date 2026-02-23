@@ -13,7 +13,7 @@ class FreegleApp : Application() {
         startKoin {
             androidContext(this@FreegleApp)
             modules(
-                sharedModule(BuildConfig.API_BASE_URL),
+                sharedModule(BuildConfig.API_BASE_URL, BuildConfig.API_V1_BASE_URL),
                 module {
                     single { FreeglePreferences(get()) }
                 },

@@ -35,13 +35,15 @@ import kotlinx.coroutines.launch
 import org.freegle.app.android.data.FreeglePreferences
 import org.freegle.app.android.ui.components.FreegleHeartArrows
 import org.freegle.app.android.ui.screens.*
+import org.freegle.app.api.AuthManager
+import org.freegle.app.api.FreegleApi
 import org.freegle.app.repository.ChatRepository
 import org.koin.compose.koinInject
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
     data object Explore : Screen("explore")
-    data object Give : Screen("give")
+    data object Post : Screen("post_new")
     data object ChatList : Screen("chat_list")
     data object Profile : Screen("profile")
     data object PostDetail : Screen("post/{messageId}") {
@@ -50,7 +52,6 @@ sealed class Screen(val route: String) {
     data object Chat : Screen("chat/{chatId}") {
         fun createRoute(chatId: Long) = "chat/$chatId"
     }
-    data object Login : Screen("login")
 }
 
 data class BottomNavItem(
@@ -60,11 +61,11 @@ data class BottomNavItem(
     val unselectedIcon: ImageVector,
 )
 
-// 5-tab layout with Give centred: Home | Explore | Give | Chat | Me
+// 5-tab layout with Post centred: Daily 5 | Explore | Post | Chat | Me
 val bottomNavItems = listOf(
-    BottomNavItem(Screen.Home, "Home", Icons.Filled.Home, Icons.Outlined.Home),
+    BottomNavItem(Screen.Home, "Daily 5", Icons.Filled.Home, Icons.Outlined.Home),
     BottomNavItem(Screen.Explore, "Explore", Icons.Filled.Explore, Icons.Outlined.Explore),
-    BottomNavItem(Screen.Give, "Give", Icons.Filled.Add, Icons.Filled.Add),
+    BottomNavItem(Screen.Post, "Post", Icons.Filled.Add, Icons.Filled.Add),
     BottomNavItem(Screen.ChatList, "Chat", Icons.AutoMirrored.Filled.Chat, Icons.AutoMirrored.Outlined.Chat),
     BottomNavItem(Screen.Profile, "Me", Icons.Filled.Person, Icons.Outlined.Person),
 )
@@ -73,6 +74,8 @@ val bottomNavItems = listOf(
 fun FreegleNavHost(
     chatRepository: ChatRepository = koinInject(),
     prefs: FreeglePreferences = koinInject(),
+    authManager: AuthManager = koinInject(),
+    api: FreegleApi = koinInject(),
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -85,24 +88,59 @@ fun FreegleNavHost(
     // Onboarding state
     var showOnboarding by remember { mutableStateOf<Boolean?>(null) }
     var tourStep by remember { mutableIntStateOf(-1) } // -1 = no tour
+
+    // Auto-login: restore or create credentials on startup
     LaunchedEffect(Unit) {
+        // Check onboarding state
         showOnboarding = !prefs.isOnboardingComplete()
+
+        // Try to restore saved credentials
+        val savedJwt = prefs.getAuthJwt()
+        val savedUserId = prefs.getAuthUserId()
+        val savedPersistent = prefs.getAuthPersistent()
+
+        if (savedJwt != null && savedUserId != null) {
+            // Restore saved credentials
+            authManager.setCredentials(savedJwt, savedUserId)
+            if (savedPersistent != null) authManager.setPersistentToken(savedPersistent)
+        } else {
+            // First launch: create a device user account via V1 API
+            try {
+                val deviceId = prefs.getOrCreateDeviceId()
+                val email = "app-$deviceId@users.ilovefreegle.org"
+                val result = api.createDeviceUser(email)
+                val jwt = result?.jwt
+                val uid = result?.id
+                if (result != null && result.ret == 0 && jwt != null && uid != null) {
+                    authManager.setCredentials(jwt, uid)
+                    result.persistent?.let { authManager.setPersistentToken(it) }
+                    prefs.saveAuth(jwt, uid, result.persistent)
+                }
+            } catch (_: Exception) {
+                // Auto-login failed - app still works for browsing without auth
+            }
+        }
     }
 
     val showBottomBar = bottomNavItems.any { item ->
         currentDestination?.hierarchy?.any { it.route == item.screen.route } == true
     }
 
-    // Pulsing animation for the Give button
-    val pulseAnim = rememberInfiniteTransition(label = "give_pulse")
-    val pulseScale by pulseAnim.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.12f,
-        animationSpec = infiniteRepeatable(
+    // Pulsing animation for the Post button - pulses a few times then stops
+    var pulseActive by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(4500) // Pulse for ~5 cycles then stop
+        pulseActive = false
+    }
+    val pulseScale by animateFloatAsState(
+        targetValue = if (pulseActive) 1.12f else 1f,
+        animationSpec = if (pulseActive) repeatable(
+            iterations = 5,
             animation = tween(900, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
-        ),
+        ) else spring(),
         label = "pulse_scale",
+        finishedListener = { pulseActive = false },
     )
 
     // Show onboarding on first launch
@@ -136,8 +174,8 @@ fun FreegleNavHost(
                             it.route == item.screen.route
                         } == true
 
-                        if (item.screen == Screen.Give) {
-                            // Special Give button
+                        if (item.screen == Screen.Post) {
+                            // Special Post button
                             NavigationBarItem(
                                 selected = selected,
                                 onClick = {
@@ -169,7 +207,7 @@ fun FreegleNavHost(
                                 },
                                 label = {
                                     Text(
-                                        "Give",
+                                        "Post",
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (selected) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -229,7 +267,16 @@ fun FreegleNavHost(
                         navController.navigate(Screen.PostDetail.createRoute(messageId))
                     },
                     onPostWantedClick = {
-                        navController.navigate(Screen.Give.route) {
+                        navController.navigate(Screen.Post.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToExplore = {
+                        navController.navigate(Screen.Explore.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }
@@ -240,12 +287,12 @@ fun FreegleNavHost(
                 )
             }
             composable(Screen.Explore.route) {
-                HomeScreen(
+                ExploreScreen(
                     onMessageClick = { messageId ->
                         navController.navigate(Screen.PostDetail.createRoute(messageId))
                     },
                     onPostWantedClick = {
-                        navController.navigate(Screen.Give.route) {
+                        navController.navigate(Screen.Post.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }
@@ -255,7 +302,7 @@ fun FreegleNavHost(
                     },
                 )
             }
-            composable(Screen.Give.route) {
+            composable(Screen.Post.route) {
                 var postcode by remember { mutableStateOf("") }
                 var locationName by remember { mutableStateOf("") }
                 LaunchedEffect(Unit) {
@@ -284,11 +331,7 @@ fun FreegleNavHost(
                 )
             }
             composable(Screen.Profile.route) {
-                ProfileScreen(
-                    onLoginClick = {
-                        navController.navigate(Screen.Login.route)
-                    },
-                )
+                ProfileScreen()
             }
             composable(
                 route = Screen.PostDetail.route,
@@ -301,6 +344,9 @@ fun FreegleNavHost(
                     onChatClick = { chatId ->
                         navController.navigate(Screen.Chat.createRoute(chatId))
                     },
+                    onMessageClick = { otherId ->
+                        navController.navigate(Screen.PostDetail.createRoute(otherId))
+                    },
                 )
             }
             composable(
@@ -311,11 +357,6 @@ fun FreegleNavHost(
                 ChatScreen(
                     chatId = chatId,
                     onBack = { navController.popBackStack() },
-                )
-            }
-            composable(Screen.Login.route) {
-                LoginScreen(
-                    onLoginSuccess = { navController.popBackStack() },
                 )
             }
         }

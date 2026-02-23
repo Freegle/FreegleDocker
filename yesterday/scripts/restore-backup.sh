@@ -46,6 +46,8 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 # the yesterday services (API, 2FA, traefik) stay dead, breaking the entire system.
 cleanup_on_failure() {
     update_status "failed" "Restore failed - check logs"
+    # Always clean up skip-grant-tables if it was added (leaves percona with no TCP port)
+    sed -i '/skip-grant-tables/d' /var/www/FreegleDocker/conf/percona-my.cnf 2>/dev/null || true
     echo "Restarting main Docker stack after failure..."
     cd /var/www/FreegleDocker
     docker compose up -d 2>/dev/null || true
@@ -479,9 +481,18 @@ echo "Resetting MySQL root password for local container access..."
 docker compose stop percona
 echo "skip-grant-tables" >> /var/www/FreegleDocker/conf/percona-my.cnf
 docker compose start percona
-sleep 10
-docker exec freegle-percona mysql -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null
-if [ $? -eq 0 ]; then
+# MySQL 8.0: skip-grant-tables implies skip-networking (no TCP port).
+# The healthcheck uses TCP, so it will never pass. Wait for the socket instead.
+echo "Waiting for MySQL socket (skip-grant-tables disables TCP)..."
+for i in $(seq 1 60); do
+    if docker exec freegle-percona mysqladmin ping --socket=/var/lib/mysql/mysql.sock 2>/dev/null; then
+        echo "✅ MySQL ready via socket"
+        break
+    fi
+    sleep 2
+done
+# Use 'if' to prevent set -e from killing the script on failure
+if docker exec freegle-percona mysql --socket=/var/lib/mysql/mysql.sock -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null; then
     echo "✅ MySQL root password reset to 'iznik'"
 else
     echo "⚠️ Failed to reset MySQL root password - containers may not connect to DB"

@@ -15,9 +15,10 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // API base URL - configurable for different environments
-        // Port 18193 is the external port mapped from apiv2 container's 8192
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:18193/api\"")
+        // API base URL - production V2 Go API
+        buildConfigField("String", "API_BASE_URL", "\"https://api.ilovefreegle.org/apiv2\"")
+        // V1 PHP API (still needed for user creation/session management)
+        buildConfigField("String", "API_V1_BASE_URL", "\"https://fdapilive.ilovefreegle.org/api\"")
     }
 
     buildFeatures {

@@ -1,8 +1,11 @@
 package org.freegle.app.android.ui.screens
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -18,20 +21,26 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import org.freegle.app.android.ui.components.cleanTitle
+import org.freegle.app.android.ui.components.extractLocation
 import org.freegle.app.android.ui.components.formatTimeAgo
+import org.freegle.app.android.ui.components.qualitativeInterest
+import org.freegle.app.android.ui.components.shareItem
 import org.freegle.app.api.FreegleApi
 import org.freegle.app.model.MessageSummary
+import org.freegle.app.model.User
 import org.freegle.app.repository.MessageRepository
 import org.koin.compose.koinInject
 
@@ -41,6 +50,7 @@ fun PostDetailScreen(
     messageId: Long,
     onBack: () -> Unit,
     onChatClick: (Long) -> Unit,
+    onMessageClick: ((Long) -> Unit)? = null,
     messageRepository: MessageRepository = koinInject(),
     api: FreegleApi = koinInject(),
 ) {
@@ -49,12 +59,28 @@ fun PostDetailScreen(
     var showInterestSent by remember { mutableStateOf(false) }
     var isSendingInterest by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
+    var userMessage by remember { mutableStateOf("") }
+    var poster by remember { mutableStateOf<User?>(null) }
+    var otherPosts by remember { mutableStateOf<List<MessageSummary>>(emptyList()) }
     val scope = rememberCoroutineScope()
+    val focusRequester = remember { FocusRequester() }
+    val context = LocalContext.current
 
     LaunchedEffect(messageId) {
         isLoading = true
         message = messageRepository.getMessageDetail(messageId)
         isLoading = false
+        message?.fromuser?.let { userId ->
+            poster = api.getUser(userId)
+            // Fetch other posts from this user
+            val allMessages = messageRepository.messages.value
+            otherPosts = allMessages
+                .filter { it.fromuser == userId && it.id != messageId }
+                .take(10)
+        }
+        // Auto-focus the reply input after content loads
+        kotlinx.coroutines.delay(300)
+        try { focusRequester.requestFocus() } catch (_: Exception) { }
     }
 
     if (isLoading) {
@@ -76,64 +102,173 @@ fun PostDetailScreen(
     }
 
     val msg = message!!
-    val scaffoldState = rememberBottomSheetScaffoldState(
-        bottomSheetState = rememberStandardBottomSheetState(
-            initialValue = SheetValue.PartiallyExpanded,
-            skipHiddenState = true,
-        ),
-    )
+    val isOffer = msg.type == "Offer"
+    val title = cleanTitle(msg.subject ?: "Item")
 
-    BottomSheetScaffold(
-        scaffoldState = scaffoldState,
-        sheetPeekHeight = 230.dp,
-        sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        sheetContainerColor = MaterialTheme.colorScheme.surface,
-        sheetDragHandle = null,  // We render our own handle in ItemDetailSheet
-        topBar = null,
-        sheetContent = {
-            ItemDetailSheet(
-                message = msg,
-                showInterestSent = showInterestSent,
-                isSending = isSendingInterest,
-                errorMessage = sendError,
-                onSendMessage = { userMessage ->
-                    if (!isSendingInterest) {
-                        isSendingInterest = true
-                        sendError = null
-                        scope.launch {
-                            try {
-                                val success = api.replyToMessage(messageId, userMessage)
-                                if (success) {
-                                    showInterestSent = true
-                                } else {
-                                    sendError = "Couldn\u2019t send your message. Please try again."
-                                }
-                            } catch (_: Exception) {
-                                sendError = "No connection. Check your internet and try again."
-                            }
-                            isSendingInterest = false
-                        }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Share button in top bar
+                    IconButton(onClick = {
+                        shareItem(context, title, messageId)
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share")
                     }
                 },
             )
         },
-        containerColor = Color.Black,
-    ) { _ ->
-        // Full-screen photo behind the sheet
-        Box(modifier = Modifier.fillMaxSize()) {
-            PhotoBackground(message = msg)
+        bottomBar = {
+            if (!showInterestSent) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 8.dp,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .navigationBarsPadding(),
+                    ) {
+                        if (sendError != null) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(sendError!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                                }
+                            }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = userMessage,
+                                onValueChange = { userMessage = it },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp, max = 120.dp)
+                                    .focusRequester(focusRequester),
+                                placeholder = {
+                                    Text(
+                                        if (isOffer) "Say why you\u2019d like this and when you could collect"
+                                        else "Say what you have and when they could collect",
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                },
+                                shape = RoundedCornerShape(24.dp),
+                                maxLines = 3,
+                            )
+                            FilledIconButton(
+                                onClick = {
+                                    if (!isSendingInterest && userMessage.isNotBlank()) {
+                                        isSendingInterest = true
+                                        sendError = null
+                                        scope.launch {
+                                            try {
+                                                val success = api.replyToMessage(messageId, userMessage)
+                                                if (success) {
+                                                    showInterestSent = true
+                                                } else {
+                                                    sendError = "Couldn\u2019t send. Please try again."
+                                                }
+                                            } catch (_: Exception) {
+                                                sendError = "No connection. Check your internet."
+                                            }
+                                            isSendingInterest = false
+                                        }
+                                    }
+                                },
+                                enabled = !isSendingInterest && userMessage.isNotBlank(),
+                                modifier = Modifier.size(48.dp),
+                                shape = CircleShape,
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+                                ),
+                            ) {
+                                if (isSendingInterest) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = "Send message",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .navigationBarsPadding(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Message sent! You\u2019ll be notified when they reply.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            }
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            // Compact photo - user already saw it in the deck
+            CompactPhoto(message = msg)
 
-            // Floating back button
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.35f), CircleShape),
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White,
+            // Item details immediately visible
+            ItemDetails(message = msg, poster = poster)
+
+            // Other items from this person
+            if (otherPosts.isNotEmpty()) {
+                OtherItemsFromPoster(
+                    posterName = poster?.displayname ?: poster?.firstname ?: "this person",
+                    posts = otherPosts,
+                    onItemClick = { id ->
+                        onMessageClick?.invoke(id)
+                    },
                 )
             }
         }
@@ -141,7 +276,7 @@ fun PostDetailScreen(
 }
 
 @Composable
-private fun PhotoBackground(message: MessageSummary) {
+private fun CompactPhoto(message: MessageSummary) {
     val attachments = message.messageAttachments ?: emptyList()
     val title = cleanTitle(message.subject ?: "Item")
     val isOffer = message.type == "Offer"
@@ -149,20 +284,41 @@ private fun PhotoBackground(message: MessageSummary) {
     if (attachments.isNotEmpty()) {
         val pagerState = rememberPagerState(pageCount = { attachments.size })
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(250.dp),
+        ) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
             ) { page ->
-                // Parallax effect: image slides slightly with page offset
-                val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                var scale by remember { mutableFloatStateOf(1f) }
+                var offsetX by remember { mutableFloatStateOf(0f) }
+                var offsetY by remember { mutableFloatStateOf(0f) }
+
                 AsyncImage(
                     model = attachments[page].path,
                     contentDescription = title,
                     modifier = Modifier
                         .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 4f)
+                                if (scale > 1f) {
+                                    offsetX += pan.x
+                                    offsetY += pan.y
+                                } else {
+                                    offsetX = 0f
+                                    offsetY = 0f
+                                }
+                            }
+                        }
                         .graphicsLayer {
-                            translationX = pageOffset * size.width * 0.3f
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = if (scale > 1f) offsetX else 0f
+                            translationY = if (scale > 1f) offsetY else 0f
                         },
                     contentScale = ContentScale.Crop,
                 )
@@ -173,7 +329,7 @@ private fun PhotoBackground(message: MessageSummary) {
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 240.dp),
+                        .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     repeat(attachments.size) { index ->
@@ -192,92 +348,76 @@ private fun PhotoBackground(message: MessageSummary) {
                         )
                     }
                 }
-            }
 
-            // Top gradient (for back button visibility)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.5f), Color.Transparent),
-                        ),
-                    ),
-            )
+                // Photo count badge
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Black.copy(alpha = 0.5f),
+                ) {
+                    Text(
+                        "${pagerState.currentPage + 1}/${attachments.size}",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                    )
+                }
+            }
         }
     } else {
-        // No image - beautiful gradient with initial
-        Box(
+        // No photo - question mark placeholder, compact height
+        QuestionMarkPlaceholder(
+            isOffer = isOffer,
             modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = if (isOffer)
-                            listOf(Color(0xFF003318), Color(0xFF008040))
-                        else
-                            listOf(Color(0xFF0D2B4D), Color(0xFF1565C0)),
-                    ),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = title.take(2).uppercase(),
-                style = MaterialTheme.typography.displayLarge,
-                color = Color.White.copy(alpha = 0.2f),
-                fontWeight = FontWeight.Black,
-                fontSize = 96.sp,
-            )
-        }
+                .fillMaxWidth()
+                .height(160.dp),
+        )
     }
 }
 
 @Composable
-private fun ItemDetailSheet(
+private fun ItemDetails(
     message: MessageSummary,
-    showInterestSent: Boolean,
-    isSending: Boolean = false,
-    errorMessage: String? = null,
-    onSendMessage: (String) -> Unit,
+    poster: User? = null,
 ) {
     val title = cleanTitle(message.subject ?: "Item")
     val isOffer = message.type == "Offer"
     val location = message.location?.areaname
-        ?: message.messageGroups?.firstOrNull()?.namedisplay
+        ?: extractLocation(message.subject)
     val timeStr = message.arrival ?: message.date
-    var userMessage by remember { mutableStateOf("") }
+    val posterName = poster?.displayname ?: poster?.firstname
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 32.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        // Drag handle
-        Box(
-            modifier = Modifier
-                .width(40.dp)
-                .height(4.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.outlineVariant)
-                .align(Alignment.CenterHorizontally),
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        // Type badge
-        Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+        // Type badge + time
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = if (isOffer) "FREE ITEM" else "WANTED",
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-            )
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
+            ) {
+                Text(
+                    text = if (isOffer) "OFFER" else "WANTED",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            if (timeStr != null) {
+                Text(
+                    formatTimeAgo(timeStr),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Spacer(Modifier.height(10.dp))
@@ -285,18 +425,17 @@ private fun ItemDetailSheet(
         // Title
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
 
-        Spacer(Modifier.height(8.dp))
-
-        // Location + time
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (location != null) {
+        // Location
+        if (location != null) {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Icon(
                     Icons.Default.LocationOn,
                     contentDescription = null,
@@ -309,199 +448,237 @@ private fun ItemDetailSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (timeStr != null) {
-                Text(
-                    text = "\u00b7 ${formatTimeAgo(timeStr)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
 
-        // Message sent confirmation
-        if (showInterestSent) {
-            Spacer(Modifier.height(16.dp))
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Message sent! You\u2019ll be notified when they reply.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
-            }
+        // Qualitative interest level instead of raw count
+        Spacer(Modifier.height(6.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                Icons.Default.Favorite,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp),
+                tint = if (message.replycount > 0) Color(0xFF008040) else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                qualitativeInterest(message.replycount),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (message.replycount > 0) Color(0xFF008040) else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-
-        Spacer(Modifier.height(20.dp))
 
         // Description
         if (!message.textbody.isNullOrBlank()) {
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = message.textbody!!,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(Modifier.height(20.dp))
         }
 
+        Spacer(Modifier.height(16.dp))
         HorizontalDivider()
         Spacer(Modifier.height(12.dp))
 
-        // Posted by
+        // Poster info
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.secondaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            val profileUrl = poster?.profile?.path ?: poster?.profile?.paththumb
+            if (profileUrl != null) {
+                AsyncImage(
+                    model = profileUrl,
+                    contentDescription = posterName,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
                 )
-            }
-            Column {
-                Text(
-                    "Posted by a Freegler",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                if (message.replycount > 0) {
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        "${message.replycount} ${if (message.replycount == 1) "reply" else "replies"}",
+                        (posterName ?: "F").first().uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    posterName ?: "A Freegler",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                val addedStr = poster?.added
+                if (addedStr != null) {
+                    val year = addedStr.take(4)
+                    Text(
+                        "Freegler since $year",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-        }
 
-        Spacer(Modifier.height(20.dp))
-
-        // Error message
-        if (errorMessage != null) {
-            Spacer(Modifier.height(8.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            // Ratings
+            val upRatings = poster?.info?.let { it.offers + it.collected } ?: 0
+            if (upRatings > 0) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(errorMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
-                }
-            }
-        }
-
-        // Message input - let the user write their own message
-        if (!showInterestSent) {
-            Text(
-                text = if (isOffer) "Send a message to the giver" else "Let them know you can help",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(8.dp))
-
-            // Quick reply chips
-            if (userMessage.isEmpty()) {
-                val chips = if (isOffer) listOf(
-                    "Hi! Is this still available?",
-                    "I\u2019d love this \u2013 when can I collect?",
-                    "Could I pick this up today?",
-                ) else listOf(
-                    "Hi! I have one of these if you\u2019d like it.",
-                    "I can help \u2013 shall I drop it off?",
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    chips.forEach { chip ->
-                        SuggestionChip(
-                            onClick = { userMessage = chip },
-                            label = { Text(chip, maxLines = 1, style = MaterialTheme.typography.labelSmall) },
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.ThumbUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            "$upRatings",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
             }
+        }
 
-            OutlinedTextField(
-                value = userMessage,
-                onValueChange = { userMessage = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp),
-                placeholder = {
-                    Text(
-                        if (isOffer) "e.g. Hi! Is this still available? I could collect tomorrow."
-                        else "e.g. Hi! I have one of these you\u2019re welcome to have.",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                    )
-                },
-                shape = RoundedCornerShape(16.dp),
-                maxLines = 4,
+        // About me
+        if (!poster?.aboutme?.text.isNullOrBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                poster!!.aboutme!!.text!!,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
             )
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = { onSendMessage(userMessage) },
-                enabled = !isSending && userMessage.isNotBlank(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(18.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isOffer) Color(0xFF008040) else Color(0xFF1565C0),
-                ),
+        }
+
+        // Stats row
+        if (poster?.info != null) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                if (isSending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text("Sending\u2026", style = MaterialTheme.typography.titleMedium)
-                } else {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
+                val info = poster.info!!
+                if (info.offers > 0) {
                     Text(
-                        "Send message",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        "${info.offers} given away",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (info.collected > 0) {
+                    Text(
+                        "${info.collected} collected",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
+        }
+    }
+}
+
+/** "Other items from this person" horizontal scrollable row. */
+@Composable
+private fun OtherItemsFromPoster(
+    posterName: String,
+    posts: List<MessageSummary>,
+    onItemClick: (Long) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+    ) {
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            "Other items from $posterName",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(posts, key = { it.id }) { post ->
+                OtherItemCard(
+                    message = post,
+                    onClick = { onItemClick(post.id) },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun OtherItemCard(
+    message: MessageSummary,
+    onClick: () -> Unit,
+) {
+    val imageUrl = message.messageAttachments?.firstOrNull()?.paththumb
+        ?: message.messageAttachments?.firstOrNull()?.path
+    val title = cleanTitle(message.subject ?: "Item")
+    val isOffer = message.type == "Offer"
+
+    Card(
+        onClick = onClick,
+        modifier = Modifier.width(100.dp),
+        shape = RoundedCornerShape(10.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column {
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                QuestionMarkPlaceholder(
+                    isOffer = isOffer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp),
+                )
+            }
+            Text(
+                title,
+                modifier = Modifier.padding(6.dp),
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

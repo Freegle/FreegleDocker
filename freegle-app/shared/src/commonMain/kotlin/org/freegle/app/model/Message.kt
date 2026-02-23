@@ -66,6 +66,35 @@ data class MessageItem(
     val weight: Double? = null,
 )
 
+// V1 API response for user creation (PUT /user)
+@Serializable
+data class V1UserResponse(
+    val ret: Int = -1,
+    val status: String? = null,
+    val id: Long? = null,
+    val jwt: String? = null,
+    val persistent: String? = null,
+)
+
+// V1 API response for session (PATCH /session)
+@Serializable
+data class V1SessionResponse(
+    val ret: Int = -1,
+    val status: String? = null,
+    val jwt: String? = null,
+    val persistent: String? = null,
+    val id: Long? = null,
+    val email: String? = null,
+)
+
+// AI illustration response from /illustration endpoint
+@Serializable
+data class IllustrationResponse(
+    val ret: Int = -1,
+    val url: String? = null,
+    val externaluid: String? = null,
+)
+
 // Search result has slightly different shape
 @Serializable
 data class SearchResult(
