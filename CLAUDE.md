@@ -469,34 +469,38 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
-### 2026-02-23 - PutMessage unauthenticated draft + JoinAndPost flow complete
-- **Status**: Go changes pushed to master, client fix pushed to feature/v2-unified-migration. CI running.
+### 2026-02-23 18:30 - Fixed email-only signup (missing password in Go response)
+- **Status**: Go fix pushed, CI re-triggered for PR #187 (commit b05dde7f).
 - **Completed**:
-  - Go PutMessage: handles unauthenticated users by finding/creating user from email, returns JWT
-  - Go PutMessage: stores drafts in messages_drafts table (matches PHP behavior)
-  - Go JoinAndPost: submits existing drafts, joins group, generates password for new users
-  - Go modconfig.go: response format fixes (ret/status wrapping) matching test expectations
-  - Go user_write.go: exported CanonicalizeEmail for cross-package use
-  - Client compose.js: stores JWT from PutMessage response for subsequent JoinAndPost auth
-  - Full end-to-end local testing: PUT /message → verify draft → POST JoinAndPost → verify messages_groups + membership
-- **Remaining V1 calls**: ZERO - confirmed by grep across entire codebase
-- **Key Decisions**: JWT stored in compose.js createDraft (not BaseAPI guard, which blocks initial auth for safety)
+  - Root caused 3 remaining test failures from build 4599 (down from 6 after sha1 fix)
+  - All 3 failures share same root cause: Go PutUser (PUT /user) didn't return `password` for email-only signups
+  - Client's reply state machine checks `ret.ret === 0 && ret.password` → falsy → falls through to forceLogin → shows signup modal → stuck
+  - Fix: Go now generates random 8-char password when none provided (matching PHP), stores it, returns in response
+  - Test 2.1 was falsely passing (fixture returns false but test doesn't check return value)
+  - Go commit 6844670 pushed to master, FreegleDocker submodule updated (185d0bf0)
+- **Next**: Wait for CI build on PR #187. If green, V1→V2 migration complete and ready for merge.
+- **Key files**: iznik-server-go/user/user_write_extended.go (PutUser), iznik-nuxt3/composables/useReplyStateMachine.js (handleAuthentication)
 
-### 2026-02-23 - Adversarial review fixes for V2 Go endpoints
-- **Status**: Fixes committed and pushed to iznik-server-go master. CI running.
-- **Completed**: Fixed 4 CRITICAL, 4 HIGH, 14 MEDIUM issues across 6 Go files:
-  - Stripe: mutex for global stripe.Key, auth checks, amount validation, error sanitization
-  - ModConfig: auth on single fetch, LAST_INSERT_ID removal, explicit columns, batched UPDATE
-  - Isochrone: LAST_INSERT_ID removal, transport validation, error checking
-  - Export: LAST_INSERT_ID removal, decompression limit, duplicate prevention
-  - Session: PatchSession race fix (single UPDATE), per-goroutine wg2.Add, JWT error check, volunteering scope
-  - GroupWork: deterministic sort, proper 401 error
-- **Next**: Monitor CI. Also monitoring client PR #187 CI.
+### 2026-02-23 17:15 - CI re-triggered after Go sha1 login fix
+- **Status**: Pushed empty commit to feature/v2-unified-migration to re-trigger CI. Build 4584 failed because it ran BEFORE the Go sha1 fix was pushed.
+- **Completed**:
+  - Confirmed root cause of 6 test failures: Go used bcrypt instead of sha1 for password hashing (already fixed in d45c525)
+  - Confirmed groupid=0 search bug already fixed in same commit
+  - Confirmed AuthorityAPI.fetch V2 endpoint fix (Netlify builds now pass)
+  - Published orb 1.1.168 (force rebuild apiv2 in nuxt3 PR CI to avoid DLC stale images)
+  - Re-triggered nuxt3 CI by pushing empty commit (pipeline ~4931)
+- **Next**: Monitor nuxt3 PR #187 CI. If green, V1→V2 migration is complete and ready for merge.
 
-### 2026-02-23 - Fix V2 fetchUser flat response handling
-- **Status**: CI running (workflow b7875719). Fixed critical auth bug.
-- **Root cause**: `fetchUser()` checked `sessionData.me` but GET /user returns flat User object (no `.me` wrapper). In passing commit e096571c, V2 silently failed and V1 fallback did all auth. After V1 removal in 4b17908f, auth was never established → 401 on writes.
-- **Fix**: Changed fetchUser to check `userData.id` (flat User) instead of `sessionData.me`. Reverted fetchv2 to GET /user (V2 pattern: flat responses).
+### 2026-02-23 17:00 - Fix Go sha1 login + groupid=0 search bug
+- **Status**: Go changes pushed to master, nuxt3 CI re-triggered.
+- **Completed**:
+  - Root cause of 6 remaining test failures: Go used bcrypt for password verification, PHP uses sha1(pw+salt)
+  - Fixed all Go files using bcrypt → sha1+salt: session.go (login+set), user_write_extended.go (signup), message_mod.go (JoinAndPost), session_writes_test.go
+  - Added PASSWORD_SALT env var to Dockerfile (default 'zzzz' matching PHP config)
+  - Fixed groupid=0 search bug: when ModTools sends groupid=0 ("All my communities"), Go now replaces with user's actual group memberships instead of returning entire country
+  - Also fixed: AuthorityAPI.fetch V2 endpoint format (path params instead of query params)
+  - Published orb 1.1.168 (force rebuild apiv2 in nuxt3 PR CI to avoid DLC stale images)
+- **Next**: Monitor nuxt3 PR #187 CI. If green, V1→V2 migration is complete.
 
 ### 2026-02-22 - ALL V1 API calls eliminated
 - **Status**: Zero V1 method calls remain in iznik-nuxt3. PR #187 updated.
