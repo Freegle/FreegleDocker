@@ -1754,16 +1754,18 @@ jobs:
       - align-submodule-branches:
           skip-submodule: "iznik-nuxt3"
       - rebuild-aligned-containers
-      # Force rebuild prod containers to pick up replaced submodule code.
+      # Force rebuild containers to pick up replaced submodule code.
       # Without this, Docker Layer Caching reuses stale images from previous builds.
+      # apiv2 must also be rebuilt because DLC restores the old Go binary image
+      # and docker-compose up -d won't rebuild if the image already exists.
       - run:
-          name: Rebuild production containers with PR code
+          name: Rebuild containers with PR code (bypass DLC)
           command: |
             cd "$HOME/FreegleDocker"
-            echo "Force rebuilding production containers to pick up PR code..."
+            echo "Force rebuilding containers to pick up PR code..."
             docker-compose -f docker-compose.yml build --no-cache \
-              freegle-prod-local modtools-prod-local playwright
-            echo "✅ Production containers rebuilt with PR code"
+              apiv2 freegle-prod-local modtools-prod-local playwright
+            echo "✅ Containers rebuilt with PR code"
           no_output_timeout: 15m
       # Run Vitest unit tests first (doesn't need Docker services)
       - run-vitest-tests:
