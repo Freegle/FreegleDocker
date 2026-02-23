@@ -469,6 +469,19 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+### 2026-02-23 - PutMessage unauthenticated draft + JoinAndPost flow complete
+- **Status**: Go changes pushed to master, client fix pushed to feature/v2-unified-migration. CI running.
+- **Completed**:
+  - Go PutMessage: handles unauthenticated users by finding/creating user from email, returns JWT
+  - Go PutMessage: stores drafts in messages_drafts table (matches PHP behavior)
+  - Go JoinAndPost: submits existing drafts, joins group, generates password for new users
+  - Go modconfig.go: response format fixes (ret/status wrapping) matching test expectations
+  - Go user_write.go: exported CanonicalizeEmail for cross-package use
+  - Client compose.js: stores JWT from PutMessage response for subsequent JoinAndPost auth
+  - Full end-to-end local testing: PUT /message → verify draft → POST JoinAndPost → verify messages_groups + membership
+- **Remaining V1 calls**: ZERO - confirmed by grep across entire codebase
+- **Key Decisions**: JWT stored in compose.js createDraft (not BaseAPI guard, which blocks initial auth for safety)
+
 ### 2026-02-23 - Adversarial review fixes for V2 Go endpoints
 - **Status**: Fixes committed and pushed to iznik-server-go master. CI running.
 - **Completed**: Fixed 4 CRITICAL, 4 HIGH, 14 MEDIUM issues across 6 Go files:
