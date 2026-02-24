@@ -5,6 +5,8 @@ namespace App\Mail\Pledge;
 use App\Mail\MjmlMailable;
 use App\Mail\Traits\LoggableEmail;
 use App\Models\User;
+use Illuminate\Mail\Mailables\Envelope;
+use Symfony\Component\Mime\Address;
 
 class PledgeThankYou extends MjmlMailable
 {
@@ -28,6 +30,17 @@ class PledgeThankYou extends MjmlMailable
     protected function getRecipientUserId(): ?int
     {
         return $this->user->id ?? NULL;
+    }
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            from: new Address(
+                config('freegle.mail.noreply_addr'),
+                config('freegle.branding.name')
+            ),
+            subject: $this->getSubject(),
+        );
     }
 
     public function build(): static
