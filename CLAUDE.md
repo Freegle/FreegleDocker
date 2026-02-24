@@ -469,6 +469,43 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
 
+### 2026-02-24 - Dual-compat Go API: HTTP status codes + ret values in body
+- **Status**: Pushed Go commit e1298b4 to master. Waiting for CI.
+- **Completed**:
+  - Added `c.Status(httpCode)` to all 84 non-zero ret returns across 17 Go handler files
+  - Pattern: `c.Status(fiber.StatusXxx).JSON(fiber.Map{"ret": N, "status": "..."})` - sets HTTP status AND keeps ret in body
+  - Updated 30 test assertions for new HTTP status codes
+  - Mapping: ret:1→401, ret:2→context-dependent (400/403/404), ret:3→400/403/409, ret:4→403, ret:5→409
+- **Why**: V1 clients (nuxt3 master/production) check `data.ret` in body, V2 clients (feature/v2-unified-migration) check HTTP status codes. Both work simultaneously.
+- **Next**: Monitor CI. If green, this Go API is production-ready for both V1 and V2 clients.
+
+### 2026-02-24 00:15 - CI GREEN - Post-migration cleanup complete
+- **Status**: CI GREEN. Job 2302 SUCCESS. Auto-merged to production.
+- **Completed this session**:
+  - Identified Go test failures (TestDeleteIsochroneWrongUser 404→403) from ret removal
+  - Root-caused Playwright failures: Go ret removal (tasks 18+19) broke nuxt3 master - Go stopped returning ret values but nuxt3 master still checks them. Tasks 18/19 changes were on feature/v2-unified-migration, not master.
+  - **REVERTED Go ret removal** (commits 205078c and 709e90c) - ret values must stay until feature/v2-unified-migration merges to nuxt3 master
+  - Fixed 4 Vitest failures from recent nuxt3 master changes (MessageSkeleton count 3→6, NavbarMobile logged-out class, ConfirmModal stubs in ModCommunityEvent + ModVolunteerOpportunity)
+  - Go reverts: 306b404, 1485b3e (master)
+  - Nuxt3 test fixes: d575aa40 (master)
+  - FreegleDocker: 2fb846b7 (master)
+- **Key learning**: Tasks 18 (Go ret removal) and 19 (client ret→HTTP error) must be deployed atomically. The Go changes cannot go to master until the nuxt3 V2 client branch (feature/v2-unified-migration) is merged.
+- **Remaining from plan**: Tasks 16, 17, 20, 21, 22 are on feature/v2-unified-migration (nuxt3) and master (Go). Tasks 18+19 are reverted on Go master; they exist on feature/v2-unified-migration (nuxt3 side) and will need re-applying to Go when the branch merges.
+
+### 2026-02-24 - Post-migration cleanup: ret removal, comments, fetchMe, publicity, tests, Swagger
+- **Status**: All 8 tasks committed. Go ret removal REVERTED (see entry above).
+- **Completed**:
+  - Task 16: Cleaned ~25 historical comments across both repos (V1/PHP references)
+  - Task 17: Fixed 9 fetchMe callers (removed dead 2nd param), fixed NewsAboutMe.vue inverted params bug
+  - Task 18: Removed ~63 ret values from 8 Go files → REVERTED (must wait for nuxt3 V2 merge)
+  - Task 19: Updated client-side ret checks in auth.js etc. (on feature/v2-unified-migration, ready)
+  - Task 20: Deleted publicity store + 7 related files, removed imports from app.vue and layouts/default.vue
+  - Task 21: Strengthened test assertions in Newsletter, CommunityEvents, Volunteering spec files
+  - Task 22: Added Swagger annotations for GET /isochrone and fleshed out Stripe endpoint docs
+  - Task 23: ESLint clean, committed Go (205078c), nuxt3 (e7f78a58), FreegleDocker (fd112000)
+- **Commits**: Go 205078c (master, REVERTED), nuxt3 e7f78a58 (feature/v2-unified-migration), FreegleDocker fd112000 (master)
+- **Next**: Tasks 18+19 Go changes need re-applying when feature/v2-unified-migration merges to nuxt3 master.
+
 ### 2026-02-23 23:07 - Adversarial review fixes committed and pushed
 - **Status**: 8 critical/high fixes committed. CI pipeline 2072 rerunning with SSH (workflow f484af5a).
 - **Completed**:
@@ -549,6 +586,25 @@ Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for ful
 ### 2026-02-22 - PR #186 perf: Verified production build locally
 - **Branch**: `feature/bootstrap-lean-imports` in iznik-nuxt3
 - **Status**: Production build verified working, manualChunks removed, ready for CI
+
+### 2026-02-23 - Fix V2 fetchUser flat response handling
+- **Status**: CI running (workflow b7875719). Fixed critical auth bug.
+- **Root cause**: `fetchUser()` checked `sessionData.me` but GET /user returns flat User object (no `.me` wrapper). In passing commit e096571c, V2 silently failed and V1 fallback did all auth. After V1 removal in 4b17908f, auth was never established → 401 on writes.
+- **Fix**: Changed fetchUser to check `userData.id` (flat User) instead of `sessionData.me`. Reverted fetchv2 to GET /user (V2 pattern: flat responses).
+- **Next**: Monitor CI. If green, PR #187 ready for merge.
+
+### 2026-02-22 - ALL V1 API calls eliminated
+- **Status**: Zero V1 method calls remain in iznik-nuxt3. PR #187 updated.
+- **Completed**:
+  - Removed all V1 methods from BaseAPI.js ($request, $get, $post, $put, $patch, $del, $postForm, $postOverride)
+  - Switched auth.js to V2-only (permissions from Go session, no V1 fallback)
+  - Added Go endpoints: modconfig list, per-group work counts, GDPR export
+  - Created ExportAPI class, switched mydata.vue to use it
+  - Switched modconfig.js, modgroup.js, ModSettingsGroup.vue to V2
+  - Removed APIv1 from config.js, nuxt.config.ts, test mocks
+  - Removed dead code: ImageAPI.postForm, MessageAPI illustration V1 fallback
+  - Switched authorities.vue to V2
+- **Key Decisions**: Download link in mydata.vue uses APIv2 + jwt query param (Go supports JWT via query).
 
 ### 2026-02-22 - Phase 2 Go changes + client V1→V2 switches
 - **Status**: Tasks 6-8 ✅ complete. Go changes pushed to master, client changes pushed to feature/v2-unified-migration.
