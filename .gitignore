@@ -6,6 +6,7 @@
 !/conf/alloy/
 !/conf/logrotate/
 !/conf/postfix/
+!/conf/rspamd/
 /.claude/settings.local.json
 /logs/
 /.idea/prettier.xml
