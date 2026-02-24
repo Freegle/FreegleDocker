@@ -44,17 +44,6 @@ smtpd_tls_loglevel = 1
 # Relay restrictions - only accept mail for our domains
 smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
 
-# SPF verification on incoming mail
-# Rejects mail that FAILS SPF (domain has SPF record with -all, sending IP not authorized)
-# Accepts mail with no SPF record (SPF NONE) - many legitimate domains don't use SPF
-# Accepts SPF SOFTFAIL with Received-SPF header (domains using ~all, including Freegle's own)
-# The Received-SPF header is used by rspamd for spam scoring
-smtpd_recipient_restrictions =
-    permit_mynetworks,
-    reject_unauth_destination,
-    check_policy_service unix:private/policyd-spf
-policyd-spf_time_limit = 3600
-
 # Queue settings
 maximal_queue_lifetime = 1d
 bounce_queue_lifetime = 1d

@@ -2504,44 +2504,6 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals(RoutingResult::DROPPED, $result);
     }
 
-    public function test_volunteers_message_from_deleted_user_is_dropped(): void
-    {
-        $group = $this->createTestGroup();
-        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-deleted')]);
-        $this->createMembership($user, $group);
-
-        // Mark user as deleted (soft delete with timestamp)
-        $user->update(['deleted' => now()]);
-
-        $userEmail = $user->emails->first()->email;
-        $groupName = $group->nameshort;
-
-        $email = $this->createMinimalEmail([
-            'From' => $userEmail,
-            'To' => "{$groupName}-volunteers@groups.ilovefreegle.org",
-            'Subject' => 'Help please',
-        ], 'I need help with my item.');
-
-        $parsed = $this->parser->parse(
-            $email,
-            $userEmail,
-            "{$groupName}-volunteers@groups.ilovefreegle.org"
-        );
-
-        $result = $this->service->route($parsed);
-
-        // Deleted users should be dropped - their account no longer exists
-        $this->assertEquals(RoutingResult::DROPPED, $result);
-
-        // Verify no chat message was created
-        $chatMessage = DB::table('chat_messages')
-            ->where('userid', $user->id)
-            ->orderBy('id', 'desc')
-            ->first();
-
-        $this->assertNull($chatMessage, 'No chat message should be created for a deleted user');
-    }
-
     public function test_volunteers_spam_keyword_flagged_for_review(): void
     {
         $group = $this->createTestGroup();

@@ -46,20 +46,5 @@ postlog   unix-dgram n  -       n       -       1       postlogd
 # Alternative: Use HTTP endpoint instead of pipe (see comments below)
 # ==========================================================================
 
-# ==========================================================================
-# SPF policy daemon - checks sender SPF records
-# ==========================================================================
-# Rejects SPF FAIL (spoofed sender), accepts SPF NONE (no record),
-# accepts SPF SOFTFAIL with Received-SPF header added.
-#
-# Note: Freegle's own SPF records use ~all (softfail) not -all (hard fail).
-# SPF softfail adds a Received-SPF header which rspamd uses for scoring,
-# but does not reject at SMTP level. To get hard rejection of spoofed
-# Freegle emails, change the DNS SPF record to use -all.
-# ==========================================================================
-
-policyd-spf  unix  -       n       n       -       0       spawn
-  user=nobody argv=/usr/bin/postfix-policyd-spf-perl
-
 freegle   unix  -       n       n       -       4       pipe
   flags=F user=mail-handler argv=/usr/local/bin/freegle-mail-handler ${sender} ${recipient}

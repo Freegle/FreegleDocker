@@ -2103,17 +2103,6 @@ class IncomingMailService
             return $this->dropped("Volunteers message from unknown user");
         }
 
-        // Drop messages from deleted users - their account no longer exists
-        if ($user->deleted !== null) {
-            Log::warning('Volunteers message from deleted user', [
-                'from' => $email->fromAddress,
-                'user_id' => $user->id,
-                'deleted' => $user->deleted,
-            ]);
-
-            return $this->dropped("Volunteers message from deleted user");
-        }
-
         // Filter auto-replies for -auto@ addresses (only -volunteers@ allows auto-replies through)
         if (! $email->isToVolunteers && $email->isAutoReply()) {
             Log::debug('Dropping auto-reply to auto address');

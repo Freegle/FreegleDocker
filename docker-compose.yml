@@ -659,7 +659,7 @@ services:
       - MYSQL_PORT=3306
       - MYSQL_USER=root
       - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
-      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
@@ -729,7 +729,7 @@ services:
       - MYSQL_PORT=${LIVE_DB_PORT:-1234}
       - MYSQL_USER=${LIVE_DB_USER:-root}
       - MYSQL_PASSWORD=${LIVE_DB_PASSWORD:-}
-      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - IMAGE_DELIVERY=http://delivery.localhost
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
@@ -796,11 +796,11 @@ services:
         required: false
     restart: "no"
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
-      - IZNIK_API_V2=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api
-      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
-      - USER_SITE=http://freegle-dev-local.localhost:${PORT_FREEGLE_DEV_LOCAL:-3002}
+      - IZNIK_API_V1=http://apiv1.localhost/api
+      - IZNIK_API_V2=http://apiv2.localhost/api
+      - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://tusd.localhost/tus/
+      - USER_SITE=http://freegle-dev-local.localhost:3002
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
@@ -920,11 +920,11 @@ services:
       retries: 3
       start_period: 900s  # 15 minutes for npm run build
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
-      - IZNIK_API_V2=${PROD_FREEGLE_API_V2:-http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api}
-      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
-      - USER_SITE=http://freegle-prod-local.localhost:${PORT_FREEGLE_PROD_LOCAL:-3012}
+      - IZNIK_API_V1=http://apiv1.localhost/api
+      - IZNIK_API_V2=${PROD_FREEGLE_API_V2:-http://apiv2.localhost/api}
+      - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://tusd.localhost/tus/
+      - USER_SITE=http://freegle-prod-local.localhost:3003
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
@@ -985,13 +985,13 @@ services:
         required: false
     restart: "no"
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
-      - IZNIK_API_V2=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api
-      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
+      - IZNIK_API_V1=http://apiv1.localhost/api
+      - IZNIK_API_V2=http://apiv2.localhost/api
+      - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://tusd.localhost/tus/
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools-dev-local.localhost:${PORT_MODTOOLS_DEV_LOCAL:-3003}
+      - USER_SITE=http://modtools-dev-local.localhost:3000
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=true
@@ -1108,13 +1108,13 @@ services:
       retries: 3
       start_period: 900s  # 15 minutes for npm run build
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
-      - IZNIK_API_V2=${PROD_MT_API_V2:-http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api}
-      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
+      - IZNIK_API_V1=http://apiv1.localhost/api
+      - IZNIK_API_V2=${PROD_MT_API_V2:-http://apiv2.localhost/api}
+      - IMAGE_DELIVERY=http://delivery.localhost
+      - TUS_UPLOADER=http://tusd.localhost/tus/
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools-prod-local.localhost:${PORT_MODTOOLS_PROD_LOCAL:-3013}
+      - USER_SITE=http://modtools-prod-local.localhost:3001
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=false
@@ -1313,12 +1313,12 @@ services:
       - MAIL_PORT=1025
       - MAIL_ENCRYPTION=null
       - MAIL_EHLO_DOMAIN=freegle-batch
-      - FREEGLE_USER_SITE=http://freegle-dev-local.localhost:${PORT_FREEGLE_DEV_LOCAL:-3002}
-      - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost:${PORT_MODTOOLS_DEV_LOCAL:-3003}
-      - FREEGLE_API_BASE_URL=http://localhost:${PORT_APIV2:-8193}
-      - FREEGLE_DELIVERY_URL=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - FREEGLE_USER_SITE=http://freegle-dev-local.localhost:3002
+      - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost:3003
+      - FREEGLE_API_BASE_URL=http://localhost:8193
+      - FREEGLE_DELIVERY_URL=http://delivery.localhost
       - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
-      - AMP_API_URL=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/amp
+      - AMP_API_URL=http://apiv2.localhost/amp
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - MJML_URL=http://mjml/
