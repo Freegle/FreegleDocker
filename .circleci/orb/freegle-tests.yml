@@ -766,15 +766,21 @@ commands:
                     cd ..
                   fi
 
-                  # Install coveralls and upload
-                  npm install -g coveralls
-                  export COVERALLS_SERVICE_NAME="circleci"
-                  export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
-                  if cat coverage.lcov | coveralls; then
-                    echo "✅ Go coverage uploaded successfully"
+                  # Check for Coveralls outage before uploading
+                  OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+                  INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+                  if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                    echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
                   else
-                    echo "❌ Go coverage upload failed"
-                    exit 1
+                    npm install -g coveralls
+                    export COVERALLS_SERVICE_NAME="circleci"
+                    export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+                    if cat coverage.lcov | coveralls; then
+                      echo "✅ Go coverage uploaded successfully"
+                    else
+                      echo "❌ Go coverage upload failed"
+                      exit 1
+                    fi
                   fi
                 else
                   echo "❌ Failed to convert Go coverage to lcov format"
@@ -928,19 +934,25 @@ commands:
             fi
 
             if [ "$COVERAGE_FOUND" = "true" ]; then
-              # Install php-coveralls
-              npm install -g coveralls
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
-
-              # Copy coverage file to container and upload
-              docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
-
-              if [ $? -eq 0 ]; then
-                echo "✅ PHP coverage uploaded successfully"
+              # Check for Coveralls outage before uploading
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
-                echo "❌ PHP coverage upload failed"
-                exit 1
+                npm install -g coveralls
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
+
+                # Copy coverage file to container and upload
+                docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
+
+                if [ $? -eq 0 ]; then
+                  echo "✅ PHP coverage uploaded successfully"
+                else
+                  echo "❌ PHP coverage upload failed"
+                  exit 1
+                fi
               fi
             else
               echo "❌ PHP coverage file not found"
@@ -1193,22 +1205,28 @@ commands:
             fi
 
             if [ -n "$LCOV_PATH" ]; then
-              # Install coveralls
-              npm install -g coveralls
-
-              # Copy to original checkout if needed
-              if [ -d ~/project/.git ]; then
-                cp "$LCOV_PATH" ~/project/coverage.lcov
-                cd ~/project
-              fi
-
-              export COVERALLS_SERVICE_NAME="circleci"
-              export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
-              if cat "$LCOV_PATH" | coveralls; then
-                echo "✅ Playwright coverage uploaded successfully"
+              # Check for Coveralls outage before uploading
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
-                echo "❌ Playwright coverage upload failed"
-                exit 1
+                npm install -g coveralls
+
+                # Copy to original checkout if needed
+                if [ -d ~/project/.git ]; then
+                  cp "$LCOV_PATH" ~/project/coverage.lcov
+                  cd ~/project
+                fi
+
+                export COVERALLS_SERVICE_NAME="circleci"
+                export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+                if cat "$LCOV_PATH" | coveralls; then
+                  echo "✅ Playwright coverage uploaded successfully"
+                else
+                  echo "❌ Playwright coverage upload failed"
+                  exit 1
+                fi
               fi
             else
               echo "❌ Playwright coverage file not found"
@@ -1295,19 +1313,25 @@ commands:
             if docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
               echo "✅ Found Laravel coverage file ($(stat -f%z /tmp/laravel-clover.xml 2>/dev/null || stat -c%s /tmp/laravel-clover.xml) bytes)"
 
-              # Install php-coveralls
-              npm install -g coveralls
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
-
-              # Copy coverage file to container and upload
-              docker cp /tmp/laravel-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
-
-              if [ $? -eq 0 ]; then
-                echo "✅ Laravel coverage uploaded successfully"
+              # Check for Coveralls outage before uploading
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
-                echo "❌ Laravel coverage upload failed"
-                exit 1
+                npm install -g coveralls
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
+
+                # Copy coverage file to container and upload
+                docker cp /tmp/laravel-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
+
+                if [ $? -eq 0 ]; then
+                  echo "✅ Laravel coverage uploaded successfully"
+                else
+                  echo "❌ Laravel coverage upload failed"
+                  exit 1
+                fi
               fi
             else
               echo "❌ Laravel coverage file not found at /tmp/laravel-coverage.xml"
@@ -1414,11 +1438,21 @@ commands:
               echo "⚠️ COVERALLS_REPO_TOKEN not set - skipping coverage upload"
               echo "SKIP_COVERAGE=true" >> $BASH_ENV
             else
-              npm install -g coveralls
-              echo "GO_UPLOADED=false" >> $BASH_ENV
-              echo "PHP_UPLOADED=false" >> $BASH_ENV
-              echo "PLAYWRIGHT_UPLOADED=false" >> $BASH_ENV
-              echo "LARAVEL_UPLOADED=false" >> $BASH_ENV
+              # Check if Coveralls has a known outage before attempting uploads
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                INCIDENT_NAME=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['incidents'][0]['name'])" 2>/dev/null || echo "unknown")
+                echo "⚠️ Coveralls has an active outage: $INCIDENT_NAME (see https://status.coveralls.io)"
+                echo "⚠️ Skipping coverage upload - will not fail the build for a known external outage"
+                echo "SKIP_COVERAGE=true" >> $BASH_ENV
+              else
+                npm install -g coveralls
+                echo "GO_UPLOADED=false" >> $BASH_ENV
+                echo "PHP_UPLOADED=false" >> $BASH_ENV
+                echo "PLAYWRIGHT_UPLOADED=false" >> $BASH_ENV
+                echo "LARAVEL_UPLOADED=false" >> $BASH_ENV
+              fi
             fi
           when: always
       - run:
