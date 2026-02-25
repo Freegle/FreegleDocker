@@ -7,6 +7,8 @@ use App\Mail\Traits\LoggableEmail;
 use App\Models\Group;
 use App\Models\Message;
 use App\Models\User;
+use Illuminate\Mail\Mailables\Address;
+use Illuminate\Mail\Mailables\Envelope;
 
 class DeadlineReached extends MjmlMailable
 {
@@ -70,6 +72,17 @@ class DeadlineReached extends MjmlMailable
                 'groupName' => $groupName,
             ])
             ->applyLogging('DeadlineReached');
+    }
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            from: new Address(
+                config('freegle.mail.noreply_addr'),
+                config('freegle.branding.name')
+            ),
+            subject: $this->getSubject(),
+        );
     }
 
     /**

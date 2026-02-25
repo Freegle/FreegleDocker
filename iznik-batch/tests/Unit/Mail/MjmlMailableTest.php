@@ -85,12 +85,36 @@ class MjmlMailableTest extends TestCase
             {
                 return 'My Custom Subject';
             }
+
+            public function envelope(): Envelope
+            {
+                return new Envelope(
+                    from: new \Illuminate\Mail\Mailables\Address(
+                        config('freegle.mail.noreply_addr'),
+                        config('freegle.branding.name')
+                    ),
+                    subject: $this->getSubject(),
+                );
+            }
         };
 
         $envelope = $mailable->envelope();
 
         $this->assertInstanceOf(Envelope::class, $envelope);
         $this->assertEquals('My Custom Subject', $envelope->subject);
+    }
+
+    public function test_envelope_throws_if_not_overridden(): void
+    {
+        $mailable = new class extends MjmlMailable {
+            protected function getSubject(): string
+            {
+                return 'Test Subject';
+            }
+        };
+
+        $this->expectException(\LogicException::class);
+        $mailable->envelope();
     }
 
     public function test_attachments_returns_empty_array_by_default(): void

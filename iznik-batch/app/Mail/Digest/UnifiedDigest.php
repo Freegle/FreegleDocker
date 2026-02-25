@@ -8,6 +8,8 @@ use App\Mail\Traits\TrackableEmail;
 use App\Models\User;
 use App\Services\UnifiedDigestService;
 use App\Support\EmojiUtils;
+use Illuminate\Mail\Mailables\Address;
+use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -87,6 +89,17 @@ class UnifiedDigest extends MjmlMailable
      *
      * Format: "5 new posts near you - Sofa, Coffee table, Books..."
      */
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            from: new Address(
+                config('freegle.mail.noreply_addr'),
+                config('freegle.branding.name')
+            ),
+            subject: $this->getSubject(),
+        );
+    }
+
     protected function getSubject(): string
     {
         $count = $this->posts->count();

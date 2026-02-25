@@ -6,6 +6,8 @@ use App\Mail\MjmlMailable;
 use App\Mail\Traits\LoggableEmail;
 use App\Mail\Traits\TrackableEmail;
 use App\Models\User;
+use Illuminate\Mail\Mailables\Address;
+use Illuminate\Mail\Mailables\Envelope;
 
 class AskForDonation extends MjmlMailable
 {
@@ -80,6 +82,17 @@ class AskForDonation extends MjmlMailable
     /**
      * Get the subject line.
      */
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            from: new Address(
+                config('freegle.mail.noreply_addr'),
+                config('freegle.branding.name')
+            ),
+            subject: $this->getSubject(),
+        );
+    }
+
     protected function getSubject(): string
     {
         return $this->itemSubject
