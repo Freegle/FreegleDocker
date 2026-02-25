@@ -84,9 +84,11 @@ The yesterday override uses `deploy.replicas: 0` (not profile overrides) to disa
 
 ## Container Architecture
 
+**IMPORTANT: Port numbers are configured via `PORT_*` variables in `.env` (e.g. `PORT_FREEGLE_DEV_LIVE`, `PORT_MODTOOLS_DEV_LIVE`). Never assume default ports — always check `.env` for actual values.**
+
 ### Freegle Development vs Production
 - **freegle-dev-local** (`freegle-dev-local.localhost`): Development mode with local test APIs, fast startup, hot reloading
-- **freegle-dev-live** (`freegle-dev-live.localhost`, port 3004): Development mode with PRODUCTION APIs - use with caution
+- **freegle-dev-live** (`freegle-dev-live.localhost`): Development mode with PRODUCTION APIs - use with caution. Port configured via `PORT_FREEGLE_DEV_LIVE` in `.env`
 - **freegle-prod-local** (`freegle-prod-local.localhost`): Production build with local test APIs, slower startup
 - Both dev containers use the same codebase but different Dockerfiles and environment configurations
 - Production container uses `Dockerfile.prod` with hardcoded production build process
