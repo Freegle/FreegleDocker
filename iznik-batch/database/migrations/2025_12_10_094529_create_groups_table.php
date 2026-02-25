@@ -82,7 +82,6 @@ return new class extends Migration
             $table->geometry('postvisibility', 'polygon')->nullable();
             $table->boolean('onlovejunk')->default(true);
             $table->json('rules')->nullable();
-            $table->string('facebookid')->nullable();
 
             $table->index(['altlat', 'altlng'], 'altlat');
             $table->index(['lat', 'lng'], 'lat');
