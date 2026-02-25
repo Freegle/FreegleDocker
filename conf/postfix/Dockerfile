@@ -1,6 +1,6 @@
 FROM alpine:3.19
 
-RUN apk add --no-cache postfix postfix-pcre bash curl openssl
+RUN apk add --no-cache postfix postfix-pcre bash curl openssl postfix-policyd-spf-perl
 
 # Generate self-signed TLS cert for opportunistic STARTTLS
 RUN openssl req -x509 -newkey rsa:2048 \

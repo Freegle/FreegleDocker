@@ -13,6 +13,7 @@ executors:
     environment:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
+      COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
 
   android-executor:
     docker:
@@ -145,6 +146,9 @@ commands:
           command: |
             echo "<< parameters.reason >>"
 
+            # Ensure COMPOSE_PROFILES is set for all docker-compose commands
+            export COMPOSE_PROFILES="${COMPOSE_PROFILES:-frontend,database,backend,dev,monitoring}"
+
             # Clean up any existing containers first
             docker-compose -f docker-compose.yml down --remove-orphans || true
             docker system prune -f || true
@@ -202,10 +206,64 @@ commands:
               fi
             done
 
-            # Start all services
+            # Two-phase startup: databases must exist before application containers start.
+            #
+            # Phase 1: Start infrastructure + batch (runs Laravel migrations to create iznik DB)
+            # Then run setup-test-database.sh to clone iznik → iznik_phpunit_test, iznik_go_test
+            #
+            # Phase 2: Start all remaining containers (all databases already exist)
+
+            echo "=== Phase 1: Starting infrastructure + batch for migrations ==="
+            docker-compose -f docker-compose.yml up -d \
+              percona postgres redis beanstalkd mailpit \
+              spamassassin-app reverse-proxy tusd delivery loki mjml \
+              batch status host-scripts
+
+            echo "Waiting for percona to be healthy..."
+            for i in $(seq 1 60); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-percona 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Percona is healthy"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "❌ Percona did not become healthy within 2 minutes"
+                docker logs freegle-percona --tail 20 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "Waiting for batch container to be healthy (running migrations)..."
+            for i in $(seq 1 120); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Batch is healthy (migrations complete)"
+                break
+              fi
+              if [ "$i" -eq 120 ]; then
+                echo "❌ Batch did not become healthy within 4 minutes"
+                docker logs freegle-batch --tail 30 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "=== Creating test databases (before application containers start) ==="
+            # Find and run setup-test-database.sh
+            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+            elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/project/scripts/setup-test-database.sh"
+            else
+              echo "❌ setup-test-database.sh not found!"
+              exit 1
+            fi
+
+            echo "=== Phase 2: Starting all remaining containers ==="
             docker-compose -f docker-compose.yml up -d
 
-            echo "Waiting for basic services to start..."
+            echo "Waiting for application services to start..."
             sleep 30
 
             echo "Service status:"
@@ -244,7 +302,22 @@ commands:
       - run:
           name: Clone FreegleDocker
           command: |
-            git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+            BRANCH="$CIRCLE_BRANCH"
+
+            # If the PR branch exists in FreegleDocker, clone that branch so we
+            # pick up matching non-submodule changes (e.g. iznik-batch migrations).
+            if [ -n "$BRANCH" ] && [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
+              if git ls-remote --heads https://github.com/Freegle/FreegleDocker.git "$BRANCH" 2>/dev/null | grep -q "refs/heads/$BRANCH"; then
+                echo "✅ Found matching branch '$BRANCH' in FreegleDocker - cloning it"
+                git clone -b "$BRANCH" https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+              else
+                echo "ℹ️  No branch '$BRANCH' in FreegleDocker - cloning master"
+                git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+              fi
+            else
+              git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
+            fi
+
             cd "$HOME/FreegleDocker"
             git submodule update --init --recursive --jobs 4
 
@@ -271,6 +344,90 @@ commands:
             cd "$HOME/FreegleDocker"
             rm -rf << parameters.submodule >>
             cp -r << parameters.source >> << parameters.submodule >>
+
+  align-submodule-branches:
+    description: "Check out matching branches in other submodules when a PR branch exists in multiple repos"
+    parameters:
+      skip-submodule:
+        type: string
+        description: "Submodule already replaced by PR code (skip this one)"
+    steps:
+      - run:
+          name: Align submodule branches for cross-repo PRs
+          command: |
+            cd "$HOME/FreegleDocker"
+            BRANCH="$CIRCLE_BRANCH"
+
+            if [ -z "$BRANCH" ] || [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
+              echo "On default branch - no cross-repo alignment needed"
+              exit 0
+            fi
+
+            echo "🔍 Checking for branch '$BRANCH' in other submodule repos..."
+
+            SUBMODULES="iznik-nuxt3 iznik-server-go iznik-server"
+            ALIGNED=0
+            ALIGNED_LIST=""
+
+            for submodule in $SUBMODULES; do
+              if [ "$submodule" = "<< parameters.skip-submodule >>" ]; then
+                echo "⏭️  Skipping $submodule (already replaced with PR code)"
+                continue
+              fi
+
+              # Check if branch exists in remote
+              if git ls-remote --heads "https://github.com/Freegle/${submodule}.git" "$BRANCH" 2>/dev/null | grep -q "refs/heads/$BRANCH"; then
+                echo "✅ Found branch '$BRANCH' in $submodule - checking out..."
+                cd "$submodule"
+                git fetch origin "$BRANCH"
+                git checkout "origin/$BRANCH"
+                cd "$HOME/FreegleDocker"
+                ALIGNED=$((ALIGNED + 1))
+                ALIGNED_LIST="$ALIGNED_LIST $submodule"
+              else
+                echo "ℹ️  No branch '$BRANCH' in $submodule - using default"
+              fi
+            done
+
+            if [ "$ALIGNED" -gt 0 ]; then
+              echo "🔗 Aligned $ALIGNED submodule(s) to branch '$BRANCH'"
+              # Write marker so downstream steps know containers need rebuilding
+              echo "$ALIGNED_LIST" > /tmp/aligned-submodules.txt
+            else
+              echo "ℹ️  No matching branches found in other repos"
+            fi
+
+  rebuild-aligned-containers:
+    description: "Rebuild Docker containers for submodules that were aligned to feature branches"
+    steps:
+      - run:
+          name: Rebuild containers for aligned submodules
+          command: |
+            if [ ! -f /tmp/aligned-submodules.txt ]; then
+              echo "ℹ️  No submodules were aligned - no rebuild needed"
+              exit 0
+            fi
+
+            ALIGNED=$(cat /tmp/aligned-submodules.txt)
+            cd "$HOME/FreegleDocker"
+
+            for submodule in $ALIGNED; do
+              case "$submodule" in
+                iznik-server-go)
+                  echo "🔨 Rebuilding apiv2 container (iznik-server-go was aligned)..."
+                  docker-compose -f docker-compose.yml build apiv2
+                  echo "✅ apiv2 rebuilt"
+                  ;;
+                iznik-server)
+                  echo "🔨 Rebuilding apiv1 container (iznik-server was aligned)..."
+                  docker-compose -f docker-compose.yml build apiv1
+                  echo "✅ apiv1 rebuilt"
+                  ;;
+                *)
+                  echo "ℹ️  No container rebuild needed for $submodule"
+                  ;;
+              esac
+            done
 
   build-submodule-container:
     description: "Build the container for a replaced submodule"
@@ -304,26 +461,69 @@ commands:
           name: Fix memory overcommit for Redis
           command: sudo sysctl vm.overcommit_memory=1 || true
       - run:
-          name: Start Docker services
+          name: Start Docker services (two-phase)
           command: |
             cd "$HOME/FreegleDocker"
-            if ! docker-compose -f docker-compose.yml up -d; then
-              echo "❌ Docker Compose failed to start services"
-              echo ""
-              echo "=== Container Status ==="
-              docker-compose -f docker-compose.yml ps -a
-              echo ""
-              echo "=== freegle-apiv1 logs ==="
-              docker logs freegle-apiv1 2>&1 || echo "No logs available"
-              echo ""
-              echo "=== freegle-apiv2 logs ==="
-              docker logs freegle-apiv2 2>&1 || echo "No logs available"
-              echo ""
-              echo "=== All container logs ==="
-              docker-compose -f docker-compose.yml logs --tail 50 2>&1 || true
+
+            # Ensure COMPOSE_PROFILES is set (may not be in .env if profiles branch not merged yet)
+            export COMPOSE_PROFILES="${COMPOSE_PROFILES:-frontend,database,backend,dev,monitoring}"
+
+            # Two-phase startup: all databases must exist before application containers start.
+            #
+            # Phase 1: Infrastructure + batch (migrations create iznik DB)
+            #          Then setup-test-database.sh clones iznik → test databases
+            # Phase 2: All remaining containers (databases already waiting for them)
+
+            echo "=== Phase 1: Infrastructure + migrations ==="
+            docker-compose -f docker-compose.yml up -d \
+              percona postgres redis beanstalkd mailpit \
+              spamassassin-app reverse-proxy tusd delivery loki mjml \
+              batch status host-scripts
+
+            echo "Waiting for percona to be healthy..."
+            for i in $(seq 1 60); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-percona 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Percona is healthy"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "❌ Percona did not become healthy within 2 minutes"
+                docker logs freegle-percona --tail 20 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "Waiting for batch container to be healthy (migrations)..."
+            for i in $(seq 1 120); do
+              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "unknown")
+              if [ "$health" = "healthy" ]; then
+                echo "✅ Batch is healthy (migrations complete)"
+                break
+              fi
+              if [ "$i" -eq 120 ]; then
+                echo "❌ Batch did not become healthy within 4 minutes"
+                docker logs freegle-batch --tail 30 2>&1 || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            echo "=== Creating test databases ==="
+            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+            elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/project/scripts/setup-test-database.sh"
+            else
+              echo "❌ setup-test-database.sh not found!"
               exit 1
             fi
-            echo "Waiting for basic services to start..."
+
+            echo "=== Phase 2: Starting all remaining containers ==="
+            docker-compose -f docker-compose.yml up -d
+
+            echo "Waiting for application services to start..."
             sleep 30
             echo "Service status:"
             docker-compose -f docker-compose.yml ps
@@ -566,15 +766,21 @@ commands:
                     cd ..
                   fi
 
-                  # Install coveralls and upload
-                  npm install -g coveralls
-                  export COVERALLS_SERVICE_NAME="circleci"
-                  export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
-                  if cat coverage.lcov | coveralls; then
-                    echo "✅ Go coverage uploaded successfully"
+                  # Check for Coveralls outage before uploading
+                  OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+                  INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+                  if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                    echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
                   else
-                    echo "❌ Go coverage upload failed"
-                    exit 1
+                    npm install -g coveralls
+                    export COVERALLS_SERVICE_NAME="circleci"
+                    export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+                    if cat coverage.lcov | coveralls; then
+                      echo "✅ Go coverage uploaded successfully"
+                    else
+                      echo "❌ Go coverage upload failed"
+                      exit 1
+                    fi
                   fi
                 else
                   echo "❌ Failed to convert Go coverage to lcov format"
@@ -624,24 +830,14 @@ commands:
               sleep 30
             fi
 
-            # Database schema and test environment already set up by setup-test-database step
+            # Database schema set up by setup-test-database step (Laravel migrations)
             # Just verify the database is accessible
             echo "Verifying database connection..."
             docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik -e 'SELECT 1 FROM iznik.groups LIMIT 1'" || {
-              echo "Database not ready, setting up..."
-              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && \
-                sed -i 's/ROW_FORMAT=DYNAMIC//g' install/schema.sql && \
-                sed -i 's/timestamp(3)/timestamp/g' install/schema.sql && \
-                sed -i 's/timestamp(6)/timestamp/g' install/schema.sql && \
-                sed -i 's/CURRENT_TIMESTAMP(3)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-                sed -i 's/CURRENT_TIMESTAMP(6)/CURRENT_TIMESTAMP/g' install/schema.sql && \
-                mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;' && \
-                mysql -h percona -u root -piznik iznik < install/schema.sql && \
-                mysql -h percona -u root -piznik iznik < install/functions.sql && \
-                mysql -h percona -u root -piznik iznik < install/damlevlim.sql && \
-                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\" && \
-                mysql -h percona -u root -piznik -e \"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\""
-              docker exec freegle-apiv1 sh -c "cd /var/www/iznik && php install/testenv.php"
+              echo "Database not ready after setup-test-database - this should not happen"
+              echo "Check that freegle-batch migrations ran successfully"
+              docker logs freegle-batch --tail 30 2>&1 || true
+              exit 1
             }
 
             # Trigger tests via API
@@ -738,19 +934,25 @@ commands:
             fi
 
             if [ "$COVERAGE_FOUND" = "true" ]; then
-              # Install php-coveralls
-              npm install -g coveralls
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
-
-              # Copy coverage file to container and upload
-              docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
-
-              if [ $? -eq 0 ]; then
-                echo "✅ PHP coverage uploaded successfully"
+              # Check for Coveralls outage before uploading
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
-                echo "❌ PHP coverage upload failed"
-                exit 1
+                npm install -g coveralls
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
+
+                # Copy coverage file to container and upload
+                docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
+
+                if [ $? -eq 0 ]; then
+                  echo "✅ PHP coverage uploaded successfully"
+                else
+                  echo "❌ PHP coverage upload failed"
+                  exit 1
+                fi
               fi
             else
               echo "❌ PHP coverage file not found"
@@ -834,64 +1036,19 @@ commands:
     steps:
       - run:
           name: Set up test database and environment
-          command: ~/scripts/setup-test-database.sh
-
-  run-vitest-tests:
-    description: "Run Vitest unit tests for iznik-nuxt3 components"
-    parameters:
-      reason:
-        type: string
-        default: "Running Vitest unit tests"
-    steps:
-      - run:
-          name: Install Node.js 22 for Vitest
           command: |
-            echo "📦 Installing Node.js 22..."
-            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-            echo "✅ Node.js $(node --version) installed"
-      - run:
-          name: Run Vitest unit tests
-          command: |
-            echo "🧪 << parameters.reason >>..."
-
-            # Determine the iznik-nuxt3 directory
-            if [ -d "$HOME/FreegleDocker/iznik-nuxt3" ]; then
-              NUXT_DIR="$HOME/FreegleDocker/iznik-nuxt3"
-            elif [ -d "$HOME/project/iznik-nuxt3" ]; then
-              NUXT_DIR="$HOME/project/iznik-nuxt3"
+            # Find the script in either FreegleDocker clone or project checkout
+            # Use bash explicitly to avoid permission issues on feature branches
+            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
+            elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
+              bash "$HOME/project/scripts/setup-test-database.sh"
             else
-              echo "❌ Could not find iznik-nuxt3 directory"
+              echo "❌ setup-test-database.sh not found!"
+              echo "Checked: $HOME/FreegleDocker/scripts/ and $HOME/project/scripts/"
+              ls -la "$HOME/FreegleDocker/scripts/" 2>/dev/null || echo "$HOME/FreegleDocker/scripts/ not found"
+              ls -la "$HOME/project/scripts/" 2>/dev/null || echo "$HOME/project/scripts/ not found"
               exit 1
-            fi
-
-            echo "📂 Using iznik-nuxt3 at: $NUXT_DIR"
-            cd "$NUXT_DIR"
-
-            # Check if vitest is configured
-            if ! grep -q '"test:unit:run"' package.json; then
-              echo "⚠️ Vitest not configured in package.json, skipping unit tests"
-              exit 0
-            fi
-
-            # Install dependencies (using npm ci for faster, deterministic installs)
-            echo "📦 Installing npm dependencies..."
-            npm ci --prefer-offline --no-audit
-
-            # Generate .nuxt directory (required for tsconfig.json extends)
-            echo "🔧 Running nuxi prepare..."
-            npx nuxi prepare
-
-            # Run vitest
-            echo "🧪 Running Vitest unit tests..."
-            npm run test:unit:run -- --reporter=verbose 2>&1 | tee /tmp/vitest-output.log
-            VITEST_EXIT_CODE=${PIPESTATUS[0]}
-
-            if [ $VITEST_EXIT_CODE -eq 0 ]; then
-              echo "✅ Vitest unit tests passed!"
-            else
-              echo "❌ Vitest unit tests failed with exit code: $VITEST_EXIT_CODE"
-              exit $VITEST_EXIT_CODE
             fi
 
   run-vitest-tests:
@@ -1048,22 +1205,28 @@ commands:
             fi
 
             if [ -n "$LCOV_PATH" ]; then
-              # Install coveralls
-              npm install -g coveralls
-
-              # Copy to original checkout if needed
-              if [ -d ~/project/.git ]; then
-                cp "$LCOV_PATH" ~/project/coverage.lcov
-                cd ~/project
-              fi
-
-              export COVERALLS_SERVICE_NAME="circleci"
-              export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
-              if cat "$LCOV_PATH" | coveralls; then
-                echo "✅ Playwright coverage uploaded successfully"
+              # Check for Coveralls outage before uploading
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
-                echo "❌ Playwright coverage upload failed"
-                exit 1
+                npm install -g coveralls
+
+                # Copy to original checkout if needed
+                if [ -d ~/project/.git ]; then
+                  cp "$LCOV_PATH" ~/project/coverage.lcov
+                  cd ~/project
+                fi
+
+                export COVERALLS_SERVICE_NAME="circleci"
+                export COVERALLS_SERVICE_JOB_ID="${CIRCLE_BUILD_NUM}"
+                if cat "$LCOV_PATH" | coveralls; then
+                  echo "✅ Playwright coverage uploaded successfully"
+                else
+                  echo "❌ Playwright coverage upload failed"
+                  exit 1
+                fi
               fi
             else
               echo "❌ Playwright coverage file not found"
@@ -1150,19 +1313,25 @@ commands:
             if docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
               echo "✅ Found Laravel coverage file ($(stat -f%z /tmp/laravel-clover.xml 2>/dev/null || stat -c%s /tmp/laravel-clover.xml) bytes)"
 
-              # Install php-coveralls
-              npm install -g coveralls
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
-
-              # Copy coverage file to container and upload
-              docker cp /tmp/laravel-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
-
-              if [ $? -eq 0 ]; then
-                echo "✅ Laravel coverage uploaded successfully"
+              # Check for Coveralls outage before uploading
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
-                echo "❌ Laravel coverage upload failed"
-                exit 1
+                npm install -g coveralls
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
+
+                # Copy coverage file to container and upload
+                docker cp /tmp/laravel-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
+                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
+
+                if [ $? -eq 0 ]; then
+                  echo "✅ Laravel coverage uploaded successfully"
+                else
+                  echo "❌ Laravel coverage upload failed"
+                  exit 1
+                fi
               fi
             else
               echo "❌ Laravel coverage file not found at /tmp/laravel-coverage.xml"
@@ -1269,11 +1438,21 @@ commands:
               echo "⚠️ COVERALLS_REPO_TOKEN not set - skipping coverage upload"
               echo "SKIP_COVERAGE=true" >> $BASH_ENV
             else
-              npm install -g coveralls
-              echo "GO_UPLOADED=false" >> $BASH_ENV
-              echo "PHP_UPLOADED=false" >> $BASH_ENV
-              echo "PLAYWRIGHT_UPLOADED=false" >> $BASH_ENV
-              echo "LARAVEL_UPLOADED=false" >> $BASH_ENV
+              # Check if Coveralls has a known outage before attempting uploads
+              OUTAGE_JSON=$(curl -sf --max-time 10 "https://status.coveralls.io/api/v2/incidents/unresolved.json" 2>/dev/null || echo '{}')
+              INCIDENT_COUNT=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('incidents',[])))" 2>/dev/null || echo "0")
+              if [ "$INCIDENT_COUNT" -gt 0 ]; then
+                INCIDENT_NAME=$(echo "$OUTAGE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['incidents'][0]['name'])" 2>/dev/null || echo "unknown")
+                echo "⚠️ Coveralls has an active outage: $INCIDENT_NAME (see https://status.coveralls.io)"
+                echo "⚠️ Skipping coverage upload - will not fail the build for a known external outage"
+                echo "SKIP_COVERAGE=true" >> $BASH_ENV
+              else
+                npm install -g coveralls
+                echo "GO_UPLOADED=false" >> $BASH_ENV
+                echo "PHP_UPLOADED=false" >> $BASH_ENV
+                echo "PLAYWRIGHT_UPLOADED=false" >> $BASH_ENV
+                echo "LARAVEL_UPLOADED=false" >> $BASH_ENV
+              fi
             fi
           when: always
       - run:
@@ -1569,6 +1748,9 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-server"
+      - align-submodule-branches:
+          skip-submodule: "iznik-server"
+      - rebuild-aligned-containers
       - start-services
       - wait-for-basic-services
       - run-php-tests:
@@ -1584,6 +1766,8 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-server-go"
+      - align-submodule-branches:
+          skip-submodule: "iznik-server-go"
       - build-submodule-container:
           container: "apiv2"
       - start-services
@@ -1601,14 +1785,28 @@ jobs:
       - clone-freegle-docker
       - replace-submodule:
           submodule: "iznik-nuxt3"
+      - align-submodule-branches:
+          skip-submodule: "iznik-nuxt3"
+      - rebuild-aligned-containers
+      # Force rebuild containers to pick up replaced submodule code.
+      # Without this, Docker Layer Caching reuses stale images from previous builds.
+      # apiv2 must also be rebuilt because DLC restores the old Go binary image
+      # and docker-compose up -d won't rebuild if the image already exists.
+      - run:
+          name: Rebuild containers with PR code (bypass DLC)
+          command: |
+            cd "$HOME/FreegleDocker"
+            echo "Force rebuilding containers to pick up PR code..."
+            docker-compose -f docker-compose.yml build --no-cache \
+              apiv2 freegle-prod-local modtools-prod-local playwright
+            echo "✅ Containers rebuilt with PR code"
+          no_output_timeout: 15m
       # Run Vitest unit tests first (doesn't need Docker services)
       - run-vitest-tests:
           reason: "Running Vitest unit tests for PR"
       - start-services
       - wait-for-basic-services
       - wait-for-prod-container
-      - wait-for-batch-container
-      - setup-test-database
       - run-playwright-tests:
           reason: "Running Playwright tests for PR"
       # Coverage uploaded inline by status API
@@ -1669,15 +1867,12 @@ jobs:
       - start-docker-services:
           reason: "Starting all Docker services"
 
+      # Two-phase startup in start-docker-services handles:
+      # 1. Infrastructure + batch (migrations) + test database creation
+      # 2. All application containers (databases already exist)
+      # So we just need to wait for the application containers to be ready.
       - wait-for-basic-services
-
       - wait-for-prod-container
-
-      # Wait for batch container migrations to complete BEFORE loading schema.sql
-      # This prevents race conditions where schema.sql's DROP TABLE statements interfere with
-      # migrations that are still running.
-      - wait-for-batch-container
-      - setup-test-database
 
       # Run Vitest unit tests first (fast, fail-fast before slower tests)
       - run-vitest-tests:

@@ -46,6 +46,8 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 # the yesterday services (API, 2FA, traefik) stay dead, breaking the entire system.
 cleanup_on_failure() {
     update_status "failed" "Restore failed - check logs"
+    # Always clean up skip-grant-tables if it was added (leaves percona with no TCP port)
+    sed -i '/skip-grant-tables/d' /var/www/FreegleDocker/conf/percona-my.cnf 2>/dev/null || true
     echo "Restarting main Docker stack after failure..."
     cd /var/www/FreegleDocker
     docker compose up -d 2>/dev/null || true
@@ -448,6 +450,26 @@ for vol in freegle_db loki-data; do
 done
 
 echo ""
+echo "=========================================="
+echo "Building containers from scratch..."
+echo "=========================================="
+update_status "building" "Building containers..."
+# Build containers to pick up code changes (new Go dependencies, Nuxt changes, etc.)
+# Without this, docker compose up -d reuses stale images and containers may crash
+# on missing modules or run outdated code.
+# Only build services that Yesterday actually uses and that compile code into the image:
+# - base: shared base image for apiv1
+# - apiv1: PHP API (rarely changes but uses base)
+# - apiv2: Go API (compiles at startup, needs go modules in image)
+# - freegle-dev-local/modtools-dev-local: Nuxt dev containers (need npm deps in image)
+# - status: Status page
+echo "Building base image..."
+docker compose build base 2>&1 | tail -3
+echo "Building application containers..."
+docker compose build apiv1 apiv2 freegle-dev-local modtools-dev-local status 2>&1 | tail -5
+echo "✅ Container build complete"
+
+echo ""
 echo "Starting all Docker containers..."
 update_status "starting" "Starting containers..."
 docker compose up -d
@@ -471,6 +493,37 @@ wait_for_container_health "percona" 240 || {
     docker logs freegle-percona --tail 20
     exit 1
 }
+
+# Reset MySQL root password to 'iznik' for local container access.
+# The restored production backup has a different root password baked into the data volume.
+# We use --skip-grant-tables to bypass auth, reset the password, then restart normally.
+echo "Resetting MySQL root password for local container access..."
+docker compose stop percona
+echo "skip-grant-tables" >> /var/www/FreegleDocker/conf/percona-my.cnf
+docker compose start percona
+# MySQL 8.0: skip-grant-tables implies skip-networking (no TCP port).
+# The healthcheck uses TCP, so it will never pass. Wait for the socket instead.
+echo "Waiting for MySQL socket (skip-grant-tables disables TCP)..."
+for i in $(seq 1 60); do
+    if docker exec freegle-percona mysqladmin ping --socket=/var/lib/mysql/mysql.sock 2>/dev/null; then
+        echo "✅ MySQL ready via socket"
+        break
+    fi
+    sleep 2
+done
+# Use 'if' to prevent set -e from killing the script on failure
+if docker exec freegle-percona mysql --socket=/var/lib/mysql/mysql.sock -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null; then
+    echo "✅ MySQL root password reset to 'iznik'"
+else
+    echo "⚠️ Failed to reset MySQL root password - containers may not connect to DB"
+fi
+sed -i '/skip-grant-tables/d' /var/www/FreegleDocker/conf/percona-my.cnf
+docker compose restart percona
+wait_for_container_health "percona" 120 || {
+    echo "❌ Percona failed to restart after password reset"
+    exit 1
+}
+echo "✅ Percona restarted with normal authentication"
 
 wait_for_container_health "reverse-proxy" 120 || {
     echo "❌ Traefik failed to start. Checking logs..."

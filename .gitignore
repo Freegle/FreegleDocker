@@ -6,12 +6,14 @@
 !/conf/alloy/
 !/conf/logrotate/
 !/conf/postfix/
+!/conf/rspamd/
 /.claude/settings.local.json
 /logs/
 /.idea/prettier.xml
 /ssl/
 /.env
 /.env.background
+/firebase.json
 /rebuild-monitor.log
 yesterday/.env
 yesterday/data/

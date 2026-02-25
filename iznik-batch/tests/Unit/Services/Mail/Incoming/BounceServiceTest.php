@@ -179,6 +179,65 @@ DSN;
         $this->assertNull($result);
     }
 
+    public function test_parses_temporary_4xx_dsn_status(): void
+    {
+        // Plus.net style delay notification with Status: 4.0.0
+        $dsnBody = <<<'DSN'
+From: Mail Delivery System <Mailer-Daemon@mx.example.net>
+Subject:
+
+This message was created automatically by mail delivery software.
+A message that you sent has not yet been delivered to one or more of its
+recipients after more than 24 hours on the queue.
+
+  fullbox@example.com
+    Delay reason: mailbox is full
+
+--boundary
+Content-type: message/delivery-status
+
+Reporting-MTA: dns; mx.example.net
+
+Action: delayed
+Final-Recipient: rfc822;fullbox@example.com
+Status: 4.0.0
+DSN;
+
+        $result = $this->service->parseDsn($dsnBody);
+
+        $this->assertNotNull($result, 'parseDsn should not return null for 4.x.x status codes');
+        $this->assertStringContainsString('4.0.0', $result['diagnostic_code']);
+        $this->assertEquals('fullbox@example.com', $result['original_recipient']);
+    }
+
+    public function test_parses_temporary_dsn_447_delivery_expired(): void
+    {
+        // BT Internet style DSN with Status: 4.4.7 (delivery time expired)
+        $dsnBody = <<<'DSN'
+From: Mail Delivery Service <postmaster@mx.example.net>
+Subject: Delivery Status Notification
+
+ - These recipients of your message have been processed by the mail server:
+forwarded@example.net; Failed; 4.4.7 (delivery time expired)
+
+--boundary
+Content-Type: Message/Delivery-Status
+
+Reporting-MTA: dns; mx.example.net
+
+Original-Recipient: rfc822;original@example.com
+Final-Recipient: rfc822; forwarded@example.net
+Action: Failed
+Status: 4.4.7 (delivery time expired)
+DSN;
+
+        $result = $this->service->parseDsn($dsnBody);
+
+        $this->assertNotNull($result, 'parseDsn should not return null for 4.4.7 status');
+        $this->assertStringContainsString('4.4.7', $result['diagnostic_code']);
+        $this->assertEquals('original@example.com', $result['original_recipient']);
+    }
+
     // ===================================================================
     // Bounce Classification Tests
     // ===================================================================

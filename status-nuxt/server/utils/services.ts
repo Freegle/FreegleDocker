@@ -65,6 +65,17 @@ export const services: ServiceConfig[] = [
     production: true,
   },
   {
+    id: 'apiv2-live',
+    name: 'API v2 (Live DB)',
+    category: 'production',
+    container: 'freegle-apiv2-live',
+    url: 'http://apiv2-live.localhost:8192/api/online',
+    healthCheck: { type: 'http', path: '/api/online', timeout: 3000 },
+    actions: ['restart', 'rebuild', 'logs'],
+    description: 'Go API connected to production database via tunnel',
+    production: true,
+  },
+  {
     id: 'modtools-prod-local',
     name: 'ModTools Prod (Local)',
     category: 'modtools',

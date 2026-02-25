@@ -160,6 +160,69 @@ The configuration uses these environment variables:
 - `CIRCLE_BUILD_URL` - URL to build details
 - `CIRCLE_SHA1` - Git commit SHA
 
+## SSH Debugging (Preferred Method)
+
+**IMPORTANT**: When pushing changes that will trigger CI, ALWAYS cancel the auto-triggered run and rerun with SSH enabled. This ensures you can diagnose and fix failures on the live CI machine instead of iterating blind.
+
+### Standard Push-and-Monitor Workflow
+
+After every `git push` that triggers CI:
+
+1. Find the auto-triggered pipeline
+2. Get its workflow and job IDs
+3. Cancel the workflow
+4. Rerun with `enable_ssh: true`
+5. SSH in and monitor tests
+
+**Never just push and wait** - always ensure SSH access is available.
+
+### Authentication
+
+The CLI token in `~/.circleci/cli.yml` (CCIPAT_*) works with the REST API v2 via **basic auth** (`-u "$TOKEN:"`). The `Circle-Token` header does NOT work with CCIPAT tokens.
+
+### Triggering SSH Rerun via API
+
+```bash
+# 1. Get the CLI token
+CIRCLECI_PAT=$(grep '^token:' ~/.circleci/cli.yml | awk '{print $2}')
+
+# 2. Find the latest pipeline
+curl -s -u "$CIRCLECI_PAT:" \
+  "https://circleci.com/api/v2/project/gh/Freegle/FreegleDocker/pipeline?branch=master" \
+  | python3 -c "import sys,json
+for p in json.load(sys.stdin).get('items',[])[:3]:
+    print(f\"Pipeline: {p['id']} state: {p.get('state')}\")"
+
+# 3. Get workflow and job IDs
+curl -s -u "$CIRCLECI_PAT:" \
+  "https://circleci.com/api/v2/pipeline/<PIPELINE_ID>/workflow" | python3 -c "..."
+curl -s -u "$CIRCLECI_PAT:" \
+  "https://circleci.com/api/v2/workflow/<WORKFLOW_ID>/job" | python3 -c "..."
+
+# 4. Rerun with SSH enabled
+curl -s -X POST -u "$CIRCLECI_PAT:" -H "Content-Type: application/json" \
+  "https://circleci.com/api/v2/workflow/<WORKFLOW_ID>/rerun" \
+  -d '{"enable_ssh": true, "jobs": ["<JOB_ID>"]}'
+
+# 5. Get SSH connection details from "Enable SSH" step output
+curl -s -u "$CIRCLECI_PAT:" \
+  "https://circleci.com/api/v1.1/project/github/Freegle/FreegleDocker/<JOB_NUMBER>/output/101/0" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['message'])"
+
+# 6. Connect
+ssh -o StrictHostKeyChecking=no -p <PORT> <IP>
+```
+
+### Key Notes
+
+- SSH details are in the "Enable SSH" step output (step index 101, action 0 in the v1.1 API)
+- The `node` field in the v1.1 job API is often null; always use the step output instead
+- SSH sessions timeout after ~2 hours of idle time
+- `enable_ssh: true` requires `jobs: [...]` and is mutually exclusive with `from_failed`
+- On the CI machine, use `docker exec` to run commands inside containers
+- Test fixes on the CI machine first, then push changes for a clean run
+- Use `curl -s http://localhost:8081/api/tests/go/status` (etc.) to check test progress
+
 ## Monitoring and Debugging
 
 ### Build Artifacts

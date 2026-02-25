@@ -9,6 +9,8 @@ use App\Models\Group;
 use App\Models\Message;
 use App\Models\User;
 use App\Support\EmojiUtils;
+use Illuminate\Mail\Mailables\Address;
+use Illuminate\Mail\Mailables\Envelope;
 
 class SingleDigest extends MjmlMailable
 {
@@ -85,6 +87,17 @@ class SingleDigest extends MjmlMailable
     /**
      * Get the subject line.
      */
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            from: new Address(
+                config('freegle.mail.noreply_addr'),
+                config('freegle.branding.name')
+            ),
+            subject: $this->getSubject(),
+        );
+    }
+
     protected function getSubject(): string
     {
         return $this->message->subject;

@@ -1447,4 +1447,512 @@ class ChatNotificationTest extends TestCase
         $this->assertNotNull($ampHtml2, 'Gmail should have AMP HTML rendered');
         $this->assertStringContainsString('<!doctype html>', $ampHtml2);
     }
+
+    // ===== Email Threading Header Tests =====
+
+    /**
+     * Helper to extract Symfony email headers from a built ChatNotification.
+     *
+     * After build(), the withSymfonyMessage callbacks are stored in $mail->callbacks.
+     * We create a Symfony Email and execute the callbacks to capture the headers.
+     */
+    protected function getSymfonyHeaders(ChatNotification $mail): \Symfony\Component\Mime\Header\Headers
+    {
+        $mail->build();
+        $symfonyEmail = new \Symfony\Component\Mime\Email();
+        foreach ($mail->callbacks as $callback) {
+            $callback($symfonyEmail);
+        }
+        return $symfonyEmail->getHeaders();
+    }
+
+    public function test_threading_message_id_is_deterministic(): void
+    {
+        ['room' => $room, 'message' => $message, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expected = "chat-{$room->id}-msg-{$message->id}@{$domain}";
+
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertNotNull($messageId);
+        $this->assertStringContainsString($expected, $messageId);
+    }
+
+    public function test_threading_in_reply_to_uses_thread_anchor_when_no_previous(): void
+    {
+        ['room' => $room, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expectedAnchor = "chat-{$room->id}-thread@{$domain}";
+
+        $inReplyTo = $headers->get('In-Reply-To')?->getBodyAsString();
+        $this->assertNotNull($inReplyTo);
+        $this->assertStringContainsString($expectedAnchor, $inReplyTo);
+    }
+
+    public function test_threading_references_contains_thread_anchor(): void
+    {
+        ['room' => $room, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expectedAnchor = "chat-{$room->id}-thread@{$domain}";
+
+        $references = $headers->get('References')?->getBodyAsString();
+        $this->assertNotNull($references);
+        $this->assertStringContainsString($expectedAnchor, $references);
+    }
+
+    public function test_threading_with_previous_messages(): void
+    {
+        ['user1' => $user1, 'user2' => $user2, 'room' => $room] = $this->createUser2UserChatSetup();
+
+        // Create previous messages.
+        $prev1 = $this->createTestChatMessage($room, $user1, [
+            'message' => 'First message',
+            'date' => now()->subMinutes(10),
+        ]);
+        $prev2 = $this->createTestChatMessage($room, $user2, [
+            'message' => 'Second message',
+            'date' => now()->subMinutes(5),
+        ]);
+
+        // Create latest message.
+        $latest = $this->createTestChatMessage($room, $user1, [
+            'message' => 'Third message',
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $latest,
+            ChatRoom::TYPE_USER2USER,
+            collect([$prev1, $prev2])
+        );
+
+        $headers = $this->getSymfonyHeaders($mail);
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+
+        // Message-ID should be for the latest message.
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$latest->id}@{$domain}", $messageId);
+
+        // In-Reply-To should reference the most recent previous message (prev2).
+        $inReplyTo = $headers->get('In-Reply-To')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$prev2->id}@{$domain}", $inReplyTo);
+
+        // References should contain thread anchor + both previous message IDs.
+        $references = $headers->get('References')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-thread@{$domain}", $references);
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$prev1->id}@{$domain}", $references);
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$prev2->id}@{$domain}", $references);
+    }
+
+    public function test_threading_different_messages_get_different_message_ids(): void
+    {
+        ['user1' => $user1, 'user2' => $user2, 'room' => $room] = $this->createUser2UserChatSetup();
+
+        $msg1 = $this->createTestChatMessage($room, $user1, ['message' => 'Hello']);
+        $msg2 = $this->createTestChatMessage($room, $user2, ['message' => 'Hi back']);
+
+        $mail1 = new ChatNotification($user2, $user1, $room, $msg1, ChatRoom::TYPE_USER2USER);
+        $mail2 = new ChatNotification($user1, $user2, $room, $msg2, ChatRoom::TYPE_USER2USER);
+
+        $headers1 = $this->getSymfonyHeaders($mail1);
+        $headers2 = $this->getSymfonyHeaders($mail2);
+
+        $id1 = $headers1->get('Message-ID')?->getBodyAsString();
+        $id2 = $headers2->get('Message-ID')?->getBodyAsString();
+
+        $this->assertNotEquals($id1, $id2, 'Different chat messages should have different Message-IDs');
+    }
+
+    public function test_threading_same_chat_room_shares_thread_anchor(): void
+    {
+        ['user1' => $user1, 'user2' => $user2, 'room' => $room] = $this->createUser2UserChatSetup();
+
+        $msg1 = $this->createTestChatMessage($room, $user1, ['message' => 'Hello']);
+        $msg2 = $this->createTestChatMessage($room, $user2, ['message' => 'Hi back']);
+
+        $mail1 = new ChatNotification($user2, $user1, $room, $msg1, ChatRoom::TYPE_USER2USER);
+        $mail2 = new ChatNotification($user1, $user2, $room, $msg2, ChatRoom::TYPE_USER2USER);
+
+        $headers1 = $this->getSymfonyHeaders($mail1);
+        $headers2 = $this->getSymfonyHeaders($mail2);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+        $expectedAnchor = "chat-{$room->id}-thread@{$domain}";
+
+        // Both should share the same thread anchor in References.
+        $refs1 = $headers1->get('References')?->getBodyAsString();
+        $refs2 = $headers2->get('References')?->getBodyAsString();
+
+        $this->assertStringContainsString($expectedAnchor, $refs1);
+        $this->assertStringContainsString($expectedAnchor, $refs2);
+    }
+
+    public function test_threading_works_for_user2mod_chat(): void
+    {
+        ['room' => $room, 'message' => $message, 'mail' => $mail] = $this->createUser2ModChatSetup([
+            'member_attrs' => ['fullname' => 'Alice'],
+        ]);
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-msg-{$message->id}@{$domain}", $messageId);
+
+        $inReplyTo = $headers->get('In-Reply-To')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-thread@{$domain}", $inReplyTo);
+
+        $references = $headers->get('References')?->getBodyAsString();
+        $this->assertStringContainsString("chat-{$room->id}-thread@{$domain}", $references);
+    }
+
+    public function test_threading_uses_configured_domain(): void
+    {
+        ['room' => $room, 'message' => $message, 'mail' => $mail] = $this->createUser2UserChatSetup();
+
+        $headers = $this->getSymfonyHeaders($mail);
+
+        // Verify domain comes from config, not hardcoded.
+        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
+
+        $messageId = $headers->get('Message-ID')?->getBodyAsString();
+        $this->assertStringContainsString("@{$domain}", $messageId);
+    }
+
+    public function test_promised_copy_to_self_shows_other_user_name(): void
+    {
+        // When the promiser gets a copy of their own Promise notification,
+        // it should show the OTHER user's name, not their own.
+        $user1 = $this->createTestUser(['fullname' => 'Alice Promiser']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob Promisee']);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        // Promise message created by user1 (Alice, the promiser)
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_PROMISED,
+        ]);
+
+        // Copy-to-self: recipient IS the message author, sender is also the author
+        // (this is how ChatNotificationService sets it up for copy-to-self)
+        $mail = new ChatNotification(
+            $user1,  // recipient = promiser (copy-to-self)
+            $user1,  // sender = promiser (same person in copy-to-self)
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "You promised this to Bob Promisee:" not "You promised this to Alice Promiser:"
+        $this->assertStringContainsString('Bob Promisee', $html);
+        $this->assertStringNotContainsString('You promised this to Alice', $html);
+    }
+
+    public function test_reneged_copy_to_self_shows_other_user_name(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice Promiser']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob Promisee']);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_RENEGED,
+        ]);
+
+        // Copy-to-self
+        $mail = new ChatNotification(
+            $user1,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Reneged copy-to-self should say "You cancelled your promise for:"
+        // and NOT show Alice's name as the other user
+        $this->assertStringContainsString('cancelled', $html);
+    }
+
+    public function test_promised_notification_to_promisee_shows_promiser_name(): void
+    {
+        // The promisee should see the promiser's name
+        $user1 = $this->createTestUser(['fullname' => 'Alice Promiser']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob Promisee']);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_PROMISED,
+        ]);
+
+        // Normal notification: recipient is Bob, sender is Alice
+        $mail = new ChatNotification(
+            $user2,  // recipient = promisee
+            $user1,  // sender = promiser
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // Should show "Alice Promiser promised this to you:"
+        $this->assertStringContainsString('Alice Promiser', $html);
+        $this->assertStringContainsString('promised this to you', $html);
+    }
+
+    /**
+     * Helper to render the text email template for a built ChatNotification.
+     *
+     * After build(), the mjmlData property contains all the view data.
+     * We render the text template directly with this data.
+     */
+    protected function renderTextEmail(ChatNotification $mail): string
+    {
+        $reflection = new \ReflectionClass($mail);
+        $dataProperty = $reflection->getProperty('mjmlData');
+        $dataProperty->setAccessible(true);
+        $data = $dataProperty->getValue($mail);
+
+        return view('emails.text.chat.notification', $data)->render();
+    }
+
+    /**
+     * Test that promise message text email includes the referenced item subject.
+     *
+     * Bug: The text email for promise messages showed "katebelvoir promised this to you:"
+     * but nothing followed the colon - the item name was missing. The MJML template
+     * showed a card with the item, but the text template didn't include it.
+     */
+    public function test_promised_text_email_includes_ref_message_subject(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+        $group = $this->createTestGroup();
+        $this->createMembership($user1, $group);
+
+        $refMessage = $this->createTestMessage($user1, $group, [
+            'subject' => 'OFFER: Audio cables (Bristol)',
+        ]);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        // Promise message from Alice to Bob, referencing the item.
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_PROMISED,
+            'refmsgid' => $refMessage->id,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,  // recipient = Bob (promisee)
+            $user1,  // sender = Alice (promiser)
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $text = $this->renderTextEmail($mail);
+
+        // The text email should contain both the promise text AND the item subject.
+        $this->assertStringContainsString('promised this to you', $text);
+        $this->assertStringContainsString('OFFER: Audio cables (Bristol)', $text);
+    }
+
+    /**
+     * Test that reneged message text email includes the referenced item subject.
+     */
+    public function test_reneged_text_email_includes_ref_message_subject(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+        $group = $this->createTestGroup();
+        $this->createMembership($user1, $group);
+
+        $refMessage = $this->createTestMessage($user1, $group, [
+            'subject' => 'OFFER: Double Bed Frame (London)',
+        ]);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        $message = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_RENEGED,
+            'refmsgid' => $refMessage->id,
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $message,
+            ChatRoom::TYPE_USER2USER
+        );
+
+        $mail->build();
+        $text = $this->renderTextEmail($mail);
+
+        $this->assertStringContainsString('cancelled', $text);
+        $this->assertStringContainsString('OFFER: Double Bed Frame (London)', $text);
+    }
+
+    /**
+     * Test that previous promise messages in text email include the referenced item subject.
+     */
+    public function test_previous_promise_message_text_email_includes_ref_subject(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'Alice']);
+        $user2 = $this->createTestUser(['fullname' => 'Bob']);
+        $group = $this->createTestGroup();
+        $this->createMembership($user1, $group);
+
+        $refMessage = $this->createTestMessage($user1, $group, [
+            'subject' => 'OFFER: Kitchen Table (Manchester)',
+        ]);
+
+        $room = $this->createTestChatRoom($user1, $user2);
+
+        // Previous promise message.
+        $promiseMsg = $this->createTestChatMessage($room, $user1, [
+            'message' => '',
+            'type' => ChatMessage::TYPE_PROMISED,
+            'refmsgid' => $refMessage->id,
+            'date' => now()->subMinutes(10),
+        ]);
+
+        // Latest message triggers notification.
+        $latestMsg = $this->createTestChatMessage($room, $user1, [
+            'message' => 'Here is my address for collection.',
+        ]);
+
+        $mail = new ChatNotification(
+            $user2,
+            $user1,
+            $room,
+            $latestMsg,
+            ChatRoom::TYPE_USER2USER,
+            collect([$promiseMsg])
+        );
+
+        $mail->build();
+        $text = $this->renderTextEmail($mail);
+
+        // The previous promise message in the text email should show the item subject.
+        $this->assertStringContainsString('promised this to you', $text);
+        $this->assertStringContainsString('OFFER: Kitchen Table (Manchester)', $text);
+    }
+
+    /**
+     * Test that address messages show the correct sender name in "Earlier in conversation".
+     *
+     * Bug: getAddressDisplayText() used $this->sender (the triggering message's sender)
+     * instead of the actual other user in the chat. When rendering previous address messages,
+     * this showed the wrong person's name - e.g., "John sent you an address" when it was
+     * actually the other person who sent it.
+     */
+    public function test_address_message_in_previous_shows_correct_sender_name(): void
+    {
+        $offerer = $this->createTestUser(['fullname' => 'Kate Offerer']);
+        $replier = $this->createTestUser(['fullname' => 'John Replier']);
+
+        $room = $this->createTestChatRoom($offerer, $replier);
+
+        // Kate sent an address to John (previous message).
+        // The message field contains the address ID, but since we can't easily
+        // create PAF data in tests, we use a non-existent ID which will trigger
+        // the fallback text: "{otherUser} sent you an address."
+        $addressMsg = $this->createTestChatMessage($room, $offerer, [
+            'message' => '99999',  // Non-existent address ID
+            'type' => ChatMessage::TYPE_ADDRESS,
+            'date' => now()->subMinutes(10),
+        ]);
+
+        // John sends a follow-up message (triggers notification to Kate).
+        $latestMsg = $this->createTestChatMessage($room, $replier, [
+            'message' => 'Thanks, I will come collect tomorrow.',
+        ]);
+
+        // Kate receives notification. Sender is John (who sent the latest message).
+        $mail = new ChatNotification(
+            $offerer,  // recipient = Kate
+            $replier,  // sender = John (sent the latest message)
+            $room,
+            $latestMsg,
+            ChatRoom::TYPE_USER2USER,
+            collect([$addressMsg])  // Previous messages include Kate's address
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // The address message was sent BY Kate (the recipient), so it should say
+        // "You sent an address to John Replier." NOT "John Replier sent you an address."
+        // Previously it would incorrectly show the triggering message's sender name.
+        $this->assertStringContainsString('You sent an address', $html);
+        $this->assertStringContainsString('John Replier', $html);
+    }
+
+    /**
+     * Test address message shows other user's name when THEY sent the address.
+     *
+     * Complementary test to the above - verifies the non-recipient path.
+     */
+    public function test_address_message_shows_other_user_name_when_other_sent(): void
+    {
+        $offerer = $this->createTestUser(['fullname' => 'Kate Offerer']);
+        $replier = $this->createTestUser(['fullname' => 'John Replier']);
+
+        $room = $this->createTestChatRoom($offerer, $replier);
+
+        // Kate sent an address (previous message).
+        $addressMsg = $this->createTestChatMessage($room, $offerer, [
+            'message' => '99999',
+            'type' => ChatMessage::TYPE_ADDRESS,
+            'date' => now()->subMinutes(10),
+        ]);
+
+        // Kate sends another message (triggers notification to John).
+        $latestMsg = $this->createTestChatMessage($room, $offerer, [
+            'message' => 'Please collect by Friday.',
+        ]);
+
+        // John receives notification. Kate is the sender of triggering message.
+        $mail = new ChatNotification(
+            $replier,  // recipient = John
+            $offerer,  // sender = Kate
+            $room,
+            $latestMsg,
+            ChatRoom::TYPE_USER2USER,
+            collect([$addressMsg])
+        );
+
+        $mail->build();
+        $html = $mail->render();
+
+        // The address was sent by Kate (not the recipient), so for John it should say
+        // "Kate Offerer sent you an address."
+        $this->assertStringContainsString('Kate Offerer sent you an address', $html);
+    }
 }

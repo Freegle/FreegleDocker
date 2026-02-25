@@ -2,12 +2,14 @@
 
 namespace Tests\Unit\Services\Mail\Incoming;
 
+use App\Models\ChatMessage;
 use App\Models\Group;
 use App\Models\User;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
 use Illuminate\Support\Facades\DB;
+use App\Mail\Fbl\FblNotification;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\EmailFixtures;
 use Tests\TestCase;
@@ -785,6 +787,30 @@ class IncomingMailServiceTest extends TestCase
         Mail::assertNotSent(\App\Mail\BounceAddressAutoReply::class);
     }
 
+    public function test_auto_reply_misclassified_as_bounce_returns_to_system(): void
+    {
+        // Outlook auto-replies sometimes arrive with MAILER-DAEMON envelope-from,
+        // causing the parser to flag them as bounces. Since they have no DSN content,
+        // parseDsn() returns null. These should return TO_SYSTEM, not ERROR.
+        $autoReplyEmail = $this->createMinimalEmail([
+            'From' => 'someone@example.com',
+            'To' => 'bounce-12345-67890@users.ilovefreegle.org',
+            'Subject' => 'Automatic reply: [Test Freegle] OFFER: Item (Area AB1)',
+            'Auto-Submitted' => 'auto-replied',
+        ], 'I am currently out of the office.');
+
+        $parsed = $this->parser->parse(
+            $autoReplyEmail,
+            'MAILER-DAEMON',
+            'bounce-12345-67890@users.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should NOT be ERROR - auto-replies aren't real bounces
+        $this->assertNotEquals(RoutingResult::ERROR, $result);
+    }
+
     public function test_dsn_bounce_to_bounce_address_not_auto_replied(): void
     {
         // Actual DSN bounces should be handled by handleBounce, not auto-replied
@@ -888,6 +914,267 @@ class IncomingMailServiceTest extends TestCase
         $result = $this->service->route($parsed);
 
         $this->assertEquals(RoutingResult::TO_USER, $result);
+    }
+
+    public function test_replyto_creates_interested_type_with_refmsgid(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with TYPE_INTERESTED and correct refmsgid
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->where('refmsgid', $message->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Chat message should be TYPE_INTERESTED with refmsgid');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
+        $this->assertEquals(ChatMessage::TYPE_INTERESTED, $chatMsg->type);
+    }
+
+    public function test_replyto_creates_roster_entries_for_both_users(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Find the chat that was created
+        $chat = DB::table('chat_rooms')
+            ->where('chattype', 'User2User')
+            ->where('user1', min($poster->id, $replier->id))
+            ->where('user2', max($poster->id, $replier->id))
+            ->first();
+
+        $this->assertNotNull($chat, 'Chat should be created');
+
+        // Both users must have roster entries so the notification system
+        // can track seen/emailed state and send email notifications.
+        $posterRoster = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $poster->id)
+            ->first();
+
+        $replierRoster = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $replier->id)
+            ->first();
+
+        $this->assertNotNull($posterRoster, 'Poster (message owner) must have a roster entry');
+        $this->assertNotNull($replierRoster, 'Replier (sender) must have a roster entry');
+    }
+
+    public function test_replyto_does_not_duplicate_roster_on_second_reply(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        // Send first reply
+        $email1 = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed1 = $this->parser->parse(
+            $email1,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed1);
+
+        // Send second reply to same chat
+        $email2 = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Can I collect today?');
+
+        $parsed2 = $this->parser->parse(
+            $email2,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed2);
+
+        // Find the chat
+        $chat = DB::table('chat_rooms')
+            ->where('chattype', 'User2User')
+            ->where('user1', min($poster->id, $replier->id))
+            ->where('user2', max($poster->id, $replier->id))
+            ->first();
+
+        // Should still have exactly one roster entry per user, not duplicates
+        $posterRosterCount = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $poster->id)
+            ->count();
+
+        $replierRosterCount = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $replier->id)
+            ->count();
+
+        $this->assertEquals(1, $posterRosterCount, 'Poster should have exactly one roster entry');
+        $this->assertEquals(1, $replierRosterCount, 'Replier should have exactly one roster entry');
+    }
+
+    public function test_direct_mail_creates_interested_type_with_fd_msgid_header(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+        $posterEmail = $poster->emails->first()->email;
+        // TN uses slug-based address: slug-{userid}@users.ilovefreegle.org
+        $posterSlugAddr = "someslug-{$poster->id}@users.ilovefreegle.org";
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $posterSlugAddr,
+            'Subject' => $message->subject,
+            'x-fd-msgid' => (string) $message->id,
+        ], 'I would love this item!');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            $posterSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with TYPE_INTERESTED and correct refmsgid
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Direct mail should create TYPE_INTERESTED message');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
+        $this->assertEquals(ChatMessage::TYPE_INTERESTED, $chatMsg->type);
+    }
+
+    public function test_direct_mail_finds_refmsgid_by_subject(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group, [
+            'subject' => 'OFFER: Wooden bookshelf (Test Town)',
+        ]);
+
+        $replierEmail = $replier->emails->first()->email;
+        $posterSlugAddr = "someslug-{$poster->id}@users.ilovefreegle.org";
+
+        // Reply with similar subject but no x-fd-msgid header
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $posterSlugAddr,
+            'Subject' => 'Re: OFFER: Wooden bookshelf (Test Town)',
+        ], 'Can I collect this today?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            $posterSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with refmsgid found by subject matching
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Direct mail should create TYPE_INTERESTED message');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
+    }
+
+    public function test_notify_reply_creates_default_type(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Thanks for the reply');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Verify chat message was created with TYPE_DEFAULT (not INTERESTED)
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->where('userid', $user1->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+        $this->assertEquals(ChatMessage::TYPE_DEFAULT, $chatMsg->type);
+        $this->assertNull($chatMsg->refmsgid);
     }
 
     public function test_chat_reply_creates_chat_message(): void
@@ -2129,11 +2416,61 @@ class IncomingMailServiceTest extends TestCase
         $this->assertEquals('Spam', $lastMessage->reportreason);
     }
 
+    public function test_clean_chat_reply_held_when_previous_message_held_for_review(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        // Insert a chat message that is held for review (simulates a previous spam message).
+        DB::table('chat_messages')->insert([
+            'chatid' => $chat->id,
+            'userid' => $user2->id,
+            'message' => 'Send money via Western Union',
+            'type' => 'Default',
+            'date' => now()->subMinute(),
+            'reviewrequired' => 1,
+            'reportreason' => 'Spam',
+            'processingrequired' => 0,
+            'processingsuccessful' => 1,
+        ]);
+
+        // Now send a clean email reply to the same chat
+        $user1Email = $user1->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Yes, it is still available! When would you like to collect?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // The clean message should ALSO be held for review because the previous
+        // message in this chat is held. This prevents bypassing moderation by
+        // sending follow-up messages after a held one.
+        $lastMessage = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertEquals(1, $lastMessage->reviewrequired, 'Clean message should be held when previous message is held for review');
+        $this->assertEquals('Last', $lastMessage->reportreason, 'Report reason should be Last when held due to previous message');
+    }
+
     // ========================================
     // Volunteers Spam Check Tests
     // ========================================
 
-    public function test_volunteers_message_from_spammer_flagged_for_review(): void
+    public function test_volunteers_message_from_spammer_is_dropped(): void
     {
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-spammer')]);
@@ -2163,16 +2500,46 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // Known spammer to volunteers: goes to review, not rejected
-        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+        // Known spammers are dropped unconditionally before routing
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
 
-        // Chat message should be flagged for review
-        $lastMessage = DB::table('chat_messages')
+    public function test_volunteers_message_from_deleted_user_is_dropped(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('vol-deleted')]);
+        $this->createMembership($user, $group);
+
+        // Mark user as deleted (soft delete with timestamp)
+        $user->update(['deleted' => now()]);
+
+        $userEmail = $user->emails->first()->email;
+        $groupName = $group->nameshort;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "{$groupName}-volunteers@groups.ilovefreegle.org",
+            'Subject' => 'Help please',
+        ], 'I need help with my item.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "{$groupName}-volunteers@groups.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Deleted users should be dropped - their account no longer exists
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+
+        // Verify no chat message was created
+        $chatMessage = DB::table('chat_messages')
+            ->where('userid', $user->id)
             ->orderBy('id', 'desc')
             ->first();
 
-        $this->assertEquals(1, $lastMessage->reviewrequired);
-        $this->assertEquals('Spam', $lastMessage->reportreason);
+        $this->assertNull($chatMessage, 'No chat message should be created for a deleted user');
     }
 
     public function test_volunteers_spam_keyword_flagged_for_review(): void
@@ -3278,5 +3645,767 @@ class IncomingMailServiceTest extends TestCase
             $this->assertStringNotContainsString('trashnothing.com/pics', $message->textbody);
             $this->assertStringContainsString('I have a dining table', $message->textbody);
         }
+    }
+
+    // ========================================
+    // Chat Email Storage Tests
+    // ========================================
+
+    public function test_replyto_stores_raw_email_in_messages_and_chat_messages_byemail(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $rawEmail,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Find the chat message that was created
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('type', ChatMessage::TYPE_INTERESTED)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+
+        // Verify the raw email was stored in messages table and linked via chat_messages_byemail
+        $byEmail = DB::table('chat_messages_byemail')
+            ->where('chatmsgid', $chatMsg->id)
+            ->first();
+
+        $this->assertNotNull($byEmail, 'chat_messages_byemail record should exist');
+
+        $storedMsg = DB::table('messages')
+            ->where('id', $byEmail->msgid)
+            ->first();
+
+        $this->assertNotNull($storedMsg, 'Raw email should be stored in messages table');
+        $this->assertStringContainsString('Is this still available?', $storedMsg->message);
+        $this->assertEquals($replier->id, $storedMsg->fromuser);
+        $this->assertEquals($replierEmail, $storedMsg->fromaddr);
+    }
+
+    public function test_notify_reply_stores_raw_email_in_messages_and_chat_messages_byemail(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+        $chat = $this->createTestChatRoom($user1, $user2);
+
+        $user1Email = $user1->emails->first()->email;
+
+        $rawEmail = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'Thanks for the reply');
+
+        $parsed = $this->parser->parse(
+            $rawEmail,
+            $user1Email,
+            "notify-{$chat->id}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Find the chat message
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chat->id)
+            ->where('userid', $user1->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+
+        // Verify the raw email was stored and linked
+        $byEmail = DB::table('chat_messages_byemail')
+            ->where('chatmsgid', $chatMsg->id)
+            ->first();
+
+        $this->assertNotNull($byEmail, 'chat_messages_byemail record should exist for notify replies too');
+
+        $storedMsg = DB::table('messages')
+            ->where('id', $byEmail->msgid)
+            ->first();
+
+        $this->assertNotNull($storedMsg);
+        $this->assertStringContainsString('Thanks for the reply', $storedMsg->message);
+    }
+
+    public function test_direct_mail_without_refmsgid_uses_default_type(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+
+        $replierEmail = $replier->emails->first()->email;
+        $posterSlugAddr = "someslug-{$poster->id}@users.ilovefreegle.org";
+
+        // No x-fd-msgid header and subject won't match any post
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $posterSlugAddr,
+            'Subject' => 'Random unrelated subject',
+        ], 'Hello there');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            $posterSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        // Without a refmsgid, type should be DEFAULT not INTERESTED
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+        $this->assertEquals(ChatMessage::TYPE_DEFAULT, $chatMsg->type);
+        $this->assertNull($chatMsg->refmsgid);
+    }
+
+    // ========================================
+    // Fix #6: addEmailToUser (email forwarding)
+    // ========================================
+
+    public function test_replyto_adds_unknown_sender_email_to_user_profile(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+        // Simulate email forwarding: envelope-from is a different address
+        $forwardedFrom = 'forwarded-' . uniqid() . '@otherdomain.com';
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: ' . $message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $forwardedFrom,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // The forwarding email should be added to the user's profile
+        $addedEmail = DB::table('users_emails')
+            ->where('userid', $replier->id)
+            ->where('email', $forwardedFrom)
+            ->first();
+
+        $this->assertNotNull($addedEmail, 'Forwarding email should be added to user profile');
+    }
+
+    public function test_addEmailToUser_skips_system_addresses(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: ' . $message->subject,
+        ], 'Is this still available?');
+
+        // Use a system address as envelope-from (should NOT be added)
+        $parsed = $this->parser->parse(
+            $email,
+            'notify-123-456@users.ilovefreegle.org',
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // System address should NOT be added
+        $added = DB::table('users_emails')
+            ->where('userid', $replier->id)
+            ->where('email', 'notify-123-456@users.ilovefreegle.org')
+            ->exists();
+
+        $this->assertFalse($added, 'System addresses should not be added to user profile');
+    }
+
+    // ========================================
+    // Fix #7: hasOutcome / mailedLastForUser
+    // ========================================
+
+    public function test_replyto_suppresses_email_for_completed_message(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        // Mark message as having outcome (TAKEN/RECEIVED)
+        DB::table('messages_outcomes')->insert([
+            'msgid' => $message->id,
+            'timestamp' => now(),
+        ]);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: ' . $message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Chat message should still be created (it goes to chat, just no email notification)
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->where('refmsgid', $message->id)
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Chat message should still be created for completed items');
+
+        // The chat roster should be updated to suppress email (mailedLastForUser)
+        $chat = DB::table('chat_rooms')
+            ->where('chattype', 'User2User')
+            ->where(function ($q) use ($poster, $replier) {
+                $q->where(function ($q2) use ($poster, $replier) {
+                    $q2->where('user1', min($poster->id, $replier->id))
+                        ->where('user2', max($poster->id, $replier->id));
+                });
+            })
+            ->first();
+
+        $this->assertNotNull($chat);
+
+        $roster = DB::table('chat_roster')
+            ->where('chatid', $chat->id)
+            ->where('userid', $poster->id)
+            ->first();
+
+        $this->assertNotNull($roster, 'Roster should be updated to suppress email notification');
+        $this->assertNotNull($roster->lastemailed, 'lastemailed should be set');
+    }
+
+    // ========================================
+    // Fix #9: overridemoderation (Big Switch)
+    // ========================================
+
+    public function test_override_moderation_forces_post_to_pending(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        // Enable Big Switch on group
+        DB::table('groups')->where('id', $group->id)->update([
+            'overridemoderation' => 'ModerateAll',
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Test Big Switch (London)',
+        ], 'Test item.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should be PENDING despite DEFAULT posting status
+        $this->assertEquals(RoutingResult::PENDING, $result);
+    }
+
+    // ========================================
+    // Fix #10: Mod posts forced to PENDING
+    // ========================================
+
+    public function test_moderator_post_forced_to_pending(): void
+    {
+        $group = $this->createTestGroup();
+        $mod = $this->createTestUser(['email_preferred' => $this->uniqueEmail('mod')]);
+        $this->createMembership($mod, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+            'role' => 'Moderator',
+        ]);
+        DB::table('users')->where('id', $mod->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $modEmail = $mod->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $modEmail,
+            'To' => $group->nameshort . '@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Mod Post Test (London)',
+        ], 'Test mod post.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $modEmail,
+            $group->nameshort . '@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Mod posts via email should be PENDING for other mods to review
+        $this->assertEquals(RoutingResult::PENDING, $result);
+    }
+
+    // ========================================
+    // Fix #11: Group moderated setting
+    // ========================================
+
+    public function test_group_moderated_setting_forces_post_to_pending(): void
+    {
+        $group = $this->createTestGroup(['settings' => json_encode(['moderated' => true])]);
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Moderated Group Test (London)',
+        ], 'Test post to moderated group.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::PENDING, $result);
+    }
+
+    // ========================================
+    // Fix #12: messages_postings
+    // ========================================
+
+    public function test_approved_post_creates_messages_postings_record(): void
+    {
+        [$user, $group, $userEmail] = $this->createPostableUser();
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Postings Record Test (London)',
+        ], 'Test post.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::APPROVED, $result);
+
+        $context = $this->service->getLastRoutingContext();
+        $this->assertArrayHasKey('message_id', $context);
+
+        // Verify messages_postings record was created
+        $posting = DB::table('messages_postings')
+            ->where('msgid', $context['message_id'])
+            ->where('groupid', $group->id)
+            ->first();
+
+        $this->assertNotNull($posting, 'messages_postings record should be created');
+        $this->assertEquals(0, $posting->repost);
+        $this->assertEquals(0, $posting->autorepost);
+    }
+
+    // ========================================
+    // Fix #13: FBL comprehensive email shutoff + notification email
+    // ========================================
+
+    public function test_fbl_turns_off_all_email_types(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('fbl-user')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, [
+            'emailfrequency' => 24,
+            'eventsallowed' => 1,
+            'volunteeringallowed' => 1,
+        ]);
+
+        // Set initial user settings
+        DB::table('users')->where('id', $user->id)->update([
+            'relevantallowed' => 1,
+            'newslettersallowed' => 1,
+        ]);
+
+        $userEmail = $user->emails->first()->email;
+
+        // Create FBL report with Original-Rcpt-To header
+        $rawMessage = "From: fbl@hotmail.com\r\n"
+            . "To: fbl@ilovefreegle.org\r\n"
+            . "Subject: Feedback Loop Report\r\n"
+            . "Original-Rcpt-To: {$userEmail}\r\n"
+            . "\r\nFBL report content";
+
+        $parsed = $this->parser->parse($rawMessage, 'fbl@hotmail.com', 'fbl@ilovefreegle.org');
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_SYSTEM, $result);
+
+        // Verify memberships updated
+        $membership = DB::table('memberships')
+            ->where('userid', $user->id)
+            ->where('groupid', $group->id)
+            ->first();
+
+        $this->assertEquals(0, $membership->emailfrequency, 'Digest should be turned off');
+        $this->assertEquals(0, $membership->eventsallowed, 'Events should be turned off');
+        $this->assertEquals(0, $membership->volunteeringallowed, 'Volunteering should be turned off');
+
+        // Verify user settings updated
+        $updatedUser = DB::table('users')->where('id', $user->id)->first();
+        $this->assertEquals(0, $updatedUser->relevantallowed, 'Relevant should be turned off');
+        $this->assertEquals(0, $updatedUser->newslettersallowed, 'Newsletters should be turned off');
+
+        // Verify user JSON settings
+        $settings = json_decode($updatedUser->settings, true);
+        $this->assertFalse($settings['notifications']['email']);
+        $this->assertFalse($settings['notifications']['emailmine']);
+        $this->assertFalse($settings['notificationmails']);
+        $this->assertFalse($settings['engagement']);
+    }
+
+    public function test_fbl_sends_notification_email(): void
+    {
+        Mail::fake();
+
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('fbl-notif')]);
+        $userEmail = $user->emails->first()->email;
+
+        $rawMessage = "From: fbl@hotmail.com\r\n"
+            . "To: fbl@ilovefreegle.org\r\n"
+            . "Subject: Feedback Loop Report\r\n"
+            . "Original-Rcpt-To: {$userEmail}\r\n"
+            . "\r\nFBL report content";
+
+        $parsed = $this->parser->parse($rawMessage, 'fbl@hotmail.com', 'fbl@ilovefreegle.org');
+
+        $this->service->route($parsed);
+
+        // Verify the FBL notification email was sent as a branded Mailable
+        Mail::assertSent(FblNotification::class, function (FblNotification $mail) use ($user, $userEmail) {
+            return $mail->user->id === $user->id
+                && $mail->recipientEmail === $userEmail;
+        });
+    }
+
+    // ========================================
+    // Fix #20: Subject prepend for unpaired direct messages
+    // ========================================
+
+    public function test_direct_mail_without_refmsgid_prepends_subject(): void
+    {
+        $sender = $this->createTestUser(['email_preferred' => $this->uniqueEmail('sender')]);
+        $recipient = $this->createTestUser(['email_preferred' => $this->uniqueEmail('recipient')]);
+
+        $senderEmail = $sender->emails->first()->email;
+        $recipientSlugAddr = "someslug-{$recipient->id}@users.ilovefreegle.org";
+
+        $email = $this->createMinimalEmail([
+            'From' => $senderEmail,
+            'To' => $recipientSlugAddr,
+            'Subject' => 'About the sofa you posted',
+        ], 'I would like to collect it please.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $senderEmail,
+            $recipientSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        // Without a refmsgid, subject should be prepended to message body
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $sender->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+        $this->assertStringContainsString('About the sofa you posted', $chatMsg->message);
+        $this->assertStringContainsString('I would like to collect it please.', $chatMsg->message);
+    }
+
+    public function test_direct_mail_with_refmsgid_does_not_prepend_subject(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group, [
+            'subject' => 'OFFER: Nice sofa (London)',
+        ]);
+
+        $replierEmail = $replier->emails->first()->email;
+        $posterSlugAddr = "someslug-{$poster->id}@users.ilovefreegle.org";
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $posterSlugAddr,
+            'Subject' => 'OFFER: Nice sofa (London)',
+            'x-fd-msgid' => (string) $message->id,
+        ], 'I would like this please.');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            $posterSlugAddr
+        );
+
+        $this->service->route($parsed);
+
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg);
+        // With refmsgid, subject should NOT be prepended
+        $this->assertStringNotContainsString('OFFER: Nice sofa', $chatMsg->message);
+        $this->assertStringContainsString('I would like this please.', $chatMsg->message);
+    }
+
+    // ========================================
+    // Fix #23: Spam log entries in logs table
+    // ========================================
+
+    public function test_spam_post_creates_log_entry(): void
+    {
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamlog')]);
+        $this->createMembership($user, $group, [
+            'ourPostingStatus' => 'DEFAULT',
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastlocation' => $this->createLocation(51.5, -0.1),
+        ]);
+
+        DB::table('spam_keywords')->insert([
+            'word' => 'SpamLogTest' . uniqid(),
+            'action' => 'Spam',
+            'type' => 'Literal',
+        ]);
+        $spamWord = DB::table('spam_keywords')->orderBy('id', 'desc')->first()->word;
+
+        $this->service = app(IncomingMailService::class);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Free stuff (London)',
+        ], "Get your {$spamWord} here!");
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result);
+
+        $context = $this->service->getLastRoutingContext();
+        $this->assertArrayHasKey('message_id', $context);
+
+        // Verify log entry was created
+        $logEntry = DB::table('logs')
+            ->where('type', 'Message')
+            ->where('subtype', 'ClassifiedSpam')
+            ->where('msgid', $context['message_id'])
+            ->first();
+
+        $this->assertNotNull($logEntry, 'Spam log entry should be created in logs table');
+        $this->assertEquals($group->id, $logEntry->groupid);
+    }
+
+    // ========================================
+    // Fix #24: Digest off log entry
+    // ========================================
+
+    public function test_digestoff_creates_log_entry(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('member')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org",
+            'Subject' => 'Turn off digest',
+        ]);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            "digestoff-{$user->id}-{$group->id}@users.ilovefreegle.org"
+        );
+
+        $this->service->route($parsed);
+
+        // Verify log entry
+        $logEntry = DB::table('logs')
+            ->where('type', 'User')
+            ->where('subtype', 'MailOff')
+            ->where('user', $user->id)
+            ->first();
+
+        $this->assertNotNull($logEntry, 'Digest off should create a log entry');
+    }
+
+    public function test_tn_reporting_member_preserves_conversation_transcript(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('tnreporter')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        // Simulate a TN "Reporting member" email with conversation transcript.
+        // The transcript contains Subject:/From:/To: lines that the strip logic
+        // would previously eat from those headers to end-of-string.
+        $body = "Reporting member \"baduser\" baduser-12345@users.ilovefreegle.org (#12345)\r\n"
+            . "\r\n"
+            . "No response to my messages\r\n"
+            . "\r\n"
+            . "\r\n"
+            . "---------- Conversation Transcript (ordered newest to oldest) ----------\r\n"
+            . "\r\n"
+            . "--- 2026-02-09 14:26:50 --\r\n"
+            . "Subject: OFFER: Test item (AB1)\r\n"
+            . "From: {$userEmail}\r\n"
+            . "To: baduser-12345@users.ilovefreegle.org\r\n"
+            . "\r\n"
+            . "Hi, is this still available? I can collect tomorrow.\r\n"
+            . "\r\n"
+            . "Possible collection times: tomorrow afternoon";
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Reporting member "baduser" baduser-12345@users.ilovefreegle.org (#12345)',
+        ], $body);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        // The chat message should preserve the full conversation transcript
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($lastMessage);
+        $this->assertStringContainsString('No response to my messages', $lastMessage->message);
+        $this->assertStringContainsString('Conversation Transcript', $lastMessage->message);
+        $this->assertStringContainsString('Subject: OFFER: Test item (AB1)', $lastMessage->message);
+        $this->assertStringContainsString('Hi, is this still available?', $lastMessage->message);
+        $this->assertStringContainsString('Possible collection times: tomorrow afternoon', $lastMessage->message);
+    }
+
+    public function test_non_reporting_volunteer_message_still_strips_quoted(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('volreply')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $userEmail = $user->emails->first()->email;
+
+        // A regular volunteer message (not a TN report) should still strip quoted text
+        $body = "I have a question about posting rules.\r\n"
+            . "\r\n"
+            . "On Mon, Feb 10, 2026 at 3:00 PM Someone wrote:\r\n"
+            . "This is the original quoted message that should be stripped.";
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort . '-volunteers@groups.ilovefreegle.org',
+            'Subject' => 'Question about posting',
+        ], $body);
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort . '-volunteers@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_VOLUNTEERS, $result);
+
+        $lastMessage = DB::table('chat_messages')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($lastMessage);
+        $this->assertStringContainsString('question about posting rules', $lastMessage->message);
+        // The "On ... wrote:" quoted text should be stripped for non-report messages
+        $this->assertStringNotContainsString('original quoted message that should be stripped', $lastMessage->message);
     }
 }

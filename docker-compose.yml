@@ -11,6 +11,8 @@ services:
 
   reverse-proxy:
     container_name: freegle-traefik
+    profiles:
+      - dev
     networks:
       - default
     image: traefik:latest
@@ -32,9 +34,9 @@ services:
       # Increase transport settings for parallel requests
       - "--serversTransport.maxIdleConnsPerHost=200"
     ports:
-      - "80:80"
-      - "8192:8192"
-      - "8080:8080"
+      - "${PORT_TRAEFIK_HTTP:-80}:80"
+      - "${PORT_TRAEFIK_API:-8192}:8192"
+      - "${PORT_TRAEFIK_DASHBOARD:-8080}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
@@ -46,6 +48,8 @@ services:
 
   percona:
     container_name: freegle-percona
+    profiles:
+      - database
     networks:
       - default
     image: percona:8.0.43-34
@@ -65,6 +69,8 @@ services:
 
   postgres:
     container_name: freegle-postgres
+    profiles:
+      - database
     networks:
       - default
     image: postgis/postgis:13-3.1
@@ -82,14 +88,17 @@ services:
 
   phpmyadmin:
     container_name: freegle-phpmyadmin
+    profiles:
+      - dev
     networks:
       - default
     image: phpmyadmin
     ports:
-      - "0.0.0.0:8086:80"
+      - "0.0.0.0:${PORT_PHPMYADMIN:-8086}:80"
     depends_on:
       percona:
         condition: service_started
+        required: false
       reverse-proxy:
         condition: service_started
     restart: "no"
@@ -106,20 +115,26 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     container_name: freegle-mailpit
+    profiles:
+      - dev
     networks:
       - default
     ports:
-      - "0.0.0.0:8025:8025"
-      - "0.0.0.0:1025:1025"
+      - "0.0.0.0:${PORT_MAILPIT_WEB:-8025}:8025"
+      - "0.0.0.0:${PORT_MAILPIT_SMTP:-1025}:1025"
     depends_on:
       percona:
         condition: service_healthy
+        required: false
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       beanstalkd:
         condition: service_healthy
+        required: false
       spamassassin-app:
         condition: service_healthy
       rspamd:
@@ -145,6 +160,8 @@ services:
   beanstalkd:
     image: schickling/beanstalkd
     container_name: freegle-beanstalkd
+    profiles:
+      - frontend
     networks:
       - default
     healthcheck:
@@ -157,10 +174,13 @@ services:
   spamassassin-app:
     image: tiredofit/spamassassin
     container_name: freegle-spamassassin
+    profiles:
+      - backend
+      - dev
     networks:
       - default
     ports:
-      - 783:783
+      - ${PORT_SPAMASSASSIN:-783}:783
     volumes:
       - ./logs/spamassassin:/logs
       - ./conf:/config
@@ -178,16 +198,20 @@ services:
   rspamd:
     image: rspamd/rspamd:latest
     container_name: freegle-rspamd
+    profiles:
+      - backend
+      - dev
     networks:
       - default
     ports:
-      - "11334:11334"
+      - "${PORT_RSPAMD:-11334}:11334"
     volumes:
       - ./conf/rspamd/local.d:/etc/rspamd/local.d:ro
       - rspamd_data:/var/lib/rspamd
     depends_on:
       redis:
         condition: service_healthy
+        required: false
     environment:
       - REDIS_SERVERS=redis:6379
     restart: "no"
@@ -205,6 +229,9 @@ services:
 
   redis:
     container_name: freegle-redis
+    profiles:
+      - backend
+      - frontend
     networks:
       - default
     image: redis:6.2-alpine
@@ -221,6 +248,8 @@ services:
   # API: POST raw MJML text to / with Content-Type: text/plain, returns compiled HTML
   mjml:
     container_name: freegle-mjml
+    profiles:
+      - backend
     networks:
       - default
     image: adrianrudnik/mjml-server:latest
@@ -235,15 +264,22 @@ services:
 
   delivery:
     container_name: freegle-delivery
+    profiles:
+      - frontend
     networks:
       - default
     image: ghcr.io/weserv/images:5.x
     restart: "no"
     shm_size: 1gb
     depends_on:
-      - tusd
-      - freegle-prod-local
-      - modtools-prod-local
+      tusd:
+        condition: service_started
+      freegle-prod-local:
+        condition: service_started
+        required: false
+      modtools-prod-local:
+        condition: service_started
+        required: false
     extra_hosts:
       - "tusd.localhost:host-gateway"
       - "freegle-dev-local.localhost:host-gateway"
@@ -270,16 +306,19 @@ services:
   tusd:
     image: tusproject/tusd:latest
     container_name: freegle-tusd
+    profiles:
+      - frontend
     networks:
       default:
         aliases:
           - tusd.localhost
     ports:
-      - "1080:8080"
+      - "${PORT_TUSD:-1080}:8080"
     command: -hooks-http=http://freegle-apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/ -cors-allow-headers=baggage,sentry-trace
     depends_on:
       reverse-proxy:
         condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/tus/ 2>&1 | grep -E '(200|405)' || exit 1"]
       interval: 5s
@@ -327,10 +366,12 @@ services:
       context: ./status-nuxt
       network: host
     container_name: freegle-status
+    profiles:
+      - dev
     networks:
       - default
     ports:
-      - "8081:3000"
+      - "${PORT_STATUS:-8081}:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.status.rule=Host(`status.localhost`)"
@@ -340,6 +381,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./ssl/certs:/app/ssl:ro
       - .:/project:ro
+      - ./.env:/app/dotenv:rw
       - rebuild-requests:/rebuild-requests
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
@@ -349,10 +391,13 @@ services:
       context: ./claude-agent-sdk
       network: host
     container_name: freegle-ai-support-helper
+    profiles:
+      - backend
+      - dev
     networks:
       - default
     ports:
-      - "8083:3000"
+      - "${PORT_AI_SUPPORT:-8083}:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ai-support-helper.rule=Host(`ai-support-helper.localhost`)"
@@ -372,6 +417,8 @@ services:
   host-scripts:
     image: alpine:latest
     container_name: freegle-host-scripts
+    profiles:
+      - dev
     environment:
       - CI=${CI:-false}
     volumes:
@@ -427,6 +474,8 @@ services:
   # Freegle images.
   apiv1:
     container_name: freegle-apiv1
+    profiles:
+      - frontend
     networks:
       - default
     build:
@@ -435,16 +484,23 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
+      batch:
+        condition: service_healthy
+        required: false
       beanstalkd:
         condition: service_started
       mailpit:
         condition: service_started
+        required: false
       redis:
         condition: service_started
       spamassassin-app:
         condition: service_started
+        required: false
       reverse-proxy:
         condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -489,7 +545,7 @@ services:
       - "traefik.http.services.apiv1-localhost-freegledocker.loadbalancer.server.port=80"
       - "traefik.http.middlewares.limit.buffering.maxRequestBodyBytes=8000000"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
-      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
       - "traefik.http.middlewares.apiv1-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
       # Retry middleware for connection resilience
@@ -502,13 +558,15 @@ services:
       - PARTNER_NAME
       - IMAGE_DOMAIN
     ports:
-      - "1023:22"
-      - "83:80"
-      - "8181:80"
+      - "${PORT_APIV1_SSH:-1023}:22"
+      - "${PORT_APIV1_HTTP:-83}:80"
+      - "${PORT_APIV1_HTTP2:-8181}:80"
 
   # Separate container for PHPUnit tests - uses isolated database to run in parallel with Playwright
   apiv1-phpunit:
     container_name: freegle-apiv1-phpunit
+    profiles:
+      - dev
     networks:
       - default
     build:
@@ -517,14 +575,21 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
+      batch:
+        condition: service_healthy
       beanstalkd:
         condition: service_started
+        required: false
       redis:
         condition: service_started
+        required: false
       tusd:
         condition: service_started
+        required: false
       delivery:
         condition: service_started
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -560,6 +625,8 @@ services:
 
   apiv2:
     container_name: freegle-apiv2
+    profiles:
+      - frontend
     networks:
       default:
         aliases:
@@ -572,21 +639,27 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
+      batch:
+        condition: service_healthy
+        required: false
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
       beanstalkd:
         condition: service_healthy
       reverse-proxy:
         condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=percona
       - MYSQL_PORT=3306
       - MYSQL_USER=root
       - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
-      - IMAGE_DELIVERY=http://delivery.localhost
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
@@ -606,7 +679,7 @@ services:
       retries: 3
       start_period: 30s
     ports:
-      - "8193:8192"
+      - "${PORT_APIV2:-8193}:8192"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"
@@ -614,22 +687,92 @@ services:
       - "traefik.http.routers.apiv2.middlewares=apiv2-cors,retry-api"
       - "traefik.http.services.apiv2.loadbalancer.server.port=8192"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
-      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
       - "traefik.http.middlewares.apiv2-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
       # Retry middleware for connection resilience
       - "traefik.http.middlewares.retry-api.retry.attempts=3"
       - "traefik.http.middlewares.retry-api.retry.initialinterval=100ms"
 
+  # V2 API with LIVE production database via tunnel
+  # Start with: docker compose --profile prod-live up -d apiv2-live
+  # Requires: SSH tunnel to production DB on local port 1234
+  # WARNING: This connects to the REAL production database!
+  apiv2-live:
+    container_name: freegle-apiv2-live
+    profiles:
+      - prod-live
+    networks:
+      default:
+        aliases:
+          - apiv2-live.localhost
+    build:
+      context: ./iznik-server-go
+      network: host
+      args:
+        IZNIK_SERVER_GO_BRANCH: ${IZNIK_SERVER_GO_BRANCH:-master}
+    extra_hosts:
+      - "db-live:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+        required: false
+      beanstalkd:
+        condition: service_healthy
+        required: false
+      reverse-proxy:
+        condition: service_healthy
+        required: false
+    restart: "no"
+    environment:
+      - MYSQL_HOST=db-live
+      - MYSQL_PORT=${LIVE_DB_PORT:-1234}
+      - MYSQL_USER=${LIVE_DB_USER:-root}
+      - MYSQL_PASSWORD=${LIVE_DB_PASSWORD:-}
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
+      - LOKI_ENABLED=true
+      - LOKI_URL=http://loki:3100
+      - LOKI_JSON_PATH=/var/log/freegle
+      - USER_SITE=www.ilovefreegle.org
+      - IMAGE_DOMAIN=images.ilovefreegle.org
+      - GROUP_DOMAIN=groups.ilovefreegle.org
+      - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
+    volumes:
+      - apiv2_logs:/var/log/freegle
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8192/apiv2/online || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    ports:
+      - "${PORT_APIV2_LIVE:-8194}:8192"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.apiv2-live.rule=Host(`apiv2-live.localhost`)"
+      - "traefik.http.routers.apiv2-live.entrypoints=web"
+      - "traefik.http.routers.apiv2-live.middlewares=apiv2-live-cors,apiv2-live-retry"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Allow-Origin=*"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Allow-Headers=*"
+      - "traefik.http.middlewares.apiv2-live-cors.headers.customresponseheaders.Access-Control-Max-Age=86400"
+      - "traefik.http.middlewares.apiv2-live-retry.retry.attempts=3"
+      - "traefik.http.middlewares.apiv2-live-retry.retry.initialinterval=100ms"
+      - "traefik.http.services.apiv2-live.loadbalancer.server.port=8192"
+
   # Development build with local APIs - standard dev workflow
   freegle-dev-local:
     container_name: freegle-dev-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
           - freegle-dev-local.localhost
     ports:
-      - "0.0.0.0:3002:3002"
+      - "0.0.0.0:${PORT_FREEGLE_DEV_LOCAL:-3002}:3002"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
@@ -647,15 +790,17 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
-      - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost/tus/
-      - USER_SITE=http://freegle-dev-local.localhost:3002
+      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
+      - IZNIK_API_V2=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
+      - USER_SITE=http://freegle-dev-local.localhost:${PORT_FREEGLE_DEV_LOCAL:-3002}
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
@@ -683,9 +828,15 @@ services:
   freegle-dev-live:
     container_name: freegle-dev-live
     depends_on:
-      - host-scripts
-      - status
-      - reverse-proxy
+      host-scripts:
+        condition: service_started
+        required: false
+      status:
+        condition: service_started
+        required: false
+      reverse-proxy:
+        condition: service_started
+        required: false
     profiles:
       - dev-live
     networks:
@@ -693,7 +844,9 @@ services:
         aliases:
           - freegle-dev-live.localhost
     ports:
-      - "0.0.0.0:3005:3002"
+      - "0.0.0.0:${PORT_FREEGLE_DEV_LIVE:-3005}:3002"
+    extra_hosts:
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       network: host
@@ -705,7 +858,7 @@ services:
     environment:
       # LIVE/Production APIs - REAL DATA!
       - IZNIK_API_V1=https://fdapilive.ilovefreegle.org/api
-      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      - IZNIK_API_V2=${LIVE_FREEGLE_API_V2:-https://api.ilovefreegle.org/apiv2}
       # Use production delivery and USER_SITE - local delivery won't work
       # from mobile devices since they can't resolve localhost hostnames
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
@@ -726,15 +879,18 @@ services:
   # Production build with local APIs - for testing production builds locally
   freegle-prod-local:
     container_name: freegle-prod-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
           - freegle-prod-local.localhost
     ports:
-      - "0.0.0.0:3012:3003"
+      - "0.0.0.0:${PORT_FREEGLE_PROD_LOCAL:-3012}:3003"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.prod
@@ -750,8 +906,10 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     healthcheck:
       # Health check for production container - verifies nginx is responding
@@ -762,11 +920,11 @@ services:
       retries: 3
       start_period: 900s  # 15 minutes for npm run build
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
-      - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost/tus/
-      - USER_SITE=http://freegle-prod-local.localhost:3003
+      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
+      - IZNIK_API_V2=${PROD_FREEGLE_API_V2:-http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api}
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
+      - USER_SITE=http://freegle-prod-local.localhost:${PORT_FREEGLE_PROD_LOCAL:-3012}
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
@@ -795,12 +953,14 @@ services:
   # Development build with local APIs - ModTools
   modtools-dev-local:
     container_name: modtools-dev-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
           - modtools-dev-local.localhost
     ports:
-      - "0.0.0.0:3003:3000"
+      - "0.0.0.0:${PORT_MODTOOLS_DEV_LOCAL:-3003}:3000"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
@@ -819,17 +979,19 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
-      - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost/tus/
+      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
+      - IZNIK_API_V2=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools-dev-local.localhost:3000
+      - USER_SITE=http://modtools-dev-local.localhost:${PORT_MODTOOLS_DEV_LOCAL:-3003}
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=true
@@ -853,9 +1015,15 @@ services:
   modtools-dev-live:
     container_name: modtools-dev-live
     depends_on:
-      - host-scripts
-      - status
-      - reverse-proxy
+      host-scripts:
+        condition: service_started
+        required: false
+      status:
+        condition: service_started
+        required: false
+      reverse-proxy:
+        condition: service_started
+        required: false
     profiles:
       - dev-live
     networks:
@@ -863,7 +1031,9 @@ services:
         aliases:
           - modtools-dev-live.localhost
     ports:
-      - "0.0.0.0:3006:3000"
+      - "0.0.0.0:${PORT_MODTOOLS_DEV_LIVE:-3006}:3000"
+    extra_hosts:
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: .
       dockerfile: ./iznik-nuxt3/modtools/Dockerfile
@@ -876,7 +1046,7 @@ services:
     environment:
       # LIVE/Production APIs - REAL DATA!
       - IZNIK_API_V1=https://fdapilive.ilovefreegle.org/api
-      - IZNIK_API_V2=https://api.ilovefreegle.org/apiv2
+      - IZNIK_API_V2=${LIVE_MT_API_V2:-https://api.ilovefreegle.org/apiv2}
       # Use production delivery and USER_SITE - local delivery won't work
       # from mobile devices since they can't resolve localhost hostnames
       - IMAGE_DELIVERY=https://delivery.ilovefreegle.org
@@ -897,15 +1067,18 @@ services:
   # Production build with local APIs - ModTools
   modtools-prod-local:
     container_name: modtools-prod-local
+    profiles:
+      - dev
     networks:
       default:
         aliases:
           - modtools-prod-local.localhost
     ports:
-      - "0.0.0.0:3013:3001"
+      - "0.0.0.0:${PORT_MODTOOLS_PROD_LOCAL:-3013}:3001"
     extra_hosts:
       - "apiv1.localhost:host-gateway"
       - "apiv2.localhost:host-gateway"
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       dockerfile: modtools/Dockerfile.prod
@@ -921,8 +1094,10 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
     restart: "no"
     healthcheck:
       # Health check for ModTools production container - verifies nginx is responding
@@ -933,13 +1108,13 @@ services:
       retries: 3
       start_period: 900s  # 15 minutes for npm run build
     environment:
-      - IZNIK_API_V1=http://apiv1.localhost/api
-      - IZNIK_API_V2=http://apiv2.localhost/api
-      - IMAGE_DELIVERY=http://delivery.localhost
-      - TUS_UPLOADER=http://tusd.localhost/tus/
+      - IZNIK_API_V1=http://apiv1.localhost:${PORT_TRAEFIK_HTTP:-80}/api
+      - IZNIK_API_V2=${PROD_MT_API_V2:-http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api}
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
       - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
       - TUSD_URL=http://freegle-tusd:8080
-      - USER_SITE=http://modtools-prod-local.localhost:3001
+      - USER_SITE=http://modtools-prod-local.localhost:${PORT_MODTOOLS_PROD_LOCAL:-3013}
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
       - NUXT_DEV_MODE=false
@@ -961,6 +1136,8 @@ services:
 
   playwright:
     container_name: freegle-playwright
+    profiles:
+      - dev
     network_mode: "host"
     shm_size: 2gb  # Chrome needs more shared memory for parallel browser instances
     build:
@@ -995,25 +1172,32 @@ services:
         condition: service_started
       apiv1:
         condition: service_healthy
+        required: false
       apiv2:
         condition: service_started
+        required: false
       reverse-proxy:
         condition: service_healthy
       percona:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       beanstalkd:
         condition: service_healthy
+        required: false
 
   # Loki - Log aggregation
   loki:
     container_name: freegle-loki
+    profiles:
+      - backend
     image: grafana/loki:3.0.0
     networks:
       - default
     ports:
-      - "3100:3100"
+      - "${PORT_LOKI:-3100}:3100"
     volumes:
       - loki-data:/loki
       - ./conf/loki-config.yaml:/etc/loki/local-config.yaml:ro
@@ -1037,6 +1221,8 @@ services:
   # For production: batch-prod writes to host /var/log/freegle, ship separately
   alloy:
     container_name: freegle-alloy
+    profiles:
+      - monitoring
     image: grafana/alloy:v1.4.2
     networks:
       - default
@@ -1049,6 +1235,7 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+        required: false
     restart: unless-stopped
 
   # Loki backup - runs on-demand: docker compose run --rm loki-backup
@@ -1064,6 +1251,7 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+        required: false
     volumes:
       - loki-data:/loki:ro
       # Mount host gcloud config for credentials (user account or ADC)
@@ -1077,6 +1265,8 @@ services:
   # Batch jobs processor (Laravel)
   batch:
     container_name: freegle-batch
+    profiles:
+      - dev
     networks:
       - default
     build:
@@ -1089,12 +1279,15 @@ services:
     depends_on:
       percona:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       mailpit:
         condition: service_started
       mjml:
         condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - APP_NAME=Freegle Batch Jobs
@@ -1120,12 +1313,12 @@ services:
       - MAIL_PORT=1025
       - MAIL_ENCRYPTION=null
       - MAIL_EHLO_DOMAIN=freegle-batch
-      - FREEGLE_USER_SITE=http://freegle-dev-local.localhost:3002
-      - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost:3003
-      - FREEGLE_API_BASE_URL=http://localhost:8193
-      - FREEGLE_DELIVERY_URL=http://delivery.localhost
+      - FREEGLE_USER_SITE=http://freegle-dev-local.localhost:${PORT_FREEGLE_DEV_LOCAL:-3002}
+      - FREEGLE_MOD_SITE=http://modtools-dev-local.localhost:${PORT_MODTOOLS_DEV_LOCAL:-3003}
+      - FREEGLE_API_BASE_URL=http://localhost:${PORT_APIV2:-8193}
+      - FREEGLE_DELIVERY_URL=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
-      - AMP_API_URL=http://apiv2.localhost/amp
+      - AMP_API_URL=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/amp
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - MJML_URL=http://mjml/
@@ -1152,15 +1345,19 @@ services:
     build:
       context: ./iznik-batch
       dockerfile: docker/Dockerfile
+    # IMPORTANT: .env.background MUST exist on the live backend server with all secrets.
+    # required: false only so docker compose config works in dev (where batch-prod isn't used).
     env_file:
-      - .env.background
+      - path: .env.background
+        required: false
     volumes:
       - ./iznik-batch:/var/www/html
       - ./iznik-server:/var/www/iznik:ro
       - /var/log/freegle:/var/log/freegle
+      - ${FIREBASE_CREDENTIALS_PATH:-/dev/null}:/etc/firebase.json:ro
     extra_hosts:
-      - "db-host:${DB_HOST_IP}"
-      - "mail-host:${MAIL_HOST_IP}"
+      - "db-host:${DB_HOST_IP:-127.0.0.1}"
+      - "mail-host:${MAIL_HOST_IP:-127.0.0.1}"
     depends_on:
       loki:
         condition: service_healthy
@@ -1271,10 +1468,11 @@ services:
     networks:
       - default
     ports:
-      - "25:25"
+      - "${PORT_POSTFIX_SMTP:-25}:25"
     depends_on:
       batch-prod:
         condition: service_healthy
+        required: false
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "postfix status || exit 1"]
@@ -1290,13 +1488,15 @@ services:
   # Container 0: Query Sanitizer - Frontend-facing, extracts and tokenizes PII
   mcp-query-sanitizer:
     container_name: freegle-mcp-sanitizer
+    profiles:
+      - dev
     build:
       context: ./support-tools/query-sanitizer
       network: host
     networks:
       - default
     ports:
-      - "8084:8080"
+      - "${PORT_MCP_SANITIZER:-8084}:8080"
     environment:
       - PORT=8080
       - PSEUDONYMIZER_URL=http://freegle-mcp-pseudonymizer:8080
@@ -1319,6 +1519,8 @@ services:
   # Container 2: MCP Interface - Stateless proxy, NO key, forwards to pseudonymizer
   mcp-interface:
     container_name: freegle-mcp-interface
+    profiles:
+      - dev
     build:
       context: ./support-tools/mcp-interface
       network: host
@@ -1341,6 +1543,8 @@ services:
   # Container 3: Pseudonymizer - Has the key, queries Loki, pseudonymizes results
   mcp-pseudonymizer:
     container_name: freegle-mcp-pseudonymizer
+    profiles:
+      - dev
     build:
       context: ./support-tools/pseudonymizer
       network: host
@@ -1357,6 +1561,7 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+        required: false
     restart: "no"
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]

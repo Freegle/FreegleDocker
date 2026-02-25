@@ -18,8 +18,9 @@ claude.md -> "Session Log" section (at end of file)
 
 ### On Session Start
 1. Read `claude.md` to check for existing session log
-2. If resuming work, review the last session's state
-3. Add a new dated entry showing you're continuing
+2. **If the session log references an active plan file, READ THAT PLAN FILE IMMEDIATELY.** The plan file's status tables are the master progress tracker. You must know where you are in the plan before doing any work.
+3. If resuming work, review the last session's state
+4. Add a new dated entry showing you're continuing
 
 ### During Work
 After completing each subtask or making significant progress:
@@ -331,5 +332,51 @@ When monitoring CI for multiple PRs:
    - Pushing to remote
 
 3. **Use clear indicators** when reporting which PR/branch you're discussing
+
+## 11. Following a Plan
+
+When working on a multi-phase plan (e.g., an API migration):
+
+### Plan File is the Master Progress Tracker
+- The plan file (e.g., `plans/active/v1-to-v2-api-migration.md`) contains status tables with ⬜/🔄/✅ markers
+- **Update the plan file's status tables as you complete tasks** - this IS your progress tracker
+- **Plan updates go on master only** - the plan is a coordination document, not feature code. Feature branches may have stale plan status; that's fine.
+- The session log in CLAUDE.md should reference the plan file path and note current focus, but the plan file is authoritative
+
+### On Every Resume / After Compaction
+1. Read the session log in CLAUDE.md
+2. **Read the active plan file** referenced in the session log
+3. Check which phase/tasks are marked as complete vs pending
+4. Resume from where the plan shows you left off
+5. Do NOT skip steps in the plan - follow the phases in order
+
+### Session Log Format When Following a Plan
+```markdown
+**Active plan**: `plans/active/plan-name.md` - READ THIS ON EVERY RESUME/COMPACTION.
+### YYYY-MM-DD - [description]
+- **Plan Phase**: [Current phase and task numbers]
+- **Completed**: [What was finished]
+- **Next**: [Next steps per the plan]
+```
+
+### Common Mistake: Losing Plan Context
+After context compaction, you may only remember "get CI green" but forget that the plan requires adversarial review, per-endpoint checklists, etc. **Always re-read the plan file** - it contains steps you may have forgotten.
+
+## 12. Automated Execution with Ralphy
+
+For unattended/autonomous execution, use `ralphy-cli` (community-maintained) via the thin wrapper:
+
+```bash
+# Execute a plan file
+./ralph.sh plans/active/my-feature.md
+
+# Execute a single task
+./ralph.sh -t "Fix failing tests" --fast
+
+# All ralphy options supported (--parallel, --model, --max-iterations, etc.)
+./ralph.sh --help
+```
+
+Project-specific rules are in `.ralphy/config.yaml`. The ralph.sh wrapper adds Freegle pre-flight checks (Docker containers, git status) before delegating to ralphy.
 
 Now analyse the user's request and create your status table to begin work.

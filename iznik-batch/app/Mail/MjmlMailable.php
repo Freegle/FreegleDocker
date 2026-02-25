@@ -205,8 +205,9 @@ abstract class MjmlMailable extends Mailable
      */
     public function envelope(): Envelope
     {
-        return new Envelope(
-            subject: $this->getSubject(),
+        throw new \LogicException(
+            static::class . ' must override envelope() and set an explicit from address. '
+            . 'Do not rely on a default - different emails use different sender addresses.'
         );
     }
 
