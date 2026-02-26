@@ -1,763 +1,87 @@
-**See also: [codingstandards.md](codingstandards.md)** for core coding rules that apply to all development.
-
-**Use the `ralph` skill** for any non-trivial development task. For automated/unattended execution: `./ralph.sh -t "task description"`
-
-- **NEVER merge PRs.** Only humans merge PRs. Claude may create PRs, push to branches, and report when CI passes, but NEVER run `gh pr merge` or any equivalent command. Always stop at "PR is ready for merge" and let the user decide.
-- **NEVER skip or make coverage optional in tests.** Coverage is an integral part of testing and must always be collected and uploaded. If coverage upload fails, fix the root cause - never bypass it.
-- **NEVER dismiss test failures as "pre-existing flaky tests" or "unrelated to my changes".** If a test fails during your work, you must investigate and fix it. Period. It does not matter whether you think the failure is related to your changes or not. The tests must pass. While it's possible some tests have underlying reliability issues, if they passed before and now fail, the change since the last successful build is usually the cause. Compare with the last successful build, find what changed, and fix it. Even if the root cause turns out to be a pre-existing issue, it still needs to be fixed - don't use "flaky" as an excuse to avoid investigation.
-- Always restart the status monitor after making changes to its code.
-- Remember that the process for checking whether this compose project is working should involve stopping all containers, doing a prune, rebulding and restarting, and monitoring progress using the status container.
-- You don't need to rebuild the Freegle Dev or ModTools Dev containers to pick up code fixes - the `freegle-host-scripts` container automatically syncs file changes to dev containers.
-- The Freegle Production and ModTools Production containers require a full rebuild to pick up code changes since they run production builds.
-- **File Sync**: The `freegle-host-scripts` container runs `file-sync.sh` which uses inotifywait to monitor file changes in iznik-nuxt3, iznik-server, iznik-server-go, and iznik-batch directories. Changes are automatically synced to dev containers via `docker cp`. Check logs with `docker logs freegle-host-scripts --tail 20`.
-- **HMR Caveat**: While file sync works reliably, Nuxt's HMR may not always detect `docker cp` file changes. If changes don't appear after sync, restart the container: `docker restart modtools-dev-live`.
-- The API v2 (Go) container requires a full rebuild to pick up code changes: `docker-compose build apiv2 && docker-compose up -d apiv2`
-- After making changes to the status code, remember to restart the container
-- When running in a docker compose environment and making changes, be careful to copy them to the container.
-
-## Yesterday Environment Configuration
-
-The Yesterday server (yesterday.ilovefreegle.org) runs with specific configuration:
-
-### Active Containers
-- **Only dev containers run** - Production containers (freegle-prod-local, modtools-prod-local) are disabled in docker-compose.override.yml
-- Dev containers exposed on external ports: 3002 (freegle-dev-local), 3003 (modtools-dev-local)
-- A template override file is provided: `docker-compose.override.yesterday.yml` - copy to `docker-compose.override.yml` on yesterday
-- **Why dev containers?** They start up much faster (seconds vs 10+ minutes for production builds)
-  - Dev mode uses `npm run dev` which starts immediately
-  - Production mode requires full `npm run build` which is very slow
-  - For Yesterday's use case (testing, data recovery), dev containers are sufficient and much more practical
-
-### Database Configuration
-- Database runs **without** innodb_force_recovery mode
-- Config file: ./conf/percona-my.cnf contains InnoDB settings from backup (persists across reboots)
-- SQL_MODE is set without ONLY_FULL_GROUP_BY to allow flexible GROUP BY queries
-- If database has corruption issues, temporarily add `innodb_force_recovery=1` to the config
-- Note: force_recovery mode prevents all database modifications (INSERT/UPDATE/DELETE)
-
-### Port Mappings (Yesterday)
-- 3002: Freegle Dev (externally accessible)
-- 3003: ModTools Dev (externally accessible)
-- 3012: Freegle Prod (if enabled, not accessible externally)
-- 3013: ModTools Prod (if enabled, not accessible externally)
-- 8095: Image Delivery (externally accessible - weserv/images for resizing/converting)
-- 8181: API v1 (not accessible externally via firewall)
-- 8193: API v2 (not accessible externally via firewall)
-
-## Docker Compose Profiles
-
-Every service in docker-compose.yml has at least one profile. `COMPOSE_PROFILES` must be set in `.env` or nothing starts.
-
-### Profile Definitions
-
-| Profile | Purpose | Key Services |
-|---------|---------|-------------|
-| `frontend` | Web-facing APIs | apiv1, apiv2, delivery, tusd, redis, beanstalkd |
-| `backend` | Background processing | loki, mjml, redis, rspamd, spamassassin, ai-support-helper |
-| `production` | Production batch jobs | batch-prod (requires .env.background) |
-| `mail` | Incoming mail | postfix (requires MX records pointing to host) |
-| `database` | Local databases | percona (MySQL), postgres (PostGIS) |
-| `dev` | Development/testing tools | Traefik, status, dev containers, mailpit, phpmyadmin, batch, playwright, MCP tools |
-| `monitoring` | Log shipping | alloy |
-| `build` | Base image build only | base |
-| `dev-live` | Dev with production APIs | freegle-dev-live, modtools-dev-live |
-| `prod-live` | API v2 with production DB | apiv2-live |
-| `backup` | Loki backup | loki-backup |
-
-### COMPOSE_PROFILES Per Scenario
-
-| Scenario | COMPOSE_PROFILES |
-|----------|-----------------|
-| **Local dev** | `frontend,database,backend,dev,monitoring` |
-| **Live backend** | `backend,production,mail` |
-| **Live frontend** | `frontend` |
-| **Yesterday** | `frontend,database,backend,dev,monitoring` (+ override file) |
-| **CircleCI** | `frontend,database,backend,dev,monitoring` |
-
-### Cross-Profile Dependencies
-
-Dependencies between services in different profiles use `required: false` so they're ignored when the dependency's profile is inactive. This allows `frontend` to run standalone without `database` services (using external DB on live).
-
-### Yesterday Override
-
-The yesterday override uses `deploy.replicas: 0` (not profile overrides) to disable services, because Docker Compose merges profile arrays instead of replacing them.
-
-## Container Architecture
-
-**IMPORTANT: Port numbers are configured via `PORT_*` variables in `.env` (e.g. `PORT_FREEGLE_DEV_LIVE`, `PORT_MODTOOLS_DEV_LIVE`). Never assume default ports — always check `.env` for actual values.**
-
-### Freegle Development vs Production
-- **freegle-dev-local** (`freegle-dev-local.localhost`): Development mode with local test APIs, fast startup, hot reloading
-- **freegle-dev-live** (`freegle-dev-live.localhost`): Development mode with PRODUCTION APIs - use with caution. Port configured via `PORT_FREEGLE_DEV_LIVE` in `.env`
-- **freegle-prod-local** (`freegle-prod-local.localhost`): Production build with local test APIs, slower startup
-- Both dev containers use the same codebase but different Dockerfiles and environment configurations
-- Production container uses `Dockerfile.prod` with hardcoded production build process
-
-### ModTools Development vs Production
-- **modtools-dev-local** (`modtools-dev-local.localhost`): Development mode with local test APIs, fast startup, hot reloading
-- **modtools-prod-local** (`modtools-prod-local.localhost`): Production build with local test APIs, slower startup
-- Both containers use the same codebase but different Dockerfiles and environment configurations
-- Development container uses `modtools/Dockerfile` and production container uses `Dockerfile.prod`
-- Production container requires a full rebuild to pick up code changes since it runs a production build
-
-### Production Batch Container (batch-prod)
-The `batch-prod` container runs Laravel scheduled jobs against the production database. It replaces the crontab entry on bulk3-internal.
-
-**Configuration:**
-- Uses `profiles: [backend]` - only starts when backend profile is enabled
-- Secrets stored in `.env.background` (gitignored) - see `.env.background.example` for template
-- Infrastructure IPs configured in `.env` (DB_HOST_IP, MAIL_HOST_IP)
-- Connects to production database via `db-host` (extra_hosts mapping)
-- Sends mail via `mail-host` smarthost (SPF/DMARC verified)
-- Logs to Loki container (`LOKI_URL=http://loki:3100`)
-- Auto-restarts on crash/reboot (`restart: unless-stopped`)
-
-**To enable:**
-1. Copy `.env.background.example` to `.env.background` and fill in secrets
-2. Set `COMPOSE_PROFILES=monitoring,production` in `.env`
-3. Run `docker compose up -d`
-
-**Migration from bulk3-internal:**
-After confirming batch-prod works, disable the crontab on bulk3-internal:
-```
-# Comment out: * * * * * cd /var/www/iznik-batch && php8.5 artisan schedule:run
-```
-
-## Database Schema Management
-
-- **Laravel migrations are the single source of truth** for the database schema. All table definitions live in `iznik-batch/database/migrations/`.
-- **schema.sql is retired** - `iznik-server/install/schema.sql` is kept in git for historical reference but is no longer loaded anywhere.
-- **Stored functions** (GetMaxDimension, GetMaxDimensionT, haversine, damlevlim) are managed by the migration `2026_02_20_000002_create_stored_functions.php`.
-- **To add a new table**: Create a Laravel migration in `iznik-batch/database/migrations/`. It will automatically be picked up in CI and local dev.
-- **Test databases** are created by `scripts/setup-test-database.sh` which runs `php artisan migrate`, then clones the schema to `iznik_go_test` and `iznik_phpunit_test` via `mysqldump --no-data --routines --triggers`.
-- **testenv.php** still runs in the apiv1 container for fixture data (FreeglePlayground group, test users, etc.).
-
-## Networking Configuration
-
-### No Hardcoded IP Addresses
-- **Never use hardcoded IP addresses** in docker-compose.yml - Docker assigns IPs dynamically
-- All services use `networks: - default` without specific IP addresses
-- Services communicate using container names and aliases through Docker's internal DNS
-- **No hosts file entries needed**: Traefik handles routing for `.localhost` domains automatically
-
-### Image Delivery Service Configuration
-The delivery container uses weserv/images. For local development:
-- **Custom nginx config**: `delivery-nginx.conf` overrides the default config to allow Docker network access
-- **Environment variables**: `USER_SITE` and `IMAGE_BASE_URL` use hostnames for browser accessibility
-- **Routing through Traefik**: All services route through the reverse proxy using `host-gateway`
-
-### Playwright Testing Container
-The Playwright container is configured with special networking to behave exactly like a browser:
-- **Host network mode**: `network_mode: "host"` allows access to localhost services
-- **No extra_hosts needed**: Direct access to production and development sites
-- **Volume mounts**: Test files are mounted for automatic sync without container rebuilds
-- **Base URL**: Uses `http://freegle-prod.localhost` to test against production build
-- **Testing Target**: **IMPORTANT** - Tests run against the **production container** to ensure testing matches production behavior
-- **Container Lifecycle**: Container is restarted for each test run to ensure clean state, but report server persists using `nohup`
-
-Test URLs work properly:
-- `http://freegle-dev-local.localhost/` - Development Freegle site (fast, hot-reload, local APIs)
-- `http://freegle-dev-live.localhost/` - Development Freegle site with PRODUCTION APIs (use with caution)
-- `http://freegle-prod-local.localhost/` - Production Freegle build (optimized, tested by Playwright)
-- `http://apiv2.localhost:8192/` - API v2 access  
-- `http://delivery.localhost/?url=http://freegle-prod.localhost/icon.png&w=116&output=png` - Image delivery
-- Never add specific IP addresses in as extra_hosts in docker-compose config. That will not work when a rebuild happens.
-- Remember that if you make changes directly to a container, they will be lost on restart. Any container changes must also be made locally.
-- If debugging Playwright test failures, check the Freegle container for logs triggering a reload. Those will break tests. Add anything shown to the pre-optimization in nuxt.config.js and rebuild the container to pick it up.
-
-## Loki Log Querying
-
-Logs from all Freegle services are collected in Loki. The Go API v2 provides a `/api/systemlogs` endpoint that wraps Loki queries for ModTools.
-
-### Available Labels
-Query `http://localhost:3100/loki/api/v1/labels` for current labels. Common ones:
-- `app` - Always "freegle"
-- `source` - Log source: `api`, `client`, `chat_reply`, `email`, `incoming_mail`, `logs_table`
-- `user_id` - User ID (indexed, fast for filtering)
-- `level` - Log level: `info`, `error`, etc.
-- `type`, `subtype` - Event categorization
-
-### Direct Loki Query Examples
-
-**IMPORTANT**: Always use `-G` with `--data-urlencode` for proper query encoding:
-
-```bash
-# Query logs for a specific user
-curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
-  --data-urlencode 'query={app="freegle", user_id="503028"}' \
-  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
-  --data-urlencode "end=$(date +%s)000000000" \
-  --data-urlencode 'limit=50'
-
-# Search all sources for errors
-curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
-  --data-urlencode 'query={app="freegle", level="error"}' \
-  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
-  --data-urlencode "end=$(date +%s)000000000"
+**See also: [codingstandards.md](codingstandards.md)** for coding rules. **Use the `ralph` skill** for any non-trivial development task. For automated execution: `./ralph.sh -t "task description"`
 
-# Text search across all logs
-curl -s -G "http://localhost:3100/loki/api/v1/query_range" \
-  --data-urlencode 'query={app="freegle"} |~ "search text"' \
-  --data-urlencode "start=$(($(date +%s) - 3600))000000000" \
-  --data-urlencode "end=$(date +%s)000000000"
-```
+## Critical Rules
 
-### Common Pitfalls
-1. **Timestamps are nanoseconds** - Multiply Unix seconds by 1000000000
-2. **Use localhost:3100**, not the docker network name `loki`
-3. **jq may silently fail** - Store result in variable first to verify data exists
-4. **Label values must be quoted** - `user_id="503028"` not `user_id=503028`
+- **NEVER merge PRs.** Only humans merge PRs. Stop at "PR is ready for merge".
+- **NEVER skip or make coverage optional in tests.** Fix the root cause if coverage upload fails.
+- **NEVER dismiss test failures as "pre-existing" or "unrelated".** Investigate and fix all failures.
+- **NEVER push unless explicitly told to** by the user.
+- **MANDATORY: After every `git push` to master that triggers CI, cancel the auto-triggered pipeline and rerun with SSH enabled.** See `.circleci/README.md` "SSH Debugging" section.
 
-### Via Go API
-ModTools uses `/api/systemlogs?userid=503028&sources=api,client&start=1h` - see `iznik-server-go/systemlogs/systemlogs.go` for implementation.
+## Container Quick Reference
 
-## CircleCI Submodule Integration
+- **Ports**: Configured via `PORT_*` variables in `.env`. Never assume defaults.
+- **Dev containers**: File sync via `freegle-host-scripts` — no rebuild needed for code changes.
+- **HMR caveat**: If changes don't appear after sync, restart container: `docker restart <container>`.
+- **Production containers**: Require full rebuild (`docker-compose build <name> && docker-compose up -d <name>`).
+- **Go API (apiv2)**: Requires rebuild after code changes.
+- **Status container**: Restart after code changes (`docker restart status`).
+- **Compose check**: Stop all containers, prune, rebuild, restart, monitor via status container.
+- **Profiles**: Set `COMPOSE_PROFILES` in `.env`. Local dev: `frontend,database,backend,dev,monitoring`. See `docker-compose.yml` for profile definitions.
+- **Networking**: No hardcoded IPs. Traefik handles `.localhost` routing. Playwright uses host network mode.
+- **Playwright tests**: Run against **production container**. If debugging failures, check for container reload triggers — add to pre-optimization in `nuxt.config.js`.
+- Container changes are lost on restart — always make changes locally too.
 
-This repository uses CircleCI to automatically test submodule changes. Each submodule is configured with a GitHub Actions workflow that triggers the parent repository's CircleCI pipeline.
+## Yesterday
 
-### Current Submodule Configuration
+Uses `docker-compose.override.yesterday.yml` (copy to `docker-compose.override.yml`). Only dev containers run (faster startup). Uses `deploy.replicas: 0` to disable services. Don't break local dev or CircleCI when making yesterday changes.
 
-The following submodules have `.github/workflows/trigger-parent-ci.yml` configured:
-- `iznik-nuxt3`
-- `iznik-server`
-- `iznik-server-go`
+## Database Schema
 
-### How Submodule Updates Work
+- **Laravel migrations** in `iznik-batch/database/migrations/` are the single source of truth.
+- `schema.sql` is retired (historical reference only).
+- Stored functions managed by migration `2026_02_20_000002_create_stored_functions.php`.
+- Test databases: `scripts/setup-test-database.sh` runs `php artisan migrate`, clones schema to test DBs.
 
-When code is pushed to a submodule's master branch:
+## CircleCI
 
-1. **GitHub Actions workflow** (`trigger-parent-ci.yml`) runs in the submodule
-2. The workflow clones FreegleDocker and updates the submodule reference
-3. The updated reference is pushed back to FreegleDocker master
-4. This push triggers CircleCI to run the full test suite
+- Submodule webhooks: `trigger-parent-ci.yml` workflow + `FREEGLE_DOCKER_TOKEN` secret (PAT scoped to **Freegle org**, not personal). See `.circleci/README.md` for full docs.
+- Publish orb after changes: `source .env && ~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x`
+- Check version: `~/.local/bin/circleci orb info freegle/tests`
+- **Docker build caching**: Controlled by `ENABLE_DOCKER_CACHE` env var in CircleCI. Bump version suffixes in orb YAML to invalidate cache. Set to `false` for immediate rollback.
+- **Auto-merge**: When all tests pass on master, auto-merges to production branch in iznik-nuxt3.
 
-### GitHub Token Configuration
+## Batch Production Container
 
-The submodule workflows use a **fine-grained Personal Access Token (PAT)** from the FreegleGeeks service account.
+`batch-prod` runs Laravel scheduled jobs against production DB. Secrets in `.env.background` (see `.env.background.example`). Profile: `backend`.
 
-**Important**: The PAT must be scoped to the **Freegle organization**, not a personal account.
+## Loki
 
-To create/update the PAT:
-1. Log in as FreegleGeeks
-2. Settings → Developer settings → Fine-grained personal access tokens
-3. **Resource owner**: Select **Freegle** (the organization) - NOT FreegleGeeks
-4. **Repository access**: Select "Only select repositories" → choose `FreegleDocker`
-5. **Permissions**: Contents (Read and write), Metadata (Read-only)
+Logs on `localhost:3100`. Use `-G` with `--data-urlencode` for queries. Timestamps are nanoseconds. Label values must be quoted. See `iznik-server-go/systemlogs/systemlogs.go` for Go API wrapper.
 
-The PAT is stored as `FREEGLE_DOCKER_TOKEN` secret in each submodule repo.
+## Sentry
 
-**Troubleshooting**: "Permission denied to FreegleGeeks" means the PAT is scoped to the user account instead of the Freegle organization.
+Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See `SENTRY-INTEGRATION.md`.
 
-### Adding New Submodules
+## Miscellaneous
 
-When adding new submodules to this repository, follow these steps:
-
-1. **Add the submodule** to the repository using `git submodule add`
-
-2. **Create webhook workflow** in the new submodule repository:
-   ```bash
-   mkdir -p NEW_SUBMODULE/.github/workflows
-   ```
-
-3. **Copy the trigger workflow** from an existing submodule:
-   ```bash
-   cp iznik-nuxt3/.github/workflows/trigger-parent-ci.yml NEW_SUBMODULE/.github/workflows/
-   ```
-
-4. **Add FREEGLE_DOCKER_TOKEN secret** to the new submodule repository:
-   - Go to Settings → Secrets and Variables → Actions
-   - Add repository secret named `FREEGLE_DOCKER_TOKEN`
-   - Use the fine-grained PAT from FreegleGeeks (scoped to Freegle org)
-
-5. **Update documentation** in:
-   - Main `README.md` (add to webhook integration list)
-   - `.circleci/README.md` (add to configured submodules list)
-   - This `CLAUDE.md` file (add to current configuration list)
-
-6. **Test the integration** by making a test commit to the new submodule and verifying it triggers the FreegleDocker CircleCI pipeline.
-
-### Publishing the CircleCI Orb
-
-**IMPORTANT**: After making changes to `.circleci/orb/freegle-tests.yml`, you must publish the orb to CircleCI for the changes to take effect:
-
-```bash
-# Load the CircleCI token from .env
-source .env
-
-# Configure the CLI (one-time setup)
-~/.local/bin/circleci setup --token "$CIRCLECI_TOKEN" --host https://circleci.com --no-prompt
-
-# Validate the orb YAML
-~/.local/bin/circleci orb validate .circleci/orb/freegle-tests.yml
-
-# Publish a new version (increment the patch version)
-~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x
-```
-
-Check the current version with: `~/.local/bin/circleci orb info freegle/tests`
-
-**See [.circleci/README.md](.circleci/README.md)** for full CircleCI documentation including SSH debugging via API.
-
-**MANDATORY: After every `git push` to master that triggers CI, immediately cancel the auto-triggered pipeline and rerun it with SSH enabled.** This ensures you can SSH into the CI machine to diagnose and fix test failures live, rather than iterating blind. Never just push and passively wait for results. See `.circleci/README.md` "SSH Debugging" section for the API commands.
-
-## Docker Build Caching
-
-Production containers use BuildKit cache-from and CircleCI save_cache for faster builds.
-
-### Feature Flag
-
-Caching is controlled by the `ENABLE_DOCKER_CACHE` environment variable in CircleCI:
-
-- **Enable**: Set `ENABLE_DOCKER_CACHE=true` in CircleCI project settings → Environment Variables
-- **Disable**: Set `ENABLE_DOCKER_CACHE=false` (rollback to old docker-compose build)
-- **Default**: If not set, caching defaults to `false` (safe fallback)
-
-### How It Works
-
-**Two-layer caching strategy**:
-
-1. **CircleCI save_cache** (Nuxt build artifacts):
-   - Caches `.output/` directory (production build output)
-   - Skips `npm run build` if code unchanged
-   - ~10-16 minute savings on cache hit
-
-2. **BuildKit cache-from** (Docker layers):
-   - Caches npm dependencies and build layers in GHCR
-   - Reuses unchanged layers (npm ci, Nuxt build)
-   - ~3-5 minute additional savings
-
-### Cache Versions
-
-Current cache versions (bump to invalidate):
-
-- **BuildKit cache**: `buildcache-v1`
-- **Nuxt artifacts**: `nuxt-output-v2`
-
-### Cache Strategy
-
-- **Master branch**: Pulls cache, builds, pushes updated cache
-- **Feature branches**: Pulls cache from master, builds, does NOT push (avoids conflicts)
-
-### How to Invalidate Cache
-
-When cache appears stale or corrupted:
-
-1. Edit `.circleci/orb/freegle-tests.yml`
-2. Change version suffixes:
-   - `buildcache-v1` → `buildcache-v2` (find/replace all instances)
-   - `nuxt-v1` → `nuxt-v2` (find/replace all instances)
-3. Publish updated orb: `~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x`
-4. Push changes to trigger rebuild
-
-### Build Performance
-
-**Expected times**:
-
-| Scenario | Without Cache | With Cache | Savings |
-|----------|---------------|------------|---------|
-| No code changes | 51 min | ~25 min | 26 min (51%) |
-| Code changes only | 51 min | ~35 min | 16 min (31%) |
-| Dependency changes | 51 min | ~37 min | 14 min (27%) |
-| **Average (75% cache hit)** | **51 min** | **~28 min** | **23 min (45%)** |
-
-### Rollback Instructions
-
-**Immediate rollback** (no code changes needed):
-
-1. Go to CircleCI project settings → Environment Variables
-2. Set `ENABLE_DOCKER_CACHE=false`
-3. Retrigger failed build
-4. **Result**: Falls back to old docker-compose build (no caching)
-
-**Full rollback** (if Dockerfiles cause issues):
-
-```bash
-cd /tmp/FreegleDocker
-git checkout HEAD~1 -- iznik-nuxt3/Dockerfile.prod
-git checkout HEAD~1 -- iznik-nuxt3/modtools/Dockerfile.prod
-git commit -m "Rollback: Restore old Dockerfiles"
-git push
-```
-
-### Cache Locations
-
-**CircleCI save_cache**:
-- Freegle: `~/nuxt-cache/freegle/` (`.output/`, `.nuxt/`)
-- ModTools: `~/nuxt-cache/modtools/` (`.output/`, `.nuxt/`)
-
-**GHCR BuildKit cache**:
-- Freegle: `ghcr.io/freegle/freegle-prod:buildcache-v1`
-- ModTools: `ghcr.io/freegle/modtools-prod:buildcache-v1`
-
-### Monitoring Cache Performance
-
-Check CircleCI logs for cache status:
-
-```
-✅ Found cached Freegle build (245M)
-✅ Pulled Freegle cache in 45s (size: 3.2GB)
-✅ Freegle build completed in 120s
-📊 Total build time: 180s
-```
-
-**Warning signs** (indicates cache not working):
-
-- ⚠️ No cached build found (expected on first run)
-- ⚠️ Pull time >120s (slow network, consider disabling)
-- ⚠️ Build time not improving (cache invalidated or not hitting)
-
-## Testing Consolidation
-
-All testing is now consolidated in the FreegleDocker CircleCI pipeline for consistency and efficiency:
-
-### Test Suites
-- **Go API Tests**: Test the fast v2 API (iznik-server-go)
-- **PHPUnit Tests**: Test v1 API and background functions (iznik-server)
-- **Playwright E2E Tests**: End-to-end browser testing against production build (iznik-nuxt3)
-
-### Test Execution
-- Tests run via the status page API endpoints for consistency
-- All tests must pass for auto-merge to production
-- Tests can be triggered manually via the status page at `http://status.localhost`
-- CircleCI tests are disabled in individual submodule repositories to avoid duplication
-
-### Auto-merge Logic
-When all tests pass successfully in CircleCI, the system automatically:
-1. Merges master to production branch in iznik-nuxt3
-2. Triggers production deployment
-3. Only proceeds if all three test suites pass (Go, PHPUnit, Playwright)
-4. Auto-merge only happens on master branch builds
-5. The merge commit message is "Auto-merge master to production after successful tests"
-
-### Test Commands
-- **Go Tests**: `curl -X POST http://localhost:8081/api/tests/go`
-- **PHPUnit Tests**: `curl -X POST http://localhost:8081/api/tests/php`
-- **Playwright Tests**: `curl -X POST http://localhost:8081/api/tests/playwright`
-
-- When making app changes, remember to update README-APP.md.
-- Remember that when working on the yesterday system you need to make sure you don't break local dev and CircleCI. We have a docker override file to help with this.
-- Never merge the whole of the app-ci-fd branch into master.
-
-## Sentry Auto-Fix Integration
-
-The status container includes automated Sentry error analysis and fixing:
-
-- **Uses Task Agents via Claude CLI** - deep analysis with Explore agent for finding code
-- **Manual trigger only** by default (click button on status page)
-- **SQLite tracking** at `/project/sentry-issues.db` prevents reprocessing (gitignored)
-- **Automatic retries** up to 2 times on timeout
-- **Skips local tests** - full suite runs on CircleCI after PR creation
-- **Creates PRs** automatically with test cases and fixes
-
-### Configuration
-
-Set `SENTRY_AUTH_TOKEN` in `.env` to enable (see `SENTRY-INTEGRATION.md` for full setup).
-
-### Important Notes
-
-- Database at `/project/sentry-issues.db` tracks processed issues (persists across container restarts)
-- Status page has "Analyze Sentry Issues Now" button for manual triggering
-- API endpoints: `/api/sentry/status`, `/api/sentry/poll`, `/api/sentry/clear`
-- Integration invokes `claude` CLI with `--dangerously-skip-permissions` for automation
-- Each Sentry issue analysis uses your Claude Code quota (no additional costs)
-- When making changes to the tests, don't forget to update the orb.
-- We should always create plans/ md files in FreegleDocker, never in submodules.
-- When we switch branches, we usually need to rebuild the Freegle dev containers, so do that automatically.
-- **Browser Testing**: See `BROWSER-TESTING.md` for Chrome DevTools MCP usage, login flow, debugging computed styles, and injecting CSS fixes.
+- When making app changes, update `README-APP.md`.
+- Never merge the whole `app-ci-fd` branch into master.
+- Plans go in `FreegleDocker/plans/`, never in submodules.
+- When switching branches, rebuild dev containers.
+- When making test changes, don't forget to update the orb.
+- **Browser Testing**: See `BROWSER-TESTING.md`.
 
 ## Session Log
 
-**Auto-prune rule**: Keep only entries from the last 7 days. Delete older entries when adding new ones.
+**Auto-prune rule**: Keep only entries from the last 7 days.
 
-**Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION. Follow the phases and checklists in order. Do not skip steps.
+**Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
-### 2026-02-24 - Dual-compat Go API: HTTP status codes + ret values in body
-- **Status**: Pushed Go commit e1298b4 to master. Waiting for CI.
-- **Completed**:
-  - Added `c.Status(httpCode)` to all 84 non-zero ret returns across 17 Go handler files
-  - Pattern: `c.Status(fiber.StatusXxx).JSON(fiber.Map{"ret": N, "status": "..."})` - sets HTTP status AND keeps ret in body
-  - Updated 30 test assertions for new HTTP status codes
-  - Mapping: ret:1→401, ret:2→context-dependent (400/403/404), ret:3→400/403/409, ret:4→403, ret:5→409
-- **Why**: V1 clients (nuxt3 master/production) check `data.ret` in body, V2 clients (feature/v2-unified-migration) check HTTP status codes. Both work simultaneously.
-- **Next**: Monitor CI. If green, this Go API is production-ready for both V1 and V2 clients.
-
-### 2026-02-24 00:15 - CI GREEN - Post-migration cleanup complete
+### 2026-02-24 - V1→V2 migration: CI GREEN, cleanup done
 - **Status**: CI GREEN. Job 2302 SUCCESS. Auto-merged to production.
-- **Completed this session**:
-  - Identified Go test failures (TestDeleteIsochroneWrongUser 404→403) from ret removal
-  - Root-caused Playwright failures: Go ret removal (tasks 18+19) broke nuxt3 master - Go stopped returning ret values but nuxt3 master still checks them. Tasks 18/19 changes were on feature/v2-unified-migration, not master.
-  - **REVERTED Go ret removal** (commits 205078c and 709e90c) - ret values must stay until feature/v2-unified-migration merges to nuxt3 master
-  - Fixed 4 Vitest failures from recent nuxt3 master changes (MessageSkeleton count 3→6, NavbarMobile logged-out class, ConfirmModal stubs in ModCommunityEvent + ModVolunteerOpportunity)
-  - Go reverts: 306b404, 1485b3e (master)
-  - Nuxt3 test fixes: d575aa40 (master)
-  - FreegleDocker: 2fb846b7 (master)
-- **Key learning**: Tasks 18 (Go ret removal) and 19 (client ret→HTTP error) must be deployed atomically. The Go changes cannot go to master until the nuxt3 V2 client branch (feature/v2-unified-migration) is merged.
-- **Remaining from plan**: Tasks 16, 17, 20, 21, 22 are on feature/v2-unified-migration (nuxt3) and master (Go). Tasks 18+19 are reverted on Go master; they exist on feature/v2-unified-migration (nuxt3 side) and will need re-applying to Go when the branch merges.
+- **Key state**: Go ret removal was REVERTED on master. Tasks 18+19 (ret removal + client HTTP error migration) must deploy atomically — cannot go to Go master until nuxt3 `feature/v2-unified-migration` merges. Remaining plan tasks: 16,17,20-22 committed on feature branch. Tasks 18+19 ready on nuxt3 side, need re-applying to Go when branch merges.
+- **Also completed**: Adversarial review fixes (fetchUser→GET /session, Stripe float rounding, GORM query clone, isochrone bounds, authority.js state type), post-migration cleanup (comments, fetchMe callers, publicity store deletion, Swagger docs).
 
-### 2026-02-24 - Post-migration cleanup: ret removal, comments, fetchMe, publicity, tests, Swagger
-- **Status**: All 8 tasks committed. Go ret removal REVERTED (see entry above).
-- **Completed**:
-  - Task 16: Cleaned ~25 historical comments across both repos (V1/PHP references)
-  - Task 17: Fixed 9 fetchMe callers (removed dead 2nd param), fixed NewsAboutMe.vue inverted params bug
-  - Task 18: Removed ~63 ret values from 8 Go files → REVERTED (must wait for nuxt3 V2 merge)
-  - Task 19: Updated client-side ret checks in auth.js etc. (on feature/v2-unified-migration, ready)
-  - Task 20: Deleted publicity store + 7 related files, removed imports from app.vue and layouts/default.vue
-  - Task 21: Strengthened test assertions in Newsletter, CommunityEvents, Volunteering spec files
-  - Task 22: Added Swagger annotations for GET /isochrone and fleshed out Stripe endpoint docs
-  - Task 23: ESLint clean, committed Go (205078c), nuxt3 (e7f78a58), FreegleDocker (fd112000)
-- **Commits**: Go 205078c (master, REVERTED), nuxt3 e7f78a58 (feature/v2-unified-migration), FreegleDocker fd112000 (master)
-- **Next**: Tasks 18+19 Go changes need re-applying when feature/v2-unified-migration merges to nuxt3 master.
+### 2026-02-22 - Performance + V1 elimination
+- PR #186 (bootstrap-lean-imports): Production build verified, manualChunks removed.
+- PR #187 (V1→V2 migration): All V1 API methods removed from iznik-nuxt3. CI GREEN. Ready for human merge.
+- Key fixes: sha1 login (Go was using bcrypt), groupid=0 search, reply state machine race condition, fetchUser flat response handling.
 
-### 2026-02-23 23:07 - Adversarial review fixes committed and pushed
-- **Status**: 8 critical/high fixes committed. CI pipeline 2072 rerunning with SSH (workflow f484af5a).
-- **Completed**:
-  - N1/N2/N3: Fixed fetchUser() to use GET /session instead of GET /user. Now correctly populates work, discourse, emails, aboutme, marketingconsent, bouncing. Session JWT/persistent refreshed on fetch.
-  - G2: Fixed Stripe float truncation with math.Round() in donations/stripe.go
-  - G5: Fixed GORM query chain mutation in emailtracking stats using Session() clone
-  - G6: Fixed edit review overcounting - added approvedat IS NULL AND revertedat IS NULL filters
-  - G8: Fixed dashboard.go GROUP BY - removed unused breakdown column from SELECT
-  - N5: Fixed isochrone bounds - nelng Math.min→Math.max
-  - N6: Fixed authority.js state type [] → {} for keyed object access
-  - N7: Fixed null→delete in communityevent, newsfeed, microvolunteering stores
-  - Removed dead yahooCodeLogin method from auth.js
-- **Commits**: Go 3ecf876 (master), nuxt3 f38d0838 (feature/v2-unified-migration), FreegleDocker d38b2100 (master)
-- **Next**: Monitor CI. Remaining review items: publicity store stub, Stripe mutex during I/O (low priority, works correctly just serializes), various MEDIUM/LOW issues.
-
-### 2026-02-23 21:30 - Adversarial review complete - 6 CRITICAL, 14 HIGH, 21 MEDIUM issues found
-- **Status**: Review complete. Key CRITICAL findings: (1) authStore.work/discourse never populated (fetchUser calls GET /user instead of GET /session), (2) Stripe float truncation, (3) GORM query chain mutation in emailtracking Stats, (4) Stripe mutex during network I/O, (5) edit review count overcounting, (6) publicity store fully stubbed. See consolidated report in conversation.
-- **Next**: Fix critical issues.
-
-### 2026-02-23 20:00 - CI GREEN - V1→V2 migration complete, PR #187 ready for merge
-- **Status**: ALL CI GREEN. PR #187 ready for human merge.
-  - iznik-nuxt3 Playwright tests (build 4605): PASSED
-  - FreegleDocker build-and-test (job 2287): SUCCESS
-- **Completed**:
-  - Root caused 3 remaining test failures: race condition in handleAuthentication()
-  - fetchMe(true) triggers Vue `me` watcher → onLoginSuccess() fires while state still AUTHENTICATING
-  - Double execution of handleJoinGroup/handleCreateChat, second call finds reply store cleared → ERROR
-  - Fix: moved transitionTo(JOINING_GROUP) BEFORE fetchMe(true) so watcher's guard fails
-  - All Playwright tests now pass, all Go tests pass, all builds green
-- **Next**: PR #187 is ready for human merge. Plan task 11 complete.
-- **Key file**: composables/useReplyStateMachine.js (handleAuthentication lines 684-697)
-
-### 2026-02-23 18:36 - PR #187 CI GREEN - ALL TESTS PASS
-- **Status**: PR #187 ALL CHECKS PASS. V1→V2 migration complete. Ready for merge (user decision).
-- **Completed**:
-  - Root caused 3 remaining test failures from build 4599 (down from 6 after sha1 fix)
-  - All 3 shared same root cause: Go PutUser (PUT /user) didn't return `password` for email-only signups
-  - Fix: Go now generates random 8-char password when none provided (matching PHP), stores it, returns in response
-  - Complementary fix (bc8c3944): Race condition in reply state machine - moved transitionTo(JOINING_GROUP) before fetchMe
-  - CI build 4605: 81/81 tests pass, all Netlify deploys succeed, android builds pass
-  - Go commit 6844670 pushed to master, FreegleDocker submodule updated (185d0bf0)
-- **Key files**: iznik-server-go/user/user_write_extended.go (PutUser), iznik-nuxt3/composables/useReplyStateMachine.js (handleAuthentication)
-
-### 2026-02-23 17:15 - CI re-triggered after Go sha1 login fix
-- **Status**: Pushed empty commit to feature/v2-unified-migration to re-trigger CI. Build 4584 failed because it ran BEFORE the Go sha1 fix was pushed.
-- **Completed**:
-  - Confirmed root cause of 6 test failures: Go used bcrypt instead of sha1 for password hashing (already fixed in d45c525)
-  - Confirmed groupid=0 search bug already fixed in same commit
-  - Confirmed AuthorityAPI.fetch V2 endpoint fix (Netlify builds now pass)
-  - Published orb 1.1.168 (force rebuild apiv2 in nuxt3 PR CI to avoid DLC stale images)
-  - Re-triggered nuxt3 CI by pushing empty commit (pipeline ~4931)
-- **Next**: Monitor nuxt3 PR #187 CI. If green, V1→V2 migration is complete and ready for merge.
-
-### 2026-02-23 17:00 - Fix Go sha1 login + groupid=0 search bug
-- **Status**: Go changes pushed to master, nuxt3 CI re-triggered.
-- **Completed**:
-  - Root cause of 6 remaining test failures: Go used bcrypt for password verification, PHP uses sha1(pw+salt)
-  - Fixed all Go files using bcrypt → sha1+salt: session.go (login+set), user_write_extended.go (signup), message_mod.go (JoinAndPost), session_writes_test.go
-  - Added PASSWORD_SALT env var to Dockerfile (default 'zzzz' matching PHP config)
-  - Fixed groupid=0 search bug: when ModTools sends groupid=0 ("All my communities"), Go now replaces with user's actual group memberships instead of returning entire country
-  - Also fixed: AuthorityAPI.fetch V2 endpoint format (path params instead of query params)
-  - Published orb 1.1.168 (force rebuild apiv2 in nuxt3 PR CI to avoid DLC stale images)
-- **Next**: Monitor nuxt3 PR #187 CI. If green, V1→V2 migration is complete.
-
-### 2026-02-22 - ALL V1 API calls eliminated
-- **Status**: Zero V1 method calls remain in iznik-nuxt3. PR #187 updated.
-- **Completed**:
-  - Removed all V1 methods from BaseAPI.js ($request, $get, $post, $put, $patch, $del, $postForm, $postOverride)
-  - Switched auth.js to V2-only (permissions from Go session, no V1 fallback)
-  - Added Go endpoints: modconfig list, per-group work counts, GDPR export
-  - Created ExportAPI class, switched mydata.vue to use it
-  - Switched modconfig.js, modgroup.js, ModSettingsGroup.vue to V2
-  - Removed APIv1 from config.js, nuxt.config.ts, test mocks
-  - Removed dead code: ImageAPI.postForm, MessageAPI illustration V1 fallback
-  - Switched authorities.vue to V2
-- **Key Decisions**: Download link in mydata.vue uses APIv2 + jwt query param (Go supports JWT via query).
-
-### 2026-02-22 - PR #186 perf: Verified production build locally
-- **Branch**: `feature/bootstrap-lean-imports` in iznik-nuxt3
-- **Status**: Production build verified working, manualChunks removed, ready for CI
-
-### 2026-02-23 - Fix V2 fetchUser flat response handling
-- **Status**: CI running (workflow b7875719). Fixed critical auth bug.
-- **Root cause**: `fetchUser()` checked `sessionData.me` but GET /user returns flat User object (no `.me` wrapper). In passing commit e096571c, V2 silently failed and V1 fallback did all auth. After V1 removal in 4b17908f, auth was never established → 401 on writes.
-- **Fix**: Changed fetchUser to check `userData.id` (flat User) instead of `sessionData.me`. Reverted fetchv2 to GET /user (V2 pattern: flat responses).
-- **Next**: Monitor CI. If green, PR #187 ready for merge.
-
-### 2026-02-22 - ALL V1 API calls eliminated
-- **Status**: Zero V1 method calls remain in iznik-nuxt3. PR #187 updated.
-- **Completed**:
-  - Removed all V1 methods from BaseAPI.js ($request, $get, $post, $put, $patch, $del, $postForm, $postOverride)
-  - Switched auth.js to V2-only (permissions from Go session, no V1 fallback)
-  - Added Go endpoints: modconfig list, per-group work counts, GDPR export
-  - Created ExportAPI class, switched mydata.vue to use it
-  - Switched modconfig.js, modgroup.js, ModSettingsGroup.vue to V2
-  - Removed APIv1 from config.js, nuxt.config.ts, test mocks
-  - Removed dead code: ImageAPI.postForm, MessageAPI illustration V1 fallback
-  - Switched authorities.vue to V2
-- **Key Decisions**: Download link in mydata.vue uses APIv2 + jwt query param (Go supports JWT via query).
-
-### 2026-02-22 - Phase 2 Go changes + client V1→V2 switches
-- **Status**: Tasks 6-8 ✅ complete. Go changes pushed to master, client changes pushed to feature/v2-unified-migration.
-- **Completed**:
-  - Removed manualChunks vendor splitting from nuxt.config.ts (caused production hydration failures)
-  - Rebuilt production container with --no-cache
-  - Verified through Traefik (port 10080): landing page renders correctly with all optimizations
-  - Verified: preconnect hints, fetchpriority, CookieYes parallelization, leaflet CSS removal all working
-  - Verified: Bootstrap lean imports SCSS compiles without errors
-  - Verified: All key pages return 200 (/, /explore, /give, /find, /terms, /privacy)
-  - CI failures on master (pipeline 2046) are unrelated: Go TestPostChatRoomUnhide nil pointer + Laravel migration timeout
-- **Not pushed**: User instructed not to push
-- **Local testing blocker**: WSL has port 80 occupied (not Traefik), preventing local Playwright tests. Traefik is on port 10080. This is a local WSL2 config issue, not a code issue.
-- **Next**: Push when ready, run CI, verify Playwright tests pass
-
-### 2026-02-22 - PR #185 perf: Optimize landing page Core Web Vitals (REVERTED on master)
-- **Branch**: `feature/perf-optimization` in iznik-nuxt3 (merged then reverted)
-- **Status**: Reverted on master due to CI failures, changes preserved in feature/bootstrap-lean-imports
-- **Completed**:
-  - Committed leaflet CSS dynamic loading fix (load inside l-map defineAsyncComponent)
-  - Pushed to feature branch (commit c12e78f3)
-  - Verified Docker dev container: landing page has no leaflet CSS, explore page works, message page loads
-  - PSI results: LCP improved ~5s on mobile (13.8s→8.8-9.4s), ~2s on desktop (4.2s→2.2s)
-  - Updated PR description with full PSI comparison
-- **Key changes**: nuxt.config.ts (resource hints, CSS, vendor splitting, ad delay), plugins/vue-leaflet.client.js (dynamic CSS), FreeglerPhotoGrid.vue (srcsets, fade-in), pages/index.vue (preloads)
-- **Next**: Wait for Playwright CI results. User should test map rendering on Netlify preview (message page map modal)
-
-### 2026-02-19 - Added Live V2 API container for production DB testing
-- **Status**: Implementation complete, status page not loading from Windows (WSL2 networking issue)
-- **Completed**:
-  - Added `apiv2-live` container in docker-compose.yml (profile: `prod-live`), connects to production DB via SSH tunnel
-  - Made prod containers' V2 API URL configurable via `PROD_FREEGLE_API_V2` / `PROD_MT_API_V2` env vars
-  - Added `LIVE_DB_PORT`, `LIVE_DB_USER`, `LIVE_DB_PASSWORD` to .env (port corrected to 11234)
-  - Added `apiv2-live.localhost:host-gateway` extra_hosts to freegle-prod-local and modtools-prod-local
-  - Status page: new `apiv2-live` service, toggle API (`toggle-live-v2.post.ts`, `live-v2-status.get.ts`), updated production.vue with toggle UI and explanation text
-  - Port is configurable (read from .env, displayed dynamically on status page)
-  - `apiv2-live` container is healthy and connected to production DB
-  - Status container rebuilt and restarted
-- **Issue**: Status page shows blank screen when accessed from Windows browser. WSL2 uses `networkingMode=mirrored`. Port 8081 is listening, curl works from inside WSL, but Windows browser gets blank page. Need to investigate.
-- **Files changed**:
-  - `docker-compose.yml` - apiv2-live service, extra_hosts, configurable IZNIK_API_V2
-  - `.env` - LIVE_DB_PORT=11234, LIVE_DB_USER, LIVE_DB_PASSWORD, PROD_*_API_V2
-  - `status-nuxt/types/service.ts` - added 'production' to ServiceCategory
-  - `status-nuxt/server/utils/services.ts` - added apiv2-live service
-  - `status-nuxt/server/api/container/toggle-live-v2.post.ts` - NEW
-  - `status-nuxt/server/api/container/live-v2-status.get.ts` - NEW
-  - `status-nuxt/api/StatusAPI.ts` - toggleLiveV2, getLiveV2Status methods
-  - `status-nuxt/stores/status.ts` - liveV2 state, refreshLiveV2Status, toggleLiveV2 actions
-  - `status-nuxt/pages/production.vue` - toggle UI, explanatory text, dynamic port
-- **Next**: Debug why status page blank from Windows. Then test the toggle buttons work end-to-end.
-
-### 2026-02-19 - Go PR review, CI fixes, unified test branch
-- **Status**: CI monitoring in progress, then 3 tests to add
-- **Completed**:
-  - Reviewed all 23 Go PRs (#6-#28) for existing behavior changes using agent team
-  - Found changes to existing behavior only in PRs #9/#10/#13/#17/#27 (heldby IS NULL removal, story public=1 removal, location response shape changes) - all intentional for MT
-  - Fixed PR #11 (newsfeed-writes): empty message validation in createPost
-  - Fixed PR #25 (noticeboard-writes): FK constraint (addedby=0→NULL) + noticeboards_checks.inactive NOT NULL
-  - Created unified test branch `test/unified-go-v2` merging all 23 PRs (125 commits, 1 conflict resolved in routes.go)
-  - PR #25 CI: ✅ PASSED. PR #11 CI: running (job #789). Unified branch CI: running (job #788)
-  - Test coverage audit: 33/36 handlers FULL, 2 PARTIAL, 1 NONE
-- **Next**:
-  1. Wait for CI jobs #788 and #789 to complete - monitor background task b2ca4f2
-  2. If CI passes: add missing tests for CreateChatMessage (auth+error), EditIsochrone (auth+non-owner), CreateChatMessageLoveJunk (auth+error)
-  3. Push tests to relevant PR branches, merge into unified branch
-  4. Verify all Go CI green
-- **Key files**:
-  - Unified branch: `test/unified-go-v2` on iznik-server-go
-  - Coverage matrix: PR #43 in FreegleDocker, file `plans/active/api-test-coverage-matrix.md`
-  - Background CI monitor: `/tmp/claude-1000/-home-edward-FreegleDockerWSL/tasks/b2ca4f2.output`
-
-### 2026-02-20 - Freegle Mobile App: Adversarial Review Round 2 + Competitor Patterns
+### 2026-02-20 - Mobile app adversarial reviews + branding
 - **Active plan**: `plans/active/freegle-mobile-app.md`
-- **Status**: All fixes applied, APK builds clean, ready to commit
-- **Completed**:
-  - Ran test data script: 20 more Edinburgh items (IDs 45-64) in Docker DB
-  - APK build verified (BUILD SUCCESSFUL)
-  - Full adversarial review: 11 issues identified across all screens
-  - Competitor research: top 10 patterns from Olio/Nextdoor/FB Marketplace/TGTG/Depop/Vinted/OfferUp/Buy Nothing
-  - **Fixes applied**:
-    - AppNavigation: Pass saved postcode/locationName to GiveScreen (was receiving empty strings)
-    - ChatScreen: Added error handling for message send failure (try/catch, restore message on error)
-    - ChatScreen: Added send error display banner
-    - ChatScreen: Fixed stale Color(0xFF00B050) → 0xFF008040
-    - ChatListScreen: Added error state with retry button (ChatRepository now exposes error flow)
-    - ChatListScreen: Fixed stale Color(0xFF00B050) → 0xFF008040
-    - ChatRepository: Added `_error` StateFlow for error reporting
-    - HomeScreen: Added search debounce (300ms LaunchedEffect instead of per-keystroke)
-    - HomeScreen: Added search loading indicator (CircularProgressIndicator)
-    - HomeScreen: Added shimmer skeleton loading state (replacing plain CircularProgressIndicator)
-    - GiveScreen: Wired "Change" location button (was no-op `onClick = {}`)
-    - GiveScreen: Replaced unverified "Photos get 3× more replies" claim
-    - PostDetailScreen: Added quick reply suggestion chips (3 for Offer, 2 for Wanted)
-  - **Competitor patterns incorporated**:
-    - Skeleton loading states (Facebook Marketplace/Instagram pattern)
-    - Quick reply chips on PostDetailScreen (OfferUp/Olio pattern)
-    - Error states and retry UX across all screens
-- **Next**: Auth persistence with DataStore, CameraX photo capture, map/list toggle
-
-### 2026-02-20 - Freegle Mobile App: Branding & Design Refinements
-- **Active plan**: `plans/active/freegle-mobile-app.md`
-- **Status**: Both branding issues fixed, APK builds and runs on emulator
-- **Completed**:
-  - **Onboarding logo placement**: Moved Freegle logo from top of background photo to the icon badge position (between photo and title). Page 1 shows logo where other pages show themed icons.
-  - **Custom Give button**: Extracted the two heart-shaped recycling arrow paths from the Freegle SVG logo (`user_logo_vector.svg`). Created `FreegleHeartArrows.kt` composable that uses Compose `PathParser` + `Canvas` to draw just the arrows as vectors. Applied SVG coordinate transforms (translate + matrix Y-flip). Replaced the "slapped on" PNG logo in the Give button with the custom-drawn arrow motif.
-  - Both changes verified on emulator — builds clean, visuals correct
-- **Files changed**:
-  - `freegle-app/androidApp/.../ui/components/FreegleHeartArrows.kt` - NEW: Custom composable drawing heart arrows from SVG paths
-  - `freegle-app/androidApp/.../ui/screens/OnboardingScreen.kt` - Logo moved to icon badge position
-  - `freegle-app/androidApp/.../ui/navigation/AppNavigation.kt` - Give button uses FreegleHeartArrows instead of Image
-- **Next**: Continue with remaining app improvements (auth persistence, camera capture, Give flow API)
-
-### 2026-02-20 - Freegle Mobile App: Adversarial Review & Fixes
-- **Active plan**: `plans/active/freegle-mobile-app.md`
-- **Status**: Adversarial review complete, critical fixes applied, APK builds clean
-- **Completed**:
-  - Ran test data script: 20 Edinburgh items created in Docker DB (IDs 25-44)
-  - APK build verified (BUILD SUCCESSFUL)
-  - Full adversarial review: 18 issues identified (4 critical, 5 high, 5 medium, 4 low)
-  - Competitor research: 15 actionable patterns from Olio/Depop/Nextdoor/FB Marketplace/TGTG
-  - **Fixes applied**:
-    - LoginScreen: Added missing back button (users were trapped)
-    - GiveScreen LocationStep: Replaced hardcoded "Edinburgh area" with dynamic location from user's postcode
-    - HomeScreen: Added error state display with retry button
-    - HomeScreen: Added expandable search bar with live results overlay
-    - PostDetailScreen: "I'd love this!" now sends real API message via `replyToMessage` endpoint
-    - ChatScreen: Added in-chat item context header (top competitor pattern)
-    - ChatScreen: Fixed O(n²) indexOf → O(n) itemsIndexed
-    - PostCard.kt: Removed dead PostCard/PostCardSkeleton code, deduplicated date parsing
-    - FreegleApi: Added `replyToMessage` method
-    - create-test-data.php: Removed broken search indexing call
-    - README-APP.md: Updated features documentation
-  - **Still outstanding** (documented, not yet fixed):
-    - GiveScreen posting flow doesn't call any API (needs endpoint design)
-    - Swipe-right doesn't express interest via API (needs UX decision)
-    - AuthManager doesn't persist credentials (needs DataStore integration)
-    - Photo capture is entirely mocked (needs CameraX)
-    - Settings/Notifications rows are no-ops
-    - No pull-to-refresh on HomeScreen
-- **Architecture**: `freegle-app/shared/` (KMP) + `freegle-app/androidApp/` (Compose)
-- **APK**: `freegle-app/androidApp/build/outputs/apk/debug/androidApp-debug.apk`
-- **Next**: Auth persistence with DataStore, CameraX photo capture, Give flow API integration
+- Two adversarial review rounds completed with fixes (29 issues total). Branding refined (logo placement, custom Give button). APK builds clean.
+- **Outstanding**: Auth persistence (DataStore), CameraX photo capture, Give flow API, map/list toggle.
 
 ### 2026-02-19 - Schema.sql removal + V2 batch consolidation
-- **Status**: All V2 batch work merged to master, CI build triggered, waiting for results.
-- **Completed**:
-  - Schema.sql removal: stored functions migration, setup script rewrite, Dockerfile update, Go test cleanup, orb update
-  - Merged schema-sql branches to master in iznik-server, iznik-server-go, FreegleDocker
-  - Merged all 23 FreegleDocker V2 PRs (#43-#67) to master (iznik-batch changes)
-  - Published orb v1.1.161 (schema.sql fallback removed)
-  - Closed all merged FreegleDocker V2 PRs (#48-#65)
-  - Committed HelpChatFlow client logging to iznik-nuxt3 master
-  - iznik-nuxt3 V2 client PRs (#148-#168) intentionally left open
-- **Next**: Monitor CI build. Debug and fix any failures.
+- All V2 batch work merged to master. Schema.sql retired. Orb v1.1.161 published. All 23 FreegleDocker V2 PRs merged and closed. iznik-nuxt3 V2 client PRs (#148-#168) intentionally left open.
