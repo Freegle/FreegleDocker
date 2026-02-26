@@ -68,20 +68,28 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-02-26 - Group store separation + Go graceful degradation for ModTools
+- **Status**: Go 3dd8332 pushed (test fixes for graceful degradation). CI pipeline pending.
+- **Completed**:
+  - **Group store separation**: Added `summaryList` state to `stores/group.js`, updated 9 callers. Committed as c36e751a on feature/v2-unified-migration.
+  - **Go graceful degradation**: Fixed 4 endpoints to return empty results instead of 400/403 for non-moderator users. Fixed 3 test assertions to expect 200.
+  - **Browser verified**: All 18 ModTools dev-live pages load without errors.
+  - Test user (44656449) now a moderator (user made this change).
+- **Next**: Rebuild apiv2-live, browser-test ModTools pages with moderator access.
+
+### 2026-02-25 - V2 Session Slimdown + CI fixes + Donation thank-you
+- Session slimdown complete (Go ddaa699, nuxt3 f79b3dd9). Master CI GREEN.
+- Donation thank-you fix for unlinked donors (code complete, not yet committed).
+
 ### 2026-02-24 - V1→V2 migration: CI GREEN, cleanup done
 - **Status**: CI GREEN. Job 2302 SUCCESS. Auto-merged to production.
-- **Key state**: Go ret removal was REVERTED on master. Tasks 18+19 (ret removal + client HTTP error migration) must deploy atomically — cannot go to Go master until nuxt3 `feature/v2-unified-migration` merges. Remaining plan tasks: 16,17,20-22 committed on feature branch. Tasks 18+19 ready on nuxt3 side, need re-applying to Go when branch merges.
-- **Also completed**: Adversarial review fixes (fetchUser→GET /session, Stripe float rounding, GORM query clone, isochrone bounds, authority.js state type), post-migration cleanup (comments, fetchMe callers, publicity store deletion, Swagger docs).
+- **Key state**: Go ret removal was REVERTED on master. Tasks 18+19 must deploy atomically with nuxt3 `feature/v2-unified-migration`.
 
 ### 2026-02-22 - Performance + V1 elimination
 - PR #186 (bootstrap-lean-imports): Production build verified, manualChunks removed.
 - PR #187 (V1→V2 migration): All V1 API methods removed from iznik-nuxt3. CI GREEN. Ready for human merge.
-- Key fixes: sha1 login (Go was using bcrypt), groupid=0 search, reply state machine race condition, fetchUser flat response handling.
 
 ### 2026-02-20 - Mobile app adversarial reviews + branding
 - **Active plan**: `plans/active/freegle-mobile-app.md`
 - Two adversarial review rounds completed with fixes (29 issues total). Branding refined (logo placement, custom Give button). APK builds clean.
 - **Outstanding**: Auth persistence (DataStore), CameraX photo capture, Give flow API, map/list toggle.
-
-### 2026-02-19 - Schema.sql removal + V2 batch consolidation
-- All V2 batch work merged to master. Schema.sql retired. Orb v1.1.161 published. All 23 FreegleDocker V2 PRs merged and closed. iznik-nuxt3 V2 client PRs (#148-#168) intentionally left open.
