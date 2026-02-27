@@ -196,7 +196,7 @@
   <text x="525" y="243" text-anchor="middle" font-size="11" font-weight="bold" fill="#EF6C00">Edward: CSV Upload</text>
   <text x="525" y="258" text-anchor="middle" font-size="10" fill="#666">Import via script</text>
 
-  <line x1="525" y1="270" x2="525" y2="290" stroke="#7B1FA2" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <line x1="525" y1="270" x2="525" y2="290" stroke="#EF6C00" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
 
   <!-- Auto source detection -->
   <rect x="430" y="295" width="190" height="55" rx="8" fill="#F3E5F9" stroke="#7B1FA2" stroke-width="1.5" filter="url(#shadow)"/>
@@ -240,7 +240,7 @@
   <text x="730" y="313" text-anchor="middle" font-size="11" font-weight="bold" fill="#1565C0">Sends photo to Jane</text>
   <text x="730" y="328" text-anchor="middle" font-size="10" fill="#666">With any correspondence</text>
 
-  <line x1="730" y1="340" x2="730" y2="360" stroke="#43A047" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <line x1="730" y1="340" x2="730" y2="360" stroke="#3B7DD8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
 
   <!-- Jane adds to Xero -->
   <rect x="635" y="365" width="190" height="55" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.5" filter="url(#shadow)"/>
@@ -269,7 +269,7 @@
   <text x="935" y="328" text-anchor="middle" font-size="10" fill="#666">Xero + bank statements</text>
 
   <!-- Arrow down to shared CSV box (longer drop) -->
-  <line x1="935" y1="340" x2="935" y2="460" stroke="#EF6C00" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+  <line x1="935" y1="340" x2="935" y2="460" stroke="#43A047" stroke-width="1.5" marker-end="url(#arrow-green)"/>
 
   <!-- ============================================================ -->
   <!-- SHARED: ModTools CSV Upload (Cheque + DD/SO combined) -->
@@ -278,7 +278,7 @@
   <text x="832" y="485" text-anchor="middle" font-size="11" font-weight="bold" fill="#EF6C00">ModTools CSV Upload (Cheque + DD/SO)</text>
   <text x="832" y="500" text-anchor="middle" font-size="10" fill="#666">External donations recorded to system via ModTools</text>
 
-  <line x1="832" y1="515" x2="832" y2="535" stroke="#7B1FA2" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+  <line x1="832" y1="515" x2="832" y2="535" stroke="#EF6C00" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
 
   <!-- Auto thank-you (shared) -->
   <rect x="635" y="540" width="395" height="45" rx="8" fill="#F3E5F9" stroke="#7B1FA2" stroke-width="1.5" filter="url(#shadow)"/>
@@ -324,18 +324,16 @@
   <text x="830" y="882" text-anchor="middle" font-size="11" font-weight="bold" fill="#1565C0">Gift Aid Team Review (Jools + Ray)</text>
   <text x="830" y="897" text-anchor="middle" font-size="10" fill="#666">Approve / edit / reject declarations</text>
 
-  <!-- Arrow down from Row 1 to Row 2 -->
-  <line x1="830" y1="915" x2="830" y2="935" stroke="#EF6C00" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+  <!-- Arrow from Team Review down-left to Edward Generate -->
+  <line x1="830" y1="915" x2="325" y2="965" stroke="#3B7DD8" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
 
   <!-- Gift Aid Row 2: Generate Excel → Submit HMRC → PPGF note -->
   <rect x="20" y="940" width="300" height="55" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.5" filter="url(#shadow)"/>
   <text x="170" y="962" text-anchor="middle" font-size="11" font-weight="bold" fill="#EF6C00">Edward: Generate Excel (script)</text>
   <text x="170" y="977" text-anchor="middle" font-size="10" fill="#666">Gift Aid data for HMRC submission</text>
 
-  <!-- Arrow from review down-left to generate -->
-  <line x1="830" y1="940" x2="320" y2="968" stroke="#EF6C00" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-orange)"/>
-
-  <line x1="320" y1="968" x2="345" y2="968" stroke="#43A047" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <!-- Arrow from Edward Generate right to Jane Submit -->
+  <line x1="320" y1="968" x2="345" y2="968" stroke="#EF6C00" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
 
   <rect x="350" y="940" width="300" height="55" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.5" filter="url(#shadow)"/>
   <text x="500" y="962" text-anchor="middle" font-size="11" font-weight="bold" fill="#2E7D32">Jane: Submit to HMRC</text>
