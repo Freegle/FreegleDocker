@@ -392,8 +392,8 @@
 
   <rect x="20" y="1320" width="480" height="60" rx="8" fill="#E3F2FD" stroke="#1976D2" stroke-width="1.5" filter="url(#shadow)"/>
   <text x="30" y="1340" font-size="10" font-weight="bold" fill="#1565C0">Manual thank-yous for donations under &#xA3;20</text>
-  <text x="30" y="1355" font-size="9" fill="#666">Currently requires volunteer to manually email. Could be</text>
-  <text x="30" y="1368" font-size="9" fill="#666">automated to send personalised thank-yous for smaller donations.</text>
+  <text x="30" y="1355" font-size="9" fill="#666">Only Jacky currently sends personal thank-yous. A larger team</text>
+  <text x="30" y="1368" font-size="9" fill="#666">of volunteers would allow more donors to be thanked personally.</text>
 
   <rect x="520" y="1320" width="480" height="60" rx="8" fill="#E3F2FD" stroke="#1976D2" stroke-width="1.5" filter="url(#shadow)"/>
   <text x="530" y="1340" font-size="10" font-weight="bold" fill="#1565C0">Many small donations don't trigger manual thank-you</text>
