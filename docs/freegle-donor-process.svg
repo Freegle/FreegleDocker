@@ -395,6 +395,11 @@
   <text x="30" y="1355" font-size="9" fill="#666">Currently requires volunteer to manually email. Could be</text>
   <text x="30" y="1368" font-size="9" fill="#666">automated to send personalised thank-yous for smaller donations.</text>
 
+  <rect x="520" y="1320" width="480" height="60" rx="8" fill="#E3F2FD" stroke="#1976D2" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="530" y="1340" font-size="10" font-weight="bold" fill="#1565C0">Many small donations don't trigger manual thank-you</text>
+  <text x="530" y="1355" font-size="9" fill="#666">Info@ notification only fires for single donations &#x2265;&#xA3;20. A donor giving</text>
+  <text x="530" y="1368" font-size="9" fill="#666">e.g. &#xA3;1/month for years is never flagged for a personal thank-you.</text>
+
   <!-- ============================================================ -->
   <!-- Footer -->
   <!-- ============================================================ -->
