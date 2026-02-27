@@ -68,14 +68,26 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
-### 2026-02-26 - Group store separation + Go graceful degradation for ModTools
-- **Status**: Go 3dd8332 pushed (test fixes for graceful degradation). CI pipeline pending.
+### 2026-02-27 - Unified MT chat listing + V1-vs-V2 comparative review fixes
+- **Unified chat handler**: Extended `ListForUser`/`listChats()` with `chattypes` param to handle User2Mod, User2User, Mod2Mod dynamically. Deleted slow `doListChatRoomsMT` (was hanging on production). Added `ListForUserMT` wrapper, Mod2Mod UNION branch, search branches for all types. 8 new tests. Pushed to Go master (2054d51), CI pending.
+- **V1-vs-V2 review**: CI GREEN. Job #2395 SUCCESS. Auto-merged to production.
 - **Completed**:
-  - **Group store separation**: Added `summaryList` state to `stores/group.js`, updated 9 callers. Committed as c36e751a on feature/v2-unified-migration.
-  - **Go graceful degradation**: Fixed 4 endpoints to return empty results instead of 400/403 for non-moderator users. Fixed 3 test assertions to expect 200.
-  - **Browser verified**: All 18 ModTools dev-live pages load without errors.
-  - Test user (44656449) now a moderator (user made this change).
-- **Next**: Rebuild apiv2-live, browser-test ModTools pages with moderator access.
+  - **30 findings from V1-vs-V2 review** addressed systematically (19 files, +484/-206 lines).
+  - Security: session forget (spammer/mod/partner checks), user delete (mod protection), signup re-login.
+  - Auth package: extracted shared auth functions (VerifyPassword, CreateSessionAndJWT) to break circular deps.
+  - Spammers: partner key auth, export endpoint for Trash Nothing.
+  - Group polygon: cga/dpa as separate fields. CE/Vol: canmodify field. Notifications: lastaccess + response format.
+  - Removed dead Facebook micro-volunteering code path.
+  - Fixed 2 pre-existing test failures: TestJobs (missing canonical_title column + NULL scan), TestMicroVolunteeringResponseFacebook (dead code removed).
+  - Fixed TestLocation_NonExistentID CI panic: skip ClosestGroups for non-existent locations, add timeout+nil guard.
+  - V1/PHP references removed from all modified comments.
+- **Key decisions**: F13 myrole/mysettings intentionally NOT in group endpoint (comes from session). F8/15/19 bare V2 responses are correct.
+- **CI note**: nuxt3 submodule on master still uses V1 PHP for chat/rooms (V2 migration on feature/v2-unified-migration branch). Personal CircleCI PAT from `~/.circleci/cli.yml` needed for cancel/rerun (org PAT is read-only).
+
+### 2026-02-26 - Browser testing V2 branch (ModTools + Freegle)
+- **ModTools browser testing** (26 pages): 24 OK, 1 expected 403 (giftaid), 1 expected redirect (discourse).
+- **Freegle browser testing** (13 pages): 12 OK, 1 ERROR (/chitchat - profile.path undefined).
+- **Previous session work**: Group store separation (c36e751a), Go graceful degradation (3dd8332).
 
 ### 2026-02-25 - V2 Session Slimdown + CI fixes + Donation thank-you
 - Session slimdown complete (Go ddaa699, nuxt3 f79b3dd9). Master CI GREEN.
