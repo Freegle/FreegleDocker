@@ -22,11 +22,12 @@ Browse all posts: {{ $browseUrl }}
 
 ------------------------------------
 
-You're receiving this because you're a member of Freegle. These emails are sent daily.
+You're receiving this because you're a member of Freegle. These emails are sent {{ $mode === 'immediate' ? 'when new posts are available' : 'daily' }}.
 
 Update your settings: {{ $settingsUrl }}
+Unsubscribe: {{ $unsubscribeUrl ?? config('freegle.sites.user') . '/unsubscribe' }}
 
 ------------------------------------
 
 Freegle - Don't throw it away, give it away!
-{!! config('freegle.sites.user') !!}
+{{ $browseUrl }}
