@@ -4530,4 +4530,39 @@ class IncomingMailServiceTest extends TestCase
 
         $this->assertEquals(1, $roomCount, 'Should reuse existing chat, not create duplicate');
     }
+
+    public function test_replyto_updates_lastaccess(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $this->createMembership($replier, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        // Set lastaccess to a stale date
+        DB::table('users')->where('id', $replier->id)->update(['lastaccess' => '2020-01-01 00:00:00']);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // lastaccess should have been updated from the stale 2020 date
+        $user = DB::table('users')->where('id', $replier->id)->first();
+        $this->assertGreaterThan('2025-01-01', $user->lastaccess, 'lastaccess should be updated on email reply');
+    }
 }
