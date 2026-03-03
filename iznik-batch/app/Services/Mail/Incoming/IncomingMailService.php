@@ -1501,6 +1501,11 @@ class IncomingMailService
             return $this->dropped("Reply from unknown user");
         }
 
+        // Update user's last access
+        DB::table('users')
+            ->where('id', $fromUser->id)
+            ->update(['lastaccess' => now()]);
+
         // #6: Add unrecognised sender email to user profile (email forwarding scenario)
         $this->addEmailToUser($fromUser->id, $email->envelopeFrom);
 
