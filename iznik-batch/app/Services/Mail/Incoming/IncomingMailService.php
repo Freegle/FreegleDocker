@@ -2136,6 +2136,11 @@ class IncomingMailService
             return $this->dropped("Volunteers message from deleted user");
         }
 
+        // Update user's last access
+        DB::table('users')
+            ->where('id', $user->id)
+            ->update(['lastaccess' => now()]);
+
         // Filter auto-replies for -auto@ addresses (only -volunteers@ allows auto-replies through)
         if (! $email->isToVolunteers && $email->isAutoReply()) {
             Log::debug('Dropping auto-reply to auto address');
@@ -2248,6 +2253,11 @@ class IncomingMailService
 
             return $this->dropped("Post from unknown user");
         }
+
+        // Update user's last access
+        DB::table('users')
+            ->where('id', $user->id)
+            ->update(['lastaccess' => now()]);
 
         // Check membership
         $membership = Membership::where('userid', $user->id)
