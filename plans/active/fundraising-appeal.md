@@ -11,11 +11,12 @@ Freegle needs to send fundraising appeal emails to all members. This is the firs
 - simplemail=None (opted out): 12,045
 - Target: complete send in ~3 days (~670K/day, ~28K/hr via spool parallelisation)
 
-This plan covers 4 areas:
+This plan covers 5 areas:
 1. **Bulk email infrastructure** (iznik-batch) - reusable for future campaigns
 2. **Campaign-specific landing page** (iznik-nuxt3) - with donation attribution
 3. **Donation attribution** - tracking which donations came from which campaign
-4. **AMP email assessment** - whether to use AMP for fundraising
+4. **MT fundraising dashboard** - graph of amount raised over time, with campaign selector
+5. **AMP email assessment** - whether to use AMP for fundraising
 
 ---
 
@@ -183,37 +184,104 @@ Handles `/marketing-optout/{id}/{key}`:
 ## 3. Donation Attribution
 
 ### Current state
-The `users_donations` table has no campaign field. Donations are attributed to users but not to campaigns.
+- `users_donations` table has no campaign field. Donations attributed to users but not campaigns.
+- `email_tracking` is **purged after 90 days** (`PurgeService::purgeEmailTracking()`), so it cannot be used for long-term attribution.
 
-### Approach: UTM-style campaign parameter
+### Approach: Add `campaign` column to `users_donations`
 
-**No schema change needed** for initial tracking. Use existing mechanisms:
-
-1. **Email tracking metadata**: `FundraisingAppealMail` stores `{ campaign: "2026-march" }` in `email_tracking.metadata`. We can query: "how many users who received campaign X subsequently donated?"
-
-2. **Donate URL with campaign parameter**: The email links to `/donate/campaign/2026-march`. The landing page passes `campaign` as metadata to Stripe `PaymentIntent`:
-   ```js
-   stripe.confirmPayment({
-     metadata: { campaign: '2026-march', user_id: userId }
-   })
-   ```
-   This is queryable in the Stripe dashboard.
-
-3. **Future enhancement** (out of scope for v1): Add `campaign` column to `users_donations` table and populate from Stripe webhook metadata.
-
-**Attribution query** (using existing tables):
-```sql
--- Users who received fundraising email AND donated within 30 days
-SELECT et.userid, ud.GrossAmount, ud.timestamp
-FROM email_tracking et
-JOIN users_donations ud ON et.userid = ud.userid
-  AND ud.timestamp BETWEEN et.sent_at AND DATE_ADD(et.sent_at, INTERVAL 30 DAY)
-WHERE JSON_UNQUOTE(JSON_EXTRACT(et.metadata, '$.campaign')) = '2026-march'
+**Schema change** — new migration in iznik-batch:
+```php
+// database/migrations/2026_03_XX_add_campaign_to_users_donations.php
+$table->string('campaign', 50)->nullable()->index()->after('source');
 ```
+
+This is a simple nullable column add — no impact on existing rows.
+
+**How it gets populated**:
+1. **Donate URL includes campaign**: Email links to `/donate/campaign/2026-march`
+2. **Landing page passes campaign to Stripe**: `PaymentIntent.metadata.campaign = '2026-march'`
+3. **Go API records campaign on donation**: When Stripe webhook fires or manual donation is recorded, the `campaign` field is populated from the request parameter
+4. **Dashboard queries**: `SELECT SUM(GrossAmount), DATE(timestamp) FROM users_donations WHERE campaign = ? GROUP BY DATE(timestamp)`
+
+**Also store in Stripe metadata** for cross-reference:
+```js
+stripe.confirmPayment({
+  metadata: { campaign: '2026-march', user_id: userId }
+})
+```
+
+**Short-term tracking** (within 90 days): `email_tracking.metadata` can also be used for richer queries (e.g. email open → click → donate funnel). But the `campaign` column on `users_donations` is the permanent source of truth.
 
 ---
 
-## 4. AMP Email Assessment
+## 4. MT Fundraising Dashboard
+
+### New MT page: `modtools/pages/fundraising.vue`
+
+A dedicated fundraising analytics page in ModTools showing donation performance per campaign.
+
+**UI layout**:
+- **Campaign selector** (dropdown at top): `b-form-select` with list of campaigns. Options populated from distinct `campaign` values in `users_donations`. Includes "All campaigns" option.
+- **Amount raised over time** (Google Chart): LineChart showing cumulative or daily donation amounts for the selected campaign, using `vue-google-charts` `GChart` component (same pattern as `ActivityGraph.vue`).
+- **Summary stats**: Total raised, number of donors, average donation, target (£5,000), percentage of target reached.
+
+**Data source**: New Go API endpoint or extend existing `/donations` endpoint.
+
+### 4.1 Go API: Extend donations endpoint
+
+Add campaign-filtered time series to the dashboard API or donations endpoint:
+
+**Option A — Extend `/dashboard` component** (preferred, follows existing pattern):
+```go
+// In dashboard.go, add new component "CampaignDonations"
+case "CampaignDonations":
+    return getCampaignDonations(campaign, startQ, endQ)
+
+func getCampaignDonations(campaign string, startQ, endQ string) []map[string]interface{} {
+    // SELECT SUM(GrossAmount) AS count, DATE(timestamp) AS date
+    // FROM users_donations
+    // WHERE campaign = ? AND timestamp >= ? AND timestamp <= ?
+    // GROUP BY date ORDER BY date ASC
+}
+```
+
+**Option B — New V2 endpoint** `/api/v2/donations/campaign/{slug}`:
+- Returns `{ data: [{ date, amount }], total, donors, target }`
+
+### 4.2 Campaign list endpoint
+
+Need an endpoint to populate the dropdown:
+```go
+// GET /api/v2/donations/campaigns
+// Returns: [{ slug: "2026-march", total: 1234.56, donors: 89, first_donation: "2026-03-05" }]
+// Query: SELECT campaign, SUM(GrossAmount), COUNT(DISTINCT userid), MIN(timestamp)
+//        FROM users_donations WHERE campaign IS NOT NULL GROUP BY campaign
+```
+
+### 4.3 Frontend component: `modtools/components/ModFundraisingChart.vue`
+
+Based on `ActivityGraph.vue` pattern:
+- Props: `campaign` (selected campaign slug)
+- Uses `GChart` (vue-google-charts) for LineChart
+- Units selector: day/week/month (same `b-form-select` pattern)
+- Fetches data from dashboard API with `CampaignDonations` component
+- Green line for daily amounts, optional cumulative overlay
+- Shows target line at £5,000
+
+### 4.4 Navigation
+
+Add "Fundraising" link to ModTools sidebar/nav (wherever donation-related items appear — near Gift Aid).
+
+**Files to modify**:
+- `iznik-nuxt3/modtools/pages/fundraising.vue` — new page
+- `iznik-nuxt3/modtools/components/ModFundraisingChart.vue` — new chart component
+- `iznik-server-go/dashboard/dashboard.go` — add CampaignDonations component
+- `iznik-server-go/donations/donations.go` — add campaign list endpoint
+- `iznik-server-go/router/routes.go` — register new route
+
+---
+
+## 5. AMP Email Assessment
 
 ### Recommendation: Do NOT use AMP for fundraising emails
 
@@ -228,15 +296,16 @@ WHERE JSON_UNQUOTE(JSON_EXTRACT(et.metadata, '$.campaign')) = '2026-march'
 
 ---
 
-## 5. Reusability for Future Campaigns
+## 6. Reusability for Future Campaigns
 
 The design supports future fundraising campaigns with minimal changes:
 
 1. **New campaign = new `--campaign` slug**: Same command, different campaign parameter. Each campaign gets its own progress file.
 2. **Campaign-specific content**: Future campaigns update the MJML/text templates or use a configurable template path.
 3. **Campaign landing pages**: The `[slug].vue` dynamic route handles any campaign.
-4. **Attribution**: Each campaign is tracked separately via `email_tracking.metadata`.
+4. **Attribution**: Each campaign is permanently tracked via `users_donations.campaign` column. MT dashboard dropdown auto-populates from distinct campaigns.
 5. **Eligibility**: May evolve (e.g., skip users who donated recently), easily added as command options.
+6. **MT dashboard**: New campaigns automatically appear in the dropdown selector.
 
 ---
 
@@ -299,6 +368,8 @@ docker exec freegle-batch-prod cat storage/fundraising/2026-march.json
 ### Separate PRs (later):
 - Campaign landing page in iznik-nuxt3 (`pages/donate/campaign/[slug].vue`)
 - Marketing opt-out handler in iznik-nuxt3 (`pages/marketing-optout.vue`)
+- Migration: add `campaign` column to `users_donations`
+- Go API: campaign donations endpoint + dashboard component
+- MT fundraising dashboard page + chart component
 - Stripe metadata campaign attribution
 - Actual email content/copy
-- `campaign` column on `users_donations` table (future)
