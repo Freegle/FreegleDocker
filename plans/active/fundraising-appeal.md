@@ -133,10 +133,9 @@ Extends `MjmlMailable`, uses `TrackableEmail` + `LoggableEmail`.
 
 **Template rendering**: Renders `text` field into MJML template. Text is plain text — template uses `nl2br` for HTML conversion (same as V1 Twig). Mods edit text content only; MJML structure is fixed and protected.
 
-**Three output parts** (all auto-generated from the same source content):
+**Two output parts** (auto-generated from the same source content):
 - **Plain text**: `text` + CTA appended + footer with opt-out URL
 - **HTML**: MJML template renders `text` into responsive HTML with header, CTA button, footer, tracking pixel
-- **AMP** (Phase 4): AMP template with same text content, interactive donate button
 
 ### 1.4 MJML Template: `resources/views/emails/mjml/admin/admin.blade.php`
 
@@ -246,12 +245,26 @@ In `modtools/pages/admins.vue` Create tab:
 
 ---
 
-## Phase 4: AMP Support (Future)
+## Phase 4: AMP Support (Future — Non-Payment Only)
 
-- Add AMP template: `resources/views/emails/amp/admin/admin.blade.php`
-- Interactive donate button via `amp-form` (one-click donation without leaving email)
+**One-click donate via AMP form is NOT possible.** Stripe requires client-side JavaScript (Stripe.js) for PCI compliance — payment card details never touch Freegle servers. AMP emails cannot load external JS (only AMP components). AMP `amp-form` can POST and show inline results but cannot redirect to external payment pages, so even Stripe Checkout hosted sessions won't work from within email.
+
+**What AMP CAN do** for admin emails (non-payment interactivity):
+- One-click opt-out (amp-form POST to set marketingconsent=0)
+- Inline feedback/survey (amp-form POST with response)
+- Live content (amp-list to show current donation total)
+
+**What AMP CANNOT do**:
+- Payment processing (requires Stripe.js/PayPal SDK)
+- Redirect to external payment pages
+
+**Donate button approach**: All fundraising emails use a **tracked link** to the campaign landing page (`/donate/campaign/[slug]`), where full Stripe/PayPal JS flow runs in browser. The CTA link field mods edit (`ctalink`) points here.
+
+If AMP admin template is added later:
+- `resources/views/emails/amp/admin/admin.blade.php`
 - Uses existing `AmpEmail` trait for token generation
 - Mods still only edit text nodes — AMP structure is template-controlled
+- AMP version adds opt-out button + live donation counter, NOT payment
 
 ---
 
