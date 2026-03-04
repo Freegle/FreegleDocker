@@ -468,4 +468,19 @@ class User extends Model
 
         return "{$userSite}/one-click-unsubscribe/{$this->id}/{$key}";
     }
+
+    /**
+     * Generate the marketing opt-out URL for fundraising/non-essential admin emails.
+     *
+     * Uses the same getUserKey() mechanism as unsubscribe for authentication.
+     *
+     * @return string The marketing opt-out URL
+     */
+    public function marketingOptOutUrl(): string
+    {
+        $key = $this->getUserKey();
+        $userSite = config('freegle.sites.user', 'https://www.ilovefreegle.org');
+
+        return "{$userSite}/marketing-optout/{$this->id}/{$key}";
+    }
 }

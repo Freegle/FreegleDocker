@@ -1,0 +1,342 @@
+<?php
+
+namespace App\Console\Commands\Mail;
+
+use App\Console\Concerns\PreventsOverlapping;
+use App\Mail\Admin\AdminMail;
+use App\Mail\Traits\FeatureFlags;
+use App\Models\Group;
+use App\Models\User;
+use App\Services\EmailSpoolerService;
+use App\Traits\GracefulShutdown;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+
+class SendAdminCommand extends Command
+{
+    use FeatureFlags;
+    use GracefulShutdown;
+    use PreventsOverlapping;
+
+    protected $signature = "mail:admin:send
+                            {--limit=0 : Max emails per run (0 = unlimited)}
+                            {--spool : Spool via EmailSpoolerService for parallel sending}
+                            {--dry-run : Count what would be sent without actually sending}
+                            {--id= : Send a specific admin by ID (for testing)}";
+
+    protected $description = 'Send approved admin emails to group members';
+
+    private const EMAIL_TYPE = 'Admin';
+
+    /**
+     * Days threshold for considering an admin too old to process.
+     * Matches V1's "Midnight 7 days ago" filter.
+     */
+    private const ADMIN_AGE_DAYS = 7;
+
+    /**
+     * Days threshold for "active" users (for activeonly admins).
+     * Matches V1's Engage::USER_INACTIVE filter.
+     */
+    private const USER_INACTIVE_DAYS = 7;
+
+    public function handle(EmailSpoolerService $spooler): int
+    {
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            $this->info("Admin emails are not enabled. Set FREEGLE_MAIL_ENABLED_TYPES to include 'Admin'.");
+
+            return Command::SUCCESS;
+        }
+
+        if (!$this->acquireLock()) {
+            $this->warn('Another instance of mail:admin:send is already running.');
+
+            return Command::SUCCESS;
+        }
+
+        $this->registerShutdownHandlers();
+
+        $limit = (int) $this->option('limit');
+        $dryRun = $this->option('dry-run');
+        $useSpool = $this->option('spool');
+        $specificId = $this->option('id') ? (int) $this->option('id') : null;
+
+        $stats = [
+            'admins_processed' => 0,
+            'emails_sent' => 0,
+            'skipped_activeonly' => 0,
+            'skipped_relevantallowed' => 0,
+            'skipped_dedup' => 0,
+            'skipped_no_email' => 0,
+            'skipped_simplemail' => 0,
+            'errors' => 0,
+        ];
+
+        $admins = $this->findReadyAdmins($specificId);
+
+        if ($admins->isEmpty()) {
+            $this->info('No admin emails ready to send.');
+
+            return Command::SUCCESS;
+        }
+
+        $this->info("Found {$admins->count()} admin(s) to process.");
+
+        foreach ($admins as $admin) {
+            if ($this->shouldStop()) {
+                $this->info('Shutdown signal received, stopping gracefully...');
+                break;
+            }
+
+            $sent = $this->processAdmin($admin, $stats, $limit, $dryRun, $useSpool, $spooler);
+            $stats['admins_processed']++;
+
+            if ($limit > 0 && $stats['emails_sent'] >= $limit) {
+                $this->info("Reached email limit of {$limit}.");
+                break;
+            }
+        }
+
+        $this->newLine();
+        $this->table(
+            ['Metric', 'Count'],
+            [
+                ['Admins Processed', $stats['admins_processed']],
+                ['Emails Sent', $stats['emails_sent']],
+                ['Skipped (active only)', $stats['skipped_activeonly']],
+                ['Skipped (relevantallowed)', $stats['skipped_relevantallowed']],
+                ['Skipped (dedup)', $stats['skipped_dedup']],
+                ['Skipped (no email)', $stats['skipped_no_email']],
+                ['Skipped (simplemail=None)', $stats['skipped_simplemail']],
+                ['Errors', $stats['errors']],
+            ]
+        );
+
+        if ($stats['errors'] > 0) {
+            $this->warn("There were {$stats['errors']} errors. Check logs for details.");
+        }
+
+        $this->releaseLock();
+
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Find approved admins ready to send.
+     *
+     * Mirrors V1's process() query:
+     * - complete IS NULL (not yet sent)
+     * - pending = 0 (approved)
+     * - Created or edited within last 7 days
+     * - sendafter has passed (if set)
+     */
+    protected function findReadyAdmins(?int $specificId = null): \Illuminate\Support\Collection
+    {
+        $cutoff = now()->subDays(self::ADMIN_AGE_DAYS)->startOfDay();
+
+        $query = DB::table('admins')
+            ->whereNull('complete')
+            ->where('pending', 0)
+            ->where(function ($q) use ($cutoff) {
+                $q->where('created', '>=', $cutoff)
+                    ->orWhere(function ($q2) use ($cutoff) {
+                        $q2->whereNotNull('editedat')
+                            ->where('editedat', '>', $cutoff);
+                    });
+            })
+            ->where(function ($q) {
+                $q->whereNull('sendafter')
+                    ->orWhere('sendafter', '<', now());
+            });
+
+        if ($specificId) {
+            $query->where('id', $specificId);
+        }
+
+        return $query->get();
+    }
+
+    /**
+     * Process a single admin — send to all eligible members of its group.
+     */
+    protected function processAdmin(
+        object $admin,
+        array &$stats,
+        int $limit,
+        bool $dryRun,
+        bool $useSpool,
+        EmailSpoolerService $spooler
+    ): int {
+        $sent = 0;
+
+        // Admin must have a group to send to.
+        if (!$admin->groupid) {
+            Log::warning("Admin {$admin->id} has no groupid, skipping.");
+
+            return 0;
+        }
+
+        $group = Group::find($admin->groupid);
+
+        if (!$group) {
+            Log::warning("Admin {$admin->id}: group {$admin->groupid} not found.");
+
+            return 0;
+        }
+
+        // Only send to active Freegle groups.
+        if ($group->type !== Group::TYPE_FREEGLE || !$group->onhere || !$group->publish) {
+            Log::info("Admin {$admin->id}: group {$group->id} not an active Freegle group, skipping.");
+
+            return 0;
+        }
+
+        $groupName = $group->namefull ?: $group->nameshort;
+        $modsEmail = $group->nameshort ? "{$group->nameshort}-volunteers@groups.ilovefreegle.org" : null;
+
+        $this->info("Processing admin {$admin->id} for group {$groupName}...");
+
+        // Query members with relevantallowed from users table.
+        $members = DB::table('memberships')
+            ->join('users', 'users.id', '=', 'memberships.userid')
+            ->where('memberships.groupid', $admin->groupid)
+            ->where('memberships.collection', 'Approved')
+            ->select([
+                'memberships.userid',
+                'memberships.role',
+                'users.relevantallowed',
+                'users.lastaccess',
+                'users.deleted',
+            ])
+            ->cursor();
+
+        $activeThreshold = now()->subDays(self::USER_INACTIVE_DAYS);
+        $adminArr = (array) $admin;
+
+        $interrupted = false;
+
+        foreach ($members as $member) {
+            if ($this->shouldStop()) {
+                $interrupted = true;
+                break;
+            }
+
+            if ($limit > 0 && $stats['emails_sent'] >= $limit) {
+                $interrupted = true;
+                break;
+            }
+
+            // Filter: deleted users.
+            if ($member->deleted) {
+                continue;
+            }
+
+            // Filter: activeonly — skip users not accessed in 7 days.
+            if ($admin->activeonly && $member->lastaccess) {
+                $lastAccess = \Carbon\Carbon::parse($member->lastaccess);
+                if ($lastAccess->lt($activeThreshold)) {
+                    $stats['skipped_activeonly']++;
+
+                    continue;
+                }
+            }
+
+            // Filter: non-essential admins skip users with relevantallowed=0.
+            // Moderators are always included (they can't opt out).
+            if (!$admin->essential && !$member->relevantallowed) {
+                $isMod = in_array($member->role, ['Moderator', 'Owner']);
+                if (!$isMod) {
+                    $stats['skipped_relevantallowed']++;
+
+                    continue;
+                }
+            }
+
+            // Filter: suggested admin dedup via admins_users.
+            if ($admin->parentid) {
+                $alreadySent = DB::table('admins_users')
+                    ->where('adminid', $admin->parentid)
+                    ->where('userid', $member->userid)
+                    ->exists();
+
+                if ($alreadySent) {
+                    $stats['skipped_dedup']++;
+
+                    continue;
+                }
+            }
+
+            // Load the user model for email address and display name.
+            $user = User::find($member->userid);
+
+            if (!$user) {
+                continue;
+            }
+
+            // Filter: must have a preferred email.
+            $email = $user->email_preferred;
+            if (!$email) {
+                $stats['skipped_no_email']++;
+
+                continue;
+            }
+
+            // Filter: skip TN users.
+            if ($user->isTN()) {
+                continue;
+            }
+
+            // Filter: skip simplemail=None for non-essential admins.
+            if (!$admin->essential && $user->getSimpleMail() === User::SIMPLE_MAIL_NONE) {
+                $stats['skipped_simplemail']++;
+
+                continue;
+            }
+
+            if ($dryRun) {
+                $stats['emails_sent']++;
+                $sent++;
+
+                continue;
+            }
+
+            try {
+                $mailable = new AdminMail($user, $adminArr, $groupName, $modsEmail);
+
+                if ($useSpool) {
+                    $spooler->spool($mailable, $email, self::EMAIL_TYPE);
+                } else {
+                    Mail::send($mailable);
+                }
+
+                // Record in admins_users for suggested admin dedup.
+                if ($admin->parentid) {
+                    DB::table('admins_users')->insert([
+                        'userid' => $member->userid,
+                        'adminid' => $admin->parentid,
+                    ]);
+                }
+
+                $stats['emails_sent']++;
+                $sent++;
+            } catch (\Exception $e) {
+                $stats['errors']++;
+                Log::error("Admin {$admin->id}: error sending to user {$member->userid}: {$e->getMessage()}");
+            }
+        }
+
+        // Mark admin as complete only if we processed all members.
+        // If interrupted (shutdown/limit), don't mark complete so it can be retried.
+        if (!$dryRun && !$interrupted) {
+            DB::table('admins')
+                ->where('id', $admin->id)
+                ->update(['complete' => now()]);
+        }
+
+        $this->info("Admin {$admin->id}: sent {$sent} emails.");
+
+        return $sent;
+    }
+}
