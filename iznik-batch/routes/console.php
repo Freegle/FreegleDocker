@@ -59,42 +59,6 @@ Schedule::command('data:update-cpi')
 // =============================================================================
 
 /*
-// Immediate digests (-1) - run every minute.
-Schedule::command('mail:digest -1')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Hourly digests - run every hour.
-Schedule::command('mail:digest 1')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Every 2 hours digests.
-Schedule::command('mail:digest 2')
-    ->everyTwoHours()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Every 4 hours digests.
-Schedule::command('mail:digest 4')
-    ->everyFourHours()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Every 8 hours digests (3 times per day).
-Schedule::command('mail:digest 8')
-    ->cron('0 0,8,16 * * *')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Daily digests.
-Schedule::command('mail:digest 24')
-    ->dailyAt('08:00')
-    ->withoutOverlapping()
-    ->runInBackground();
-
 // Message expiry - run daily.
 Schedule::command('messages:process-expired --spatial')
     ->dailyAt('03:00')
@@ -112,8 +76,7 @@ Schedule::command('purge:messages')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Unified digest - replaces per-group digests.
-// Daily mode - sends one digest per user with posts from all their communities.
+// Unified digest - one digest per user with posts from all their communities.
 Schedule::command('mail:digest:unified --mode=daily')
     ->dailyAt('08:00')
     ->withoutOverlapping()
