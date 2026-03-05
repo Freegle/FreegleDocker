@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Location extends Model
 {
@@ -17,4 +18,59 @@ class Location extends Model
         'osm_amenity' => 'boolean',
         'osm_shop' => 'boolean',
     ];
+
+    /**
+     * Find the closest full postcode to a given lat/lng.
+     *
+     * Uses an expanding spatial bounding box search for efficiency - starts small
+     * and doubles until a result is found or the max scan radius is reached.
+     *
+     * @return array|null  Array with id, name, areaid, lat, lng, and optionally 'area' info, or null if not found
+     */
+    public static function closestPostcode(float $lat, float $lng): ?array
+    {
+        $srid = config('freegle.srid', 3857);
+        $scan = 0.00001953125;
+
+        while ($scan <= 0.2) {
+            $swlat = $lat - $scan;
+            $nelat = $lat + $scan;
+            $swlng = $lng - $scan;
+            $nelng = $lng + $scan;
+
+            $poly = "POLYGON(($swlng $swlat, $swlng $nelat, $nelng $nelat, $nelng $swlat, $swlng $swlat))";
+            $point = "POINT($lng $lat)";
+
+            $result = DB::table('locations_spatial')
+                ->join('locations', 'locations.id', '=', 'locations_spatial.locationid')
+                ->selectRaw('locations.id, locations.name, locations.areaid, locations.lat, locations.lng')
+                ->whereRaw("MBRContains(ST_Envelope(ST_GeomFromText(?, ?)), locations_spatial.geometry)", [$poly, $srid])
+                ->where('locations.type', 'Postcode')
+                ->whereRaw("LOCATE(' ', locations.name) > 0")
+                ->orderByRaw("ST_distance(locations_spatial.geometry, ST_GeomFromText(?, ?)) ASC", [$point, $srid])
+                ->orderByRaw("CASE WHEN ST_Dimension(locations_spatial.geometry) < 2 THEN 0 ELSE ST_AREA(locations_spatial.geometry) END ASC")
+                ->limit(1)
+                ->first();
+
+            if ($result) {
+                $ret = (array) $result;
+
+                if ($ret['areaid']) {
+                    $area = self::find($ret['areaid']);
+
+                    if ($area) {
+                        $ret['area'] = $area->toArray();
+                    }
+
+                    unset($ret['areaid']);
+                }
+
+                return $ret;
+            }
+
+            $scan *= 2;
+        }
+
+        return null;
+    }
 }

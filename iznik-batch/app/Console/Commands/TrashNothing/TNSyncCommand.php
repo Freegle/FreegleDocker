@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Console\Concerns\PreventsOverlapping;
+use App\Models\Location;
 use App\Models\User;
 use App\Traits\GracefulShutdown;
 use App\Traits\LogsBatchJob;
@@ -316,12 +317,11 @@ class TNSyncCommand extends Command
                         $lng = $change['location']['longitude'] ?? null;
 
                         if ($lat !== null && $lng !== null) {
-                            // TODO: Add equivalent of v1 Location::closestPostcode() to new Location model, then call here.
-                            $loc = null; // Placeholder
+                            $loc = Location::closestPostcode((float) $lat, (float) $lng);
 
-                            if ($loc && $loc->id !== $user->lastlocation) {
-                                Log::info("FD #{$change['fd_user_id']} TN lat/lng {$lat},{$lng} has changed {$user->lastlocation} => {$loc->id} {$loc->name}");
-                                $user->update(['lastlocation' => $loc->id]);
+                            if ($loc && $loc['id'] !== $user->lastlocation) {
+                                Log::info("FD #{$change['fd_user_id']} TN lat/lng {$lat},{$lng} has changed {$user->lastlocation} => {$loc['id']} {$loc['name']}");
+                                $user->update(['lastlocation' => $loc['id']]);
                             }
                         }
                     }
