@@ -54,6 +54,14 @@ Schedule::command('data:update-cpi')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Sync data from TrashNothing.
+// This command can be called more frequently if the "kick" API is called by TN,
+// e.g. to reduce latency by requesting an immediate sync after sending a chat message.
+Schedule::command('tn:sync')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // =============================================================================
 // DISABLED COMMANDS (to be enabled when ready)
 // =============================================================================
