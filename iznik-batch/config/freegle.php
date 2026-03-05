@@ -70,6 +70,12 @@ return [
         'trashnothing_secret' => env('FREEGLE_TRASHNOTHING_SECRET', ''),
     ],
 
+    'trashnothing' => [
+        'api_key' => env('FREEGLE_TN_API_KEY', ''),
+        'api_base_url' => env('FREEGLE_TN_API_BASE_URL', 'https://trashnothing.com/fd/api'),
+        'sync_date_file' => env('FREEGLE_TN_SYNC_DATE_FILE', '/etc/tn_sync_last_date.txt'),
+    ],
+
     // Firebase Cloud Messaging for push notifications
     'firebase' => [
         'credentials_path' => env('FIREBASE_CREDENTIALS_PATH', '/etc/firebase.json'),
