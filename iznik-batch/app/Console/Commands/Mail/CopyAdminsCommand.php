@@ -101,6 +101,8 @@ class CopyAdminsCommand extends Command
                     'activeonly' => $admin->activeonly,
                     'sendafter' => $admin->sendafter,
                     'essential' => $admin->essential,
+                    'editprotected' => $admin->editprotected,
+                    'template' => $admin->template,
                 ]);
 
                 $copied++;
