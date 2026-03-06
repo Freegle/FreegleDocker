@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
 export default defineEventHandler(async (event) => {
-  console.log('Starting Go tests...')
+  console.log('XYZZY_MARKER Starting Go tests...')
 
   const query = getQuery(event)
   const withCoverage = query.coverage === 'true'
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   // Build test command
   const testCmd = withCoverage
     ? 'export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./...'
-    : 'export MYSQL_DBNAME=iznik_go_test && go test ./test/... -v'
+    : 'echo INSIDE_APIV2 && export MYSQL_DBNAME=iznik_go_test && go test ./test/... -v'
 
   // Run tests asynchronously
   const testProcess = spawn('sh', ['-c', `
@@ -43,8 +43,11 @@ export default defineEventHandler(async (event) => {
       mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\\" && \\
       mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"" || echo "Warning: Database setup had issues, continuing..."
 
-    echo "Running Go tests against iznik_go_test database..."
-    docker exec -w /app freegle-apiv2 sh -c "${testCmd} 2>&1"
+    echo "STEP1: About to resolve percona"
+    PERCONA_IP=$(getent hosts percona | awk '{print $1}') || PERCONA_IP="percona"
+    echo "STEP2: PERCONA_IP=$PERCONA_IP"
+    echo "STEP3: Running Go tests against iznik_go_test database..."
+    docker exec -w /app -e "MYSQL_HOST=$PERCONA_IP" freegle-apiv2 sh -c "${testCmd}" 2>&1
   `], { stdio: 'pipe' })
 
   testProcess.stdout.on('data', (data) => {
@@ -107,5 +110,5 @@ export default defineEventHandler(async (event) => {
     })
   })
 
-  return { status: 'started' }
+  return { status: 'started', marker: 'XYZZY_V2' }
 })
