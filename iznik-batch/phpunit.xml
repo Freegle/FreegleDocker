@@ -6,7 +6,7 @@
          beStrictAboutChangesToGlobalState="false"
          beStrictAboutOutputDuringTests="false"
          beStrictAboutTestsThatDoNotTestAnything="false"
-         failOnRisky="false"
+         failOnRisky="true"
          failOnWarning="false"
          displayDetailsOnTestsThatTriggerDeprecations="false"
          displayDetailsOnTestsThatTriggerWarnings="false"

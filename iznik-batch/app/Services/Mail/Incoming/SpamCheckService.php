@@ -694,13 +694,24 @@ class SpamCheckService
         }
 
         $length = strlen($message);
-        $request = "CHECK SPAMC/1.5\r\nContent-length: {$length}\r\n\r\n{$message}";
+        // Must use SPAMC/1.2 — spamd rejects 1.5.
+        $request = "CHECK SPAMC/1.2\r\nContent-length: {$length}\r\n\r\n{$message}";
 
+        stream_set_timeout($socket, 30);
         fwrite($socket, $request);
+        // Signal end-of-write so spamd knows the full message has been sent.
+        stream_socket_shutdown($socket, STREAM_SHUT_WR);
 
         $response = '';
         while (! feof($socket)) {
             $response .= fread($socket, 8192);
+            $info = stream_get_meta_data($socket);
+            if ($info['timed_out']) {
+                fclose($socket);
+                Log::warning('SpamAssassin timed out after 30 seconds', ['host' => $host]);
+
+                return null;
+            }
         }
         fclose($socket);
 
