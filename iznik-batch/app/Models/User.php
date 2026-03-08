@@ -481,6 +481,6 @@ class User extends Model
         $key = $this->getUserKey();
         $userSite = config('freegle.sites.user', 'https://www.ilovefreegle.org');
 
-        return "{$userSite}/marketing-optout/{$this->id}/{$key}";
+        return "{$userSite}/marketing-optout?u={$this->id}&k={$key}";
     }
 }
