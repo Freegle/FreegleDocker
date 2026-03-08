@@ -246,9 +246,9 @@ HTML;
     {
         $instance = $this->createAmpEmailInstance();
 
-        $templatePath = dirname(__DIR__, 3) . '/resources/views/emails/amp/chat/notification.blade.php';
+        $templatePath = resource_path('views/emails/amp/chat/notification.blade.php');
         if (!file_exists($templatePath)) {
-            $this->markTestSkipped('AMP template not found');
+            $this->markTestSkipped('AMP template not found at: ' . $templatePath);
         }
 
         $template = file_get_contents($templatePath);

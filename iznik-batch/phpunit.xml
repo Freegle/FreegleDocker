@@ -3,13 +3,12 @@
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="tests/bootstrap.php"
          colors="true"
-         beStrictAboutChangesToGlobalState="false"
-         beStrictAboutOutputDuringTests="false"
-         beStrictAboutTestsThatDoNotTestAnything="false"
          failOnRisky="true"
          failOnWarning="false"
-         displayDetailsOnTestsThatTriggerDeprecations="false"
-         displayDetailsOnTestsThatTriggerWarnings="false"
+         displayDetailsOnTestsThatTriggerDeprecations="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnPhpunitDeprecations="true"
+         cacheDirectory="/tmp/phpunit-cache"
          enforceTimeLimit="true"
          defaultTimeLimit="30"
 >
@@ -34,8 +33,6 @@
             <directory>app</directory>
         </include>
     </source>
-    <coverage cacheDirectory="/tmp/phpunit-cache">
-    </coverage>
     <php>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
