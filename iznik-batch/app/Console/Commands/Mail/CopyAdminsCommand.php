@@ -37,6 +37,7 @@ class CopyAdminsCommand extends Command
 
         $deleted = DB::table('admins')
             ->where('pending', 1)
+            ->whereNull('complete')
             ->where('created', '<', $cutoff)
             ->delete();
 
@@ -88,6 +89,9 @@ class CopyAdminsCommand extends Command
                     continue;
                 }
 
+                // TODO: V1 calls PushNotifications::notifyGroupMods() here to notify
+                // group moderators about the new pending admin. Implement when push
+                // notification service is available in Laravel.
                 DB::table('admins')->insert([
                     'createdby' => $admin->createdby,
                     'groupid' => $group->id,

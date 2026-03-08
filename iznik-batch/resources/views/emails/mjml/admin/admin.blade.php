@@ -37,6 +37,9 @@
         </mj-section>
         @endif
 
+        {{-- TODO: V1 renders group sponsorship logos here from the groups_sponsorship table.
+             Implement when sponsorship data is available via a Laravel model. --}}
+
         @if($marketingOptOutUrl)
         <mj-section background-color="#ffffff" padding="10px 20px">
             <mj-column>

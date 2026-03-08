@@ -36,6 +36,12 @@ class AdminMail extends MjmlMailable
 
     public ?string $marketingOptOutUrl;
 
+    public bool $isMarketing;
+
+    public ?string $template;
+
+    public ?string $groupShort;
+
     /**
      * Create a new message instance.
      *
@@ -43,8 +49,9 @@ class AdminMail extends MjmlMailable
      * @param array $admin Admin record (from admins table)
      * @param string|null $groupName Group name for footer
      * @param string|null $modsEmail Group mods email for reply-to
+     * @param string|null $groupShort Group's nameshort for from address
      */
-    public function __construct(User $user, array $admin, ?string $groupName = null, ?string $modsEmail = null)
+    public function __construct(User $user, array $admin, ?string $groupName = null, ?string $modsEmail = null, ?string $groupShort = null)
     {
         parent::__construct();
 
@@ -56,6 +63,9 @@ class AdminMail extends MjmlMailable
         $this->groupName = $groupName;
         $this->modsEmail = $modsEmail;
         $this->essential = (bool) ($admin['essential'] ?? true);
+        $this->template = $admin['template'] ?? null;
+        $this->isMarketing = !empty($this->template);
+        $this->groupShort = $groupShort;
         $this->userSite = config('freegle.sites.user');
 
         // Marketing opt-out shown for non-essential admins.
@@ -109,11 +119,37 @@ class AdminMail extends MjmlMailable
             'marketingOptOutUrl' => $this->marketingOptOutUrl
                 ? $this->trackedUrl($this->marketingOptOutUrl, 'marketing_optout', 'optout')
                 : null,
+            'unsubscribeUrl' => $this->trackedUrl(
+                $this->userSite . '/unsubscribe',
+                'footer_unsubscribe',
+                'unsubscribe'
+            ),
         ], $this->getTrackingData());
+
+        // Marketing template gets additional data.
+        if ($this->isMarketing) {
+            $imageSource = config('freegle.sites.user') . '/landingpage/little-free-shop-2026.jpg';
+            $data['heroImageUrl'] = config('freegle.delivery.base_url') . '/?url=' . urlencode($imageSource) . '&w=600&output=jpg';
+            $data['heroHeading'] = 'Help us make this happen!';
+            $data['targetAmount'] = '£5,000';
+            $data['bulletPoints'] = [
+                'Less waste — good stuff stays out of landfill',
+                'Saves money — free things for people who need them',
+                'Brings people together — neighbours helping neighbours',
+                'Cleaner streets — less fly tipping, tidier neighbourhoods',
+                'Cuts carbon — reuse beats recycling every time',
+            ];
+            $data['spendingPlan'] = 'Your donation supports Freegle\'s work to increase reuse in communities across the UK. '
+                . 'We plan to use funds raised through this appeal to develop and pilot the Little Free Shop. '
+                . 'If the target is exceeded, or if for any reason the pilot cannot proceed as planned, '
+                . 'your donation will support Freegle\'s wider charitable work to reduce waste and help communities.';
+        }
+
+        $mjmlView = $this->isMarketing ? "emails.mjml.admin.{$this->template}" : 'emails.mjml.admin.admin';
 
         $result = $this->to($this->user->email_preferred, $this->user->displayname)
             ->subject($this->getSubject())
-            ->mjmlView('emails.mjml.admin.admin', $data, 'emails.text.admin.admin');
+            ->mjmlView($mjmlView, $data, 'emails.text.admin.admin');
 
         // Add reply-to for group mods.
         if ($this->modsEmail) {
@@ -128,20 +164,30 @@ class AdminMail extends MjmlMailable
      */
     public function envelope(): Envelope
     {
+        // V1 sends from {groupshort}-auto@groups.ilovefreegle.org with display name "{GroupName} Volunteers".
+        if ($this->groupShort) {
+            $fromAddress = "{$this->groupShort}-auto@groups.ilovefreegle.org";
+            $fromName = ($this->groupName ?? $this->groupShort) . ' Volunteers';
+        } else {
+            $fromAddress = config('freegle.mail.noreply_addr');
+            $fromName = config('freegle.branding.name');
+        }
+
         return new Envelope(
-            from: new Address(
-                config('freegle.mail.noreply_addr'),
-                config('freegle.branding.name')
-            ),
+            from: new Address($fromAddress, $fromName),
             subject: $this->getSubject(),
         );
     }
 
     /**
-     * Get the subject line - comes directly from the admin record.
+     * Get the subject line - prepends "ADMIN: " prefix for admin emails, but not for marketing/newsletters.
      */
     protected function getSubject(): string
     {
-        return $this->adminSubject;
+        if ($this->isMarketing) {
+            return $this->adminSubject;
+        }
+
+        return 'ADMIN: ' . $this->adminSubject;
     }
 }

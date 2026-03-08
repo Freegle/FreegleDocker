@@ -6,8 +6,8 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Mail\Mailables\Headers;
 use Illuminate\Queue\SerializesModels;
-use Symfony\Component\Mime\Email;
 
 /**
  * Auto-reply sent when a human accidentally replies to a bounce Return-Path address.
@@ -35,26 +35,21 @@ class BounceAddressAutoReply extends Mailable
         );
     }
 
+    public function headers(): Headers
+    {
+        return new Headers(
+            text: [
+                'Auto-Submitted' => 'auto-replied',
+                'X-Auto-Response-Suppress' => 'All',
+                'Precedence' => 'auto_reply',
+            ],
+        );
+    }
+
     public function content(): \Illuminate\Mail\Mailables\Content
     {
         return new \Illuminate\Mail\Mailables\Content(
             text: 'emails.bounce-auto-reply-text',
         );
-    }
-
-    /**
-     * Add loop prevention headers and null Return-Path.
-     */
-    public function build(): static
-    {
-        $this->withSymfonyMessage(function (Email $message) {
-            $message->getHeaders()->addTextHeader('Auto-Submitted', 'auto-replied');
-            $message->getHeaders()->addTextHeader('X-Auto-Response-Suppress', 'All');
-            $message->getHeaders()->addTextHeader('Precedence', 'auto_reply');
-            // Null Return-Path so bounces of this auto-reply don't generate further replies
-            $message->returnPath('');
-        });
-
-        return $this;
     }
 }

@@ -38,9 +38,9 @@ class SendAdminCommand extends Command
 
     /**
      * Days threshold for "active" users (for activeonly admins).
-     * Matches V1's Engage::USER_INACTIVE filter.
+     * Matches V1's Engage::USER_INACTIVE (365 * 24 * 60 * 60 / 2 = ~182.5 days).
      */
-    private const USER_INACTIVE_DAYS = 7;
+    private const USER_INACTIVE_DAYS = 182;
 
     public function handle(EmailSpoolerService $spooler): int
     {
@@ -186,8 +186,8 @@ class SendAdminCommand extends Command
             return 0;
         }
 
-        // Only send to active Freegle groups.
-        if ($group->type !== Group::TYPE_FREEGLE || !$group->onhere || !$group->publish) {
+        // Only send to active, non-external Freegle groups.
+        if ($group->type !== Group::TYPE_FREEGLE || !$group->onhere || !$group->publish || $group->external) {
             Log::info("Admin {$admin->id}: group {$group->id} not an active Freegle group, skipping.");
 
             return 0;
@@ -199,6 +199,8 @@ class SendAdminCommand extends Command
         $this->info("Processing admin {$admin->id} for group {$groupName}...");
 
         // Query members with relevantallowed from users table.
+        // Note: V1 queries all memberships regardless of collection. We intentionally
+        // filter to Approved only to avoid sending to spam-flagged or pending members.
         $members = DB::table('memberships')
             ->join('users', 'users.id', '=', 'memberships.userid')
             ->where('memberships.groupid', $admin->groupid)
@@ -233,7 +235,7 @@ class SendAdminCommand extends Command
                 continue;
             }
 
-            // Filter: activeonly — skip users not accessed in 7 days.
+            // Filter: activeonly — skip users not accessed in USER_INACTIVE_DAYS (~6 months).
             if ($admin->activeonly && $member->lastaccess) {
                 $lastAccess = \Carbon\Carbon::parse($member->lastaccess);
                 if ($lastAccess->lt($activeThreshold)) {
@@ -303,7 +305,15 @@ class SendAdminCommand extends Command
             }
 
             try {
-                $mailable = new AdminMail($user, $adminArr, $groupName, $modsEmail);
+                // Substitute template variables in admin text, matching V1's constructMessage().
+                $substitutedAdmin = $adminArr;
+                $substitutedAdmin['text'] = str_replace(
+                    ['$groupname', '$owneremail', '$membername', '$memberid'],
+                    [$groupName ?? '', $modsEmail ?? '', $user->displayname ?? '', (string) $user->id],
+                    $substitutedAdmin['text']
+                );
+
+                $mailable = new AdminMail($user, $substitutedAdmin, $groupName, $modsEmail, $group->nameshort);
 
                 if ($useSpool) {
                     $spooler->spool($mailable, $email, self::EMAIL_TYPE);

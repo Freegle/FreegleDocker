@@ -40,7 +40,22 @@ class AdminMailTest extends TestCase
         $mail = new AdminMail($user, $admin, 'Test Group');
         $envelope = $mail->envelope();
 
-        $this->assertEquals('Important Freegle Update', $envelope->subject);
+        $this->assertEquals('ADMIN: Important Freegle Update', $envelope->subject);
+    }
+
+    public function test_marketing_mail_has_no_admin_prefix(): void
+    {
+        $user = $this->createTestUser();
+        $admin = $this->makeAdmin([
+            'subject' => 'Little Free Shops - Help us make it happen!',
+            'template' => 'fundraising',
+        ]);
+
+        $mail = new AdminMail($user, $admin, 'Test Group');
+        $envelope = $mail->envelope();
+
+        $this->assertEquals('Little Free Shops - Help us make it happen!', $envelope->subject);
+        $this->assertTrue($mail->isMarketing);
     }
 
     public function test_admin_mail_has_user(): void

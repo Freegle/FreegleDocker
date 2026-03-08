@@ -470,7 +470,7 @@ class User extends Model
     }
 
     /**
-     * Generate the marketing opt-out URL for fundraising/non-essential admin emails.
+     * Generate the marketing opt-out URL for marketing/non-essential admin emails.
      *
      * Uses the same getUserKey() mechanism as unsubscribe for authentication.
      *
