@@ -1,3 +1,6 @@
+{{-- CROSS-REFERENCE: A pre-compiled HTML preview of this template exists at:
+     iznik-nuxt3/modtools/components/ModAdminPreviewLittleFreeShop2026.vue
+     If you modify this MJML template, you must regenerate that preview to match. --}}
 <mjml>
     @include('emails.mjml.partials.head', ['preview' => $adminSubject])
     <mj-body background-color="#ffffff">
