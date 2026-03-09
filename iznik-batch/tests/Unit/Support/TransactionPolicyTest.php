@@ -54,19 +54,17 @@ class TransactionPolicyTest extends TestCase
         $this->assertEquals($initialState, TransactionPolicy::inTransaction());
     }
 
-    public function test_bulk_executes_operation_and_returns_result(): void
+    public function test_bulk_rejects_call_inside_transaction(): void
     {
-        // Note: This test may fail if Laravel wraps tests in transactions.
-        // In that case, the bulk operation correctly refuses to run.
-        if (TransactionPolicy::inTransaction()) {
-            $this->markTestSkipped('Cannot test bulk outside transaction when test framework uses transactions');
-        }
+        // DatabaseTransactions wraps us in a transaction, so bulk() should throw.
+        $this->assertTrue(TransactionPolicy::inTransaction());
 
-        $result = TransactionPolicy::bulk(function () {
-            return 'test result';
-        }, 'test bulk');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('should not run inside a transaction');
 
-        $this->assertEquals('test result', $result);
+        TransactionPolicy::bulk(function () {
+            return 'should not reach here';
+        }, 'test bulk inside transaction');
     }
 
     public function test_atomic_executes_operation_and_returns_result(): void
@@ -254,65 +252,35 @@ class TransactionPolicyTest extends TestCase
         DB::statement('DROP TEMPORARY TABLE test_rollback');
     }
 
-    public function test_bulk_retries_on_deadlock_exception(): void
+    public function test_bulk_deadlock_retry_rejects_inside_transaction(): void
     {
-        if (TransactionPolicy::inTransaction()) {
-            $this->markTestSkipped('Cannot test bulk outside transaction when test framework uses transactions');
-        }
-
-        $attempts = 0;
+        // Verify bulk() consistently rejects calls inside transactions,
+        // even when testing retry scenarios.
+        $this->assertTrue(TransactionPolicy::inTransaction());
 
         TransactionPolicy::configure(3, 10);
 
-        $result = TransactionPolicy::bulk(function () use (&$attempts) {
-            $attempts++;
-            if ($attempts < 2) {
-                throw new DeadlockException('Simulated deadlock in bulk');
-            }
-            return 'bulk success after retry';
-        }, 'test bulk retry');
-
-        $this->assertEquals(2, $attempts);
-        $this->assertEquals('bulk success after retry', $result);
+        $this->expectException(RuntimeException::class);
+        TransactionPolicy::bulk(fn () => 'test', 'test bulk retry');
     }
 
-    public function test_bulk_gives_up_after_max_retries(): void
+    public function test_bulk_max_retries_rejects_inside_transaction(): void
     {
-        if (TransactionPolicy::inTransaction()) {
-            $this->markTestSkipped('Cannot test bulk outside transaction when test framework uses transactions');
-        }
-
-        $attempts = 0;
+        $this->assertTrue(TransactionPolicy::inTransaction());
 
         TransactionPolicy::configure(3, 10);
 
-        $this->expectException(DeadlockException::class);
-
-        TransactionPolicy::bulk(function () use (&$attempts) {
-            $attempts++;
-            throw new DeadlockException('Persistent deadlock in bulk');
-        }, 'test bulk max retries');
+        $this->expectException(RuntimeException::class);
+        TransactionPolicy::bulk(fn () => 'test', 'test bulk max retries');
     }
 
-    public function test_bulk_does_not_retry_non_deadlock_errors(): void
+    public function test_bulk_non_deadlock_rejects_inside_transaction(): void
     {
-        if (TransactionPolicy::inTransaction()) {
-            $this->markTestSkipped('Cannot test bulk outside transaction when test framework uses transactions');
-        }
-
-        $attempts = 0;
+        $this->assertTrue(TransactionPolicy::inTransaction());
 
         TransactionPolicy::configure(3, 10);
 
-        try {
-            TransactionPolicy::bulk(function () use (&$attempts) {
-                $attempts++;
-                throw new RuntimeException('Not a deadlock in bulk');
-            }, 'test bulk no retry');
-        } catch (RuntimeException $e) {
-            // Expected
-        }
-
-        $this->assertEquals(1, $attempts);
+        $this->expectException(RuntimeException::class);
+        TransactionPolicy::bulk(fn () => 'test', 'test bulk no retry');
     }
 }

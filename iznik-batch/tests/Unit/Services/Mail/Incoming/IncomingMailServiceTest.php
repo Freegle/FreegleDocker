@@ -1540,6 +1540,16 @@ class IncomingMailServiceTest extends TestCase
 
     public function test_spamassassin_spam_stored_with_score(): void
     {
+        // Mock SpamCheckService so checkSpamAssassin returns a high spam score
+        // without needing a running spamd daemon.
+        $spamCheckMock = \Mockery::mock(\App\Services\Mail\Incoming\SpamCheckService::class)->makePartial();
+        $spamCheckMock->shouldReceive('checkSpamAssassin')
+            ->andReturn([15.5, true]);
+        $spamCheckMock->shouldReceive('checkMessage')
+            ->andReturn(null);
+
+        $this->service = new IncomingMailService(spamCheck: $spamCheckMock);
+
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamasspam')]);
         $this->createMembership($user, $group, [
@@ -1551,13 +1561,10 @@ class IncomingMailServiceTest extends TestCase
 
         $userEmail = $user->emails->first()->email;
 
-        // Create email with SpamAssassin headers indicating high spam score
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
             'To' => $group->nameshort.'@groups.ilovefreegle.org',
             'Subject' => 'OFFER: Test item (London)',
-            'X-Spam-Score' => '15.5',
-            'X-Spam-Status' => 'Yes, score=15.5 required=5.0',
         ], 'Test body');
 
         $parsed = $this->parser->parse(
@@ -1568,17 +1575,17 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // If SpamAssassin score triggers spam detection
-        if ($result === RoutingResult::INCOMING_SPAM) {
-            $message = DB::table('messages')
-                ->where('fromuser', $user->id)
-                ->orderBy('id', 'desc')
-                ->first();
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result,
+            "SpamAssassin score 15.5 should route as spam, got: {$result->value}");
 
-            $this->assertNotNull($message);
-            $this->assertEquals('SpamAssassin', $message->spamtype);
-            $this->assertStringContainsString('score', $message->spamreason);
-        }
+        $message = DB::table('messages')
+            ->where('fromuser', $user->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($message, 'Spam message should be stored in database');
+        $this->assertEquals('SpamAssassin', $message->spamtype);
+        $this->assertStringContainsString('score', $message->spamreason);
     }
 
     public function test_routing_context_includes_spam_info(): void
