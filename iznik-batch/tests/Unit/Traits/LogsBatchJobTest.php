@@ -107,6 +107,9 @@ class LogsBatchJobTest extends TestCase
         $command = new TestCommandWithComplexSignature();
         $command->setLaravel($this->app);
         $command->handle();
+
+        // Mockery expectations above verify the correct job name extraction.
+        $this->addToAssertionCount(1);
     }
 }
 

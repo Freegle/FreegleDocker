@@ -9,6 +9,7 @@ use App\Services\Mail\Incoming\ParsedEmail;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Mockery;
+use PHPUnit\Framework\Attributes\Test;
 use ReflectionClass;
 use Tests\TestCase;
 
@@ -38,7 +39,7 @@ class LocationIdTest extends TestCase
         return $method->invokeArgs($this->service, $args);
     }
 
-    /** @test */
+    #[Test]
     public function it_finds_closest_postcode_by_coordinates(): void
     {
         // Create a test location in the database
@@ -61,7 +62,7 @@ class LocationIdTest extends TestCase
         $this->assertEquals($locationId, $foundId);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_null_when_no_postcode_found(): void
     {
         // Test with coordinates in the middle of the ocean
@@ -70,7 +71,7 @@ class LocationIdTest extends TestCase
         $this->assertNull($foundId);
     }
 
-    /** @test */
+    #[Test]
     public function it_finds_closest_postcode_within_expanding_radius(): void
     {
         // Create a test location slightly offset from search point
@@ -92,7 +93,7 @@ class LocationIdTest extends TestCase
         $this->assertEquals($locationId, $foundId);
     }
 
-    /** @test */
+    #[Test]
     public function it_ignores_non_postcode_locations(): void
     {
         // Create a non-postcode location
@@ -114,7 +115,7 @@ class LocationIdTest extends TestCase
         $this->assertNull($foundId);
     }
 
-    /** @test */
+    #[Test]
     public function it_requires_space_in_postcode_name(): void
     {
         // Create a postcode without space (invalid format)
@@ -136,7 +137,7 @@ class LocationIdTest extends TestCase
         $this->assertNull($foundId);
     }
 
-    /** @test */
+    #[Test]
     public function it_gets_lat_lng_from_tn_coordinates_header(): void
     {
         // Create a mock ParsedEmail with TN coordinates header

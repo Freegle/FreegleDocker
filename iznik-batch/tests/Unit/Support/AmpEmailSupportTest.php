@@ -3,6 +3,7 @@
 namespace Tests\Unit\Support;
 
 use App\Support\AmpEmailSupport;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -111,9 +112,7 @@ class AmpEmailSupportTest extends TestCase
         }
     }
 
-    /**
-     * @dataProvider invalidEmailsProvider
-     */
+    #[DataProvider('invalidEmailsProvider')]
     public function test_invalid_emails_return_false(string $email): void
     {
         $this->assertFalse(
