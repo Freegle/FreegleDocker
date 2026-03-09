@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y \
     docker.io \
     && rm -rf /var/lib/apt/lists/*
 
+# Docker API version compatibility (debian docker.io is older than host daemon)
+ENV DOCKER_API_VERSION=1.44
+
 # Copy package files
 COPY package*.json ./
 

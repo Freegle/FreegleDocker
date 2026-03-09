@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('chat_room_redirects')) {
+            return;
+        }
+
         Schema::create('chat_room_redirects', function (Blueprint $table) {
             $table->unsignedBigInteger('old_id')->primary();
             $table->unsignedBigInteger('new_id')->index();

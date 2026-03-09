@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands\Mail;
 
+use App\Console\Commands\Mail\SendAdminCommand;
+use App\Mail\Admin\AdminMail;
 use App\Mail\Chat\ChatNotification;
 use App\Mail\Digest\SingleDigest;
 use App\Mail\Donation\AskForDonation;
@@ -47,6 +49,8 @@ class TestMailCommand extends Command
      * Available email types.
      */
     protected array $emailTypes = [
+        'admin' => 'Generic admin email (with local volunteers)',
+        'admin:marketing' => 'Marketing admin email (Little Free Shop template)',
         'chat:user2user' => 'User-to-user chat notification',
         'chat:user2mod' => 'User-to-moderator chat notification',
         'digest' => 'Digest email (single message)',
@@ -329,6 +333,8 @@ class TestMailCommand extends Command
     protected function buildMailable(string $type): ?\Illuminate\Mail\Mailable
     {
         return match ($type) {
+            'admin' => $this->buildAdmin(FALSE),
+            'admin:marketing' => $this->buildAdmin(TRUE),
             'chat:user2user' => $this->buildChatNotification(ChatRoom::TYPE_USER2USER),
             'chat:user2mod' => $this->buildChatNotification(ChatRoom::TYPE_USER2MOD),
             'digest' => $this->buildDigest(),
@@ -337,6 +343,72 @@ class TestMailCommand extends Command
             'welcome' => $this->buildWelcome(),
             default => null,
         };
+    }
+
+    /**
+     * Build an admin email (generic or marketing).
+     */
+    protected function buildAdmin(bool $marketing): ?AdminMail
+    {
+        $toEmail = $this->option('to');
+
+        if (!$toEmail) {
+            $this->error('Please specify --to=email to find a user');
+
+            return null;
+        }
+
+        $user = User::whereHas('emails', function ($q) use ($toEmail) {
+            $q->where('email', $toEmail);
+        })->first();
+
+        if (!$user) {
+            $this->error("No user found with email: {$toEmail}");
+
+            return null;
+        }
+
+        $this->info("Found user: {$user->displayname} (ID: {$user->id})");
+
+        // Find a group the user is on, for realistic volunteer data.
+        $membership = DB::table('memberships')->where('userid', $user->id)->first();
+        $group = $membership ? Group::find($membership->groupid) : Group::where('type', Group::TYPE_FREEGLE)->first();
+
+        $groupName = $group ? ($group->namefull ?: $group->nameshort) : 'Test Freegle Group';
+        $groupShort = $group->nameshort ?? 'TestGroup';
+        $modsEmail = "{$groupShort}-volunteers@groups.ilovefreegle.org";
+
+        // Get real local volunteers for the group.
+        $volunteers = $group ? SendAdminCommand::getLocalVolunteers($group->id) : [];
+        $this->info("Found " . count($volunteers) . " local volunteer(s) for {$groupName}");
+
+        // Build a realistic admin record.
+        $admin = [
+            'id' => 0,
+            'groupid' => $group->id ?? 0,
+            'subject' => $marketing
+                ? 'Could you help us start a Little Free Shop?'
+                : 'Test admin email from ' . $groupName,
+            'text' => $marketing
+                ? "Dear \$membername,\n\nImagine a place in your neighbourhood where anyone can drop off things they no longer need — and anyone can pick up what they do.\n\nThat's the idea behind the Little Free Shop: a simple, community-run space that makes reuse easy and accessible for everyone.\n\nWe'd love to pilot this in a few areas across the UK, and your donation could help make it happen."
+                : "Hello \$membername,\n\nThis is a test admin email for \$groupname.\n\nYou can contact your local volunteers at \$owneremail.\n\nThank you for freegling!",
+            'ctatext' => $marketing ? 'Donate now' : 'Visit Freegle',
+            'ctalink' => $marketing
+                ? 'https://www.ilovefreegle.org/donate'
+                : 'https://www.ilovefreegle.org',
+            'essential' => FALSE,
+            'parentid' => null,
+            'template' => $marketing ? 'little-free-shop-2026' : null,
+        ];
+
+        // Apply variable substitution like the real send does.
+        $admin['text'] = str_replace(
+            ['$groupname', '$owneremail', '$membername', '$memberid'],
+            [$groupName, $modsEmail, $user->displayname ?? '', (string) $user->id],
+            $admin['text']
+        );
+
+        return new AdminMail($user, $admin, $groupName, $modsEmail, $groupShort, $volunteers);
     }
 
     /**
