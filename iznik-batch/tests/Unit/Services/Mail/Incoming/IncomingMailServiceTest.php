@@ -4565,4 +4565,37 @@ class IncomingMailServiceTest extends TestCase
         $user = DB::table('users')->where('id', $replier->id)->first();
         $this->assertGreaterThan('2025-01-01', $user->lastaccess, 'lastaccess should be updated on email reply');
     }
+
+    public function test_group_post_updates_lastaccess(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+
+        // Set lastaccess to a stale date
+        DB::table('users')->where('id', $user->id)->update(['lastaccess' => '2020-01-01 00:00:00']);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Test Item (TestLocation)',
+        ], 'A test offer posting');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should route to group
+        $this->assertContains($result, [RoutingResult::PENDING, RoutingResult::APPROVED]);
+
+        // lastaccess should have been updated
+        $updatedUser = DB::table('users')->where('id', $user->id)->first();
+        $this->assertGreaterThan('2025-01-01', $updatedUser->lastaccess, 'lastaccess should be updated on group post');
+    }
 }
