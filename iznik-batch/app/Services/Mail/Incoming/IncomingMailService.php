@@ -413,8 +413,15 @@ class IncomingMailService
             ->where('id', $userId)
             ->update(['lastaccess' => now()]);
 
-        // Check if chat exists
+        // Check if chat exists (follow redirects from merged duplicate rooms)
         $chat = ChatRoom::find($chatId);
+        if ($chat === null) {
+            $redirect = DB::table('chat_room_redirects')->where('old_id', $chatId)->first();
+            if ($redirect) {
+                $chatId = $redirect->new_id;
+                $chat = ChatRoom::find($chatId);
+            }
+        }
         if ($chat === null) {
             Log::warning('Read receipt for non-existent chat', [
                 'chat_id' => $chatId,
@@ -1570,6 +1577,11 @@ class IncomingMailService
             return $this->dropped("Reply from unknown user");
         }
 
+        // Update user's last access
+        DB::table('users')
+            ->where('id', $fromUser->id)
+            ->update(['lastaccess' => now()]);
+
         // #6: Add unrecognised sender email to user profile (email forwarding scenario)
         $this->addEmailToUser($fromUser->id, $email->envelopeFrom);
 
@@ -1686,8 +1698,18 @@ class IncomingMailService
             return $this->handleBounce($email);
         }
 
-        // Validate chat exists
+        // Validate chat exists (follow redirects from merged duplicate rooms)
         $chat = ChatRoom::find($chatId);
+        if ($chat === null) {
+            $redirect = DB::table('chat_room_redirects')->where('old_id', $chatId)->first();
+            if ($redirect) {
+                Log::info('Following chat redirect', [
+                    'old_chat_id' => $chatId,
+                    'new_chat_id' => $redirect->new_id,
+                ]);
+                $chat = ChatRoom::find($redirect->new_id);
+            }
+        }
         if ($chat === null) {
             Log::warning('Reply to non-existent chat', [
                 'chat_id' => $chatId,
@@ -2190,6 +2212,11 @@ class IncomingMailService
             return $this->dropped("Volunteers message from deleted user");
         }
 
+        // Update user's last access
+        DB::table('users')
+            ->where('id', $user->id)
+            ->update(['lastaccess' => now()]);
+
         // Filter auto-replies for -auto@ addresses (only -volunteers@ allows auto-replies through)
         if (! $email->isToVolunteers && $email->isAutoReply()) {
             Log::debug('Dropping auto-reply to auto address');
@@ -2302,6 +2329,11 @@ class IncomingMailService
 
             return $this->dropped("Post from unknown user");
         }
+
+        // Update user's last access
+        DB::table('users')
+            ->where('id', $user->id)
+            ->update(['lastaccess' => now()]);
 
         // Check membership
         $membership = Membership::where('userid', $user->id)
@@ -3140,19 +3172,26 @@ class IncomingMailService
      */
     private function getOrCreateUserChat(int $userId1, int $userId2): ?ChatRoom
     {
-        // Normalize order (smaller ID first)
-        if ($userId1 > $userId2) {
-            [$userId1, $userId2] = [$userId2, $userId1];
-        }
-
-        // Check if chat already exists
+        // Check if chat already exists in EITHER user order.
+        // Old rooms from PHP createConversation() were not normalized, so user1/user2
+        // can be in either order. We must check both to avoid creating duplicates.
         $chat = ChatRoom::where('chattype', 'User2User')
-            ->where('user1', $userId1)
-            ->where('user2', $userId2)
+            ->where(function ($q) use ($userId1, $userId2) {
+                $q->where(function ($q2) use ($userId1, $userId2) {
+                    $q2->where('user1', $userId1)->where('user2', $userId2);
+                })->orWhere(function ($q2) use ($userId1, $userId2) {
+                    $q2->where('user1', $userId2)->where('user2', $userId1);
+                });
+            })
             ->first();
 
         if ($chat !== null) {
             return $chat;
+        }
+
+        // Normalize order (smaller ID first) for new rooms
+        if ($userId1 > $userId2) {
+            [$userId1, $userId2] = [$userId2, $userId1];
         }
 
         // Create new chat

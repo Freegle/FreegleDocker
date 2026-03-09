@@ -6,6 +6,7 @@ use App\Services\CPIService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 class CPIServiceTest extends TestCase
@@ -247,9 +248,8 @@ class CPIServiceTest extends TestCase
     /**
      * Integration test: Verify we can actually fetch from ONS API.
      * This test hits the real API so it's marked as integration.
-     *
-     * @group integration
      */
+    #[Group('integration')]
     public function test_real_ons_api_fetch(): void
     {
         // Clear fake HTTP.

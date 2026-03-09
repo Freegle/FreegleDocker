@@ -1540,6 +1540,16 @@ class IncomingMailServiceTest extends TestCase
 
     public function test_spamassassin_spam_stored_with_score(): void
     {
+        // Mock SpamCheckService so checkSpamAssassin returns a high spam score
+        // without needing a running spamd daemon.
+        $spamCheckMock = \Mockery::mock(\App\Services\Mail\Incoming\SpamCheckService::class)->makePartial();
+        $spamCheckMock->shouldReceive('checkSpamAssassin')
+            ->andReturn([15.5, true]);
+        $spamCheckMock->shouldReceive('checkMessage')
+            ->andReturn(null);
+
+        $this->service = new IncomingMailService(spamCheck: $spamCheckMock);
+
         $group = $this->createTestGroup();
         $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('spamasspam')]);
         $this->createMembership($user, $group, [
@@ -1551,13 +1561,10 @@ class IncomingMailServiceTest extends TestCase
 
         $userEmail = $user->emails->first()->email;
 
-        // Create email with SpamAssassin headers indicating high spam score
         $email = $this->createMinimalEmail([
             'From' => $userEmail,
             'To' => $group->nameshort.'@groups.ilovefreegle.org',
             'Subject' => 'OFFER: Test item (London)',
-            'X-Spam-Score' => '15.5',
-            'X-Spam-Status' => 'Yes, score=15.5 required=5.0',
         ], 'Test body');
 
         $parsed = $this->parser->parse(
@@ -1568,17 +1575,17 @@ class IncomingMailServiceTest extends TestCase
 
         $result = $this->service->route($parsed);
 
-        // If SpamAssassin score triggers spam detection
-        if ($result === RoutingResult::INCOMING_SPAM) {
-            $message = DB::table('messages')
-                ->where('fromuser', $user->id)
-                ->orderBy('id', 'desc')
-                ->first();
+        $this->assertEquals(RoutingResult::INCOMING_SPAM, $result,
+            "SpamAssassin score 15.5 should route as spam, got: {$result->value}");
 
-            $this->assertNotNull($message);
-            $this->assertEquals('SpamAssassin', $message->spamtype);
-            $this->assertStringContainsString('score', $message->spamreason);
-        }
+        $message = DB::table('messages')
+            ->where('fromuser', $user->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($message, 'Spam message should be stored in database');
+        $this->assertEquals('SpamAssassin', $message->spamtype);
+        $this->assertStringContainsString('score', $message->spamreason);
     }
 
     public function test_routing_context_includes_spam_info(): void
@@ -4407,5 +4414,195 @@ class IncomingMailServiceTest extends TestCase
         $this->assertStringContainsString('question about posting rules', $lastMessage->message);
         // The "On ... wrote:" quoted text should be stripped for non-report messages
         $this->assertStringNotContainsString('original quoted message that should be stripped', $lastMessage->message);
+    }
+
+    // ========================================
+    // Chat Room Redirect Tests
+    // ========================================
+
+    public function test_chat_notification_reply_follows_redirect(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+        $user2 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user2')]);
+
+        // Create the canonical room
+        $canonical = $this->createTestChatRoom($user1, $user2);
+
+        // Simulate a deleted duplicate room by inserting a redirect
+        $deletedId = $canonical->id + 99999;
+        DB::table('chat_room_redirects')->insert([
+            'old_id' => $deletedId,
+            'new_id' => $canonical->id,
+        ]);
+
+        $user1Email = $user1->emails->first()->email;
+
+        // Send reply to the old (deleted) chat ID
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$deletedId}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: About the item',
+        ], 'I can collect tomorrow');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$deletedId}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should route successfully via redirect
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // Message should be in the canonical room
+        $msg = ChatMessage::where('chatid', $canonical->id)
+            ->where('message', 'LIKE', '%collect tomorrow%')
+            ->first();
+        $this->assertNotNull($msg, 'Message should be in canonical room after redirect');
+    }
+
+    public function test_chat_notification_reply_to_nonexistent_chat_without_redirect_is_dropped(): void
+    {
+        $user1 = $this->createTestUser(['email_preferred' => $this->uniqueEmail('user1')]);
+
+        $user1Email = $user1->emails->first()->email;
+        $fakeId = 999999999;
+
+        $email = $this->createMinimalEmail([
+            'From' => $user1Email,
+            'To' => "notify-{$fakeId}-{$user1->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: Something',
+        ], 'Hello');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $user1Email,
+            "notify-{$fakeId}-{$user1->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    // ========================================
+    // getOrCreateUserChat Duplicate Prevention Tests
+    // ========================================
+
+    public function test_replyto_finds_existing_chat_with_swapped_users(): void
+    {
+        // This tests that replying to a message finds an existing chat room
+        // even when the user1/user2 order doesn't match the normalized order.
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $this->createMembership($replier, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        // Create an existing chat with poster as user1 (un-normalized, like old PHP did)
+        $existingChat = $this->createTestChatRoom($poster, $replier);
+        $this->createTestChatMessage($existingChat, $poster, ['message' => 'old conversation']);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // Should NOT have created a new chat room - should reuse existing
+        $roomCount = DB::table('chat_rooms')
+            ->where('chattype', 'User2User')
+            ->where(function ($q) use ($poster, $replier) {
+                $q->where(function ($q2) use ($poster, $replier) {
+                    $q2->where('user1', $poster->id)->where('user2', $replier->id);
+                })->orWhere(function ($q2) use ($poster, $replier) {
+                    $q2->where('user1', $replier->id)->where('user2', $poster->id);
+                });
+            })
+            ->count();
+
+        $this->assertEquals(1, $roomCount, 'Should reuse existing chat, not create duplicate');
+    }
+
+    public function test_replyto_updates_lastaccess(): void
+    {
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $this->createMembership($replier, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        // Set lastaccess to a stale date
+        DB::table('users')->where('id', $replier->id)->update(['lastaccess' => '2020-01-01 00:00:00']);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org",
+            'Subject' => 'Re: '.$message->subject,
+        ], 'Is this still available?');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $replierEmail,
+            "replyto-{$message->id}-{$replier->id}@users.ilovefreegle.org"
+        );
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result);
+
+        // lastaccess should have been updated from the stale 2020 date
+        $user = DB::table('users')->where('id', $replier->id)->first();
+        $this->assertGreaterThan('2025-01-01', $user->lastaccess, 'lastaccess should be updated on email reply');
+    }
+
+    public function test_group_post_updates_lastaccess(): void
+    {
+        $user = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+
+        // Set lastaccess to a stale date
+        DB::table('users')->where('id', $user->id)->update(['lastaccess' => '2020-01-01 00:00:00']);
+
+        $userEmail = $user->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $userEmail,
+            'To' => $group->nameshort.'@groups.ilovefreegle.org',
+            'Subject' => 'OFFER: Test Item (TestLocation)',
+        ], 'A test offer posting');
+
+        $parsed = $this->parser->parse(
+            $email,
+            $userEmail,
+            $group->nameshort.'@groups.ilovefreegle.org'
+        );
+
+        $result = $this->service->route($parsed);
+
+        // Should route to group
+        $this->assertContains($result, [RoutingResult::PENDING, RoutingResult::APPROVED]);
+
+        // lastaccess should have been updated
+        $updatedUser = DB::table('users')->where('id', $user->id)->first();
+        $this->assertGreaterThan('2025-01-01', $updatedUser->lastaccess, 'lastaccess should be updated on group post');
     }
 }

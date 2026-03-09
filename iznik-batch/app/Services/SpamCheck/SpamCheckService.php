@@ -36,6 +36,7 @@ class SpamCheckService
             }
 
             // Send SYMBOLS command (returns score and matched rules)
+            // Must use SPAMC/1.2 — spamd rejects 1.5.
             $command = "SYMBOLS SPAMC/1.2\r\n";
             $command .= "Content-length: " . strlen($rawEmail) . "\r\n";
             $command .= "\r\n";
@@ -43,6 +44,7 @@ class SpamCheckService
 
             stream_set_timeout($socket, 30);
             fwrite($socket, $command);
+            // Signal end-of-write so spamd knows the full message has been sent.
             stream_socket_shutdown($socket, STREAM_SHUT_WR);
 
             $response = '';
