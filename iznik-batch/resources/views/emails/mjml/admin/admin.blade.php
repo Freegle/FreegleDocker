@@ -24,8 +24,24 @@
         </mj-section>
         @endif
 
+        @if(isset($volunteers) && count($volunteers) > 0)
+        <mj-section background-color="#f8f9fa" padding="15px 20px 5px">
+            <mj-column>
+                <mj-text font-size="13px" color="#4a5568" font-style="italic" line-height="1.5">
+                    @if(count($volunteers) === 1)
+                        Your local volunteer is {{ $volunteers[0]['firstname'] }}.
+                    @elseif(count($volunteers) === 2)
+                        Your local volunteers are {{ $volunteers[0]['firstname'] }} and {{ $volunteers[1]['firstname'] }}.
+                    @else
+                        Your local volunteers are {{ collect($volunteers)->slice(0, -1)->pluck('firstname')->implode(', ') }}, and {{ $volunteers[count($volunteers) - 1]['firstname'] }}.
+                    @endif
+                </mj-text>
+            </mj-column>
+        </mj-section>
+        @endif
+
         @if($groupName)
-        <mj-section background-color="#f8f9fa" padding="15px 20px">
+        <mj-section background-color="#f8f9fa" padding="5px 20px 15px">
             <mj-column>
                 <mj-text font-size="12px" color="#666666" line-height="1.5">
                     This message was sent to members of <strong>{{ $groupName }}</strong> on {{ config('freegle.branding.name') }}.

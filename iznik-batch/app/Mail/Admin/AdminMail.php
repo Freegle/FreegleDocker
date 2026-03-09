@@ -42,6 +42,8 @@ class AdminMail extends MjmlMailable
 
     public ?string $groupShort;
 
+    public array $volunteers;
+
     /**
      * Create a new message instance.
      *
@@ -50,8 +52,9 @@ class AdminMail extends MjmlMailable
      * @param string|null $groupName Group name for footer
      * @param string|null $modsEmail Group mods email for reply-to
      * @param string|null $groupShort Group's nameshort for from address
+     * @param array $volunteers Local volunteers [{id, displayname, firstname}, ...]
      */
-    public function __construct(User $user, array $admin, ?string $groupName = null, ?string $modsEmail = null, ?string $groupShort = null)
+    public function __construct(User $user, array $admin, ?string $groupName = null, ?string $modsEmail = null, ?string $groupShort = null, array $volunteers = [])
     {
         parent::__construct();
 
@@ -66,6 +69,7 @@ class AdminMail extends MjmlMailable
         $this->template = $admin['template'] ?? null;
         $this->isMarketing = !empty($this->template);
         $this->groupShort = $groupShort;
+        $this->volunteers = $volunteers;
         $this->userSite = config('freegle.sites.user');
 
         // Marketing opt-out shown for non-essential admins.
@@ -124,6 +128,7 @@ class AdminMail extends MjmlMailable
                 'footer_unsubscribe',
                 'unsubscribe'
             ),
+            'volunteers' => $this->volunteers,
         ], $this->getTrackingData());
 
         // Marketing template gets additional data.

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('admins', 'editprotected')) {
+            return;
+        }
+
         Schema::table('admins', function (Blueprint $table) {
             $table->boolean('editprotected')->default(false)->after('essential');
             $table->string('template', 50)->nullable()->after('editprotected');

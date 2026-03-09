@@ -8,6 +8,7 @@ use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Mail\Mailables\Headers;
 use Illuminate\Queue\SerializesModels;
+use Symfony\Component\Mime\Email;
 
 /**
  * Auto-reply sent when a human accidentally replies to a bounce Return-Path address.
@@ -51,5 +52,18 @@ class BounceAddressAutoReply extends Mailable
         return new \Illuminate\Mail\Mailables\Content(
             text: 'emails.bounce-auto-reply-text',
         );
+    }
+
+    /**
+     * Null Return-Path so bounces of this auto-reply don't generate further replies.
+     * This can't be set via the Headers class, so we use withSymfonyMessage.
+     */
+    public function build(): static
+    {
+        $this->withSymfonyMessage(function (Email $message) {
+            $message->returnPath('');
+        });
+
+        return $this;
     }
 }

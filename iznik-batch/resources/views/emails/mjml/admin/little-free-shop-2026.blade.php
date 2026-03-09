@@ -103,6 +103,23 @@
         </mj-section>
         @endif
 
+        {{-- Local volunteers --}}
+        @if(isset($volunteers) && count($volunteers) > 0)
+        <mj-section background-color="#ffffff" padding="10px 25px 15px">
+            <mj-column>
+                <mj-text font-size="13px" color="#4a5568" font-style="italic" align="center" font-family="Helvetica, Arial, sans-serif">
+                    @if(count($volunteers) === 1)
+                        Your local volunteer is {{ $volunteers[0]['firstname'] }}.
+                    @elseif(count($volunteers) === 2)
+                        Your local volunteers are {{ $volunteers[0]['firstname'] }} and {{ $volunteers[1]['firstname'] }}.
+                    @else
+                        Your local volunteers are {{ collect($volunteers)->slice(0, -1)->pluck('firstname')->implode(', ') }}, and {{ $volunteers[count($volunteers) - 1]['firstname'] }}.
+                    @endif
+                </mj-text>
+            </mj-column>
+        </mj-section>
+        @endif
+
         {{-- Footer with opt-out, unsubscribe, and charity info --}}
         <mj-section background-color="#f5f5f5" padding="20px">
             <mj-column>

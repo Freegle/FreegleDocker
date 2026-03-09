@@ -181,6 +181,29 @@ class SendAdminCommandTest extends TestCase
     }
 
     /**
+     * Test: activeonly=1 skips users with very old lastaccess (> 2 years ago).
+     * These users are considered inactive and should not receive activeonly admins.
+     */
+    public function test_active_only_skips_very_old_lastaccess(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+
+        // User who last accessed over 2 years ago.
+        $user = $this->createTestUser(['lastaccess' => now()->subYears(2)]);
+        $this->createMembership($user, $group);
+
+        $adminId = $this->createAdmin($group, ['activeonly' => true]);
+
+        $this->artisan('mail:admin:send', ['--id' => $adminId])
+            ->assertSuccessful();
+
+        Mail::assertNothingSent();
+    }
+
+    /**
      * Test: activeonly=1 skips inactive users.
      * Mirrors V1 testActiveOnly.
      */
@@ -541,6 +564,77 @@ class SendAdminCommandTest extends TestCase
             ->assertSuccessful();
 
         Mail::assertNothingSent();
+    }
+
+    /**
+     * Test: Regular (non-suggested) admin records in admins_users for dedup on retry.
+     */
+    public function test_regular_admin_dedup_on_retry(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $user = $this->createTestUser(['lastaccess' => now()]);
+        $this->createMembership($user, $group);
+
+        $adminId = $this->createAdmin($group);
+
+        // First run — user should receive email.
+        $this->artisan('mail:admin:send', ['--id' => $adminId])
+            ->assertSuccessful();
+
+        Mail::assertSent(AdminMail::class, 1);
+
+        // Check admins_users record uses admin's own ID (no parent).
+        $this->assertDatabaseHas('admins_users', [
+            'userid' => $user->id,
+            'adminid' => $adminId,
+        ]);
+
+        // Reset admin to incomplete for retry simulation.
+        DB::table('admins')->where('id', $adminId)->update(['complete' => null]);
+        Mail::fake();
+
+        // Second run — user should be skipped via dedup.
+        $this->artisan('mail:admin:send', ['--id' => $adminId])
+            ->assertSuccessful();
+
+        Mail::assertNothingSent();
+    }
+
+    /**
+     * Test: AdminMail receives volunteers from the command.
+     */
+    public function test_volunteers_passed_to_admin_mail(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+
+        // Create a regular member who will receive the admin email.
+        $user = $this->createTestUser(['lastaccess' => now()]);
+        $this->createMembership($user, $group);
+
+        // Create a moderator with publish consent (should appear as volunteer).
+        $mod = $this->createTestUser([
+            'lastaccess' => now(),
+            'publishconsent' => 1,
+            'fullname' => 'Jane Smith',
+        ]);
+        $this->createMembership($mod, $group, [
+            'role' => Membership::ROLE_MODERATOR,
+        ]);
+
+        $adminId = $this->createAdmin($group);
+
+        $this->artisan('mail:admin:send', ['--id' => $adminId])
+            ->assertSuccessful();
+
+        Mail::assertSent(AdminMail::class, function (AdminMail $mail) {
+            return !empty($mail->volunteers) && $mail->volunteers[0]['firstname'] === 'Jane';
+        });
     }
 
     /**

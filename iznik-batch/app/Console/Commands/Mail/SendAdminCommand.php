@@ -42,6 +42,11 @@ class SendAdminCommand extends Command
      */
     private const USER_INACTIVE_DAYS = 182;
 
+    /**
+     * Chunk size for batch-loading User models to avoid N+1 queries.
+     */
+    private const USER_CHUNK_SIZE = 100;
+
     public function handle(EmailSpoolerService $spooler): int
     {
         if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
@@ -159,6 +164,41 @@ class SendAdminCommand extends Command
     }
 
     /**
+     * Get local volunteers (active moderators with publish consent) for a group.
+     * Matches V1 birthday email logic from Donations.php.
+     */
+    public static function getLocalVolunteers(int $groupId): array
+    {
+        $oneYearAgo = now()->subYear();
+
+        $mods = DB::table('memberships')
+            ->join('users', 'users.id', '=', 'memberships.userid')
+            ->where('memberships.groupid', $groupId)
+            ->where('memberships.collection', 'Approved')
+            ->whereIn('memberships.role', ['Moderator', 'Owner'])
+            ->where('users.lastaccess', '>', $oneYearAgo)
+            ->where('users.publishconsent', 1)
+            ->whereNull('users.deleted')
+            ->select(['users.id', 'users.fullname'])
+            ->limit(100)
+            ->get();
+
+        $volunteers = [];
+        foreach ($mods as $mod) {
+            $firstName = explode(' ', $mod->fullname ?? '')[0];
+            if ($firstName) {
+                $volunteers[] = [
+                    'id' => $mod->id,
+                    'displayname' => $mod->fullname,
+                    'firstname' => $firstName,
+                ];
+            }
+        }
+
+        return $volunteers;
+    }
+
+    /**
      * Process a single admin — send to all eligible members of its group.
      */
     protected function processAdmin(
@@ -198,6 +238,17 @@ class SendAdminCommand extends Command
 
         $this->info("Processing admin {$admin->id} for group {$groupName}...");
 
+        // Pre-load dedup set: all user IDs already sent for this admin's parent (or self).
+        // Uses a flipped collection for O(1) lookups instead of per-user DB queries.
+        $dedupAdminId = $admin->parentid ?: $admin->id;
+        $sentUserIds = DB::table('admins_users')
+            ->where('adminid', $dedupAdminId)
+            ->pluck('userid')
+            ->flip();
+
+        // Get local volunteers for the group footer.
+        $volunteers = self::getLocalVolunteers($admin->groupid);
+
         // Query members with relevantallowed from users table.
         // Note: V1 queries all memberships regardless of collection. We intentionally
         // filter to Approved only to avoid sending to spam-flagged or pending members.
@@ -217,26 +268,36 @@ class SendAdminCommand extends Command
         $activeThreshold = now()->subDays(self::USER_INACTIVE_DAYS);
         $adminArr = (array) $admin;
 
-        $interrupted = false;
+        $interrupted = FALSE;
+
+        // Buffer members for batch User loading to avoid N+1 queries.
+        $memberBuffer = [];
 
         foreach ($members as $member) {
             if ($this->shouldStop()) {
-                $interrupted = true;
+                $interrupted = TRUE;
                 break;
             }
 
             if ($limit > 0 && $stats['emails_sent'] >= $limit) {
-                $interrupted = true;
+                $interrupted = TRUE;
                 break;
             }
 
-            // Filter: deleted users.
+            // Apply lightweight filters before buffering (no User model needed).
             if ($member->deleted) {
                 continue;
             }
 
             // Filter: activeonly — skip users not accessed in USER_INACTIVE_DAYS (~6 months).
-            if ($admin->activeonly && $member->lastaccess) {
+            // V1: strtotime(NULL) returns FALSE (=0), which is always < threshold, so NULL lastaccess = skipped.
+            if ($admin->activeonly) {
+                if (!$member->lastaccess) {
+                    $stats['skipped_activeonly']++;
+
+                    continue;
+                }
+
                 $lastAccess = \Carbon\Carbon::parse($member->lastaccess);
                 if ($lastAccess->lt($activeThreshold)) {
                     $stats['skipped_activeonly']++;
@@ -256,22 +317,81 @@ class SendAdminCommand extends Command
                 }
             }
 
-            // Filter: suggested admin dedup via admins_users.
-            if ($admin->parentid) {
-                $alreadySent = DB::table('admins_users')
-                    ->where('adminid', $admin->parentid)
-                    ->where('userid', $member->userid)
-                    ->exists();
+            // Filter: dedup via pre-loaded set (covers both suggested and regular admins).
+            if ($sentUserIds->has($member->userid)) {
+                $stats['skipped_dedup']++;
 
-                if ($alreadySent) {
-                    $stats['skipped_dedup']++;
-
-                    continue;
-                }
+                continue;
             }
 
-            // Load the user model for email address and display name.
-            $user = User::find($member->userid);
+            $memberBuffer[] = $member;
+
+            // Process buffer in chunks.
+            if (count($memberBuffer) >= self::USER_CHUNK_SIZE) {
+                $sent += $this->processChunk(
+                    $memberBuffer, $admin, $adminArr, $stats, $dryRun, $useSpool, $spooler,
+                    $groupName, $modsEmail, $group->nameshort, $dedupAdminId, $sentUserIds, $volunteers, $limit
+                );
+                $memberBuffer = [];
+            }
+        }
+
+        // Process remaining members in buffer.
+        if (!empty($memberBuffer) && !$interrupted) {
+            $sent += $this->processChunk(
+                $memberBuffer, $admin, $adminArr, $stats, $dryRun, $useSpool, $spooler,
+                $groupName, $modsEmail, $group->nameshort, $dedupAdminId, $sentUserIds, $volunteers, $limit
+            );
+        }
+
+        // If limit was reached during chunk processing, mark as interrupted.
+        if ($limit > 0 && $stats['emails_sent'] >= $limit) {
+            $interrupted = TRUE;
+        }
+
+        // Mark admin as complete only if we processed all members.
+        // If interrupted (shutdown/limit), don't mark complete so it can be retried.
+        if (!$dryRun && !$interrupted) {
+            DB::table('admins')
+                ->where('id', $admin->id)
+                ->update(['complete' => now()]);
+        }
+
+        $this->info("Admin {$admin->id}: sent {$sent} emails.");
+
+        return $sent;
+    }
+
+    /**
+     * Process a chunk of members — batch-load User models to avoid N+1 queries.
+     */
+    protected function processChunk(
+        array $memberBuffer,
+        object $admin,
+        array $adminArr,
+        array &$stats,
+        bool $dryRun,
+        bool $useSpool,
+        EmailSpoolerService $spooler,
+        ?string $groupName,
+        ?string $modsEmail,
+        ?string $groupShort,
+        int $dedupAdminId,
+        \Illuminate\Support\Collection &$sentUserIds,
+        array $volunteers,
+        int $limit = 0
+    ): int {
+        $sent = 0;
+
+        // Batch-load User models for all members in this chunk.
+        $userIds = array_map(fn ($m) => $m->userid, $memberBuffer);
+        $users = User::whereIn('id', $userIds)->get()->keyBy('id');
+
+        foreach ($memberBuffer as $member) {
+            if ($limit > 0 && $stats['emails_sent'] >= $limit) {
+                break;
+            }
+            $user = $users->get($member->userid);
 
             if (!$user) {
                 continue;
@@ -309,11 +429,11 @@ class SendAdminCommand extends Command
                 $substitutedAdmin = $adminArr;
                 $substitutedAdmin['text'] = str_replace(
                     ['$groupname', '$owneremail', '$membername', '$memberid'],
-                    [$groupName ?? '', $modsEmail ?? '', $user->displayname ?? '', (string) $user->id],
+                    [$groupName ?? '', $modsEmail ?? '', $user->fullname ?? '', (string) $user->id],
                     $substitutedAdmin['text']
                 );
 
-                $mailable = new AdminMail($user, $substitutedAdmin, $groupName, $modsEmail, $group->nameshort);
+                $mailable = new AdminMail($user, $substitutedAdmin, $groupName, $modsEmail, $groupShort, $volunteers);
 
                 if ($useSpool) {
                     $spooler->spool($mailable, $email, self::EMAIL_TYPE);
@@ -321,13 +441,12 @@ class SendAdminCommand extends Command
                     Mail::send($mailable);
                 }
 
-                // Record in admins_users for suggested admin dedup.
-                if ($admin->parentid) {
-                    DB::table('admins_users')->insert([
-                        'userid' => $member->userid,
-                        'adminid' => $admin->parentid,
-                    ]);
-                }
+                // Record in admins_users for dedup (covers both suggested and regular admins).
+                DB::table('admins_users')->insert([
+                    'userid' => $member->userid,
+                    'adminid' => $dedupAdminId,
+                ]);
+                $sentUserIds->put($member->userid, TRUE);
 
                 $stats['emails_sent']++;
                 $sent++;
@@ -336,16 +455,6 @@ class SendAdminCommand extends Command
                 Log::error("Admin {$admin->id}: error sending to user {$member->userid}: {$e->getMessage()}");
             }
         }
-
-        // Mark admin as complete only if we processed all members.
-        // If interrupted (shutdown/limit), don't mark complete so it can be retried.
-        if (!$dryRun && !$interrupted) {
-            DB::table('admins')
-                ->where('id', $admin->id)
-                ->update(['complete' => now()]);
-        }
-
-        $this->info("Admin {$admin->id}: sent {$sent} emails.");
 
         return $sent;
     }

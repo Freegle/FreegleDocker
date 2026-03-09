@@ -167,6 +167,45 @@ class AdminMailTest extends TestCase
         $this->assertNull($essentialMail->marketingOptOutUrl);
     }
 
+    public function test_admin_mail_has_volunteers(): void
+    {
+        $user = $this->createTestUser();
+        $admin = $this->makeAdmin();
+        $volunteers = [
+            ['id' => 1, 'displayname' => 'Jane Smith', 'firstname' => 'Jane'],
+            ['id' => 2, 'displayname' => 'Bob Jones', 'firstname' => 'Bob'],
+        ];
+
+        $mail = new AdminMail($user, $admin, 'Test Group', null, null, $volunteers);
+
+        $this->assertCount(2, $mail->volunteers);
+        $this->assertEquals('Jane', $mail->volunteers[0]['firstname']);
+        $this->assertEquals('Bob', $mail->volunteers[1]['firstname']);
+    }
+
+    public function test_admin_mail_default_empty_volunteers(): void
+    {
+        $user = $this->createTestUser();
+        $admin = $this->makeAdmin();
+
+        $mail = new AdminMail($user, $admin, 'Test Group');
+
+        $this->assertIsArray($mail->volunteers);
+        $this->assertEmpty($mail->volunteers);
+    }
+
+    public function test_admin_mail_envelope_with_group_short(): void
+    {
+        $user = $this->createTestUser();
+        $admin = $this->makeAdmin();
+
+        $mail = new AdminMail($user, $admin, 'Freegle Testington', null, 'FreegleTestington');
+        $envelope = $mail->envelope();
+
+        $this->assertEquals('FreegleTestington-auto@groups.ilovefreegle.org', $envelope->from->address);
+        $this->assertEquals('Freegle Testington Volunteers', $envelope->from->name);
+    }
+
     public function test_admin_mail_has_attachments(): void
     {
         $user = $this->createTestUser();
