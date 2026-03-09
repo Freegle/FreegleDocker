@@ -1,4 +1,4 @@
-<mj-section background-color="#5cb85c" padding="20px">
+<mj-section mj-class="bg-success" padding="20px">
     <mj-column>
         <mj-image
             width="120px"

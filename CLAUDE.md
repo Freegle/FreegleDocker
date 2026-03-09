@@ -68,6 +68,17 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-03-04 - CI fixes + V2 Changes API + Playwright fix
+- **CI test fixes** (3 issues found and fixed):
+  - iznik-server: `testExpandUrls` network-dependent → changed to check link text strings (d5c19edd)
+  - iznik-server-go: `TestPostMembershipsReject` nil panic → nil guard + Fiber timeout removal (b614e48)
+  - iznik-nuxt3: Playwright `test-progress.json` ENOENT → added `mkdirSync` (f7fb2997)
+- **V2 Changes API** (5902b87): New `/api/changes` endpoint in Go. Migrated from V1 `changes.php`.
+  - Partner key auth required (partners_keys table). No user session auth.
+  - Returns message changes (deleted/edited/promised/reneged/outcomes/approved), user changes, ratings.
+  - 6 tests covering auth, since parameter, message outcomes, ratings.
+- **CI status**: ALL GREEN. Master (#2214, job #2464), feature/fundraising-appeal (#2213), feature/unified-digest-revision (#2204) all passed. Pipeline #2212 had 5 flaky Playwright failures but #2214 (same code + Changes API) passed 73/73.
+
 ### 2026-02-27 - Unified MT chat listing + V1-vs-V2 comparative review fixes
 - **Unified chat handler**: Extended `ListForUser`/`listChats()` with `chattypes` param to handle User2Mod, User2User, Mod2Mod dynamically. Deleted slow `doListChatRoomsMT` (was hanging on production). Added `ListForUserMT` wrapper, Mod2Mod UNION branch, search branches for all types. 8 new tests. Pushed to Go master (2054d51), CI pending.
 - **V1-vs-V2 review**: CI GREEN. Job #2395 SUCCESS. Auto-merged to production.
@@ -89,19 +100,4 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **Freegle browser testing** (13 pages): 12 OK, 1 ERROR (/chitchat - profile.path undefined).
 - **Previous session work**: Group store separation (c36e751a), Go graceful degradation (3dd8332).
 
-### 2026-02-25 - V2 Session Slimdown + CI fixes + Donation thank-you
-- Session slimdown complete (Go ddaa699, nuxt3 f79b3dd9). Master CI GREEN.
-- Donation thank-you fix for unlinked donors (code complete, not yet committed).
 
-### 2026-02-24 - V1→V2 migration: CI GREEN, cleanup done
-- **Status**: CI GREEN. Job 2302 SUCCESS. Auto-merged to production.
-- **Key state**: Go ret removal was REVERTED on master. Tasks 18+19 must deploy atomically with nuxt3 `feature/v2-unified-migration`.
-
-### 2026-02-22 - Performance + V1 elimination
-- PR #186 (bootstrap-lean-imports): Production build verified, manualChunks removed.
-- PR #187 (V1→V2 migration): All V1 API methods removed from iznik-nuxt3. CI GREEN. Ready for human merge.
-
-### 2026-02-20 - Mobile app adversarial reviews + branding
-- **Active plan**: `plans/active/freegle-mobile-app.md`
-- Two adversarial review rounds completed with fixes (29 issues total). Branding refined (logo placement, custom Give button). APK builds clean.
-- **Outstanding**: Auth persistence (DataStore), CameraX photo capture, Give flow API, map/list toggle.
