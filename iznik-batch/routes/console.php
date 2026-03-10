@@ -181,18 +181,17 @@ Schedule::command('mail:cleanup-archive')
 // =============================================================================
 
 // Copy suggested admins to per-group copies and clean up old pending admins.
-// Runs hourly — matches V1 cron frequency. Creates per-group copies (pending=1)
-// for moderator approval, then marks the suggested admin as complete.
+// Creates per-group copies (pending=1) for moderator approval,
+// then marks the suggested admin as complete.
 Schedule::command('mail:admin:copy')
-    ->hourly()
+    ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 
 // Send approved admin emails to group members.
-// Runs hourly with spool for resilient async delivery.
 // Only processes admins that are approved (pending=0) and not yet complete.
 Schedule::command('mail:admin:send --spool')
-    ->hourly()
+    ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 
