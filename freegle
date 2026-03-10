@@ -193,8 +193,9 @@ cmd_status() {
         fi
 
         # Count running containers for this project
+        # Use label filter for exact project match (avoids freegle- matching freegle-wt1-)
         if [[ -n "$project" ]]; then
-            container_count=$(docker ps --filter "name=^${project}-" --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
+            container_count=$(docker ps --filter "label=com.docker.compose.project=${project}" --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
         fi
 
         local branch
