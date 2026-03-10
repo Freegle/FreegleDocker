@@ -1075,8 +1075,13 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-freegle}-playwright
     profiles:
       - dev
-    networks:
-      - default
+    network_mode: "host"
+    extra_hosts:
+      - "freegle-dev-local.localhost:127.0.0.1"
+      - "freegle-prod-local.localhost:127.0.0.1"
+      - "freegle-dev-live.localhost:127.0.0.1"
+      - "modtools-dev-local.localhost:127.0.0.1"
+      - "modtools-prod-local.localhost:127.0.0.1"
     shm_size: 2gb  # Chrome needs more shared memory for parallel browser instances
     build:
       context: ./iznik-nuxt3
