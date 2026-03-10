@@ -151,7 +151,7 @@ commands:
             export COMPOSE_PROFILES="${COMPOSE_PROFILES:-frontend,database,backend,dev,monitoring}"
 
             # Clean up any existing containers first
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml down --remove-orphans || true
+            docker-compose down --remove-orphans || true
             docker system prune -f || true
 
             # Fix memory overcommit for Redis
@@ -187,7 +187,7 @@ commands:
             for attempt in $(seq 1 $MAX_RETRIES); do
               echo "Build attempt $attempt of $MAX_RETRIES..."
 
-              if docker-compose -f docker-compose.yml -f docker-compose.ports.yml build --no-cache \
+              if docker-compose build --no-cache \
                 apiv1 apiv1-phpunit apiv2 \
                 freegle-prod-local modtools-prod-local \
                 playwright status batch; then
@@ -197,7 +197,7 @@ commands:
                 if [ $attempt -lt $MAX_RETRIES ]; then
                   echo "⚠️ Build failed on attempt $attempt, retrying in ${RETRY_DELAY}s..."
                   # Clean up any partial builds
-                  docker-compose -f docker-compose.yml -f docker-compose.ports.yml down --remove-orphans 2>/dev/null || true
+                  docker-compose down --remove-orphans 2>/dev/null || true
                   docker system prune -f 2>/dev/null || true
                   sleep $RETRY_DELAY
                 else
@@ -215,7 +215,7 @@ commands:
             # Phase 2: Start all remaining containers (all databases already exist)
 
             echo "=== Phase 1: Starting infrastructure + batch for migrations ==="
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml up -d \
+            docker-compose up -d \
               percona postgres redis beanstalkd mailpit \
               spamassassin-app reverse-proxy tusd delivery loki mjml \
               batch status host-scripts
@@ -262,13 +262,13 @@ commands:
             fi
 
             echo "=== Phase 2: Starting all remaining containers ==="
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml up -d
+            docker-compose up -d
 
             echo "Waiting for application services to start..."
             sleep 30
 
             echo "Service status:"
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml ps
+            docker-compose ps
 
             # Verify expected container names exist (fail fast if container_name isn't working)
             echo ""
@@ -321,6 +321,15 @@ commands:
 
             cd "$HOME/FreegleDocker"
             git submodule update --init --recursive --jobs 4
+
+            # Set COMPOSE_FILE based on whether ports overlay exists (backward compat with master)
+            if [ -f docker-compose.ports.yml ]; then
+              echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml"' >> $BASH_ENV
+              echo "✅ Using split compose files (docker-compose.yml + docker-compose.ports.yml)"
+            else
+              echo 'export COMPOSE_FILE="docker-compose.yml"' >> $BASH_ENV
+              echo "ℹ️  Using single docker-compose.yml (ports inline)"
+            fi
 
             # ModTools is now built from iznik-nuxt3/modtools (same repo, different build)
             echo "=== Verifying modtools directory ==="
@@ -416,12 +425,12 @@ commands:
               case "$submodule" in
                 iznik-server-go)
                   echo "🔨 Rebuilding apiv2 container (iznik-server-go was aligned)..."
-                  docker-compose -f docker-compose.yml -f docker-compose.ports.yml build apiv2
+                  docker-compose build apiv2
                   echo "✅ apiv2 rebuilt"
                   ;;
                 iznik-server)
                   echo "🔨 Rebuilding apiv1 container (iznik-server was aligned)..."
-                  docker-compose -f docker-compose.yml -f docker-compose.ports.yml build apiv1
+                  docker-compose build apiv1
                   echo "✅ apiv1 rebuilt"
                   ;;
                 *)
@@ -442,7 +451,7 @@ commands:
           command: |
             cd "$HOME/FreegleDocker"
             echo "🔨 Building << parameters.container >> container with updated code..."
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml build << parameters.container >>
+            docker-compose build << parameters.container >>
             echo "✅ << parameters.container >> container built successfully"
 
   start-services:
@@ -476,7 +485,7 @@ commands:
             # Phase 2: All remaining containers (databases already waiting for them)
 
             echo "=== Phase 1: Infrastructure + migrations ==="
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml up -d \
+            docker-compose up -d \
               percona postgres redis beanstalkd mailpit \
               spamassassin-app reverse-proxy tusd delivery loki mjml \
               batch status host-scripts
@@ -522,12 +531,12 @@ commands:
             fi
 
             echo "=== Phase 2: Starting all remaining containers ==="
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml up -d
+            docker-compose up -d
 
             echo "Waiting for application services to start..."
             sleep 30
             echo "Service status:"
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml ps
+            docker-compose ps
 
   wait-for-basic-services:
     description: "Wait for API v1 and v2 services to be healthy"
@@ -1356,9 +1365,9 @@ commands:
             fi
 
             # Collect Docker logs
-            if docker-compose -f docker-compose.yml -f docker-compose.ports.yml ps > /dev/null 2>&1; then
-              docker-compose -f docker-compose.yml -f docker-compose.ports.yml logs > ~/artifacts/docker-logs.txt 2>&1 || true
-              docker-compose -f docker-compose.yml -f docker-compose.ports.yml ps > ~/artifacts/docker-status.txt 2>&1 || true
+            if docker-compose ps > /dev/null 2>&1; then
+              docker-compose logs > ~/artifacts/docker-logs.txt 2>&1 || true
+              docker-compose ps > ~/artifacts/docker-status.txt 2>&1 || true
             fi
 
             # Use fixed container names from docker-compose.yml (no dynamic lookup needed)
@@ -1466,7 +1475,7 @@ commands:
             fi
             echo "Working directory: $(pwd)"
             echo "Docker-compose services:"
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml ps || echo "docker-compose ps failed"
+            docker-compose ps || echo "docker-compose ps failed"
             # Use fixed container name from docker-compose.yml
             if docker cp freegle-apiv2:/app/coverage.out iznik-server-go/coverage.out 2>/dev/null; then
               echo "Found Go coverage..."
@@ -1798,7 +1807,7 @@ jobs:
           command: |
             cd "$HOME/FreegleDocker"
             echo "Force rebuilding containers to pick up PR code..."
-            docker-compose -f docker-compose.yml -f docker-compose.ports.yml build --no-cache \
+            docker-compose build --no-cache \
               apiv2 freegle-prod-local modtools-prod-local playwright
             echo "✅ Containers rebuilt with PR code"
           no_output_timeout: 15m
@@ -1834,6 +1843,15 @@ jobs:
           command: |
             # Pre-create directories with correct ownership so Docker doesn't create them as root
             mkdir -p ssl/certs logs data status/data test-results
+
+            # Set COMPOSE_FILE based on whether ports overlay exists (backward compat with master)
+            if [ -f docker-compose.ports.yml ]; then
+              echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml"' >> $BASH_ENV
+              echo "✅ Using split compose files (docker-compose.yml + docker-compose.ports.yml)"
+            else
+              echo 'export COMPOSE_FILE="docker-compose.yml"' >> $BASH_ENV
+              echo "ℹ️  Using single docker-compose.yml (ports inline)"
+            fi
 
       - run:
           name: Check if only plans or yesterday files changed
