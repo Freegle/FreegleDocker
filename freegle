@@ -241,6 +241,11 @@ cmd_worktree_create() {
     # Create the worktree
     git -C "$main_repo" worktree add "$worktree_dir" "$branch"
 
+    # Fix CRLF line endings in submodules (WSL/Windows git may convert LF→CRLF,
+    # breaking shell scripts like generate-swagger.sh inside containers)
+    git -C "$worktree_dir" submodule foreach --quiet \
+        'git config core.autocrlf false && git checkout -- .' 2>/dev/null || true
+
     # Copy .env and configure for no ports
     if [[ -f "$main_repo/.env" ]]; then
         cp "$main_repo/.env" "$worktree_dir/.env"
@@ -312,10 +317,15 @@ cmd_worktree_remove() {
     fi
 
     # Remove git worktree
+    # Docker containers create root-owned files (vendor/, conf/, etc.) that
+    # normal rm can't delete. Use a throwaway container to clean them up
+    # instead of requiring sudo.
     echo "Removing worktree..."
     git -C "$main_repo" worktree remove "$worktree_dir" --force 2>/dev/null || {
-        echo "Warning: git worktree remove failed, cleaning up manually"
-        rm -rf "$worktree_dir"
+        echo "Cleaning up root-owned files via Docker..."
+        docker run --rm -v "$worktree_dir:/cleanup:rw" alpine \
+            sh -c 'find /cleanup -mindepth 1 -delete' 2>/dev/null || true
+        rmdir "$worktree_dir" 2>/dev/null || rm -rf "$worktree_dir" 2>/dev/null || true
         git -C "$main_repo" worktree prune
     }
 
