@@ -88,14 +88,27 @@
                 </mj-text>
                 <mj-text font-size="14px" color="#333333" line-height="2.0" font-family="Helvetica, Arial, sans-serif">
                     @foreach($bulletPoints as $point)
-                    <span style="color: #338808;">&#10004;</span>&nbsp;&nbsp;<strong>{{ Str::before($point, ' — ') }}</strong> — {{ Str::after($point, ' — ') }}<br/>
+                    ✅&nbsp;&nbsp;<strong>{{ Str::before($point, ' — ') }}</strong> — {{ Str::after($point, ' — ') }}<br/>
                     @endforeach
                 </mj-text>
             </mj-column>
         </mj-section>
         @endif
 
-        {{-- Spending plan — muted, small, below Why it matters --}}
+        {{-- Sign-off from board chair --}}
+        <mj-section background-color="#ffffff" padding="15px 25px 5px">
+            <mj-column>
+                <mj-text font-size="14px" color="#4a5568" line-height="1.5" font-family="Helvetica, Arial, sans-serif" align="left">
+                    <p>Thank you!</p>
+                    <p>
+                        Neil Morris<br/>
+                        Freegle Board Chair
+                    </p>
+                </mj-text>
+            </mj-column>
+        </mj-section>
+
+        {{-- Spending plan — muted, small --}}
         @if(isset($spendingPlan) && $spendingPlan)
         <mj-section background-color="#ffffff" padding="0 25px 15px">
             <mj-column>
@@ -105,19 +118,6 @@
             </mj-column>
         </mj-section>
         @endif
-
-        {{-- Sign-off from board chair --}}
-        <mj-section background-color="#f8f9fa" padding="15px 25px 5px">
-            <mj-column>
-                <mj-text font-size="14px" color="#4a5568" line-height="1.5" font-family="Helvetica, Arial, sans-serif" align="center">
-                    <p>Thank you!</p>
-                    <p>
-                        Neil Morris<br/>
-                        Freegle Board Chair
-                    </p>
-                </mj-text>
-            </mj-column>
-        </mj-section>
 
         {{-- Local volunteers --}}
         @if(isset($volunteers) && count($volunteers) > 0)
