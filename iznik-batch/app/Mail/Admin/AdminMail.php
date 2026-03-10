@@ -134,7 +134,7 @@ class AdminMail extends MjmlMailable
         // Marketing template gets additional data.
         if ($this->isMarketing) {
             $imageSource = config('freegle.sites.user') . '/landingpage/little-free-shop-2026.jpg';
-            $data['heroImageUrl'] = config('freegle.delivery.base_url') . '/?url=' . urlencode($imageSource) . '&w=600&output=jpg';
+            $data['heroImageUrl'] = config('freegle.delivery.base_url') . '/?url=' . urlencode($imageSource) . '&w=600&output=jpg&v=' . time();
             $data['heroHeading'] = 'Help us make this happen!';
             $data['targetAmount'] = '£5,000';
             $data['bulletPoints'] = [

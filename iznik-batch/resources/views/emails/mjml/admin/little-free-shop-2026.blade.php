@@ -8,7 +8,7 @@
         {{-- Hero banner — photo with heading overlaid at bottom-left --}}
         <mj-section background-url="{{ $heroImageUrl }}" background-size="cover" background-position="center" padding="0">
             <mj-column>
-                <mj-text font-size="28px" font-weight="bold" color="#ffffff" align="left" line-height="1.3" font-family="Helvetica, Arial, sans-serif" padding="180px 25px 10px 0">
+                <mj-text font-size="28px" font-weight="bold" color="#ffffff" align="left" line-height="1.3" font-family="Helvetica, Arial, sans-serif" padding="10px 25px 228px 0">
                     <span style="background-color: rgba(0,0,0,0.5); padding: 6px 12px; display: inline;">{{ $heroHeading ?? $adminSubject }}</span>
                 </mj-text>
             </mj-column>
