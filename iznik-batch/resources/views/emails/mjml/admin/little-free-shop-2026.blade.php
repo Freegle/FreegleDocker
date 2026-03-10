@@ -106,11 +106,15 @@
         </mj-section>
         @endif
 
-        {{-- Sent centrally on behalf of board chair --}}
+        {{-- Sign-off from board chair --}}
         <mj-section background-color="#f8f9fa" padding="15px 25px 5px">
             <mj-column>
-                <mj-text font-size="13px" color="#4a5568" font-style="italic" line-height="1.5" font-family="Helvetica, Arial, sans-serif">
-                    This appeal is sent on behalf of Neil Morris, Chair of the Board of Trustees.
+                <mj-text font-size="14px" color="#4a5568" line-height="1.5" font-family="Helvetica, Arial, sans-serif" align="center">
+                    <p>Thank you!</p>
+                    <p>
+                        Neil Morris<br/>
+                        Freegle Board Chair
+                    </p>
                 </mj-text>
             </mj-column>
         </mj-section>
