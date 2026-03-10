@@ -307,9 +307,7 @@ services:
     profiles:
       - frontend
     networks:
-      default:
-        aliases:
-          - tusd.localhost
+      - default
     command: -hooks-http=http://apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/ -cors-allow-headers=baggage,sentry-trace
     depends_on:
       reverse-proxy:
@@ -617,9 +615,7 @@ services:
     profiles:
       - frontend
     networks:
-      default:
-        aliases:
-          - apiv2.localhost
+      - default
     build:
       context: ./iznik-server-go
       network: host
@@ -690,9 +686,7 @@ services:
     profiles:
       - prod-live
     networks:
-      default:
-        aliases:
-          - apiv2-live.localhost
+      - default
     build:
       context: ./iznik-server-go
       network: host
@@ -753,9 +747,7 @@ services:
     profiles:
       - dev
     networks:
-      default:
-        aliases:
-          - freegle-dev-local.localhost
+      - default
     build:
       context: ./iznik-nuxt3
       network: host
@@ -820,9 +812,7 @@ services:
     profiles:
       - dev-live
     networks:
-      default:
-        aliases:
-          - freegle-dev-live.localhost
+      - default
     build:
       context: ./iznik-nuxt3
       network: host
@@ -858,9 +848,7 @@ services:
     profiles:
       - dev
     networks:
-      default:
-        aliases:
-          - freegle-prod-local.localhost
+      - default
     build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.prod
@@ -926,9 +914,7 @@ services:
     profiles:
       - dev
     networks:
-      default:
-        aliases:
-          - modtools-dev-local.localhost
+      - default
     build:
       context: .
       dockerfile: ./iznik-nuxt3/modtools/Dockerfile
@@ -992,9 +978,7 @@ services:
     profiles:
       - dev-live
     networks:
-      default:
-        aliases:
-          - modtools-dev-live.localhost
+      - default
     build:
       context: .
       dockerfile: ./iznik-nuxt3/modtools/Dockerfile
@@ -1031,9 +1015,7 @@ services:
     profiles:
       - dev
     networks:
-      default:
-        aliases:
-          - modtools-prod-local.localhost
+      - default
     build:
       context: ./iznik-nuxt3
       dockerfile: modtools/Dockerfile.prod
