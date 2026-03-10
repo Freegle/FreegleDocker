@@ -14,16 +14,11 @@
             </mj-column>
         </mj-section>
 
-        {{-- First paragraph + early CTA above the fold --}}
-        @php
-            $paragraphs = preg_split('/\n\s*\n/', $adminText, 2);
-            $firstParagraph = $paragraphs[0] ?? '';
-            $remainingText = $paragraphs[1] ?? '';
-        @endphp
+        {{-- First paragraph --}}
         <mj-section background-color="#ffffff" padding="20px 25px 10px">
             <mj-column>
                 <mj-text font-size="15px" color="#333333" line-height="1.7" font-family="Helvetica, Arial, sans-serif">
-                    {!! nl2br($firstParagraph) !!}
+                    <p>Imagine if there was one of these near you. A place on your street where you could drop off good stuff you don't need any more, and pick up things other people have left. For free.</p>
                 </mj-text>
             </mj-column>
         </mj-section>
@@ -40,17 +35,25 @@
         @endif
 
         {{-- Remaining body text --}}
-        @if($remainingText)
         <mj-section background-color="#ffffff" padding="10px 25px 10px">
             <mj-column>
                 <mj-text font-size="15px" color="#333333" line-height="1.7" font-family="Helvetica, Arial, sans-serif">
-                    {!! nl2br($remainingText) !!}
+                    <p>That's the <strong>Little Free Shop</strong> &mdash; a community reuse hub right where people live.</p>
+                    <p>We already know a physical place to freegle works. Our Free Shop in Brighton Market has been a huge hit. Local authorities across the country want to try it. Now we need <strong>&pound;5,000</strong> to get us to the stage where we can run run a pilot of how we could deliver a Little Free Shop in lots of neighbourhoods across the UK.</p>
                 </mj-text>
             </mj-column>
         </mj-section>
-        @endif
 
-        {{-- Second donate button --}}
+        {{-- Call to action heading --}}
+        <mj-section background-color="#ffffff" padding="5px 25px 5px">
+            <mj-column>
+                <mj-text font-size="18px" font-weight="bold" color="#333333" align="center" font-family="Helvetica, Arial, sans-serif">
+                    Can you chip in to help make it happen?
+                </mj-text>
+            </mj-column>
+        </mj-section>
+
+        {{-- Donate button --}}
         @if($ctaLink && $ctaText)
         <mj-section background-color="#ffffff" padding="10px 25px 5px">
             <mj-column>
@@ -66,7 +69,7 @@
         <mj-section background-color="#ffffff" padding="0 25px 10px">
             <mj-column>
                 <mj-text font-size="13px" color="#888888" align="center" font-family="Helvetica, Arial, sans-serif">
-                    target <span style="font-weight:bold; color:#333333;">{{ $targetAmount }}</span> — every pound gets us closer
+                    Target: <span style="font-weight:bold; color:#333333;">{{ $targetAmount }}</span> &mdash; every pound gets us closer.
                 </mj-text>
             </mj-column>
         </mj-section>
