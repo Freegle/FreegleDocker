@@ -1,6 +1,8 @@
 import { readFileSync } from 'fs'
 import { isContainerRunning } from '../../utils/docker'
 
+const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+
 /**
  * Returns the current state of the live V2 API toggle.
  * Reads .env (mounted at /app/dotenv) to determine which dev-live
@@ -31,7 +33,7 @@ export default defineEventHandler(async () => {
     // .env not readable, assume defaults
   }
 
-  const apiv2LiveRunning = isContainerRunning('freegle-apiv2-live')
+  const apiv2LiveRunning = isContainerRunning(`${prefix}-apiv2-live`)
 
   return {
     freegle: freegleEnabled,

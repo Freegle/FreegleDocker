@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs'
 import { isContainerRunning } from '../../utils/docker'
 
+const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+
 /**
  * Toggle the V2 API for a dev-live container between the live (remote)
  * V2 API and the local apiv2-live container (connected to production DB
@@ -26,7 +28,7 @@ export default defineEventHandler(async (event) => {
 
   const envPath = '/app/dotenv'
   const envKey = target === 'freegle' ? 'LIVE_FREEGLE_API_V2' : 'LIVE_MT_API_V2'
-  const containerService = target === 'freegle' ? 'freegle-dev-live' : 'modtools-dev-live'
+  const containerService = target === 'freegle' ? `${prefix}-dev-live` : `${prefix}-modtools-dev-live`
   const remoteUrl = 'https://api.ilovefreegle.org/apiv2'
   const localLiveUrl = 'http://apiv2-live.localhost/api'
 
@@ -46,11 +48,11 @@ export default defineEventHandler(async (event) => {
     writeFileSync(envPath, envContent)
 
     // If enabling and apiv2-live isn't running, request a rebuild to start it
-    if (enable && !isContainerRunning('freegle-apiv2-live')) {
+    if (enable && !isContainerRunning(`${prefix}-apiv2-live`)) {
       console.log('Requesting apiv2-live rebuild...')
       const apiv2Request = {
         service: 'apiv2-live',
-        container: 'freegle-apiv2-live',
+        container: `${prefix}-apiv2-live`,
         timestamp: Date.now(),
         id: Math.random().toString(36).substring(2, 11),
       }

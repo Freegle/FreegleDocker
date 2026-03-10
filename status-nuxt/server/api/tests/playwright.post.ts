@@ -1,6 +1,8 @@
 import { spawn, execSync } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
+const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const body = await readBody(event).catch(() => ({}))
@@ -59,7 +61,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
   try {
     // Check freegle-prod-local is running
     const freegleProdCheck = execSync(
-      'docker ps --filter "name=freegle-prod-local" --format "{{.Status}}"',
+      `docker ps --filter "name=${prefix}-prod-local" --format "{{.Status}}"`,
       { encoding: 'utf8', timeout: 5000 }
     ).trim()
 
@@ -74,7 +76,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     appendTestLogs('playwright', 'Restarting Playwright container...\n')
 
     try {
-      execSync('docker restart freegle-playwright', {
+      execSync(`docker restart ${prefix}-playwright`, {
         encoding: 'utf8',
         timeout: 30000,
       })
@@ -95,7 +97,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     setTestState('playwright', { message: 'Counting tests...' })
     try {
       const listOutput = execSync(
-        `docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
+        `docker exec ${prefix}-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
         { encoding: 'utf8', timeout: 60000 }
       )
       // Count lines that match test entries (lines with [chromium] marker)
@@ -121,7 +123,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
 
     // Run tests - NODE_PATH needed so require('@playwright/test') finds global install
     const testProcess = spawn('sh', ['-c', `
-      docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
+      docker exec ${prefix}-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
     `], { stdio: 'pipe' })
 
     testProcess.stdout.on('data', (data) => {

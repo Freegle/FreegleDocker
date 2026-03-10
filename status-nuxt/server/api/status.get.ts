@@ -24,7 +24,8 @@ function getContainerStatuses(): Map<string, ContainerInfo> {
     for (const line of output.split('\n')) {
       if (!line.trim()) continue
       const [name, status, state] = line.split('\t')
-      if (name && (name.startsWith('freegle-') || name.startsWith('modtools-'))) {
+      const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+      if (name && name.startsWith(`${prefix}-`)) {
         containers.set(name, {
           name,
           status: status?.trim() || '',
