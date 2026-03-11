@@ -1064,8 +1064,11 @@ class User extends Model
         DB::table('ratings')->where('ratee', $this->id)->delete();
 
         // --- Remove all group memberships ---
-        // TODO Finnbarr: properly port over getMemberships and removeMembership methods
-        DB::table('memberships')->where('userid', $this->id)->delete();
+        // TODO Finnbarr: properly port over getMemberships method
+        $groupIds = DB::table('memberships')->where('userid', $this->id)->pluck('groupid');
+        foreach ($groupIds as $groupId) {
+            $this->removeMembership($groupId);
+        }
 
         // --- Delete postal addresses and profile images ---
         DB::table('users_addresses')->where('userid', $this->id)->delete();
@@ -1091,5 +1094,87 @@ class User extends Model
             'user' => $this->id,
             'text' => $reason,
         ]);
+    }
+
+    /**
+     * Remove a user's membership from a group, optionally banning them.
+     *
+     * When banning, also inserts into users_banned and withdraws any active
+     * Offer/Wanted messages the user has on the group.
+     *
+     * Ported from iznik-server/include/user/User.php::removeMembership().
+     *
+     * @param int $groupId The group to remove the user from
+     * @param bool $ban If TRUE, also ban the user from the group and withdraw their messages
+     * @param bool $spam If TRUE, log the removal as an automated spammer removal
+     * @param int|null $byUserId The user performing the removal (for logging)
+     * @param bool $byEmail If TRUE, send a farewell email to the user (also sent to TN users automatically)
+     * @return bool TRUE if the membership was deleted (or a ban was recorded)
+     */
+    public function removeMembership(int $groupId, bool $ban = FALSE, bool $spam = FALSE, ?int $byUserId = NULL, bool $byEmail = FALSE): bool
+    {
+        // Notify TN users or email-triggered removals so they know they can no longer see messages.
+        if ($byEmail || $this->isTN()) {
+            $group = Group::find($groupId);
+            $preferredEmail = $this->email_preferred;
+
+            if ($group && $preferredEmail) {
+                try {
+                    \Illuminate\Support\Facades\Mail::raw('Parting is such sweet sorrow.', function ($message) use ($group, $preferredEmail) {
+                        $message->subject('Farewell from ' . $group->nameshort)
+                            ->from($group->getAutoEmail())
+                            ->replyTo($group->getModsEmail())
+                            ->to($preferredEmail);
+                    });
+                } catch (\Exception $e) {
+                    Log::warning("Failed to send farewell email for user {$this->id} on group {$groupId}: " . $e->getMessage());
+                }
+            }
+        }
+
+        if ($ban) {
+            // Record the ban.
+            DB::table('users_banned')->insertOrIgnore([
+                'userid' => $this->id,
+                'groupid' => $groupId,
+                'byuser' => $byUserId,
+            ]);
+
+            // Withdraw active Offer/Wanted messages on this group that have no outcome yet.
+            $msgIds = DB::table('messages_groups')
+                ->join('messages', 'messages_groups.msgid', '=', 'messages.id')
+                ->where('messages.fromuser', $this->id)
+                ->where('messages_groups.groupid', $groupId)
+                ->whereIn('messages.type', [Message::TYPE_OFFER, Message::TYPE_WANTED])
+                ->pluck('messages_groups.msgid');
+
+            foreach ($msgIds as $msgId) {
+                $m = Message::find($msgId);
+
+                if ($m && !$m->hasOutcome()) {
+                    $m->withdraw('Marked as withdrawn by ban', NULL, $byUserId);
+                }
+            }
+        }
+
+        // Remove the membership.
+        $deleted = DB::table('memberships')
+            ->where('userid', $this->id)
+            ->where('groupid', $groupId)
+            ->delete();
+
+        if ($deleted || $ban) {
+            DB::table('logs')->insert([
+                'timestamp' => now(),
+                'type' => 'Group',
+                'subtype' => 'Left',
+                'user' => $this->id,
+                'byuser' => $byUserId,
+                'groupid' => $groupId,
+                'text' => $spam ? 'Autoremoved spammer' : ($ban ? 'via ban' : NULL),
+            ]);
+        }
+
+        return $deleted > 0 || $ban;
     }
 }

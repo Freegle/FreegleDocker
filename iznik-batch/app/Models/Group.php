@@ -150,4 +150,32 @@ class Group extends Model
     {
         return $this->memberships()->whereIn('role', ['Moderator', 'Owner']);
     }
+
+    /**
+     * Get the automated sender address for this group.
+     *
+     * Returns contactmail if set, otherwise {nameshort}-auto@{group_domain}.
+     */
+    public function getAutoEmail(): string
+    {
+        if (!empty($this->contactmail)) {
+            return $this->contactmail;
+        }
+
+        return $this->nameshort . '-auto@' . config('freegle.mail.group_domain');
+    }
+
+    /**
+     * Get the moderators contact address for this group.
+     *
+     * Returns contactmail if set, otherwise {nameshort}-volunteers@{group_domain}.
+     */
+    public function getModsEmail(): string
+    {
+        if (!empty($this->contactmail)) {
+            return $this->contactmail;
+        }
+
+        return $this->nameshort . '-volunteers@' . config('freegle.mail.group_domain');
+    }
 }
