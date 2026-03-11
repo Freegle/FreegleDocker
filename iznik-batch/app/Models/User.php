@@ -1064,8 +1064,7 @@ class User extends Model
         DB::table('ratings')->where('ratee', $this->id)->delete();
 
         // --- Remove all group memberships ---
-        // TODO Finnbarr: properly port over getMemberships method
-        $groupIds = DB::table('memberships')->where('userid', $this->id)->pluck('groupid');
+        $groupIds = collect($this->getMembershipList())->pluck('id');
         foreach ($groupIds as $groupId) {
             $this->removeMembership($groupId);
         }
@@ -1176,5 +1175,171 @@ class User extends Model
         }
 
         return $deleted > 0 || $ban;
+    }
+
+    /**
+     * Get the user's per-group membership settings.
+     *
+     * Ported from iznik-server/include/user/User.php::getGroupSettings().
+     *
+     * @param int $groupId
+     * @param int|null $configId Optional mod config ID (used for mod config lookup)
+     * @return array
+     */
+    public function getGroupSettings(int $groupId, ?int $configId = NULL): array
+    {
+        $defaults = [
+            'active' => 1,
+            'showchat' => 1,
+            'pushnotify' => 1,
+            'eventsallowed' => 1,
+            'volunteeringallowed' => 1,
+        ];
+
+        $membership = $this->memberships()->where('groupid', $groupId)->first();
+
+        if (!$membership) {
+            return $defaults;
+        }
+
+        $settings = $membership->settings ?? [];
+
+        if (!empty($settings)) {
+            if (!$configId && in_array($membership->role, [self::ROLE_OWNER, self::ROLE_MODERATOR])) {
+                // TODO: Port ModConfig::getForGroup() from iznik-server to get default config.
+                $settings['configid'] = $membership->configid;
+            }
+        }
+
+        // Base active setting on legacy showmessages setting if not present.
+        $settings['active'] = array_key_exists('active', $settings)
+            ? $settings['active']
+            : (!array_key_exists('showmessages', $settings) || $settings['showmessages']);
+        $settings['active'] = $settings['active'] ? 1 : 0;
+
+        // Merge defaults for missing keys.
+        foreach ($defaults as $key => $val) {
+            if (!array_key_exists($key, $settings)) {
+                $settings[$key] = $val;
+            }
+        }
+
+        $settings['emailfrequency'] = $membership->emailfrequency;
+        $settings['eventsallowed'] = $membership->eventsallowed;
+        $settings['volunteeringallowed'] = $membership->volunteeringallowed ?? 1;
+
+        return $settings;
+    }
+
+    /**
+     * Get this user's group memberships with group details.
+     *
+     * Returns an array of group data enriched with membership info (role, collection,
+     * configid, mysettings). This is distinct from the memberships() Eloquent relationship
+     * which returns Membership models.
+     *
+     * Ported from iznik-server/include/user/User.php::getMemberships().
+     *
+     * @param bool $modOnly Only return groups where user is Moderator or Owner
+     * @param string|null $groupType Filter by group type (e.g. Group::TYPE_FREEGLE)
+     * @param bool $getWork Include work counts for moderator groups
+     * @param bool $isModTools Whether this is a ModTools context (affects publish filtering)
+     * @return array Array of group data with membership details
+     */
+    public function getMembershipList(bool $modOnly = FALSE, ?string $groupType = NULL, bool $getWork = FALSE, bool $isModTools = FALSE): array
+    {
+        $query = DB::table('memberships')
+            ->join('groups', 'groups.id', '=', 'memberships.groupid')
+            ->where('memberships.userid', $this->id);
+
+        if ($modOnly) {
+            $query->whereIn('memberships.role', [self::ROLE_MODERATOR, self::ROLE_OWNER]);
+        }
+
+        if ($groupType) {
+            $query->where('groups.type', $groupType);
+        }
+
+        if (!$isModTools) {
+            $query->where('groups.publish', 1);
+        }
+
+        $rows = $query->select([
+            'groups.type',
+            'memberships.heldby',
+            'memberships.settings AS membership_settings',
+            'memberships.collection',
+            'memberships.emailfrequency',
+            'memberships.eventsallowed',
+            'memberships.volunteeringallowed',
+            'memberships.groupid',
+            'memberships.role',
+            'memberships.configid',
+            'memberships.ourPostingStatus',
+            DB::raw("CASE WHEN groups.namefull IS NOT NULL THEN groups.namefull ELSE groups.nameshort END AS namedisplay"),
+        ])
+        ->orderByRaw('LOWER(namedisplay) ASC')
+        ->get();
+
+        $ret = [];
+        $getWorkIds = [];
+        $groupSettings = [];
+
+        // Eager-load Group models for all membership group IDs.
+        $groupIdList = $rows->pluck('groupid')->filter()->all();
+        $groups = Group::whereIn('id', $groupIdList)->get()->keyBy('id');
+
+        foreach ($rows as $row) {
+            $group = $groups->get($row->groupid);
+
+            if (!$group) {
+                continue;
+            }
+
+            // TODO: Port Group::getPublic() from iznik-server — for now, return basic group attributes.
+            $one = [
+                'id' => $group->id,
+                'nameshort' => $group->nameshort,
+                'namefull' => $group->namefull,
+                'namedisplay' => $row->namedisplay,
+                'type' => $group->type,
+                'lat' => $group->lat,
+                'lng' => $group->lng,
+                'publish' => $group->publish,
+                'onhere' => $group->onhere,
+                'onmap' => $group->onmap,
+            ];
+
+            $one['role'] = $row->role;
+            $one['collection'] = $row->collection;
+            $amod = ($one['role'] === self::ROLE_MODERATOR || $one['role'] === self::ROLE_OWNER);
+            $one['configid'] = $row->configid;
+
+            if ($amod && !$one['configid']) {
+                // TODO: Port ModConfig::getForGroup() from iznik-server to get default config.
+            }
+
+            $one['mysettings'] = $this->getGroupSettings($row->groupid, $row->configid);
+
+            // TODO: Port sendOurMails() from iznik-server — for now, assume mail is enabled for Freegle groups.
+            $one['mysettings']['emailfrequency'] = ($row->type === Group::TYPE_FREEGLE)
+                ? ($one['mysettings']['emailfrequency'] ?? 24)
+                : 0;
+
+            $groupSettings[$row->groupid] = $one['mysettings'];
+
+            if ($getWork && $amod) {
+                $getWorkIds[] = $row->groupid;
+            }
+
+            $ret[] = $one;
+        }
+
+        if ($getWork && !empty($getWorkIds)) {
+            // TODO: Port Group::getWorkCounts() from iznik-server to populate work counts per group.
+            // Original code also handles extra groups from wider chat review.
+        }
+
+        return $ret;
     }
 }
