@@ -41,6 +41,7 @@ class User extends Model
         'added' => 'datetime',
         'lastaccess' => 'datetime',
         'deleted' => 'datetime',
+        'forgotten' => 'datetime',
         'settings' => 'array',
     ];
 
@@ -972,5 +973,129 @@ class User extends Model
         }
 
         return TRUE;
+    }
+
+    /**
+     * Wipe a user of personal data for the GDPR right to be forgotten.
+     *
+     * The user record itself is retained (marked as forgotten) so that message
+     * statistics remain accurate.  All identifiable content is removed:
+     * - Name, settings and Yahoo ID cleared
+     * - External email addresses deleted (internal Freegle addresses kept)
+     * - All login credentials deleted
+     * - Message content cleared; messages without an outcome are withdrawn
+     * - Chat message content cleared
+     * - Community events, volunteering, newsfeed posts, stories, searches,
+     *   about-me entries and ratings deleted
+     * - All group memberships removed
+     * - Postal addresses and profile images deleted
+     * - Message promises deleted
+     * - Sessions deleted
+     * - Deletion logged
+     *
+     * Ported from iznik-server/include/user/User.php::forget().
+     *
+     * @param string $reason Human-readable reason for the deletion (e.g. 'GDPR request')
+     */
+    public function forget(string $reason): void
+    {
+        // --- Clear personal attributes ---
+        DB::table('users')->where('id', $this->id)->update([
+            'firstname' => NULL,
+            'lastname' => NULL,
+            'fullname' => 'Deleted User #' . $this->id,
+            'settings' => NULL,
+            'yahooid' => NULL,
+        ]);
+
+        // --- Delete external emails (keep internal Freegle addresses) ---
+        foreach ($this->emails()->get() as $email) {
+            if (!self::isInternalEmail($email->email)) {
+                $email->delete();
+            }
+        }
+
+        // --- Delete all login credentials ---
+        DB::table('users_logins')->where('userid', $this->id)->delete();
+
+        // --- Clear message content and withdraw messages without an outcome ---
+        $msgIds = DB::table('messages')
+            ->where('fromuser', $this->id)
+            ->whereIn('type', [Message::TYPE_OFFER, Message::TYPE_WANTED])
+            ->pluck('id');
+
+        foreach ($msgIds as $msgId) {
+            DB::table('messages')->where('id', $msgId)->update([
+                'fromip' => NULL,
+                'message' => NULL,
+                'envelopefrom' => NULL,
+                'fromname' => NULL,
+                'fromaddr' => NULL,
+                'messageid' => NULL,
+                'textbody' => NULL,
+                'htmlbody' => NULL,
+                'deleted' => now(),
+            ]);
+
+            DB::table('messages_groups')->where('msgid', $msgId)->update(['deleted' => 1]);
+
+            // Clear any outcome comments that might contain personal data.
+            DB::table('messages_outcomes')->where('msgid', $msgId)->update(['comments' => NULL]);
+
+            // Withdraw if no outcome has been recorded yet.
+            $hasOutcome = DB::table('messages_outcomes')->where('msgid', $msgId)->exists();
+
+            // TODO Finnbarr: properly port over Message hasOutcome and withdraw methods
+            if (!$hasOutcome) {
+                DB::table('messages_outcomes')->insert([
+                    'msgid' => $msgId,
+                    'outcome' => MessageOutcome::OUTCOME_WITHDRAWN,
+                    'timestamp' => now(),
+                    'comments' => 'Withdrawn on user unsubscribe',
+                ]);
+            }
+        }
+
+        // --- Clear chat message content ---
+        DB::table('chat_messages')->where('userid', $this->id)->update(['message' => NULL]);
+
+        // --- Delete user-generated content ---
+        DB::table('communityevents')->where('userid', $this->id)->delete();
+        DB::table('volunteering')->where('userid', $this->id)->delete();
+        DB::table('newsfeed')->where('userid', $this->id)->delete();
+        DB::table('users_stories')->where('userid', $this->id)->delete();
+        DB::table('users_searches')->where('userid', $this->id)->delete();
+        DB::table('users_aboutme')->where('userid', $this->id)->delete();
+        DB::table('ratings')->where('rater', $this->id)->delete();
+        DB::table('ratings')->where('ratee', $this->id)->delete();
+
+        // --- Remove all group memberships ---
+        // TODO Finnbarr: properly port over getMemberships and removeMembership methods
+        DB::table('memberships')->where('userid', $this->id)->delete();
+
+        // --- Delete postal addresses and profile images ---
+        DB::table('users_addresses')->where('userid', $this->id)->delete();
+        DB::table('users_images')->where('userid', $this->id)->delete();
+
+        // --- Delete message promises ---
+        DB::table('messages_promises')->where('userid', $this->id)->delete();
+
+        // --- Mark user as forgotten ---
+        DB::table('users')->where('id', $this->id)->update([
+            'forgotten' => now(),
+            'tnuserid' => NULL,
+        ]);
+
+        // --- Delete sessions ---
+        DB::table('sessions')->where('userid', $this->id)->delete();
+
+        // --- Log the deletion ---
+        DB::table('logs')->insert([
+            'timestamp' => now(),
+            'type' => 'User',
+            'subtype' => 'Deleted',
+            'user' => $this->id,
+            'text' => $reason,
+        ]);
     }
 }
