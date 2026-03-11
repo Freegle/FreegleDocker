@@ -318,7 +318,7 @@ Change your email settings: https://www.ilovefreegle.org/settings
 Unsubscribe: https://www.ilovefreegle.org/unsubscribe
 
 Freegle is registered as a charity with HMRC (ref. XT32865) and is run by volunteers.
-Registered address: Weaver's Field, Loud Bridge, Chipping PR3 2NX
+Registered address: 64a North Road, Ormesby, Great Yarmouth, Norfolk NR29 3LE
 ```
 
 **Checklist when creating new email templates:**
