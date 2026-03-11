@@ -342,14 +342,13 @@ class TNSyncCommand extends Command
 
     private function mergeDuplicateTNUsers(): int
     {
-        $duplicates = DB::select("
-            SELECT COUNT(DISTINCT(userid)) AS count,
-                REGEXP_REPLACE(email, '(.*)-g[0-9]+@user\\.trashnothing\\.com', '$1') AS username
-            FROM users_emails
-            WHERE email LIKE '%@user.trashnothing.com'
-            GROUP BY username
-            HAVING count > 1
-        ");
+        $duplicates = DB::table('users_emails')
+            ->selectRaw("COUNT(DISTINCT(userid)) AS count, REGEXP_REPLACE(email, '(.*)-g[0-9]+@user\\.trashnothing\\.com', '$1') AS username")
+            ->where('email', 'LIKE', '%@user.trashnothing.com')
+            ->groupBy('username')
+            ->having('count', '>', 1)
+            ->get()
+            ->toArray();
 
         if (empty($duplicates)) {
             return 0;
