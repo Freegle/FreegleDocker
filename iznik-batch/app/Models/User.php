@@ -1042,17 +1042,11 @@ class User extends Model
             // Clear any outcome comments that might contain personal data.
             DB::table('messages_outcomes')->where('msgid', $msgId)->update(['comments' => NULL]);
 
-            // Withdraw if no outcome has been recorded yet.
-            $hasOutcome = DB::table('messages_outcomes')->where('msgid', $msgId)->exists();
+            $m = Message::find($msgId);
 
-            // TODO Finnbarr: properly port over Message hasOutcome and withdraw methods
-            if (!$hasOutcome) {
-                DB::table('messages_outcomes')->insert([
-                    'msgid' => $msgId,
-                    'outcome' => MessageOutcome::OUTCOME_WITHDRAWN,
-                    'timestamp' => now(),
-                    'comments' => 'Withdrawn on user unsubscribe',
-                ]);
+            // Withdraw if no outcome has been recorded yet.
+            if (!$m->hasOutcome()) {
+                $m->withdraw('Withdrawn on user unsubscribe', NULL);
             }
         }
 

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Message extends Model
 {
@@ -213,6 +214,14 @@ class Message extends Model
     }
 
     /**
+     * Check if message has any outcome.
+     */
+    public function hasOutcome(): bool
+    {
+        return $this->outcomes()->exists();
+    }
+
+    /**
      * Check if message has been taken/received.
      */
     public function hasSuccessfulOutcome(): bool
@@ -220,5 +229,76 @@ class Message extends Model
         return $this->outcomes()
             ->whereIn('outcome', [self::OUTCOME_TAKEN, self::OUTCOME_RECEIVED])
             ->exists();
+    }
+
+    /**
+     * Check if a comment is a generic/boilerplate phrase not worth storing.
+     */
+    public function dullComment(?string $comment): bool
+    {
+        $dull = TRUE;
+
+        $comment = $comment ? trim($comment) : '';
+
+        if (strlen($comment)) {
+            $dull = FALSE;
+
+            foreach ([
+                'Sorry, this is no longer available.',
+                'Thanks, this has now been taken.',
+                "Thanks, I'm no longer looking for this.",
+                'Sorry, this has now been taken.',
+                'Thanks for the interest, but this has now been taken.',
+                'Thanks, these have now been taken.',
+                'Thanks, this has now been received.',
+                'Sorry, this is no longer available',
+                'Withdrawn on user unsubscribe',
+            ] as $bland) {
+                if (strcmp($comment, $bland) === 0) {
+                    $dull = TRUE;
+                }
+            }
+        }
+
+        return $dull;
+    }
+
+    /**
+     * Return the comment if it is interesting (non-generic), otherwise null.
+     */
+    public function interestingComment(?string $comment): ?string
+    {
+        return !$this->dullComment($comment) ? $comment : NULL;
+    }
+
+    /**
+     * Record a withdrawal outcome for this message.
+     *
+     * @param string|null $comment  Optional comment from the user.
+     * @param int|null    $happiness  Optional happiness rating.
+     * @param int|null    $byUserId  ID of the user performing the withdrawal (null for system/batch).
+     */
+    public function withdraw(?string $comment, ?int $happiness, ?int $byUserId = NULL): void
+    {
+        $intcomment = $this->interestingComment($comment);
+
+        DB::table('messages_outcomes_intended')->where('msgid', $this->id)->delete();
+
+        DB::table('messages_outcomes')->insert([
+            'msgid' => $this->id,
+            'outcome' => self::OUTCOME_WITHDRAWN,
+            'happiness' => $happiness,
+            'comments' => $intcomment,
+        ]);
+
+        DB::table('logs')->insert([
+            'timestamp' => now(),
+            'type' => 'Message',
+            'subtype' => 'Outcome',
+            'msgid' => $this->id,
+            'user' => $this->fromuser,
+            'byuser' => $byUserId,
+            'text' => $intcomment ? "Withdrawn: $comment" : 'Withdrawn',
+        ]);
     }
 }
