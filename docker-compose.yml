@@ -515,7 +515,7 @@ services:
       - SMTP_HOST=mailpit
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - SMTP_PORT=1025
-      - IMAGE_DELIVERY=http://freegle-delivery
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_PUSH_KEY=${GOOGLE_PUSH_KEY:-}
@@ -607,7 +607,7 @@ services:
       - SMTP_PORT=1025
       - LOKI_ENABLED=false
       - TUS_UPLOADER=http://freegle-tusd:8080/tus
-      - IMAGE_DELIVERY=http://freegle-delivery
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
     volumes:
       - geoip_data:/var/lib/GeoIP
     healthcheck:
@@ -1159,8 +1159,8 @@ services:
       - ./iznik-nuxt3:/app/src:ro
       - ./iznik-nuxt3:/host-playwright-config:ro
     environment:
-      - TEST_BASE_URL=http://freegle-dev-local.localhost
-      - TEST_MODTOOLS_BASE_URL=http://modtools-dev-local.localhost
+      - TEST_BASE_URL=http://freegle-prod-local.localhost
+      - TEST_MODTOOLS_BASE_URL=http://modtools-prod-local.localhost
       - NODE_ENV=test
       - CI=false
       - ENABLE_MONOCART_REPORTER=true
