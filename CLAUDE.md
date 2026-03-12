@@ -100,7 +100,7 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - ~~#79 admins not showing~~: FIXED. System Admin/Support can now see all admins in ListAdmins. Test added.
 - ~~#85 cross-posted messages~~: FIXED. Approve/reject/backToPending now respect groupid parameter for per-group operations. Test added.
 - ~~Cross-post warning missing group name~~: Already fixed in ModMessageCrosspost.vue — uses groups array.
-- Mod log display: missing crown for mods/owners (flow looks correct — systemrole fetched via user store), ~~modal closes too fast~~: FIXED. Close button now disabled while busy loading.
+- ~~Mod log display~~: ~~missing crown for mods/owners~~: FIXED. `hideSensitiveFields` was stripping `systemrole` for all other users — now preserved as public info. ~~modal closes too fast~~: FIXED. Close button now disabled while busy loading.
 - ~~Member Review: number of replies to offers~~: FIXED. Added repliesoffer, replieswanted, expectedreplies fields to Go UserInfo. Added modmails count.
 - ~~Member Review: missing pink member notes~~: FIXED. User store fetchMT was missing modtools=true param, so Go API didn't return comments. ~~Other groups joined~~: Already implemented. ~~Different joining date~~: Investigated — member.added IS the correct group join date from memberships table.
 - ~~V2 group logos~~: FIXED. Added profile and tagline to myGroups merge in useMe.js.
