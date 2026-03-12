@@ -195,6 +195,13 @@ Schedule::command('mail:admin:send --spool')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Chase moderators about pending suggested admins.
+// Sends reminder emails after 48h, once per day, up to 7 days.
+Schedule::command('mail:admin:chase')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // =============================================================================
 // GIT SUMMARY
 // =============================================================================
