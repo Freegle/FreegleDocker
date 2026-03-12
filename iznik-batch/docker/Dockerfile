@@ -80,5 +80,8 @@ COPY docker/supervisor.conf /etc/supervisor/conf.d/laravel-worker.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Ensure interactive shells start in the working directory
+RUN echo "cd /var/www/html" >> /root/.bashrc
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-n"]

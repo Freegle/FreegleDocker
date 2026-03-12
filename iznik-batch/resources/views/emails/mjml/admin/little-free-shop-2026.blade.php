@@ -8,22 +8,17 @@
         {{-- Hero banner — photo with heading overlaid at bottom-left --}}
         <mj-section background-url="{{ $heroImageUrl }}" background-size="cover" background-position="center" padding="0">
             <mj-column>
-                <mj-text font-size="28px" font-weight="bold" color="#ffffff" align="left" line-height="1.3" font-family="Helvetica, Arial, sans-serif" padding="180px 25px 10px 0">
+                <mj-text font-size="28px" font-weight="bold" color="#ffffff" align="left" line-height="1.3" font-family="Helvetica, Arial, sans-serif" padding="10px 25px 228px 0">
                     <span style="background-color: rgba(0,0,0,0.5); padding: 6px 12px; display: inline;">{{ $heroHeading ?? $adminSubject }}</span>
                 </mj-text>
             </mj-column>
         </mj-section>
 
-        {{-- First paragraph + early CTA above the fold --}}
-        @php
-            $paragraphs = preg_split('/\n\s*\n/', $adminText, 2);
-            $firstParagraph = $paragraphs[0] ?? '';
-            $remainingText = $paragraphs[1] ?? '';
-        @endphp
+        {{-- First paragraph --}}
         <mj-section background-color="#ffffff" padding="20px 25px 10px">
             <mj-column>
                 <mj-text font-size="15px" color="#333333" line-height="1.7" font-family="Helvetica, Arial, sans-serif">
-                    {!! nl2br($firstParagraph) !!}
+                    <p>Imagine if there was one of these near you. A place on your street where you could drop off good stuff you don't need any more, and pick up things other people have left. For free.</p>
                 </mj-text>
             </mj-column>
         </mj-section>
@@ -40,17 +35,25 @@
         @endif
 
         {{-- Remaining body text --}}
-        @if($remainingText)
         <mj-section background-color="#ffffff" padding="10px 25px 10px">
             <mj-column>
                 <mj-text font-size="15px" color="#333333" line-height="1.7" font-family="Helvetica, Arial, sans-serif">
-                    {!! nl2br($remainingText) !!}
+                    <p>That's the <strong>Little Free Shop</strong> &mdash; a community reuse hub right where people live.</p>
+                    <p>We already know a physical place to freegle works. Our Free Shop in Brighton Market has been a huge hit. Local authorities across the country want to try it. Now we need <strong>&pound;5,000</strong> to get us to the stage where we can run run a pilot of how we could deliver a Little Free Shop in lots of neighbourhoods across the UK.</p>
                 </mj-text>
             </mj-column>
         </mj-section>
-        @endif
 
-        {{-- Second donate button --}}
+        {{-- Call to action heading --}}
+        <mj-section background-color="#ffffff" padding="5px 25px 5px">
+            <mj-column>
+                <mj-text font-size="18px" font-weight="bold" color="#333333" align="center" font-family="Helvetica, Arial, sans-serif">
+                    Can you chip in to help make it happen?
+                </mj-text>
+            </mj-column>
+        </mj-section>
+
+        {{-- Donate button --}}
         @if($ctaLink && $ctaText)
         <mj-section background-color="#ffffff" padding="10px 25px 5px">
             <mj-column>
@@ -66,7 +69,7 @@
         <mj-section background-color="#ffffff" padding="0 25px 10px">
             <mj-column>
                 <mj-text font-size="13px" color="#888888" align="center" font-family="Helvetica, Arial, sans-serif">
-                    target <span style="font-weight:bold; color:#333333;">{{ $targetAmount }}</span> — every pound gets us closer
+                    Target: <span style="font-weight:bold; color:#333333;">{{ $targetAmount }}</span> &mdash; every pound gets us closer.
                 </mj-text>
             </mj-column>
         </mj-section>
@@ -88,14 +91,27 @@
                 </mj-text>
                 <mj-text font-size="14px" color="#333333" line-height="2.0" font-family="Helvetica, Arial, sans-serif">
                     @foreach($bulletPoints as $point)
-                    <span style="color: #338808;">&#10004;</span>&nbsp;&nbsp;<strong>{{ Str::before($point, ' — ') }}</strong> — {{ Str::after($point, ' — ') }}<br/>
+                    ✅&nbsp;&nbsp;<strong>{{ Str::before($point, ' — ') }}</strong> — {{ Str::after($point, ' — ') }}<br/>
                     @endforeach
                 </mj-text>
             </mj-column>
         </mj-section>
         @endif
 
-        {{-- Spending plan — muted, small, below Why it matters --}}
+        {{-- Sign-off from board chair --}}
+        <mj-section background-color="#ffffff" padding="15px 25px 5px">
+            <mj-column>
+                <mj-text font-size="14px" color="#4a5568" line-height="1.5" font-family="Helvetica, Arial, sans-serif" align="left">
+                    <p>Thank you!</p>
+                    <p>
+                        Neil Morris<br/>
+                        Freegle Board Chair
+                    </p>
+                </mj-text>
+            </mj-column>
+        </mj-section>
+
+        {{-- Spending plan — muted, small --}}
         @if(isset($spendingPlan) && $spendingPlan)
         <mj-section background-color="#ffffff" padding="0 25px 15px">
             <mj-column>
@@ -108,16 +124,28 @@
 
         {{-- Local volunteers --}}
         @if(isset($volunteers) && count($volunteers) > 0)
-        <mj-section background-color="#ffffff" padding="10px 25px 15px">
+        <mj-section background-color="#f8f9fa" padding="5px 25px 10px">
             <mj-column>
-                <mj-text font-size="13px" color="#4a5568" font-style="italic" align="center" font-family="Helvetica, Arial, sans-serif">
+                <mj-text font-size="13px" color="#4a5568" font-style="italic" line-height="1.5" padding-bottom="10px" font-family="Helvetica, Arial, sans-serif">
                     @if(count($volunteers) === 1)
-                        Your local volunteer is {{ $volunteers[0]['firstname'] }}.
-                    @elseif(count($volunteers) === 2)
-                        Your local volunteers are {{ $volunteers[0]['firstname'] }} and {{ $volunteers[1]['firstname'] }}.
+                        Your local volunteer is:
                     @else
-                        Your local volunteers are {{ collect($volunteers)->slice(0, -1)->pluck('firstname')->implode(', ') }}, and {{ $volunteers[count($volunteers) - 1]['firstname'] }}.
+                        Your local volunteers are:
                     @endif
+                </mj-text>
+                <mj-text padding="0 25px 5px" line-height="2.4">
+                    @foreach(array_slice($volunteers, 0, 7) as $volunteer)
+                    <span style="display: inline-block; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 3px 12px 3px 3px; margin: 0 6px 6px 0; vertical-align: middle;">
+                        <img
+                            src="{{ $volunteer['profileurl'] ?? '' }}"
+                            alt="{{ $volunteer['firstname'] }}"
+                            width="28"
+                            height="28"
+                            style="border-radius: 14px; vertical-align: middle; display: inline-block; width: 28px; height: 28px; object-fit: cover;"
+                        />
+                        <span style="font-size: 13px; color: #4a5568; vertical-align: middle; padding-left: 6px;">{{ $volunteer['firstname'] }}</span>
+                    </span>
+                    @endforeach
                 </mj-text>
             </mj-column>
         </mj-section>

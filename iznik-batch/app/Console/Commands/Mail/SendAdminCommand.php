@@ -173,19 +173,14 @@ class SendAdminCommand extends Command
         $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
         $defaultProfileUrl = $imagesDomain . '/defaultprofile.png';
 
-        $mods = DB::table('memberships')
-            ->join('users', 'users.id', '=', 'memberships.userid')
-            ->leftJoin('users_images', function ($join) {
-                $join->on('users_images.userid', '=', 'users.id')
-                    ->where('users_images.default', '=', 1);
-            })
+        $mods = User::select('users.id', 'users.fullname')
+            ->join('memberships', 'memberships.userid', '=', 'users.id')
             ->where('memberships.groupid', $groupId)
             ->where('memberships.collection', 'Approved')
             ->whereIn('memberships.role', ['Moderator', 'Owner'])
             ->where('users.lastaccess', '>', $oneYearAgo)
             ->where('users.publishconsent', 1)
             ->whereNull('users.deleted')
-            ->select(['users.id', 'users.fullname', 'users_images.id as image_id', 'users_images.url as image_url'])
             ->limit(100)
             ->get();
 
@@ -193,20 +188,11 @@ class SendAdminCommand extends Command
         foreach ($mods as $mod) {
             $firstName = explode(' ', $mod->fullname ?? '')[0];
             if ($firstName) {
-                // Build profile image URL: prefer external URL, then hosted thumbnail, then default.
-                if (!empty($mod->image_url)) {
-                    $profileUrl = $mod->image_url;
-                } elseif ($mod->image_id) {
-                    $profileUrl = "{$imagesDomain}/tuimg_{$mod->image_id}.jpg";
-                } else {
-                    $profileUrl = $defaultProfileUrl;
-                }
-
                 $volunteers[] = [
                     'id' => $mod->id,
                     'displayname' => $mod->fullname,
                     'firstname' => $firstName,
-                    'profileurl' => $profileUrl,
+                    'profileurl' => $mod->getProfileImageUrl() ?? $defaultProfileUrl,
                 ];
             }
         }

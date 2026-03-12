@@ -195,16 +195,37 @@ function parsePlaywrightOutput(text: string) {
     state.progress.total = parseInt(testMatch[1])
   }
 
-  // Count individual test completions from accumulated logs (✓ or ✗ or ◼)
-  // Use accumulated logs to get accurate total counts
+  // Check accumulated logs for the final summary line (not just current chunk)
+  // The summary line is authoritative because symbol counting over-counts retries
+  // Playwright summary format: "  82 passed (5.2m)" — has time in parens
   const allLogs = state.logs || ''
-  const passSymbols = (allLogs.match(/✓/g) || []).length
-  const failSymbols = (allLogs.match(/✗/g) || []).length
+  const allPassedMatch = allLogs.match(/(\d+)\s+passed\s*\(/)
+  const allFailedMatch = allLogs.match(/(\d+)\s+failed\s*\(/)
 
-  // Symbol counts from accumulated logs are the authoritative count during test run
-  // Only use these if we haven't seen summary stats yet
-  if (!listPassedMatch && passSymbols > 0) state.progress.passed = passSymbols
-  if (!listFailedMatch && failSymbols > 0) state.progress.failed = failSymbols
+  if (allPassedMatch) {
+    state.progress.passed = parseInt(allPassedMatch[1])
+  } else {
+    // Fall back to symbol counting only if no summary line has appeared yet
+    const passSymbols = (allLogs.match(/✓/g) || []).length
+    if (passSymbols > 0) state.progress.passed = passSymbols
+  }
+
+  if (allFailedMatch) {
+    state.progress.failed = parseInt(allFailedMatch[1])
+  } else {
+    const failSymbols = (allLogs.match(/✗/g) || []).length
+    if (failSymbols > 0) state.progress.failed = failSymbols
+  }
+
+  // Cap passed + failed to not exceed total (retries can inflate symbol counts)
+  if (state.progress.total > 0) {
+    if (state.progress.passed > state.progress.total) {
+      state.progress.passed = state.progress.total
+    }
+    if (state.progress.passed + state.progress.failed > state.progress.total) {
+      state.progress.failed = state.progress.total - state.progress.passed
+    }
+  }
 
   // Update completed
   state.progress.completed = state.progress.passed + state.progress.failed
