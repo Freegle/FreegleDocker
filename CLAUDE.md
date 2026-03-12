@@ -95,13 +95,16 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 **TODOs:**
 - Write Playwright test for Edits page content (#90)
 - Last few Playwright tests are very slow even when passing — debug why
-- Overall status page showing yellow even though only yellow tab is production — check logic
-- Investigate: #77 approved messages 404, #79 admins not showing, #85 cross-posted messages
-- Cross-post warning missing group name (fixed in ModMessageCrosspost.vue — uses groups array)
-- Mod log display: missing crown for mods/owners, logging not working correctly, modal closes too fast without waiting for progress — test via MCP with std message that changes moderation status
-- Member Review: missing pink member notes, number of replies to offers, other groups joined, shows different joining date
-- V2 group logos: client not fetching/displaying group logos from store. Investigate frontend code path.
-- Chatrooms 403 for backup mods: PHP allows backup mods to view chats (canSee doesn't filter by active). Go fetchSingleChatMT may need matching fix. UI buttons already hidden.
+- Overall status page showing yellow even though only yellow tab is production — investigated, status API returns correct values ('online'/'offline'), may be genuinely offline service
+- Investigate: #77 approved messages 404 — query logic looks correct, may be frontend routing or cache issue
+- ~~#79 admins not showing~~: FIXED. System Admin/Support can now see all admins in ListAdmins. Test added.
+- ~~#85 cross-posted messages~~: FIXED. Approve/reject/backToPending now respect groupid parameter for per-group operations. Test added.
+- ~~Cross-post warning missing group name~~: Already fixed in ModMessageCrosspost.vue — uses groups array.
+- Mod log display: missing crown for mods/owners (flow looks correct — systemrole fetched via user store), modal closes too fast (needs disabled close while loading)
+- ~~Member Review: number of replies to offers~~: FIXED. Added repliesoffer, replieswanted, expectedreplies fields to Go UserInfo. Added modmails count.
+- Member Review: missing pink member notes (comments appear implemented, may need testing), other groups joined (implemented), shows different joining date (needs investigation)
+- ~~V2 group logos~~: FIXED. Added profile and tagline to myGroups merge in useMe.js.
+- ~~Chatrooms 403 for backup mods~~: FIXED. Shared `canSeeChatRoom()` helper, User2User mod access via group membership. Tests added.
 
 **Playwright login fix:** Removed `loginModToolsViaAPI` (bypassed UI via direct API + localStorage injection). Switched all 8 modtools test files to `loginViaModTools` (actual UI login). Tests running to verify no retries needed.
 
