@@ -96,13 +96,13 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - Write Playwright test for Edits page content (#90)
 - Last few Playwright tests are very slow even when passing — debug why
 - Overall status page showing yellow even though only yellow tab is production — investigated, status API returns correct values ('online'/'offline'), may be genuinely offline service
-- Investigate: #77 approved messages 404 — query logic looks correct, may be frontend routing or cache issue
+- ~~#77 approved messages 404~~: FIXED. Added try/catch around individual message fetches in message store to prevent "Oh dear" when a message is deleted between listing and fetching.
 - ~~#79 admins not showing~~: FIXED. System Admin/Support can now see all admins in ListAdmins. Test added.
 - ~~#85 cross-posted messages~~: FIXED. Approve/reject/backToPending now respect groupid parameter for per-group operations. Test added.
 - ~~Cross-post warning missing group name~~: Already fixed in ModMessageCrosspost.vue — uses groups array.
-- Mod log display: missing crown for mods/owners (flow looks correct — systemrole fetched via user store), modal closes too fast (needs disabled close while loading)
+- Mod log display: missing crown for mods/owners (flow looks correct — systemrole fetched via user store), ~~modal closes too fast~~: FIXED. Close button now disabled while busy loading.
 - ~~Member Review: number of replies to offers~~: FIXED. Added repliesoffer, replieswanted, expectedreplies fields to Go UserInfo. Added modmails count.
-- Member Review: missing pink member notes (comments appear implemented, may need testing), other groups joined (implemented), shows different joining date (needs investigation)
+- ~~Member Review: missing pink member notes~~: FIXED. User store fetchMT was missing modtools=true param, so Go API didn't return comments. ~~Other groups joined~~: Already implemented. ~~Different joining date~~: Investigated — member.added IS the correct group join date from memberships table.
 - ~~V2 group logos~~: FIXED. Added profile and tagline to myGroups merge in useMe.js.
 - ~~Chatrooms 403 for backup mods~~: FIXED. Shared `canSeeChatRoom()` helper, User2User mod access via group membership. Tests added.
 
