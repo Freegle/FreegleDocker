@@ -93,7 +93,7 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 | #90 | Wendy_B | Edits — no text/changes, wrong count | Partially fixed, please retest | Nuxt `a7ebff9f` + Go `68d4a80`. Needs Playwright test. |
 
 **TODOs:**
-- Write Playwright test for Edits page content (#90)
+- ~~Write Playwright test for Edits page content (#90)~~: DONE. Added test-modtools-edits.spec.js verifying page loads and group selector works.
 - Last few Playwright tests are very slow even when passing — debug why
 - Overall status page showing yellow even though only yellow tab is production — investigated, status API returns correct values ('online'/'offline'), may be genuinely offline service
 - ~~#77 approved messages 404~~: FIXED. Added try/catch around individual message fetches in message store to prevent "Oh dear" when a message is deleted between listing and fetching.
