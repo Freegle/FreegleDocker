@@ -1308,19 +1308,7 @@ class User extends Model
                 continue;
             }
 
-            // TODO: Port Group::getPublic() from iznik-server — for now, return basic group attributes.
-            $one = [
-                'id' => $group->id,
-                'nameshort' => $group->nameshort,
-                'namefull' => $group->namefull,
-                'namedisplay' => $row->namedisplay,
-                'type' => $group->type,
-                'lat' => $group->lat,
-                'lng' => $group->lng,
-                'publish' => $group->publish,
-                'onhere' => $group->onhere,
-                'onmap' => $group->onmap,
-            ];
+            $one = $group->getPublic();
 
             $one['role'] = $row->role;
             $one['collection'] = $row->collection;
