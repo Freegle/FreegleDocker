@@ -1,6 +1,8 @@
 import { spawn, execSync } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
+const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+
 export default defineEventHandler(async (event) => {
   console.log('Starting Laravel tests...')
 
@@ -38,15 +40,15 @@ export default defineEventHandler(async (event) => {
 
     # Stop supervisor workers before running tests
     echo "Stopping supervisor workers..."
-    docker exec freegle-batch supervisorctl stop all 2>&1 || true
+    docker exec ${prefix}-batch supervisorctl stop all 2>&1 || true
 
     # Set up fresh test database
     echo "Setting up fresh test database..."
-    docker exec freegle-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
-    docker exec -e DB_DATABASE=iznik_batch_test freegle-batch php artisan migrate:fresh --database=mysql --force 2>&1
+    docker exec ${prefix}-batch mysql -h percona -u root -piznik --skip-ssl -e "CREATE DATABASE IF NOT EXISTS iznik_batch_test" 2>&1
+    docker exec -e DB_DATABASE=iznik_batch_test ${prefix}-batch php artisan migrate:fresh --database=mysql --force 2>&1
 
     echo "Running Laravel tests with coverage..."
-    docker exec -e VIA_STATUS_CONTAINER=1 -e DB_DATABASE=iznik_batch_test freegle-batch vendor/bin/phpunit --testsuite=${testsuite}${filter ? ` --filter="${filter}"` : ''} --coverage-clover=/tmp/laravel-coverage.xml 2>&1
+    docker exec -e VIA_STATUS_CONTAINER=1 -e DB_DATABASE=iznik_batch_test ${prefix}-batch vendor/bin/phpunit --testsuite=${testsuite}${filter ? ` --filter="${filter}"` : ''} --coverage-clover=/tmp/laravel-coverage.xml 2>&1
   `], { stdio: 'pipe' })
 
   testProcess.stdout.on('data', (data) => {
@@ -77,7 +79,7 @@ export default defineEventHandler(async (event) => {
 
     // Restart supervisor workers
     try {
-      execSync('docker exec freegle-batch supervisorctl start all 2>&1 || true', {
+      execSync(`docker exec ${prefix}-batch supervisorctl start all 2>&1 || true`, {
         encoding: 'utf8',
         timeout: 30000,
       })
