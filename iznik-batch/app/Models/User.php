@@ -1204,11 +1204,8 @@ class User extends Model
 
         $settings = $membership->settings ?? [];
 
-        if (!empty($settings)) {
-            if (!$configId && in_array($membership->role, [self::ROLE_OWNER, self::ROLE_MODERATOR])) {
-                // TODO: Port ModConfig::getForGroup() from iznik-server to get default config.
-                $settings['configid'] = $membership->configid;
-            }
+        if (!empty($settings) && !$configId && in_array($membership->role, [self::ROLE_OWNER, self::ROLE_MODERATOR])) {
+            $settings['configid'] = $membership->configid ?? ModConfig::getForGroup($this->id, $groupId);
         }
 
         // Base active setting on legacy showmessages setting if not present.
@@ -1316,7 +1313,8 @@ class User extends Model
             $one['configid'] = $row->configid;
 
             if ($amod && !$one['configid']) {
-                // TODO: Port ModConfig::getForGroup() from iznik-server to get default config.
+                # Get a config using defaults.
+                $one['configid'] = ModConfig::getForGroup($this->id, $row->groupid);
             }
 
             $one['mysettings'] = $this->getGroupSettings($row->groupid, $row->configid);
