@@ -286,11 +286,11 @@ class Group extends Model
             ? Carbon::parse($atts['affiliationconfirmed'])->toIso8601String()
             : NULL;
 
-        // TODO: Attachment class not yet ported - port Attachment::getPath() to resolve
-        // profile and cover image paths via IMAGE_DOMAIN (config('freegle.images.domain')).
-        // $a = new Attachment(..., Attachment::TYPE_GROUP);
-        // $atts['profile'] = $atts['profile'] ? $a->getPath(false, $atts['profile']) : NULL;
-        // $atts['cover']   = $atts['cover']   ? $a->getPath(false, $atts['cover'])   : NULL;
+        # Images.  We pass those ids in to get the paths.  This removes the DB operations for constructing the
+        # Attachment, which is valuable for people on many groups.
+        $img = new GroupAttachment();
+        $atts['profile'] = $atts['profile'] ? $img->getPath(false, (int) $atts['profile']) : NULL;
+        $atts['cover']   = $atts['cover']   ? $img->getPath(false, (int) $atts['cover'])   : NULL;
 
         // Group URL.
         $userSite = config('freegle.sites.user');

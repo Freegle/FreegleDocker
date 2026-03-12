@@ -84,6 +84,8 @@ return [
     'images' => [
         // Image domain for user profile images
         'domain' => env('FREEGLE_IMAGES_DOMAIN', 'https://images.ilovefreegle.org'),
+        // Domain for legacy archived images (Azure blob storage)
+        'archived_domain' => env('FREEGLE_IMAGES_ARCHIVED_DOMAIN', 'https://freegle.blob.core.windows.net'),
 
         // Base URLs for source images
         'welcome1' => env('FREEGLE_WELCOME_IMAGE1', 'https://www.ilovefreegle.org/images/welcome1.jpg'),
