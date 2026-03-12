@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\DB;
 
 class Location extends Model
 {
+    // Fields exposed by getPublic() - mirrors iznik-server Location::$publicatts.
+    private const PUBLIC_ATTS = ['id', 'osm_id', 'name', 'type', 'popularity', 'gridid', 'postcodeid', 'areaid', 'lat', 'lng', 'maxdimension'];
+
     protected $table = 'locations';
     protected $guarded = ['id'];
     public $timestamps = FALSE;
@@ -72,5 +75,15 @@ class Location extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Get the public representation of this location.
+     *
+     * Ported from iznik-server Location::$publicatts + Entity::getPublic().
+     */
+    public function getPublic(): array
+    {
+        return $this->only(self::PUBLIC_ATTS);
     }
 }

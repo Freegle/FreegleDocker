@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -12,6 +13,60 @@ class Group extends Model
     public const TYPE_FREEGLE = 'Freegle';
     public const TYPE_REUSE = 'Reuse';
     public const TYPE_OTHER = 'Other';
+
+    public const DEFAULT_SETTINGS = [
+        'showchat' => 1,
+        'communityevents' => 1,
+        'volunteering' => 1,
+        'stories' => 1,
+        'includearea' => 1,
+        'includepc' => 1,
+        'moderated' => 0,
+        'allowedits' => [
+            'moderated' => 1,
+            'group' => 1,
+        ],
+        'autoapprove' => [
+            'members' => 0,
+            'messages' => 0,
+        ],
+        'duplicates' => [
+            'check' => 1,
+            'offer' => 14,
+            'taken' => 14,
+            'wanted' => 14,
+            'received' => 14,
+        ],
+        'spammers' => [
+            'chatreview' => 1,
+            'messagereview' => 1,
+        ],
+        'joiners' => [
+            'check' => 1,
+            'threshold' => 5,
+        ],
+        'keywords' => [
+            'OFFER' => 'OFFER',
+            'TAKEN' => 'TAKEN',
+            'WANTED' => 'WANTED',
+            'RECEIVED' => 'RECEIVED',
+        ],
+        'reposts' => [
+            'offer' => 3,
+            'wanted' => 7,
+            'max' => 5,
+            'chaseups' => 5,
+        ],
+        'relevant' => 1,
+        'newsfeed' => 1,
+        'newsletter' => 1,
+        'businesscards' => 1,
+        'autoadmins' => 1,
+        'mentored' => 0,
+        'nearbygroups' => 5,
+        'showjoin' => 0,
+        'engagement' => 1,
+    ];
 
     protected $table = 'groups';
     protected $guarded = ['id'];
@@ -177,5 +232,83 @@ class Group extends Model
         }
 
         return $this->nameshort . '-volunteers@' . config('freegle.mail.group_domain');
+    }
+
+    /**
+     * Get the group's posting address.
+     */
+    public function getGroupEmail(): string
+    {
+        return $this->nameshort . '@' . config('freegle.mail.group_domain');
+    }
+
+    // Fields exposed by getPublic() - mirrors iznik-server Group::$publicatts.
+    private const PUBLIC_ATTS = [
+        'id', 'nameshort', 'namefull', 'nameabbr', 'namedisplay', 'settings', 'rules', 'type', 'region', 'logo', 'publish',
+        'onhere', 'ontn', 'membercount', 'modcount', 'lat', 'lng',
+        'profile', 'cover', 'onmap', 'tagline', 'legacyid', 'external', 'welcomemail', 'description',
+        'contactmail', 'fundingtarget', 'affiliationconfirmed', 'affiliationconfirmedby', 'mentored', 'privategroup', 'defaultlocation',
+        'moderationstatus', 'maxagetoshow', 'nearbygroups', 'microvolunteering', 'microvolunteeringoptions', 'autofunctionoverride', 'overridemoderation', 'precovidmoderated', 'onlovejunk',
+    ];
+
+    /**
+     * Get the public representation of this group.
+     *
+     * Ported from iznik-server Group::getPublic().
+     *
+     * @param  bool  $summary  If true, omits settings, description, and welcomemail.
+     */
+    public function getPublic(bool $summary = FALSE): array
+    {
+        $atts = $this->only(self::PUBLIC_ATTS);
+
+        // Email addresses.
+        $atts['modsemail'] = $this->getModsEmail();
+        $atts['autoemail'] = $this->getAutoEmail();
+        $atts['groupemail'] = $this->getGroupEmail();
+
+        // Derived display name.
+        $atts['namedisplay'] = !empty($atts['namefull']) ? $atts['namefull'] : $atts['nameshort'];
+
+        // Merge settings with defaults.
+        $settings = $atts['settings'] ?? [];
+        $atts['settings'] = array_replace_recursive(self::DEFAULT_SETTINGS, $settings ?: []);
+
+        // ISO date fields.
+        $atts['founded'] = $this->founded ? Carbon::parse($this->founded)->toIso8601String() : NULL;
+
+        $atts['affiliationconfirmed'] = !empty($atts['affiliationconfirmed'])
+            ? Carbon::parse($atts['affiliationconfirmed'])->toIso8601String()
+            : NULL;
+
+        // TODO: Attachment class not yet ported - port Attachment::getPath() to resolve
+        // profile and cover image paths via IMAGE_DOMAIN (config('freegle.images.domain')).
+        // $a = new Attachment(..., Attachment::TYPE_GROUP);
+        // $atts['profile'] = $atts['profile'] ? $a->getPath(false, $atts['profile']) : NULL;
+        // $atts['cover']   = $atts['cover']   ? $a->getPath(false, $atts['cover'])   : NULL;
+
+        // Group URL.
+        $userSite = config('freegle.sites.user');
+        $atts['url'] = $this->onhere
+            ? ($userSite . '/explore/' . $atts['nameshort'])
+            : ('https://groups.yahoo.com/neo/groups/' . $atts['nameshort'] . '/info');
+
+        if ($summary) {
+            unset($atts['settings'], $atts['description'], $atts['welcomemail']);
+        } else {
+            if (!empty($atts['defaultlocation'])) {
+                $location = Location::find($atts['defaultlocation']);
+                $atts['defaultlocation'] = $location ? $location->getPublic() : NULL;
+            }
+        }
+
+        // Microvolunteering options - already cast to array by Eloquent; apply defaults if absent.
+        $atts['microvolunteeringoptions'] = $atts['microvolunteeringoptions'] ?? [
+            'approvedmessages' => 1,
+            'wordmatch' => 1,
+            'photorotate' => 1,
+        ];
+
+        return $atts;
     }
 }
