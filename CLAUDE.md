@@ -68,6 +68,14 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-03-12 - TODO sweep: mod log crown, message fetch resilience, member comments, edits test
+- **Mod log crown**: Fixed `hideSensitiveFields` stripping `systemrole` — now preserved as public info (Go `99d03c8`)
+- **Message fetch resilience** (#77): Added try/catch around individual message fetches in store to prevent "Oh dear" page (Nuxt `58909407`)
+- **Member review pink notes**: Fixed by adding `modtools=true` to user store's `fetchMT` params (Nuxt `58909407`)
+- **Mod log close button**: Disabled while busy loading (Nuxt `58909407`)
+- **Edits page test**: Added `test-modtools-edits.spec.js` Playwright test (Nuxt `9589805c`)
+- **CI**: Pipelines 2371-2375 running with SSH. Waiting for results.
+
 ### 2026-03-12 - Discourse #9481 issue triage, Playwright login fix, visible name fix
 
 **Discourse #9481 issues from post #60 onwards:**
