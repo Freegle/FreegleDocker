@@ -100,6 +100,8 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - Cross-post warning missing group name (fixed in ModMessageCrosspost.vue — uses groups array)
 - Mod log display: missing crown for mods/owners, logging not working correctly, modal closes too fast without waiting for progress — test via MCP with std message that changes moderation status
 - Member Review: missing pink member notes, number of replies to offers, other groups joined, shows different joining date
+- V2 group logos: client not fetching/displaying group logos from store. Investigate frontend code path.
+- Chatrooms 403 for backup mods: PHP allows backup mods to view chats (canSee doesn't filter by active). Go fetchSingleChatMT may need matching fix. UI buttons already hidden.
 
 **Playwright login fix:** Removed `loginModToolsViaAPI` (bypassed UI via direct API + localStorage injection). Switched all 8 modtools test files to `loginViaModTools` (actual UI login). Tests running to verify no retries needed.
 
