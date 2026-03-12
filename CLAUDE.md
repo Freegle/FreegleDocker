@@ -68,6 +68,41 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-03-12 - Discourse #9481 issue triage, Playwright login fix, visible name fix
+
+**Discourse #9481 issues from post #60 onwards:**
+
+| Post | Reporter | Issue | Status | Fix |
+|------|----------|-------|--------|-----|
+| #61 | Wendy_B | Can't search for a community | Fix applied, please retest | Nuxt `3a8ef47c` + `9200a43b` |
+| #61 | Wendy_B | Events showing for groups not moderated | Fix applied, please retest | Go `c984058` + `68d4a80` |
+| #61 | Wendy_B | Approved posts for unmoderated groups | Fix applied, please retest | Go `c984058` |
+| #69 | Wendy_B | Support tools user search — "something went wrong" | Fix applied, please retest | Nuxt `06d0d495` |
+| #70 | Jos | Stories 3-7 years old, wrong groups | Fix applied, please retest | Go `01768bf` |
+| #71 | Wendy_B | Member review — no email/map | Fix applied, please retest | Go `687b579a` + uncommitted `user.privateposition` |
+| #74 | Jos | Community settings greyed out (owner role) | Fix applied, please retest | Uncommitted `modgroup.js` myrole + Go `01768bf` |
+| #75 | Jos | Hold: "held by me" but also "held by someone else" | Fix applied, please retest | Go `3f545b9` + uncommitted `ModMessage.vue` heldbyId |
+| #76 | Wendy_B | Community search — volunteers not showing | Fix applied, please retest | Go `fe056dc` + Nuxt `3a8ef47c` |
+| #77 | Jos | Approved members "not on any communities" | Partially fixed, please retest | Go `61a2ab8` |
+| #77 | Jos | "Oh dear" on approved messages (404) | Needs investigation | API 404 |
+| #79 | Jos | Admins still not showing | Needs investigation | |
+| #81 | Jos | No "visible name" showing | Fix applied, please retest | `SessionAPI.fetchv2` was calling `/user` (flat response) instead of `/session` (wrapped in `{me:...}`). Reverted. |
+| #83 | Wendy_B | No post count against groups | Fix applied, please retest | Uncommitted `modgroup.js` cachedWorkData |
+| #84 | Wendy_B | Chat review not showing | Fix applied, please retest | Go `186988c` + `4883a43` + `842dd34` + `8ee5d1d` |
+| #85 | Jos | Cross-posted messages pending on wrong groups | Needs investigation | |
+| #90 | Wendy_B | Edits — no text/changes, wrong count | Partially fixed, please retest | Nuxt `a7ebff9f` + Go `68d4a80`. Needs Playwright test. |
+
+**TODOs:**
+- Write Playwright test for Edits page content (#90)
+- Last few Playwright tests are very slow even when passing — debug why
+- Overall status page showing yellow even though only yellow tab is production — check logic
+- Investigate: #77 approved messages 404, #79 admins not showing, #85 cross-posted messages
+- Cross-post warning missing group name (fixed in ModMessageCrosspost.vue — uses groups array)
+- Mod log display: missing crown for mods/owners, logging not working correctly, modal closes too fast without waiting for progress — test via MCP with std message that changes moderation status
+- Member Review: missing pink member notes, number of replies to offers, other groups joined, shows different joining date
+
+**Playwright login fix:** Removed `loginModToolsViaAPI` (bypassed UI via direct API + localStorage injection). Switched all 8 modtools test files to `loginViaModTools` (actual UI login). Tests running to verify no retries needed.
+
 ### 2026-03-12 - Master CI GREEN, PHP test fix, V2 branch Playwright fix
 - **Master CI**: GREEN. Job 2588 SUCCESS. Auto-merged to production (pipeline 5091).
 - **PHP test fix** (`testImageTextExtraction`):

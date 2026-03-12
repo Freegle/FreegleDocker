@@ -36,6 +36,9 @@ TEST_PATTERNS=(
 # Skip commands that are just downloading/reading files (not executing tests).
 # These commonly contain test-related strings in URLs or file paths.
 IS_DATA_COMMAND=false
+if echo "$COMMAND" | grep -qE '\bcurl\b.*localhost:8081/api/tests'; then
+  IS_DATA_COMMAND=true
+fi
 if echo "$COMMAND" | grep -qE '\bcurl\b.*circle-artifacts\.com'; then
   IS_DATA_COMMAND=true
 fi
@@ -84,7 +87,7 @@ echo "  Playwright:   curl -X POST http://localhost:8081/api/tests/playwright" >
 echo "  PHPUnit:      curl -X POST http://localhost:8081/api/tests/php" >&2
 echo "  Go tests:     curl -X POST http://localhost:8081/api/tests/go" >&2
 echo "  iznik-batch:  curl -X POST http://localhost:8081/api/tests/iznik-batch" >&2
-echo "  Vitest:       Push to branch and check CircleCI (runs in iznik-nuxt3 repo)" >&2
+echo "  Vitest:       curl -X POST http://localhost:8081/api/tests/vitest" >&2
 echo "" >&2
 echo "To check status: curl -s http://localhost:8081/api/tests/<type>/status | jq '.'" >&2
 exit 2

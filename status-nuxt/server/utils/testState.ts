@@ -26,6 +26,7 @@ const testStates = new Map<string, TestState>([
   ['php', initialTestState()],
   ['laravel', initialTestState()],
   ['playwright', initialTestState()],
+  ['vitest', initialTestState()],
 ])
 
 export function getTestState(testType: string): TestState {
