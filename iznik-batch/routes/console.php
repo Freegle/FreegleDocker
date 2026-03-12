@@ -185,6 +185,32 @@ Schedule::command('mail:cleanup-archive')
     ->runInBackground();
 
 // =============================================================================
+// ADMIN EMAILS
+// =============================================================================
+
+// Copy suggested admins to per-group copies and clean up old pending admins.
+// Creates per-group copies (pending=1) for moderator approval,
+// then marks the suggested admin as complete.
+Schedule::command('mail:admin:copy')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Send approved admin emails to group members.
+// Only processes admins that are approved (pending=0) and not yet complete.
+Schedule::command('mail:admin:send --spool')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Chase moderators about pending suggested admins.
+// Sends reminder emails after 48h, once per day, up to 7 days.
+Schedule::command('mail:admin:chase')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// =============================================================================
 // GIT SUMMARY
 // =============================================================================
 

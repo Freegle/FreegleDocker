@@ -495,6 +495,21 @@ class User extends Model
     }
 
     /**
+     * Generate the marketing opt-out URL for marketing/non-essential admin emails.
+     *
+     * Uses the same getUserKey() mechanism as unsubscribe for authentication.
+     *
+     * @return string The marketing opt-out URL
+     */
+    public function marketingOptOutUrl(): string
+    {
+        $key = $this->getUserKey();
+        $userSite = config('freegle.sites.user', 'https://www.ilovefreegle.org');
+
+        return "{$userSite}/marketing-optout?u={$this->id}&k={$key}";
+    }
+
+    /**
      * Check if this user allows merging.
      * Users can set canmerge=false in their settings to prevent being merged.
      */

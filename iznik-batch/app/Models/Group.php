@@ -162,13 +162,18 @@ class Group extends Model
 
     /**
      * Scope to exclude closed groups.
+     *
+     * Note: Must check for both boolean false AND integer 0, as some groups
+     * have "closed": 0 (integer) rather than "closed": false (boolean).
+     * In MySQL JSON comparisons, 0 != false.
      */
     public function scopeNotClosed(Builder $query): Builder
     {
         return $query->where(function ($q) {
             $q->whereNull('settings')
                 ->orWhereRaw("JSON_EXTRACT(settings, '$.closed') IS NULL")
-                ->orWhereRaw("JSON_EXTRACT(settings, '$.closed') = false");
+                ->orWhereRaw("JSON_EXTRACT(settings, '$.closed') = false")
+                ->orWhereRaw("JSON_EXTRACT(settings, '$.closed') = 0");
         });
     }
 

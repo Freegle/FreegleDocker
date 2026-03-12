@@ -20,15 +20,32 @@ abstract class TestCase extends BaseTestCase
     use DatabaseTransactions;
 
     /**
-     * Safety: refuse to run tests against a production database.
+     * Saved PHPUnit error/exception handler stack from before Laravel's setUp.
      *
-     * The batch-prod container connects to the live database. Even with
-     * DatabaseTransactions, running tests there risks live data corruption.
-     * This check uses the actual PDO connection, so it cannot be bypassed
-     * by setting environment variables.
+     * @var list<callable>|null
+     */
+    private ?array $phpunitErrorHandlers = null;
+    private ?array $phpunitExceptionHandlers = null;
+
+    /**
+     * Prevent PHPUnit from marking tests as risky due to Laravel's handler cleanup.
+     *
+     * PHPUnit 11+ snapshots the error/exception handler stack before setUp and
+     * compares it after tearDown. Laravel's HandleExceptions::flushHandlersState()
+     * pops ALL handlers and re-enables PHPUnit's ErrorHandler with a new closure
+     * instance, causing a strict comparison mismatch (→ risky test).
+     *
+     * Fix: capture the exact handler stack before Laravel modifies it, then
+     * restore that exact stack after Laravel's tearDown wipes everything.
+     *
+     * @see https://github.com/Freegle/FreegleDocker/issues/34
      */
     protected function setUp(): void
     {
+        // Capture PHPUnit's handler stack BEFORE Laravel boots and modifies it.
+        $this->phpunitErrorHandlers = $this->captureHandlerStack('error');
+        $this->phpunitExceptionHandlers = $this->captureHandlerStack('exception');
+
         parent::setUp();
 
         // Force mail driver to 'array' for testing.
@@ -50,6 +67,80 @@ abstract class TestCase extends BaseTestCase
             fwrite(STDERR, "\n");
             exit(1);
         }
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+
+        // After Laravel's flushHandlersState() wiped and re-created handlers,
+        // restore the exact stack PHPUnit snapshotted before this test.
+        if ($this->phpunitErrorHandlers !== null) {
+            // Pop whatever's there now.
+            while (set_error_handler(fn () => false) !== null) {
+                restore_error_handler();
+                restore_error_handler();
+            }
+            restore_error_handler(); // Remove our probe.
+
+            // Push back the original handlers in order.
+            foreach ($this->phpunitErrorHandlers as $handler) {
+                set_error_handler($handler);
+            }
+        }
+
+        if ($this->phpunitExceptionHandlers !== null) {
+            while (set_exception_handler(fn () => false) !== null) {
+                restore_exception_handler();
+                restore_exception_handler();
+            }
+            restore_exception_handler();
+
+            foreach ($this->phpunitExceptionHandlers as $handler) {
+                set_exception_handler($handler);
+            }
+        }
+    }
+
+    /**
+     * Capture the current handler stack (error or exception) non-destructively.
+     *
+     * @return list<callable>
+     */
+    private function captureHandlerStack(string $type): array
+    {
+        $handlers = [];
+
+        if ($type === 'error') {
+            while (true) {
+                $prev = set_error_handler(fn () => false);
+                restore_error_handler();
+                if ($prev === null) {
+                    break;
+                }
+                $handlers[] = $prev;
+                restore_error_handler();
+            }
+            // Re-push in reverse to restore original stack.
+            foreach (array_reverse($handlers) as $h) {
+                set_error_handler($h);
+            }
+        } else {
+            while (true) {
+                $prev = set_exception_handler(fn () => false);
+                restore_exception_handler();
+                if ($prev === null) {
+                    break;
+                }
+                $handlers[] = $prev;
+                restore_exception_handler();
+            }
+            foreach (array_reverse($handlers) as $h) {
+                set_exception_handler($h);
+            }
+        }
+
+        return $handlers;
     }
 
     /**

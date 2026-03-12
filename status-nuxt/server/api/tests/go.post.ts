@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
 export default defineEventHandler(async (event) => {
@@ -26,10 +26,19 @@ export default defineEventHandler(async (event) => {
     withCoverage,
   })
 
+  // Resolve percona IP to bypass Go's stale DNS resolver in Docker
+  let perconaIp = 'percona'
+  try {
+    perconaIp = execSync("docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' freegle-percona", { encoding: 'utf8' }).trim()
+    console.log(`Resolved percona IP: ${perconaIp}`)
+  } catch (e) {
+    console.log('Failed to resolve percona IP, using hostname')
+  }
+
   // Build test command
   const testCmd = withCoverage
-    ? 'export CGO_ENABLED=1 && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./...'
-    : 'export MYSQL_DBNAME=iznik_go_test && go test ./test/... -v'
+    ? `export CGO_ENABLED=1 && export MYSQL_HOST=${perconaIp} && export MYSQL_DBNAME=iznik_go_test && go mod tidy && go test -v -race -coverprofile=coverage.out ./test/... -coverpkg ./...`
+    : `export MYSQL_HOST=${perconaIp} && export MYSQL_DBNAME=iznik_go_test && go test ./test/... -v`
 
   // Run tests asynchronously
   const testProcess = spawn('sh', ['-c', `
