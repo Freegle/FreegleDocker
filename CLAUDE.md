@@ -84,6 +84,8 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
   - fixtures.js: Added `net::ERR_ABORTED` to allowed error patterns (fixes dashboard test)
   - hold-release + pending-messages: Added fallback for group count polling — tries counts first (30s), then tries each group individually until one shows message cards
   - Extracted `selectGroupWithPendingMessages` helper in pending-messages
+- **CI Pipeline 2380**: 92/100 pass. 8 failures — ModTools pending messages (no test data), browse responsive (signup timing), reply flow (cleanup timing), settings email persistence bug.
+- **Settings email persistence bug** (Nuxt `996fb44d`): Race condition in EmailSettingsSection.vue — `saveAndGet()` calls `fetchUser()` which triggers `me.value` watcher to re-sync local state, overwriting pending user change. Fixed with `savingEmailSetting` guard flag.
 
 ### 2026-03-12 - Discourse #9481 issue triage, Playwright login fix, visible name fix
 
