@@ -101,12 +101,12 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 | #75 | Jos | Hold: "held by me" but also "held by someone else" | Fix applied, please retest | Go `3f545b9` + uncommitted `ModMessage.vue` heldbyId |
 | #76 | Wendy_B | Community search — volunteers not showing | Fix applied, please retest | Go `fe056dc` + Nuxt `3a8ef47c` |
 | #77 | Jos | Approved members "not on any communities" | Partially fixed, please retest | Go `61a2ab8` |
-| #77 | Jos | "Oh dear" on approved messages (404) | Needs investigation | API 404 |
-| #79 | Jos | Admins still not showing | Needs investigation | |
+| #77 | Jos | "Oh dear" on approved messages (404) | Fix applied | try/catch in message store |
+| #79 | Jos | Admins still not showing | Fix applied | System Admin/Support sees all admins |
 | #81 | Jos | No "visible name" showing | Fix applied, please retest | `SessionAPI.fetchv2` was calling `/user` (flat response) instead of `/session` (wrapped in `{me:...}`). Reverted. |
 | #83 | Wendy_B | No post count against groups | Fix applied, please retest | Uncommitted `modgroup.js` cachedWorkData |
 | #84 | Wendy_B | Chat review not showing | Fix applied, please retest | Go `186988c` + `4883a43` + `842dd34` + `8ee5d1d` |
-| #85 | Jos | Cross-posted messages pending on wrong groups | Needs investigation | |
+| #85 | Jos | Cross-posted messages pending on wrong groups | Fix applied | Approve/reject respects groupid |
 | #90 | Wendy_B | Edits — no text/changes, wrong count | Partially fixed, please retest | Nuxt `a7ebff9f` + Go `68d4a80`. Needs Playwright test. |
 
 **TODOs:**
