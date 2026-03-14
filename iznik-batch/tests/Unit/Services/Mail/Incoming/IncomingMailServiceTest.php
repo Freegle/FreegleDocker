@@ -5,6 +5,7 @@ namespace Tests\Unit\Services\Mail\Incoming;
 use App\Models\ChatMessage;
 use App\Models\Group;
 use App\Models\User;
+use App\Models\UserEmail;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
@@ -2776,6 +2777,63 @@ class IncomingMailServiceTest extends TestCase
         $result = $this->service->route($parsed);
 
         $this->assertEquals(RoutingResult::DROPPED, $result);
+    }
+
+    // ========================================
+    // Merged User Tests
+    // ========================================
+
+    public function test_direct_mail_to_merged_user_proxy_address_is_delivered(): void
+    {
+        // Create the "merged" user (the one that survives)
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        // Simulate a merged user: the old proxy address contains a non-existent user ID,
+        // but the email is registered in users_emails against the surviving user.
+        // This happens when user A is merged into user B — the old proxy email
+        // (slug-{A}@users.ilovefreegle.org) gets reassigned to user B's userid.
+        // Create a real user then delete it to get a UID that genuinely doesn't exist
+        // and won't collide with other concurrent tests.
+        $deletedUser = User::create(['fullname' => 'Deleted Merged User', 'added' => now()]);
+        $fakeOldUid = $deletedUser->id;
+        $deletedUser->delete();
+        $this->assertNull(User::find($fakeOldUid), 'Precondition: deleted UID should not exist');
+
+        $oldProxyEmail = "someslug-{$fakeOldUid}@users.ilovefreegle.org";
+        UserEmail::create([
+            'userid' => $poster->id,
+            'email' => $oldProxyEmail,
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $oldProxyEmail,
+            'Subject' => $message->subject,
+            'x-fd-msgid' => (string) $message->id,
+        ], 'I would love this item!');
+
+        $parsed = $this->parser->parse($email, $replierEmail, $oldProxyEmail);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result, 'Mail to merged user proxy should be delivered, not dropped');
+
+        // Verify chat message was created between the correct users
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Chat message should be created for merged user');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
     }
 
     // ========================================

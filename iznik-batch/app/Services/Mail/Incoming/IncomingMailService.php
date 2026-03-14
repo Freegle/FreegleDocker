@@ -3025,10 +3025,15 @@ class IncomingMailService
             return null;
         }
 
-        // Check for Freegle-formatted address with embedded UID
+        // Check for Freegle-formatted address with embedded UID.
+        // Fall through to email lookup if the UID no longer exists (merged users
+        // retain their old proxy email in users_emails pointing to the new user).
         $userDomain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
         if (preg_match('/.*\-(\d+)@'.preg_quote($userDomain, '/').'$/', $email, $matches)) {
-            return User::find((int) $matches[1]);
+            $user = User::find((int) $matches[1]);
+            if ($user !== null) {
+                return $user;
+            }
         }
 
         // Try direct email lookup first
