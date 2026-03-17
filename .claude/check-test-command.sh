@@ -1,9 +1,19 @@
 #!/bin/bash
-# Hook script to prevent running tests directly
-# Tests should be run via the status container API:
-#   curl -X POST http://localhost:8081/api/tests/playwright
-#   curl -X POST http://localhost:8081/api/tests/php
-#   curl -X POST http://localhost:8081/api/tests/go
+# Hook script to prevent running tests on the live server.
+# On CI (CIRCLECI=true) this hook is a no-op — tests run normally there.
+
+# Only block on production. CI and dev environments can run tests freely.
+if [ -n "$CI" ]; then
+  exit 0
+fi
+
+# Check COMPOSE_PROFILES from .env — if it doesn't contain "production", allow tests.
+if [ -f "$CLAUDE_PROJECT_DIR/.env" ]; then
+  PROFILES=$(grep -E '^COMPOSE_PROFILES=' "$CLAUDE_PROJECT_DIR/.env" | cut -d= -f2-)
+  if ! echo "$PROFILES" | grep -q 'production'; then
+    exit 0
+  fi
+fi
 
 # Read the tool input from stdin
 INPUT=$(cat)
@@ -33,10 +43,20 @@ TEST_PATTERNS=(
   '\bnpx vitest\b'
 )
 
+# Block curl POST to status container test API (triggers test execution on live).
+# Allow GET requests (status checks) but block POST (test runs).
+if echo "$COMMAND" | grep -qE '\bcurl\b.*-X\s*POST.*localhost:8081/api/tests'; then
+  echo "BLOCKED: Do not run tests on the live server. Use CircleCI instead." >&2
+  echo "" >&2
+  echo "  Push to master and CI will run tests automatically." >&2
+  echo "  To check CI status: gh run list --repo Freegle/FreegleDocker" >&2
+  exit 2
+fi
+
 # Skip commands that are just downloading/reading files (not executing tests).
 # These commonly contain test-related strings in URLs or file paths.
 IS_DATA_COMMAND=false
-if echo "$COMMAND" | grep -qE '\bcurl\b.*localhost:8081/api/tests'; then
+if echo "$COMMAND" | grep -qE '\bcurl\b.*localhost:8081/api/tests.*/status'; then
   IS_DATA_COMMAND=true
 fi
 if echo "$COMMAND" | grep -qE '\bcurl\b.*circle-artifacts\.com'; then
@@ -81,13 +101,8 @@ if echo "$COMMAND" | grep -qE -- "--list|--help"; then
 fi
 
 # Block the command
-echo "BLOCKED: Do not run tests directly. Use the status container API or CI:" >&2
+echo "BLOCKED: Do not run tests on the live server. Use CircleCI instead." >&2
 echo "" >&2
-echo "  Playwright:   curl -X POST http://localhost:8081/api/tests/playwright" >&2
-echo "  PHPUnit:      curl -X POST http://localhost:8081/api/tests/php" >&2
-echo "  Go tests:     curl -X POST http://localhost:8081/api/tests/go" >&2
-echo "  iznik-batch:  curl -X POST http://localhost:8081/api/tests/iznik-batch" >&2
-echo "  Vitest:       curl -X POST http://localhost:8081/api/tests/vitest" >&2
-echo "" >&2
-echo "To check status: curl -s http://localhost:8081/api/tests/<type>/status | jq '.'" >&2
+echo "  Push to master and CI will run tests automatically." >&2
+echo "  To check CI status: gh run list --repo Freegle/FreegleDocker" >&2
 exit 2
