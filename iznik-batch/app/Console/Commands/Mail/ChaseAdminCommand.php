@@ -20,7 +20,8 @@ class ChaseAdminCommand extends Command
     protected $signature = "mail:admin:chase
                             {--dry-run : Show what would be sent without sending}
                             {--test-email= : Send a test email to this address instead of real moderators}
-                            {--id= : Chase a specific admin by ID (ignores time thresholds)}";
+                            {--id= : Chase a specific admin by ID (ignores time thresholds)}
+                            {--after=48 : Minimum hours pending before chasing (default 48)}";
 
     protected $description = 'Send chase emails to moderators for pending centralized admins (48h-7d)';
 
@@ -53,9 +54,11 @@ class ChaseAdminCommand extends Command
         $testEmail = $this->option('test-email');
         $specificId = $this->option('id') ? (int) $this->option('id') : null;
 
+        $afterHours = (int) $this->option('after');
+
         $admins = $specificId
             ? DB::table('admins')->where('id', $specificId)->get()
-            : $this->findChasableAdmins();
+            : $this->findChasableAdmins($afterHours);
 
         if ($admins->isEmpty()) {
             $this->info('No pending admins need chasing.');
@@ -104,9 +107,9 @@ class ChaseAdminCommand extends Command
      * - Created more than 48 hours ago, less than 7 days ago
      * - lastchaseup IS NULL or > 24 hours ago
      */
-    protected function findChasableAdmins(): \Illuminate\Support\Collection
+    protected function findChasableAdmins(int $afterHours = self::CHASE_AFTER_HOURS): \Illuminate\Support\Collection
     {
-        $chaseAfter = now()->subHours(self::CHASE_AFTER_HOURS);
+        $chaseAfter = now()->subHours($afterHours);
         $chaseUntil = now()->subDays(self::CHASE_UNTIL_DAYS);
         $chaseInterval = now()->subHours(self::CHASE_INTERVAL_HOURS);
 

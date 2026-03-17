@@ -168,6 +168,7 @@ class ProcessBackgroundTasksCommand extends Command
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
             'email_message_approved', 'email_message_rejected', 'email_message_reply'
                 => $this->handleModStdMessage($taskType, $data, $spooler, $shouldSpool),
+            'message_outcome' => $this->handleMessageOutcome($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -445,6 +446,98 @@ class ProcessBackgroundTasksCommand extends Command
             'byuser' => $byUser,
             'groupid' => $groupId,
             'recipient' => $posterEmail,
+        ]);
+    }
+
+    /**
+     * Handle message outcome background processing.
+     *
+     * V1 parity with Message::backgroundMark():
+     * 1. Log the outcome to the logs table for each group the message is on.
+     * 2. Notify interested users (who replied but didn't get the item) by creating
+     *    TYPE_COMPLETED chat messages in their User2User chat rooms.
+     */
+    protected function handleMessageOutcome(array $data): void
+    {
+        $msgId = (int) ($data['msgid'] ?? 0);
+        $byUser = (int) ($data['byuser'] ?? 0);
+        $outcome = $data['outcome'] ?? '';
+        $happiness = $data['happiness'] ?? '';
+        $comment = $data['comment'] ?? '';
+        $userid = (int) ($data['userid'] ?? 0);
+        $messageForOthers = $data['message'] ?? '';
+
+        if ($msgId === 0) {
+            throw new \RuntimeException('message_outcome requires msgid');
+        }
+
+        // Get the message poster.
+        $fromUser = (int) (DB::table('messages')->where('id', $msgId)->value('fromuser') ?? 0);
+
+        // 1. Log the outcome for each group (V1: Log::TYPE_MESSAGE, Log::SUBTYPE_OUTCOME).
+        $groups = DB::table('messages_groups')->where('msgid', $msgId)->pluck('groupid');
+
+        foreach ($groups as $groupId) {
+            DB::table('logs')->insert([
+                'timestamp' => now(),
+                'type' => 'Message',
+                'subtype' => 'Outcome',
+                'msgid' => $msgId,
+                'user' => $fromUser ?: null,
+                'byuser' => $byUser ?: null,
+                'groupid' => $groupId,
+                'text' => trim("{$outcome} {$comment}"),
+            ]);
+        }
+
+        // 2. Notify interested users who replied but didn't get the item.
+        // Find User2User chat rooms with INTERESTED messages referencing this message,
+        // excluding users who are in messages_by (i.e. who got the item).
+        $replies = DB::select(
+            "SELECT DISTINCT chatid FROM chat_messages
+             INNER JOIN chat_rooms ON chat_rooms.id = chat_messages.chatid AND chat_rooms.chattype = 'User2User'
+             LEFT JOIN messages_by ON messages_by.msgid = chat_messages.refmsgid
+                 AND messages_by.userid IN (chat_rooms.user1, chat_rooms.user2)
+             WHERE refmsgid = ? AND chat_messages.type = 'Interested'
+                 AND reviewrejected = 0 AND messages_by.id IS NULL",
+            [$msgId]
+        );
+
+        foreach ($replies as $reply) {
+            // Check if this message was unpromised in this chat (TYPE_RENEGED).
+            // If so, don't send the generic message as it may not be appropriate.
+            $unpromised = DB::table('chat_messages')
+                ->where('chatid', $reply->chatid)
+                ->where('refmsgid', $msgId)
+                ->where('type', 'Reneged')
+                ->exists();
+
+            DB::table('chat_messages')->insert([
+                'chatid' => $reply->chatid,
+                'userid' => $fromUser,
+                'message' => $unpromised ? null : ($messageForOthers ?: null),
+                'type' => 'Completed',
+                'refmsgid' => $msgId,
+                'date' => now(),
+                'reviewrequired' => 0,
+                'processingrequired' => 0,
+                'processingsuccessful' => 1,
+            ]);
+
+            // Mark the poster as up-to-date in this chat so it doesn't appear as unread to them.
+            if ($fromUser) {
+                DB::table('chat_roster')->updateOrInsert(
+                    ['chatid' => $reply->chatid, 'userid' => $fromUser],
+                    ['lastmsgseen' => DB::raw('(SELECT MAX(id) FROM chat_messages WHERE chatid = ' . (int) $reply->chatid . ')'), 'date' => now()]
+                );
+            }
+        }
+
+        Log::info('Processed message outcome', [
+            'msgid' => $msgId,
+            'outcome' => $outcome,
+            'groups' => $groups->count(),
+            'notified_chats' => count($replies),
         ]);
     }
 }
