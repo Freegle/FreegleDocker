@@ -7,6 +7,7 @@ use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
+use App\Mail\Message\ModStdMessageMail;
 use App\Services\EmailSpoolerService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
@@ -164,6 +165,8 @@ class ProcessBackgroundTasksCommand extends Command
             'email_donate_external' => $this->handleEmailDonateExternal($data, $spooler, $shouldSpool),
             'email_forgot_password' => $this->handleEmailForgotPassword($data, $spooler, $shouldSpool),
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
+            'email_message_approved', 'email_message_rejected', 'email_message_reply'
+                => $this->handleModStdMessage($taskType, $data, $spooler, $shouldSpool),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -314,6 +317,120 @@ class ProcessBackgroundTasksCommand extends Command
 
         Log::info('Sent unsubscribe confirmation email', [
             'user_id' => $data['user_id'],
+        ]);
+    }
+
+    /**
+     * Handle mod standard message emails (approve, reject, reply).
+     *
+     * Looks up the message poster, group, and mod info, then sends the stdmsg email
+     * and creates a User2Mod chat message for the mod log.
+     */
+    protected function handleModStdMessage(
+        string $taskType,
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $msgId = (int) ($data['msgid'] ?? 0);
+        $byUser = (int) ($data['byuser'] ?? 0);
+        $groupId = (int) ($data['groupid'] ?? 0);
+        $subject = $data['subject'] ?? '';
+        $body = $data['body'] ?? '';
+
+        if ($msgId === 0 || $byUser === 0) {
+            throw new \RuntimeException("{$taskType} requires msgid and byuser");
+        }
+
+        // No subject/body means no stdmsg to send (e.g. plain approve without message).
+        if ($subject === '' && $body === '') {
+            Log::info("Mod action {$taskType} without stdmsg content, skipping email", [
+                'msgid' => $msgId,
+                'byuser' => $byUser,
+            ]);
+            return;
+        }
+
+        // Look up the poster's preferred email.
+        $posterEmail = DB::table('users_emails')
+            ->where('userid', function ($query) use ($msgId) {
+                $query->select('fromuser')->from('messages')->where('id', $msgId)->limit(1);
+            })
+            ->where('ourdomain', 0)
+            ->orderByDesc('preferred')
+            ->value('email');
+
+        if (! $posterEmail) {
+            Log::warning("No email found for poster of message {$msgId}");
+            return;
+        }
+
+        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
+
+        // Look up the group name.
+        $groupName = '';
+        if ($groupId > 0) {
+            $groupName = DB::table('groups')
+                ->where('id', $groupId)
+                ->value('namefull') ?? DB::table('groups')->where('id', $groupId)->value('nameshort') ?? '';
+        }
+
+        // Look up the mod's display name.
+        $modName = DB::table('users')->where('id', $byUser)->value('fullname') ?? 'A volunteer';
+
+        // Look up the message subject for context.
+        $messageSubject = DB::table('messages')->where('id', $msgId)->value('subject') ?? '';
+
+        $mail = new ModStdMessageMail(
+            modName: $modName,
+            groupName: $groupName,
+            stdSubject: $subject,
+            stdBody: $body,
+            messageSubject: $messageSubject,
+            msgId: $msgId,
+            recipientUserId: $posterId,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $posterEmail);
+        } else {
+            Mail::to($posterEmail)->send($mail);
+        }
+
+        // Create a User2Mod chat message so the conversation appears in modtools chats.
+        $chatRoomId = DB::table('chat_rooms')
+            ->where('user1', $posterId)
+            ->where('groupid', $groupId)
+            ->where('chattype', 'User2Mod')
+            ->value('id');
+
+        if (! $chatRoomId && $groupId > 0) {
+            $chatRoomId = DB::table('chat_rooms')->insertGetId([
+                'chattype' => 'User2Mod',
+                'user1' => $posterId,
+                'groupid' => $groupId,
+            ]);
+        }
+
+        if ($chatRoomId) {
+            DB::table('chat_messages')->insert([
+                'chatid' => $chatRoomId,
+                'userid' => $byUser,
+                'message' => "{$subject}\r\n\r\n{$body}",
+                'type' => 'ModMail',
+                'refmsgid' => $msgId,
+                'date' => now(),
+                'reviewrequired' => 0,
+                'processingrequired' => 0,
+                'processingsuccessful' => 1,
+            ]);
+        }
+
+        Log::info("Sent mod stdmsg email ({$taskType})", [
+            'msgid' => $msgId,
+            'byuser' => $byUser,
+            'groupid' => $groupId,
+            'recipient' => $posterEmail,
         ]);
     }
 }

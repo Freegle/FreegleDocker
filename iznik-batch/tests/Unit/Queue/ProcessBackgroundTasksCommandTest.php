@@ -6,6 +6,7 @@ use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
+use App\Mail\Message\ModStdMessageMail;
 use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
