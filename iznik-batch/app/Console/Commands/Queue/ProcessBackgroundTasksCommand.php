@@ -8,6 +8,7 @@ use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
 use App\Mail\Message\ModStdMessageMail;
+use App\Models\User;
 use App\Services\EmailSpoolerService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
@@ -338,6 +339,11 @@ class ProcessBackgroundTasksCommand extends Command
         $subject = $data['subject'] ?? '';
         $body = $data['body'] ?? '';
 
+        // Fall back to looking up group from messages_groups if not provided.
+        if ($groupId === 0 && $msgId > 0) {
+            $groupId = (int) (DB::table('messages_groups')->where('msgid', $msgId)->value('groupid') ?? 0);
+        }
+
         if ($msgId === 0 || $byUser === 0) {
             throw new \RuntimeException("{$taskType} requires msgid and byuser");
         }
@@ -351,28 +357,33 @@ class ProcessBackgroundTasksCommand extends Command
             return;
         }
 
-        // Look up the poster's preferred email.
-        $posterEmail = DB::table('users_emails')
-            ->where('userid', function ($query) use ($msgId) {
-                $query->select('fromuser')->from('messages')->where('id', $msgId)->limit(1);
-            })
-            ->where('ourdomain', 0)
-            ->orderByDesc('preferred')
-            ->value('email');
+        // Look up the poster and their preferred email.
+        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
+
+        if (! $posterId) {
+            Log::warning("No poster found for message {$msgId}");
+            return;
+        }
+
+        $poster = User::find($posterId);
+        $posterEmail = $poster?->email_preferred;
 
         if (! $posterEmail) {
             Log::warning("No email found for poster of message {$msgId}");
             return;
         }
 
-        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
-
-        // Look up the group name.
+        // Look up the group info.
         $groupName = '';
+        $groupNameShort = '';
+        $groupContactMail = null;
         if ($groupId > 0) {
-            $groupName = DB::table('groups')
-                ->where('id', $groupId)
-                ->value('namefull') ?? DB::table('groups')->where('id', $groupId)->value('nameshort') ?? '';
+            $group = DB::table('groups')->where('id', $groupId)->first();
+            if ($group) {
+                $groupName = $group->namefull ?: $group->nameshort ?? '';
+                $groupNameShort = $group->nameshort ?? '';
+                $groupContactMail = $group->contactmail ?: null;
+            }
         }
 
         // Look up the mod's display name.
@@ -384,11 +395,14 @@ class ProcessBackgroundTasksCommand extends Command
         $mail = new ModStdMessageMail(
             modName: $modName,
             groupName: $groupName,
+            groupNameShort: $groupNameShort,
             stdSubject: $subject,
             stdBody: $body,
             messageSubject: $messageSubject,
             msgId: $msgId,
             recipientUserId: $posterId,
+            recipientEmail: $posterEmail,
+            groupContactMail: $groupContactMail,
         );
 
         if ($shouldSpool) {

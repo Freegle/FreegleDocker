@@ -353,6 +353,206 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         // Command should have exited cleanly after 3 iterations.
     }
 
+    public function test_mod_stdmsg_reject_sends_email_from_group_volunteers(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup(['nameshort' => 'TestFreegle', 'namefull' => 'Test Freegle Group']);
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Wendy Moderator']);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'WANTED: Something (Test AB1)',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Rejected',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_rejected',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'MODERATOR MESSAGE -: WANTED: Something (Test AB1)',
+                'body' => 'Dear member, please repost with more detail.',
+                'stdmsgid' => 0,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify email was sent with correct from address and content.
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($group, $mod) {
+            $this->assertEquals('Wendy Moderator', $mail->modName);
+            $this->assertEquals('TestFreegle', $mail->groupNameShort);
+            $this->assertEquals('MODERATOR MESSAGE -: WANTED: Something (Test AB1)', $mail->stdSubject);
+            $this->assertEquals('Dear member, please repost with more detail.', $mail->stdBody);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_mod_stdmsg_approve_without_content_skips_email(): void
+    {
+        Mail::fake();
+
+        $poster = $this->createTestUser();
+        $mod = $this->createTestUser();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test item',
+            'date' => now(),
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_approved',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'subject' => '',
+                'body' => '',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // No email should be sent for empty stdmsg.
+        Mail::assertNothingSent();
+
+        // But the task should be marked as processed (not failed).
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_mod_stdmsg_falls_back_to_messages_groups_for_groupid(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup(['nameshort' => 'FallbackGroup']);
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Test Mod']);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'WANTED: Widget',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        // Queue task WITHOUT groupid (old Go API format).
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_reply',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'subject' => 'Re: WANTED: Widget',
+                'body' => 'Thanks for posting!',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
+            $this->assertEquals('FallbackGroup', $mail->groupNameShort);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_mod_stdmsg_creates_chat_room_and_message(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup(['nameshort' => 'ChatTestGroup']);
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Chat Mod']);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Chat test',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Rejected',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_rejected',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Rejection notice',
+                'body' => 'Please repost.',
+                'stdmsgid' => 0,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify a User2Mod chat room was created.
+        $chatRoom = DB::table('chat_rooms')
+            ->where('user1', $poster->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', 'User2Mod')
+            ->first();
+        $this->assertNotNull($chatRoom, 'User2Mod chat room should be created');
+
+        // Verify a chat message was created.
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $mod->id)
+            ->where('type', 'ModMail')
+            ->first();
+        $this->assertNotNull($chatMsg, 'ModMail chat message should be created');
+        $this->assertEquals($msgId, $chatMsg->refmsgid);
+        $this->assertStringContains('Rejection notice', $chatMsg->message);
+        $this->assertStringContains('Please repost.', $chatMsg->message);
+    }
+
     /**
      * Custom assertion for string containment (PHPUnit 10+ compatible).
      */

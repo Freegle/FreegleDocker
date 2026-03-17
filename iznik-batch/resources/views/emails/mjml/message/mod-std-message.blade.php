@@ -21,6 +21,6 @@
             </mj-column>
         </mj-section>
 
-        @include('emails.mjml.partials.unsubscribe')
+        @include('emails.mjml.partials.footer', ['email' => $email ?? ''])
     </mj-body>
 </mjml>
