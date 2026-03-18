@@ -3,11 +3,15 @@
 namespace App\Mail\Message;
 
 use App\Mail\MjmlMailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
 /**
  * Email sent from a moderator to a message poster using a standard message.
  * Used for approve, reject, reply, and delete actions.
+ *
+ * V1 parity: sent from {groupnameshort}-volunteers@groups.ilovefreegle.org
+ * (or the group's contactmail if set), with the mod's display name.
  */
 class ModStdMessageMail extends MjmlMailable
 {
@@ -16,11 +20,14 @@ class ModStdMessageMail extends MjmlMailable
     public function __construct(
         public readonly string $modName,
         public readonly string $groupName,
+        public readonly string $groupNameShort,
         public readonly string $stdSubject,
         public readonly string $stdBody,
         public readonly string $messageSubject,
         public readonly int $msgId,
         public readonly int $recipientUserId,
+        public readonly string $recipientEmail = '',
+        public readonly ?string $groupContactMail = null,
     ) {
         parent::__construct();
 
@@ -30,12 +37,18 @@ class ModStdMessageMail extends MjmlMailable
             'body' => $this->stdBody,
             'messageSubject' => $this->messageSubject,
             'userSite' => config('freegle.sites.user'),
+            'email' => $this->recipientEmail,
         ];
     }
 
     public function envelope(): Envelope
     {
+        // V1: from address is group's contactmail, or {nameshort}-volunteers@groups.ilovefreegle.org
+        $fromEmail = $this->groupContactMail
+            ?: ($this->groupNameShort . '-volunteers@' . config('freegle.mail.group_domain', 'groups.ilovefreegle.org'));
+
         return new Envelope(
+            from: new Address($fromEmail, $this->modName),
             subject: $this->stdSubject,
         );
     }
