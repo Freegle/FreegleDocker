@@ -128,11 +128,17 @@ class DonationServiceTest extends TestCase
 
     public function test_ask_for_donations_with_no_recipients(): void
     {
+        // Freeze time to a point where the query window (yesterday 17:00 to today 17:00)
+        // won't contain any messages_by rows created by parallel tests.
+        $this->travelTo(now()->subYears(5));
+
         $stats = $this->service->askForDonations();
 
         $this->assertEquals(0, $stats['processed']);
         $this->assertEquals(0, $stats['emails_sent']);
         Mail::assertNothingSent();
+
+        $this->travelBack();
     }
 
     public function test_ask_for_donations_respects_interval(): void

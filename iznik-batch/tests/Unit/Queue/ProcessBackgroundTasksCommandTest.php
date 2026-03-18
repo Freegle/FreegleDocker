@@ -357,7 +357,7 @@ class ProcessBackgroundTasksCommandTest extends TestCase
     {
         Mail::fake();
 
-        $group = $this->createTestGroup(['nameshort' => 'TestFreegle', 'namefull' => 'Test Freegle Group']);
+        $group = $this->createTestGroup();
         $poster = $this->createTestUser();
         $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
         $mod = $this->createTestUser(['fullname' => 'Wendy Moderator']);
@@ -396,7 +396,7 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         // Verify email was sent with correct from address and content.
         Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($group, $mod) {
             $this->assertEquals('Wendy Moderator', $mail->modName);
-            $this->assertEquals('TestFreegle', $mail->groupNameShort);
+            $this->assertEquals($group->nameshort, $mail->groupNameShort);
             $this->assertEquals('MODERATOR MESSAGE -: WANTED: Something (Test AB1)', $mail->stdSubject);
             $this->assertEquals('Dear member, please repost with more detail.', $mail->stdBody);
             return TRUE;
@@ -449,7 +449,7 @@ class ProcessBackgroundTasksCommandTest extends TestCase
     {
         Mail::fake();
 
-        $group = $this->createTestGroup(['nameshort' => 'FallbackGroup']);
+        $group = $this->createTestGroup();
         $poster = $this->createTestUser();
         $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
         $mod = $this->createTestUser(['fullname' => 'Test Mod']);
@@ -484,8 +484,8 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             '--sleep' => 0,
         ])->assertSuccessful();
 
-        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
-            $this->assertEquals('FallbackGroup', $mail->groupNameShort);
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($group) {
+            $this->assertEquals($group->nameshort, $mail->groupNameShort);
             return TRUE;
         });
 
@@ -497,7 +497,7 @@ class ProcessBackgroundTasksCommandTest extends TestCase
     {
         Mail::fake();
 
-        $group = $this->createTestGroup(['nameshort' => 'ChatTestGroup']);
+        $group = $this->createTestGroup();
         $poster = $this->createTestUser();
         $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
         $mod = $this->createTestUser(['fullname' => 'Chat Mod']);
