@@ -30,6 +30,10 @@ class User extends Model
     // Login types.
     public const LOGIN_NATIVE = 'Native';
 
+    // Inactivity threshold — matches Engage::USER_INACTIVE (365 * 24 * 60 * 60 / 2 = ~182.5 days).
+    // (Could move this to Engage if it gets ported to Laravel.)
+    public const USER_INACTIVE = 365 * 24 * 60 * 60 / 2;
+
     // Gift aid period weights for merge comparison (lower = more favourable).
     public const GIFTAID_PERIOD_PAST_4_YEARS_AND_FUTURE = 'Past4YearsAndFuture';
     public const GIFTAID_PERIOD_SINCE = 'Since';
@@ -337,6 +341,54 @@ class User extends Model
         return $this->memberships()
             ->where('emailfrequency', '!=', 0)
             ->exists();
+    }
+
+    /**
+     * Whether we should send our mails to this user.
+     *
+     * Ported from iznik-server/include/user/User.php::sendOurMails().
+     *
+     * @param bool $checkHoliday Whether to check if user is on holiday
+     * @param bool $checkBouncing Whether to check if user's email is bouncing
+     * @return bool TRUE if this user should receive emails
+     */
+    public function sendOurMails(bool $checkHoliday = TRUE, bool $checkBouncing = TRUE): bool
+    {
+        if ($this->deleted) {
+            return FALSE;
+        }
+
+        // We have two kinds of email settings - the top-level Simple one, and more detailed per group ones.
+        // Where present the Simple one overrides the group ones, so check that first.
+        $simpleMail = $this->getSimpleMail();
+        if ($simpleMail === self::SIMPLE_MAIL_NONE) {
+            return FALSE;
+        }
+
+        // We don't want to send emails to people who haven't been active for more than six months.  This improves
+        // our spam reputation, by avoiding honeytraps.
+        // This time is also present on the client in ModMember, and in Engage.
+        $sendIt = FALSE;
+        $lastaccess = $this->lastaccess;
+
+        if ($lastaccess !== NULL && $lastaccess->timestamp >= (time() - self::USER_INACTIVE)) {
+            $sendIt = TRUE;
+
+            if ($sendIt && $checkHoliday) {
+                // We might be on holiday.
+                $hol = $this->onholidaytill;
+                $till = $hol ? strtotime($hol) : 0;
+
+                $sendIt = time() > $till;
+            }
+
+            if ($sendIt && $checkBouncing) {
+                // And don't send if we're bouncing.
+                $sendIt = !$this->bouncing;
+            }
+        }
+
+        return $sendIt;
     }
 
     /**
@@ -1394,8 +1446,7 @@ class User extends Model
 
             $one['mysettings'] = $this->getGroupSettings($row->groupid, $row->configid);
 
-            // TODO: Port sendOurMails() from iznik-server — for now, assume mail is enabled for Freegle groups.
-            $one['mysettings']['emailfrequency'] = ($row->type === Group::TYPE_FREEGLE)
+            $one['mysettings']['emailfrequency'] = ($row->type === Group::TYPE_FREEGLE && $this->sendOurMails(false, false))
                 ? ($one['mysettings']['emailfrequency'] ?? 24)
                 : 0;
 
