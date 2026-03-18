@@ -1193,6 +1193,31 @@ class User extends Model
     }
 
     /**
+     * Return the group IDs where this user is a Moderator or Owner.
+     *
+     * Ported from iznik-server/include/user/User.php::getModeratorships().
+     *
+     * @param bool $activeOnly When TRUE, only include groups where the user is actively modding.
+     *                         Requires activeModForGroup() — TODO: implement activeModForGroup().
+     *                         Until then, passing TRUE returns the same result as FALSE.
+     * @return array<int> Array of group IDs
+     */
+    public function getModeratorships(bool $activeOnly = false): array
+    {
+        $ret = [];
+
+        foreach ($this->memberships()->get() as $membership) {
+            if ($membership->role === self::ROLE_OWNER || $membership->role === self::ROLE_MODERATOR) {
+                // TODO Finnbarr: When activeModForGroup() is implemented, gate on it when $activeOnly is TRUE.
+                // if (!$activeOnly || $this->activeModForGroup($membership->groupid)) {
+                $ret[] = $membership->groupid;
+            }
+        }
+
+        return $ret;
+    }
+
+    /**
      * Get the user's per-group membership settings.
      *
      * Ported from iznik-server/include/user/User.php::getGroupSettings().

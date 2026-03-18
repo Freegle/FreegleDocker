@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\TrashNothing;
 
 use App\Console\Concerns\PreventsOverlapping;
 use App\Models\Location;
