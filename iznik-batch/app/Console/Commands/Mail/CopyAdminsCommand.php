@@ -89,9 +89,12 @@ class CopyAdminsCommand extends Command
                     continue;
                 }
 
-                // TODO: V1 calls PushNotifications::notifyGroupMods() here to notify
-                // group moderators about the new pending admin. Implement when push
-                // notification service is available in Laravel.
+                // Notify group moderators about the new pending admin via background task.
+                DB::table('background_tasks')->insert([
+                    'task_type' => 'push_notify_group_mods',
+                    'data' => json_encode(['group_id' => $group->id]),
+                ]);
+
                 DB::table('admins')->insert([
                     'createdby' => $admin->createdby,
                     'groupid' => $group->id,
