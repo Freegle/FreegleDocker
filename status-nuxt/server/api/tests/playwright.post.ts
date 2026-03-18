@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event).catch(() => ({}))
 
   // Get test file and name from query params or body
-  const testFile = (body?.testFile || query.testSpec) as string | null
+  const testFile = (body?.testFile || query.testSpec || query.spec) as string | null
   const testName = (body?.testName || body?.filter || query.testName || query.filter) as string | null
 
   let logMessage = 'Received request to run Playwright tests'
@@ -87,8 +87,14 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     await new Promise(resolve => setTimeout(resolve, 3000))
 
     // Build test args for both --list and actual run
+    // If testFile is a bare name (no path separators), expand to tests/e2e/<name>.spec.js
+    let resolvedTestFile = testFile
+    if (resolvedTestFile && !resolvedTestFile.includes('/')) {
+      const name = resolvedTestFile.replace(/\.spec\.js$/, '')
+      resolvedTestFile = `tests/e2e/${name}.spec.js`
+    }
     let testArgs = ''
-    if (testFile) testArgs += ` ${testFile}`
+    if (resolvedTestFile) testArgs += ` ${resolvedTestFile}`
     if (testName) testArgs += ` --grep "${testName}"`
 
     // Get accurate test count using --list before running
@@ -203,26 +209,18 @@ function parsePlaywrightOutput(text: string) {
   if (allPassedMatch) {
     state.progress.passed = parseInt(allPassedMatch[1])
   } else {
-    // Fall back to symbol counting only if no summary line has appeared yet
-    const passSymbols = (allLogs.match(/✓/g) || []).length
-    if (passSymbols > 0) state.progress.passed = passSymbols
+    // Fall back to counting Playwright list-reporter lines only (format: "  ✓  N [chromium]")
+    // Do NOT count bare ✓ symbols — test code (e.g. withdrawPost) also logs ✓.
+    const passLines = (allLogs.match(/^\s*✓\s+\d+\s+\[/gm) || []).length
+    if (passLines > 0) state.progress.passed = passLines
   }
 
   if (allFailedMatch) {
     state.progress.failed = parseInt(allFailedMatch[1])
   } else {
-    const failSymbols = (allLogs.match(/✗/g) || []).length
-    if (failSymbols > 0) state.progress.failed = failSymbols
-  }
-
-  // Cap passed + failed to not exceed total (retries can inflate symbol counts)
-  if (state.progress.total > 0) {
-    if (state.progress.passed > state.progress.total) {
-      state.progress.passed = state.progress.total
-    }
-    if (state.progress.passed + state.progress.failed > state.progress.total) {
-      state.progress.failed = state.progress.total - state.progress.passed
-    }
+    // Count only Playwright list-reporter failure lines (format: "  ✘  N [chromium]")
+    const failLines = (allLogs.match(/^\s*[✘✗×]\s+\d+\s+\[/gm) || []).length
+    if (failLines > 0) state.progress.failed = failLines
   }
 
   // Update completed

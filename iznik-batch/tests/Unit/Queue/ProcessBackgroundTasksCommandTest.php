@@ -6,6 +6,7 @@ use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
+use App\Mail\Message\ModStdMessageMail;
 use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -350,6 +351,438 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         ])->assertSuccessful();
 
         // Command should have exited cleanly after 3 iterations.
+    }
+
+    public function test_mod_stdmsg_reject_sends_email_from_group_volunteers(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Wendy Moderator']);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'WANTED: Something (Test AB1)',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Rejected',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_rejected',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'MODERATOR MESSAGE -: WANTED: Something (Test AB1)',
+                'body' => 'Dear member, please repost with more detail.',
+                'stdmsgid' => 0,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify email was sent with correct from address and content.
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($group, $mod) {
+            $this->assertEquals('Wendy Moderator', $mail->modName);
+            $this->assertEquals($group->nameshort, $mail->groupNameShort);
+            $this->assertEquals('MODERATOR MESSAGE -: WANTED: Something (Test AB1)', $mail->stdSubject);
+            $this->assertEquals('Dear member, please repost with more detail.', $mail->stdBody);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_mod_stdmsg_approve_without_content_skips_email(): void
+    {
+        Mail::fake();
+
+        $poster = $this->createTestUser();
+        $mod = $this->createTestUser();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test item',
+            'date' => now(),
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_approved',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'subject' => '',
+                'body' => '',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // No email should be sent for empty stdmsg.
+        Mail::assertNothingSent();
+
+        // But the task should be marked as processed (not failed).
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_mod_stdmsg_falls_back_to_messages_groups_for_groupid(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Test Mod']);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'WANTED: Widget',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        // Queue task WITHOUT groupid (old Go API format).
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_reply',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'subject' => 'Re: WANTED: Widget',
+                'body' => 'Thanks for posting!',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($group) {
+            $this->assertEquals($group->nameshort, $mail->groupNameShort);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_mod_stdmsg_creates_chat_room_and_message(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Chat Mod']);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Chat test',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Rejected',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_rejected',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Rejection notice',
+                'body' => 'Please repost.',
+                'stdmsgid' => 0,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify a User2Mod chat room was created.
+        $chatRoom = DB::table('chat_rooms')
+            ->where('user1', $poster->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', 'User2Mod')
+            ->first();
+        $this->assertNotNull($chatRoom, 'User2Mod chat room should be created');
+
+        // Verify a chat message was created.
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $mod->id)
+            ->where('type', 'ModMail')
+            ->first();
+        $this->assertNotNull($chatMsg, 'ModMail chat message should be created');
+        $this->assertEquals($msgId, $chatMsg->refmsgid);
+        $this->assertStringContains('Rejection notice', $chatMsg->message);
+        $this->assertStringContains('Please repost.', $chatMsg->message);
+    }
+
+    public function test_message_outcome_logs_and_notifies_interested_users(): void
+    {
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $replier = $this->createTestUser();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test item',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        // Create a User2User chat room where the replier expressed interest.
+        $chatRoomId = DB::table('chat_rooms')->insertGetId([
+            'chattype' => 'User2User',
+            'user1' => $poster->id,
+            'user2' => $replier->id,
+        ]);
+        DB::table('chat_messages')->insert([
+            'chatid' => $chatRoomId,
+            'userid' => $replier->id,
+            'message' => 'Is this still available?',
+            'type' => 'Interested',
+            'refmsgid' => $msgId,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'reviewrejected' => 0,
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'message_outcome',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $poster->id,
+                'outcome' => 'Taken',
+                'happiness' => 'Happy',
+                'comment' => 'Great experience',
+                'userid' => 0,
+                'message' => 'Sorry, this has now been taken.',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify log entry was created.
+        $log = DB::table('logs')
+            ->where('msgid', $msgId)
+            ->where('type', 'Message')
+            ->where('subtype', 'Outcome')
+            ->first();
+        $this->assertNotNull($log, 'Outcome log entry should be created');
+        $this->assertEquals($poster->id, $log->user);
+        $this->assertEquals($group->id, $log->groupid);
+        $this->assertStringContains('Taken', $log->text);
+
+        // Verify the interested replier got a Completed chat message.
+        $completedMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoomId)
+            ->where('type', 'Completed')
+            ->first();
+        $this->assertNotNull($completedMsg, 'Completed chat message should be created');
+        $this->assertEquals($poster->id, $completedMsg->userid);
+        $this->assertEquals($msgId, $completedMsg->refmsgid);
+        $this->assertEquals('Sorry, this has now been taken.', $completedMsg->message);
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_message_outcome_skips_message_for_unpromised_chats(): void
+    {
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $replier = $this->createTestUser();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test item',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        $chatRoomId = DB::table('chat_rooms')->insertGetId([
+            'chattype' => 'User2User',
+            'user1' => $poster->id,
+            'user2' => $replier->id,
+        ]);
+        // Interested message.
+        DB::table('chat_messages')->insert([
+            'chatid' => $chatRoomId,
+            'userid' => $replier->id,
+            'message' => 'I want this',
+            'type' => 'Interested',
+            'refmsgid' => $msgId,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'reviewrejected' => 0,
+        ]);
+        // Reneged (unpromised) message — poster changed their mind.
+        DB::table('chat_messages')->insert([
+            'chatid' => $chatRoomId,
+            'userid' => $poster->id,
+            'message' => null,
+            'type' => 'Reneged',
+            'refmsgid' => $msgId,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'reviewrejected' => 0,
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'message_outcome',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $poster->id,
+                'outcome' => 'Taken',
+                'happiness' => '',
+                'comment' => '',
+                'userid' => 0,
+                'message' => 'Sorry, this has been taken.',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // The Completed message should have null message body (unpromised).
+        $completedMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoomId)
+            ->where('type', 'Completed')
+            ->first();
+        $this->assertNotNull($completedMsg, 'Completed chat message should be created');
+        $this->assertNull($completedMsg->message, 'Message should be null for unpromised chat');
+    }
+
+    public function test_message_outcome_excludes_user_who_got_item(): void
+    {
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $taker = $this->createTestUser();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test item',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        $chatRoomId = DB::table('chat_rooms')->insertGetId([
+            'chattype' => 'User2User',
+            'user1' => $poster->id,
+            'user2' => $taker->id,
+        ]);
+        DB::table('chat_messages')->insert([
+            'chatid' => $chatRoomId,
+            'userid' => $taker->id,
+            'message' => 'I want this',
+            'type' => 'Interested',
+            'refmsgid' => $msgId,
+            'date' => now(),
+            'reviewrequired' => 0,
+            'reviewrejected' => 0,
+        ]);
+
+        // Record that this user actually got the item.
+        DB::table('messages_by')->insert([
+            'msgid' => $msgId,
+            'userid' => $taker->id,
+            'count' => 1,
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'message_outcome',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $poster->id,
+                'outcome' => 'Taken',
+                'happiness' => '',
+                'comment' => '',
+                'userid' => $taker->id,
+                'message' => 'Sorry, taken.',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // No Completed message should be created — the taker already got it.
+        $completedMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoomId)
+            ->where('type', 'Completed')
+            ->first();
+        $this->assertNull($completedMsg, 'Should not notify user who got the item');
+
+        // But the log should still be there.
+        $log = DB::table('logs')
+            ->where('msgid', $msgId)
+            ->where('type', 'Message')
+            ->where('subtype', 'Outcome')
+            ->first();
+        $this->assertNotNull($log);
     }
 
     /**
