@@ -1409,8 +1409,14 @@ class User extends Model
         }
 
         if ($getWork && !empty($getWorkIds)) {
-            // TODO: Port Group::getWorkCounts() from iznik-server to populate work counts per group.
-            // Original code also handles extra groups from wider chat review.
+            $workcounts = Group::getWorkCounts($this, $groupSettings, $getWorkIds);
+            foreach ($ret as &$one) {
+                $gid = $one['id'];
+                if (isset($workcounts[$gid])) {
+                    $one = array_merge($one, $workcounts[$gid]);
+                }
+            }
+            unset($one);
         }
 
         return $ret;

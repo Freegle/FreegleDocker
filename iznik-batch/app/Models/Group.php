@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use App\Models\ChatMessage;
 
 class Group extends Model
 {
@@ -253,11 +254,12 @@ class Group extends Model
      *
      * Ported from iznik-server Group::getWorkCounts().
      *
+     * @param  User   $me          The moderator user requesting work counts.
      * @param  array  $mysettings  Per-group settings indexed by groupid; each entry may have an 'active' boolean.
      * @param  array  $groupids    Group IDs to get counts for.
      * @return array  Work counts indexed by groupid.
      */
-    public static function getWorkCounts(array $mysettings, array $groupids): array
+    public static function getWorkCounts(User $me, array $mysettings, array $groupids): array
     {
         $ret = [];
 
@@ -457,11 +459,9 @@ class Group extends Model
             ->groupBy('messages_groups.groupid')
             ->get();
 
-        // TODO Finnbarr: Port ChatMessage::getReviewCountByGroup() — requires User::widerReview(),
-        // User::getModeratorships(), and User::activeModForGroup() which are not yet
-        // implemented in iznik-batch.
-        $reviewcounts = [];
-        $reviewcountsother = [];
+        $c = new ChatMessage();
+        $reviewcounts = $c->getReviewCountByGroup($me, FALSE);
+        $reviewcountsother = $c->getReviewCountByGroup($me, TRUE);
 
         # We might be returned counts for groups we were not expecting, because we are using the wider chat
         # review function.  So add any groupids from $reviewcountsother into $groupids so that we process
@@ -561,14 +561,14 @@ class Group extends Model
                 }
 
                 foreach ($reviewcounts as $count) {
-                    if ($count->groupid == $groupid) {
-                        $thisone['chatreview'] = $count->count;
+                    if ($count['groupid'] == $groupid) {
+                        $thisone['chatreview'] = $count['count'];
                     }
                 }
 
                 foreach ($reviewcountsother as $count) {
-                    if ($count->groupid == $groupid) {
-                        $thisone['chatreviewother'] = $count->count;
+                    if ($count['groupid'] == $groupid) {
+                        $thisone['chatreviewother'] = $count['count'];
                     }
                 }
             } else {
@@ -585,14 +585,14 @@ class Group extends Model
                 }
 
                 foreach ($reviewcounts as $count) {
-                    if ($count->groupid == $groupid) {
-                        $thisone['chatreviewother'] += $count->count;
+                    if ($count['groupid'] == $groupid) {
+                        $thisone['chatreviewother'] += $count['count'];
                     }
                 }
 
                 foreach ($reviewcountsother as $count) {
-                    if ($count->groupid == $groupid) {
-                        $thisone['chatreviewother'] += $count->count;
+                    if ($count['groupid'] == $groupid) {
+                        $thisone['chatreviewother'] += $count['count'];
                     }
                 }
             }
