@@ -1197,9 +1197,8 @@ class User extends Model
      *
      * Ported from iznik-server/include/user/User.php::getModeratorships().
      *
-     * @param bool $activeOnly When TRUE, only include groups where the user is actively modding.
-     *                         Requires activeModForGroup() — TODO: implement activeModForGroup().
-     *                         Until then, passing TRUE returns the same result as FALSE.
+     * @param bool $activeOnly When TRUE, only include groups where the user is actively modding
+     *                         (i.e. their membership settings have active=1 or showmessages=1).
      * @return array<int> Array of group IDs
      */
     public function getModeratorships(bool $activeOnly = false): array
@@ -1208,13 +1207,61 @@ class User extends Model
 
         foreach ($this->memberships()->get() as $membership) {
             if ($membership->role === self::ROLE_OWNER || $membership->role === self::ROLE_MODERATOR) {
-                // TODO Finnbarr: When activeModForGroup() is implemented, gate on it when $activeOnly is TRUE.
-                // if (!$activeOnly || $this->activeModForGroup($membership->groupid)) {
-                $ret[] = $membership->groupid;
+                if (!$activeOnly || $this->activeModForGroup($membership->groupid)) {
+                    $ret[] = $membership->groupid;
+                }
             }
         }
 
         return $ret;
+    }
+
+    /**
+     * Check whether this user is actively modding a given group.
+     *
+     * Uses the 'active' flag in membership settings if present; falls back to the legacy
+     * 'showmessages' flag; defaults to TRUE (active) if neither is set.
+     *
+     * Ported from iznik-server/include/user/User.php::activeModForGroup().
+     *
+     * @param int $groupId
+     * @return bool
+     */
+    public function activeModForGroup(int $groupId): bool
+    {
+        $settings = $this->getGroupSettings($groupId);
+
+        if (array_key_exists('active', $settings)) {
+            return (bool) $settings['active'];
+        }
+
+        // Legacy fallback: showmessages=0 means inactive; absent or 1 means active.
+        return !array_key_exists('showmessages', $settings) || (bool) $settings['showmessages'];
+    }
+
+    /**
+     * Check whether this user participates in wider chat review.
+     *
+     * Returns TRUE if the user is an active moderator on at least one group that has
+     * the 'widerchatreview' group setting enabled.
+     *
+     * Ported from iznik-server/include/user/User.php::widerReview().
+     *
+     * @return bool
+     */
+    public function widerReview(): bool
+    {
+        foreach ($this->getModeratorships() as $groupId) {
+            if ($this->activeModForGroup($groupId)) {
+                $group = Group::find($groupId);
+
+                if ($group && $group->getSetting('widerchatreview', false)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
