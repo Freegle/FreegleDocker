@@ -266,6 +266,175 @@ class User extends Model
     }
 
     /**
+     * Remove an email address from this user.
+     */
+    public function removeEmail(string $email): void
+    {
+        DB::table('users_emails')
+            ->where('userid', $this->id)
+            ->where('email', $email)
+            ->delete();
+    }
+
+    /**
+     * Canonical form of an email address for duplicate detection.
+     * Mirrors User::canonMail() in iznik-server.
+     */
+    public static function canonMail(string $email): string
+    {
+        # Googlemail is Gmail really in US and UK.
+        $email = str_replace('@googlemail.', '@gmail.', $email);
+        $email = str_replace('@googlemail.co.uk', '@gmail.co.uk', $email);
+
+        # Canonicalise TN addresses.
+        if (preg_match('/(.*)\-(.*)(@user.trashnothing.com)/', $email, $matches)) {
+            $email = $matches[1] . $matches[3];
+        }
+
+        # Remove plus addressing, which is sometimes used by spammers as a trick, except for Facebook where it
+        # appears to be genuinely used for routing to distinct users.
+        #
+        # O2 puts a + at the start of an email address.  That would lead to us canonicalising all emails the same.
+        if (substr($email, 0, 1) !== '+' && preg_match('/(.*)\+(.*)(@.*)/', $email, $matches) && strpos($email, '@proxymail.facebook.com') === FALSE) {
+            $email = $matches[1] . $matches[3];
+        }
+
+        # Remove dots in LHS, which are ignored by gmail and can therefore be used to give the appearance of separate
+        # emails.
+        $p = strpos($email, '@');
+
+        if ($p !== FALSE) {
+            $lhs = substr($email, 0, $p);
+            $rhs = substr($email, $p);
+
+            if (stripos($rhs, '@gmail') !== FALSE || stripos($rhs, '@googlemail') !== FALSE) {
+                $lhs = str_replace('.', '', $lhs);
+            }
+
+            # Remove dots from the RHS - saves a little space and is the format we have historically used.
+            # Very unlikely to introduce ambiguity.
+            $email = $lhs . str_replace('.', '', $rhs);
+        }
+
+        return $email;
+    }
+
+    public function addEmail(string $email, int $primary = 1, bool $changeprimary = TRUE): ?int
+    {
+        $email = trim($email);
+
+        $groupDomain = config('freegle.group_domain');
+
+        if (stripos($email, '-owner@yahoogroups.co') !== FALSE ||
+            stripos($email, "-volunteers@{$groupDomain}") !== FALSE ||
+            stripos($email, "-auto@{$groupDomain}") !== FALSE)
+        {
+            # We don't allow people to add Yahoo owner addresses as the address of an individual user, or
+            # the volunteer addresses.
+            $rc = NULL;
+        } else if (stripos($email, 'replyto-') !== FALSE || stripos($email, 'notify-') !== FALSE) {
+            # This can happen because of dodgy email clients replying to the wrong place.  We don't want to end up
+            # with this getting added to the user.
+            $rc = NULL;
+        } else {
+            # If the email already exists in the table, then that's fine.  But we don't want to use INSERT IGNORE as
+            # that scales badly for clusters.
+            $canon = self::canonMail($email);
+
+            $emails = DB::table('users_emails')
+                ->select('id', 'preferred')
+                ->where('userid', $this->id)
+                ->where('email', $email)
+                ->get()
+                ->toArray();
+
+            if (empty($emails)) {
+                DB::table('users_emails')->insert([
+                    'userid' => $this->id,
+                    'email' => $email,
+                    'preferred' => $primary,
+                    'canon' => $canon,
+                    'backwards' => strrev($canon),
+                ]);
+                $rc = DB::getPdo()->lastInsertId();
+
+                if ($rc && $primary) {
+                    # Make sure no other email is flagged as primary
+                    DB::table('users_emails')
+                        ->where('userid', $this->id)
+                        ->where('id', '!=', $rc)
+                        ->update(['preferred' => 0]);
+                }
+            } else {
+                $rc = $emails[0]->id;
+
+                if ($changeprimary && $primary != $emails[0]->preferred) {
+                    # Change in status.
+                    DB::table('users_emails')
+                        ->where('id', $rc)
+                        ->update(['preferred' => $primary]);
+                }
+
+                if ($primary) {
+                    # Make sure no other email is flagged as primary
+                    DB::table('users_emails')
+                        ->where('userid', $this->id)
+                        ->where('id', '!=', $rc)
+                        ->update(['preferred' => 0]);
+
+                    # If we've set an email we might no longer be bouncing.
+                    $this->unbounce($rc);
+                }
+            }
+        }
+
+        $this->assignUserToToDonation($email, $this->id);
+
+        return $rc;
+    }
+
+    /**
+     * Haven't ported over logging behavior, add that if needed later.
+     */
+    public function unbounce(int $emailid): void
+    {
+        if ($emailid) {
+            DB::table('bounces_emails')
+                ->where('emailid', $emailid)
+                ->update(['reset' => 1]);
+        }
+
+        DB::table('users')
+            ->where('id', $this->id)
+            ->update(['bouncing' => 0]);
+    }
+
+    public function assignUserToToDonation(string $email, int $userid): void
+    {
+        $email = trim($email);
+
+        if (strlen($email)) {
+            # We might have donations made via PayPal using this email address which we can now link to this user.  Do
+            # SELECT first to avoid this having to replicate in the cluster.
+            $donations = DB::table('users_donations')
+                ->select('id')
+                ->where('Payer', $email)
+                ->whereNull('userid')
+                ->get();
+
+            foreach ($donations as $donation) {
+                // Check if user exists before updating to avoid foreign key constraint violations
+                $userExists = DB::table('users')->where('id', $userid)->exists();
+                if ($userExists) {
+                    DB::table('users_donations')
+                        ->where('id', $donation->id)
+                        ->update(['userid' => $userid]);
+                }
+            }
+        }
+    }
+
+    /**
      * Check if a notification type is enabled for this user.
      *
      * @param string $type The notification type (email, emailmine, push)
