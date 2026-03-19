@@ -196,6 +196,27 @@ class UserModelTest extends TestCase
         $this->assertEquals('Mary-Jane', User::removeTNGroup('Mary-Jane'));
     }
 
+    public function test_remove_tn_group_single_digit(): void
+    {
+        $this->assertEquals('Test User', User::removeTNGroup('Test User-g1'));
+    }
+
+    public function test_remove_tn_group_strips_suffix_from_hyphenated_name(): void
+    {
+        $this->assertEquals('Mary-Jane Smith', User::removeTNGroup('Mary-Jane Smith-g42'));
+    }
+
+    public function test_remove_tn_group_not_group_suffix(): void
+    {
+        $this->assertEquals('Test-group', User::removeTNGroup('Test-group'));
+        $this->assertEquals('Name-general', User::removeTNGroup('Name-general'));
+    }
+
+    public function test_remove_tn_group_empty_string(): void
+    {
+        $this->assertEquals('', User::removeTNGroup(''));
+    }
+
     public function test_display_name_strips_tn_group_suffix(): void
     {
         $user = User::create([
