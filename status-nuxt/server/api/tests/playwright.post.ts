@@ -1,13 +1,15 @@
 import { spawn, execSync } from 'child_process'
+import { writeFileSync } from 'fs'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const body = await readBody(event).catch(() => ({}))
 
-  // Get test file and name from query params or body
+  // Get test file, name, and workers from query params or body
   const testFile = (body?.testFile || query.testSpec || query.spec) as string | null
   const testName = (body?.testName || body?.filter || query.testName || query.filter) as string | null
+  const workers = (body?.workers || query.workers) as string | null
 
   let logMessage = 'Received request to run Playwright tests'
   if (testFile) logMessage += ` for file: ${testFile}`
@@ -86,6 +88,61 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     // Wait a bit for container to be ready
     await new Promise(resolve => setTimeout(resolve, 3000))
 
+    // Pre-generate isolated test environments and copy to Playwright container
+    setTestState('playwright', { message: 'Creating test environments...' })
+    appendTestLogs('playwright', 'Pre-generating isolated test environments...\n')
+    try {
+      const prefixes = [
+        'browse', 'explore', 'mtholdrelease', 'mtchatlist', 'mtdashboard',
+        'mtedits', 'mtmemberlogs', 'mtmovemessage', 'mtpageloads', 'mtpendingmessages',
+        'mtsupport', 'postflow', 'replyflowedgecases', 'replyflowexistinguser',
+        'replyflowloggedin', 'replyflowlogging', 'replyflownewuser', 'replyflowsocial',
+        'userratings', 'v2apipages',
+      ]
+      const envs: Record<string, any> = {}
+      for (const prefix of prefixes) {
+        try {
+          const output = execSync(
+            `docker exec freegle-apiv1 php /var/www/iznik/install/create-test-env.php ${prefix}`,
+            { encoding: 'utf8', timeout: 30000 }
+          )
+          envs[prefix] = JSON.parse(output.trim())
+        } catch (e: any) {
+          appendTestLogs('playwright', `Warning: Failed to create env for ${prefix}: ${e.message}\n`)
+        }
+      }
+      // Write JSON file and copy to Playwright container
+      const tmpFile = '/tmp/test-envs.json'
+      writeFileSync(tmpFile, JSON.stringify(envs, null, 2))
+      execSync(`docker cp ${tmpFile} freegle-playwright:/app/tests/e2e/test-envs.json`, {
+        encoding: 'utf8', timeout: 5000,
+      })
+      appendTestLogs('playwright', `Created ${Object.keys(envs).length} test environments\n`)
+
+      // Verify test users exist in database by checking a sample
+      try {
+        const sampleEmail = envs[prefixes[0]]?.mod?.email
+        if (sampleEmail) {
+          const verifyOutput = execSync(
+            `docker exec freegle-apiv1 php -r "require_once '/var/www/iznik/include/config.php'; require_once IZNIK_BASE . '/include/db.php'; global \\\\\\$dbhr; \\\\\\$r = \\\\\\$dbhr->preQuery('SELECT userid FROM users_emails WHERE email = ?', ['${sampleEmail}']); echo json_encode(\\\\\\$r);"`,
+            { encoding: 'utf8', timeout: 10000 }
+          )
+          appendTestLogs('playwright', `Verify ${sampleEmail} in DB: ${verifyOutput.trim()}\n`)
+
+          // Also verify via Go API
+          const goVerify = execSync(
+            `curl -s -X POST http://apiv2.localhost/api/session -H "Content-Type: application/json" -d '{"email":"${sampleEmail}","password":"freegle"}'`,
+            { encoding: 'utf8', timeout: 10000 }
+          )
+          appendTestLogs('playwright', `Go API login for ${sampleEmail}: ${goVerify.trim()}\n`)
+        }
+      } catch (verifyErr: any) {
+        appendTestLogs('playwright', `Verify check failed: ${verifyErr.message}\n`)
+      }
+    } catch (envError: any) {
+      appendTestLogs('playwright', `Warning: Test env generation failed: ${envError.message}\n`)
+    }
+
     // Build test args for both --list and actual run
     // If testFile is a bare name (no path separators), expand to tests/e2e/<name>.spec.js
     let resolvedTestFile = testFile
@@ -96,30 +153,20 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     let testArgs = ''
     if (resolvedTestFile) testArgs += ` ${resolvedTestFile}`
     if (testName) testArgs += ` --grep "${testName}"`
+    if (workers) testArgs += ` --workers=${parseInt(workers, 10)}`
 
-    // Get accurate test count using --list before running
-    setTestState('playwright', { message: 'Counting tests...' })
+    // Clear any stale status file from a previous run
     try {
-      const listOutput = execSync(
-        `docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
-        { encoding: 'utf8', timeout: 60000 }
+      execSync(
+        'docker exec freegle-playwright rm -f /app/test-results/test-status.json',
+        { encoding: 'utf8', timeout: 5000 }
       )
-      // Count lines that match test entries (lines with [chromium] marker)
-      const testLines = listOutput.split('\n').filter(line => line.includes('[chromium]'))
-      if (testLines.length > 0) {
-        const state = getTestState('playwright')
-        state.progress.total = testLines.length
-        setTestState('playwright', state)
-        appendTestLogs('playwright', `Test count from --list: ${testLines.length}\n`)
-        console.log(`Playwright --list found ${testLines.length} tests`)
-      }
-    } catch (listError: any) {
-      console.warn('Could not get test count from --list:', listError.message)
-      appendTestLogs('playwright', 'Could not pre-count tests, will determine from output\n')
+    } catch {
+      // ignore
     }
 
-    // Build test command - use default reporters from playwright.config.js (list, html, junit)
-    // This ensures HTML report is generated for CI artifacts
+    // Build test command - use default reporters from playwright.config.js
+    // (list, html, junit, status-reporter)
     const testCmd = `npx playwright test${testArgs}`
 
     setTestState('playwright', { message: 'Running Playwright tests...' })
@@ -130,32 +177,73 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
       docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
     `], { stdio: 'pipe' })
 
+    // Capture stdout/stderr for log display only — progress comes from status-reporter JSON
     testProcess.stdout.on('data', (data) => {
       const text = data.toString()
       appendTestLogs('playwright', text)
-      parsePlaywrightOutput(text)
+
+      // Only parse the "Running N tests" line for the initial message
+      const runningMatch = text.match(/Running (\d+) tests? using \d+ workers?/)
+      if (runningMatch) {
+        setTestState('playwright', { message: runningMatch[0] })
+      }
     })
 
     testProcess.stderr.on('data', (data) => {
       appendTestLogs('playwright', data.toString())
     })
 
+    // Poll the status-reporter JSON file every 3 seconds for accurate progress
+    const pollInterval = setInterval(() => {
+      const containerStatus = readStatusFromContainer()
+      if (containerStatus) {
+        const state = getTestState('playwright')
+        state.progress.total = containerStatus.total
+        state.progress.passed = containerStatus.passed
+        state.progress.failed = containerStatus.failed
+        state.progress.completed = containerStatus.completed
+
+        if (containerStatus.running.length > 0) {
+          state.progress.current = containerStatus.running[0]
+          if (containerStatus.running.length > 1) {
+            state.progress.current += ` (+${containerStatus.running.length - 1} more)`
+          }
+        } else if (containerStatus.currentTest) {
+          state.progress.current = containerStatus.currentTest
+        }
+
+        setTestState('playwright', state)
+      }
+    }, 3000)
+
     testProcess.on('close', (code) => {
+      clearInterval(pollInterval)
+
+      // Final read from status-reporter JSON for accurate counts
+      const containerStatus = readStatusFromContainer()
       const state = getTestState('playwright')
-      const p = state.progress
+
+      if (containerStatus) {
+        state.progress.total = containerStatus.total
+        state.progress.passed = containerStatus.passed
+        state.progress.failed = containerStatus.failed
+        state.progress.completed = containerStatus.completed
+        state.progress.current = ''
+      }
 
       setTestState('playwright', {
         status: code === 0 ? 'completed' : 'failed',
         success: code === 0,
         endTime: Date.now(),
         message: code === 0
-          ? `All tests passed (${p.passed}✓)`
-          : `Tests failed (${p.passed}✓ ${p.failed}✗)`,
+          ? `All tests passed (${state.progress.passed} passed)`
+          : `Tests completed (${state.progress.passed} passed, ${state.progress.failed} failed)`,
       })
       console.log(`Playwright tests completed with code ${code}`)
     })
 
     testProcess.on('error', (error) => {
+      clearInterval(pollInterval)
       setTestState('playwright', {
         status: 'failed',
         message: `Error: ${error.message}`,
@@ -172,59 +260,23 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
   }
 }
 
-function parsePlaywrightOutput(text: string) {
-  const state = getTestState('playwright')
-
-  // Look for test counts in JSON output (if available)
-  const jsonPassedMatch = text.match(/"passed":\s*(\d+)/)
-  const jsonFailedMatch = text.match(/"failed":\s*(\d+)/)
-  const jsonTotalMatch = text.match(/"total":\s*(\d+)/)
-
-  if (jsonPassedMatch) state.progress.passed = parseInt(jsonPassedMatch[1])
-  if (jsonFailedMatch) state.progress.failed = parseInt(jsonFailedMatch[1])
-  if (jsonTotalMatch) state.progress.total = parseInt(jsonTotalMatch[1])
-
-  // Look for list reporter summary format: "X passed" or "X failed"
-  const listPassedMatch = text.match(/(\d+)\s+passed/)
-  const listFailedMatch = text.match(/(\d+)\s+failed/)
-  const listSkippedMatch = text.match(/(\d+)\s+skipped/)
-
-  if (listPassedMatch) state.progress.passed = parseInt(listPassedMatch[1])
-  if (listFailedMatch) state.progress.failed = parseInt(listFailedMatch[1])
-
-  // Look for test start markers and extract total count
-  const testMatch = text.match(/Running (\d+) tests? using \d+ workers?/)
-  if (testMatch) {
-    state.message = testMatch[0]
-    state.progress.total = parseInt(testMatch[1])
+function readStatusFromContainer(): {
+  state: string
+  total: number
+  passed: number
+  failed: number
+  skipped: number
+  completed: number
+  running: string[]
+  currentTest: string
+} | null {
+  try {
+    const output = execSync(
+      'docker exec freegle-playwright cat /app/test-results/test-status.json',
+      { encoding: 'utf8', timeout: 5000 }
+    )
+    return JSON.parse(output)
+  } catch {
+    return null
   }
-
-  // Check accumulated logs for the final summary line (not just current chunk)
-  // The summary line is authoritative because symbol counting over-counts retries
-  // Playwright summary format: "  82 passed (5.2m)" — has time in parens
-  const allLogs = state.logs || ''
-  const allPassedMatch = allLogs.match(/(\d+)\s+passed\s*\(/)
-  const allFailedMatch = allLogs.match(/(\d+)\s+failed\s*\(/)
-
-  if (allPassedMatch) {
-    state.progress.passed = parseInt(allPassedMatch[1])
-  } else {
-    // Fall back to counting Playwright list-reporter lines only (format: "  ✓  N [chromium]")
-    // Do NOT count bare ✓ symbols — test code (e.g. withdrawPost) also logs ✓.
-    const passLines = (allLogs.match(/^\s*✓\s+\d+\s+\[/gm) || []).length
-    if (passLines > 0) state.progress.passed = passLines
-  }
-
-  if (allFailedMatch) {
-    state.progress.failed = parseInt(allFailedMatch[1])
-  } else {
-    // Count only Playwright list-reporter failure lines (format: "  ✘  N [chromium]")
-    const failLines = (allLogs.match(/^\s*[✘✗×]\s+\d+\s+\[/gm) || []).length
-    if (failLines > 0) state.progress.failed = failLines
-  }
-
-  // Update completed
-  state.progress.completed = state.progress.passed + state.progress.failed
-
-  setTestState('playwright', state)
 }
