@@ -108,7 +108,9 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
           )
           envs[prefix] = JSON.parse(output.trim())
         } catch (e: any) {
-          appendTestLogs('playwright', `Warning: Failed to create env for ${prefix}: ${e.message}\n`)
+          const stderr = e.stderr ? e.stderr.toString().slice(0, 500) : 'no stderr'
+          const stdout = e.stdout ? e.stdout.toString().slice(0, 500) : 'no stdout'
+          appendTestLogs('playwright', `Warning: Failed to create env for ${prefix}: ${e.message}\nSTDERR: ${stderr}\nSTDOUT: ${stdout}\n`)
         }
       }
       // Write JSON file and copy to Playwright container
