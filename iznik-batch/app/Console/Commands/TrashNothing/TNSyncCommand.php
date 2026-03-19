@@ -254,7 +254,7 @@ class TNSyncCommand extends Command
 
                     if (!empty($change['account_removed'])) {
                         Log::info("FD #{$change['fd_user_id']} TN account removed");
-                        // TODO: Add equivalent of v1 User::forget() to new User model, then call here.
+                        $user->forget('TN account removed');
                         continue;
                     }
 
@@ -372,10 +372,12 @@ class TNSyncCommand extends Command
             if (count($userIds) > 1) {
                 $mergeTo = $userIds[0];
 
-                for ($i = 1; $i < count($userIds); $i++) {
-                    Log::info("TN sync: merging {$userIds[$i]} into {$mergeTo}");
-                    // TODO: Add equivalent of v1 User::merge() to new User model, then call here.
-                    $merged++;
+                foreach ($userIds as $userId) {
+                    if ($userId != $mergeTo) {
+                        Log::info("Merging {$userId} into {$mergeTo}");
+                        User::merge($mergeTo, $userId, "Duplicate TN user created accidentally");
+                        $merged++;
+                    }
                 }
             }
         }
