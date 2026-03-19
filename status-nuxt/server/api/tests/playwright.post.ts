@@ -121,26 +121,6 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
       })
       appendTestLogs('playwright', `Created ${Object.keys(envs).length} test environments\n`)
 
-      // Verify test users exist in database by checking a sample
-      try {
-        const sampleEmail = envs[prefixes[0]]?.mod?.email
-        if (sampleEmail) {
-          const verifyOutput = execSync(
-            `docker exec freegle-apiv1 php -r "require_once '/var/www/iznik/include/config.php'; require_once IZNIK_BASE . '/include/db.php'; global \\\\\\$dbhr; \\\\\\$r = \\\\\\$dbhr->preQuery('SELECT userid FROM users_emails WHERE email = ?', ['${sampleEmail}']); echo json_encode(\\\\\\$r);"`,
-            { encoding: 'utf8', timeout: 10000 }
-          )
-          appendTestLogs('playwright', `Verify ${sampleEmail} in DB: ${verifyOutput.trim()}\n`)
-
-          // Also verify via Go API
-          const goVerify = execSync(
-            `curl -s -X POST http://apiv2.localhost/api/session -H "Content-Type: application/json" -d '{"email":"${sampleEmail}","password":"freegle"}'`,
-            { encoding: 'utf8', timeout: 10000 }
-          )
-          appendTestLogs('playwright', `Go API login for ${sampleEmail}: ${goVerify.trim()}\n`)
-        }
-      } catch (verifyErr: any) {
-        appendTestLogs('playwright', `Verify check failed: ${verifyErr.message}\n`)
-      }
     } catch (envError: any) {
       appendTestLogs('playwright', `Warning: Test env generation failed: ${envError.message}\n`)
     }
