@@ -86,6 +86,9 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     // Wait a bit for container to be ready
     await new Promise(resolve => setTimeout(resolve, 3000))
 
+    // Test environments are now created on demand by each test's testEnv fixture
+    // via GET /api/tests/env/:prefix (no pre-generation needed).
+
     // Build test args for both --list and actual run
     // If testFile is a bare name (no path separators), expand to tests/e2e/<name>.spec.js
     let resolvedTestFile = testFile
