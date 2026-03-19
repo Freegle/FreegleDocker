@@ -22,6 +22,8 @@ class TNSyncCommand extends Command
 
     protected $description = 'Sync data from TrashNothing, including user data updates, user ratings, posts/messages, and chat messages.';
 
+    private const PAGE_SIZE = 100;
+
     private string $apiKey;
     private string $apiBaseUrl;
     private string $dateFile;
@@ -142,7 +144,7 @@ class TNSyncCommand extends Command
             $response = Http::get("{$this->apiBaseUrl}/ratings", [
                 'key' => $this->apiKey,
                 'page' => $page,
-                'per_page' => 100,
+                'per_page' => self::PAGE_SIZE,
                 'date_min' => $from,
                 'date_max' => $to,
             ]);
@@ -202,7 +204,7 @@ class TNSyncCommand extends Command
                     }
                 }
             }
-        } while ($ratings && count($ratings) == 100);
+        } while ($ratings && count($ratings) == self::PAGE_SIZE);
 
         return [$count, $maxDate];
     }
@@ -220,7 +222,7 @@ class TNSyncCommand extends Command
             $response = Http::get("{$this->apiBaseUrl}/user-changes", [
                 'key' => $this->apiKey,
                 'page' => $page,
-                'per_page' => 100,
+                'per_page' => self::PAGE_SIZE,
                 'date_min' => $from,
                 'date_max' => $to,
             ]);
@@ -333,7 +335,7 @@ class TNSyncCommand extends Command
                     }
                 }
             }
-        } while ($changes && count($changes) == 100);
+        } while ($changes && count($changes) == self::PAGE_SIZE);
 
         return [$count, $maxDate];
     }
