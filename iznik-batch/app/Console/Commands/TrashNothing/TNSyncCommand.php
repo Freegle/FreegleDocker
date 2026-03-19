@@ -67,7 +67,7 @@ class TNSyncCommand extends Command
                 if ($maxChangeDate) {
                     $this->storeSyncDate($maxChangeDate);
                 } else {
-                    Log::info('TN sync: no change date to store - no data processed');
+                    Log::info('No change date to store - no data processed');
                 }
 
                 if ($ratingsProcessed === 0 && $changesProcessed === 0 && $duplicatesMerged === 0) {
@@ -101,7 +101,7 @@ class TNSyncCommand extends Command
         if (file_exists($this->dateFile)) {
             $lastSyncDate = trim(file_get_contents($this->dateFile));
             if ($lastSyncDate && strtotime($lastSyncDate)) {
-                Log::info("TN sync: using stored sync date from {$this->dateFile}: {$lastSyncDate}");
+                Log::info("Using stored sync date from {$this->dateFile}: {$lastSyncDate}");
                 return $lastSyncDate;
             }
         }
@@ -112,7 +112,7 @@ class TNSyncCommand extends Command
             ->max('timestamp');
 
         $from = $max ? gmdate('c', strtotime($max)) : gmdate('c', strtotime('-1 day'));
-        Log::info("TN sync: no stored sync date found, using max rating timestamp: {$from}");
+        Log::info("No stored sync date found, using max rating timestamp: {$from}");
 
         return $from;
     }
@@ -120,9 +120,9 @@ class TNSyncCommand extends Command
     private function storeSyncDate(string $date): void
     {
         if (file_put_contents($this->dateFile, $date) !== false) {
-            Log::info("TN sync: stored max change date to {$this->dateFile}: {$date}");
+            Log::info("Stored max change date to {$this->dateFile}: {$date}");
         } else {
-            Log::error("TN sync: failed to store max change date to {$this->dateFile}");
+            Log::error("Failed to store max change date to {$this->dateFile}");
             if (function_exists('\Sentry\captureMessage')) {
                 \Sentry\captureMessage("Failed to store TN sync date to {$this->dateFile}");
             }
@@ -293,19 +293,17 @@ class TNSyncCommand extends Command
                         $oldname = User::removeTNGroup($user->fullname ?? '');
 
                         if ($oldname != $change['username']) {
-                            Log::info("TN sync: name change for {$change['fd_user_id']} {$oldname} => {$change['username']}");
+                            Log::info("Name change for {$change['fd_user_id']} {$oldname} => {$change['username']}");
                             $user->update(['fullname' => $change['username']]);
 
-                            $emails = $user->emails()->pluck('email', 'id');
-                            foreach ($emails as $emailId => $email) {
+                            $emails = $user->emails()->pluck('email');
+
+                            foreach ($emails as $email) {
                                 if (str_contains($email, "{$oldname}-")) {
                                     $newEmail = str_replace("{$oldname}-", "{$change['username']}-", $email);
-                                    Log::info("TN sync: ...{$email} => {$newEmail}");
-                                    DB::table('users_emails')->where('id', $emailId)->delete();
-                                    DB::table('users_emails')->insert([
-                                        'userid' => $change['fd_user_id'],
-                                        'email' => $newEmail,
-                                    ]);
+                                    $user->removeEmail($email);
+                                    Log::info("...{$email} => {$newEmail}");
+                                    $user->addEmail($newEmail);
                                 }
                             }
                         }
@@ -319,8 +317,8 @@ class TNSyncCommand extends Command
                         if ($lat !== null && $lng !== null) {
                             $loc = Location::closestPostcode((float) $lat, (float) $lng);
 
-                            if ($loc && $loc['id'] !== $user->lastlocation) {
-                                Log::info("FD #{$change['fd_user_id']} TN lat/lng {$lat},{$lng} has changed {$user->lastlocation} => {$loc['id']} {$loc['name']}");
+                            if ($loc) {
+                                Log::info("FD #{$change['fd_user_id']} TN lat/lng {$lat},{$lng} has changed  => {$loc['id']} {$loc['name']}");
                                 $user->update(['lastlocation' => $loc['id']]);
                             }
                         }
@@ -354,11 +352,11 @@ class TNSyncCommand extends Command
             return 0;
         }
 
-        Log::info('TN sync: found ' . count($duplicates) . ' duplicate TN users');
+        Log::info('Found ' . count($duplicates) . ' duplicate TN users');
         $merged = 0;
 
         foreach ($duplicates as $dup) {
-            Log::info("TN sync: look for dups for {$dup->username}");
+            Log::info("Look for dups for {$dup->username}");
 
             $userIds = DB::table('users_emails')
                 ->selectRaw("DISTINCT(userid) as userid")
@@ -367,7 +365,7 @@ class TNSyncCommand extends Command
                 ->pluck('userid')
                 ->toArray();
 
-            Log::info('TN sync: found ' . count($userIds) . " users for {$dup->username}");
+            Log::info('Found ' . count($userIds) . " users for {$dup->username}");
 
             if (count($userIds) > 1) {
                 $mergeTo = $userIds[0];
