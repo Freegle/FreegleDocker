@@ -86,40 +86,8 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     // Wait a bit for container to be ready
     await new Promise(resolve => setTimeout(resolve, 3000))
 
-    // Pre-generate isolated test environments and copy to Playwright container
-    setTestState('playwright', { message: 'Creating test environments...' })
-    appendTestLogs('playwright', 'Pre-generating isolated test environments...\n')
-    try {
-      const prefixes = [
-        'browse', 'explore', 'mtholdrelease', 'mtchatlist', 'mtdashboard',
-        'mtedits', 'mtmemberlogs', 'mtmovemessage', 'mtpageloads', 'mtpendingmessages',
-        'mtsupport', 'postflow', 'replyflowedgecases', 'replyflowexistinguser',
-        'replyflowloggedin', 'replyflowlogging', 'replyflownewuser', 'replyflowsocial',
-        'userratings', 'v2apipages',
-      ]
-      const envs: Record<string, any> = {}
-      for (const prefix of prefixes) {
-        try {
-          const output = execSync(
-            `docker exec freegle-apiv1 php /var/www/iznik/install/create-test-env.php ${prefix}`,
-            { encoding: 'utf8', timeout: 30000 }
-          )
-          envs[prefix] = JSON.parse(output.trim())
-        } catch (e: any) {
-          appendTestLogs('playwright', `Warning: Failed to create env for ${prefix}: ${e.message}\n`)
-        }
-      }
-      // Write JSON file and copy to Playwright container
-      const tmpFile = '/tmp/test-envs.json'
-      const { writeFileSync } = require('fs')
-      writeFileSync(tmpFile, JSON.stringify(envs, null, 2))
-      execSync(`docker cp ${tmpFile} freegle-playwright:/app/tests/e2e/test-envs.json`, {
-        encoding: 'utf8', timeout: 5000,
-      })
-      appendTestLogs('playwright', `Created ${Object.keys(envs).length} test environments\n`)
-    } catch (envError: any) {
-      appendTestLogs('playwright', `Warning: Test env generation failed: ${envError.message}\n`)
-    }
+    // Test environments are now created on demand by each test's testEnv fixture
+    // via GET /api/tests/env/:prefix (no pre-generation needed).
 
     // Build test args for both --list and actual run
     // If testFile is a bare name (no path separators), expand to tests/e2e/<name>.spec.js
