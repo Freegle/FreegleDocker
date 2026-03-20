@@ -8,7 +8,7 @@
     <mj-divider border-color="#ddd" border-width="1px" padding="15px 40px"></mj-divider>
     <mj-text font-size="11px" color="#666666" align="center" line-height="1.5">
       {{ config('freegle.branding.name') }} is registered as a charity with HMRC (ref. XT32865) and is run by volunteers. Which is nice.<br/>
-      Registered address: Weaver's Field, Loud Bridge, Chipping PR3 2NX
+      Registered address: 64a North Road, Ormesby, Great Yarmouth, Norfolk NR29 3LE
     </mj-text>
   </mj-column>
 </mj-section>
