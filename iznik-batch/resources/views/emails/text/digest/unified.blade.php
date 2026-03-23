@@ -19,6 +19,13 @@ View: {{ $post['messageUrl'] }}
 ------------------------------------
 
 Browse all posts: {{ $browseUrl }}
+@if($sponsors->isNotEmpty())
+
+Sponsored by:
+@foreach($sponsors as $sponsor)
+- {{ $sponsor->name }}{{ $sponsor->tagline ? ' - ' . $sponsor->tagline : '' }}{{ $sponsor->linkurl ? ' (' . $sponsor->linkurl . ')' : '' }}
+@endforeach
+@endif
 
 ------------------------------------
 

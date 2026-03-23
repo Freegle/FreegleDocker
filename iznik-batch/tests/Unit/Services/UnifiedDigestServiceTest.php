@@ -8,6 +8,7 @@ use App\Models\Message;
 use App\Models\User;
 use App\Models\UserDigest;
 use App\Services\UnifiedDigestService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -170,6 +171,122 @@ class UnifiedDigestServiceTest extends TestCase
 
         // No emails should be sent because the only message is from the recipient.
         $this->assertEquals(0, $stats['emails_sent']);
+    }
+
+    public function test_sponsors_are_included_and_deduplicated(): void
+    {
+        $poster = $this->createTestUser();
+        $recipient = $this->createTestUser();
+        $group1 = $this->createTestGroup();
+        $group2 = $this->createTestGroup();
+
+        // Recipient wants daily digests.
+        $recipient->update([
+            'settings' => json_encode(['simplemail' => User::SIMPLE_MAIL_BASIC]),
+            'lastaccess' => now(),
+        ]);
+
+        $this->createMembership($poster, $group1);
+        $this->createMembership($poster, $group2);
+        $this->createMembership($recipient, $group1);
+        $this->createMembership($recipient, $group2);
+
+        // Create messages so the digest has content.
+        $this->createTestMessage($poster, $group1);
+        $this->createTestMessage($poster, $group2);
+
+        // Same sponsor on both groups (Essex-style: one sponsor, many groups).
+        DB::table('groups_sponsorship')->insert([
+            'groupid' => $group1->id,
+            'name' => 'Essex County Council',
+            'linkurl' => 'https://essex.gov.uk',
+            'imageurl' => 'https://essex.gov.uk/logo.png',
+            'tagline' => 'Supporting reuse in Essex',
+            'startdate' => now()->subDay(),
+            'enddate' => now()->addMonth(),
+            'contactname' => 'Test Contact',
+            'contactemail' => 'test@essex.gov.uk',
+            'amount' => 100,
+            'visible' => TRUE,
+        ]);
+        DB::table('groups_sponsorship')->insert([
+            'groupid' => $group2->id,
+            'name' => 'Essex County Council',
+            'linkurl' => 'https://essex.gov.uk',
+            'imageurl' => 'https://essex.gov.uk/logo.png',
+            'tagline' => 'Supporting reuse in Essex',
+            'startdate' => now()->subDay(),
+            'enddate' => now()->addMonth(),
+            'contactname' => 'Test Contact',
+            'contactemail' => 'test@essex.gov.uk',
+            'amount' => 100,
+            'visible' => TRUE,
+        ]);
+
+        // Different sponsor on group2 only.
+        DB::table('groups_sponsorship')->insert([
+            'groupid' => $group2->id,
+            'name' => 'Local Business',
+            'linkurl' => 'https://localbiz.example.com',
+            'imageurl' => 'https://localbiz.example.com/logo.png',
+            'tagline' => null,
+            'startdate' => now()->subDay(),
+            'enddate' => now()->addMonth(),
+            'contactname' => 'Biz Contact',
+            'contactemail' => 'biz@example.com',
+            'amount' => 50,
+            'visible' => TRUE,
+        ]);
+
+        // Get sponsors for this user — should deduplicate Essex across groups.
+        $sponsors = $this->service->getSponsorsForUser($recipient);
+
+        // Should have 2 unique sponsors, not 3.
+        $this->assertCount(2, $sponsors);
+
+        // Essex should appear once with the highest amount.
+        $essex = $sponsors->firstWhere('name', 'Essex County Council');
+        $this->assertNotNull($essex);
+        $this->assertEquals('https://essex.gov.uk', $essex->linkurl);
+        $this->assertEquals('Supporting reuse in Essex', $essex->tagline);
+
+        // Local Business should appear once.
+        $localBiz = $sponsors->firstWhere('name', 'Local Business');
+        $this->assertNotNull($localBiz);
+    }
+
+    public function test_expired_sponsors_are_excluded(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+
+        // Expired sponsor.
+        DB::table('groups_sponsorship')->insert([
+            'groupid' => $group->id,
+            'name' => 'Old Sponsor',
+            'startdate' => now()->subYear(),
+            'enddate' => now()->subMonth(),
+            'contactname' => 'Old',
+            'contactemail' => 'old@example.com',
+            'amount' => 100,
+            'visible' => TRUE,
+        ]);
+
+        // Hidden sponsor.
+        DB::table('groups_sponsorship')->insert([
+            'groupid' => $group->id,
+            'name' => 'Hidden Sponsor',
+            'startdate' => now()->subDay(),
+            'enddate' => now()->addMonth(),
+            'contactname' => 'Hidden',
+            'contactemail' => 'hidden@example.com',
+            'amount' => 100,
+            'visible' => FALSE,
+        ]);
+
+        $sponsors = $this->service->getSponsorsForUser($user);
+        $this->assertCount(0, $sponsors);
     }
 
     public function test_immediate_mode_requires_full_setting(): void
