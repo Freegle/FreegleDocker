@@ -440,12 +440,15 @@ services:
               echo "Processing rebuild request: $$request_file"
               service=$$(jq -r '.service' "$$request_file" 2>/dev/null)
               container=$$(jq -r '.container' "$$request_file" 2>/dev/null)
-              if [ "$$service" != "null" ] && [ "$$container" != "null" ]; then
-                echo "Rebuilding service: $$service ($$container)"
-                if docker-compose -p freegledockerwsl stop "$$service" && 
-                   docker-compose -p freegledockerwsl rm -f "$$service" && 
-                   docker-compose -p freegledockerwsl build "$$service" && 
-                   docker-compose -p freegledockerwsl up --no-deps -d "$$service"; then
+              # Container names have project prefix (freegle-xxx) but compose
+              # service names don't (xxx). Strip prefix if present.
+              svc=$$(echo "$$service" | sed 's/^freegle-//')
+              if [ "$$svc" != "null" ] && [ "$$container" != "null" ]; then
+                echo "Rebuilding service: $$svc ($$container)"
+                docker-compose -p freegle stop "$$svc" 2>/dev/null || true
+                docker-compose -p freegle rm -f "$$svc" 2>/dev/null || true
+                if docker-compose -p freegle build "$$svc" &&
+                   docker-compose -p freegle up --no-deps -d "$$svc"; then
                   echo "Rebuild completed successfully for $$service"
                 else
                   echo "Rebuild failed for $$service"

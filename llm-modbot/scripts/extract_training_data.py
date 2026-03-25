@@ -1,0 +1,402 @@
+#!/usr/bin/env python3
+"""Extract moderation training data from Freegle production DB.
+
+Produces three JSONL files:
+  - rejections.jsonl: messages that were rejected, with reasons
+  - approvals.jsonl: messages that were approved (balanced sample)
+  - edits.jsonl: mod edits to subjects and text
+
+Each line is a JSON object with instruction/output pairs for fine-tuning.
+"""
+
+import json
+import os
+import sys
+import random
+from datetime import datetime, timedelta
+
+import pymysql
+
+DB_CONFIG = {
+    "host": "127.0.0.1",
+    "port": 11234,
+    "user": "root",
+    "password": "F5432f12azfvds",
+    "database": "iznik",
+    "charset": "utf8mb4",
+    "cursorclass": pymysql.cursors.DictCursor,
+}
+
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+# Normalize rejection reasons into clean categories
+REASON_MAP = {
+    "duplicate": "duplicate",
+    "duplicate message": "duplicate",
+    "duplicate/edit original": "duplicate",
+    "duplicate post": "duplicate",
+    "reject - duplicate post": "duplicate",
+    "reject possible duplicate": "duplicate",
+    "duplicate posting": "duplicate",
+    "reject excessive crossposting": "duplicate",
+    "early repeat messages": "repeat_too_soon",
+    "leave longer gap, offer's": "repeat_too_soon",
+    "leave longer gap, wanted's": "repeat_too_soon",
+    "too soon requested": "repeat_too_soon",
+    "repeat offer post": "repeat_too_soon",
+    "wanted repeated too soon": "repeat_too_soon",
+    "reject - more than 1 wanted per day": "repeat_too_soon",
+    "blank letter - reject": "blank",
+    "blank email (reject)": "blank",
+    "blank": "blank",
+    "out of area": "out_of_area",
+    "out of area - reject": "out_of_area",
+    "not in our freegle area": "out_of_area",
+    "out of area / crossposted": "out_of_area",
+    "non landfill items-": "non_freegle_item",
+    "non landfill items": "non_freegle_item",
+    "medicines": "medicines",
+    "selling -": "selling",
+    "too vague, no reply to more info msg": "too_vague",
+    "**non-standard message**": "non_standard",
+    "offer - no area/post code (not wanted's)": "missing_location",
+}
+
+
+def normalize_reason(title):
+    if title is None:
+        return "other"
+    key = title.strip().lower().rstrip()
+    return REASON_MAP.get(key, "other")
+
+
+def clean_text(text):
+    """Remove excessive whitespace and normalize."""
+    if not text:
+        return ""
+    # Replace multiple newlines/spaces
+    import re
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r' {3,}', ' ', text)
+    return text.strip()
+
+
+def extract_rejections(conn, days=365):
+    """Extract rejected messages with reasons."""
+    print(f"Extracting rejections from last {days} days...")
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                m.id,
+                m.subject,
+                LEFT(m.textbody, 1500) as body,
+                m.type,
+                g.nameshort as group_name,
+                sm.title as rejection_reason,
+                l.timestamp,
+                (SELECT LEFT(cm.message, 500) FROM chat_messages cm
+                 JOIN chat_rooms cr ON cm.chatid = cr.id
+                 WHERE cr.chattype = 'User2Mod' AND cm.refmsgid = m.id
+                 AND cm.type = 'ModMail' LIMIT 1) as mod_message
+            FROM logs l
+            JOIN messages m ON l.msgid = m.id
+            JOIN messages_groups mg ON m.id = mg.msgid
+            JOIN `groups` g ON mg.groupid = g.id
+            LEFT JOIN mod_stdmsgs sm ON l.stdmsgid = sm.id
+            WHERE l.type = 'Message' AND l.subtype = 'Rejected'
+            AND l.timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            ORDER BY l.timestamp DESC
+        """, (days,))
+        rows = cur.fetchall()
+
+    print(f"  Found {len(rows)} rejections")
+    results = []
+    for row in rows:
+        category = normalize_reason(row["rejection_reason"])
+        reason_text = row["rejection_reason"] or "No standard reason given"
+
+        instruction = (
+            f"You are a Freegle community moderator. Review this post and decide whether to approve or reject it.\n\n"
+            f"Group: {row['group_name']}\n"
+            f"Post type: {row['type']}\n"
+            f"Subject: {row['subject']}\n"
+            f"Body: {clean_text(row['body'] or '')}"
+        )
+
+        mod_msg = ""
+        if row["mod_message"]:
+            mod_msg = f"\nModerator message to user: {clean_text(row['mod_message'])}"
+
+        output = (
+            f"REJECT\n"
+            f"Reason: {reason_text}\n"
+            f"Category: {category}"
+            f"{mod_msg}"
+        )
+
+        results.append({
+            "instruction": instruction,
+            "output": output,
+            "meta": {
+                "msg_id": row["id"],
+                "timestamp": row["timestamp"].isoformat() if row["timestamp"] else None,
+                "task": "moderation",
+                "action": "reject",
+                "category": category,
+            }
+        })
+
+    return results
+
+
+def extract_approvals(conn, days=90, limit=20000):
+    """Extract approved messages (balanced sample)."""
+    print(f"Extracting approved messages from last {days} days (limit {limit})...")
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                m.id,
+                m.subject,
+                LEFT(m.textbody, 1500) as body,
+                m.type,
+                g.nameshort as group_name,
+                mg.arrival as timestamp
+            FROM messages m
+            JOIN messages_groups mg ON m.id = mg.msgid
+            JOIN `groups` g ON mg.groupid = g.id
+            WHERE mg.collection = 'Approved'
+            AND mg.arrival >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            AND m.textbody IS NOT NULL
+            AND LENGTH(m.textbody) > 10
+            ORDER BY RAND()
+            LIMIT %s
+        """, (days, limit))
+        rows = cur.fetchall()
+
+    print(f"  Found {len(rows)} approved messages")
+    results = []
+    for row in rows:
+        instruction = (
+            f"You are a Freegle community moderator. Review this post and decide whether to approve or reject it.\n\n"
+            f"Group: {row['group_name']}\n"
+            f"Post type: {row['type']}\n"
+            f"Subject: {row['subject']}\n"
+            f"Body: {clean_text(row['body'] or '')}"
+        )
+
+        output = "APPROVE\nReason: Post follows community guidelines"
+
+        results.append({
+            "instruction": instruction,
+            "output": output,
+            "meta": {
+                "msg_id": row["id"],
+                "timestamp": row["timestamp"].isoformat() if row["timestamp"] else None,
+                "task": "moderation",
+                "action": "approve",
+                "category": "approved",
+            }
+        })
+
+    return results
+
+
+def extract_subject_edits(conn, days=365):
+    """Extract moderator subject corrections."""
+    print(f"Extracting subject edits from last {days} days...")
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                me.msgid,
+                me.oldsubject,
+                me.newsubject,
+                me.timestamp,
+                m.type
+            FROM messages_edits me
+            JOIN messages m ON me.msgid = m.id
+            JOIN messages_groups mg ON m.id = mg.msgid
+            WHERE me.timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            AND me.byuser != m.fromuser
+            AND me.oldsubject IS NOT NULL
+            AND me.newsubject IS NOT NULL
+            AND me.oldsubject != me.newsubject
+            GROUP BY me.msgid, me.oldsubject, me.newsubject
+            ORDER BY me.timestamp DESC
+        """, (days,))
+        rows = cur.fetchall()
+
+    print(f"  Found {len(rows)} subject edits")
+    results = []
+    for row in rows:
+        instruction = (
+            f"Fix any spelling, formatting, or content errors in this Freegle post subject. "
+            f"Only fix clear errors, don't change meaning. If the subject is correct, return it unchanged.\n\n"
+            f"Subject: {row['oldsubject']}"
+        )
+
+        # Determine what changed
+        changes = []
+        if row["oldsubject"].lower() != row["newsubject"].lower():
+            changes.append("spelling/content corrected")
+        elif row["oldsubject"] != row["newsubject"]:
+            changes.append("capitalisation fixed")
+
+        output = f"{row['newsubject']}"
+        if changes:
+            output += f"\nChanges: {', '.join(changes)}"
+
+        results.append({
+            "instruction": instruction,
+            "output": output,
+            "meta": {
+                "msg_id": row["msgid"],
+                "timestamp": row["timestamp"].isoformat() if row["timestamp"] else None,
+                "task": "subject_correction",
+            }
+        })
+
+    return results
+
+
+def extract_text_edits(conn, days=365, limit=15000):
+    """Extract moderator text cleanup edits."""
+    print(f"Extracting text edits from last {days} days (limit {limit})...")
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT
+                me.msgid,
+                LEFT(me.oldtext, 1500) as old_text,
+                LEFT(me.newtext, 1500) as new_text,
+                me.oldsubject,
+                me.timestamp,
+                m.type,
+                g.nameshort as group_name
+            FROM messages_edits me
+            JOIN messages m ON me.msgid = m.id
+            JOIN messages_groups mg ON m.id = mg.msgid
+            JOIN `groups` g ON mg.groupid = g.id
+            WHERE me.timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            AND me.byuser != m.fromuser
+            AND me.oldtext IS NOT NULL
+            AND me.newtext IS NOT NULL
+            AND me.oldtext != me.newtext
+            AND LENGTH(me.oldtext) > 10
+            GROUP BY me.msgid, me.oldtext, me.newtext
+            ORDER BY me.timestamp DESC
+            LIMIT %s
+        """, (days, limit))
+        rows = cur.fetchall()
+
+    print(f"  Found {len(rows)} text edits")
+    results = []
+    for row in rows:
+        instruction = (
+            f"Clean up this Freegle post text. Remove: personal info (phone numbers, full postcodes, addresses), "
+            f"selling/pricing language, borrowing requests, excessive sob stories. "
+            f"Keep the item description intact. If no changes needed, return the text unchanged.\n\n"
+            f"Post type: {row['type']}\n"
+            f"Subject: {row['oldsubject']}\n"
+            f"Text: {clean_text(row['old_text'] or '')}"
+        )
+
+        output = clean_text(row["new_text"] or "")
+
+        results.append({
+            "instruction": instruction,
+            "output": output,
+            "meta": {
+                "msg_id": row["msgid"],
+                "timestamp": row["timestamp"].isoformat() if row["timestamp"] else None,
+                "task": "text_cleanup",
+            }
+        })
+
+    return results
+
+
+def write_jsonl(data, filename):
+    """Write data to JSONL file, excluding meta from training."""
+    filepath = os.path.join(OUTPUT_DIR, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        for item in data:
+            # Write full record (meta included for analysis, stripped during training)
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    print(f"  Wrote {len(data)} records to {filepath}")
+    return filepath
+
+
+def split_data(data, train_ratio=0.8, val_ratio=0.1):
+    """Split into train/val/test sets."""
+    random.shuffle(data)
+    n = len(data)
+    train_end = int(n * train_ratio)
+    val_end = int(n * (train_ratio + val_ratio))
+    return data[:train_end], data[train_end:val_end], data[val_end:]
+
+
+def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    print("Connecting to production database...")
+    conn = pymysql.connect(**DB_CONFIG)
+
+    try:
+        # Extract all data
+        rejections = extract_rejections(conn, days=365)
+        approvals = extract_approvals(conn, days=365, limit=15000)
+        subject_edits = extract_subject_edits(conn, days=365)
+        text_edits = extract_text_edits(conn, days=365, limit=15000)
+
+        # Write raw extracts
+        write_jsonl(rejections, "rejections_raw.jsonl")
+        write_jsonl(approvals, "approvals_raw.jsonl")
+        write_jsonl(subject_edits, "subject_edits_raw.jsonl")
+        write_jsonl(text_edits, "text_edits_raw.jsonl")
+
+        # Combine moderation data (approve/reject) with balanced sampling
+        # Use all rejections + equal number of approvals
+        n_reject = len(rejections)
+        balanced_approvals = random.sample(approvals, min(n_reject * 2, len(approvals)))
+        moderation_data = rejections + balanced_approvals
+        print(f"\nModeration dataset: {len(rejections)} rejections + {len(balanced_approvals)} approvals = {len(moderation_data)}")
+
+        # Split each task
+        for name, data in [
+            ("moderation", moderation_data),
+            ("subject_correction", subject_edits),
+            ("text_cleanup", text_edits),
+        ]:
+            if not data:
+                print(f"  Skipping {name} - no data")
+                continue
+            train, val, test = split_data(data)
+            write_jsonl(train, f"{name}_train.jsonl")
+            write_jsonl(val, f"{name}_val.jsonl")
+            write_jsonl(test, f"{name}_test.jsonl")
+            print(f"  {name}: train={len(train)}, val={len(val)}, test={len(test)}")
+
+        # Also create a combined training file for multi-task fine-tuning
+        all_train = []
+        for name in ["moderation", "subject_correction", "text_cleanup"]:
+            train_file = os.path.join(OUTPUT_DIR, f"{name}_train.jsonl")
+            if os.path.exists(train_file):
+                with open(train_file) as f:
+                    all_train.extend(json.loads(line) for line in f)
+        random.shuffle(all_train)
+        write_jsonl(all_train, "combined_train.jsonl")
+        print(f"\nCombined training set: {len(all_train)} examples")
+
+        # Summary
+        print("\n=== EXTRACTION SUMMARY ===")
+        print(f"Rejections:      {len(rejections)}")
+        print(f"Approvals:       {len(approvals)} (sampled)")
+        print(f"Subject edits:   {len(subject_edits)}")
+        print(f"Text edits:      {len(text_edits)}")
+        print(f"Combined train:  {len(all_train)}")
+
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()

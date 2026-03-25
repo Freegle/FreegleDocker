@@ -46,6 +46,8 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 # the yesterday services (API, 2FA, traefik) stay dead, breaking the entire system.
 cleanup_on_failure() {
     update_status "failed" "Restore failed - check logs"
+    # Clean up Loki temp file if it exists (can be 20GB+)
+    rm -f /tmp/loki-backup.tar.gz 2>/dev/null || true
     # Always clean up skip-grant-tables if it was added (leaves percona with no TCP port)
     sed -i '/skip-grant-tables/d' /var/www/FreegleDocker/conf/percona-my.cnf 2>/dev/null || true
     echo "Restarting main Docker stack after failure..."
@@ -60,6 +62,9 @@ trap cleanup_on_failure ERR
 echo "=== Yesterday Restoration Started: $(date) ==="
 echo "Restoring backup from date: ${BACKUP_DATE}..."
 update_status "starting" "Finding backup..."
+
+# Clean up old restore logs (keep last 7 days)
+find /var/log/yesterday-restore-*.log -mtime +7 -delete 2>/dev/null || true
 
 mkdir -p "$BACKUP_DIR"
 
@@ -97,6 +102,9 @@ if [ -f yesterday/docker-compose.override.yml ]; then
 else
     echo "⚠️  Warning: yesterday/docker-compose.override.yml not found"
 fi
+
+echo "Cleaning up unused Docker images..."
+docker image prune -af 2>/dev/null | tail -1 || true
 
 echo "Stopping all Docker containers..."
 update_status "stopping" "Stopping containers..."
@@ -400,31 +408,40 @@ if [ -n "$LOKI_BACKUP" ]; then
     echo "Clearing existing Loki data..."
     rm -rf "${LOKI_VOLUME_PATH}"/*
 
-    # Download Loki backup to local file first, then extract
-    # gsutil cp has built-in retries and resumable downloads, unlike gsutil cat which
-    # streams through a single SSL connection that fails on large files (20GB+)
-    LOKI_LOCAL="/tmp/loki-backup.tar.gz"
-    echo "Downloading Loki backup to local file..."
-    rm -f "$LOKI_LOCAL"
-    gsutil -o 'GSUtil:resumable_threshold=1048576' cp "$LOKI_BACKUP" "$LOKI_LOCAL"
-    echo "Extracting Loki backup to volume..."
-    tar -xzf "$LOKI_LOCAL" -C "${LOKI_VOLUME_PATH}" --strip-components=1
-    rm -f "$LOKI_LOCAL"
+    # Check disk space before downloading (need ~2x Loki size: download + extraction)
+    AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1024/1024)}')
+    LOKI_NEEDED_GB=$(( LOKI_SIZE_GB * 3 ))
+    echo "Available disk: ${AVAIL_GB}GB, estimated need: ${LOKI_NEEDED_GB}GB (download + extraction)"
+    if [ "$AVAIL_GB" -lt "$LOKI_NEEDED_GB" ]; then
+        echo "⚠️  Insufficient disk space for Loki restore (${AVAIL_GB}GB < ${LOKI_NEEDED_GB}GB) - skipping"
+        echo "   Loki will start with empty data. Free disk space and restore manually."
+    else
+        # Download Loki backup to local file first, then extract
+        # gsutil cp has built-in retries and resumable downloads, unlike gsutil cat which
+        # streams through a single SSL connection that fails on large files (20GB+)
+        LOKI_LOCAL="/tmp/loki-backup.tar.gz"
+        echo "Downloading Loki backup to local file..."
+        rm -f "$LOKI_LOCAL"
+        gsutil -o 'GSUtil:resumable_threshold=1048576' cp "$LOKI_BACKUP" "$LOKI_LOCAL"
+        echo "Extracting Loki backup to volume..."
+        tar -xzf "$LOKI_LOCAL" -C "${LOKI_VOLUME_PATH}" --strip-components=1
+        rm -f "$LOKI_LOCAL"
 
-    # Set ownership for Loki (runs as UID 10001)
-    chown -R 10001:10001 "${LOKI_VOLUME_PATH}"
+        # Set ownership for Loki (runs as UID 10001)
+        chown -R 10001:10001 "${LOKI_VOLUME_PATH}"
 
-    LOKI_FINAL_SIZE=$(du -sh "${LOKI_VOLUME_PATH}" | awk '{print $1}')
-    echo "✅ Loki backup restored: ${LOKI_FINAL_SIZE}"
+        LOKI_FINAL_SIZE=$(du -sh "${LOKI_VOLUME_PATH}" | awk '{print $1}')
+        echo "✅ Loki backup restored: ${LOKI_FINAL_SIZE}"
 
-    # Flush disk buffers and pause to let I/O settle
-    # After extracting 26GB of data, the system is under heavy I/O load.
-    # Without this pause, containers (especially traefik) may fail healthchecks
-    # due to slow disk access when reading config files.
-    echo "Syncing disk buffers after Loki restore..."
-    sync
-    echo "Waiting for I/O to settle..."
-    sleep 15
+        # Flush disk buffers and pause to let I/O settle
+        # After extracting 26GB of data, the system is under heavy I/O load.
+        # Without this pause, containers (especially traefik) may fail healthchecks
+        # due to slow disk access when reading config files.
+        echo "Syncing disk buffers after Loki restore..."
+        sync
+        echo "Waiting for I/O to settle..."
+        sleep 15
+    fi
 else
     echo "⚠️  No Loki backup found in $BACKUP_BUCKET/loki/ - skipping Loki restore"
     echo "   Loki will start with empty data (no historical logs)"
@@ -470,24 +487,21 @@ docker compose build apiv1 apiv2 freegle-dev-local modtools-dev-local status 2>&
 echo "✅ Container build complete"
 
 echo ""
-echo "Starting all Docker containers..."
-update_status "starting" "Starting containers..."
-docker compose up -d
-
-echo "Configuring PHP-FPM for production load..."
-# Wait for API v1 container to be running
-sleep 5
-docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
-echo "✅ PHP-FPM configured with increased worker pool"
+echo "=========================================="
+echo "Starting infrastructure containers first..."
+echo "=========================================="
+update_status "starting" "Starting infrastructure containers..."
+# Start infrastructure services individually, NOT with 'docker compose up -d' which
+# enforces depends_on health check constraints. After restoring 22GB+ Loki backup,
+# disk I/O is saturated and containers may take longer than their health check windows
+# to become healthy. Starting individually + manual waiting avoids the cascade failure
+# where Docker Compose skips dependent containers when any dependency times out.
+docker compose up -d percona redis postgres loki beanstalkd spamassassin-app rspamd mailpit mjml 2>&1 || true
 
 echo ""
 echo "Waiting for critical infrastructure containers..."
 
-# Wait for critical containers with health checks
+# Wait for Percona to be healthy - restored production DB needs InnoDB init (60-90s)
 wait_for_container_health "percona" 240 || {
     echo "❌ Percona failed to start. Checking logs..."
     docker logs freegle-percona --tail 20
@@ -525,19 +539,40 @@ wait_for_container_health "percona" 120 || {
 }
 echo "✅ Percona restarted with normal authentication"
 
+wait_for_container_health "redis" 60
+wait_for_container_health "postgres" 120
+wait_for_container_health "beanstalkd" 60
+wait_for_container_health "loki" 120
+
+echo ""
+echo "=========================================="
+echo "Starting all remaining containers..."
+echo "=========================================="
+update_status "starting" "Starting application containers..."
+# Now that infrastructure is healthy, start everything else.
+# Docker Compose will see the infrastructure containers already running+healthy
+# and start the dependent application containers without timeout issues.
+docker compose up -d
+
+echo "Configuring PHP-FPM for production load..."
+# Wait for API v1 container to be running
+sleep 5
+docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
+echo "✅ PHP-FPM configured with increased worker pool"
+
+echo ""
+echo "Infrastructure containers ready. Waiting for application containers..."
+sleep 10
+
 wait_for_container_health "reverse-proxy" 120 || {
     echo "❌ Traefik failed to start. Checking logs..."
     docker logs freegle-traefik --tail 20
     exit 1
 }
-
-wait_for_container_health "redis" 60
-wait_for_container_health "postgres" 120
-wait_for_container_health "beanstalkd" 60
-
-echo ""
-echo "Infrastructure containers ready. Waiting for application containers..."
-sleep 10
 
 # Verify all containers are running, retry if needed
 MAX_RETRIES=3
