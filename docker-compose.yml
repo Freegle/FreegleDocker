@@ -438,12 +438,11 @@ services:
             for request_file in /rebuild-requests/rebuild-*.json; do
               [ ! -f "$$request_file" ] && continue
               echo "Processing rebuild request: $$request_file"
-              service=$$(jq -r '.service' "$$request_file" 2>/dev/null)
               container=$$(jq -r '.container' "$$request_file" 2>/dev/null)
-              # Container names have project prefix (freegle-xxx) but compose
-              # service names don't (xxx). Strip prefix if present.
-              svc=$$(echo "$$service" | sed 's/^freegle-//')
-              if [ "$$svc" != "null" ] && [ "$$container" != "null" ]; then
+              # Get the compose service name from the container's label.
+              # This is reliable regardless of naming conventions.
+              svc=$$(docker inspect "$$container" --format '{{index .Config.Labels "com.docker.compose.service"}}' 2>/dev/null || echo "$$container")
+              if [ "$$svc" != "" ] && [ "$$container" != "null" ]; then
                 echo "Rebuilding service: $$svc ($$container)"
                 docker-compose -p freegle stop "$$svc" 2>/dev/null || true
                 docker-compose -p freegle rm -f "$$svc" 2>/dev/null || true
@@ -1561,8 +1560,17 @@ services:
       - LOKI_URL=http://loki:3100
       - DATA_DIR=/data
       - AUDIT_LOG_DIR=/var/log/mcp-audit
+      # Database access for pseudonymized SQL queries
+      - DB_HOST=freegle-percona
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=iznik
+      - DB_NAME=iznik
     depends_on:
       loki:
+        condition: service_healthy
+        required: false
+      percona:
         condition: service_healthy
         required: false
     restart: "no"

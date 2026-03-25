@@ -12,7 +12,7 @@ COPY package.json ./
 RUN npm install --production
 
 # Copy application code
-COPY server.js ./
+COPY server.js db-query.js ./
 
 # Create data and audit log directories
 RUN mkdir -p /data /var/log/mcp-audit
