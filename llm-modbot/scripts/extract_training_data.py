@@ -149,6 +149,61 @@ def extract_rejections(conn, days=365):
     return results
 
 
+def _make_approval_reason(msg_type, subject, body):
+    """Generate a varied, post-specific approval reason.
+
+    The key insight: if all approval outputs are identical, the model learns
+    nothing about WHY a post is approvable — and collapses to always rejecting.
+    """
+    reasons = []
+    body_text = (body or "").lower()
+    subject_text = (subject or "").lower()
+
+    # Post type
+    if msg_type == "Offer":
+        reasons.append("Valid offer")
+    elif msg_type == "Wanted":
+        reasons.append("Valid wanted post")
+    else:
+        reasons.append("Valid post")
+
+    # Specific item mentioned
+    if subject and ":" in subject:
+        item_part = subject.split(":", 1)[1].split("(")[0].strip()
+        if item_part and len(item_part) > 2:
+            reasons.append(f"specific item listed ({item_part[:40]})")
+
+    # Location present
+    if "(" in subject_text and ")" in subject_text:
+        reasons.append("location included")
+
+    # Body content quality
+    if body and len(body) > 50:
+        reasons.append("adequate description")
+    elif body and len(body) > 10:
+        reasons.append("brief but sufficient description")
+
+    # Collection info
+    if any(w in body_text for w in ["collect", "pick up", "pickup", "collection"]):
+        reasons.append("collection details provided")
+
+    # Condition described
+    if any(w in body_text for w in ["good condition", "working", "used", "new", "clean"]):
+        reasons.append("condition described")
+
+    # No red flags
+    no_red_flags = []
+    if not any(w in body_text for w in ["sell", "price", "£", "pay", "buy", "cost"]):
+        no_red_flags.append("no selling language")
+    if not any(w in body_text for w in ["borrow", "lend", "loan"]):
+        no_red_flags.append("no borrowing language")
+    if no_red_flags:
+        reasons.append(no_red_flags[0])
+
+    reason_text = "; ".join(reasons[:3])  # Keep it concise
+    return f"APPROVE\nReason: {reason_text}"
+
+
 def extract_approvals(conn, days=90, limit=20000):
     """Extract approved messages (balanced sample)."""
     print(f"Extracting approved messages from last {days} days (limit {limit})...")
@@ -184,7 +239,8 @@ def extract_approvals(conn, days=90, limit=20000):
             f"Body: {clean_text(row['body'] or '')}"
         )
 
-        output = "APPROVE\nReason: Post follows community guidelines"
+        # Generate varied approval reasons based on the post content
+        output = _make_approval_reason(row['type'], row['subject'], row['body'])
 
         results.append({
             "instruction": instruction,
