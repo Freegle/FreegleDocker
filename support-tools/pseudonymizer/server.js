@@ -111,8 +111,8 @@ const PII_PATTERNS = {
   // Email addresses
   email: /[\w.-]+@[\w.-]+\.\w+/gi,
 
-  // IP addresses (v4)
-  ip: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
+  // IP addresses (v4) - negative lookbehind avoids matching version strings like Chrome/134.0.0.0
+  ip: /(?<![/\d])\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
 
   // UK phone numbers
   phone: /\b(?:\+44|0)\s*\d{2,4}\s*\d{3,4}\s*\d{3,4}\b/g,

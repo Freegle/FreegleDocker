@@ -35,50 +35,7 @@ app.get('/health', (req, res) => {
  * Body: { sessionId, query, start?, end?, limit? }
  */
 app.post('/tools/loki_query', async (req, res) => {
-  const { sessionId, query, start, end, limit } = req.body
-
-  if (!sessionId) {
-    return res.status(400).json({
-      error: 'SESSION_REQUIRED',
-      message: 'sessionId is required for all queries',
-    })
-  }
-
-  if (!query) {
-    return res.status(400).json({
-      error: 'QUERY_REQUIRED',
-      message: 'LogQL query is required',
-    })
-  }
-
-  try {
-    // Forward to Pseudonymizer
-    const response = await fetch(`${PSEUDONYMIZER_URL}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId,
-        query,
-        start: start || '1h',
-        end,
-        limit: limit || 100,
-      }),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-      return res.status(response.status).json(error)
-    }
-
-    const data = await response.json()
-    res.json(data)
-  } catch (error) {
-    console.error('Pseudonymizer error:', error.message)
-    res.status(503).json({
-      error: 'PSEUDONYMIZER_UNAVAILABLE',
-      message: 'Unable to connect to pseudonymizer service',
-    })
-  }
+  return handleLokiQuery(req.body, res)
 })
 
 /**
@@ -127,28 +84,75 @@ app.get('/tools', (req, res) => {
  * POST /mcp/call
  * Body: { tool, params }
  */
-app.post('/mcp/call', async (req, res) => {
-  const { tool, params } = req.body
+/**
+ * Forward a loki_query to the pseudonymizer.
+ * Shared logic used by both /tools/loki_query and /mcp/call.
+ */
+async function handleLokiQuery(params, res) {
+  const { sessionId, query, start, end, limit } = params
 
-  if (!tool) {
+  if (!sessionId) {
+    return res.status(400).json({
+      error: 'SESSION_REQUIRED',
+      message: 'sessionId is required for all queries',
+    })
+  }
+
+  if (!query) {
+    return res.status(400).json({
+      error: 'QUERY_REQUIRED',
+      message: 'LogQL query is required',
+    })
+  }
+
+  try {
+    const response = await fetch(`${PSEUDONYMIZER_URL}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        query,
+        start: start || '1h',
+        end,
+        limit: limit || 100,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+      return res.status(response.status).json(error)
+    }
+
+    const data = await response.json()
+    res.json(data)
+  } catch (error) {
+    console.error('Pseudonymizer error:', error.message)
+    res.status(503).json({
+      error: 'PSEUDONYMIZER_UNAVAILABLE',
+      message: 'Unable to connect to pseudonymizer service',
+    })
+  }
+}
+
+app.post('/mcp/call', async (req, res) => {
+  const { tool, params, name, arguments: args } = req.body
+
+  // Support both {tool, params} and {name, arguments} formats
+  const toolName = tool || name
+  const toolParams = params || args
+
+  if (!toolName) {
     return res.status(400).json({ error: 'Tool name is required' })
   }
 
-  // Route to appropriate tool handler
-  switch (tool) {
+  switch (toolName) {
     case 'loki_query':
-      // Forward to the loki_query handler
-      req.body = params
-      return app._router.handle(
-        { ...req, method: 'POST', url: '/tools/loki_query', body: params },
-        res,
-        () => {}
-      )
+      return handleLokiQuery(toolParams || {}, res)
 
     default:
       return res.status(404).json({
         error: 'UNKNOWN_TOOL',
-        message: `Tool "${tool}" not found`,
+        message: `Tool "${toolName}" not found`,
         availableTools: ['loki_query'],
       })
   }

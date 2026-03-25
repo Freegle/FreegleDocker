@@ -54,8 +54,8 @@ const PII_PATTERNS = {
   // Email addresses
   email: /[\w.-]+@[\w.-]+\.\w+/gi,
 
-  // IP addresses (v4)
-  ip: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
+  // IP addresses (v4) - negative lookbehind avoids matching version strings like Chrome/134.0.0.0
+  ip: /(?<![/\d])\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
 
   // UK phone numbers
   phone: /\b(?:\+44|0)\s*\d{2,4}\s*\d{3,4}\s*\d{3,4}\b/g,
@@ -156,10 +156,12 @@ function extractAndPseudonymize(text, knownPii = {}) {
     result = result.replace(new RegExp(escapeRegex(knownPii.location), 'gi'), token)
   }
 
-  if (knownPii.userid) {
-    const token = getOrCreateToken(knownPii.userid.toString(), 'USER')
-    mapping[token] = knownPii.userid.toString()
-    result = result.replace(new RegExp(`\\b${knownPii.userid}\\b`, 'g'), token)
+  // Accept both "userid" and "userId" for convenience
+  const knownUserId = knownPii.userid || knownPii.userId
+  if (knownUserId) {
+    const token = getOrCreateToken(knownUserId.toString(), 'USER')
+    mapping[token] = knownUserId.toString()
+    result = result.replace(new RegExp(`\\b${knownUserId}\\b`, 'g'), token)
   }
 
   // Scan for any other emails in the query
