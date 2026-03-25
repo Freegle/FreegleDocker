@@ -75,15 +75,21 @@ def test_moderation(model, limit=200):
                    random.sample(rejections, min(n_each, len(rejections)))
         random.shuffle(examples)
 
-    system_prompt = (
-        "You are a Freegle community moderator. Freegle is a UK reuse network where people "
-        "give and receive items for free. Review each post and respond with either APPROVE or REJECT "
-        "on the first line, followed by a brief reason.\n\n"
-        "Common rejection reasons: duplicate post, blank/empty message, out of area, "
-        "non-landfill items (weapons, medicines, alcohol), selling language, too vague, "
-        "repeat posted too soon.\n\n"
-        "Most posts should be APPROVED - only reject for clear rule violations."
-    )
+    # Fine-tuned models have their own system prompt baked in via the Modelfile.
+    # Sending an additional system prompt conflicts and causes wrong behaviour.
+    # Only use a system prompt for base models (ones without "freegle" in the name).
+    if "freegle" in model.lower():
+        system_prompt = ""
+    else:
+        system_prompt = (
+            "You are a Freegle community moderator. Freegle is a UK reuse network where people "
+            "give and receive items for free. Review each post and respond with either APPROVE or REJECT "
+            "on the first line, followed by a brief reason.\n\n"
+            "Common rejection reasons: duplicate post, blank/empty message, out of area, "
+            "non-landfill items (weapons, medicines, alcohol), selling language, too vague, "
+            "repeat posted too soon.\n\n"
+            "Most posts should be APPROVED - only reject for clear rule violations."
+        )
 
     correct = 0
     total = 0
@@ -225,12 +231,15 @@ def test_subject_correction(model, limit=100):
         random.seed(42)
         examples = random.sample(examples, limit)
 
-    system_prompt = (
-        "You are a Freegle community moderator. Fix spelling, formatting, or content errors "
-        "in Freegle post subjects. Subjects follow the format: TYPE: Item Description (Location POSTCODE).\n"
-        "Common fixes: spelling corrections, proper capitalisation, removing extra spaces.\n"
-        "Return ONLY the corrected subject on the first line. If no changes needed, return it unchanged."
-    )
+    if "freegle" in model.lower():
+        system_prompt = ""
+    else:
+        system_prompt = (
+            "You are a Freegle community moderator. Fix spelling, formatting, or content errors "
+            "in Freegle post subjects. Subjects follow the format: TYPE: Item Description (Location POSTCODE).\n"
+            "Common fixes: spelling corrections, proper capitalisation, removing extra spaces.\n"
+            "Return ONLY the corrected subject on the first line. If no changes needed, return it unchanged."
+        )
 
     exact_match = 0
     close_match = 0  # case-insensitive match
