@@ -487,24 +487,21 @@ docker compose build apiv1 apiv2 freegle-dev-local modtools-dev-local status 2>&
 echo "✅ Container build complete"
 
 echo ""
-echo "Starting all Docker containers..."
-update_status "starting" "Starting containers..."
-docker compose up -d
-
-echo "Configuring PHP-FPM for production load..."
-# Wait for API v1 container to be running
-sleep 5
-docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
-echo "✅ PHP-FPM configured with increased worker pool"
+echo "=========================================="
+echo "Starting infrastructure containers first..."
+echo "=========================================="
+update_status "starting" "Starting infrastructure containers..."
+# Start infrastructure services individually, NOT with 'docker compose up -d' which
+# enforces depends_on health check constraints. After restoring 22GB+ Loki backup,
+# disk I/O is saturated and containers may take longer than their health check windows
+# to become healthy. Starting individually + manual waiting avoids the cascade failure
+# where Docker Compose skips dependent containers when any dependency times out.
+docker compose up -d percona redis postgres loki beanstalkd spamassassin-app rspamd mailpit mjml 2>&1 || true
 
 echo ""
 echo "Waiting for critical infrastructure containers..."
 
-# Wait for critical containers with health checks
+# Wait for Percona to be healthy - restored production DB needs InnoDB init (60-90s)
 wait_for_container_health "percona" 240 || {
     echo "❌ Percona failed to start. Checking logs..."
     docker logs freegle-percona --tail 20
@@ -542,19 +539,40 @@ wait_for_container_health "percona" 120 || {
 }
 echo "✅ Percona restarted with normal authentication"
 
+wait_for_container_health "redis" 60
+wait_for_container_health "postgres" 120
+wait_for_container_health "beanstalkd" 60
+wait_for_container_health "loki" 120
+
+echo ""
+echo "=========================================="
+echo "Starting all remaining containers..."
+echo "=========================================="
+update_status "starting" "Starting application containers..."
+# Now that infrastructure is healthy, start everything else.
+# Docker Compose will see the infrastructure containers already running+healthy
+# and start the dependent application containers without timeout issues.
+docker compose up -d
+
+echo "Configuring PHP-FPM for production load..."
+# Wait for API v1 container to be running
+sleep 5
+docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
+echo "✅ PHP-FPM configured with increased worker pool"
+
+echo ""
+echo "Infrastructure containers ready. Waiting for application containers..."
+sleep 10
+
 wait_for_container_health "reverse-proxy" 120 || {
     echo "❌ Traefik failed to start. Checking logs..."
     docker logs freegle-traefik --tail 20
     exit 1
 }
-
-wait_for_container_health "redis" 60
-wait_for_container_health "postgres" 120
-wait_for_container_health "beanstalkd" 60
-
-echo ""
-echo "Infrastructure containers ready. Waiting for application containers..."
-sleep 10
 
 # Verify all containers are running, retry if needed
 MAX_RETRIES=3
