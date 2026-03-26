@@ -53,13 +53,33 @@ Tested against held-out data (200 moderation examples, 100 subject corrections) 
 3. **Task suitability**: Pattern-based tasks (spelling, formatting) suit small LLMs. Judgment tasks requiring external context do not.
 4. **Colab free tier**: Viable for training but sessions are unreliable. Checkpoints must save to Drive, not local disk.
 
+## v3: Enriched Context (group rules, member tenure, posting history)
+
+Added full moderator context to prompts: group rules, member days, posts in last 31 days, cross-posting count, source, posting status, worry word matches.
+
+| Metric | v2 (simple) | v3 (enriched) |
+|--------|-------------|---------------|
+| Moderation accuracy | 63.5% | 49.5% |
+| Moderation recall | 43.0% | 97.0% |
+| Subject exact match | 17.0% | 7.0% |
+| Subject close match | 26.0% | 12.0% |
+
+**Result**: Worse across both tasks. The 3B model doesn't have the capacity to use the extra context — it gets overwhelmed and defaults to rejecting everything. Subject correction regressed from 17% to 7% with the extra prompt text diluting the task.
+
+## Conclusions
+
+1. **Simple prompts work better for small models** — v2 (message text only) outperforms v3 (enriched context) on a 3B model.
+2. **Subject correction is the strongest use case** — 3% → 17% exact match with fine-tuning.
+3. **Moderation decisions need a different approach** — a 3B model can't learn approve/reject reliably regardless of context. Options: larger model (7B+), rules-based system, or AI for specific sub-tasks only (e.g. "does this contain selling language?" rather than full approve/reject).
+4. **The v2 simple-prompt model is the best result** from this investigation.
+
 ## Possible Next Steps
 
-- Test text cleanup task accuracy (similar to subject correction — likely to show improvement)
-- Try larger model (phi4:14b) for moderation — more capacity but slower inference
-- Focus effort on subject correction where the approach shows clear value
-- Consider whether a rules-based approach (regex, dictionary) would outperform AI for the remaining tasks
-- For moderation, the model would need access to group context (rules, area, recent posts) to be useful — this is an architectural question, not a model size question
+- Focus on subject correction where the approach shows clear value
+- Test text cleanup task accuracy (similar pattern-based task)
+- Try a larger model (phi4:14b) — but inference would be slower, needs GPU
+- Consider rules-based approach for moderation (regex, dictionary) with AI only for ambiguous cases
+- Separate the moderation task into sub-questions the model CAN answer ("is this selling?", "is this blank?", "is this vague?") rather than one approve/reject decision
 
 ## Files
 
