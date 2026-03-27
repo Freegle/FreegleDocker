@@ -92,7 +92,13 @@ echo "Updating Yesterday code..."
 cd /var/www/FreegleDocker
 git fetch origin
 git reset --hard origin/master
-git submodule update --init --recursive
+# Submodule update can fail if a commit was force-pushed away (stale ref).
+# If it fails, remove the submodule checkout and retry with a fresh clone.
+if ! git submodule update --init --recursive 2>&1; then
+    echo "⚠️  Submodule update failed - cleaning stale refs and retrying..."
+    git submodule foreach --recursive 'rm -rf "$toplevel/$sm_path" || true'
+    git submodule update --init --recursive
+fi
 echo "✅ Code updated"
 
 echo "Configuring Yesterday environment..."
