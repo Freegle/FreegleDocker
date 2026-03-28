@@ -3,10 +3,13 @@
 namespace App\Console\Commands\Queue;
 
 use App\Console\Concerns\PreventsOverlapping;
+use App\Mail\Chat\ReferToSupportMail;
 use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
+use App\Mail\Session\MergeOfferMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
+use App\Mail\Session\VerifyEmailMail;
 use App\Mail\Message\ModStdMessageMail;
 use App\Models\ChatRoom;
 use App\Models\User;
@@ -17,6 +20,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 /**
  * Processes background tasks queued by the Go API server.
@@ -174,7 +178,11 @@ class ProcessBackgroundTasksCommand extends Command
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
             'email_message_approved', 'email_message_rejected', 'email_message_reply'
                 => $this->handleModStdMessage($taskType, $data, $spooler, $shouldSpool),
-            'email_mod_stdmsg' => $this->handleModStdMessageForMember($data, $spooler, $shouldSpool),
+            'email_mod_stdmsg', 'email_membership_approved', 'email_membership_rejected'
+                => $this->handleModStdMessageForMember($data, $spooler, $shouldSpool),
+            'email_merge' => $this->handleEmailMerge($data, $spooler, $shouldSpool),
+            'email_verify' => $this->handleEmailVerify($data, $spooler, $shouldSpool),
+            'refer_to_support' => $this->handleReferToSupport($data, $spooler, $shouldSpool),
             'message_outcome' => $this->handleMessageOutcome($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
@@ -637,5 +645,255 @@ class ProcessBackgroundTasksCommand extends Command
             'groups' => $groups->count(),
             'notified_chats' => count($replies),
         ]);
+    }
+
+    /**
+     * Handle merge offer email — sends to both users involved in a merge.
+     *
+     * V1 parity: merge.php lines 149-211.
+     */
+    protected function handleEmailMerge(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $mergeId = (int) ($data['merge_id'] ?? 0);
+        $uid = $data['uid'] ?? '';
+        $user1Id = (int) ($data['user1'] ?? 0);
+        $user2Id = (int) ($data['user2'] ?? 0);
+
+        if ($mergeId === 0 || $uid === '' || $user1Id === 0 || $user2Id === 0) {
+            throw new \RuntimeException('email_merge requires merge_id, uid, user1, user2');
+        }
+
+        $u1 = User::find($user1Id);
+        $u2 = User::find($user2Id);
+
+        if (! $u1 || ! $u2) {
+            Log::warning('Merge user not found', ['user1' => $user1Id, 'user2' => $user2Id]);
+            return;
+        }
+
+        $mergeUrl = config('freegle.sites.user') . '/merge?id=' . $mergeId . '&uid=' . $uid;
+        $name1 = $u1->fullname ?: 'Freegle User';
+        $name2 = $u2->fullname ?: 'Freegle User';
+        $email1 = $this->obfuscateEmail($u1->email_preferred ?? '');
+        $email2 = $this->obfuscateEmail($u2->email_preferred ?? '');
+
+        // Send to both users.
+        foreach ([$u1, $u2] as $recipient) {
+            $recipientEmail = $recipient->email_preferred;
+
+            if (! $recipientEmail) {
+                continue;
+            }
+
+            $mail = new MergeOfferMail(
+                recipientUserId: $recipient->id,
+                recipientName: $recipient->fullname ?: 'Freegle User',
+                recipientEmail: $recipientEmail,
+                name1: $name1,
+                email1: $email1,
+                name2: $name2,
+                email2: $email2,
+                mergeUrl: $mergeUrl,
+            );
+
+            if ($shouldSpool) {
+                $spooler->spool($mail, $recipientEmail);
+            } else {
+                Mail::to($recipientEmail)->send($mail);
+            }
+        }
+
+        Log::info('Sent merge offer emails', [
+            'merge_id' => $mergeId,
+            'user1' => $user1Id,
+            'user2' => $user2Id,
+        ]);
+    }
+
+    /**
+     * Handle email verification — generates a validate key and sends a confirmation link.
+     *
+     * V1 parity: User::verifyEmail() lines 3822-3896.
+     */
+    protected function handleEmailVerify(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $userId = (int) ($data['user_id'] ?? 0);
+        $email = $data['email'] ?? '';
+
+        if ($userId === 0 || $email === '') {
+            throw new \RuntimeException('email_verify requires user_id and email');
+        }
+
+        $user = User::find($userId);
+
+        if (! $user) {
+            Log::warning("User not found for email verify: {$userId}");
+            return;
+        }
+
+        // Check if this email is already one of the user's emails.
+        $canon = strtolower(trim($email));
+        $existing = DB::table('users_emails')
+            ->where('userid', $userId)
+            ->whereRaw('LOWER(email) = ?', [$canon])
+            ->exists();
+
+        if ($existing) {
+            // Already the user's email — just make it primary.
+            DB::table('users_emails')
+                ->where('userid', $userId)
+                ->whereRaw('LOWER(email) = ?', [$canon])
+                ->update(['preferred' => 1]);
+
+            DB::table('users_emails')
+                ->where('userid', $userId)
+                ->whereRaw('LOWER(email) != ?', [$canon])
+                ->update(['preferred' => 0]);
+
+            Log::info('Email already belongs to user, made primary', [
+                'user_id' => $userId,
+                'email' => $email,
+            ]);
+            return;
+        }
+
+        // Generate a validation key. Check if one was recently set (< 600s) to avoid confusion.
+        $recentKey = DB::table('users_emails')
+            ->where('canon', $canon)
+            ->whereRaw('TIMESTAMPDIFF(SECOND, validatetime, NOW()) < 600')
+            ->value('validatekey');
+
+        $key = $recentKey;
+
+        if (! $key) {
+            $key = uniqid();
+            DB::statement(
+                'INSERT INTO users_emails (email, canon, validatekey, backwards) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE validatekey = ?',
+                [$email, $canon, $key, strrev($canon), $key]
+            );
+        }
+
+        // Generate the confirm URL with auto-login.
+        $userKey = $user->getUserKey();
+        $confirmPath = '/settings/confirmmail/' . urlencode($key);
+        $userSite = config('freegle.sites.user');
+        $confirmUrl = "{$userSite}{$confirmPath}?u={$userId}&k={$userKey}&src=changeemail";
+
+        $mail = new VerifyEmailMail(
+            userId: $userId,
+            email: $email,
+            confirmUrl: $confirmUrl,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $email);
+        } else {
+            Mail::to($email)->send($mail);
+        }
+
+        Log::info('Sent email verification', [
+            'user_id' => $userId,
+            'email' => $email,
+        ]);
+    }
+
+    /**
+     * Handle refer-to-support — sends a plain text email to the support team.
+     *
+     * V1 parity: ChatRoom::referToSupport() lines 2266-2284.
+     */
+    protected function handleReferToSupport(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $chatId = (int) ($data['chatid'] ?? 0);
+        $userId = (int) ($data['userid'] ?? 0);
+
+        if ($chatId === 0 || $userId === 0) {
+            throw new \RuntimeException('refer_to_support requires chatid and userid');
+        }
+
+        $chat = DB::table('chat_rooms')->where('id', $chatId)->first();
+
+        if (! $chat) {
+            Log::warning("Chat not found for refer_to_support: {$chatId}");
+            return;
+        }
+
+        $user = User::find($userId);
+
+        if (! $user) {
+            Log::warning("User not found for refer_to_support: {$userId}");
+            return;
+        }
+
+        // The "other" user in the chat.
+        $otherUserId = $chat->user1 == $userId ? $chat->user2 : $chat->user1;
+        $otherUser = $otherUserId ? User::find($otherUserId) : null;
+        $otherUserName = $otherUser ? ($otherUser->fullname ?: 'Unknown') : 'Unknown';
+
+        // Get group mods email for reply-to.
+        $groupId = $chat->groupid;
+        $replyToAddress = config('freegle.mail.noreply_addr');
+        $replyToName = config('freegle.branding.name');
+
+        if ($groupId) {
+            $group = DB::table('groups')->where('id', $groupId)->first();
+
+            if ($group) {
+                $groupNameShort = $group->nameshort ?? '';
+                $replyToAddress = $groupNameShort . '-volunteers@' . config('freegle.mail.group_domain', 'groups.ilovefreegle.org');
+                $replyToName = ($group->namefull ?: $groupNameShort) . ' Volunteers';
+            }
+        }
+
+        $mail = new ReferToSupportMail(
+            userName: $user->fullname ?: 'Unknown',
+            userId: $userId,
+            chatId: $chatId,
+            otherUserName: $otherUserName,
+            otherUserId: (int) ($otherUserId ?? 0),
+            replyToAddress: $replyToAddress,
+            replyToName: $replyToName,
+        );
+
+        $supportAddr = config('freegle.mail.support_addr', 'support@ilovefreegle.org');
+        $recipients = array_map('trim', explode(',', $supportAddr));
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $recipients);
+        } else {
+            Mail::to($recipients)->send($mail);
+        }
+
+        Log::info('Sent refer to support email', [
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+        ]);
+    }
+
+    /**
+     * Obfuscate an email address for display (e.g. "j***@example.com").
+     */
+    private function obfuscateEmail(string $email): string
+    {
+        if (! $email || ! str_contains($email, '@')) {
+            return $email;
+        }
+
+        [$local, $domain] = explode('@', $email, 2);
+
+        if (strlen($local) <= 1) {
+            return '*@' . $domain;
+        }
+
+        return $local[0] . str_repeat('*', strlen($local) - 1) . '@' . $domain;
     }
 }
