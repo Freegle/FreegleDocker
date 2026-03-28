@@ -56,3 +56,15 @@ ralph/
 
 # Local Netlify folder
 .netlify
+
+# Discourse corpus (training data, large files)
+discourse-corpus/
+
+# Mobile feel prototype (has own node_modules)
+freegle-mobile/
+
+# Superpowers working directories
+.superpowers/
+
+# Stale lock files
+.claude/scheduled_tasks.lock
