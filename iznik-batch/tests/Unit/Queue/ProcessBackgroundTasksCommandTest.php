@@ -2,10 +2,13 @@
 
 namespace Tests\Unit\Queue;
 
+use App\Mail\Chat\ReferToSupportMail;
 use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
+use App\Mail\Session\MergeOfferMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
+use App\Mail\Session\VerifyEmailMail;
 use App\Mail\Message\ModStdMessageMail;
 use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\DB;
@@ -874,6 +877,245 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         ])->assertSuccessful();
 
         Mail::assertNothingSent();
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_membership_approved_routes_to_mod_stdmsg_for_member(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $member = $this->createTestUser();
+        $memberEmail = $this->createTestUserEmail($member, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Neville Reid']);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_membership_approved',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Joining multiple Freegle communities',
+                'body' => 'It is OK to join more than one Freegle community.',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
+            $this->assertEquals('Neville Reid', $mail->modName);
+            $this->assertEquals('Joining multiple Freegle communities', $mail->stdSubject);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_membership_rejected_routes_to_mod_stdmsg_for_member(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $member = $this->createTestUser();
+        $memberEmail = $this->createTestUserEmail($member, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Maureen Campbell']);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_membership_rejected',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Out of Area - Reject',
+                'body' => 'Sorry, you do not live in our area.',
+                'stdmsgid' => 219241,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
+            $this->assertEquals('Maureen Campbell', $mail->modName);
+            $this->assertEquals('Out of Area - Reject', $mail->stdSubject);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+
+        // Verify chat room created.
+        $chatRoom = DB::table('chat_rooms')
+            ->where('user1', $member->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', 'User2Mod')
+            ->first();
+        $this->assertNotNull($chatRoom, 'User2Mod chat room should be created');
+    }
+
+    public function test_refer_to_support_sends_plain_text_email(): void
+    {
+        Mail::fake();
+
+        $user = $this->createTestUser(['fullname' => 'Alice Mod']);
+        $otherUser = $this->createTestUser(['fullname' => 'Bob Member']);
+        $group = $this->createTestGroup();
+
+        $chatId = DB::table('chat_rooms')->insertGetId([
+            'chattype' => 'User2User',
+            'user1' => $otherUser->id,
+            'user2' => $user->id,
+            'groupid' => $group->id,
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'refer_to_support',
+            'data' => json_encode([
+                'chatid' => $chatId,
+                'userid' => $user->id,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        Mail::assertSent(ReferToSupportMail::class, function (ReferToSupportMail $mail) use ($user, $chatId) {
+            $this->assertEquals('Alice Mod', $mail->userName);
+            $this->assertEquals($user->id, $mail->userId);
+            $this->assertEquals($chatId, $mail->chatId);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_email_verify_sends_verification_email(): void
+    {
+        Mail::fake();
+
+        $user = $this->createTestUser();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_verify',
+            'data' => json_encode([
+                'user_id' => $user->id,
+                'email' => 'newemail@test.com',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        Mail::assertSent(VerifyEmailMail::class, function (VerifyEmailMail $mail) use ($user) {
+            $this->assertEquals($user->id, $mail->userId);
+            $this->assertEquals('newemail@test.com', $mail->email);
+            $this->assertNotEmpty($mail->confirmUrl);
+            return TRUE;
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+
+        // Verify a validation key was created in users_emails.
+        $emailRow = DB::table('users_emails')
+            ->where('email', 'newemail@test.com')
+            ->first();
+        $this->assertNotNull($emailRow);
+        $this->assertNotNull($emailRow->validatekey);
+    }
+
+    public function test_email_verify_skips_existing_email(): void
+    {
+        Mail::fake();
+
+        $user = $this->createTestUser();
+        $email = $this->createTestUserEmail($user, ['preferred' => 1]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_verify',
+            'data' => json_encode([
+                'user_id' => $user->id,
+                'email' => $email,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Should not send verification email for existing email.
+        Mail::assertNothingSent();
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_email_merge_sends_to_both_users(): void
+    {
+        Mail::fake();
+
+        $user1 = $this->createTestUser(['fullname' => 'User One']);
+        $user1Email = $this->createTestUserEmail($user1, ['preferred' => 1]);
+        $user2 = $this->createTestUser(['fullname' => 'User Two']);
+        $user2Email = $this->createTestUserEmail($user2, ['preferred' => 1]);
+
+        // Create a merge record.
+        $mergeId = DB::table('merges')->insertGetId([
+            'user1' => $user1->id,
+            'user2' => $user2->id,
+            'offeredby' => $user1->id,
+            'uid' => 'testuid123',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_merge',
+            'data' => json_encode([
+                'merge_id' => $mergeId,
+                'uid' => 'testuid123',
+                'user1' => $user1->id,
+                'user2' => $user2->id,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Should send to both users.
+        Mail::assertSent(MergeOfferMail::class, 2);
 
         $task = DB::table('background_tasks')->first();
         $this->assertNotNull($task->processed_at);
