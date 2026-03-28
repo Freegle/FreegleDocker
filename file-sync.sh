@@ -239,7 +239,7 @@ SETTLE_PID=$!
 # IMPORTANT: close_write is essential - it signals when a file is fully written
 # Without it, we might sync files while they're still being written (empty/partial)
 inotifywait -m -r -e modify,create,move,close_write \
-    --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|migrations|~|\.tmp|\.swp|\.log)' \
+    --exclude '(node_modules|\.git|\.nuxt|\.output|dist|vendor|migrations|storage/spool|~|\.tmp|\.swp|\.log)' \
     "$PROJECT_DIR/iznik-nuxt3" \
     "$PROJECT_DIR/iznik-server" \
     "$PROJECT_DIR/iznik-server-go" \
