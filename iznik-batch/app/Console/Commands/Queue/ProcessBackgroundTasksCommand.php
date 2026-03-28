@@ -131,6 +131,11 @@ class ProcessBackgroundTasksCommand extends Command
                     'attempts' => $task->attempts + 1,
                 ]);
 
+                // Report to Sentry so we get alerted to task failures.
+                if (app()->bound('sentry')) {
+                    app('sentry')->captureException($e);
+                }
+
                 $update = ['error_message' => substr($e->getMessage(), 0, 65535)];
 
                 if ($task->attempts + 1 >= self::MAX_ATTEMPTS) {
@@ -168,6 +173,7 @@ class ProcessBackgroundTasksCommand extends Command
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
             'email_message_approved', 'email_message_rejected', 'email_message_reply'
                 => $this->handleModStdMessage($taskType, $data, $spooler, $shouldSpool),
+            'email_mod_stdmsg' => $this->handleModStdMessageForMember($data, $spooler, $shouldSpool),
             'message_outcome' => $this->handleMessageOutcome($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
@@ -413,18 +419,14 @@ class ProcessBackgroundTasksCommand extends Command
         }
 
         // Create a User2Mod chat message so the conversation appears in modtools chats.
-        $chatRoomId = DB::table('chat_rooms')
-            ->where('user1', $posterId)
-            ->where('groupid', $groupId)
-            ->where('chattype', 'User2Mod')
-            ->value('id');
-
-        if (! $chatRoomId && $groupId > 0) {
-            $chatRoomId = DB::table('chat_rooms')->insertGetId([
-                'chattype' => 'User2Mod',
-                'user1' => $posterId,
-                'groupid' => $groupId,
-            ]);
+        // Use INSERT ... ON DUPLICATE KEY UPDATE to handle concurrent creation (matching V1).
+        $chatRoomId = null;
+        if ($groupId > 0) {
+            DB::statement(
+                "INSERT INTO chat_rooms (user1, groupid, chattype, latestmessage) VALUES (?, ?, 'User2Mod', NOW()) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), latestmessage = NOW()",
+                [$posterId, $groupId]
+            );
+            $chatRoomId = DB::getPdo()->lastInsertId();
         }
 
         if ($chatRoomId) {
@@ -446,6 +448,111 @@ class ProcessBackgroundTasksCommand extends Command
             'byuser' => $byUser,
             'groupid' => $groupId,
             'recipient' => $posterEmail,
+        ]);
+    }
+
+    /**
+     * Handle mod standard message emails sent to a member (not related to a message).
+     *
+     * V1 parity with User::mail() + User::maybeMail():
+     * 1. Send email to the member.
+     * 2. Create a User2Mod chat message for the mod log.
+     */
+    protected function handleModStdMessageForMember(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $userId = (int) ($data['userid'] ?? 0);
+        $byUser = (int) ($data['byuser'] ?? 0);
+        $groupId = (int) ($data['groupid'] ?? 0);
+        $subject = $data['subject'] ?? '';
+        $body = $data['body'] ?? '';
+        $stdmsgId = (int) ($data['stdmsgid'] ?? 0);
+
+        if ($userId === 0 || $byUser === 0) {
+            throw new \RuntimeException('email_mod_stdmsg requires userid and byuser');
+        }
+
+        if ($subject === '' && $body === '') {
+            Log::info('Mod stdmsg for member without content, skipping email', [
+                'userid' => $userId,
+                'byuser' => $byUser,
+            ]);
+            return;
+        }
+
+        // Look up the member's preferred email.
+        $member = User::find($userId);
+        $memberEmail = $member?->email_preferred;
+
+        if (! $memberEmail) {
+            Log::warning("No email found for member {$userId}");
+            return;
+        }
+
+        // Look up group info.
+        $groupName = '';
+        $groupNameShort = '';
+        $groupContactMail = null;
+        if ($groupId > 0) {
+            $group = DB::table('groups')->where('id', $groupId)->first();
+            if ($group) {
+                $groupName = $group->namefull ?: $group->nameshort ?? '';
+                $groupNameShort = $group->nameshort ?? '';
+                $groupContactMail = $group->contactmail ?: null;
+            }
+        }
+
+        // Look up the mod's display name.
+        $modName = DB::table('users')->where('id', $byUser)->value('fullname') ?? 'A volunteer';
+
+        $mail = new ModStdMessageMail(
+            modName: $modName,
+            groupName: $groupName,
+            groupNameShort: $groupNameShort,
+            stdSubject: $subject,
+            stdBody: $body,
+            messageSubject: '',
+            msgId: 0,
+            recipientUserId: $userId,
+            recipientEmail: $memberEmail,
+            groupContactMail: $groupContactMail,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $memberEmail);
+        } else {
+            Mail::to($memberEmail)->send($mail);
+        }
+
+        // Create a User2Mod chat message so the conversation appears in modtools chats.
+        if ($groupId > 0) {
+            DB::statement(
+                "INSERT INTO chat_rooms (user1, groupid, chattype, latestmessage) VALUES (?, ?, 'User2Mod', NOW()) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), latestmessage = NOW()",
+                [$userId, $groupId]
+            );
+            $chatRoomId = DB::getPdo()->lastInsertId();
+
+            if ($chatRoomId) {
+                DB::table('chat_messages')->insert([
+                    'chatid' => $chatRoomId,
+                    'userid' => $byUser,
+                    'message' => "{$subject}\r\n\r\n{$body}",
+                    'type' => 'ModMail',
+                    'date' => now(),
+                    'reviewrequired' => 0,
+                    'processingrequired' => 0,
+                    'processingsuccessful' => 1,
+                ]);
+            }
+        }
+
+        Log::info('Sent mod stdmsg email to member', [
+            'userid' => $userId,
+            'byuser' => $byUser,
+            'groupid' => $groupId,
+            'recipient' => $memberEmail,
         ]);
     }
 
