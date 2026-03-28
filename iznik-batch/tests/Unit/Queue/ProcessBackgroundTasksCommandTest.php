@@ -785,6 +785,100 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertNotNull($log);
     }
 
+    public function test_mod_stdmsg_for_member_sends_email_and_creates_chat(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $member = $this->createTestUser();
+        $memberEmail = $this->createTestUserEmail($member, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Test Moderator']);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_mod_stdmsg',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Location Required please',
+                'body' => 'Hello, can you please advise your postcode?',
+                'action' => 'Leave Approved Member',
+                'stdmsgid' => 0,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify email was sent.
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($mod) {
+            $this->assertEquals('Test Moderator', $mail->modName);
+            $this->assertEquals('Location Required please', $mail->stdSubject);
+            $this->assertEquals('Hello, can you please advise your postcode?', $mail->stdBody);
+            return TRUE;
+        });
+
+        // Verify task was processed.
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+
+        // Verify chat room and message were created.
+        $chatRoom = DB::table('chat_rooms')
+            ->where('user1', $member->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', 'User2Mod')
+            ->first();
+        $this->assertNotNull($chatRoom, 'Chat room should be created');
+
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $mod->id)
+            ->where('type', 'ModMail')
+            ->first();
+        $this->assertNotNull($chatMsg, 'Chat message should be created');
+        $this->assertStringContains('Location Required please', $chatMsg->message);
+    }
+
+    public function test_mod_stdmsg_for_member_without_content_skips_email(): void
+    {
+        Mail::fake();
+
+        $member = $this->createTestUser();
+        $mod = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_mod_stdmsg',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => '',
+                'body' => '',
+                'action' => 'Leave Approved Member',
+                'stdmsgid' => 0,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        Mail::assertNothingSent();
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
     /**
      * Custom assertion for string containment (PHPUnit 10+ compatible).
      */
