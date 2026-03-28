@@ -1,20 +1,7 @@
 #!/bin/bash
-# Claude hook: remind to add tests and run suites before committing
+# PreToolUse hook for git commit: remind to check tests
+# Non-blocking — outputs a systemMessage reminder
 
-# Check if the commit message mentions a fix or feature
-COMMIT_MSG=$(cat "$1" 2>/dev/null || echo "")
-
-# Check for code changes (not just test files)
-STAGED_CODE=$(git diff --cached --name-only | grep -v "test\|spec\|__test__" | grep -E "\.(go|vue|js|ts|php)$")
-STAGED_TESTS=$(git diff --cached --name-only | grep -E "(test|spec)\.(go|js|ts|vue|php)$")
-
-if [ -n "$STAGED_CODE" ] && [ -z "$STAGED_TESTS" ]; then
-    echo "WARNING: You are committing code changes without any test changes."
-    echo "Code files: $STAGED_CODE"
-    echo ""
-    echo "Have you:"
-    echo "  1. Written tests for this change?"
-    echo "  2. Run the relevant test suite (Go, Vitest, Playwright)?"
-    echo ""
-    echo "If tests aren't needed, proceed. Otherwise add tests first."
-fi
+cat <<'EOF'
+{"systemMessage": "Pre-commit checklist: a) Have you added a test for this change? b) Have you run that test? c) Have you run the full test suite via the status API (Go: docker exec freegle-apiv2; Laravel: curl -X POST http://localhost:8081/api/tests/laravel)?"}
+EOF
