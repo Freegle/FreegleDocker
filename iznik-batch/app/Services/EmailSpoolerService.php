@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\UserEmail;
+use App\Services\Mail\Incoming\BounceService;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailer;
 use Illuminate\Support\Facades\Log;
@@ -357,7 +359,27 @@ class EmailSpoolerService
             } catch (\Exception $e) {
                 $data['last_error'] = $e->getMessage();
 
-                // Check if email has been stuck for 5+ minutes.
+                // Check if this is a permanent SMTP failure that will never succeed.
+                if ($this->isPermanentSmtpFailure($e->getMessage())) {
+                    // Record as a bounce so the user gets flagged as bouncing.
+                    $this->recordSmtpBounce($data, $e->getMessage());
+
+                    // Move to failed - no point retrying.
+                    file_put_contents($sendingPath, json_encode($data, JSON_PRETTY_PRINT));
+                    rename($sendingPath, $this->failedDir . '/' . $filename);
+                    $stats['bounced'] = ($stats['bounced'] ?? 0) + 1;
+
+                    Log::info('Email permanently failed - recorded as bounce', [
+                        'id' => $data['id'],
+                        'to' => array_column($data['to'], 'address'),
+                        'error' => $e->getMessage(),
+                        'attempts' => $data['attempts'],
+                    ]);
+
+                    continue;
+                }
+
+                // Transient failure - check if stuck.
                 $createdAt = \Carbon\Carbon::parse($data['created_at']);
                 $ageMinutes = now()->diffInMinutes($createdAt);
                 $lastAlertedAt = isset($data['last_alerted_at'])
@@ -383,7 +405,7 @@ class EmailSpoolerService
                     }
                 }
 
-                // Always move back to pending for retry (indefinite retries).
+                // Move back to pending for retry.
                 file_put_contents($sendingPath, json_encode($data, JSON_PRETTY_PRINT));
                 rename($sendingPath, $pendingPath);
                 $stats['retried']++;
@@ -489,6 +511,89 @@ class EmailSpoolerService
             }
         }
         return $count;
+    }
+
+    /**
+     * Determine if an SMTP error is permanent (will never succeed on retry).
+     *
+     * These are errors where the recipient address itself is invalid or the
+     * remote server has permanently rejected delivery. Retrying is pointless.
+     */
+    protected function isPermanentSmtpFailure(string $errorMessage): bool
+    {
+        $patterns = [
+            // RFC 5321 permanent failure codes (5xx).
+            '/\b550\b/',                          // Mailbox unavailable
+            '/\b551\b/',                          // User not local
+            '/\b552\b/',                          // Exceeded storage allocation
+            '/\b553\b/',                          // Mailbox name not allowed
+            '/\b554\b/',                          // Transaction failed
+            '/\b501\s+5\.1\.3\b/',                // Bad recipient address syntax
+            '/\b5\.[01]\.[13]\b/',                // Bad destination / address syntax
+            '/\b5\.2\.1\b/',                      // Mailbox disabled
+            // Address format errors (caught before SMTP).
+            '/non-ASCII characters/i',
+            '/Invalid address/i',
+            '/Bad recipient address syntax/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $errorMessage)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Record an SMTP-time bounce via the BounceService.
+     *
+     * Looks up the recipient in users_emails and records a permanent bounce,
+     * which may trigger user suspension via the existing bounce thresholds.
+     */
+    protected function recordSmtpBounce(array $data, string $errorMessage): void
+    {
+        try {
+            $recipientEmail = $data['to'][0]['address'] ?? null;
+
+            if ($recipientEmail === null) {
+                return;
+            }
+
+            $userEmail = UserEmail::where('email', $recipientEmail)->first();
+
+            if ($userEmail === null) {
+                Log::debug('SMTP bounce recipient not in users_emails', [
+                    'email' => $recipientEmail,
+                ]);
+                return;
+            }
+
+            $bounceService = app(BounceService::class);
+
+            // All SMTP-time rejections we classify as permanent are hard bounces.
+            $bounceService->recordBounce($userEmail->id, 'SMTP rejection: ' . $errorMessage, true);
+
+            // Update email tracking if we have a trace ID.
+            $traceId = $data['headers']['X-Freegle-Trace-Id'] ?? null;
+            $bounceService->updateEmailTracking($traceId, $recipientEmail);
+
+            // Check and suspend user if thresholds met.
+            $suspended = $bounceService->checkAndSuspendUser($userEmail->userid);
+
+            Log::info('Recorded SMTP bounce', [
+                'email' => $recipientEmail,
+                'user_id' => $userEmail->userid,
+                'suspended' => $suspended,
+            ]);
+        } catch (\Throwable $e) {
+            // Don't let bounce recording failure prevent the email from being moved to failed.
+            Log::error('Failed to record SMTP bounce', [
+                'error' => $e->getMessage(),
+                'recipient' => $data['to'][0]['address'] ?? 'unknown',
+            ]);
+        }
     }
 
     protected function generateId(): string
