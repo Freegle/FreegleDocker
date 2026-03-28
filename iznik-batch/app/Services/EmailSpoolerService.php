@@ -454,19 +454,36 @@ class EmailSpoolerService
     /**
      * Clean up old sent emails.
      *
+     * Uses DirectoryIterator instead of glob() to handle directories with
+     * tens of thousands of files without loading all filenames into memory.
+     *
      * @param int $daysToKeep Number of days to keep sent emails.
      * @return int Number of files deleted.
      */
     public function cleanupSent(int $daysToKeep = 7): int
     {
         $deleted = 0;
-        $cutoff = now()->subDays($daysToKeep);
+        $cutoff = now()->subDays($daysToKeep)->timestamp;
 
-        foreach (glob($this->sentDir . '/*.json') as $file) {
-            if (filemtime($file) < $cutoff->timestamp) {
-                unlink($file);
+        if (!is_dir($this->sentDir)) {
+            return 0;
+        }
+
+        $iterator = new \DirectoryIterator($this->sentDir);
+
+        foreach ($iterator as $fileInfo) {
+            if ($fileInfo->isDot() || $fileInfo->getExtension() !== 'json') {
+                continue;
+            }
+
+            if ($fileInfo->getMTime() < $cutoff) {
+                @unlink($fileInfo->getPathname());
                 $deleted++;
             }
+        }
+
+        if ($deleted > 0) {
+            Log::info('Cleaned up old sent emails', ['deleted' => $deleted, 'days_kept' => $daysToKeep]);
         }
 
         return $deleted;

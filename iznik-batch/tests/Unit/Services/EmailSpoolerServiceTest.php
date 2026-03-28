@@ -155,6 +155,52 @@ class EmailSpoolerServiceTest extends TestCase
         $this->assertFileDoesNotExist($sentFile);
     }
 
+    public function test_cleanup_sent_skips_non_json_files(): void
+    {
+        // Create a non-json file in the sent directory.
+        file_put_contents($this->testSpoolDir . '/sent/readme.txt', 'do not delete');
+
+        // Create an old json file that should be deleted.
+        $oldFile = $this->testSpoolDir . '/sent/old_mail.json';
+        file_put_contents($oldFile, json_encode(['id' => 'old']));
+        touch($oldFile, strtotime('-10 days'));
+
+        // Create a recent json file that should be kept.
+        $newFile = $this->testSpoolDir . '/sent/new_mail.json';
+        file_put_contents($newFile, json_encode(['id' => 'new']));
+
+        $deleted = $this->spooler->cleanupSent(daysToKeep: 7);
+
+        $this->assertEquals(1, $deleted);
+        $this->assertFileDoesNotExist($oldFile);
+        $this->assertFileExists($newFile);
+        $this->assertFileExists($this->testSpoolDir . '/sent/readme.txt');
+    }
+
+    public function test_cleanup_sent_handles_many_files(): void
+    {
+        // Create 500 old files to verify DirectoryIterator handles batches.
+        for ($i = 0; $i < 500; $i++) {
+            $file = $this->testSpoolDir . '/sent/mail_' . $i . '.json';
+            file_put_contents($file, json_encode(['id' => 'mail_' . $i]));
+            touch($file, strtotime('-10 days'));
+        }
+
+        // Create 5 recent files that should be kept.
+        for ($i = 0; $i < 5; $i++) {
+            $file = $this->testSpoolDir . '/sent/recent_' . $i . '.json';
+            file_put_contents($file, json_encode(['id' => 'recent_' . $i]));
+        }
+
+        $deleted = $this->spooler->cleanupSent(daysToKeep: 7);
+
+        $this->assertEquals(500, $deleted);
+
+        // Verify the recent files are still there.
+        $remaining = glob($this->testSpoolDir . '/sent/*.json');
+        $this->assertCount(5, $remaining);
+    }
+
     public function test_retry_failed_moves_to_pending(): void
     {
         // Create a fake failed email file.
