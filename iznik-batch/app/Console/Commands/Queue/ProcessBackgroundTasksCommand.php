@@ -8,6 +8,7 @@ use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
 use App\Mail\Message\ModStdMessageMail;
+use App\Models\ChatRoom;
 use App\Models\User;
 use App\Services\EmailSpoolerService;
 use App\Services\PushNotificationService;
@@ -419,28 +420,22 @@ class ProcessBackgroundTasksCommand extends Command
         }
 
         // Create a User2Mod chat message so the conversation appears in modtools chats.
-        // Use INSERT ... ON DUPLICATE KEY UPDATE to handle concurrent creation (matching V1).
-        $chatRoomId = null;
         if ($groupId > 0) {
-            DB::statement(
-                "INSERT INTO chat_rooms (user1, groupid, chattype, latestmessage) VALUES (?, ?, 'User2Mod', NOW()) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), latestmessage = NOW()",
-                [$posterId, $groupId]
-            );
-            $chatRoomId = DB::getPdo()->lastInsertId();
-        }
+            $chatRoom = ChatRoom::getOrCreateUser2Mod($posterId, $groupId);
 
-        if ($chatRoomId) {
-            DB::table('chat_messages')->insert([
-                'chatid' => $chatRoomId,
-                'userid' => $byUser,
-                'message' => "{$subject}\r\n\r\n{$body}",
-                'type' => 'ModMail',
-                'refmsgid' => $msgId,
-                'date' => now(),
-                'reviewrequired' => 0,
-                'processingrequired' => 0,
-                'processingsuccessful' => 1,
-            ]);
+            if ($chatRoom) {
+                DB::table('chat_messages')->insert([
+                    'chatid' => $chatRoom->id,
+                    'userid' => $byUser,
+                    'message' => "{$subject}\r\n\r\n{$body}",
+                    'type' => 'ModMail',
+                    'refmsgid' => $msgId,
+                    'date' => now(),
+                    'reviewrequired' => 0,
+                    'processingrequired' => 0,
+                    'processingsuccessful' => 1,
+                ]);
+            }
         }
 
         Log::info("Sent mod stdmsg email ({$taskType})", [
@@ -528,15 +523,11 @@ class ProcessBackgroundTasksCommand extends Command
 
         // Create a User2Mod chat message so the conversation appears in modtools chats.
         if ($groupId > 0) {
-            DB::statement(
-                "INSERT INTO chat_rooms (user1, groupid, chattype, latestmessage) VALUES (?, ?, 'User2Mod', NOW()) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), latestmessage = NOW()",
-                [$userId, $groupId]
-            );
-            $chatRoomId = DB::getPdo()->lastInsertId();
+            $chatRoom = ChatRoom::getOrCreateUser2Mod($userId, $groupId);
 
-            if ($chatRoomId) {
+            if ($chatRoom) {
                 DB::table('chat_messages')->insert([
-                    'chatid' => $chatRoomId,
+                    'chatid' => $chatRoom->id,
                     'userid' => $byUser,
                     'message' => "{$subject}\r\n\r\n{$body}",
                     'type' => 'ModMail',

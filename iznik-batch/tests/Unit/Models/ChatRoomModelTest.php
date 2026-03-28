@@ -349,4 +349,47 @@ class ChatRoomModelTest extends TestCase
         $this->assertEquals('User2User', ChatRoom::TYPE_USER2USER);
         $this->assertEquals('Group', ChatRoom::TYPE_GROUP);
     }
+
+    public function test_get_or_create_user2mod_creates_new(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $chat = ChatRoom::getOrCreateUser2Mod($user->id, $group->id);
+
+        $this->assertNotNull($chat);
+        $this->assertEquals(ChatRoom::TYPE_USER2MOD, $chat->chattype);
+        $this->assertEquals($user->id, $chat->getAttributeValue('user1'));
+        $this->assertEquals($group->id, $chat->groupid);
+    }
+
+    public function test_get_or_create_user2mod_returns_existing(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $chat1 = ChatRoom::getOrCreateUser2Mod($user->id, $group->id);
+        $chat2 = ChatRoom::getOrCreateUser2Mod($user->id, $group->id);
+
+        $this->assertEquals($chat1->id, $chat2->id, 'Should return existing chat, not create duplicate');
+
+        // Verify only one row exists.
+        $count = ChatRoom::where('user1', $user->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', ChatRoom::TYPE_USER2MOD)
+            ->count();
+        $this->assertEquals(1, $count, 'Should have exactly one User2Mod chat');
+    }
+
+    public function test_get_or_create_user2mod_different_groups(): void
+    {
+        $user = $this->createTestUser();
+        $group1 = $this->createTestGroup();
+        $group2 = $this->createTestGroup();
+
+        $chat1 = ChatRoom::getOrCreateUser2Mod($user->id, $group1->id);
+        $chat2 = ChatRoom::getOrCreateUser2Mod($user->id, $group2->id);
+
+        $this->assertNotEquals($chat1->id, $chat2->id, 'Different groups should create different chats');
+    }
 }

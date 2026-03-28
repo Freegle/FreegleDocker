@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ChatRoom extends Model
 {
@@ -142,5 +144,36 @@ class ChatRoom extends Model
     public function involvesUser(int $userId): bool
     {
         return $this->getAttributeValue('user1') === $userId || $this->getAttributeValue('user2') === $userId;
+    }
+
+    /**
+     * Find or create a User2Mod chat room, using transaction + SELECT FOR UPDATE
+     * to prevent duplicate creation. Matches V1 ChatRoom::createUser2Mod().
+     *
+     * The unique key (user1, user2, chattype) does NOT prevent User2Mod duplicates
+     * because user2 is NULL and MySQL treats NULLs as distinct in unique indexes.
+     */
+    public static function getOrCreateUser2Mod(int $userId, int $groupId): ?self
+    {
+        return DB::transaction(function () use ($userId, $groupId) {
+            // Lock any existing row to close the timing window.
+            $chat = DB::selectOne(
+                'SELECT id FROM chat_rooms WHERE user1 = ? AND groupid = ? AND chattype = ? FOR UPDATE',
+                [$userId, $groupId, self::TYPE_USER2MOD]
+            );
+
+            if ($chat) {
+                DB::update('UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?', [$chat->id]);
+                return self::find($chat->id);
+            }
+
+            // No existing chat — create one inside the same transaction.
+            return self::create([
+                'chattype' => self::TYPE_USER2MOD,
+                'user1' => $userId,
+                'groupid' => $groupId,
+                'latestmessage' => now(),
+            ]);
+        });
     }
 }
