@@ -5,9 +5,14 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const body = await readBody(event).catch(() => ({}))
 
-  // Get test file and name from query params or body
-  const testFile = (body?.testFile || query.testSpec || query.spec) as string | null
-  const testName = (body?.testName || body?.filter || query.testName || query.filter) as string | null
+  // Get test file and name from query params or body.
+  // The "filter" param is smart: if it looks like a filename (starts with "test-"
+  // or contains ".spec"), treat it as a file filter; otherwise treat it as a grep pattern.
+  const filterParam = (body?.filter || query.filter) as string | null
+  const isFileFilter = filterParam && (filterParam.startsWith('test-') || filterParam.includes('.spec'))
+
+  const testFile = (body?.testFile || query.testSpec || query.spec || (isFileFilter ? filterParam : null)) as string | null
+  const testName = (body?.testName || query.testName || (!isFileFilter ? filterParam : null)) as string | null
 
   let logMessage = 'Received request to run Playwright tests'
   if (testFile) logMessage += ` for file: ${testFile}`
@@ -57,17 +62,50 @@ export default defineEventHandler(async (event) => {
 
 async function runPlaywrightTests(testFile: string | null, testName: string | null) {
   try {
-    // Check freegle-prod-local is running
-    const freegleProdCheck = execSync(
-      'docker ps --filter "name=freegle-prod-local" --format "{{.Status}}"',
-      { encoding: 'utf8', timeout: 5000 }
-    ).trim()
+    // Check both prod containers are running
+    for (const container of ['freegle-prod-local', 'modtools-prod-local']) {
+      const check = execSync(
+        `docker ps --filter "name=${container}" --format "{{.Status}}"`,
+        { encoding: 'utf8', timeout: 5000 }
+      ).trim()
 
-    if (!freegleProdCheck.includes('Up')) {
-      throw new Error('Freegle Production container is not running')
+      if (!check.includes('Up')) {
+        throw new Error(`${container} container is not running`)
+      }
     }
 
-    appendTestLogs('playwright', 'Freegle Production container is running\n')
+    appendTestLogs('playwright', 'Production containers are running\n')
+
+    // Wait for both prod containers to be serving HTTP before starting tests.
+    // Docker "Up" status doesn't mean the Nuxt server inside is ready.
+    setTestState('playwright', { message: 'Waiting for production containers to be ready...' })
+
+    for (const host of ['freegle-prod-local.localhost', 'modtools-prod-local.localhost']) {
+      let ready = false
+      for (let attempt = 0; attempt < 30; attempt++) {
+        try {
+          const resp = execSync(
+            `curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://${host}/`,
+            { encoding: 'utf8', timeout: 5000 }
+          ).trim()
+
+          if (resp === '200') {
+            ready = true
+            break
+          }
+        } catch {
+          // Server not ready yet
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+
+      if (!ready) {
+        throw new Error(`${host} did not become ready within 60 seconds`)
+      }
+
+      appendTestLogs('playwright', `${host} is ready\n`)
+    }
 
     // Restart Playwright container
     setTestState('playwright', { message: 'Restarting Playwright container...' })
@@ -83,7 +121,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
       appendTestLogs('playwright', `Warning: Failed to restart container: ${restartError.message}\n`)
     }
 
-    // Wait a bit for container to be ready
+    // Wait for Playwright container to be ready
     await new Promise(resolve => setTimeout(resolve, 3000))
 
     // Test environments are now created on demand by each test's testEnv fixture
