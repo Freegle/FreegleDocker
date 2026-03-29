@@ -55,6 +55,8 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `cleanup:search-duplicates` | Remove duplicate consecutive searches |
 | `cleanup:chat-duplicates` | Remove duplicate consecutive chat messages |
 | `emails:validate` | Validate emails and delete invalid ones |
+| `locations:fix-skewed` | Fix swapped lat/lng coordinates |
+| `users:update-ratings` | Update rating visibility based on chat interactions |
 
 ## Testing Emails (mail:test)
 
@@ -179,6 +181,8 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `searchdups.php` | `cleanup:search-duplicates` | - | Consecutive search dedup |
 | `chatdups.php` | `cleanup:chat-duplicates` | - | Consecutive chat message dedup |
 | `email_validate.php` | `emails:validate` | - | Delete invalid emails |
+| `locations_skewwhiff.php` | `locations:fix-skewed` | - | Fix swapped lat/lng |
+| `user_ratings.php` | `users:update-ratings` | - | Rating visibility |
 
 ## Code Written - Running via CircleCI (Not Scheduler)
 
@@ -238,7 +242,7 @@ These original scripts need to be migrated to Laravel artisan commands:
 |--------|-----------|----------|-------------|
 | `donations_giftaid.php` | Every 10 min | Medium | Gift Aid processing |
 | `alerts.php` | Every 10 min | Medium | System alerts |
-| `user_ratings.php` | Every 10 min | Low | User ratings |
+| ~~`user_ratings.php`~~ | ~~Every 10 min~~ | ~~Low~~ | ~~User ratings~~ — **Migrated: `users:update-ratings`** |
 | `eximlogs.php` | Every 10 min | Low | Exim mail logs |
 | `whatjobs_spam.php` | Every 10 min | Low | WhatJobs spam |
 | `jobs_illustrations.php` | Every 30 min | Low | Job illustrations |
@@ -277,7 +281,7 @@ These original scripts need to be migrated to Laravel artisan commands:
 | ~~`email_validate.php`~~ | ~~04:00~~ | ~~Low~~ | ~~Email validation~~ — **Migrated: `emails:validate`** |
 | `messages_popular.php` | 05:00 | Low | Popular messages |
 | `users_remap.php` | 05:00 | Low | User remapping |
-| `locations_skewwhiff.php` | 05:00 | Low | Location fixes |
+| ~~`locations_skewwhiff.php`~~ | ~~05:00~~ | ~~Low~~ | ~~Location fixes~~ — **Migrated: `locations:fix-skewed`** |
 | `nearby.php` | 14:05 | Medium | Nearby items |
 | `chat_review.php` | 11:00 | Medium | Chat review queue |
 | `engage.php` | 16:00 | Medium | User engagement emails |

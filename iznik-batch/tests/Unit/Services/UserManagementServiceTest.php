@@ -625,4 +625,106 @@ class UserManagementServiceTest extends TestCase
         $this->assertIsInt($stats['total']);
         $this->assertIsInt($stats['invalid']);
     }
+
+    // --- Rating visibility tests ---
+
+    public function test_rating_visible_when_both_users_messaged(): void
+    {
+        $rater = $this->createTestUser();
+        $ratee = $this->createTestUser();
+
+        $room = $this->createTestChatRoom($rater, $ratee);
+
+        // Both users send messages (no refmsgid = direct messages).
+        $this->createTestChatMessage($room, $rater, [
+            'message' => 'Hello',
+            'refmsgid' => null,
+            'date' => now()->subHour(),
+        ]);
+        $this->createTestChatMessage($room, $ratee, [
+            'message' => 'Hi there',
+            'refmsgid' => null,
+            'date' => now()->subMinutes(50),
+        ]);
+
+        // Create rating (not visible yet).
+        $ratingId = DB::table('ratings')->insertGetId([
+            'rater' => $rater->id,
+            'ratee' => $ratee->id,
+            'rating' => 'Up',
+            'visible' => false,
+            'timestamp' => now(),
+            'reviewrequired' => 0,
+        ]);
+
+        $stats = $this->service->updateRatingVisibility('1 day ago');
+
+        $this->assertGreaterThanOrEqual(1, $stats['processed']);
+        $this->assertGreaterThanOrEqual(1, $stats['made_visible']);
+
+        $rating = DB::table('ratings')->where('id', $ratingId)->first();
+        $this->assertTrue((bool) $rating->visible);
+    }
+
+    public function test_rating_visible_when_ratee_replied_to_post(): void
+    {
+        $rater = $this->createTestUser();
+        $ratee = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $room = $this->createTestChatRoom($rater, $ratee);
+        $message = $this->createTestMessage($rater, $group);
+
+        // Ratee replied to a post (has refmsgid).
+        $this->createTestChatMessage($room, $ratee, [
+            'message' => 'Is this available?',
+            'refmsgid' => $message->id,
+            'date' => now()->subHour(),
+        ]);
+
+        $ratingId = DB::table('ratings')->insertGetId([
+            'rater' => $rater->id,
+            'ratee' => $ratee->id,
+            'rating' => 'Up',
+            'visible' => false,
+            'timestamp' => now(),
+            'reviewrequired' => 0,
+        ]);
+
+        $stats = $this->service->updateRatingVisibility('1 day ago');
+
+        $rating = DB::table('ratings')->where('id', $ratingId)->first();
+        $this->assertTrue((bool) $rating->visible);
+    }
+
+    public function test_rating_hidden_when_no_meaningful_interaction(): void
+    {
+        $rater = $this->createTestUser();
+        $ratee = $this->createTestUser();
+
+        // No chat room or messages between them.
+        $ratingId = DB::table('ratings')->insertGetId([
+            'rater' => $rater->id,
+            'ratee' => $ratee->id,
+            'rating' => 'Up',
+            'visible' => true,
+            'timestamp' => now(),
+            'reviewrequired' => 0,
+        ]);
+
+        $stats = $this->service->updateRatingVisibility('1 day ago');
+
+        $rating = DB::table('ratings')->where('id', $ratingId)->first();
+        $this->assertFalse((bool) $rating->visible);
+        $this->assertGreaterThanOrEqual(1, $stats['made_hidden']);
+    }
+
+    public function test_rating_visibility_no_change_needed(): void
+    {
+        $stats = $this->service->updateRatingVisibility('1 second ago');
+
+        $this->assertEquals(0, $stats['processed']);
+        $this->assertEquals(0, $stats['made_visible']);
+        $this->assertEquals(0, $stats['made_hidden']);
+    }
 }

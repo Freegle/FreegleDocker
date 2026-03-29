@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class GroupMaintenanceService
 {
@@ -38,6 +39,81 @@ class GroupMaintenanceService
                 ]);
 
             $stats['groups_updated']++;
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Fix locations where latitude and longitude are swapped.
+     *
+     * UK locations should have lat < lng (lat ~50-60, lng ~-8 to 2).
+     * When lat > lng, the coordinates are likely swapped.
+     * Excludes BF (British Forces) postcodes which may legitimately have lat > lng.
+     *
+     * Also fixes any messages referencing the affected locations.
+     * Sends an alert email if any skewed locations are found.
+     *
+     * Migrated from iznik-server/scripts/cron/locations_skewwhiff.php
+     */
+    public function fixSkewedLocations(): array
+    {
+        $stats = [
+            'locations_fixed' => 0,
+            'messages_fixed' => 0,
+        ];
+
+        $locations = DB::select(
+            "SELECT DISTINCT locations.id, lat, lng, name FROM locations WHERE lat < lng AND locations.name NOT LIKE 'BF%'"
+        );
+
+        $details = '';
+
+        foreach ($locations as $location) {
+            $details .= "{$location->id}, {$location->name}, {$location->lat}, {$location->lng}\n";
+
+            // Swap lat and lng.
+            DB::table('locations')
+                ->where('id', $location->id)
+                ->update([
+                    'lat' => $location->lng,
+                    'lng' => $location->lat,
+                ]);
+
+            $stats['locations_fixed']++;
+
+            // Fix messages referencing this location.
+            $messages = DB::table('messages')
+                ->where('locationid', $location->id)
+                ->select('id')
+                ->get();
+
+            foreach ($messages as $msg) {
+                DB::table('messages')
+                    ->where('id', $msg->id)
+                    ->update([
+                        'lat' => $location->lng,
+                        'lng' => $location->lat,
+                    ]);
+
+                $details .= "...fix message {$msg->id}\n";
+                $stats['messages_fixed']++;
+            }
+        }
+
+        if ($stats['locations_fixed'] > 0) {
+            Log::warning("Fixed {$stats['locations_fixed']} skewed locations", $stats);
+
+            Mail::raw(
+                $details,
+                function ($message) use ($stats) {
+                    $message->to(config('freegle.alerts.geek_email', 'geek-alerts@ilovefreegle.org'))
+                        ->from('geeks@ilovefreegle.org')
+                        ->subject("{$stats['locations_fixed']} locations lat/lngs skewwhiff");
+                }
+            );
+        } else {
+            Log::info('All locations ok');
         }
 
         return $stats;

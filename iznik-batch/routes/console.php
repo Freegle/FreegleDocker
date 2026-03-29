@@ -137,6 +137,16 @@ Schedule::command('emails:validate')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('locations:fix-skewed')
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('users:update-ratings')
+    ->everyTenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Unified digest - replaces per-group digests.
 // Daily mode - sends one digest per user with posts from all their communities.
 Schedule::command('mail:digest:unified --mode=daily')

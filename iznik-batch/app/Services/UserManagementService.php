@@ -433,6 +433,94 @@ class UserManagementService
     }
 
     /**
+     * Update rating visibility based on chat interactions.
+     *
+     * A rating is visible if the rater and ratee have had meaningful chat interaction:
+     * - At least one message from each in the same chat room, OR
+     * - The ratee replied to a post (refmsgid is set).
+     *
+     * This prevents frivolous ratings from users who haven't actually interacted.
+     *
+     * Migrated from iznik-server User::ratingVisibility()
+     */
+    public function updateRatingVisibility(string $since = '1 hour ago'): array
+    {
+        $stats = [
+            'processed' => 0,
+            'made_visible' => 0,
+            'made_hidden' => 0,
+        ];
+
+        $cutoff = date('Y-m-d', strtotime($since));
+
+        $ratings = DB::table('ratings')
+            ->where('timestamp', '>=', $cutoff)
+            ->get();
+
+        foreach ($ratings as $rating) {
+            $visible = false;
+
+            $chats = DB::table('chat_rooms')
+                ->where(function ($q) use ($rating) {
+                    $q->where('user1', $rating->rater)->where('user2', $rating->ratee);
+                })
+                ->orWhere(function ($q) use ($rating) {
+                    $q->where('user2', $rating->rater)->where('user1', $rating->ratee);
+                })
+                ->pluck('id');
+
+            foreach ($chats as $chatId) {
+                // Check if both users have sent messages (excluding system/refmsg-only).
+                $distinctUsers = DB::table('chat_messages')
+                    ->where('chatid', $chatId)
+                    ->whereNull('refmsgid')
+                    ->whereNotNull('message')
+                    ->distinct()
+                    ->count('userid');
+
+                if ($distinctUsers >= 2) {
+                    $visible = true;
+                    break;
+                }
+
+                // Check if ratee replied to a post.
+                $replies = DB::table('chat_messages')
+                    ->where('chatid', $chatId)
+                    ->where('userid', $rating->ratee)
+                    ->whereNotNull('refmsgid')
+                    ->whereNotNull('message')
+                    ->count();
+
+                if ($replies > 0) {
+                    $visible = true;
+                    break;
+                }
+            }
+
+            $oldVisible = (bool) $rating->visible;
+
+            if ($visible !== $oldVisible) {
+                DB::table('ratings')
+                    ->where('id', $rating->id)
+                    ->update([
+                        'visible' => $visible,
+                        'timestamp' => now(),
+                    ]);
+
+                if ($visible) {
+                    $stats['made_visible']++;
+                } else {
+                    $stats['made_hidden']++;
+                }
+            }
+
+            $stats['processed']++;
+        }
+
+        return $stats;
+    }
+
+    /**
      * Clean up inactive user data for GDPR compliance.
      */
     public function cleanupInactiveUsers(int $yearsInactive = 3): int
