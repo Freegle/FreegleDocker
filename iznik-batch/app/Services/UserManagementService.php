@@ -396,6 +396,43 @@ class UserManagementService
     }
 
     /**
+     * Validate all non-bouncing emails and delete invalid ones.
+     *
+     * Uses the same regex as iznik-server Message::EMAIL_REGEXP.
+     *
+     * Migrated from iznik-server/scripts/cron/email_validate.php
+     */
+    public function validateEmails(): array
+    {
+        $stats = [
+            'total' => 0,
+            'invalid' => 0,
+        ];
+
+        $emails = DB::table('users_emails')
+            ->join('users', 'users.id', '=', 'users_emails.userid')
+            ->whereNull('users_emails.bounced')
+            ->select('users_emails.id', 'users_emails.email', 'users_emails.userid')
+            ->get();
+
+        $stats['total'] = $emails->count();
+
+        foreach ($emails as $email) {
+            if (!preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', $email->email)) {
+                DB::table('users_emails')->where('id', $email->id)->delete();
+                $stats['invalid']++;
+                Log::info("Deleted invalid email: {$email->email} for user #{$email->userid}");
+            }
+
+            if ($stats['total'] > 0 && ($stats['invalid'] + ($stats['total'] - $stats['invalid'])) % 1000 === 0) {
+                Log::info("Validated {$stats['total']} emails so far, {$stats['invalid']} invalid");
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
      * Clean up inactive user data for GDPR compliance.
      */
     public function cleanupInactiveUsers(int $yearsInactive = 3): int

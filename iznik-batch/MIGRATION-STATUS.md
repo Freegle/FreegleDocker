@@ -54,6 +54,7 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `purge:sessions` | Purge old sessions and login links |
 | `cleanup:search-duplicates` | Remove duplicate consecutive searches |
 | `cleanup:chat-duplicates` | Remove duplicate consecutive chat messages |
+| `emails:validate` | Validate emails and delete invalid ones |
 
 ## Testing Emails (mail:test)
 
@@ -177,6 +178,7 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `purge_sessions.php` | `purge:sessions` | - | Session + login link purging |
 | `searchdups.php` | `cleanup:search-duplicates` | - | Consecutive search dedup |
 | `chatdups.php` | `cleanup:chat-duplicates` | - | Consecutive chat message dedup |
+| `email_validate.php` | `emails:validate` | - | Delete invalid emails |
 
 ## Code Written - Running via CircleCI (Not Scheduler)
 
@@ -272,7 +274,7 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `engage_update.php` | 03:00 | Low | Engagement update |
 | ~~`purge_sessions.php`~~ | ~~03:00~~ | ~~Low~~ | ~~Session purging~~ — **Migrated: `purge:sessions`** |
 | ~~`purge_logs.php`~~ | ~~04:00~~ | ~~Low~~ | ~~Log purging~~ — **Migrated: `purge:logs`** |
-| `email_validate.php` | 04:00 | Low | Email validation |
+| ~~`email_validate.php`~~ | ~~04:00~~ | ~~Low~~ | ~~Email validation~~ — **Migrated: `emails:validate`** |
 | `messages_popular.php` | 05:00 | Low | Popular messages |
 | `users_remap.php` | 05:00 | Low | User remapping |
 | `locations_skewwhiff.php` | 05:00 | Low | Location fixes |

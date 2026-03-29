@@ -561,4 +561,68 @@ class UserManagementServiceTest extends TestCase
         $user->refresh();
         $this->assertEquals('Moderator', $user->systemrole);
     }
+
+    // --- Email validation tests ---
+
+    public function test_validate_emails_deletes_invalid(): void
+    {
+        $user = $this->createTestUser();
+
+        // Insert an invalid email directly.
+        $invalidId = DB::table('users_emails')->insertGetId([
+            'email' => 'not-an-email',
+            'userid' => $user->id,
+            'added' => now(),
+            'bounced' => null,
+        ]);
+
+        $stats = $this->service->validateEmails();
+
+        $this->assertGreaterThanOrEqual(1, $stats['invalid']);
+        $this->assertDatabaseMissing('users_emails', ['id' => $invalidId]);
+    }
+
+    public function test_validate_emails_keeps_valid(): void
+    {
+        $user = $this->createTestUser();
+
+        $validId = DB::table('users_emails')->insertGetId([
+            'email' => $this->uniqueEmail('valid'),
+            'userid' => $user->id,
+            'added' => now(),
+            'bounced' => null,
+        ]);
+
+        $this->service->validateEmails();
+
+        $this->assertDatabaseHas('users_emails', ['id' => $validId]);
+    }
+
+    public function test_validate_emails_skips_bouncing(): void
+    {
+        $user = $this->createTestUser();
+
+        // Insert an invalid but bouncing email — should be skipped.
+        $bouncingId = DB::table('users_emails')->insertGetId([
+            'email' => 'not-valid',
+            'userid' => $user->id,
+            'added' => now(),
+            'bounced' => now()->subDays(1),
+        ]);
+
+        $this->service->validateEmails();
+
+        // Still exists because bouncing emails are skipped.
+        $this->assertDatabaseHas('users_emails', ['id' => $bouncingId]);
+    }
+
+    public function test_validate_emails_returns_stats(): void
+    {
+        $stats = $this->service->validateEmails();
+
+        $this->assertArrayHasKey('total', $stats);
+        $this->assertArrayHasKey('invalid', $stats);
+        $this->assertIsInt($stats['total']);
+        $this->assertIsInt($stats['invalid']);
+    }
 }

@@ -132,6 +132,11 @@ Schedule::command('cleanup:chat-duplicates')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('emails:validate')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Unified digest - replaces per-group digests.
 // Daily mode - sends one digest per user with posts from all their communities.
 Schedule::command('mail:digest:unified --mode=daily')
