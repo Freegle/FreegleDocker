@@ -706,9 +706,10 @@ class EmailSpoolerServiceTest extends TestCase
      */
     public function test_permanent_smtp_failure_moves_to_failed_and_records_bounce(): void
     {
-        // Create a test user and email so the bounce can be recorded.
+        // Create a test user — createTestUser() already creates a preferred email.
+        // Use that email directly so checkAndSuspendUser finds the bounce on the preferred email.
         $user = $this->createTestUser();
-        $userEmail = $this->createTestUserEmail($user, ['preferred' => 1]);
+        $userEmail = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
 
         // Create a spool file addressed to that user's email.
         $id = 'test_bounce_' . uniqid();

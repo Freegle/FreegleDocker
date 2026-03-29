@@ -1054,13 +1054,13 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         Mail::fake();
 
         $user = $this->createTestUser();
-        $email = $this->createTestUserEmail($user, ['preferred' => 1]);
+        $userEmail = $this->createTestUserEmail($user, ['preferred' => 1]);
 
         DB::table('background_tasks')->insert([
             'task_type' => 'email_verify',
             'data' => json_encode([
                 'user_id' => $user->id,
-                'email' => $email,
+                'email' => $userEmail->email,
             ]),
             'created_at' => now(),
         ]);
