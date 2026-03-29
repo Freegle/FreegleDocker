@@ -267,6 +267,135 @@ class UserManagementService
     }
 
     /**
+     * Fallback update of user lastaccess timestamps.
+     *
+     * Finds users whose lastaccess is more than 10 minutes behind their latest
+     * chat message or membership join, and updates accordingly.
+     *
+     * Migrated from iznik-server/scripts/cron/lastaccess.php
+     */
+    public function updateLastAccess(): array
+    {
+        $stats = [
+            'candidates' => 0,
+            'updated' => 0,
+        ];
+
+        // Find users whose lastaccess is > 600 seconds behind their latest chat message or membership join.
+        $users = DB::select("
+            SELECT DISTINCT(userid) FROM (
+                SELECT DISTINCT(userid) FROM users
+                INNER JOIN chat_messages ON chat_messages.userid = users.id
+                WHERE users.lastaccess < chat_messages.date
+                    AND TIMESTAMPDIFF(SECOND, users.lastaccess, chat_messages.date) > 600
+                UNION
+                SELECT DISTINCT(userid) FROM memberships
+                INNER JOIN users ON users.id = memberships.userid
+                WHERE TIMESTAMPDIFF(SECOND, users.lastaccess, memberships.added) > 600
+            ) t
+        ");
+
+        $stats['candidates'] = count($users);
+
+        foreach ($users as $user) {
+            // Find the latest activity timestamp from chat messages or memberships.
+            $result = DB::selectOne("
+                SELECT GREATEST(
+                    COALESCE((SELECT MAX(date) FROM chat_messages WHERE userid = ?), '1970-01-01'),
+                    COALESCE((SELECT MAX(added) FROM memberships WHERE userid = ?), '1970-01-01')
+                ) AS max
+            ", [$user->userid, $user->userid]);
+
+            if ($result && $result->max && $result->max !== '1970-01-01') {
+                $currentAccess = DB::table('users')
+                    ->where('id', $user->userid)
+                    ->value('lastaccess');
+
+                $diff = strtotime($result->max) - strtotime($currentAccess);
+
+                if ($diff > 600) {
+                    DB::table('users')
+                        ->where('id', $user->userid)
+                        ->update(['lastaccess' => $result->max]);
+
+                    $stats['updated']++;
+                }
+            }
+
+            if (($stats['candidates']) % 1000 === 0) {
+                Log::info("Processed {$stats['candidates']} lastaccess candidates");
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Update support tools access based on team membership.
+     *
+     * Grants SYSTEMROLE_SUPPORT to users who are members of teams with supporttools=1.
+     * Removes the role from users who no longer qualify (downgrading to Moderator).
+     * Never touches Admin users.
+     *
+     * Migrated from iznik-server/scripts/cron/supporttools.php
+     */
+    public function updateSupportRoles(): array
+    {
+        $stats = [
+            'granted' => 0,
+            'removed' => 0,
+        ];
+
+        // Users who currently have Support or Admin role.
+        $currentSupport = DB::table('users')
+            ->whereIn('systemrole', ['Support', 'Admin'])
+            ->pluck('id')
+            ->all();
+
+        // Users who should have support tools access (in teams with supporttools=1).
+        $needSupport = DB::table('teams_members')
+            ->join('teams', 'teams.id', '=', 'teams_members.teamid')
+            ->where('teams.supporttools', 1)
+            ->distinct()
+            ->pluck('teams_members.userid')
+            ->all();
+
+        // Grant support role to users who need it but don't have it.
+        foreach ($needSupport as $userId) {
+            if (!in_array($userId, $currentSupport)) {
+                DB::table('users')
+                    ->where('id', $userId)
+                    ->update(['systemrole' => 'Support']);
+
+                $stats['granted']++;
+                Log::info("Granted support role to user #{$userId}");
+            }
+        }
+
+        // Remove support role from users who have it but shouldn't.
+        // Don't touch Admin users - only downgrade Support to Moderator.
+        $removeFrom = array_diff($currentSupport, $needSupport);
+
+        foreach ($removeFrom as $userId) {
+            $currentRole = DB::table('users')
+                ->where('id', $userId)
+                ->value('systemrole');
+
+            // Only downgrade Support, never Admin.
+            if ($currentRole === 'Support') {
+                DB::table('users')
+                    ->where('id', $userId)
+                    ->update(['systemrole' => 'Moderator']);
+
+                $stats['removed']++;
+                Log::info("Removed support role from user #{$userId}");
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
      * Clean up inactive user data for GDPR compliance.
      */
     public function cleanupInactiveUsers(int $yearsInactive = 3): int

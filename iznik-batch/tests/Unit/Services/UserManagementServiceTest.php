@@ -2,6 +2,9 @@
 
 namespace Tests\Unit\Services;
 
+use App\Models\ChatMessage;
+use App\Models\ChatRoom;
+use App\Models\Membership;
 use App\Models\User;
 use App\Models\UserEmail;
 use App\Services\LokiService;
@@ -391,5 +394,171 @@ class UserManagementServiceTest extends TestCase
         // Verify keep user is not deleted.
         $keepUser->refresh();
         $this->assertNull($keepUser->deleted);
+    }
+
+    // --- updateLastAccess tests ---
+
+    public function test_update_lastaccess_from_chat_message(): void
+    {
+        $user = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        // Set lastaccess to well in the past.
+        DB::table('users')->where('id', $user->id)->update([
+            'lastaccess' => now()->subDays(30),
+        ]);
+
+        $room = $this->createTestChatRoom($user, $user2);
+
+        // Create a recent chat message from this user.
+        $this->createTestChatMessage($room, $user, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $stats = $this->service->updateLastAccess();
+
+        $this->assertGreaterThanOrEqual(1, $stats['updated']);
+
+        $user->refresh();
+        // Lastaccess should now be much more recent than 30 days ago.
+        $this->assertGreaterThan(
+            now()->subDays(1)->timestamp,
+            strtotime($user->lastaccess)
+        );
+    }
+
+    public function test_update_lastaccess_from_membership(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        // Set lastaccess to well in the past.
+        DB::table('users')->where('id', $user->id)->update([
+            'lastaccess' => now()->subDays(30),
+        ]);
+
+        // Create a membership with recent added date.
+        $this->createMembership($user, $group, [
+            'added' => now()->subMinutes(5),
+        ]);
+
+        $stats = $this->service->updateLastAccess();
+
+        $this->assertGreaterThanOrEqual(1, $stats['updated']);
+    }
+
+    public function test_update_lastaccess_ignores_small_differences(): void
+    {
+        $user = $this->createTestUser();
+        $user2 = $this->createTestUser();
+
+        // Set lastaccess to just 5 minutes ago (within 600s threshold).
+        $recentTime = now()->subMinutes(5);
+        DB::table('users')->where('id', $user->id)->update([
+            'lastaccess' => $recentTime,
+        ]);
+
+        $room = $this->createTestChatRoom($user, $user2);
+
+        // Create a chat message from just 3 minutes ago (diff < 600s).
+        $this->createTestChatMessage($room, $user, [
+            'date' => now()->subMinutes(3),
+        ]);
+
+        $stats = $this->service->updateLastAccess();
+
+        // Should not update because the difference is less than 600 seconds.
+        $this->assertEquals(0, $stats['updated']);
+    }
+
+    // --- updateSupportRoles tests ---
+
+    public function test_update_support_roles_grants_access(): void
+    {
+        $user = $this->createTestUser();
+
+        // Set user to Moderator role.
+        DB::table('users')->where('id', $user->id)->update([
+            'systemrole' => 'Moderator',
+        ]);
+
+        // Create a team with supporttools=1.
+        $teamId = DB::table('teams')->insertGetId([
+            'name' => 'Support Team ' . uniqid(),
+            'supporttools' => 1,
+        ]);
+
+        DB::table('teams_members')->insert([
+            'teamid' => $teamId,
+            'userid' => $user->id,
+            'added' => now(),
+        ]);
+
+        $stats = $this->service->updateSupportRoles();
+
+        $this->assertEquals(1, $stats['granted']);
+
+        $user->refresh();
+        $this->assertEquals('Support', $user->systemrole);
+    }
+
+    public function test_update_support_roles_removes_access(): void
+    {
+        $user = $this->createTestUser();
+
+        // Set user to Support role but don't put them in any support team.
+        DB::table('users')->where('id', $user->id)->update([
+            'systemrole' => 'Support',
+        ]);
+
+        $stats = $this->service->updateSupportRoles();
+
+        $this->assertGreaterThanOrEqual(1, $stats['removed']);
+
+        $user->refresh();
+        $this->assertEquals('Moderator', $user->systemrole);
+    }
+
+    public function test_update_support_roles_does_not_downgrade_admin(): void
+    {
+        $user = $this->createTestUser();
+
+        // Set user to Admin role.
+        DB::table('users')->where('id', $user->id)->update([
+            'systemrole' => 'Admin',
+        ]);
+
+        $stats = $this->service->updateSupportRoles();
+
+        // Admin should not be downgraded even if not in a support team.
+        $user->refresh();
+        $this->assertEquals('Admin', $user->systemrole);
+    }
+
+    public function test_update_support_roles_ignores_non_support_teams(): void
+    {
+        $user = $this->createTestUser();
+
+        DB::table('users')->where('id', $user->id)->update([
+            'systemrole' => 'Moderator',
+        ]);
+
+        // Create a team WITHOUT supporttools.
+        $teamId = DB::table('teams')->insertGetId([
+            'name' => 'Regular Team ' . uniqid(),
+            'supporttools' => 0,
+        ]);
+
+        DB::table('teams_members')->insert([
+            'teamid' => $teamId,
+            'userid' => $user->id,
+            'added' => now(),
+        ]);
+
+        $stats = $this->service->updateSupportRoles();
+
+        // Should not grant support role.
+        $user->refresh();
+        $this->assertEquals('Moderator', $user->systemrole);
     }
 }

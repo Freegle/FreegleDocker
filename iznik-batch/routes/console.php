@@ -154,6 +154,30 @@ Schedule::command('users:retention-stats')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Group maintenance.
+Schedule::command('groups:update-counts')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Chat maintenance - update message counts and reopen closed User2Mod chats.
+Schedule::command('chats:update-counts')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Fallback lastaccess update from chat messages and memberships.
+Schedule::command('users:update-lastaccess')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Support tools role management based on team membership.
+Schedule::command('users:update-support-roles')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Email spool processing - runs continuously in daemon mode via supervisor.
 // See docker/supervisor.conf for the mail-spooler program.
 */

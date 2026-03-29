@@ -45,6 +45,10 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `data:update-cpi` | Update CPI data |
 | `data:git-summary` | Generate git summary |
 | `data:classify-app-release` | Classify app release versions |
+| `groups:update-counts` | Update group member/moderator counts |
+| `chats:update-counts` | Update chat message counts, reopen closed User2Mod |
+| `users:update-lastaccess` | Fallback update of user last access timestamps |
+| `users:update-support-roles` | Grant/remove support tools access |
 
 ## Testing Emails (mail:test)
 
@@ -159,6 +163,10 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `purge_chats.php` | `purge:chats` | - | Chat purging |
 | `users_kudos.php` | `users:update-kudos` | - | User kudos |
 | `users_retention.php` | `users:retention-stats` | - | User retention stats |
+| `membercounts.php` | `groups:update-counts` | - | Group member/mod counts |
+| `chat_latestmessage.php` | `chats:update-counts` | - | Chat message counts + reopen closed User2Mod |
+| `lastaccess.php` | `users:update-lastaccess` | - | Fallback lastaccess update |
+| `supporttools.php` | `users:update-support-roles` | - | Support tools role management |
 
 ## Code Written - Running via CircleCI (Not Scheduler)
 
@@ -223,12 +231,12 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `whatjobs_spam.php` | Every 10 min | Low | WhatJobs spam |
 | `jobs_illustrations.php` | Every 30 min | Low | Job illustrations |
 | `message_unindexed.php` | Every 30 min | Low | Unindexed messages |
-| `chat_latestmessage.php` | Every 60 min | Low | Chat latest message |
+| ~~`chat_latestmessage.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Chat latest message~~ — **Migrated: `chats:update-counts`** |
 | `pledge.php` | Every 60 min | Low | Pledges |
-| `lastacces.php` | Every 59 min | Low | Last access tracking |
+| ~~`lastacces.php`~~ | ~~Every 59 min~~ | ~~Low~~ | ~~Last access tracking~~ — **Migrated: `users:update-lastaccess`** |
 | `mod_notifs.php` | Every 60 min | Medium | Moderator notifications |
-| `supporttools.php` | Every 60 min | Low | Support tools |
-| `membercounts.php` | Every 60 min | Low | Member counts |
+| ~~`supporttools.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Support tools~~ — **Migrated: `users:update-support-roles`** |
+| ~~`membercounts.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Member counts~~ — **Migrated: `groups:update-counts`** |
 | `autorepost.php` | Every 60 min | Medium | Auto-repost messages |
 | `chaseup.php` | Every 60 min | Medium | Message chase-up |
 | `searchdups.php` | Every 60 min | Low | Search duplicates |
