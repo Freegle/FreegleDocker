@@ -49,6 +49,7 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `chats:update-counts` | Update chat message counts, reopen closed User2Mod |
 | `users:update-lastaccess` | Fallback update of user last access timestamps |
 | `users:update-support-roles` | Grant/remove support tools access |
+| `donations:update-ads-target` | Update ads-off donation target |
 
 ## Testing Emails (mail:test)
 
@@ -167,6 +168,7 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `chat_latestmessage.php` | `chats:update-counts` | - | Chat message counts + reopen closed User2Mod |
 | `lastaccess.php` | `users:update-lastaccess` | - | Fallback lastaccess update |
 | `supporttools.php` | `users:update-support-roles` | - | Support tools role management |
+| `donations_ads_target.php` | `donations:update-ads-target` | - | Ads-off donation target |
 
 ## Code Written - Running via CircleCI (Not Scheduler)
 
@@ -201,7 +203,7 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `admins.php` | Every 1 min | Medium | Admin notifications |
 | `tryst.php` | Every 1 min | Medium | Meeting coordination |
 | `memberships_processing.php` | Every 1 min | Medium | Membership processing |
-| `donations_ads_target.php` | Every 1 min | Medium | Donation ad targeting |
+| ~~`donations_ads_target.php`~~ | ~~Every 1 min~~ | ~~Medium~~ | ~~Donation ad targeting~~ — **Migrated: `donations:update-ads-target`** |
 | `user_exhort.php` | Every 1 min | Medium | User encouragement |
 | `lovejunk.php` | Every 1 min | Medium | LoveJunk integration |
 | `exports.php` | Every 1 min | Low | Data exports |

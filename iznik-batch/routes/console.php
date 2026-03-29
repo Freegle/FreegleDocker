@@ -172,6 +172,12 @@ Schedule::command('users:update-lastaccess')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Donation ad targeting - update ads-off target based on recent donations.
+Schedule::command('donations:update-ads-target')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Support tools role management based on team membership.
 Schedule::command('users:update-support-roles')
     ->hourly()
