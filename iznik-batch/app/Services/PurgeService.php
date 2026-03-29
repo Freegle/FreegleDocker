@@ -409,6 +409,355 @@ class PurgeService
     }
 
     /**
+     * Purge old message likes (older than 1 year).
+     *
+     * Migrated from purge_logs.php
+     */
+    public function purgeOldLikes(int $daysOld = 365): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM messages_likes WHERE `timestamp` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge old login/logout logs (older than 1 year).
+     */
+    public function purgeLoginLogoutLogs(int $daysOld = 365): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs WHERE `type` = 'User' AND (`subtype` = 'Login' OR `subtype` = 'Logout') AND `timestamp` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge user deletion logs (older than 31 days).
+     */
+    public function purgeUserDeletionLogs(int $daysOld = 31): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs WHERE `type` = 'User' AND `subtype` = 'Deleted' AND `timestamp` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge user creation logs (older than 31 days).
+     */
+    public function purgeUserCreationLogs(int $daysOld = 31): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs WHERE `type` = 'User' AND `subtype` = 'Created' AND `timestamp` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge logs with no subtype (older than 31 days).
+     */
+    public function purgeBlankSubtypeLogs(int $daysOld = 31): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs WHERE (`type` = 'User' OR `type` = 'Group') AND `subtype` = '' AND `timestamp` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge bounce logs (older than 90 days).
+     */
+    public function purgeBounceLogs(int $daysOld = 90): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs WHERE `type` = 'User' AND `subtype` = 'Bounce' AND `timestamp` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge old bounce emails (older than 31 days).
+     */
+    public function purgeOldBounceEmails(int $daysOld = 31): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM bounces_emails WHERE `date` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge old email logs (older than 25 hours or in the future).
+     */
+    public function purgeEmailLogs(): int
+    {
+        $cutoff = now()->subHours(25);
+        $future = now()->startOfDay()->addDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs_emails WHERE `timestamp` < ? OR `timestamp` > ? LIMIT {$this->chunkSize}",
+                [$cutoff, $future]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge logs for non-Freegle groups (older than 31 days).
+     */
+    public function purgeNonFreegleGroupLogs(int $daysOld = 31): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        $groups = DB::table('groups')
+            ->where('type', '!=', 'Freegle')
+            ->pluck('id');
+
+        foreach ($groups as $groupId) {
+            do {
+                $count = DB::delete(
+                    "DELETE FROM logs WHERE `timestamp` < ? AND groupid = ? LIMIT {$this->chunkSize}",
+                    [$cutoff, $groupId]
+                );
+                $total += $count;
+            } while ($count > 0);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Purge logs for messages that no longer exist (30-60 days old).
+     */
+    public function purgeOrphanedMessageLogs(): int
+    {
+        $start = now()->subDays(30)->startOfDay();
+        $end = now()->subDays(60)->startOfDay();
+        $total = 0;
+
+        $logs = DB::select(
+            "SELECT logs.id FROM logs LEFT JOIN messages ON messages.id = logs.msgid WHERE logs.msgid IS NOT NULL AND messages.id IS NULL AND logs.timestamp >= ? AND logs.timestamp < ?",
+            [$end, $start]
+        );
+
+        foreach ($logs as $log) {
+            DB::delete("DELETE FROM logs WHERE id = ?", [$log->id]);
+            $total++;
+        }
+
+        return $total;
+    }
+
+    /**
+     * Purge source logs (older than 1 year).
+     */
+    public function purgeSrcLogs(int $daysOld = 365): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs_src WHERE `date` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge JS error logs (older than 30 days).
+     */
+    public function purgeJsErrorLogs(int $daysOld = 30): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs_errors WHERE `date` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge plugin logs (older than 1 day).
+     */
+    public function purgePluginLogs(int $daysOld = 1): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs WHERE `timestamp` < ? AND `type` = 'Plugin' LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge SQL logs (older than 4 hours).
+     */
+    public function purgeSqlLogs(int $hoursOld = 4): int
+    {
+        $cutoff = now()->subHours($hoursOld);
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM logs_sql WHERE `date` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge old user activity logs (older than 2 years).
+     */
+    public function purgeUserActivityLogs(int $daysOld = 730): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $count = DB::delete(
+                "DELETE FROM users_active WHERE `timestamp` < ? LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+            $total += $count;
+        } while ($count > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge logs for users that no longer exist (older than 30 days).
+     */
+    public function purgeOrphanedUserLogs(int $daysOld = 30): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $logs = DB::select(
+                "SELECT logs.id FROM logs LEFT JOIN users ON users.id = logs.user WHERE `timestamp` < ? AND logs.user IS NOT NULL AND users.id IS NULL LIMIT {$this->chunkSize}",
+                [$cutoff]
+            );
+
+            foreach ($logs as $log) {
+                DB::delete("DELETE FROM logs WHERE id = ?", [$log->id]);
+                $total++;
+            }
+        } while (count($logs) > 0);
+
+        return $total;
+    }
+
+    /**
+     * Run all log purge operations.
+     *
+     * Migrated from iznik-server/scripts/cron/purge_logs.php
+     */
+    public function purgeAllLogs(): array
+    {
+        $results = [];
+
+        $results['old_likes'] = $this->purgeOldLikes();
+        $results['login_logout_logs'] = $this->purgeLoginLogoutLogs();
+        $results['user_deletion_logs'] = $this->purgeUserDeletionLogs();
+        $results['user_creation_logs'] = $this->purgeUserCreationLogs();
+        $results['blank_subtype_logs'] = $this->purgeBlankSubtypeLogs();
+        $results['bounce_logs'] = $this->purgeBounceLogs();
+        $results['old_bounce_emails'] = $this->purgeOldBounceEmails();
+        $results['email_logs'] = $this->purgeEmailLogs();
+        $results['non_freegle_group_logs'] = $this->purgeNonFreegleGroupLogs();
+        $results['orphaned_message_logs'] = $this->purgeOrphanedMessageLogs();
+        $results['src_logs'] = $this->purgeSrcLogs();
+        $results['js_error_logs'] = $this->purgeJsErrorLogs();
+        $results['plugin_logs'] = $this->purgePluginLogs();
+        $results['sql_logs'] = $this->purgeSqlLogs();
+        $results['user_activity_logs'] = $this->purgeUserActivityLogs();
+        $results['orphaned_user_logs'] = $this->purgeOrphanedUserLogs();
+
+        return $results;
+    }
+
+    /**
      * Run all purge operations.
      */
     public function runAll(): array

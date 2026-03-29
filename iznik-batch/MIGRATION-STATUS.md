@@ -50,6 +50,7 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `users:update-lastaccess` | Fallback update of user last access timestamps |
 | `users:update-support-roles` | Grant/remove support tools access |
 | `donations:update-ads-target` | Update ads-off donation target |
+| `purge:logs` | Purge old log entries from various tables |
 
 ## Testing Emails (mail:test)
 
@@ -169,6 +170,7 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `lastaccess.php` | `users:update-lastaccess` | - | Fallback lastaccess update |
 | `supporttools.php` | `users:update-support-roles` | - | Support tools role management |
 | `donations_ads_target.php` | `donations:update-ads-target` | - | Ads-off donation target |
+| `purge_logs.php` | `purge:logs` | - | Log purging (16 purge operations) |
 
 ## Code Written - Running via CircleCI (Not Scheduler)
 
@@ -263,7 +265,7 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `doogal` | 03:00 | Low | Doogal data import |
 | `engage_update.php` | 03:00 | Low | Engagement update |
 | `purge_sessions.php` | 03:00 | Low | Session purging |
-| `purge_logs.php` | 04:00 | Low | Log purging |
+| ~~`purge_logs.php`~~ | ~~04:00~~ | ~~Low~~ | ~~Log purging~~ — **Migrated: `purge:logs`** |
 | `email_validate.php` | 04:00 | Low | Email validation |
 | `messages_popular.php` | 05:00 | Low | Popular messages |
 | `users_remap.php` | 05:00 | Low | User remapping |

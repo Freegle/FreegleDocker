@@ -112,6 +112,11 @@ Schedule::command('purge:messages')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('purge:logs')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Unified digest - replaces per-group digests.
 // Daily mode - sends one digest per user with posts from all their communities.
 Schedule::command('mail:digest:unified --mode=daily')
