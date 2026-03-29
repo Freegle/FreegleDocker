@@ -155,7 +155,7 @@ class ChatRoom extends Model
      */
     public static function getOrCreateUser2Mod(int $userId, int $groupId): ?self
     {
-        return DB::transaction(function () use ($userId, $groupId) {
+        $room = DB::transaction(function () use ($userId, $groupId) {
             // Lock any existing row to close the timing window.
             $chat = DB::selectOne(
                 'SELECT id FROM chat_rooms WHERE user1 = ? AND groupid = ? AND chattype = ? FOR UPDATE',
@@ -175,5 +175,22 @@ class ChatRoom extends Model
                 'latestmessage' => now(),
             ]);
         });
+
+        if ($room) {
+            // Ensure the member and all group mods are in the roster so that
+            // chat notifications reach everyone.
+            DB::statement('INSERT IGNORE INTO chat_roster (chatid, userid) VALUES (?, ?)', [$room->id, $userId]);
+
+            $modUserIds = DB::table('memberships')
+                ->where('groupid', $groupId)
+                ->whereIn('role', ['Owner', 'Moderator'])
+                ->pluck('userid');
+
+            foreach ($modUserIds as $modUserId) {
+                DB::statement('INSERT IGNORE INTO chat_roster (chatid, userid) VALUES (?, ?)', [$room->id, $modUserId]);
+            }
+        }
+
+        return $room;
     }
 }

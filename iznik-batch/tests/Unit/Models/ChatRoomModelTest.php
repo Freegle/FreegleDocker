@@ -4,7 +4,9 @@ namespace Tests\Unit\Models;
 
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
+use App\Models\Membership;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ChatRoomModelTest extends TestCase
@@ -391,5 +393,56 @@ class ChatRoomModelTest extends TestCase
         $chat2 = ChatRoom::getOrCreateUser2Mod($user->id, $group2->id);
 
         $this->assertNotEquals($chat1->id, $chat2->id, 'Different groups should create different chats');
+    }
+
+    public function test_get_or_create_user2mod_adds_member_to_roster(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $chat = ChatRoom::getOrCreateUser2Mod($user->id, $group->id);
+
+        $this->assertDatabaseHas('chat_roster', [
+            'chatid' => $chat->id,
+            'userid' => $user->id,
+        ]);
+    }
+
+    public function test_get_or_create_user2mod_adds_group_mods_to_roster(): void
+    {
+        $member = $this->createTestUser();
+        $mod = $this->createTestUser();
+        $owner = $this->createTestUser();
+        $nonMod = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        Membership::create(['userid' => $mod->id, 'groupid' => $group->id, 'role' => 'Moderator', 'added' => now()]);
+        Membership::create(['userid' => $owner->id, 'groupid' => $group->id, 'role' => 'Owner', 'added' => now()]);
+        Membership::create(['userid' => $nonMod->id, 'groupid' => $group->id, 'role' => 'Member', 'added' => now()]);
+
+        $chat = ChatRoom::getOrCreateUser2Mod($member->id, $group->id);
+
+        $this->assertDatabaseHas('chat_roster', ['chatid' => $chat->id, 'userid' => $member->id]);
+        $this->assertDatabaseHas('chat_roster', ['chatid' => $chat->id, 'userid' => $mod->id]);
+        $this->assertDatabaseHas('chat_roster', ['chatid' => $chat->id, 'userid' => $owner->id]);
+        $this->assertDatabaseMissing('chat_roster', ['chatid' => $chat->id, 'userid' => $nonMod->id]);
+    }
+
+    public function test_get_or_create_user2mod_adds_roster_for_existing_chat(): void
+    {
+        $member = $this->createTestUser();
+        $mod = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        // Create the chat first without any memberships.
+        $chat = ChatRoom::getOrCreateUser2Mod($member->id, $group->id);
+
+        // Now add a mod membership and call again.
+        Membership::create(['userid' => $mod->id, 'groupid' => $group->id, 'role' => 'Moderator', 'added' => now()]);
+        $chat2 = ChatRoom::getOrCreateUser2Mod($member->id, $group->id);
+
+        $this->assertEquals($chat->id, $chat2->id);
+        $this->assertDatabaseHas('chat_roster', ['chatid' => $chat->id, 'userid' => $member->id]);
+        $this->assertDatabaseHas('chat_roster', ['chatid' => $chat->id, 'userid' => $mod->id]);
     }
 }
