@@ -32,11 +32,15 @@ The decision-making is done by Claude, not by rigid code. Claude reads each repl
                     └──────────────┘     └─────────────┘
 ```
 
-**Execution model**: A `/loop` command runs at intervals (e.g. every 5-10 minutes), authenticating as the offerer via the Go API. Each iteration:
-1. Fetches new/unread chat messages across all the bulk-posted items
-2. Assesses each conversation's state
-3. Sends appropriate follow-up messages via the chat API
+**Execution model**: A lightweight bash poll script runs as a background task, checking the chat API every 30 seconds. It persists state to a file and produces output ONLY when something changes (new chat, unseen count changes). This avoids consuming LLM tokens on every poll cycle — the LLM is only invoked when there's actually something new to process.
+
+When the poller detects a change, the LLM:
+1. Reads the new messages via the chat API
+2. Assesses each conversation against the FSM
+3. Drafts responses for human approval (does NOT send autonomously)
 4. When a conversation reaches "ready to present" state, notifies the offerer
+
+If the background poll times out (10 min max), it's restarted. The poll script is a simple bash/curl loop with no LLM dependencies — it just compares `chatcount:unseencount` against the last known state.
 
 **Message identity**: Messages are sent as the offerer. The Helper is invisible to the replier — they think they're talking to the person who posted the items. This means the tone must be natural and human, not robotic or formulaic. No "I'm a bot" disclosure.
 
@@ -77,42 +81,42 @@ When a new reply arrives, the Helper sends ONE message that does as much as poss
 
 Every message ends with a no-commitment phrase: "We're still collecting interest and will confirm allocations shortly."
 
+**Tone rules:**
+- Never imply suitability or make value judgements ("sounds like a great fit", "you'd be perfect"). This is close to a commitment. Just gather information.
+- Never say "you're down for" or "we've got you down for" — implies allocation.
+- Treat every replier neutrally in conversation, even if internally they're the strongest candidate. The human decides, not the Helper.
+
 **The aim is to get to QUALIFIED in as few messages as possible.** If their first message answers everything, skip straight there. If it answers nothing, ask everything in one go. Don't drip-feed questions across multiple round-trips.
 
-### Stage 2: Scoring & Waiting
+**Don't mail-bomb.** Once the initial exchange is done (we've acknowledged, asked our questions, they've replied), don't send further messages unless there's a genuine reason: a question they asked that we can now answer, a nudge after timeout, or an allocation decision. If we can reasonably infer the answers to our checklist from what they've already said, mark them QUALIFIED without another message. Silence is fine — it means "we're working on it."
 
-The Helper doesn't immediately allocate. It responds immediately (Phase A) but waits before deciding (Phase B).
+### Stage 2: Scoring & Allocation Timing
 
-**Phase A (immediate):** Respond to every message — answer questions, acknowledge, gather info. No commitment.
+**Phase A** (immediate): Respond to every message — answer questions, acknowledge, gather info. No commitment.
 
-**Phase B (after waiting period, ~24 hours):** Review all candidates, score, present to offerer.
+**Phase B** (allocation): Present candidates to the offerer for decisions. Triggered per-item, not per-batch.
 
-The waiting period is configurable per batch (default ~24 hours, or deadline minus collection lead time, whichever is sooner). This ensures fair access — someone who replies at hour 20 gets the same consideration as someone who replied at hour 1.
+**When Phase B triggers** — the Helper becomes progressively more impatient as the deadline approaches:
 
-### Stage 3: Scoring & Waiting
+- **Plenty of time (deadline > 3 days away)**: Wait ~24h from first reply before presenting candidates. Give the full pool time to form.
+- **Getting closer (deadline 1-3 days away)**: Present candidates as soon as there's a reasonable pool (e.g. 2+ qualified for a contested item, or 1 qualified for an uncontested item). Don't wait for more.
+- **Urgent (deadline < 24h away)**: Present immediately. Any qualified candidate is better than none. Push for confirmations aggressively.
+- **Offerer can manually trigger Phase B at any time**: "Show me what we've got."
 
-The Helper doesn't immediately allocate. It waits and scores.
-
-**Two-phase timing:**
-
-The Helper responds to messages immediately but doesn't allocate until the waiting period is up. This is critical — repliers expect a response within hours, but allocation should wait for the full candidate pool.
-
-- **Phase A: Immediate response (within minutes)**: Answer questions, confirm dates, gather missing info. No commitment. Every response includes "we're still collecting interest and will confirm allocations shortly."
-- **Phase B: Allocation (after ~24 hours)**: Review all candidates, score, present recommendations to offerer. Once approved, send confirmations to winners and polite rejections to others.
-
-This means the Helper is always responsive (no one is left waiting like rebeccaryan63 was) but never commits too early (the community farm that replied at hour 16 still gets fair consideration).
+The same urgency ramp applies to non-responsive handling: closer to deadline, shorter patience. With 3 days to go, wait 24h before nudging. With 1 day to go, nudge after 6h.
 
 **Scoring factors** (Claude weighs these with judgement, not a rigid formula):
 
 | Factor | Signal | Weight |
 |--------|--------|--------|
-| Criteria match | Matches whatever the post specified (if anything) | High (if criteria exist) |
+| Criteria match | Matches whatever the post specified (if anything). But criteria are a preference, not a hard rule — an item going to someone is always better than going to nobody. If only non-matching candidates exist, they're the best candidates. | High when choosing between candidates; irrelevant when there's only one |
 | Quantity appetite | Taking more items = fewer collection slots needed | Medium |
 | Transport confirmed | Mentioned suitable transport for the items | Medium |
 | Availability flexibility | Flexible on collection times vs narrow window | Medium |
 | Responsiveness | Time between our message and their reply | Medium |
 | Reputation | Thumbs up/down ratio, completion history, reneged count | Medium |
 | Multi-item interest | Wants items across multiple posts = one trip | High |
+| Already collecting | QUALIFIED/ALLOCATED for another item = already coming | High |
 | Self-awareness | "Only if no one else wants it" = honest, lower priority but good fallback | Low |
 | Reply quality | Specific vs vague, polite vs demanding, reads the post vs generic | Low |
 
@@ -151,19 +155,52 @@ Reply "yes" to confirm, or tell me how you'd like to allocate.
 - Ask for more info about a candidate
 - Override with their own choice
 
-### Stage 5: Confirmation & Logistics
+### Stage 5: Promise, Confirm & Logistics
 
 Once the offerer decides:
 
+**Promise via API:** For each allocated replier, call `POST /message` with `action: "Promise"` and `userid: <replier>`. This:
+- Records in `messages_promises` table (unique per msgid+userid, multiple users can be promised the same item)
+- Sends a system "Promised" chat message to the replier automatically
+- Multiple promises per item are supported (e.g. promise chairs to both Bob and Alice)
+
+**Note on partial quantities:** The promise API is binary (user X is promised item Y) — it doesn't track how many of a multi-quantity item they're getting. The Helper must track quantities internally and communicate them in the confirmation message. At outcome time, `messages_by.count` records the actual quantity collected.
+
 **What the Helper does for successful candidates:**
-- Sends a message confirming they've been allocated the items
-- Confirms collection date/time
+- Calls the Promise API (triggers system "Promised" message)
+- Sends a follow-up message confirming quantity, collection date/time, and their confirmation code (three-word memorable phrase)
 - Shares collection address (via the Address chat message type)
 - Asks them to confirm they'll be there
 
 **What the Helper does for unsuccessful candidates:**
 - Sends a polite message: "Thanks for your interest. Unfortunately these items have been allocated to other organisations. Keep an eye on Freegle for more items!"
 - This mirrors the existing "completion message" pattern in OutcomeModal
+
+### Partial Allocation
+
+When an item has quantity > 1 (e.g. 14 chairs), multiple people can be allocated portions. The Helper tracks `qty_allocated` per item — the sum of all allocations must not exceed `availablenow`. When presenting to the offerer, show remaining quantity after each proposed allocation. Don't decrement `availablenow` via the API until collection is confirmed — track allocation counts internally.
+
+### Cross-Item Priority
+
+When someone is QUALIFIED or ALLOCATED for one item, they should rank higher for other items they've expressed interest in. The principle: **minimise the number of distinct collection visits**. One person taking 5 items in one trip is better than 5 people taking 1 item each.
+
+Concretely:
+- If someone is already confirmed to collect item A, and they've also expressed interest in item B, they automatically rank higher for item B (they're coming anyway)
+- When two candidates for an item are otherwise equal, prefer the one who is already collecting other items from this batch
+- When presenting allocations to the offerer, group by collector: "Rita is already coming for tables — she could also take the ladder and 2 cabinets"
+- If someone is GATHERING for item B but already QUALIFIED for item A, fold the qualification forward — they've already proven they can collect, meet criteria, have transport. Only ask about item-specific gaps (e.g. "do you have room for a fridge as well as the tables?")
+
+### Confirmation Codes
+
+When confirming an allocation, generate a memorable three-word code (e.g. "tiger-bridge-sunset") for each collector. Include it in the confirmation message: "Your collection code is tiger-bridge-sunset — please mention this when you arrive." This helps the offerer identify who is collecting what if multiple people show up, and resolves any confusion about what was agreed.
+
+### Item Withdrawal
+
+If the offerer withdraws an item (marks as Taken/Withdrawn via the UI, or tells the Helper), notify all repliers in GATHERING/QUALIFIED/ALLOCATED for that item: "Sorry, this item is no longer available." Set their item_state to REJECTED for that item. If they have other items still active, their conversation continues.
+
+### Replier Withdrawal
+
+If a replier explicitly says they're no longer interested ("never mind", "found one elsewhere"), set their state to WITHDRAWN. No follow-up messages. If they come back later and the item is still available, treat as a new reply.
 
 ### Stage 6: Collection Day Follow-up
 
@@ -188,11 +225,11 @@ All available via existing APIs:
 
 ## What Needs Building
 
-### Phase 1: Bot User & Flagged Messages (Required)
-- Create a "Freegle Helper" system user account
-- Add a `botuser` field to `chat_messages` — when set, the frontend renders the message with a bot badge/avatar instead of the sending user's identity
-- The Helper authenticates as the offerer but sets `botuser` on each message it sends
-- Frontend: `ChatMessageText.vue` shows a "Freegle Helper" badge when `botuser` is set
+### Phase 1: API Authentication
+- The Helper authenticates as the offerer via the API (Link key → JWT)
+- Messages sent as the offerer — invisible to the replier
+- Bot messages flagged via a separate mechanism (TBD) so the offerer can distinguish Helper-sent messages from their own in the UI
+- The Helper processes all chats for the offerer — no reliable way to scope to specific message IDs, so the Helper must use judgement to identify which chats relate to the current batch (by timing, item references, content)
 
 ### Phase 2: Claude Loop Agent
 - A skill or loop command that:
@@ -213,7 +250,7 @@ All available via existing APIs:
 
 ## Conversation State Tracking
 
-Each replier has a state (tracked per person, not per item, since one person may want multiple items):
+Each replier has a **conversation state** (per person — one chat per person) and **item states** (per item they're interested in, since they may be QUALIFIED for one item but GATHERING for another):
 
 ```
 NEW              → Reply received, not yet acknowledged
@@ -226,6 +263,7 @@ PARKED_REPLIED   → Can't meet requirements, told them, kept as fallback
 PARKED_QUIET     → Not prioritised, no reply sent, still in pool
 ESCALATED        → Needs human input (photo request, subjective question, etc)
 TIMED_OUT        → Didn't respond within threshold
+WITHDRAWN        → Replier explicitly said they're no longer interested
 REJECTED         → Items allocated to others, polite rejection sent
 ```
 
@@ -236,13 +274,18 @@ Each incoming message is processed against the replier's current state and a che
 ```
 replier: {
   name, userid, chatid,
-  items_wanted: [{msgid, item_name, qty_wanted}],
+  items: [{msgid, item_name, qty_wanted, item_state: <per-item state>}],
   collection_ok: true/false/unknown,
   criteria_met: true/false/unknown/not_applicable,
   transport_ok: true/false/unknown,
+  withdrawn: false,
   distance_miles: <calculated from API lat/lng via haversine, never from LLM>,
   other_items_mentioned: true/false,
   escalation_reason: null or string,
+  is_connector: false (brokering for an org — track for info, no special timeout),
+  related_to: userid or null (household member replying separately),
+  offerer_last_message: {timestamp, content} or null,
+  cooldown_until: timestamp or null,
   state: <one of above>,
   next_action: <locked in until trigger fires>,
   parked_reason: null or string,
@@ -266,10 +309,12 @@ replier: {
 | ESCALATED | Human provides answer | Re-check | Pass answer to replier, then re-check knowledge gaps. If all answered → QUALIFIED. If gaps remain → GATHERING |
 | ESCALATED | Replier sends new info while waiting | ESCALATED | Update knowledge record but stay escalated — human question still pending |
 | QUALIFIED | Human approves allocation | ALLOCATED | — |
-| ALLOCATED | Helper sends confirmation | CONFIRMED | "Great news, you've been allocated..." |
+| ALLOCATED | Helper calls Promise API + sends confirmation with code | CONFIRMED | Promise recorded, "Great news..." + confirmation code |
 | CONFIRMED | Collection happens | COLLECTED | Mark outcome via API |
 | QUALIFIED | Human allocates to someone else | REJECTED | "Sorry, these have been allocated..." |
 | ANY | Replier sends new message | Re-evaluate | Check if message changes anything |
+| ANY | Offerer sends message directly | Same state, cooldown | Update knowledge record with what offerer said. Start 1-hour cooldown — no Helper messages in this chat until cooldown expires. After cooldown, assess: can the Helper continue in a way that's consistent with what the offerer said? If yes, continue the FSM. If not, escalate to human rather than contradicting them. |
+| ESCALATED | Offerer replies to the chat (answering the escalated question) | Re-check after cooldown | Treat offerer's reply as the answer. After cooldown, re-check gaps. |
 
 **What the Helper checks on every incoming message to decide what to ask:**
 
@@ -277,7 +322,7 @@ replier: {
 2. Have we mentioned that other items are available too? (if they only replied to one item in a bulk batch, they may have missed the others — ask once)
 3. Do we know they can meet the collection constraints? (from their stated times vs batch config)
 4. If criteria exist, do we know they meet them? (from their message content)
-5. For large/heavy items, do we know about transport? (from their message)
+5. For items where transport is non-obvious, do we know about transport? Apply transport likelihood: small/light items (clocks, envelopes, a single chair) — assume they can carry it, don't ask. Large/heavy/multiple bulky items (3 trestle tables, 14 chairs, a fridge) — transport confirmation needed. The threshold is roughly: can one person carry it to a car in one trip? If yes, don't ask. If no, ask.
 6. Have they asked a question we need to answer?
 
 If all of 1-5 are answered and 6 is clear, they're QUALIFIED. Otherwise ask about the gaps — all in one message, not drip-fed.
@@ -318,11 +363,14 @@ The same timeline applies to ALLOCATED → CONFIRMED. If we tell someone they've
 | GATHERING | 24h no reply | GATHERING | Send nudge: "Just checking — still interested?" |
 | GATHERING | 48h no reply (24h after nudge) | TIMED_OUT | Exclude from allocation |
 | ALLOCATED | 24h no confirmation | ALLOCATED | Send nudge: "Can you confirm you'll be collecting?" |
-| ALLOCATED | 48h no confirmation | TIMED_OUT | Revoke, offer to next candidate |
+| ALLOCATED | 48h no confirmation | TIMED_OUT | Call Renege API (removes promise, records reliability), offer to next candidate |
 | TIMED_OUT | All other candidates exhausted | GATHERING | Re-engage: "Are you still interested in [item]?" |
 | TIMED_OUT | Replier sends new message, item not yet allocated | GATHERING | Resume: treat their message normally, re-check gaps |
 | TIMED_OUT | Replier sends new message, item already allocated | REJECTED | "Sorry, these have been allocated" |
 | REJECTED | Replier sends new message, item has become available again (revoked/no-show) | GATHERING | "Actually these are available again — still interested?" |
+| ANY | Replier explicitly withdraws ("never mind", "found one") | WITHDRAWN | No further messages. |
+| WITHDRAWN | Replier comes back, item still available | GATHERING | Treat as new reply. |
+| ANY | Offerer withdraws item | REJECTED (for that item) | "Sorry, this item is no longer available." |
 
 **Late replies principle:** A timed-out replier who comes back to life is always welcome if the item is still available — they just lost their priority position. They go back into the pool but score lower than someone who was responsive throughout. If the item has already been allocated and collected, they get a polite rejection. If allocated but not yet collected, they go onto the waitlist in case the allocation falls through.
 
@@ -405,7 +453,7 @@ Freegle replies include: user's message text, a stated collection time (mandator
 Some repliers aren't the end recipient — they forward listings to charities/orgs on behalf of someone else. The Helper should:
 - Recognise connector language ("sent to", "forwarded to", "on behalf of")
 - Score highly if the named org matches criteria, but track that the actual collector may be different
-- Don't timeout a connector too quickly — they're waiting on someone else to respond
+- Track that the actual collector may be a different person from the one who replied
 
 ### Conversation Failure Modes
 
@@ -416,12 +464,12 @@ From codebase analysis of nudge/renege/timeout patterns:
 
 ## Open Questions
 
-1. **Bot identity**: Should Helper join chats as a third participant, or send messages "as" the offerer with a bot badge? Third participant is cleaner but changes chat room dynamics.
-2. **Opt-in**: Should the Helper be opt-in per batch? Or always available? Probably opt-in initially — activated when someone runs the bulk post command.
-3. **Manual override**: If the offerer sends a message directly in a chat the Helper is managing, should the Helper step back from that conversation?
-4. **Multiple batches**: If the same offerer has multiple active batches, the Helper needs to keep context separate.
-5. **Edge cases**: What if someone replies to 20 different items? Consolidate into one conversation about all of them, or handle per-item?
-6. **Answerable questions**: If someone asks "Can these chairs be stacked?" and the item description says "stackable", should the Helper answer directly? Probably yes for factual questions from the listing, but flag subjective ones to the offerer.
+1. **Bot identity**: RESOLVED. Messages sent as the offerer (invisible). Bot messages flagged via a separate mechanism (not in the message itself — TBD how).
+2. **Opt-in**: Opt-in per batch, activated when running bulk post command. RESOLVED.
+3. **Manual override**: Offerer sends message → 1-hour cooldown, then Helper resumes if consistent. RESOLVED (see transition table).
+4. **Multiple batches**: Each batch has its own `managed_message_ids` list. Helper scopes all operations to these IDs. RESOLVED.
+5. **Multi-item repliers**: One chat per person, items tracked individually within the knowledge record. RESOLVED.
+6. **Answerable questions**: Answer factual questions from listing data. Escalate subjective ones to human. RESOLVED.
 
 ## Live Monitoring Log
 
@@ -465,6 +513,46 @@ From codebase analysis of nudge/renege/timeout patterns:
 - Greenwich furniture clearance: 88 repliers, offerer replied to 40, post expired without outcome. Overwhelmed.
 - Samsung TV: 87 repliers, offerer replied to 2, ghosted 85. No rejection messages sent.
 - Multi-item repeat collectors exist but are a different pattern (ongoing relationship, not bulk event).
+
+### Retrospective: Greenwich furniture clearance through the FSM
+
+Played real conversations from a bulk furniture clearance (88 repliers) through the Helper algorithm. Key findings:
+
+**1. The charity that got ghosted (MamaMia66)**
+A DV charity connector wrote a compelling reply: "We are helping to collect & redistribute household items to families fleeing Domestic Violence." Followed up within an hour. The offerer never replied — just sent a bulk Completed message 3 days later. Under the Helper FSM: this would be QUALIFIED immediately (charity, has driver, flexible timing). The Helper would have responded within minutes and this person would be near the top of the allocation list. Instead they got nothing.
+
+**Lesson**: The Helper's biggest value isn't clever allocation — it's making sure good candidates don't fall through the cracks because the offerer is overwhelmed.
+
+**2. The "take everything" person who got ignored (jayes3)**
+"Happy to collect the majority of your items, got a big van. TV, speakers, sofa, dining table, fridge, garden furniture." Listed specific items, had transport. Never got a reply. Under the FSM: multi-item, has transport, would score very high. The offerer instead dealt with people one item at a time.
+
+**Lesson**: The Helper should actively identify and prioritise bulk collectors — one person taking 6 items in a van is far more efficient than 6 people taking 1 item each.
+
+**3. The demanding replier (heraldomilan840128)**
+Sent 4 messages in 10 hours before getting a reply: "Please, I need you to answer me, so I know quickly what I should do." Then "I'll take it all, if he chooses me." Eventually got dining table + chairs, coffee table, TV stand. Collection involved car problems, delays, multiple updates. Conversation was 20+ messages.
+
+Under the FSM: the initial demanding tone ("I need you to answer me") would not change their priority — the Helper responds to everyone equally. But the Helper would have responded quickly (preventing the chasing) and the high message volume wouldn't be a burden since it's automated.
+
+**Lesson**: Impatient repliers aren't bad candidates — they're often just anxious. Quick responses from the Helper prevent escalation. But multiple demanding messages before a response shouldn't boost their priority over someone who sent one polite message and waited.
+
+**4. The promise-then-revoke (pattie-09)**
+Offered the TV + stand + fan. Pattie arranged a van man. Then: "Apologies, tv is now gone! you can still have the TV stand and fan?" Pattie: "I'll pass." Offerer had given the TV to someone else in the meantime.
+
+Under the FSM: the Helper tracks item availability. If the TV is promised to someone, it's marked as allocated and wouldn't be offered to pattie in the first place. If the first person falls through, it goes to the next candidate. No double-promising.
+
+**Lesson**: Item-level availability tracking prevents the most frustrating experience — being told you can have something, arranging transport, then being told it's gone.
+
+**5. The family pair (confidenceakahara + husband)**
+She asked for TV + coffee table. Negotiated timing (has a baby, can't come in the morning). Then revealed her husband had separately replied about the sound system and was already on his way. Offerer: "who's your husband?"
+
+Under the FSM: the Helper wouldn't know they're related unless they mention it. But once they do, it should merge their interest — "your household wants TV, coffee table, and sound system. Can one of you collect all three?"
+
+**Lesson**: Household members sometimes reply separately. The Helper should watch for this (same address, mentioned relationship) and consolidate where possible. Add to knowledge record: `related_to: userid or null`.
+
+**6. The Chesterfield sofa scam**
+The sofa poster ("Rio Chesterfield Sofa", 55 repliers) replied to EVERY person with "Hi mate, just sold out to one of my friend." This wasn't freegling at all — they sold the items privately. 55 people got the same brush-off.
+
+**Lesson**: Not directly relevant to the Helper (which operates on behalf of genuine offerers), but this pattern exists and the Helper should never send messages that sound like this.
 
 ### Key rules derived from trial
 1. Answer factual questions from listing data immediately — don't make people wait.
