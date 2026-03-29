@@ -78,15 +78,22 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
 
     // Wait for both prod containers to be serving HTTP before starting tests.
     // Docker "Up" status doesn't mean the Nuxt server inside is ready.
+    // Use Docker service names with internal ports (works on same Docker network).
+    // The .localhost hostnames require Traefik DNS which doesn't resolve inside containers.
     setTestState('playwright', { message: 'Waiting for production containers to be ready...' })
 
-    for (const host of ['freegle-prod-local.localhost', 'modtools-prod-local.localhost']) {
+    const prodContainers = [
+      { name: 'freegle-prod-local', port: 3003 },
+      { name: 'modtools-prod-local', port: 3001 },
+    ]
+
+    for (const { name, port } of prodContainers) {
       let ready = false
       for (let attempt = 0; attempt < 30; attempt++) {
         try {
           const controller = new AbortController()
           const timeout = setTimeout(() => controller.abort(), 2000)
-          const resp = await fetch(`http://${host}/`, { signal: controller.signal })
+          const resp = await fetch(`http://${name}:${port}/`, { signal: controller.signal })
           clearTimeout(timeout)
 
           if (resp.status === 200) {
@@ -101,10 +108,10 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
       }
 
       if (!ready) {
-        throw new Error(`${host} did not become ready within 60 seconds`)
+        throw new Error(`${name}:${port} did not become ready within 60 seconds`)
       }
 
-      appendTestLogs('playwright', `${host} is ready\n`)
+      appendTestLogs('playwright', `${name}:${port} is ready\n`)
     }
 
     // Restart Playwright container
