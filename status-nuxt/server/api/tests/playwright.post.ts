@@ -84,12 +84,12 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
       let ready = false
       for (let attempt = 0; attempt < 30; attempt++) {
         try {
-          const resp = execSync(
-            `curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://${host}/`,
-            { encoding: 'utf8', timeout: 5000 }
-          ).trim()
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 2000)
+          const resp = await fetch(`http://${host}/`, { signal: controller.signal })
+          clearTimeout(timeout)
 
-          if (resp === '200') {
+          if (resp.status === 200) {
             ready = true
             break
           }
