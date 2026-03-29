@@ -758,6 +758,137 @@ class PurgeService
     }
 
     /**
+     * Purge old user sessions.
+     *
+     * Deletes sessions where lastactive is older than the specified days.
+     * Uses chunked deletion to avoid locking the cluster.
+     *
+     * Migrated from purge_sessions.php
+     */
+    public function purgeSessions(int $daysOld = 31): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+        $total = 0;
+
+        do {
+            $deleted = DB::table('sessions')
+                ->where('lastactive', '<', $cutoff)
+                ->limit($this->chunkSize)
+                ->delete();
+
+            $total += $deleted;
+
+            if ($total % $this->logInterval === 0 && $total > 0) {
+                Log::info("Purged {$total} sessions");
+            }
+        } while ($deleted > 0);
+
+        return $total;
+    }
+
+    /**
+     * Purge old login link credentials.
+     *
+     * Deletes users_logins entries of type 'Link' older than the specified days.
+     *
+     * Migrated from purge_sessions.php
+     */
+    public function purgeOldLoginLinks(int $daysOld = 31): int
+    {
+        $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        return DB::table('users_logins')
+            ->where('lastaccess', '<', $cutoff)
+            ->where('type', 'Link')
+            ->delete();
+    }
+
+    /**
+     * Remove duplicate consecutive search history entries.
+     *
+     * Finds searches from recent days where the same user searched the
+     * same term/location/groups consecutively, and removes the duplicates.
+     *
+     * Migrated from searchdups.php
+     */
+    public function deduplicateSearchHistory(int $daysBack = 2): int
+    {
+        $cutoff = now()->subDays($daysBack)->startOfDay();
+        $deleted = 0;
+
+        $searches = DB::table('search_history')
+            ->where('date', '>', $cutoff)
+            ->orderBy('groups')
+            ->orderBy('id')
+            ->get(['id', 'term', 'locationid', 'groups']);
+
+        $last = null;
+
+        foreach ($searches as $search) {
+            if ($last !== null) {
+                $isDuplicate = $search->term === $last->term
+                    && $search->locationid === $last->locationid
+                    && $search->groups === $last->groups;
+
+                if ($isDuplicate) {
+                    DB::table('search_history')->where('id', $search->id)->delete();
+                    $deleted++;
+                }
+            }
+
+            $last = $search;
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * Remove duplicate consecutive chat messages.
+     *
+     * Finds chat messages from recent days where the same message text
+     * and reference message were sent consecutively in a chat room.
+     *
+     * Migrated from chatdups.php
+     */
+    public function deduplicateChatMessages(int $daysBack = 3): int
+    {
+        $cutoff = now()->subDays($daysBack)->startOfDay();
+        $deleted = 0;
+
+        $duplicateChats = DB::table('chat_messages')
+            ->select('chatid', 'message', 'refmsgid', DB::raw('COUNT(*) as count'))
+            ->where('date', '>=', $cutoff)
+            ->groupBy('chatid', 'message', 'refmsgid')
+            ->having('count', '>', 1)
+            ->get();
+
+        foreach ($duplicateChats as $chat) {
+            $messages = DB::table('chat_messages')
+                ->where('date', '>', $cutoff)
+                ->where('chatid', $chat->chatid)
+                ->orderBy('id')
+                ->get(['id', 'message', 'refmsgid']);
+
+            $lastMessage = null;
+            $lastRefmsgid = null;
+
+            foreach ($messages as $msg) {
+                if ($lastMessage !== null
+                    && $lastMessage === $msg->message
+                    && $lastRefmsgid === $msg->refmsgid) {
+                    DB::table('chat_messages')->where('id', $msg->id)->delete();
+                    $deleted++;
+                } else {
+                    $lastMessage = $msg->message;
+                    $lastRefmsgid = $msg->refmsgid;
+                }
+            }
+        }
+
+        return $deleted;
+    }
+
+    /**
      * Run all purge operations.
      */
     public function runAll(): array
@@ -779,6 +910,8 @@ class PurgeService
         $results['orphaned_isochrones'] = $this->purgeOrphanedIsochrones();
         $results['completed_admins'] = $this->purgeCompletedAdmins();
         $results['email_tracking'] = $this->purgeEmailTracking();
+        $results['sessions'] = $this->purgeSessions();
+        $results['login_links'] = $this->purgeOldLoginLinks();
 
         return $results;
     }

@@ -279,6 +279,8 @@ class PurgeServiceTest extends TestCase
         $this->assertArrayHasKey('orphaned_isochrones', $results);
         $this->assertArrayHasKey('completed_admins', $results);
         $this->assertArrayHasKey('email_tracking', $results);
+        $this->assertArrayHasKey('sessions', $results);
+        $this->assertArrayHasKey('login_links', $results);
     }
 
     public function test_purge_email_tracking(): void

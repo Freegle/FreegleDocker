@@ -112,8 +112,23 @@ Schedule::command('purge:messages')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('purge:sessions')
+    ->dailyAt('03:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('purge:logs')
     ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('cleanup:search-duplicates')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('cleanup:chat-duplicates')
+    ->everyTwoHours()
     ->withoutOverlapping()
     ->runInBackground();
 

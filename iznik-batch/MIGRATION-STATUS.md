@@ -51,6 +51,9 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `users:update-support-roles` | Grant/remove support tools access |
 | `donations:update-ads-target` | Update ads-off donation target |
 | `purge:logs` | Purge old log entries from various tables |
+| `purge:sessions` | Purge old sessions and login links |
+| `cleanup:search-duplicates` | Remove duplicate consecutive searches |
+| `cleanup:chat-duplicates` | Remove duplicate consecutive chat messages |
 
 ## Testing Emails (mail:test)
 
@@ -171,6 +174,9 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `supporttools.php` | `users:update-support-roles` | - | Support tools role management |
 | `donations_ads_target.php` | `donations:update-ads-target` | - | Ads-off donation target |
 | `purge_logs.php` | `purge:logs` | - | Log purging (16 purge operations) |
+| `purge_sessions.php` | `purge:sessions` | - | Session + login link purging |
+| `searchdups.php` | `cleanup:search-duplicates` | - | Consecutive search dedup |
+| `chatdups.php` | `cleanup:chat-duplicates` | - | Consecutive chat message dedup |
 
 ## Code Written - Running via CircleCI (Not Scheduler)
 
@@ -243,10 +249,10 @@ These original scripts need to be migrated to Laravel artisan commands:
 | ~~`membercounts.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Member counts~~ — **Migrated: `groups:update-counts`** |
 | `autorepost.php` | Every 60 min | Medium | Auto-repost messages |
 | `chaseup.php` | Every 60 min | Medium | Message chase-up |
-| `searchdups.php` | Every 60 min | Low | Search duplicates |
+| ~~`searchdups.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Search duplicates~~ — **Migrated: `cleanup:search-duplicates`** |
 | `autoapprove.php` | Every 60 min | Medium | Auto-approve messages |
 | `bounce_users.php` | Every 60 min | Medium | User bounce processing |
-| `chatdups.php` | Every 120 min | Low | Chat duplicates |
+| ~~`chatdups.php`~~ | ~~Every 120 min~~ | ~~Low~~ | ~~Chat duplicates~~ — **Migrated: `cleanup:chat-duplicates`** |
 
 ## Daily Scripts - Not Started
 
@@ -264,7 +270,7 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `group_stats.php` | 02:00 | Low | Group statistics |
 | `doogal` | 03:00 | Low | Doogal data import |
 | `engage_update.php` | 03:00 | Low | Engagement update |
-| `purge_sessions.php` | 03:00 | Low | Session purging |
+| ~~`purge_sessions.php`~~ | ~~03:00~~ | ~~Low~~ | ~~Session purging~~ — **Migrated: `purge:sessions`** |
 | ~~`purge_logs.php`~~ | ~~04:00~~ | ~~Low~~ | ~~Log purging~~ — **Migrated: `purge:logs`** |
 | `email_validate.php` | 04:00 | Low | Email validation |
 | `messages_popular.php` | 05:00 | Low | Popular messages |
