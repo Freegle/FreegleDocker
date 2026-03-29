@@ -44,6 +44,9 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `users:retention-stats` | Generate retention statistics |
 | `data:update-cpi` | Update CPI data |
 | `data:git-summary` | Generate git summary |
+| `purge:sessions` | Purge old sessions and login links |
+| `cleanup:search-duplicates` | Remove duplicate consecutive searches |
+| `cleanup:chat-duplicates` | Remove duplicate consecutive chat messages |
 | `data:classify-app-release` | Classify app release versions |
 | `groups:update-counts` | Update group member/moderator counts |
 | `chats:update-counts` | Update chat message counts, reopen closed User2Mod |
