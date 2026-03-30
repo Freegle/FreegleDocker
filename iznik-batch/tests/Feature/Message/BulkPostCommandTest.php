@@ -642,6 +642,32 @@ class BulkPostCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_cross_post_falls_back_to_nameshort_when_namedisplay_empty(): void
+    {
+        $this->writeCsv([['Sofa', 1, '']]);
+        $this->writeBody('Original body.');
+
+        // Create a primary group with empty namedisplay; nameshort is auto-generated.
+        $primaryGroup = $this->createTestGroup(['namedisplay' => '']);
+        $crossGroup = $this->createTestGroup(['lat' => 50.83, 'lng' => -0.17]);
+
+        // Summary line must show nameshort (not blank) in the X-post prefix notice.
+        $result = $this->withoutMockingConsoleOutput()->artisan('messages:bulk-post', [
+            'folder'              => $this->folder,
+            '--email'             => $this->email,
+            '--postcode'          => 'BN1 1AA',
+            '--group'             => $primaryGroup->nameshort,
+            '--cross-post-groups' => $crossGroup->nameshort,
+            '--dry-run'           => true,
+        ]);
+
+        $output = \Artisan::output();
+        // Should show the nameshort in the group summary line, not a blank.
+        $this->assertStringContainsString($primaryGroup->nameshort, $output);
+        $this->assertStringNotContainsString('no takers so far on .', $output);
+        $this->assertEquals(0, $result);
+    }
+
     public function test_invalid_deadline_format_rejected(): void
     {
         $handle = fopen($this->folder.'/items.csv', 'w');

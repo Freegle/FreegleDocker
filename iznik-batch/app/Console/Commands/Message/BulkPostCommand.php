@@ -153,7 +153,8 @@ class BulkPostCommand extends Command
         }
 
         // Build the cross-post body prefix once.
-        $crossPostBody = "Posting here because no takers so far on {$group->namedisplay}.\n\n{$body}";
+        $primaryGroupName = $group->namedisplay ?: $group->nameshort;
+        $crossPostBody = "Posting here because no takers so far on {$primaryGroupName}.\n\n{$body}";
 
         foreach ($postItems as $i => $item) {
             $num = $i + 1;
