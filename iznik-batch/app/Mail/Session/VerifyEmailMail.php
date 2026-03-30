@@ -19,11 +19,6 @@ class VerifyEmailMail extends MjmlMailable
         public readonly string $confirmUrl,
     ) {
         parent::__construct();
-
-        $this->mjmlData = [
-            'email' => $this->email,
-            'confirmUrl' => $this->confirmUrl,
-        ];
     }
 
     public function envelope(): Envelope
@@ -40,6 +35,17 @@ class VerifyEmailMail extends MjmlMailable
     public function getSubject(): string
     {
         return 'Please verify your email';
+    }
+
+    public function build(): static
+    {
+        return $this->mjmlView(
+            'emails.mjml.session.verify-email',
+            [
+                'email' => $this->email,
+                'confirmUrl' => $this->confirmUrl,
+            ]
+        )->to($this->email);
     }
 
     protected function getRecipientUserId(): ?int

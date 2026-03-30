@@ -24,14 +24,6 @@ class MergeOfferMail extends MjmlMailable
         public readonly string $mergeUrl,
     ) {
         parent::__construct();
-
-        $this->mjmlData = [
-            'name1' => $this->name1,
-            'email1' => $this->email1,
-            'name2' => $this->name2,
-            'email2' => $this->email2,
-            'mergeUrl' => $this->mergeUrl,
-        ];
     }
 
     public function envelope(): Envelope
@@ -48,6 +40,20 @@ class MergeOfferMail extends MjmlMailable
     public function getSubject(): string
     {
         return 'You have multiple Freegle accounts - please read';
+    }
+
+    public function build(): static
+    {
+        return $this->mjmlView(
+            'emails.mjml.session.merge-offer',
+            [
+                'name1' => $this->name1,
+                'email1' => $this->email1,
+                'name2' => $this->name2,
+                'email2' => $this->email2,
+                'mergeUrl' => $this->mergeUrl,
+            ]
+        )->to($this->recipientEmail);
     }
 
     protected function getRecipientUserId(): ?int
