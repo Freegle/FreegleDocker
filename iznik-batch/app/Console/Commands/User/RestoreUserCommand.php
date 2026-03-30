@@ -4,6 +4,7 @@ namespace App\Console\Commands\User;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Restore a user from a JSON dump file produced by user:dump.
@@ -300,7 +301,7 @@ class RestoreUserCommand extends Command
                 continue;
             }
 
-            $this->upsertRow($table, $row);
+            $this->upsertRow($table, $row, $userIdCols);
             $count++;
 
             // After inserting a chat_room, update the map with the real target ID.
@@ -318,10 +319,14 @@ class RestoreUserCommand extends Command
     }
 
     /**
-     * INSERT ... ON DUPLICATE KEY UPDATE all columns.
-     * This mirrors the V1 user_restore.php approach.
+     * INSERT ... ON DUPLICATE KEY UPDATE only the user-ID columns.
+     *
+     * Mirrors V1 user_restore.php: on conflict, remap the user ID column(s)
+     * but do NOT overwrite all other data already on the target system.
+     *
+     * @param  string[]  $userIdCols  Columns holding user IDs (e.g. ['userid'])
      */
-    private function upsertRow(string $table, array $row): void
+    private function upsertRow(string $table, array $row, array $userIdCols): void
     {
         if (empty($row)) {
             return;
@@ -330,7 +335,13 @@ class RestoreUserCommand extends Command
         $columns = array_keys($row);
         $quotedCols = array_map(fn ($c) => "`$c`", $columns);
         $placeholders = array_fill(0, count($columns), '?');
-        $updateClauses = array_map(fn ($c) => "`$c` = VALUES(`$c`)", $columns);
+
+        // On duplicate, only remap user-ID columns (and keep id stable via LAST_INSERT_ID).
+        // This matches V1: "$key = $luid, id = LAST_INSERT_ID(id)".
+        $updateClauses = ['`id` = LAST_INSERT_ID(`id`)'];
+        foreach ($userIdCols as $col) {
+            $updateClauses[] = "`$col` = VALUES(`$col`)";
+        }
 
         $sql = sprintf(
             'INSERT INTO `%s` (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s',
@@ -340,7 +351,12 @@ class RestoreUserCommand extends Command
             implode(', ', $updateClauses)
         );
 
-        DB::statement($sql, array_values($row));
+        try {
+            DB::statement($sql, array_values($row));
+        } catch (\Exception $e) {
+            $this->warn("  Warning: skipped row in $table: ".$e->getMessage());
+            Log::warning('user:restore upsert failed', ['table' => $table, 'error' => $e->getMessage()]);
+        }
     }
 
     /**
