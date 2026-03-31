@@ -48,6 +48,10 @@ services:
       - "--entrypoints.web.forwardedHeaders.insecure=true"
       # Increase transport settings for parallel requests
       - "--serversTransport.maxIdleConnsPerHost=200"
+    ports:
+      - "${PORT_TRAEFIK_HTTP:-80}:80"
+      - "${PORT_TRAEFIK_API:-8192}:8192"
+      - "${PORT_TRAEFIK_DASHBOARD:-8080}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
@@ -104,6 +108,8 @@ services:
     networks:
       - default
     image: phpmyadmin
+    ports:
+      - "0.0.0.0:${PORT_PHPMYADMIN:-8086}:80"
     depends_on:
       percona:
         condition: service_started
@@ -128,6 +134,9 @@ services:
       - dev
     networks:
       - default
+    ports:
+      - "0.0.0.0:${PORT_MAILPIT_WEB:-8025}:8025"
+      - "0.0.0.0:${PORT_MAILPIT_SMTP:-1025}:1025"
     depends_on:
       percona:
         condition: service_healthy
@@ -185,6 +194,8 @@ services:
       - dev
     networks:
       - default
+    ports:
+      - ${PORT_SPAMASSASSIN:-783}:783
     volumes:
       - ./logs/spamassassin:/logs
       - ./conf:/config
@@ -207,6 +218,8 @@ services:
       - dev
     networks:
       - default
+    ports:
+      - "${PORT_RSPAMD:-11334}:11334"
     volumes:
       - ./conf/rspamd/local.d:/etc/rspamd/local.d:ro
       - rspamd_data:/var/lib/rspamd
@@ -282,6 +295,10 @@ services:
       modtools-prod-local:
         condition: service_started
         required: false
+    extra_hosts:
+      - "tusd.localhost:host-gateway"
+      - "freegle-dev-local.localhost:host-gateway"
+      - "freegle-prod-local.localhost:host-gateway"
     volumes:
       - ./delivery-nginx.conf:/etc/nginx/nginx.conf:ro
       - ./delivery-imagesweserv.conf:/etc/nginx/imagesweserv.conf:ro
@@ -307,8 +324,12 @@ services:
     profiles:
       - frontend
     networks:
-      - default
-    command: -hooks-http=http://apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/ -cors-allow-headers=baggage,sentry-trace
+      default:
+        aliases:
+          - tusd.localhost
+    ports:
+      - "${PORT_TUSD:-1080}:8080"
+    command: -hooks-http=http://freegle-apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/ -cors-allow-headers=baggage,sentry-trace
     depends_on:
       reverse-proxy:
         condition: service_healthy
@@ -364,6 +385,8 @@ services:
       - dev
     networks:
       - default
+    ports:
+      - "${PORT_STATUS:-8081}:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.status.rule=Host(`status.localhost`)"
@@ -377,7 +400,6 @@ services:
       - rebuild-requests:/rebuild-requests
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-freegle}
 
   ai-support-helper:
     build:
@@ -389,6 +411,8 @@ services:
       - dev
     networks:
       - default
+    ports:
+      - "${PORT_AI_SUPPORT:-8083}:3000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ai-support-helper.rule=Host(`ai-support-helper.localhost`)"
@@ -506,9 +530,9 @@ services:
       - SPAMD_HOST=spamassassin-app
       - SPAMD_PORT=783
       - SMTP_HOST=mailpit
-      - TUS_UPLOADER=http://tusd:8080/tus
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - SMTP_PORT=1025
-      - IMAGE_DELIVERY=http://delivery
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_PUSH_KEY=${GOOGLE_PUSH_KEY:-}
@@ -550,6 +574,10 @@ services:
       - PARTNER_KEY
       - PARTNER_NAME
       - IMAGE_DOMAIN
+    ports:
+      - "${PORT_APIV1_SSH:-1023}:22"
+      - "${PORT_APIV1_HTTP:-83}:80"
+      - "${PORT_APIV1_HTTP2:-8181}:80"
 
   # Separate container for PHPUnit tests - uses isolated database to run in parallel with Playwright
   apiv1-phpunit:
@@ -595,8 +623,8 @@ services:
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
       - LOKI_ENABLED=false
-      - TUS_UPLOADER=http://tusd:8080/tus
-      - IMAGE_DELIVERY=http://delivery
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
     volumes:
       - geoip_data:/var/lib/GeoIP
     healthcheck:
@@ -617,7 +645,9 @@ services:
     profiles:
       - frontend
     networks:
-      - default
+      default:
+        aliases:
+          - apiv2.localhost
     build:
       context: ./iznik-server-go
       network: host
@@ -647,7 +677,7 @@ services:
       - MYSQL_USER=root
       - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://tusd:8080/tus
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
@@ -665,6 +695,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    ports:
+      - "${PORT_APIV2:-8193}:8192"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv2.rule=Host(`apiv2.localhost`)"
@@ -688,7 +720,9 @@ services:
     profiles:
       - prod-live
     networks:
-      - default
+      default:
+        aliases:
+          - apiv2-live.localhost
     build:
       context: ./iznik-server-go
       network: host
@@ -713,7 +747,7 @@ services:
       - MYSQL_USER=${LIVE_DB_USER:-root}
       - MYSQL_PASSWORD=${LIVE_DB_PASSWORD:-}
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://tusd:8080/tus
+      - TUS_UPLOADER=http://freegle-tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
@@ -730,6 +764,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    ports:
+      - "${PORT_APIV2_LIVE:-8194}:8192"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.apiv2-live.rule=Host(`apiv2-live.localhost`)"
@@ -749,7 +785,14 @@ services:
     profiles:
       - dev
     networks:
-      - default
+      default:
+        aliases:
+          - freegle-dev-local.localhost
+    ports:
+      - "0.0.0.0:${PORT_FREEGLE_DEV_LOCAL:-3002}:3002"
+    extra_hosts:
+      - "apiv1.localhost:host-gateway"
+      - "apiv2.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       network: host
@@ -775,8 +818,8 @@ services:
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
       - USER_SITE=http://freegle-dev-local.localhost:${PORT_FREEGLE_DEV_LOCAL:-3002}
-      - IMAGE_BASE_URL=http://tusd:8080/tus
-      - TUSD_URL=http://tusd:8080
+      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
+      - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
       - NUXT_NITRO_PRERENDER_ROUTES=false
       - NUXT_DEV_MODE=true
@@ -814,7 +857,13 @@ services:
     profiles:
       - dev-live
     networks:
-      - default
+      default:
+        aliases:
+          - freegle-dev-live.localhost
+    ports:
+      - "0.0.0.0:${PORT_FREEGLE_DEV_LIVE:-3005}:3002"
+    extra_hosts:
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       network: host
@@ -850,7 +899,15 @@ services:
     profiles:
       - dev
     networks:
-      - default
+      default:
+        aliases:
+          - freegle-prod-local.localhost
+    ports:
+      - "0.0.0.0:${PORT_FREEGLE_PROD_LOCAL:-3012}:3003"
+    extra_hosts:
+      - "apiv1.localhost:host-gateway"
+      - "apiv2.localhost:host-gateway"
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.prod
@@ -885,8 +942,8 @@ services:
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
       - USER_SITE=http://freegle-prod-local.localhost:${PORT_FREEGLE_PROD_LOCAL:-3012}
-      - IMAGE_BASE_URL=http://tusd:8080/tus
-      - TUSD_URL=http://tusd:8080
+      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
+      - TUSD_URL=http://freegle-tusd:8080
       - NITRO_PRESET=node-server
       - NUXT_NITRO_PRERENDER_ROUTES=false
       - NUXT_DEV_MODE=false
@@ -912,11 +969,18 @@ services:
 
   # Development build with local APIs - ModTools
   modtools-dev-local:
-    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-modtools-dev-local
+    container_name: modtools-dev-local
     profiles:
       - dev
     networks:
-      - default
+      default:
+        aliases:
+          - modtools-dev-local.localhost
+    ports:
+      - "0.0.0.0:${PORT_MODTOOLS_DEV_LOCAL:-3003}:3000"
+    extra_hosts:
+      - "apiv1.localhost:host-gateway"
+      - "apiv2.localhost:host-gateway"
     build:
       context: .
       dockerfile: ./iznik-nuxt3/modtools/Dockerfile
@@ -942,8 +1006,8 @@ services:
       - IZNIK_API_V2=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
-      - IMAGE_BASE_URL=http://tusd:8080/tus
-      - TUSD_URL=http://tusd:8080
+      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
+      - TUSD_URL=http://freegle-tusd:8080
       - USER_SITE=http://modtools-dev-local.localhost:${PORT_MODTOOLS_DEV_LOCAL:-3003}
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
@@ -966,7 +1030,7 @@ services:
   # Development mode with LIVE/Production APIs - ModTools
   # WARNING: This connects to REAL production data!
   modtools-dev-live:
-    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-modtools-dev-live
+    container_name: modtools-dev-live
     depends_on:
       host-scripts:
         condition: service_started
@@ -980,7 +1044,13 @@ services:
     profiles:
       - dev-live
     networks:
-      - default
+      default:
+        aliases:
+          - modtools-dev-live.localhost
+    ports:
+      - "0.0.0.0:${PORT_MODTOOLS_DEV_LIVE:-3006}:3000"
+    extra_hosts:
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: .
       dockerfile: ./iznik-nuxt3/modtools/Dockerfile
@@ -1013,11 +1083,19 @@ services:
 
   # Production build with local APIs - ModTools
   modtools-prod-local:
-    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-modtools-prod-local
+    container_name: modtools-prod-local
     profiles:
       - dev
     networks:
-      - default
+      default:
+        aliases:
+          - modtools-prod-local.localhost
+    ports:
+      - "0.0.0.0:${PORT_MODTOOLS_PROD_LOCAL:-3013}:3001"
+    extra_hosts:
+      - "apiv1.localhost:host-gateway"
+      - "apiv2.localhost:host-gateway"
+      - "apiv2-live.localhost:host-gateway"
     build:
       context: ./iznik-nuxt3
       dockerfile: modtools/Dockerfile.prod
@@ -1051,8 +1129,8 @@ services:
       - IZNIK_API_V2=${PROD_MT_API_V2:-http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api}
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
-      - IMAGE_BASE_URL=http://tusd:8080/tus
-      - TUSD_URL=http://tusd:8080
+      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
+      - TUSD_URL=http://freegle-tusd:8080
       - USER_SITE=http://modtools-prod-local.localhost:${PORT_MODTOOLS_PROD_LOCAL:-3013}
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
@@ -1078,18 +1156,21 @@ services:
     profiles:
       - dev
     network_mode: "host"
-    extra_hosts:
-      - "freegle-dev-local.localhost:127.0.0.1"
-      - "freegle-prod-local.localhost:127.0.0.1"
-      - "freegle-dev-live.localhost:127.0.0.1"
-      - "modtools-dev-local.localhost:127.0.0.1"
-      - "modtools-prod-local.localhost:127.0.0.1"
     shm_size: 2gb  # Chrome needs more shared memory for parallel browser instances
     build:
       context: ./iznik-nuxt3
       dockerfile: Dockerfile.playwright
       network: host
     working_dir: /app
+    extra_hosts:
+      - "freegle-dev-local.localhost:127.0.0.1"
+      - "freegle-prod-local.localhost:127.0.0.1"
+      - "freegle-dev-live.localhost:127.0.0.1"
+      - "modtools-dev-local.localhost:127.0.0.1"
+      - "modtools-prod-local.localhost:127.0.0.1"
+      - "apiv1.localhost:127.0.0.1"
+      - "apiv2.localhost:127.0.0.1"
+      - "delivery.localhost:127.0.0.1"
     volumes:
       - ./iznik-nuxt3/tests:/host-tests:ro
       - ./iznik-nuxt3:/app/src:ro
@@ -1133,6 +1214,8 @@ services:
     image: grafana/loki:3.0.0
     networks:
       - default
+    ports:
+      - "${PORT_LOKI:-3100}:3100"
     volumes:
       - loki-data:/loki
       - ./conf/loki-config.yaml:/etc/loki/local-config.yaml:ro
@@ -1402,6 +1485,8 @@ services:
       dockerfile: Dockerfile
     networks:
       - default
+    ports:
+      - "${PORT_POSTFIX_SMTP:-25}:25"
     depends_on:
       batch-prod:
         condition: service_healthy
@@ -1428,9 +1513,11 @@ services:
       network: host
     networks:
       - default
+    ports:
+      - "${PORT_MCP_SANITIZER:-8084}:8080"
     environment:
       - PORT=8080
-      - PSEUDONYMIZER_URL=http://mcp-pseudonymizer:8080
+      - PSEUDONYMIZER_URL=http://freegle-mcp-pseudonymizer:8080
     depends_on:
       mcp-pseudonymizer:
         condition: service_healthy
@@ -1459,7 +1546,7 @@ services:
       - default
     environment:
       - PORT=8080
-      - PSEUDONYMIZER_URL=http://mcp-pseudonymizer:8080
+      - PSEUDONYMIZER_URL=http://freegle-mcp-pseudonymizer:8080
     depends_on:
       mcp-pseudonymizer:
         condition: service_healthy
@@ -1521,7 +1608,7 @@ volumes:
   rspamd_data:
     driver: local
   loki-data:
-    driver: local
+    name: loki-data
   apiv2_logs:
     driver: local
   mcp-pseudonymizer-data:
