@@ -97,8 +97,8 @@ export default defineEventHandler(async () => {
   let branch = ''
   let worktree = ''
   try {
-    branch = execSync('git -C /project rev-parse --abbrev-ref HEAD', { encoding: 'utf8', timeout: 3000 }).trim()
-    worktree = execSync('git -C /project rev-parse --show-toplevel', { encoding: 'utf8', timeout: 3000 }).trim()
+    branch = execSync('git -c safe.directory=/project -C /project rev-parse --abbrev-ref HEAD', { encoding: 'utf8', timeout: 3000 }).trim()
+    worktree = execSync('git -c safe.directory=/project -C /project rev-parse --show-toplevel', { encoding: 'utf8', timeout: 3000 }).trim()
   } catch { /* not a git repo or git not available */ }
 
   return {
