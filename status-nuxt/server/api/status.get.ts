@@ -93,8 +93,19 @@ export default defineEventHandler(async () => {
     }
   }
 
+  // Include project identity info so users can tell worktrees apart.
+  let branch = ''
+  let worktree = ''
+  try {
+    branch = execSync('git -C /project rev-parse --abbrev-ref HEAD', { encoding: 'utf8', timeout: 3000 }).trim()
+    worktree = execSync('git -C /project rev-parse --show-toplevel', { encoding: 'utf8', timeout: 3000 }).trim()
+  } catch { /* not a git repo or git not available */ }
+
   return {
     services: serviceStatuses,
+    project: process.env.COMPOSE_PROJECT_NAME || 'freegle',
+    branch,
+    worktree,
     timestamp: new Date().toISOString(),
   }
 })

@@ -89,6 +89,12 @@ const getTabStatus = (tabId: string): string => {
         >
         <div :class="['status-circle', overallStatus]" />
         <h1>Freegle Status</h1>
+        <span v-if="statusStore.project" style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; margin-left: 8px;">
+          {{ statusStore.project }}
+        </span>
+        <span v-if="statusStore.branch" style="background: #0d6efd; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; margin-left: 4px;">
+          {{ statusStore.branch }}
+        </span>
       </div>
 
       <!-- Countdown -->
