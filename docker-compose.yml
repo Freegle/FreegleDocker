@@ -969,7 +969,7 @@ services:
 
   # Development build with local APIs - ModTools
   modtools-dev-local:
-    container_name: modtools-dev-local
+    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-modtools-dev-local
     profiles:
       - dev
     networks:
@@ -1030,7 +1030,7 @@ services:
   # Development mode with LIVE/Production APIs - ModTools
   # WARNING: This connects to REAL production data!
   modtools-dev-live:
-    container_name: modtools-dev-live
+    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-modtools-dev-live
     depends_on:
       host-scripts:
         condition: service_started
@@ -1083,7 +1083,7 @@ services:
 
   # Production build with local APIs - ModTools
   modtools-prod-local:
-    container_name: modtools-prod-local
+    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-modtools-prod-local
     profiles:
       - dev
     networks:
