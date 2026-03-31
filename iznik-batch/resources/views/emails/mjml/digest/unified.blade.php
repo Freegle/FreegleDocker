@@ -78,6 +78,44 @@
             </mj-column>
         </mj-section>
 
+        @if($sponsors->isNotEmpty())
+        <mj-section background-color="#ffffff" padding="10px 20px">
+            <mj-column>
+                <mj-divider border-color="#eeeeee" padding-bottom="5px" />
+                <mj-text font-size="12px" color="#888888" font-style="italic" padding-bottom="5px">
+                    Sponsored by:
+                </mj-text>
+            </mj-column>
+        </mj-section>
+        @foreach($sponsors as $sponsor)
+        <mj-section background-color="#ffffff" padding="0 20px 10px">
+            <mj-column width="80px" vertical-align="middle">
+                @if($sponsor->imageurl)
+                <mj-image
+                    width="60px"
+                    src="{{ $sponsor->imageurl }}"
+                    alt="{{ $sponsor->name }}"
+                    href="{{ $sponsor->linkurl }}"
+                    border-radius="5px"
+                />
+                @endif
+            </mj-column>
+            <mj-column vertical-align="middle">
+                <mj-text font-size="13px">
+                    @if($sponsor->linkurl)
+                    <a href="{{ $sponsor->linkurl }}" style="color: #1d6607; text-decoration: none; font-weight: bold;">{{ $sponsor->name }}</a>
+                    @else
+                    <strong>{{ $sponsor->name }}</strong>
+                    @endif
+                    @if($sponsor->tagline)
+                    <br /><span style="font-size: 11px; color: #666;">{{ $sponsor->tagline }}</span>
+                    @endif
+                </mj-text>
+            </mj-column>
+        </mj-section>
+        @endforeach
+        @endif
+
         <mj-section background-color="#ffffff" padding="10px 20px">
             <mj-column>
                 <mj-divider border-color="#eeeeee" />

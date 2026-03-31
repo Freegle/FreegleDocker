@@ -35,6 +35,7 @@ Follow existing patterns in iznik-server-go. Structure: AUTH → PARSE → DB �
 - Swagger: Add annotations, run `./generate-swagger.sh`. Register both `/api/` and `/apiv2/` routes.
 - Prefer `db.Raw()` over GORM for performance. Struct tags: `json:"field"`, `json:"-"`, `gorm:"-"`.
 - Tests: ARRANGE/ACT/ASSERT with `CreateTestUser`, `CreateTestGroup`. See existing `*_test.go` files.
+- **NEVER enrich responses with nested objects.** V2 returns IDs for related entities (e.g. `msgid`, `groupid`). The frontend fetches details separately via its stores. If you're writing `db.Raw("SELECT...")` inside a loop to inline related data, STOP — return the ID instead.
 
 ## Database Migrations
 

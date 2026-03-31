@@ -164,8 +164,11 @@ class UnifiedDigestService
             return 'no_posts';
         }
 
+        // Get deduplicated sponsors for the user's groups.
+        $sponsors = $this->getSponsorsForUser($user);
+
         // Send the email.
-        Mail::send(new UnifiedDigest($user, $deduplicatedPosts, $mode));
+        Mail::send(new UnifiedDigest($user, $deduplicatedPosts, $mode, $sponsors));
 
         // Update tracker.
         $this->updateDigestTracker($digestTracker, $posts);
@@ -353,5 +356,41 @@ class UnifiedDigestService
             ->pluck('nameshort');
 
         return 'Posted to: ' . $groupNames->implode(', ');
+    }
+
+    /**
+     * Get active sponsors for a user's groups, deduplicated.
+     *
+     * A sponsor like Essex County Council may sponsor multiple groups in
+     * the same area. In a unified digest, we show each sponsor once
+     * (the highest-amount entry wins for ordering) rather than repeating
+     * them per group.
+     *
+     * @param User $user
+     * @return Collection Deduplicated sponsor records
+     */
+    public function getSponsorsForUser(User $user): Collection
+    {
+        $groupIds = $user->memberships()
+            ->where('collection', Membership::COLLECTION_APPROVED)
+            ->pluck('groupid');
+
+        if ($groupIds->isEmpty()) {
+            return collect();
+        }
+
+        // Fetch all active, visible sponsors for the user's groups.
+        $sponsors = DB::table('groups_sponsorship')
+            ->whereIn('groupid', $groupIds)
+            ->where('visible', TRUE)
+            ->where('startdate', '<=', now())
+            ->where('enddate', '>=', now()->startOfDay())
+            ->orderByDesc('amount')
+            ->get();
+
+        // Deduplicate by name — same sponsor across multiple groups
+        // appears once. Keep the entry with the highest amount (first
+        // in the result set due to ORDER BY amount DESC).
+        return $sponsors->unique('name')->values();
     }
 }

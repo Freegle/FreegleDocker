@@ -397,4 +397,4 @@ async function runAgent(question, requestFactQuery, onThinking, conversationHist
   return { answer: 'This question required too many lookups to complete. Please try asking a more specific question, or break it into smaller parts.', suggestedQueries }
 }
 
-module.exports = { runAgent, warmupSession, FACT_QUERY_TYPES }
+module.exports = { runAgent, warmupSession, FACT_QUERY_TYPES, searchCodebase }

@@ -3,10 +3,16 @@
 namespace App\Console\Commands\Queue;
 
 use App\Console\Concerns\PreventsOverlapping;
+use App\Mail\Chat\ReferToSupportMail;
 use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
 use App\Mail\Session\ForgotPasswordMail;
+use App\Mail\Session\MergeOfferMail;
 use App\Mail\Session\UnsubscribeConfirmMail;
+use App\Mail\Session\VerifyEmailMail;
+use App\Mail\Message\ModStdMessageMail;
+use App\Models\ChatRoom;
+use App\Models\User;
 use App\Services\EmailSpoolerService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
@@ -14,6 +20,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 /**
  * Processes background tasks queued by the Go API server.
@@ -129,6 +136,11 @@ class ProcessBackgroundTasksCommand extends Command
                     'attempts' => $task->attempts + 1,
                 ]);
 
+                // Report to Sentry so we get alerted to task failures.
+                if (app()->bound('sentry')) {
+                    app('sentry')->captureException($e);
+                }
+
                 $update = ['error_message' => substr($e->getMessage(), 0, 65535)];
 
                 if ($task->attempts + 1 >= self::MAX_ATTEMPTS) {
@@ -164,6 +176,14 @@ class ProcessBackgroundTasksCommand extends Command
             'email_donate_external' => $this->handleEmailDonateExternal($data, $spooler, $shouldSpool),
             'email_forgot_password' => $this->handleEmailForgotPassword($data, $spooler, $shouldSpool),
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
+            'email_message_approved', 'email_message_rejected', 'email_message_reply'
+                => $this->handleModStdMessage($taskType, $data, $spooler, $shouldSpool),
+            'email_mod_stdmsg', 'email_membership_approved', 'email_membership_rejected'
+                => $this->handleModStdMessageForMember($data, $spooler, $shouldSpool),
+            'email_merge' => $this->handleEmailMerge($data, $spooler, $shouldSpool),
+            'email_verify' => $this->handleEmailVerify($data, $spooler, $shouldSpool),
+            'refer_to_support' => $this->handleReferToSupport($data, $spooler, $shouldSpool),
+            'message_outcome' => $this->handleMessageOutcome($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -315,5 +335,565 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Sent unsubscribe confirmation email', [
             'user_id' => $data['user_id'],
         ]);
+    }
+
+    /**
+     * Handle mod standard message emails (approve, reject, reply).
+     *
+     * Looks up the message poster, group, and mod info, then sends the stdmsg email
+     * and creates a User2Mod chat message for the mod log.
+     */
+    protected function handleModStdMessage(
+        string $taskType,
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $msgId = (int) ($data['msgid'] ?? 0);
+        $byUser = (int) ($data['byuser'] ?? 0);
+        $groupId = (int) ($data['groupid'] ?? 0);
+        $subject = $data['subject'] ?? '';
+        $body = $data['body'] ?? '';
+
+        // Fall back to looking up group from messages_groups if not provided.
+        if ($groupId === 0 && $msgId > 0) {
+            $groupId = (int) (DB::table('messages_groups')->where('msgid', $msgId)->value('groupid') ?? 0);
+        }
+
+        if ($msgId === 0 || $byUser === 0) {
+            throw new \RuntimeException("{$taskType} requires msgid and byuser");
+        }
+
+        // No subject/body means no stdmsg to send (e.g. plain approve without message).
+        if ($subject === '' && $body === '') {
+            Log::info("Mod action {$taskType} without stdmsg content, skipping email", [
+                'msgid' => $msgId,
+                'byuser' => $byUser,
+            ]);
+            return;
+        }
+
+        // Look up the poster and their preferred email.
+        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
+
+        if (! $posterId) {
+            Log::warning("No poster found for message {$msgId}");
+            return;
+        }
+
+        $poster = User::find($posterId);
+        $posterEmail = $poster?->email_preferred;
+
+        if (! $posterEmail) {
+            Log::warning("No email found for poster of message {$msgId}");
+            return;
+        }
+
+        // Look up the group info.
+        $groupName = '';
+        $groupNameShort = '';
+        $groupContactMail = null;
+        if ($groupId > 0) {
+            $group = DB::table('groups')->where('id', $groupId)->first();
+            if ($group) {
+                $groupName = $group->namefull ?: $group->nameshort ?? '';
+                $groupNameShort = $group->nameshort ?? '';
+                $groupContactMail = $group->contactmail ?: null;
+            }
+        }
+
+        // Look up the mod's display name.
+        $modName = DB::table('users')->where('id', $byUser)->value('fullname') ?? 'A volunteer';
+
+        // Look up the message subject for context.
+        $messageSubject = DB::table('messages')->where('id', $msgId)->value('subject') ?? '';
+
+        $mail = new ModStdMessageMail(
+            modName: $modName,
+            groupName: $groupName,
+            groupNameShort: $groupNameShort,
+            stdSubject: $subject,
+            stdBody: $body,
+            messageSubject: $messageSubject,
+            msgId: $msgId,
+            recipientUserId: $posterId,
+            recipientEmail: $posterEmail,
+            groupContactMail: $groupContactMail,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $posterEmail);
+        } else {
+            Mail::to($posterEmail)->send($mail);
+        }
+
+        // Create a User2Mod chat message so the conversation appears in modtools chats.
+        if ($groupId > 0) {
+            $chatRoom = ChatRoom::getOrCreateUser2Mod($posterId, $groupId);
+
+            if ($chatRoom) {
+                DB::table('chat_messages')->insert([
+                    'chatid' => $chatRoom->id,
+                    'userid' => $byUser,
+                    'message' => "{$subject}\r\n\r\n{$body}",
+                    'type' => 'ModMail',
+                    'refmsgid' => $msgId,
+                    'date' => now(),
+                    'reviewrequired' => 0,
+                    'processingrequired' => 0,
+                    'processingsuccessful' => 1,
+                ]);
+            }
+        }
+
+        Log::info("Sent mod stdmsg email ({$taskType})", [
+            'msgid' => $msgId,
+            'byuser' => $byUser,
+            'groupid' => $groupId,
+            'recipient' => $posterEmail,
+        ]);
+    }
+
+    /**
+     * Handle mod standard message emails sent to a member (not related to a message).
+     *
+     * V1 parity with User::mail() + User::maybeMail():
+     * 1. Send email to the member.
+     * 2. Create a User2Mod chat message for the mod log.
+     */
+    protected function handleModStdMessageForMember(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $userId = (int) ($data['userid'] ?? 0);
+        $byUser = (int) ($data['byuser'] ?? 0);
+        $groupId = (int) ($data['groupid'] ?? 0);
+        $subject = $data['subject'] ?? '';
+        $body = $data['body'] ?? '';
+        $stdmsgId = (int) ($data['stdmsgid'] ?? 0);
+
+        if ($userId === 0 || $byUser === 0) {
+            throw new \RuntimeException('email_mod_stdmsg requires userid and byuser');
+        }
+
+        if ($subject === '' && $body === '') {
+            Log::info('Mod stdmsg for member without content, skipping email', [
+                'userid' => $userId,
+                'byuser' => $byUser,
+            ]);
+            return;
+        }
+
+        // Look up the member's preferred email.
+        $member = User::find($userId);
+        $memberEmail = $member?->email_preferred;
+
+        if (! $memberEmail) {
+            Log::warning("No email found for member {$userId}");
+            return;
+        }
+
+        // Look up group info.
+        $groupName = '';
+        $groupNameShort = '';
+        $groupContactMail = null;
+        if ($groupId > 0) {
+            $group = DB::table('groups')->where('id', $groupId)->first();
+            if ($group) {
+                $groupName = $group->namefull ?: $group->nameshort ?? '';
+                $groupNameShort = $group->nameshort ?? '';
+                $groupContactMail = $group->contactmail ?: null;
+            }
+        }
+
+        // Look up the mod's display name.
+        $modName = DB::table('users')->where('id', $byUser)->value('fullname') ?? 'A volunteer';
+
+        $mail = new ModStdMessageMail(
+            modName: $modName,
+            groupName: $groupName,
+            groupNameShort: $groupNameShort,
+            stdSubject: $subject,
+            stdBody: $body,
+            messageSubject: '',
+            msgId: 0,
+            recipientUserId: $userId,
+            recipientEmail: $memberEmail,
+            groupContactMail: $groupContactMail,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $memberEmail);
+        } else {
+            Mail::to($memberEmail)->send($mail);
+        }
+
+        // Create a User2Mod chat message so the conversation appears in modtools chats.
+        if ($groupId > 0) {
+            $chatRoom = ChatRoom::getOrCreateUser2Mod($userId, $groupId);
+
+            if ($chatRoom) {
+                DB::table('chat_messages')->insert([
+                    'chatid' => $chatRoom->id,
+                    'userid' => $byUser,
+                    'message' => "{$subject}\r\n\r\n{$body}",
+                    'type' => 'ModMail',
+                    'date' => now(),
+                    'reviewrequired' => 0,
+                    'processingrequired' => 0,
+                    'processingsuccessful' => 1,
+                ]);
+            }
+        }
+
+        Log::info('Sent mod stdmsg email to member', [
+            'userid' => $userId,
+            'byuser' => $byUser,
+            'groupid' => $groupId,
+            'recipient' => $memberEmail,
+        ]);
+    }
+
+    /**
+     * Handle message outcome background processing.
+     *
+     * V1 parity with Message::backgroundMark():
+     * 1. Log the outcome to the logs table for each group the message is on.
+     * 2. Notify interested users (who replied but didn't get the item) by creating
+     *    TYPE_COMPLETED chat messages in their User2User chat rooms.
+     */
+    protected function handleMessageOutcome(array $data): void
+    {
+        $msgId = (int) ($data['msgid'] ?? 0);
+        $byUser = (int) ($data['byuser'] ?? 0);
+        $outcome = $data['outcome'] ?? '';
+        $happiness = $data['happiness'] ?? '';
+        $comment = $data['comment'] ?? '';
+        $userid = (int) ($data['userid'] ?? 0);
+        $messageForOthers = $data['message'] ?? '';
+
+        if ($msgId === 0) {
+            throw new \RuntimeException('message_outcome requires msgid');
+        }
+
+        // Get the message poster.
+        $fromUser = (int) (DB::table('messages')->where('id', $msgId)->value('fromuser') ?? 0);
+
+        // 1. Log the outcome for each group (V1: Log::TYPE_MESSAGE, Log::SUBTYPE_OUTCOME).
+        $groups = DB::table('messages_groups')->where('msgid', $msgId)->pluck('groupid');
+
+        foreach ($groups as $groupId) {
+            DB::table('logs')->insert([
+                'timestamp' => now(),
+                'type' => 'Message',
+                'subtype' => 'Outcome',
+                'msgid' => $msgId,
+                'user' => $fromUser ?: null,
+                'byuser' => $byUser ?: null,
+                'groupid' => $groupId,
+                'text' => trim("{$outcome} {$comment}"),
+            ]);
+        }
+
+        // 2. Notify interested users who replied but didn't get the item.
+        // Find User2User chat rooms with INTERESTED messages referencing this message,
+        // excluding users who are in messages_by (i.e. who got the item).
+        $replies = DB::select(
+            "SELECT DISTINCT chatid FROM chat_messages
+             INNER JOIN chat_rooms ON chat_rooms.id = chat_messages.chatid AND chat_rooms.chattype = 'User2User'
+             LEFT JOIN messages_by ON messages_by.msgid = chat_messages.refmsgid
+                 AND messages_by.userid IN (chat_rooms.user1, chat_rooms.user2)
+             WHERE refmsgid = ? AND chat_messages.type = 'Interested'
+                 AND reviewrejected = 0 AND messages_by.id IS NULL",
+            [$msgId]
+        );
+
+        foreach ($replies as $reply) {
+            // Check if this message was unpromised in this chat (TYPE_RENEGED).
+            // If so, don't send the generic message as it may not be appropriate.
+            $unpromised = DB::table('chat_messages')
+                ->where('chatid', $reply->chatid)
+                ->where('refmsgid', $msgId)
+                ->where('type', 'Reneged')
+                ->exists();
+
+            DB::table('chat_messages')->insert([
+                'chatid' => $reply->chatid,
+                'userid' => $fromUser,
+                'message' => $unpromised ? null : ($messageForOthers ?: null),
+                'type' => 'Completed',
+                'refmsgid' => $msgId,
+                'date' => now(),
+                'reviewrequired' => 0,
+                'processingrequired' => 0,
+                'processingsuccessful' => 1,
+            ]);
+
+            // Mark the poster as up-to-date in this chat so it doesn't appear as unread to them.
+            if ($fromUser) {
+                DB::table('chat_roster')->updateOrInsert(
+                    ['chatid' => $reply->chatid, 'userid' => $fromUser],
+                    ['lastmsgseen' => DB::raw('(SELECT MAX(id) FROM chat_messages WHERE chatid = ' . (int) $reply->chatid . ')'), 'date' => now()]
+                );
+            }
+        }
+
+        Log::info('Processed message outcome', [
+            'msgid' => $msgId,
+            'outcome' => $outcome,
+            'groups' => $groups->count(),
+            'notified_chats' => count($replies),
+        ]);
+    }
+
+    /**
+     * Handle merge offer email — sends to both users involved in a merge.
+     *
+     * V1 parity: merge.php lines 149-211.
+     */
+    protected function handleEmailMerge(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $mergeId = (int) ($data['merge_id'] ?? 0);
+        $uid = $data['uid'] ?? '';
+        $user1Id = (int) ($data['user1'] ?? 0);
+        $user2Id = (int) ($data['user2'] ?? 0);
+
+        if ($mergeId === 0 || $uid === '' || $user1Id === 0 || $user2Id === 0) {
+            throw new \RuntimeException('email_merge requires merge_id, uid, user1, user2');
+        }
+
+        $u1 = User::find($user1Id);
+        $u2 = User::find($user2Id);
+
+        if (! $u1 || ! $u2) {
+            Log::warning('Merge user not found', ['user1' => $user1Id, 'user2' => $user2Id]);
+            return;
+        }
+
+        $mergeUrl = config('freegle.sites.user') . '/merge?id=' . $mergeId . '&uid=' . $uid;
+        $name1 = $u1->fullname ?: 'Freegle User';
+        $name2 = $u2->fullname ?: 'Freegle User';
+        $email1 = $this->obfuscateEmail($u1->email_preferred ?? '');
+        $email2 = $this->obfuscateEmail($u2->email_preferred ?? '');
+
+        // Send to both users.
+        foreach ([$u1, $u2] as $recipient) {
+            $recipientEmail = $recipient->email_preferred;
+
+            if (! $recipientEmail) {
+                continue;
+            }
+
+            $mail = new MergeOfferMail(
+                recipientUserId: $recipient->id,
+                recipientName: $recipient->fullname ?: 'Freegle User',
+                recipientEmail: $recipientEmail,
+                name1: $name1,
+                email1: $email1,
+                name2: $name2,
+                email2: $email2,
+                mergeUrl: $mergeUrl,
+            );
+
+            if ($shouldSpool) {
+                $spooler->spool($mail, $recipientEmail);
+            } else {
+                Mail::to($recipientEmail)->send($mail);
+            }
+        }
+
+        Log::info('Sent merge offer emails', [
+            'merge_id' => $mergeId,
+            'user1' => $user1Id,
+            'user2' => $user2Id,
+        ]);
+    }
+
+    /**
+     * Handle email verification — generates a validate key and sends a confirmation link.
+     *
+     * V1 parity: User::verifyEmail() lines 3822-3896.
+     */
+    protected function handleEmailVerify(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $userId = (int) ($data['user_id'] ?? 0);
+        $email = $data['email'] ?? '';
+
+        if ($userId === 0 || $email === '') {
+            throw new \RuntimeException('email_verify requires user_id and email');
+        }
+
+        $user = User::find($userId);
+
+        if (! $user) {
+            Log::warning("User not found for email verify: {$userId}");
+            return;
+        }
+
+        // Check if this email is already one of the user's emails.
+        $canon = strtolower(trim($email));
+        $existing = DB::table('users_emails')
+            ->where('userid', $userId)
+            ->whereRaw('LOWER(email) = ?', [$canon])
+            ->exists();
+
+        if ($existing) {
+            // Already the user's email — just make it primary.
+            DB::table('users_emails')
+                ->where('userid', $userId)
+                ->whereRaw('LOWER(email) = ?', [$canon])
+                ->update(['preferred' => 1]);
+
+            DB::table('users_emails')
+                ->where('userid', $userId)
+                ->whereRaw('LOWER(email) != ?', [$canon])
+                ->update(['preferred' => 0]);
+
+            Log::info('Email already belongs to user, made primary', [
+                'user_id' => $userId,
+                'email' => $email,
+            ]);
+            return;
+        }
+
+        // Generate a validation key. Check if one was recently set (< 600s) to avoid confusion.
+        $recentKey = DB::table('users_emails')
+            ->where('canon', $canon)
+            ->whereRaw('TIMESTAMPDIFF(SECOND, validatetime, NOW()) < 600')
+            ->value('validatekey');
+
+        $key = $recentKey;
+
+        if (! $key) {
+            $key = uniqid();
+            DB::statement(
+                'INSERT INTO users_emails (email, canon, validatekey, backwards) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE validatekey = ?',
+                [$email, $canon, $key, strrev($canon), $key]
+            );
+        }
+
+        // Generate the confirm URL with auto-login.
+        $userKey = $user->getUserKey();
+        $confirmPath = '/settings/confirmmail/' . urlencode($key);
+        $userSite = config('freegle.sites.user');
+        $confirmUrl = "{$userSite}{$confirmPath}?u={$userId}&k={$userKey}&src=changeemail";
+
+        $mail = new VerifyEmailMail(
+            userId: $userId,
+            email: $email,
+            confirmUrl: $confirmUrl,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $email);
+        } else {
+            Mail::to($email)->send($mail);
+        }
+
+        Log::info('Sent email verification', [
+            'user_id' => $userId,
+            'email' => $email,
+        ]);
+    }
+
+    /**
+     * Handle refer-to-support — sends a plain text email to the support team.
+     *
+     * V1 parity: ChatRoom::referToSupport() lines 2266-2284.
+     */
+    protected function handleReferToSupport(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $chatId = (int) ($data['chatid'] ?? 0);
+        $userId = (int) ($data['userid'] ?? 0);
+
+        if ($chatId === 0 || $userId === 0) {
+            throw new \RuntimeException('refer_to_support requires chatid and userid');
+        }
+
+        $chat = DB::table('chat_rooms')->where('id', $chatId)->first();
+
+        if (! $chat) {
+            Log::warning("Chat not found for refer_to_support: {$chatId}");
+            return;
+        }
+
+        $user = User::find($userId);
+
+        if (! $user) {
+            Log::warning("User not found for refer_to_support: {$userId}");
+            return;
+        }
+
+        // The "other" user in the chat.
+        $otherUserId = $chat->user1 == $userId ? $chat->user2 : $chat->user1;
+        $otherUser = $otherUserId ? User::find($otherUserId) : null;
+        $otherUserName = $otherUser ? ($otherUser->fullname ?: 'Unknown') : 'Unknown';
+
+        // Get group mods email for reply-to.
+        $groupId = $chat->groupid;
+        $replyToAddress = config('freegle.mail.noreply_addr');
+        $replyToName = config('freegle.branding.name');
+
+        if ($groupId) {
+            $group = DB::table('groups')->where('id', $groupId)->first();
+
+            if ($group) {
+                $groupNameShort = $group->nameshort ?? '';
+                $replyToAddress = $groupNameShort . '-volunteers@' . config('freegle.mail.group_domain', 'groups.ilovefreegle.org');
+                $replyToName = ($group->namefull ?: $groupNameShort) . ' Volunteers';
+            }
+        }
+
+        $mail = new ReferToSupportMail(
+            userName: $user->fullname ?: 'Unknown',
+            userId: $userId,
+            chatId: $chatId,
+            otherUserName: $otherUserName,
+            otherUserId: (int) ($otherUserId ?? 0),
+            replyToAddress: $replyToAddress,
+            replyToName: $replyToName,
+        );
+
+        $supportAddr = config('freegle.mail.support_addr', 'support@ilovefreegle.org');
+        $recipients = array_map('trim', explode(',', $supportAddr));
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, $recipients);
+        } else {
+            Mail::to($recipients)->send($mail);
+        }
+
+        Log::info('Sent refer to support email', [
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+        ]);
+    }
+
+    /**
+     * Obfuscate an email address for display (e.g. "j***@example.com").
+     */
+    private function obfuscateEmail(string $email): string
+    {
+        if (! $email || ! str_contains($email, '@')) {
+            return $email;
+        }
+
+        [$local, $domain] = explode('@', $email, 2);
+
+        if (strlen($local) <= 1) {
+            return '*@' . $domain;
+        }
+
+        return $local[0] . str_repeat('*', strlen($local) - 1) . '@' . $domain;
     }
 }

@@ -1425,6 +1425,78 @@ commands:
             echo "Branch: $CIRCLE_BRANCH" >> ~/artifacts/build-info.txt
             date >> ~/artifacts/build-info.txt
           when: always
+      - run:
+          name: Generate failure diagnostics
+          command: |
+            mkdir -p ~/artifacts
+
+            cat > ~/artifacts/ci-failure-diagnostics.txt <<DIAG_EOF
+            === CI FAILURE DIAGNOSTICS ===
+            Build: $CIRCLE_BUILD_NUM
+            Branch: $CIRCLE_BRANCH
+            Commit: $CIRCLE_SHA1
+            Job: $CIRCLE_JOB
+            Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+            === FAILED TEST SUITES ===
+            DIAG_EOF
+
+            # PHPUnit failures
+            if [ -f ~/artifacts/phpunit/phpunit-output.log ]; then
+              echo "--- PHPUnit ---" >> ~/artifacts/ci-failure-diagnostics.txt
+              grep -E 'FAIL|Error|ERRORS!|FAILURES!' ~/artifacts/phpunit/phpunit-output.log >> ~/artifacts/ci-failure-diagnostics.txt 2>/dev/null || echo "  (no failure lines found)" >> ~/artifacts/ci-failure-diagnostics.txt
+              echo "" >> ~/artifacts/ci-failure-diagnostics.txt
+            fi
+
+            # Go test failures
+            if docker ps --format '{{.Names}}' | grep -q freegle-apiv2; then
+              GO_RESULT=$(docker exec freegle-apiv2 cat /tmp/go-test-output.log 2>/dev/null || true)
+              if echo "$GO_RESULT" | grep -qE 'FAIL|panic'; then
+                echo "--- Go Tests ---" >> ~/artifacts/ci-failure-diagnostics.txt
+                echo "$GO_RESULT" | grep -E 'FAIL|panic|--- FAIL' | tail -30 >> ~/artifacts/ci-failure-diagnostics.txt
+                echo "" >> ~/artifacts/ci-failure-diagnostics.txt
+              fi
+            fi
+
+            # Laravel test failures
+            if [ -f ~/artifacts/laravel/laravel-coverage.xml ]; then
+              LARAVEL_RESULT=$(docker exec freegle-batch cat /tmp/laravel-test-output.log 2>/dev/null || true)
+              if echo "$LARAVEL_RESULT" | grep -qE 'FAIL|Error'; then
+                echo "--- Laravel Tests ---" >> ~/artifacts/ci-failure-diagnostics.txt
+                echo "$LARAVEL_RESULT" | grep -E 'FAIL|Error' | tail -20 >> ~/artifacts/ci-failure-diagnostics.txt
+                echo "" >> ~/artifacts/ci-failure-diagnostics.txt
+              fi
+            fi
+
+            # Playwright failures
+            if [ -d ~/artifacts/test-results ]; then
+              echo "--- Playwright ---" >> ~/artifacts/ci-failure-diagnostics.txt
+              find ~/artifacts/test-results -name '*.json' -exec grep -l '"status":"failed"' {} \; 2>/dev/null | while read f; do
+                python3 -c "
+            import json, sys
+            with open('$f') as fh:
+                d = json.load(fh)
+                if d.get('status') == 'failed':
+                    print(f'  FAIL: {d.get(\"title\",\"?\")}')
+                    for r in d.get('results', []):
+                        if r.get('status') == 'failed':
+                            err = r.get('error', {}).get('message', '')[:200]
+                            print(f'    {err}')
+            " 2>/dev/null || true
+              done >> ~/artifacts/ci-failure-diagnostics.txt
+              echo "" >> ~/artifacts/ci-failure-diagnostics.txt
+            fi
+
+            # Container health at failure time
+            echo "=== CONTAINER STATUS ===" >> ~/artifacts/ci-failure-diagnostics.txt
+            docker ps -a --format 'table {{.Names}}\t{{.Status}}' >> ~/artifacts/ci-failure-diagnostics.txt 2>/dev/null || true
+            echo "" >> ~/artifacts/ci-failure-diagnostics.txt
+
+            # Resource snapshot
+            echo "=== RESOURCES ===" >> ~/artifacts/ci-failure-diagnostics.txt
+            free -h >> ~/artifacts/ci-failure-diagnostics.txt 2>/dev/null || true
+            df -h / >> ~/artifacts/ci-failure-diagnostics.txt 2>/dev/null || true
+          when: on_fail
       - store_artifacts:
           path: ~/artifacts
 

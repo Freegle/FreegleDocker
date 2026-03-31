@@ -368,33 +368,31 @@
         </mj-text>
       </mj-column>
     </mj-section>
-    @foreach($jobAds as $job)
     <mj-section mj-class="bg-light" padding="5px 20px">
-      @if($job->image_url)
-      <mj-column width="55px" vertical-align="middle">
-        <mj-image
-          src="{{ $job->image_url }}"
-          width="45px"
-          height="45px"
-          alt="{{ $job->title }}"
-          padding="0"
-          border-radius="4px"
-          href="{{ $job->tracked_url }}"
-        />
-      </mj-column>
-      @endif
-      <mj-column vertical-align="middle">
-        <mj-text font-size="14px" color="#333333" padding="0 0 0 8px" line-height="1.4">
-          <a href="{{ $job->tracked_url }}" style="color: {{ $accentColor }}; font-weight: bold; text-decoration: none;">
-            {{ $job->title }}
-          </a>
-          @if($job->location)
-          <br/><span style="color: #666666; font-size: 12px;">{{ $job->location }}</span>
-          @endif
-        </mj-text>
+      <mj-column>
+        <mj-table cellpadding="0" cellspacing="0" width="100%">
+          @foreach($jobAds as $job)
+          <tr>
+            @if($job->image_url)
+            <td style="width: 50px; padding: 6px 8px 6px 0; vertical-align: middle;">
+              <a href="{{ $job->tracked_url }}">
+                <img src="{{ $job->image_url }}" width="40" height="40" alt="" style="border-radius: 4px; display: block;" />
+              </a>
+            </td>
+            @endif
+            <td style="padding: 6px 0; vertical-align: middle;">
+              <a href="{{ $job->tracked_url }}" style="color: {{ $accentColor }}; font-weight: bold; text-decoration: none; font-size: 14px;">
+                {{ $job->title }}
+              </a>
+              @if($job->location)
+              <br/><span style="color: #666666; font-size: 12px;">{{ $job->location }}</span>
+              @endif
+            </td>
+          </tr>
+          @endforeach
+        </mj-table>
       </mj-column>
     </mj-section>
-    @endforeach
     <mj-section mj-class="bg-light" padding="0 20px 10px 20px">
       <mj-column>
         <mj-text font-size="12px" color="#666666" line-height="1.4">

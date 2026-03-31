@@ -128,11 +128,17 @@ class DonationServiceTest extends TestCase
 
     public function test_ask_for_donations_with_no_recipients(): void
     {
+        // Freeze time to a point where the query window (yesterday 17:00 to today 17:00)
+        // won't contain any messages_by rows created by parallel tests.
+        $this->travelTo(now()->subYears(5));
+
         $stats = $this->service->askForDonations();
 
         $this->assertEquals(0, $stats['processed']);
         $this->assertEquals(0, $stats['emails_sent']);
         Mail::assertNothingSent();
+
+        $this->travelBack();
     }
 
     public function test_ask_for_donations_respects_interval(): void
@@ -168,30 +174,11 @@ class DonationServiceTest extends TestCase
     {
         $user = $this->createTestUser();
 
-        // Create donation with excluded payer pattern.
+        // Create donation with excluded payer (PayPal Giving Fund).
         UserDonation::create([
             'userid' => $user->id,
-            'Payer' => 'test@example.com', // In EXCLUDED_PAYERS list.
-            'PayerDisplayName' => 'Test Donor',
-            'GrossAmount' => 10.00,
-            'timestamp' => now()->subDays(2),
-        ]);
-
-        $stats = $this->service->thankDonors();
-
-        $this->assertEquals(0, $stats['emails_sent']);
-        Mail::assertNothingSent();
-    }
-
-    public function test_thank_donors_skips_paypal_test(): void
-    {
-        $user = $this->createTestUser();
-
-        // Create donation with PayPal Test payer.
-        UserDonation::create([
-            'userid' => $user->id,
-            'Payer' => 'PayPal Test Account',
-            'PayerDisplayName' => 'Test Donor',
+            'Payer' => 'ppgfukpay@paypalgivingfund.org',
+            'PayerDisplayName' => 'PayPal Giving Fund',
             'GrossAmount' => 10.00,
             'timestamp' => now()->subDays(2),
         ]);
@@ -331,6 +318,103 @@ class DonationServiceTest extends TestCase
         // Verify the stats.
         $this->assertArrayHasKey('processed', $stats);
         $this->assertArrayHasKey('emails_sent', $stats);
+    }
+
+    // --- updateAdsTarget tests ---
+
+    public function test_update_ads_target_with_no_config(): void
+    {
+        // Ensure ads_off_target_max is absent.
+        DB::table('config')->where('key', 'ads_off_target_max')->delete();
+
+        $stats = $this->service->updateAdsTarget();
+
+        $this->assertEquals(0, $stats['target_max']);
+        $this->assertEquals(1, $stats['ads_enabled']);
+    }
+
+    public function test_update_ads_target_with_no_donations(): void
+    {
+        // Set up a target.
+        DB::table('config')->updateOrInsert(
+            ['key' => 'ads_off_target_max'],
+            ['value' => '100']
+        );
+
+        // Freeze time far in the past so no real donations interfere.
+        $this->travelTo(now()->subYears(5));
+
+        $stats = $this->service->updateAdsTarget();
+
+        $this->assertEquals(100.0, $stats['target_max']);
+        $this->assertEquals(0.0, $stats['donated_24h']);
+        $this->assertEquals(100, $stats['remaining']);
+        $this->assertEquals(1, $stats['ads_enabled']);
+
+        // Verify config was updated.
+        $this->assertEquals('100', DB::table('config')->where('key', 'ads_off_target')->value('value'));
+        $this->assertEquals('1', DB::table('config')->where('key', 'ads_enabled')->value('value'));
+
+        $this->travelBack();
+    }
+
+    public function test_update_ads_target_with_sufficient_donations(): void
+    {
+        DB::table('config')->updateOrInsert(
+            ['key' => 'ads_off_target_max'],
+            ['value' => '50']
+        );
+
+        $user = $this->createTestUser();
+
+        // Create donation in the last 24 hours exceeding target.
+        UserDonation::create([
+            'userid' => $user->id,
+            'Payer' => $this->uniqueEmail('payer'),
+            'PayerDisplayName' => 'Generous Donor',
+            'GrossAmount' => 75.00,
+            'timestamp' => now()->subHours(2),
+        ]);
+
+        $stats = $this->service->updateAdsTarget();
+
+        $this->assertEquals(50.0, $stats['target_max']);
+        $this->assertGreaterThanOrEqual(75.0, $stats['donated_24h']);
+        $this->assertEquals(0, $stats['remaining']);
+        $this->assertEquals(0, $stats['ads_enabled']);
+
+        // Verify ads are disabled in config.
+        $this->assertEquals('0', DB::table('config')->where('key', 'ads_enabled')->value('value'));
+    }
+
+    public function test_update_ads_target_excludes_paypal_giving_fund(): void
+    {
+        DB::table('config')->updateOrInsert(
+            ['key' => 'ads_off_target_max'],
+            ['value' => '50']
+        );
+
+        $user = $this->createTestUser();
+
+        // Freeze time to avoid interference from real donations.
+        $this->travelTo(now()->subYears(5));
+
+        // Create donation from excluded payer.
+        UserDonation::create([
+            'userid' => $user->id,
+            'Payer' => 'ppgfukpay@paypalgivingfund.org',
+            'PayerDisplayName' => 'PayPal Giving Fund',
+            'GrossAmount' => 100.00,
+            'timestamp' => now()->subHours(2),
+        ]);
+
+        $stats = $this->service->updateAdsTarget();
+
+        // Excluded payer's donation should NOT count.
+        $this->assertEquals(0.0, $stats['donated_24h']);
+        $this->assertEquals(50, $stats['remaining']);
+
+        $this->travelBack();
     }
 
     public function test_ask_for_donations_skips_user_without_email(): void

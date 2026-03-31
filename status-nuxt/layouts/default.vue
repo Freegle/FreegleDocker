@@ -12,7 +12,7 @@ const tabServices: Record<string, string[]> = {
   devtools: ['phpmyadmin', 'mailpit', 'loki', 'grafana', 'playwright', 'status'],
   testing: [], // Testing tab shows test runners, not services
   infrastructure: ['percona', 'postgres', 'redis', 'beanstalkd', 'spamassassin', 'traefik', 'tusd', 'delivery'],
-  production: ['freegle-dev-live', 'modtools-dev-live'], // Live/production services
+  production: ['freegle-dev-live', 'modtools-dev-live', 'apiv2-live'], // Live/production services
 }
 
 const tabs = [
@@ -29,10 +29,20 @@ const currentTab = computed(() => {
   return tabs.find(tab => route.path.startsWith(tab.path))?.path || '/freegle'
 })
 
-// Overall status for the circle indicator
+// Service IDs on the production tab — excluded from overall status
+const productionServiceIds = new Set(tabServices.production)
+
+// Overall status for the circle indicator (excludes production tab services)
 const overallStatus = computed(() => {
-  const online = statusStore.onlineCount
-  const total = statusStore.totalCount
+  let online = 0
+  let total = 0
+
+  for (const [id, s] of statusStore.serviceStates) {
+    if (productionServiceIds.has(id)) continue
+    total++
+    if (s.status === 'online') online++
+  }
+
   if (total === 0) return 'amber'
   if (online === total) return 'green'
   if (online === 0) return 'red'

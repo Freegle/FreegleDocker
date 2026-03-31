@@ -18,26 +18,42 @@ const { v4: uuidv4 } = require('uuid')
 const app = express()
 app.use(express.json())
 
+// CORS - allow browser requests from ModTools dev-live and other .localhost origins
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+  if (origin && (origin.endsWith('.localhost') || origin.includes('localhost'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, sentry-trace, baggage')
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204)
+  }
+  next()
+})
+
 const PSEUDONYMIZER_URL = process.env.PSEUDONYMIZER_URL || 'http://pseudonymizer:8080'
 
-// In-memory token cache (for consistent tokens within process lifetime)
-// Real persistence is in Container 3's SQLite database
-const tokenCache = new Map()
-
 /**
- * Generate or retrieve a consistent token for a value.
+ * Request canonical tokens from the Pseudonymizer (single source of truth).
+ * @param {Object} values - { fieldType: value } pairs, e.g. { EMAIL: "user@example.com", USER: "12345" }
+ * @param {string} sessionId - Session ID for token registration
+ * @param {string|number} userId - Optional user ID for session tracking
+ * @returns {Object} Map of realValue -> token
  */
-function getOrCreateToken(value, fieldType) {
-  const key = `${fieldType}:${value.toLowerCase().trim()}`
+async function requestTokens(values, sessionId, userId) {
+  const response = await fetch(`${PSEUDONYMIZER_URL}/tokenize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, values, userId }),
+  })
 
-  if (tokenCache.has(key)) {
-    return tokenCache.get(key)
+  if (!response.ok) {
+    throw new Error(`Pseudonymizer tokenize error: ${response.status}`)
   }
 
-  const token = `${fieldType}_${uuidv4().slice(0, 8)}`
-  tokenCache.set(key, token)
-
-  return token
+  const result = await response.json()
+  return result.tokens // { realValue: token }
 }
 
 /**
@@ -54,8 +70,8 @@ const PII_PATTERNS = {
   // Email addresses
   email: /[\w.-]+@[\w.-]+\.\w+/gi,
 
-  // IP addresses (v4)
-  ip: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
+  // IP addresses (v4) - negative lookbehind avoids matching version strings like Chrome/134.0.0.0
+  ip: /(?<![/\d])\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
 
   // UK phone numbers
   phone: /\b(?:\+44|0)\s*\d{2,4}\s*\d{3,4}\s*\d{3,4}\b/g,
@@ -125,73 +141,88 @@ function scanForPii(text) {
 }
 
 /**
- * Extract and pseudonymize PII from query text.
+ * Collect all PII values from the query text and known PII.
+ * Returns { fieldType: value } pairs for batch tokenization.
  */
-function extractAndPseudonymize(text, knownPii = {}) {
-  const mapping = {} // token -> realValue (for frontend de-tokenization)
-  let result = text
+function collectPiiValues(text, knownPii = {}) {
+  const values = {}
 
-  // Process known PII from user selection first
-  if (knownPii.email) {
-    const token = getOrCreateToken(knownPii.email, 'EMAIL')
-    mapping[token] = knownPii.email
-    result = result.replace(new RegExp(escapeRegex(knownPii.email), 'gi'), token)
-  }
+  // Known PII from user selection
+  if (knownPii.email) values[`EMAIL:${knownPii.email}`] = { type: 'EMAIL', value: knownPii.email }
+  if (knownPii.displayname) values[`NAME:${knownPii.displayname}`] = { type: 'NAME', value: knownPii.displayname }
+  if (knownPii.postcode) values[`POSTCODE:${knownPii.postcode}`] = { type: 'POSTCODE', value: knownPii.postcode }
+  if (knownPii.location) values[`LOCATION:${knownPii.location}`] = { type: 'LOCATION', value: knownPii.location }
+  const knownUserId = knownPii.userid || knownPii.userId
+  if (knownUserId) values[`USER:${knownUserId}`] = { type: 'USER', value: knownUserId.toString() }
 
-  if (knownPii.displayname) {
-    const token = getOrCreateToken(knownPii.displayname, 'NAME')
-    mapping[token] = knownPii.displayname
-    result = result.replace(new RegExp(escapeRegex(knownPii.displayname), 'gi'), token)
-  }
-
-  if (knownPii.postcode) {
-    const token = getOrCreateToken(knownPii.postcode, 'POSTCODE')
-    mapping[token] = knownPii.postcode
-    result = result.replace(new RegExp(escapeRegex(knownPii.postcode), 'gi'), token)
-  }
-
-  if (knownPii.location) {
-    const token = getOrCreateToken(knownPii.location, 'LOCATION')
-    mapping[token] = knownPii.location
-    result = result.replace(new RegExp(escapeRegex(knownPii.location), 'gi'), token)
-  }
-
-  if (knownPii.userid) {
-    const token = getOrCreateToken(knownPii.userid.toString(), 'USER')
-    mapping[token] = knownPii.userid.toString()
-    result = result.replace(new RegExp(`\\b${knownPii.userid}\\b`, 'g'), token)
-  }
-
-  // Scan for any other emails in the query
-  const emails = result.match(PII_PATTERNS.email) || []
+  // Scan text for additional PII
+  const emails = text.match(PII_PATTERNS.email) || []
   for (const email of emails) {
-    const token = getOrCreateToken(email, 'EMAIL')
-    mapping[token] = email
-    result = result.replace(new RegExp(escapeRegex(email), 'gi'), token)
+    values[`EMAIL:${email}`] = { type: 'EMAIL', value: email }
   }
 
-  // Scan for IP addresses
-  const ips = result.match(PII_PATTERNS.ip) || []
+  const ips = text.match(PII_PATTERNS.ip) || []
   for (const ip of ips) {
-    const token = getOrCreateToken(ip, 'IP')
-    mapping[token] = ip
-    result = result.replace(new RegExp(escapeRegex(ip), 'g'), token)
+    values[`IP:${ip}`] = { type: 'IP', value: ip }
   }
 
-  // Scan for phone numbers
-  const phones = result.match(PII_PATTERNS.phone) || []
+  const phones = text.match(PII_PATTERNS.phone) || []
   for (const phone of phones) {
-    const token = getOrCreateToken(phone, 'PHONE')
-    mapping[token] = phone
-    result = result.replace(new RegExp(escapeRegex(phone), 'g'), token)
+    values[`PHONE:${phone}`] = { type: 'PHONE', value: phone }
   }
 
-  // Scan for postcodes (that weren't already processed as known PII)
-  const postcodes = result.match(PII_PATTERNS.postcode) || []
+  const postcodes = text.match(PII_PATTERNS.postcode) || []
   for (const postcode of postcodes) {
-    const token = getOrCreateToken(postcode, 'POSTCODE')
-    mapping[token] = postcode
-    result = result.replace(new RegExp(escapeRegex(postcode), 'gi'), token)
+    values[`POSTCODE:${postcode}`] = { type: 'POSTCODE', value: postcode }
+  }
+
+  return values
+}
+
+/**
+ * Extract and pseudonymize PII from query text.
+ * Tokens are created by the Pseudonymizer (single source of truth).
+ */
+async function extractAndPseudonymize(text, knownPii, sessionId, userId) {
+  // Step 1: Collect all PII values
+  const piiValues = collectPiiValues(text, knownPii || {})
+
+  if (Object.keys(piiValues).length === 0) {
+    return { pseudonymizedText: text, mapping: {} }
+  }
+
+  // Step 2: Request canonical tokens from the Pseudonymizer
+  // Build { fieldType: value } for the /tokenize endpoint
+  const tokenizeRequest = {}
+  for (const { type, value } of Object.values(piiValues)) {
+    // Use "TYPE:value" as key to handle multiple values of same type
+    tokenizeRequest[`${type}:${value}`] = value
+  }
+
+  const tokenMap = await requestTokens(tokenizeRequest, sessionId, userId)
+
+  // Step 3: Replace PII values in text with canonical tokens
+  let result = text
+  const mapping = {} // token -> realValue (for frontend de-tokenization)
+
+  // Sort by value length descending so longer values are replaced first
+  // (prevents partial replacement of e.g. "edward@ehibbert.org.uk" by "edward")
+  const sortedPii = Object.values(piiValues).sort((a, b) => b.value.length - a.value.length)
+
+  for (const { type, value } of sortedPii) {
+    const token = tokenMap[value]
+    if (!token) continue
+
+    mapping[token] = value
+
+    if (type === 'USER') {
+      // User IDs: word boundary match
+      result = result.replace(new RegExp(`\\b${escapeRegex(value)}\\b`, 'g'), token)
+    } else if (type === 'IP') {
+      result = result.replace(new RegExp(escapeRegex(value), 'g'), token)
+    } else {
+      result = result.replace(new RegExp(escapeRegex(value), 'gi'), token)
+    }
   }
 
   return { pseudonymizedText: result, mapping }
@@ -232,26 +263,15 @@ app.post('/sanitize', async (req, res) => {
   // Scan for PII before pseudonymization (for UI warning)
   const detectedPii = scanForPii(query)
 
-  // Extract and pseudonymize
-  const { pseudonymizedText, mapping } = extractAndPseudonymize(query, knownPii || {})
-
-  // Send mapping to Pseudonymizer (Container 3) for query translation
+  // Extract PII and get canonical tokens from the Pseudonymizer (single source of truth).
+  // This replaces the old two-step approach of local tokenization + register-mapping.
+  let pseudonymizedText, mapping
   try {
-    const response = await fetch(`${PSEUDONYMIZER_URL}/register-mapping`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId,
-        mapping,
-        userId,
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Pseudonymizer error: ${response.status}`)
-    }
+    const result = await extractAndPseudonymize(query, knownPii || {}, sessionId, userId)
+    pseudonymizedText = result.pseudonymizedText
+    mapping = result.mapping
   } catch (error) {
-    console.error('Failed to register mapping with pseudonymizer:', error.message)
+    console.error('Failed to tokenize with pseudonymizer:', error.message)
     return res.status(503).json({
       error: 'PSEUDONYMIZER_UNAVAILABLE',
       message: 'Unable to connect to pseudonymizer service',
