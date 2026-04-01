@@ -32,8 +32,32 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$REPORT_DIR"
 
 echo "Copying PHP extractor into container..."
-docker exec "$CONTAINER" mkdir -p "$(dirname "$PHP_EXTRACTOR_CONTAINER")"
-docker cp "$PHP_EXTRACTOR_HOST" "$CONTAINER:$PHP_EXTRACTOR_CONTAINER"
+if ! docker exec "$CONTAINER" mkdir -p "$(dirname "$PHP_EXTRACTOR_CONTAINER")"; then
+    echo "ERROR: failed to create directory in container $CONTAINER" >&2
+    exit 1
+fi
+if ! docker cp "$PHP_EXTRACTOR_HOST" "$CONTAINER:$PHP_EXTRACTOR_CONTAINER"; then
+    echo "ERROR: failed to copy PHP extractor into container $CONTAINER" >&2
+    exit 1
+fi
+
+# Write report header now so partial results survive a mid-run failure
+cat > "$REPORT" <<HEADER
+# V1→V2 Migration Parity Report
+
+Generated: $(date -u '+%Y-%m-%d %H:%M UTC')
+
+Only NOT_FOUND and UNCERTAIN behaviors are shown per endpoint. The checker searches all V2 Go packages (not just the target package) to avoid false NOT_FOUNDs from transitive shared-class includes.
+NOT_FOUND means the extractor found no evidence of the V1 behavior in V2 Go source.
+UNCERTAIN means the table name could not be extracted from the V1 SQL string.
+
+---
+
+## Summary
+
+| Endpoint | Behaviors | NOT_FOUND | UNCERTAIN |
+|----------|-----------|-----------|-----------|
+HEADER
 
 # Read mapping as tab-separated pairs
 declare -A PHP_TO_GO
@@ -129,24 +153,6 @@ PYEOF
 
     echo "total=$total not_found=$not_found uncertain=$uncertain"
 done < <(printf '%s\n' "${!PHP_TO_GO[@]}" | sort)
-
-# Write report header
-cat > "$REPORT" <<HEADER
-# V1→V2 Migration Parity Report
-
-Generated: $(date -u '+%Y-%m-%d %H:%M UTC')
-
-Only NOT_FOUND and UNCERTAIN behaviors are shown per endpoint. The checker searches all V2 Go packages (not just the target package) to avoid false NOT_FOUNDs from transitive shared-class includes.
-NOT_FOUND means the extractor found no evidence of the V1 behavior in V2 Go source.
-UNCERTAIN means the table name could not be extracted from the V1 SQL string.
-
----
-
-## Summary
-
-| Endpoint | Behaviors | NOT_FOUND | UNCERTAIN |
-|----------|-----------|-----------|-----------|
-HEADER
 
 # Write summary table rows (sorted)
 while IFS= read -r php_file; do
