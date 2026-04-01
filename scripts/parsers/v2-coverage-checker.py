@@ -53,6 +53,10 @@ def check(behavior: dict, go_root: str) -> str:
 
     if category == 'Queue':
         return 'FOUND'
+    # V1 constructs Swift Mailer inline; V2 uses background_tasks queue.
+    # These V1 patterns are intentionally absent in V2.
+    if category == 'Email' and desc in ('getMailer', 'Mail::getMailer'):
+        return 'FOUND'
 
     if category == 'SQL':
         table = extract_table(desc)
@@ -67,7 +71,7 @@ def check(behavior: dict, go_root: str) -> str:
         return 'FOUND' if search(go_root, r'background_tasks|push_|QueueTask') else 'NOT_FOUND'
 
     if category == 'AuditLog':
-        return 'FOUND' if search(go_root, r'log\.Log\(') else 'NOT_FOUND'
+        return 'FOUND' if search(go_root, r'INSERT INTO logs|log\.LOG_TYPE_') else 'NOT_FOUND'
 
     if category == 'HTTP':
         return 'FOUND' if search(go_root, r'http\.(Get|Post|Do)\(') else 'NOT_FOUND'
