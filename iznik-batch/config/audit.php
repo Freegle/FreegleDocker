@@ -191,8 +191,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | Whether console events should be audited (eg. php artisan db:seed).
+    | 
+    | Finnbarr: enabling for use with TNSyncCommand batch job.
     |
     */
 
-    'console' => false,
+    'console' => true,
 ];
