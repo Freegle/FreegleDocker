@@ -31,10 +31,12 @@
     27 => 'Carbon\\Laravel\\ServiceProvider',
     28 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
     29 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    30 => 'Sentry\\Laravel\\ServiceProvider',
-    31 => 'Sentry\\Laravel\\Tracing\\ServiceProvider',
-    32 => 'SimpleAsFuck\\LaravelLock\\Provider\\PackageProvider',
-    33 => 'App\\Providers\\AppServiceProvider',
+    30 => 'OwenIt\\Auditing\\AuditingServiceProvider',
+    31 => 'Sentry\\Laravel\\ServiceProvider',
+    32 => 'Sentry\\Laravel\\Tracing\\ServiceProvider',
+    33 => 'SimpleAsFuck\\LaravelLock\\Provider\\PackageProvider',
+    34 => 'App\\Providers\\AppServiceProvider',
+    35 => 'OwenIt\\Auditing\\AuditingServiceProvider',
   ),
   'eager' => 
   array (
@@ -53,10 +55,12 @@
     12 => 'Carbon\\Laravel\\ServiceProvider',
     13 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
     14 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    15 => 'Sentry\\Laravel\\ServiceProvider',
-    16 => 'Sentry\\Laravel\\Tracing\\ServiceProvider',
-    17 => 'SimpleAsFuck\\LaravelLock\\Provider\\PackageProvider',
-    18 => 'App\\Providers\\AppServiceProvider',
+    15 => 'OwenIt\\Auditing\\AuditingServiceProvider',
+    16 => 'Sentry\\Laravel\\ServiceProvider',
+    17 => 'Sentry\\Laravel\\Tracing\\ServiceProvider',
+    18 => 'SimpleAsFuck\\LaravelLock\\Provider\\PackageProvider',
+    19 => 'App\\Providers\\AppServiceProvider',
+    20 => 'OwenIt\\Auditing\\AuditingServiceProvider',
   ),
   'deferred' => 
   array (
