@@ -81,7 +81,7 @@ while IFS= read -r php_file; do
 
     # Step 2: check V2 coverage
     if ! python3 "$SCRIPT_DIR/v2-coverage-checker.py" \
-            "$ledger" "$go_dir" \
+            "$ledger" "$GO_ROOT" \
             2>/dev/null > "$annotated"; then
         echo "CHECKER ERROR"
         continue
@@ -136,7 +136,7 @@ cat > "$REPORT" <<HEADER
 
 Generated: $(date -u '+%Y-%m-%d %H:%M UTC')
 
-Only NOT_FOUND and UNCERTAIN behaviors are shown per endpoint.
+Only NOT_FOUND and UNCERTAIN behaviors are shown per endpoint. The checker searches all V2 Go packages (not just the target package) to avoid false NOT_FOUNDs from transitive shared-class includes.
 NOT_FOUND means the extractor found no evidence of the V1 behavior in V2 Go source.
 UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 
