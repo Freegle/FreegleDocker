@@ -8,12 +8,15 @@ const statusStore = useStatusStore()
 const tabServices: Record<string, string[]> = {
   freegle: ['freegle-dev-local', 'freegle-prod-local'],
   modtools: ['modtools-dev-local', 'modtools-prod-local'],
-  backend: ['apiv1', 'apiv2', 'batch', 'host-scripts'],
+  backend: ['apiv1', 'apiv2', 'batch', 'host-scripts', 'mcp-sanitizer', 'mcp-interface', 'mcp-pseudonymizer'],
   devtools: ['phpmyadmin', 'mailpit', 'loki', 'grafana', 'playwright', 'status'],
   testing: [], // Testing tab shows test runners, not services
-  infrastructure: ['percona', 'postgres', 'redis', 'beanstalkd', 'spamassassin', 'traefik', 'tusd', 'delivery'],
+  infrastructure: ['percona', 'postgres', 'redis', 'beanstalkd', 'spamassassin', 'traefik', 'tusd', 'delivery', 'mjml', 'loki-backup'],
   production: ['freegle-dev-live', 'modtools-dev-live', 'apiv2-live'], // Live/production services
 }
+
+// Services that are on-demand only and should not affect the overall status indicator.
+const onDemandServiceIds = new Set(['loki-backup'])
 
 const tabs = [
   { name: 'Freegle', path: '/freegle', id: 'freegle' },
@@ -39,6 +42,7 @@ const overallStatus = computed(() => {
 
   for (const [id, s] of statusStore.serviceStates) {
     if (productionServiceIds.has(id)) continue
+    if (onDemandServiceIds.has(id)) continue
     total++
     if (s.status === 'online') online++
   }
@@ -62,6 +66,7 @@ const getTabStatus = (tabId: string): string => {
   let total = 0
 
   for (const id of serviceIds) {
+    if (onDemandServiceIds.has(id)) continue
     const state = statusStore.getServiceState(id)
     if (state) {
       total++
