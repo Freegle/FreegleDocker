@@ -32,8 +32,6 @@ class BehaviorCollector extends NodeVisitorAbstract {
     private const EMAIL_CLASSES = ['Mail', 'Mailer'];
     private const PUSH_CLASSES  = ['PushNotifications', 'Notifications'];
     private const LOG_METHODS   = ['log', 'logModAction', 'logGroupAction'];
-    private const HTTP_FUNCS    = ['curl_exec', 'file_get_contents'];
-
     public function setFile(string $file): void {
         $this->currentFile = $file;
     }
@@ -54,9 +52,7 @@ class BehaviorCollector extends NodeVisitorAbstract {
             } elseif (in_array($method, self::LOG_METHODS, true)) {
                 $this->record('AuditLog', $method, $line);
             }
-        }
-
-        if ($node instanceof Node\Expr\StaticCall) {
+        } elseif ($node instanceof Node\Expr\StaticCall) {
             if (!($node->class instanceof Node\Name)) {
                 return;
             }
@@ -71,21 +67,23 @@ class BehaviorCollector extends NodeVisitorAbstract {
             } elseif (in_array($class, self::EMAIL_CLASSES, true)) {
                 $this->record('Email', "$class::$method", $line);
             }
-        }
-
-        if ($node instanceof Node\Expr\New_) {
+        } elseif ($node instanceof Node\Expr\New_) {
             if ($node->class instanceof Node\Name) {
                 $this->classesReferenced[] = $node->class->getLast();
             }
-        }
-
-        if ($node instanceof Node\Expr\FuncCall) {
+        } elseif ($node instanceof Node\Expr\FuncCall) {
             if (!($node->name instanceof Node\Name)) {
                 return;
             }
             $func = $node->name->toString();
-            if (in_array($func, self::HTTP_FUNCS, true)) {
+            if ($func === 'curl_exec') {
                 $this->record('HTTP', $func, $node->getLine());
+            } elseif ($func === 'file_get_contents') {
+                // Only flag remote URL fetches, not local file reads
+                $url = $this->firstStringArg($node);
+                if ($url === null || str_starts_with($url, 'http')) {
+                    $this->record('HTTP', $func . ($url ? ': ' . substr($url, 0, 60) : ''), $node->getLine());
+                }
             }
         }
     }
@@ -127,6 +125,7 @@ function buildClassIndex(string $includeRoot, \PhpParser\Parser $parser): array 
         try {
             $ast = $parser->parse($code);
         } catch (\Exception $e) {
+            fwrite(STDERR, "Index parse error in {$file->getPathname()}: {$e->getMessage()}\n");
             continue;
         }
         foreach ($finder->findInstanceOf($ast, Node\Stmt\Class_::class) as $class) {
