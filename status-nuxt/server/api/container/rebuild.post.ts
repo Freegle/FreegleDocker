@@ -5,7 +5,8 @@ export default defineEventHandler(async (event) => {
   const { container, service } = body
 
   // Validate container name
-  if (!container || !/^(freegle|modtools)-[a-zA-Z0-9_-]+$/.test(container)) {
+  const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+  if (!container || !container.startsWith(`${prefix}-`) || !/^[a-zA-Z0-9_-]+$/.test(container)) {
     throw createError({
       statusCode: 400,
       message: 'Invalid container name'

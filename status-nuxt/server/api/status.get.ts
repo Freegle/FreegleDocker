@@ -24,7 +24,8 @@ function getContainerStatuses(): Map<string, ContainerInfo> {
     for (const line of output.split('\n')) {
       if (!line.trim()) continue
       const [name, status, state] = line.split('\t')
-      if (name && (name.startsWith('freegle-') || name.startsWith('modtools-'))) {
+      const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+      if (name && name.startsWith(`${prefix}-`)) {
         containers.set(name, {
           name,
           status: status?.trim() || '',
@@ -92,8 +93,19 @@ export default defineEventHandler(async () => {
     }
   }
 
+  // Include project identity info so users can tell worktrees apart.
+  let branch = ''
+  let worktree = ''
+  try {
+    branch = execSync('git -c safe.directory=/project -C /project rev-parse --abbrev-ref HEAD', { encoding: 'utf8', timeout: 3000 }).trim()
+    worktree = execSync('git -c safe.directory=/project -C /project rev-parse --show-toplevel', { encoding: 'utf8', timeout: 3000 }).trim()
+  } catch { /* not a git repo or git not available */ }
+
   return {
     services: serviceStatuses,
+    project: process.env.COMPOSE_PROJECT_NAME || 'freegle',
+    branch,
+    worktree,
     timestamp: new Date().toISOString(),
   }
 })
