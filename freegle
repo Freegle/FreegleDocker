@@ -220,8 +220,10 @@ cmd_worktree_list() {
         project=$(get_project_name "$wt")
         local branch
         branch=$(git -C "$wt" branch --show-current 2>/dev/null || echo "detached")
+        local last_active
+        last_active=$(git -C "$wt" log -1 --format="%ar" 2>/dev/null || echo "unknown")
 
-        echo -e "  ${name}  (${branch})  project=${project:-unset}"
+        echo -e "  ${name}  (${branch})  project=${project:-unset}  last active: ${last_active}"
     done
 }
 
