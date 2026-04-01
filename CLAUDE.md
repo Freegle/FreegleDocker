@@ -90,7 +90,19 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **freegle CLI worktree improvements**: Port isolation via slot×9000 offsets, auto-start containers on create, removed activate/deactivate. All committed to master.
 - **Worktree list last-active time**: Added `git log -1 --format="%ar"` to `freegle worktree list`. Committed to master (`bed92091`).
 - **CI Vitest fixes** (Nuxt `ed8490b5`): 8 tests were failing in CI. Root cause: (1) container had stale version of `[[id]].vue` without `!me.value` guard — needed manual docker cp sync; (2) `nuxt-app.js` mock missing `useHead`/`useRoute` exports; (3) `myposts.spec.js` wrong store fields (`myPosts` vs `byUserList`), missing `myid`/`fetchByUser`/`isApp`; (4) `chats/id.spec.js` needed Suspense wrapping for async setup + `b-badge` stub. Pushed to PR #201 branch.
-- **PR #201 status**: CI running after `ed8490b5` push. Waiting for CI.
+- **CI Vitest unhandled errors fix** (Nuxt `7669861c`): After `ed8490b5`, all 10862 tests passed but Vitest still exited non-zero due to 3 unhandled errors in `chitchat/id.spec.js`: (1) `b-form-select` stub missing `props` declaration → Vue tried to set objects array on native `<select>` DOM element; (2) wrappers not unmounted between tests → Vue scheduler had pending DOM updates hitting null parentNode. Fixed with `props: ['modelValue','options']` on stub + `afterEach` unmount pattern.
+- **PR #201 status**: CI running on job 6080 after `7669861c` push. Vitest step confirmed passing. Playwright tests running.
+
+### 2026-04-01 - V1→V2 parity extractor toolchain built and run
+- **Parity extractor built** (`scripts/parsers/`): PHP-Parser AST extractor (`v1-behavior-extractor.php`) + Python ripgrep checker (`v2-coverage-checker.py`) + shell driver (`run-parity-check.sh`). PHP→Go mapping in `php-go-mapping.json` (59 entries, 7 SKIP).
+- **Key design**: BFS traversal 3 levels deep via shared classes; searches all of `iznik-server-go/` (not just target package) to avoid false NOT_FOUNDs from transitive includes.
+- **Full run results** (`docs/parity/2026-04-01-parity-report.md`): 52 endpoints checked, 7 skipped. 3,093 NOT_FOUND behaviors, 23,063 UNCERTAIN (dynamic SQL — table names unextractable statically). Top gaps: session.php (88), memberships.php (80), user.php/team.php/message.php (76 each).
+- **Known bugs #14 and #15** (DELETE /user audit log, Notifications push queuing): appear as UNCERTAIN — dynamic SQL construction means table names are not statically extractable. Genuine gaps not surfaced as NOT_FOUND by this tool.
+- **Future use**: Run extractor on V1 endpoint → locked behaviour ledger → approve → implement → coverage checker confirms all FOUND before marking done.
+
+### 2026-04-01 - InventName query fix, session name invention, V1 parity comment cleanup
+- **InventName query bugs** (Go `b2349b5`): `InventName` queried `users_emails` with non-existent columns `cancelled` and `canonical`. MySQL silently errored → email always empty → name never invented. Fixed to `ORDER BY preferred DESC, id ASC`. Also added `InventName` call to `GetSession` (was missing — only `GetUser` had it). Removed all "V1 parity" comment markers from 27 files.
+- **Tests**: Extended `TestInventNameForBlankUser` to cover `fullname=''` (empty string, matching prod); added `TestGetSessionInventsNameFromEmail`. Full suite passes.
 
 ### 2026-04-01 - myposts perf fix, lastpush bug, new member log bug, hook fix
 - **myposts load perf** (Nuxt): Removed `watch(postIds)` in `MyPostsPostsList.vue` that was eagerly fetching full details for all old posts on page load. Both active posts now render in ~300ms instead of 8 seconds.
