@@ -9,8 +9,11 @@
 const { query, tool, createSdkMcpServer } = require('@anthropic-ai/claude-agent-sdk')
 const { z } = require('zod')
 
-// MCP Interface URL (Container 2) - internal Docker network
+// MCP Interface URL (for Loki queries via pseudonymizer pipeline)
 const MCP_INTERFACE_URL = process.env.MCP_INTERFACE_URL || 'http://freegle-mcp-interface:8080'
+
+// Pseudonymizer URL (for direct DB queries — same container handles both Loki and DB)
+const PSEUDONYMIZER_URL = process.env.PSEUDONYMIZER_URL || 'http://freegle-mcp-pseudonymizer:8080'
 
 // Go API URL for database queries (via apiv2-live which connects to production DB)
 const API_URL = process.env.API_URL || 'http://freegle-apiv2-live:8192'
@@ -108,6 +111,83 @@ function createLokiTool(getSanitizerSessionId) {
 }
 
 /**
+ * Create the database query tool.
+ * Executes validated, pseudonymized SQL queries against the Freegle database.
+ */
+function createDbQueryTool(getSanitizerSessionId) {
+  return tool(
+    'db_query',
+    'Query the Freegle database with SQL. Only SELECT queries on whitelisted tables/columns are allowed. ' +
+      'Sensitive data (emails, names, IPs) is automatically pseudonymized in results. ' +
+      'Use USER_xxx tokens in WHERE clauses — they are translated to real values automatically. ' +
+      'LIKE filtering on sensitive columns is blocked. Max 500 rows.',
+    {
+      query: z
+        .string()
+        .describe(
+          'SQL SELECT query. Use USER_xxx tokens for user IDs. ' +
+            'Examples: SELECT id, subject, type, arrival FROM messages WHERE fromuser = USER_xxx ORDER BY arrival DESC LIMIT 20'
+        ),
+    },
+    async (args) => {
+      try {
+        const sessionId = getSanitizerSessionId() || 'anonymous'
+        const response = await fetch(`${PSEUDONYMIZER_URL}/api/db/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, query: args.query }),
+        })
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+          return {
+            content: [{ type: 'text', text: `DB query error: ${err.error || response.status}` }],
+            isError: true,
+          }
+        }
+
+        const data = await response.json()
+        return {
+          content: [{ type: 'text', text: JSON.stringify(data) }],
+        }
+      } catch (error) {
+        return {
+          content: [{ type: 'text', text: `DB query error: ${error.message}` }],
+          isError: true,
+        }
+      }
+    },
+    { annotations: { readOnlyHint: true } }
+  )
+}
+
+/**
+ * Create the database schema discovery tool.
+ * Returns available tables, columns, joins, and example queries.
+ */
+function createDbSchemaTool() {
+  return tool(
+    'db_schema',
+    'Get the database schema showing available tables, columns (with privacy classification), joins, and example queries. ' +
+      'Use this first to understand what data is available before writing SQL queries.',
+    {},
+    async () => {
+      try {
+        const response = await fetch(`${PSEUDONYMIZER_URL}/api/db/schema`)
+        if (!response.ok) {
+          return { content: [{ type: 'text', text: 'Failed to fetch schema' }], isError: true }
+        }
+        const schema = await response.json()
+        return { content: [{ type: 'text', text: JSON.stringify(schema) }] }
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Schema error: ${error.message}` }], isError: true }
+      }
+    },
+    { annotations: { readOnlyHint: true } }
+  )
+}
+
+/**
  * Build the system prompt with optional user context.
  */
 function buildSystemPrompt(userQuery) {
@@ -126,16 +206,22 @@ function buildSystemPrompt(userQuery) {
   return (
     'You are a Freegle support assistant with access to application logs via Loki. ' +
     'You help moderators investigate user issues by querying real log data.\n\n' +
-    '## What Loki contains\n' +
-    '- **API request/response logs** — every HTTP request to the Freegle API with endpoint, method, status, duration\n' +
-    '- **Response body snippets** — truncated to 32 chars per field (user profiles, group data, session data)\n' +
-    '- **Client browser events** — page views, session starts, navigation\n' +
-    '- **NOT message content** — Loki does not contain posted messages, offers, or wanteds. Those are in the database.\n' +
-    '- **NOT posting history** — to find what someone posted, look for POST/PUT requests to /api/message endpoints\n\n' +
+    '## Two data sources\n' +
+    '**Loki** (recent API logs): transient, shows what happened in the last few days/weeks\n' +
+    '**Database** (persistent): long-lived data — user profiles, messages, memberships, chat history, mod logs\n\n' +
+    '## When to use each tool\n' +
+    '- **db_schema** — Call first to discover available tables, columns, and joins\n' +
+    '- **db_query** — For user profiles, posting history, memberships, chat messages, mod logs, login history\n' +
+    '- **loki_query** — For recent API request patterns, errors, performance issues, browser events\n\n' +
+    '## How to use db_query\n' +
+    '- Only SELECT queries on whitelisted tables/columns\n' +
+    '- Sensitive columns (emails, names, IPs) are automatically pseudonymized in results\n' +
+    '- Use USER_xxx tokens in WHERE clauses — they are translated automatically\n' +
+    '- LIKE filtering on sensitive columns is blocked (anti-inference protection)\n' +
+    '- Max 500 rows per query\n\n' +
     '## How to use loki_query\n' +
-    '- Logs are JSON with fields: endpoint, user_id, ip, duration_ms, status_code, trace_id, response_body, request_body\n' +
-    '- Label filters: {app="freegle", source="api"} for API logs, {app="freegle", source="api_headers"} for headers\n' +
-    '- Also available: {source="client"} for browser events, {source="logs_table"} for moderation actions\n' +
+    '- Logs are JSON with fields: endpoint, user_id, ip, duration_ms, status_code, trace_id\n' +
+    '- Label filters: {app="freegle", source="api"} for API logs, {source="client"} for browser events\n' +
     '- Line filter: |= "text" for substring match\n' +
     '- JSON pipeline: | json | field = "value" for structured field queries\n' +
     '- User data in results is pseudonymized (USER_xxx, EMAIL_xxx, NAME_xxx, IP_xxx)\n' +
@@ -176,14 +262,16 @@ async function runLogAnalysis(
   }
 
   // Create MCP server with Loki tool
-  const lokiTool = createLokiTool(
-    () => sessionSanitizerMap.get(effectiveSessionId) || sanitizerSessionId
-  )
+  const getSessionId = () => sessionSanitizerMap.get(effectiveSessionId) || sanitizerSessionId
+
+  const lokiTool = createLokiTool(getSessionId)
+  const dbQueryTool = createDbQueryTool(getSessionId)
+  const dbSchemaTool = createDbSchemaTool()
 
   const mcpServer = createSdkMcpServer({
-    name: 'freegle_logs',
+    name: 'freegle',
     version: '1.0.0',
-    tools: [lokiTool],
+    tools: [lokiTool, dbQueryTool, dbSchemaTool],
   })
 
   const systemPrompt = buildSystemPrompt(userQuery)
@@ -196,8 +284,8 @@ async function runLogAnalysis(
   const queryOptions = {
     model: 'claude-sonnet-4-20250514',
     systemPrompt,
-    mcpServers: { freegle_logs: mcpServer },
-    allowedTools: ['mcp__freegle_logs__loki_query'],
+    mcpServers: { freegle: mcpServer },
+    allowedTools: ['mcp__freegle__loki_query', 'mcp__freegle__db_query', 'mcp__freegle__db_schema'],
     permissionMode: 'bypassPermissions',
     maxTurns: 15,
   }

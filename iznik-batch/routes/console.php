@@ -120,6 +120,41 @@ Schedule::command('purge:messages')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('purge:sessions')
+    ->dailyAt('03:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('purge:logs')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('cleanup:search-duplicates')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('cleanup:chat-duplicates')
+    ->everyTwoHours()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('emails:validate')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('locations:fix-skewed')
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('users:update-ratings')
+    ->everyTenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Unified digest - replaces per-group digests.
 // Daily mode - sends one digest per user with posts from all their communities.
 Schedule::command('mail:digest:unified --mode=daily')
@@ -159,6 +194,36 @@ Schedule::command('users:retention-stats')
     ->weekly()
     ->sundays()
     ->at('06:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Group maintenance.
+Schedule::command('groups:update-counts')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Chat maintenance - update message counts and reopen closed User2Mod chats.
+Schedule::command('chats:update-counts')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Fallback lastaccess update from chat messages and memberships.
+Schedule::command('users:update-lastaccess')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Donation ad targeting - update ads-off target based on recent donations.
+Schedule::command('donations:update-ads-target')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Support tools role management based on team membership.
+Schedule::command('users:update-support-roles')
+    ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
 

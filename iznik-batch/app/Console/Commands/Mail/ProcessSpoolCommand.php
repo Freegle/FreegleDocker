@@ -69,6 +69,8 @@ class ProcessSpoolCommand extends Command
     protected function runDaemon(EmailSpoolerService $spooler): int
     {
         $limit = (int) $this->option('limit');
+        $cleanupDays = (int) $this->option('cleanup-days');
+        $lastCleanup = 0;
 
         $this->registerShutdownHandlers();
         $this->info('Running in daemon mode. Press Ctrl+C to stop.');
@@ -92,6 +94,22 @@ class ProcessSpoolCommand extends Command
                         $stats['stuck_alerts']
                     ));
                 }
+            }
+
+            // Run sent directory cleanup every hour within the daemon.
+            // This ensures cleanup happens even if the scheduled command fails.
+            $now = time();
+            if ($now - $lastCleanup >= 3600) {
+                $deleted = $spooler->cleanupSent($cleanupDays);
+                if ($deleted > 0) {
+                    $this->line(sprintf(
+                        '[%s] Cleanup: deleted %d sent emails older than %d days',
+                        now()->toTimeString(),
+                        $deleted,
+                        $cleanupDays
+                    ));
+                }
+                $lastCleanup = $now;
             }
 
             sleep(1);

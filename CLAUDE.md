@@ -10,7 +10,8 @@
 
 ## Container Quick Reference
 
-- **Ports**: Configured via `PORT_*` variables in `.env`. Never assume defaults.
+- **Ports**: Live in `docker-compose.ports.yml`, included via `COMPOSE_FILE` in `.env`. Never hardcode ports.
+- **Container names**: Prefixed by `COMPOSE_PROJECT_NAME` (default: `freegle`). E.g. `freegle-apiv1`, `freegle-traefik`.
 - **Dev containers**: File sync via `freegle-host-scripts` — no rebuild needed for code changes.
 - **HMR caveat**: If changes don't appear after sync, restart container: `docker restart <container>`.
 - **Production containers**: Require full rebuild (`docker-compose build <name> && docker-compose up -d <name>`).
@@ -18,13 +19,28 @@
 - **Status container**: Restart after code changes (`docker restart status`).
 - **Compose check**: Stop all containers, prune, rebuild, restart, monitor via status container.
 - **Profiles**: Set `COMPOSE_PROFILES` in `.env`. Local dev: `frontend,database,backend,dev,monitoring`. See `docker-compose.yml` for profile definitions.
-- **Networking**: No hardcoded IPs. Traefik handles `.localhost` routing. Playwright uses host network mode.
+- **Networking**: No hardcoded IPs. Traefik handles `.localhost` routing via network aliases. Playwright uses Docker default network.
 - **Playwright tests**: Run against **production container**. If debugging failures, check for container reload triggers — add to pre-optimization in `nuxt.config.js`.
 - Container changes are lost on restart — always make changes locally too.
 
+## Multi-Instance / Worktree Isolation
+
+Multiple Docker Compose environments can run in parallel using git worktrees. Only one worktree has exposed ports at a time (the "active" one). Use `./freegle` CLI:
+
+```bash
+./freegle worktree create feature-x    # Create isolated worktree
+./freegle activate feature-x           # Swap ports to feature-x
+./freegle status                       # See which is active
+./freegle worktree remove feature-x    # Cleanup
+```
+
+**Architecture**: Ports live in `docker-compose.ports.yml` (separate from `docker-compose.yml`). The `COMPOSE_FILE` env var controls inclusion. Secondary worktrees set `COMPOSE_FILE=docker-compose.yml` (no ports) and get a unique `COMPOSE_PROJECT_NAME` for container/volume isolation.
+
+**Single-checkout users**: No changes needed. Default `.env` includes the ports file.
+
 ## Yesterday
 
-Uses `docker-compose.override.yesterday.yml` (copy to `docker-compose.override.yml`). Only dev containers run (faster startup). Uses `deploy.replicas: 0` to disable services. Don't break local dev or CircleCI when making yesterday changes.
+Uses `docker-compose.override.yesterday.yml` (copy to `docker-compose.override.yml`). Set `COMPOSE_FILE=docker-compose.yml:docker-compose.ports.yml:docker-compose.override.yesterday.yml` in `.env`. Only dev containers run (faster startup). Uses `deploy.replicas: 0` to disable services. Don't break local dev or CircleCI when making yesterday changes.
 
 ## Database Schema
 

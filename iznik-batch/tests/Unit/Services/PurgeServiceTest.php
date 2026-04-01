@@ -279,6 +279,8 @@ class PurgeServiceTest extends TestCase
         $this->assertArrayHasKey('orphaned_isochrones', $results);
         $this->assertArrayHasKey('completed_admins', $results);
         $this->assertArrayHasKey('email_tracking', $results);
+        $this->assertArrayHasKey('sessions', $results);
+        $this->assertArrayHasKey('login_links', $results);
     }
 
     public function test_purge_email_tracking(): void
@@ -399,5 +401,278 @@ class PurgeServiceTest extends TestCase
 
         $this->assertEquals(1, $count);
         $this->assertDatabaseMissing('admins_users', ['adminid' => $adminId]);
+    }
+
+    // =========================================================================
+    // Log purge tests (migrated from purge_logs.php)
+    // =========================================================================
+
+    public function test_purge_old_likes(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $message = $this->createTestMessage($user, $group);
+
+        // Old like.
+        DB::table('messages_likes')->insert([
+            'msgid' => $message->id,
+            'userid' => $user->id,
+            'type' => 'View',
+            'timestamp' => now()->subDays(400),
+        ]);
+
+        $count = $this->service->purgeOldLikes();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('messages_likes', [
+            'msgid' => $message->id,
+            'userid' => $user->id,
+        ]);
+    }
+
+    public function test_purge_old_likes_keeps_recent(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $message = $this->createTestMessage($user, $group);
+
+        // Recent like.
+        DB::table('messages_likes')->insert([
+            'msgid' => $message->id,
+            'userid' => $user->id,
+            'type' => 'View',
+            'timestamp' => now()->subDays(30),
+        ]);
+
+        $this->service->purgeOldLikes();
+
+        $this->assertDatabaseHas('messages_likes', [
+            'msgid' => $message->id,
+            'userid' => $user->id,
+        ]);
+    }
+
+    public function test_purge_login_logout_logs(): void
+    {
+        // Old login log.
+        $loginId = DB::table('logs')->insertGetId([
+            'type' => 'User',
+            'subtype' => 'Login',
+            'timestamp' => now()->subDays(400),
+        ]);
+
+        // Old logout log.
+        $logoutId = DB::table('logs')->insertGetId([
+            'type' => 'User',
+            'subtype' => 'Logout',
+            'timestamp' => now()->subDays(400),
+        ]);
+
+        $count = $this->service->purgeLoginLogoutLogs();
+
+        $this->assertGreaterThanOrEqual(2, $count);
+        $this->assertDatabaseMissing('logs', ['id' => $loginId]);
+        $this->assertDatabaseMissing('logs', ['id' => $logoutId]);
+    }
+
+    public function test_purge_user_deletion_logs(): void
+    {
+        $logId = DB::table('logs')->insertGetId([
+            'type' => 'User',
+            'subtype' => 'Deleted',
+            'timestamp' => now()->subDays(60),
+        ]);
+
+        $count = $this->service->purgeUserDeletionLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs', ['id' => $logId]);
+    }
+
+    public function test_purge_user_creation_logs(): void
+    {
+        $logId = DB::table('logs')->insertGetId([
+            'type' => 'User',
+            'subtype' => 'Created',
+            'timestamp' => now()->subDays(60),
+        ]);
+
+        $count = $this->service->purgeUserCreationLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs', ['id' => $logId]);
+    }
+
+    public function test_purge_blank_subtype_logs(): void
+    {
+        $logId = DB::table('logs')->insertGetId([
+            'type' => 'User',
+            'subtype' => '',
+            'timestamp' => now()->subDays(60),
+        ]);
+
+        $count = $this->service->purgeBlankSubtypeLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs', ['id' => $logId]);
+    }
+
+    public function test_purge_bounce_logs(): void
+    {
+        $logId = DB::table('logs')->insertGetId([
+            'type' => 'User',
+            'subtype' => 'Bounce',
+            'timestamp' => now()->subDays(120),
+        ]);
+
+        $count = $this->service->purgeBounceLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs', ['id' => $logId]);
+    }
+
+    public function test_purge_old_bounce_emails(): void
+    {
+        $user = $this->createTestUser();
+
+        // Need an email for the foreign key.
+        $emailId = DB::table('users_emails')->insertGetId([
+            'email' => $this->uniqueEmail('bounce'),
+            'userid' => $user->id,
+            'added' => now(),
+        ]);
+
+        $bounceId = DB::table('bounces_emails')->insertGetId([
+            'emailid' => $emailId,
+            'date' => now()->subDays(60),
+        ]);
+
+        $count = $this->service->purgeOldBounceEmails();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('bounces_emails', ['id' => $bounceId]);
+    }
+
+    public function test_purge_email_logs(): void
+    {
+        $logId = DB::table('logs_emails')->insertGetId([
+            'timestamp' => now()->subDays(3),
+        ]);
+
+        $count = $this->service->purgeEmailLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs_emails', ['id' => $logId]);
+    }
+
+    public function test_purge_non_freegle_group_logs(): void
+    {
+        // Create non-Freegle group.
+        $group = $this->createTestGroup();
+        $group->update(['type' => 'Reuse']);
+
+        $logId = DB::table('logs')->insertGetId([
+            'type' => 'Group',
+            'groupid' => $group->id,
+            'timestamp' => now()->subDays(60),
+        ]);
+
+        $count = $this->service->purgeNonFreegleGroupLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs', ['id' => $logId]);
+    }
+
+    public function test_purge_src_logs(): void
+    {
+        $logId = DB::table('logs_src')->insertGetId([
+            'src' => 'test',
+            'date' => now()->subDays(400),
+        ]);
+
+        $count = $this->service->purgeSrcLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs_src', ['id' => $logId]);
+    }
+
+    public function test_purge_js_error_logs(): void
+    {
+        $logId = DB::table('logs_errors')->insertGetId([
+            'text' => 'Test error',
+            'date' => now()->subDays(60),
+        ]);
+
+        $count = $this->service->purgeJsErrorLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs_errors', ['id' => $logId]);
+    }
+
+    public function test_purge_plugin_logs(): void
+    {
+        $logId = DB::table('logs')->insertGetId([
+            'type' => 'Plugin',
+            'timestamp' => now()->subDays(3),
+        ]);
+
+        $count = $this->service->purgePluginLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs', ['id' => $logId]);
+    }
+
+    public function test_purge_sql_logs(): void
+    {
+        $logId = DB::table('logs_sql')->insertGetId([
+            'date' => now()->subHours(8),
+            'session' => 'test-session',
+            'request' => 'SELECT 1',
+            'response' => 'OK',
+        ]);
+
+        $count = $this->service->purgeSqlLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('logs_sql', ['id' => $logId]);
+    }
+
+    public function test_purge_user_activity_logs(): void
+    {
+        $user = $this->createTestUser();
+
+        DB::table('users_active')->insert([
+            'userid' => $user->id,
+            'timestamp' => now()->subDays(800),
+        ]);
+
+        $count = $this->service->purgeUserActivityLogs();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+    }
+
+    public function test_purge_all_logs_returns_all_keys(): void
+    {
+        $results = $this->service->purgeAllLogs();
+
+        $this->assertIsArray($results);
+        $this->assertArrayHasKey('old_likes', $results);
+        $this->assertArrayHasKey('login_logout_logs', $results);
+        $this->assertArrayHasKey('user_deletion_logs', $results);
+        $this->assertArrayHasKey('user_creation_logs', $results);
+        $this->assertArrayHasKey('blank_subtype_logs', $results);
+        $this->assertArrayHasKey('bounce_logs', $results);
+        $this->assertArrayHasKey('old_bounce_emails', $results);
+        $this->assertArrayHasKey('email_logs', $results);
+        $this->assertArrayHasKey('non_freegle_group_logs', $results);
+        $this->assertArrayHasKey('orphaned_message_logs', $results);
+        $this->assertArrayHasKey('src_logs', $results);
+        $this->assertArrayHasKey('js_error_logs', $results);
+        $this->assertArrayHasKey('plugin_logs', $results);
+        $this->assertArrayHasKey('sql_logs', $results);
+        $this->assertArrayHasKey('user_activity_logs', $results);
+        $this->assertArrayHasKey('orphaned_user_logs', $results);
     }
 }

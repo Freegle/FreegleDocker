@@ -3,9 +3,12 @@
 namespace Tests\Unit\Services;
 
 use App\Mail\Welcome\WelcomeMail;
+use App\Models\UserEmail;
 use App\Services\EmailSpoolerService;
+use App\Services\Mail\Incoming\BounceService;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\Mime\Email;
 use Tests\Support\IsolatedSpoolDirectory;
 use Tests\TestCase;
@@ -150,6 +153,52 @@ class EmailSpoolerServiceTest extends TestCase
 
         $this->assertEquals(1, $deleted);
         $this->assertFileDoesNotExist($sentFile);
+    }
+
+    public function test_cleanup_sent_skips_non_json_files(): void
+    {
+        // Create a non-json file in the sent directory.
+        file_put_contents($this->testSpoolDir . '/sent/readme.txt', 'do not delete');
+
+        // Create an old json file that should be deleted.
+        $oldFile = $this->testSpoolDir . '/sent/old_mail.json';
+        file_put_contents($oldFile, json_encode(['id' => 'old']));
+        touch($oldFile, strtotime('-10 days'));
+
+        // Create a recent json file that should be kept.
+        $newFile = $this->testSpoolDir . '/sent/new_mail.json';
+        file_put_contents($newFile, json_encode(['id' => 'new']));
+
+        $deleted = $this->spooler->cleanupSent(daysToKeep: 7);
+
+        $this->assertEquals(1, $deleted);
+        $this->assertFileDoesNotExist($oldFile);
+        $this->assertFileExists($newFile);
+        $this->assertFileExists($this->testSpoolDir . '/sent/readme.txt');
+    }
+
+    public function test_cleanup_sent_handles_many_files(): void
+    {
+        // Create 500 old files to verify DirectoryIterator handles batches.
+        for ($i = 0; $i < 500; $i++) {
+            $file = $this->testSpoolDir . '/sent/mail_' . $i . '.json';
+            file_put_contents($file, json_encode(['id' => 'mail_' . $i]));
+            touch($file, strtotime('-10 days'));
+        }
+
+        // Create 5 recent files that should be kept.
+        for ($i = 0; $i < 5; $i++) {
+            $file = $this->testSpoolDir . '/sent/recent_' . $i . '.json';
+            file_put_contents($file, json_encode(['id' => 'recent_' . $i]));
+        }
+
+        $deleted = $this->spooler->cleanupSent(daysToKeep: 7);
+
+        $this->assertEquals(500, $deleted);
+
+        // Verify the recent files are still there.
+        $remaining = glob($this->testSpoolDir . '/sent/*.json');
+        $this->assertCount(5, $remaining);
     }
 
     public function test_retry_failed_moves_to_pending(): void
@@ -625,5 +674,130 @@ class EmailSpoolerServiceTest extends TestCase
 
         $this->assertTrue($hasTextPart, 'Email should have a text/plain part');
         $this->assertTrue($hasHtmlPart, 'Email should have a text/html part');
+    }
+
+    /**
+     * Test that isPermanentSmtpFailure correctly identifies permanent errors.
+     */
+    public function test_is_permanent_smtp_failure_detects_hard_bounces(): void
+    {
+        $method = new \ReflectionMethod($this->spooler, 'isPermanentSmtpFailure');
+        $method->setAccessible(true);
+
+        // Permanent failures - should return true.
+        $this->assertTrue($method->invoke($this->spooler, 'Expected response code "250/251/252" but got code "550", with message "550 5.1.1 User unknown"'));
+        $this->assertTrue($method->invoke($this->spooler, 'Expected response code "250/251/252" but got code "501", with message "501 5.1.3 Bad recipient address syntax"'));
+        $this->assertTrue($method->invoke($this->spooler, 'Invalid addresses: non-ASCII characters not supported in local-part of email.'));
+        $this->assertTrue($method->invoke($this->spooler, 'Expected response code "250/251/252" but got code "553", with message "553 5.1.3 Invalid address"'));
+        $this->assertTrue($method->invoke($this->spooler, 'Expected response code "250/251/252" but got code "554", with message "554 Transaction failed"'));
+        $this->assertTrue($method->invoke($this->spooler, 'Expected response code "250/251/252" but got code "551", with message "551 User not local"'));
+        $this->assertTrue($method->invoke($this->spooler, '550 No such user - 5.2.1 Mailbox disabled'));
+
+        // Transient failures - should return false.
+        $this->assertFalse($method->invoke($this->spooler, 'Connection timed out'));
+        $this->assertFalse($method->invoke($this->spooler, 'Expected response code "250/251/252" but got code "421", with message "421 Try again later"'));
+        $this->assertFalse($method->invoke($this->spooler, 'Expected response code "250/251/252" but got code "450", with message "450 Mailbox busy"'));
+        $this->assertFalse($method->invoke($this->spooler, 'Connection refused'));
+        $this->assertFalse($method->invoke($this->spooler, 'DNS lookup failed'));
+    }
+
+    /**
+     * Test that permanent SMTP failures move emails to failed/ and record a bounce.
+     */
+    public function test_permanent_smtp_failure_moves_to_failed_and_records_bounce(): void
+    {
+        // Create a test user — createTestUser() already creates a preferred email.
+        // Use that email directly so checkAndSuspendUser finds the bounce on the preferred email.
+        $user = $this->createTestUser();
+        $userEmail = UserEmail::where('userid', $user->id)->where('preferred', 1)->first();
+
+        // Create a spool file addressed to that user's email.
+        $id = 'test_bounce_' . uniqid();
+        $data = [
+            'id' => $id,
+            'to' => [['address' => $userEmail->email, 'name' => '']],
+            'from' => [['address' => $this->uniqueEmail('noreply'), 'name' => 'Freegle']],
+            'subject' => 'Test Subject',
+            'html' => '<p>Test</p>',
+            'text' => 'Test',
+            'headers' => [],
+            'reply_to' => [],
+            'cc' => [],
+            'bcc' => [],
+            'created_at' => now()->toIso8601String(),
+            'attempts' => 0,
+            'last_attempt' => null,
+            'last_error' => null,
+        ];
+
+        file_put_contents(
+            $this->testSpoolDir . '/pending/' . $id . '.json',
+            json_encode($data)
+        );
+
+        // Mock the Mail facade to throw a permanent SMTP error.
+        \Illuminate\Support\Facades\Mail::shouldReceive('html')
+            ->once()
+            ->andThrow(new \Exception('Expected response code "250/251/252" but got code "550", with message "550 5.1.1 User unknown"'));
+
+        $stats = $this->spooler->processSpool();
+
+        // Email should be in failed/, not pending/.
+        $this->assertFileDoesNotExist($this->testSpoolDir . '/pending/' . $id . '.json');
+        $this->assertFileExists($this->testSpoolDir . '/failed/' . $id . '.json');
+        $this->assertEquals(1, $stats['bounced'] ?? 0);
+
+        // Bounce should be recorded in bounces_emails.
+        $bounceCount = DB::table('bounces_emails')
+            ->where('emailid', $userEmail->id)
+            ->where('permanent', 1)
+            ->count();
+        $this->assertGreaterThanOrEqual(1, $bounceCount);
+
+        // User should be marked as bouncing (1 permanent bounce = suspension).
+        $user->refresh();
+        $this->assertEquals(1, $user->bouncing);
+    }
+
+    /**
+     * Test that transient SMTP failures still retry (move back to pending/).
+     */
+    public function test_transient_smtp_failure_retries(): void
+    {
+        $id = 'test_transient_' . uniqid();
+        $data = [
+            'id' => $id,
+            'to' => [['address' => $this->uniqueEmail('recipient'), 'name' => '']],
+            'from' => [['address' => $this->uniqueEmail('noreply'), 'name' => 'Freegle']],
+            'subject' => 'Test Subject',
+            'html' => '<p>Test</p>',
+            'text' => 'Test',
+            'headers' => [],
+            'reply_to' => [],
+            'cc' => [],
+            'bcc' => [],
+            'created_at' => now()->toIso8601String(),
+            'attempts' => 0,
+            'last_attempt' => null,
+            'last_error' => null,
+        ];
+
+        file_put_contents(
+            $this->testSpoolDir . '/pending/' . $id . '.json',
+            json_encode($data)
+        );
+
+        // Mock the Mail facade to throw a transient error.
+        \Illuminate\Support\Facades\Mail::shouldReceive('html')
+            ->once()
+            ->andThrow(new \Exception('Connection timed out'));
+
+        $stats = $this->spooler->processSpool();
+
+        // Email should be back in pending/ for retry.
+        $this->assertFileExists($this->testSpoolDir . '/pending/' . $id . '.json');
+        $this->assertFileDoesNotExist($this->testSpoolDir . '/failed/' . $id . '.json');
+        $this->assertEquals(1, $stats['retried']);
+        $this->assertEquals(0, $stats['bounced'] ?? 0);
     }
 }

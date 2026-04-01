@@ -3198,31 +3198,7 @@ class IncomingMailService
      */
     private function getOrCreateUser2ModChat(int $userId, int $groupId): ?ChatRoom
     {
-        // Check if chat already exists
-        $chat = ChatRoom::where('chattype', 'User2Mod')
-            ->where('user1', $userId)
-            ->where('groupid', $groupId)
-            ->first();
-
-        if ($chat !== null) {
-            return $chat;
-        }
-
-        // Create new chat
-        $chat = ChatRoom::create([
-            'chattype' => 'User2Mod',
-            'user1' => $userId,
-            'groupid' => $groupId,
-        ]);
-
-        Log::info('Created new User2Mod chat', [
-            'chat_id' => $chat->id,
-            'user_id' => $userId,
-            'group_id' => $groupId,
-            'created_new' => true,
-        ]);
-
-        return $chat;
+        return ChatRoom::getOrCreateUser2Mod($userId, $groupId);
     }
 
     /**

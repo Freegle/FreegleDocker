@@ -45,6 +45,18 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `data:update-cpi` | Update CPI data |
 | `data:git-summary` | Generate git summary |
 | `data:classify-app-release` | Classify app release versions |
+| `groups:update-counts` | Update group member/moderator counts |
+| `chats:update-counts` | Update chat message counts, reopen closed User2Mod |
+| `users:update-lastaccess` | Fallback update of user last access timestamps |
+| `users:update-support-roles` | Grant/remove support tools access |
+| `donations:update-ads-target` | Update ads-off donation target |
+| `purge:logs` | Purge old log entries from various tables |
+| `purge:sessions` | Purge old sessions and login links |
+| `cleanup:search-duplicates` | Remove duplicate consecutive searches |
+| `cleanup:chat-duplicates` | Remove duplicate consecutive chat messages |
+| `emails:validate` | Validate emails and delete invalid ones |
+| `locations:fix-skewed` | Fix swapped lat/lng coordinates |
+| `users:update-ratings` | Update rating visibility based on chat interactions |
 
 ## Testing Emails (mail:test)
 
@@ -159,6 +171,18 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `purge_chats.php` | `purge:chats` | - | Chat purging |
 | `users_kudos.php` | `users:update-kudos` | - | User kudos |
 | `users_retention.php` | `users:retention-stats` | - | User retention stats |
+| `membercounts.php` | `groups:update-counts` | - | Group member/mod counts |
+| `chat_latestmessage.php` | `chats:update-counts` | - | Chat message counts + reopen closed User2Mod |
+| `lastaccess.php` | `users:update-lastaccess` | - | Fallback lastaccess update |
+| `supporttools.php` | `users:update-support-roles` | - | Support tools role management |
+| `donations_ads_target.php` | `donations:update-ads-target` | - | Ads-off donation target |
+| `purge_logs.php` | `purge:logs` | - | Log purging (16 purge operations) |
+| `purge_sessions.php` | `purge:sessions` | - | Session + login link purging |
+| `searchdups.php` | `cleanup:search-duplicates` | - | Consecutive search dedup |
+| `chatdups.php` | `cleanup:chat-duplicates` | - | Consecutive chat message dedup |
+| `email_validate.php` | `emails:validate` | - | Delete invalid emails |
+| `locations_skewwhiff.php` | `locations:fix-skewed` | - | Fix swapped lat/lng |
+| `user_ratings.php` | `users:update-ratings` | - | Rating visibility |
 
 ## Code Written - Running via CircleCI (Not Scheduler)
 
@@ -193,7 +217,7 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `admins.php` | Every 1 min | Medium | Admin notifications |
 | `tryst.php` | Every 1 min | Medium | Meeting coordination |
 | `memberships_processing.php` | Every 1 min | Medium | Membership processing |
-| `donations_ads_target.php` | Every 1 min | Medium | Donation ad targeting |
+| ~~`donations_ads_target.php`~~ | ~~Every 1 min~~ | ~~Medium~~ | ~~Donation ad targeting~~ — **Migrated: `donations:update-ads-target`** |
 | `user_exhort.php` | Every 1 min | Medium | User encouragement |
 | `lovejunk.php` | Every 1 min | Medium | LoveJunk integration |
 | `exports.php` | Every 1 min | Low | Data exports |
@@ -218,23 +242,23 @@ These original scripts need to be migrated to Laravel artisan commands:
 |--------|-----------|----------|-------------|
 | `donations_giftaid.php` | Every 10 min | Medium | Gift Aid processing |
 | `alerts.php` | Every 10 min | Medium | System alerts |
-| `user_ratings.php` | Every 10 min | Low | User ratings |
+| ~~`user_ratings.php`~~ | ~~Every 10 min~~ | ~~Low~~ | ~~User ratings~~ — **Migrated: `users:update-ratings`** |
 | `eximlogs.php` | Every 10 min | Low | Exim mail logs |
 | `whatjobs_spam.php` | Every 10 min | Low | WhatJobs spam |
 | `jobs_illustrations.php` | Every 30 min | Low | Job illustrations |
 | `message_unindexed.php` | Every 30 min | Low | Unindexed messages |
-| `chat_latestmessage.php` | Every 60 min | Low | Chat latest message |
+| ~~`chat_latestmessage.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Chat latest message~~ — **Migrated: `chats:update-counts`** |
 | `pledge.php` | Every 60 min | Low | Pledges |
-| `lastacces.php` | Every 59 min | Low | Last access tracking |
+| ~~`lastacces.php`~~ | ~~Every 59 min~~ | ~~Low~~ | ~~Last access tracking~~ — **Migrated: `users:update-lastaccess`** |
 | `mod_notifs.php` | Every 60 min | Medium | Moderator notifications |
-| `supporttools.php` | Every 60 min | Low | Support tools |
-| `membercounts.php` | Every 60 min | Low | Member counts |
+| ~~`supporttools.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Support tools~~ — **Migrated: `users:update-support-roles`** |
+| ~~`membercounts.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Member counts~~ — **Migrated: `groups:update-counts`** |
 | `autorepost.php` | Every 60 min | Medium | Auto-repost messages |
 | `chaseup.php` | Every 60 min | Medium | Message chase-up |
-| `searchdups.php` | Every 60 min | Low | Search duplicates |
+| ~~`searchdups.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Search duplicates~~ — **Migrated: `cleanup:search-duplicates`** |
 | `autoapprove.php` | Every 60 min | Medium | Auto-approve messages |
 | `bounce_users.php` | Every 60 min | Medium | User bounce processing |
-| `chatdups.php` | Every 120 min | Low | Chat duplicates |
+| ~~`chatdups.php`~~ | ~~Every 120 min~~ | ~~Low~~ | ~~Chat duplicates~~ — **Migrated: `cleanup:chat-duplicates`** |
 
 ## Daily Scripts - Not Started
 
@@ -252,12 +276,12 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `group_stats.php` | 02:00 | Low | Group statistics |
 | `doogal` | 03:00 | Low | Doogal data import |
 | `engage_update.php` | 03:00 | Low | Engagement update |
-| `purge_sessions.php` | 03:00 | Low | Session purging |
-| `purge_logs.php` | 04:00 | Low | Log purging |
-| `email_validate.php` | 04:00 | Low | Email validation |
+| ~~`purge_sessions.php`~~ | ~~03:00~~ | ~~Low~~ | ~~Session purging~~ — **Migrated: `purge:sessions`** |
+| ~~`purge_logs.php`~~ | ~~04:00~~ | ~~Low~~ | ~~Log purging~~ — **Migrated: `purge:logs`** |
+| ~~`email_validate.php`~~ | ~~04:00~~ | ~~Low~~ | ~~Email validation~~ — **Migrated: `emails:validate`** |
 | `messages_popular.php` | 05:00 | Low | Popular messages |
 | `users_remap.php` | 05:00 | Low | User remapping |
-| `locations_skewwhiff.php` | 05:00 | Low | Location fixes |
+| ~~`locations_skewwhiff.php`~~ | ~~05:00~~ | ~~Low~~ | ~~Location fixes~~ — **Migrated: `locations:fix-skewed`** |
 | `nearby.php` | 14:05 | Medium | Nearby items |
 | `chat_review.php` | 11:00 | Medium | Chat review queue |
 | `engage.php` | 16:00 | Medium | User engagement emails |

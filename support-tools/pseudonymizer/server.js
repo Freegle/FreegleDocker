@@ -714,12 +714,15 @@ function parseDuration(str) {
   return value * (multipliers[unit] || 0)
 }
 
+// Mount database query routes
+const { mountDbRoutes } = require('./db-query')
+mountDbRoutes(app, getOrCreateToken, translateQuery, writeAuditLog)
+
 const PORT = process.env.PORT || 8080
 app.listen(PORT, () => {
   console.log(`Pseudonymizer service listening on port ${PORT}`)
   console.log(`Loki URL: ${LOKI_URL}`)
-  console.log(`Data directory: ${DATA_DIR}`)
-  console.log(`Audit log directory: ${AUDIT_LOG_DIR}`)
+  console.log(`Endpoints: /query (Loki), /tokenize, /api/db/query, /api/db/schema`)
 })
 
 module.exports = { app, getOrCreateToken, getRealValue, pseudonymizeText, translateQuery }

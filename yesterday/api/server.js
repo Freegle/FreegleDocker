@@ -337,6 +337,45 @@ app.get('/api/whitelisted-ips', async (req, res) => {
   }
 });
 
+// Typical phase durations in minutes (based on ~42GB backup on n2-standard-4)
+const PHASE_DURATIONS = {
+  starting: 2,
+  stopping: 1,
+  extracting: 20,
+  decompressing: 90,
+  preparing: 5,
+  restoring_loki: 35,
+  building: 10,
+  starting_infra: 5,
+  starting_apps: 3
+};
+const PHASE_ORDER = Object.keys(PHASE_DURATIONS);
+
+function estimateETA(status) {
+  const phaseIndex = PHASE_ORDER.indexOf(status.status);
+  if (phaseIndex === -1) return null;
+
+  // Time spent in current phase
+  const phaseStart = new Date(status.timestamp).getTime();
+  const elapsed = (Date.now() - phaseStart) / 60000; // minutes
+
+  // Remaining time = rest of current phase + all subsequent phases
+  const currentPhaseDuration = PHASE_DURATIONS[status.status] || 5;
+  let remaining = Math.max(0, currentPhaseDuration - elapsed);
+
+  for (let i = phaseIndex + 1; i < PHASE_ORDER.length; i++) {
+    remaining += PHASE_DURATIONS[PHASE_ORDER[i]];
+  }
+
+  return {
+    estimatedMinutesRemaining: Math.ceil(remaining),
+    estimatedCompletion: new Date(Date.now() + remaining * 60000).toISOString(),
+    currentPhase: status.status,
+    phaseIndex: phaseIndex + 1,
+    totalPhases: PHASE_ORDER.length
+  };
+}
+
 // GET /api/restore-status - Check if a restore is currently running
 app.get('/api/restore-status', async (req, res) => {
   try {
@@ -358,18 +397,21 @@ app.get('/api/restore-status', async (req, res) => {
       const statusData = await fsPromises.readFile(statusFile, 'utf8');
       const status = JSON.parse(statusData);
 
-      // Check if status is recent (within last 10 minutes)
+      // Check if status is recent — some phases (decompression, Loki restore) take 90+ minutes
+      // without a status update, so use a generous window
       const statusAge = Date.now() - new Date(status.timestamp).getTime();
-      const isRecent = statusAge < 10 * 60 * 1000;
+      const isRecent = statusAge < 120 * 60 * 1000;
 
       if (isRecent && (status.status !== 'completed' && status.status !== 'failed')) {
+        const eta = estimateETA(status);
         return res.json({
           inProgress: true,
           status: status.status,
           message: status.message,
           backupDate: status.backupDate,
           filesRemaining: status.filesRemaining || 0,
-          queued: triggerExists
+          queued: triggerExists,
+          eta
         });
       }
 

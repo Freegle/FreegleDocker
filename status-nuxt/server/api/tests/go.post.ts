@@ -1,6 +1,8 @@
 import { spawn, execSync } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
+const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+
 export default defineEventHandler(async (event) => {
   console.log('Starting Go tests...')
 
@@ -29,7 +31,7 @@ export default defineEventHandler(async (event) => {
   // Resolve percona IP to bypass Go's stale DNS resolver in Docker
   let perconaIp = 'percona'
   try {
-    perconaIp = execSync("docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' freegle-percona", { encoding: 'utf8' }).trim()
+    perconaIp = execSync(`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${prefix}-percona`, { encoding: 'utf8' }).trim()
     console.log(`Resolved percona IP: ${perconaIp}`)
   } catch (e) {
     console.log('Failed to resolve percona IP, using hostname')
@@ -46,14 +48,14 @@ export default defineEventHandler(async (event) => {
     echo "Setting up Go test database (iznik_go_test)..."
 
     # Copy schema from main iznik database
-    docker exec freegle-apiv1 sh -c "\\
+    docker exec ${prefix}-apiv1 sh -c "\\
       mysql -h percona -u root -piznik -e 'DROP DATABASE IF EXISTS iznik_go_test; CREATE DATABASE iznik_go_test;' && \\
       mysqldump -h percona -u root -piznik --no-data --routines --triggers iznik | mysql -h percona -u root -piznik iznik_go_test && \\
       mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode = 'NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'\\" && \\
       mysql -h percona -u root -piznik -e \\"SET GLOBAL sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''));\\"" || echo "Warning: Database setup had issues, continuing..."
 
     echo "Running Go tests against iznik_go_test database..."
-    docker exec -w /app freegle-apiv2 sh -c "${testCmd} 2>&1"
+    docker exec -w /app ${prefix}-apiv2 sh -c "${testCmd} 2>&1"
   `], { stdio: 'pipe' })
 
   testProcess.stdout.on('data', (data) => {

@@ -92,7 +92,13 @@ echo "Updating Yesterday code..."
 cd /var/www/FreegleDocker
 git fetch origin
 git reset --hard origin/master
-git submodule update --init --recursive
+# Submodule update can fail if a commit was force-pushed away (stale ref).
+# If it fails, remove the submodule checkout and retry with a fresh clone.
+if ! git submodule update --init --recursive 2>&1; then
+    echo "⚠️  Submodule update failed - cleaning stale refs and retrying..."
+    git submodule foreach --recursive 'rm -rf "$toplevel/$sm_path" || true'
+    git submodule update --init --recursive
+fi
 echo "✅ Code updated"
 
 echo "Configuring Yesterday environment..."
@@ -115,6 +121,13 @@ docker stop $(docker ps -q) 2>/dev/null || true
 # Remove all containers to prevent name conflicts
 docker rm -f $(docker ps -aq) 2>/dev/null || true
 echo "✅ All containers stopped and removed"
+
+echo "Restarting Yesterday services (status page available during restore)..."
+# Recreate the freegledocker_default network (destroyed by docker compose down above).
+# yesterday-2fa needs this network in its compose config even though backends are down.
+docker network create freegledocker_default 2>/dev/null || true
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d 2>/dev/null || true
+echo "✅ Yesterday services running — users see restore progress instead of connection errors"
 
 echo "Getting volume path..."
 VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}' 2>/dev/null || echo "")
@@ -490,7 +503,7 @@ echo ""
 echo "=========================================="
 echo "Starting infrastructure containers first..."
 echo "=========================================="
-update_status "starting" "Starting infrastructure containers..."
+update_status "starting_infra" "Starting infrastructure containers..."
 # Start infrastructure services individually, NOT with 'docker compose up -d' which
 # enforces depends_on health check constraints. After restoring 22GB+ Loki backup,
 # disk I/O is saturated and containers may take longer than their health check windows
@@ -548,7 +561,7 @@ echo ""
 echo "=========================================="
 echo "Starting all remaining containers..."
 echo "=========================================="
-update_status "starting" "Starting application containers..."
+update_status "starting_apps" "Starting application containers..."
 # Now that infrastructure is healthy, start everything else.
 # Docker Compose will see the infrastructure containers already running+healthy
 # and start the dependent application containers without timeout issues.

@@ -20,7 +20,7 @@ fi
 # rather than actually doing them.
 CONTINUE_PATTERNS=(
   # Explicit next steps / future work
-  'next step[s]* (would be|is|are|:)'
+  '(### )?next step[s]*'
   'the next thing to do'
   'we (still )?need to'
   'I (still )?need to'
@@ -41,6 +41,7 @@ CONTINUE_PATTERNS=(
   'left to do'
   'here.*(what|the).*(remaining|left|next|outstanding)'
   'summary of (remaining|what|outstanding)'
+  '(### )?Summary$'
 )
 
 MATCHED=""
