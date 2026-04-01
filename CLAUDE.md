@@ -84,6 +84,12 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-04-01 - myposts perf fix, lastpush bug, new member log bug, hook fix
+- **myposts load perf** (Nuxt): Removed `watch(postIds)` in `MyPostsPostsList.vue` that was eagerly fetching full details for all old posts on page load. Both active posts now render in ~300ms instead of 8 seconds.
+- **lastpush "2025 years ago"** (#9518/47, Go `3f3cbd1`): GORM scanning NULL `MAX(lastsent)` could produce non-nil pointer to zero time. Added `IsZero()` guard to nil-out the pointer, preventing `omitempty` bypass. Test added.
+- **New member not in logs** (#9532, Go `f60d807`): `handleJoinAndPost()` in message.go was joining users to groups via `INSERT IGNORE` without creating a mod log entry. Fixed to check `RowsAffected` and create `Group/Joined` log. Test added.
+- **PreToolUse hook fire rate**: `check-tests-before-commit.sh` was firing on ALL bash commands (the `"if"` field in settings.json is not supported for inner hooks). Fixed script to read stdin JSON and only output checklist when command matches `git commit`.
+
 ### 2026-03-12/13 - TODO sweep: mod log crown, message fetch resilience, member comments, edits test, Playwright fixes
 - **Mod log crown**: Fixed `hideSensitiveFields` stripping `systemrole` — now preserved as public info (Go `99d03c8`)
 - **Message fetch resilience** (#77): Added try/catch around individual message fetches in store to prevent "Oh dear" page (Nuxt `58909407`)
