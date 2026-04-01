@@ -84,10 +84,21 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-04-01 - Chitchat scroll fix PR #201, worktree improvements
+- **Chitchat infinite scroll** (PR #201): Fixed by removing `force-use-infinite-wrapper="body"` from `<infinite-loading>`. Root cause: `body` as IntersectionObserver root meant `body.scrollTop` was always 0 (actual scroller is `window/html`), so observer never triggered after ~6 posts. Fixed in `pages/chitchat/[[id]].vue`.
+- **PreToolUse hook - wrong container**: Created `check-docker-container.sh` hook that warns when `docker exec` targets a container not matching current worktree's `COMPOSE_PROJECT_NAME`. Fixed false positive on `git commit` messages. Hooks moved to project-level `.claude/settings.json`.
+- **freegle CLI worktree improvements**: Port isolation via slot×9000 offsets, auto-start containers on create, removed activate/deactivate. All committed to master.
+- **Worktree list last-active time**: Added `git log -1 --format="%ar"` to `freegle worktree list`. Committed to master (`bed92091`).
+- **CI Vitest fixes** (Nuxt `ed8490b5`): 8 tests were failing in CI. Root cause: (1) container had stale version of `[[id]].vue` without `!me.value` guard — needed manual docker cp sync; (2) `nuxt-app.js` mock missing `useHead`/`useRoute` exports; (3) `myposts.spec.js` wrong store fields (`myPosts` vs `byUserList`), missing `myid`/`fetchByUser`/`isApp`; (4) `chats/id.spec.js` needed Suspense wrapping for async setup + `b-badge` stub. Pushed to PR #201 branch.
+- **PR #201 status**: CI running after `ed8490b5` push. Waiting for CI.
+
 ### 2026-04-01 - myposts perf fix, lastpush bug, new member log bug, hook fix
 - **myposts load perf** (Nuxt): Removed `watch(postIds)` in `MyPostsPostsList.vue` that was eagerly fetching full details for all old posts on page load. Both active posts now render in ~300ms instead of 8 seconds.
 - **lastpush "2025 years ago"** (#9518/47, Go `3f3cbd1`): GORM scanning NULL `MAX(lastsent)` could produce non-nil pointer to zero time. Added `IsZero()` guard to nil-out the pointer, preventing `omitempty` bypass. Test added.
 - **New member not in logs** (#9532, Go `f60d807`): `handleJoinAndPost()` in message.go was joining users to groups via `INSERT IGNORE` without creating a mod log entry. Fixed to check `RowsAffected` and create `Group/Joined` log. Test added.
+- **"A freegler" display name** (#9532, Go `9d06707`): Go API returned raw DB value when user has no name set. Added `InventName()` to derive name from email local part and store it (V1 parity: `getDisplayName()` invents name and writes to DB). Test added.
+- **View profile 500 error** (#9532, Nuxt `f7d05943`): `useRoute()` imported from `vue-router` directly can return undefined in SSR hydration context. Fixed to import from `#imports` and added `route?.params?.id` guard. Same fix applied to `pages/message/[id].vue`.
+- **Chitchat infinite scroll** (Nuxt `2a50dada`): Removed `force-use-infinite-wrapper="body"` — body.scrollTop is always 0 so IntersectionObserver never triggered.
 - **PreToolUse hook fire rate**: `check-tests-before-commit.sh` was firing on ALL bash commands (the `"if"` field in settings.json is not supported for inner hooks). Fixed script to read stdin JSON and only output checklist when command matches `git commit`.
 
 ### 2026-03-12/13 - TODO sweep: mod log crown, message fetch resilience, member comments, edits test, Playwright fixes
