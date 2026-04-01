@@ -17,6 +17,7 @@
         "zbateson/mail-mime-parser": "^3.0"
     },
     "require-dev": {
+        "barryvdh/laravel-ide-helper": "*",
         "brianium/paratest": "^7.8",
         "fakerphp/faker": "^1.23",
         "kitloong/laravel-migrations-generator": "^7.2",
