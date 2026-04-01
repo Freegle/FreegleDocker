@@ -1609,7 +1609,7 @@ volumes:
   rspamd_data:
     driver: local
   loki-data:
-    name: loki-data
+    name: ${LOKI_VOLUME:-loki-data}
   apiv2_logs:
     driver: local
   mcp-pseudonymizer-data:
