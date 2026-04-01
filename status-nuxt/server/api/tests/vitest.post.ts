@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   const testCmd = `cd /app && npx vitest run${filterArg} 2>&1`
 
   const testProcess = spawn('sh', ['-c', `
-    docker exec -w /app modtools-dev-local sh -c '${testCmd}'
+    docker exec -w /app ${process.env.COMPOSE_PROJECT_NAME || 'freegle'}-modtools-dev-local sh -c '${testCmd}'
   `], { stdio: 'pipe' })
 
   testProcess.stdout.on('data', (data) => {
