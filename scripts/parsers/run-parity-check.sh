@@ -23,7 +23,9 @@ GO_ROOT="$REPO_ROOT/iznik-server-go"
 REPORT_DIR="$REPO_ROOT/docs/parity"
 REPORT="$REPORT_DIR/$(date +%Y-%m-%d)-parity-report.md"
 TMP_DIR="$(mktemp -d)"
-CONTAINER="freegle-apiv1"
+PROJECT_NAME=$(grep -E '^COMPOSE_PROJECT_NAME=' "$REPO_ROOT/.env" 2>/dev/null | cut -d= -f2)
+PROJECT_NAME="${PROJECT_NAME:-freegle}"
+CONTAINER="${PROJECT_NAME}-apiv1"
 
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -50,7 +52,7 @@ declare -A DETAILS
 
 echo "Processing ${#PHP_TO_GO[@]} endpoints..."
 
-for php_file in $(echo "${!PHP_TO_GO[@]}" | tr ' ' '\n' | sort); do
+while IFS= read -r php_file; do
     go_pkg="${PHP_TO_GO[$php_file]}"
 
     if [[ "$go_pkg" == SKIP:* ]]; then
@@ -86,7 +88,7 @@ for php_file in $(echo "${!PHP_TO_GO[@]}" | tr ' ' '\n' | sort); do
     fi
 
     # Step 3: count results
-    counts=$(python3 - "$annotated" <<'PYEOF'
+    if ! counts=$(python3 - "$annotated" <<'PYEOF'
 import json, sys
 data = json.load(open(sys.argv[1]))
 total = len(data)
@@ -94,7 +96,10 @@ not_found = sum(1 for b in data if b['v2_status'] == 'NOT_FOUND')
 uncertain = sum(1 for b in data if b['v2_status'] == 'UNCERTAIN')
 print(f"{total}\t{not_found}\t{uncertain}")
 PYEOF
-)
+); then
+        echo "COUNT ERROR"
+        continue
+    fi
     total=$(echo "$counts" | cut -f1)
     not_found=$(echo "$counts" | cut -f2)
     uncertain=$(echo "$counts" | cut -f3)
@@ -102,7 +107,7 @@ PYEOF
     SUMMARY_ROWS["$php_file"]="| \`$php_file\` | $total | $not_found | $uncertain |"
 
     # Step 4: collect gap details
-    details=$(python3 - "$annotated" <<'PYEOF'
+    if ! details=$(python3 - "$annotated" <<'PYEOF'
 import json, sys
 data = json.load(open(sys.argv[1]))
 gaps = [b for b in data if b['v2_status'] in ('NOT_FOUND', 'UNCERTAIN')]
@@ -116,11 +121,14 @@ else:
         loc = f"{b['file']}:{b['line']}"
         print(f"- [{status}] **{cat}**: {desc} — `{loc}`")
 PYEOF
-)
+); then
+        echo "DETAILS ERROR"
+        continue
+    fi
     DETAILS["$php_file"]="$details"
 
     echo "total=$total not_found=$not_found uncertain=$uncertain"
-done
+done < <(printf '%s\n' "${!PHP_TO_GO[@]}" | sort)
 
 # Write report header
 cat > "$REPORT" <<HEADER
@@ -141,9 +149,9 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 HEADER
 
 # Write summary table rows (sorted)
-for php_file in $(echo "${!SUMMARY_ROWS[@]}" | tr ' ' '\n' | sort); do
+while IFS= read -r php_file; do
     echo "${SUMMARY_ROWS[$php_file]}" >> "$REPORT"
-done
+done < <(printf '%s\n' "${!SUMMARY_ROWS[@]}" | sort)
 
 # Write per-endpoint details
 {
@@ -153,14 +161,14 @@ done
     echo "## Per-Endpoint Gaps"
 } >> "$REPORT"
 
-for php_file in $(echo "${!DETAILS[@]}" | tr ' ' '\n' | sort); do
+while IFS= read -r php_file; do
     {
         echo ""
         echo "### \`$php_file\`"
         echo ""
         echo "${DETAILS[$php_file]}"
     } >> "$REPORT"
-done
+done < <(printf '%s\n' "${!DETAILS[@]}" | sort)
 
 echo ""
 echo "Report written to: $REPORT"
