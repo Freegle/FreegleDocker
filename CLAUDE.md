@@ -84,6 +84,13 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-04-02 - CLS improvements: 4 fixes across chat, browse, stories
+- **MessageList.vue**: Removed `!loading` from split-view template conditions — subsequent fetches were hiding the seen/unseen divider and re-showing it, causing CLS. `initialFetchDone` guard is sufficient.
+- **StoryOne.vue**: Added `width: 250px; height: 250px` to `.story-card__image` container so image loads into pre-reserved space instead of expanding from 0.
+- **ChatFooter.vue**: Reduced `transition: height` from 1s to 0.1s — shifts within 500ms of user input are excluded from CLS; the 1s animation fell outside the exclusion window.
+- **ChatPane.vue**: Replaced `stickyAdRendered` class binding on `chatHolder` with `allowAd` (`!recentDonor`) so height is pre-reduced for non-donors from page load — previously the 1s animated height change caused all chat message profile pics to shift when the sticky ad rendered. Removed `transition: height 1s`.
+- All 102 unit tests pass.
+
 ### 2026-04-02 - Gap analysis complete: 22 TRUE_GAPs identified, cron coverage verified
 - **Cron cross-reference**: Checked all V1 cron scripts against TRUE_GAPs. Reclassified: `users_approxlocs`, `users_nearby` (nearby.php), `messages_isochrones` (message_spatial.php), `trysts.*` (tryst.php), `lovejunk.deletestatus` (lovejunk.php), `ai_images.imagehash` (messages_illustrations.php), `groups.welcomereview` (group_welcomereview.php) — all BATCH_ONLY, V1 cron still running.
 - **FOP (messages_deadlines)**: Reclassified INTENTIONAL — FOP flag has zero references in Nuxt3 client, deliberately absent from V2 UI.
