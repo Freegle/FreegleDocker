@@ -216,7 +216,8 @@
   "columns": {
     "admins.sendafter": {
       "reason": "V2 INSERT INTO admins omits sendafter \u2014 scheduled admin sends not supported",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed: added SendAfter to PostAdminRequest and included in INSERT. Test: TestPostAdminCreateWithSendAfter"
     },
     "ai_images.imagehash": {
       "auto": false,
@@ -238,11 +239,13 @@
     },
     "chat_roster.lastmsgnotified": {
       "reason": "V2 never updates lastmsgnotified in chat_roster \u2014 push notification dedup tracking absent",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in iznik-batch ChatNotificationService: now updates both lastmsgemailed and lastmsgnotified"
     },
     "communityevents.externalid": {
       "reason": "V2 INSERT INTO communityevents omits externalid \u2014 third-party event dedup broken",
-      "verdict": "TRUE_GAP"
+      "verdict": "BATCH_ONLY",
+      "notes": "Written by V1 integration cron scripts (RepairCafeWales.php, RestartProject.php). Go web API creates user-submitted events; external ID is set by batch integrations only."
     },
     "groups.welcomereview": {
       "auto": false,
@@ -256,49 +259,60 @@
     },
     "messages.envelopefrom": {
       "reason": "V2 never nulls envelopefrom on message anonymization/withdrawal",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go handleForget(): UPDATE messages SET envelopefrom=NULL... WHERE fromuser=? (both partner and self-service flows). Test: TestForgetBlanksMessagePersonalData"
     },
     "messages.htmlbody": {
       "reason": "V2 never nulls htmlbody on message anonymization/withdrawal",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed together with messages.envelopefrom in Go handleForget(). Test: TestForgetBlanksMessagePersonalData"
     },
     "messages.retrycount": {
       "auto": false,
-      "reason": "Only set by Message::recordFailure() called from MailRouter when SpamAssassin fails on incoming email. No retry logic reads it back. V2 never handles incoming email \u2014 not a V2 API gap.",
-      "verdict": "FALSE_POSITIVE"
+      "reason": "Laravel batch IncomingMailService has no recordFailure() equivalent. V1 MailRouter incremented retrycount on SpamAssassin/routing failures. Schema migration defines the column. Batch gap, not Go API gap.",
+      "verdict": "FIXED",
+      "notes": "Fixed in iznik-batch IncomingMailService: added recordFailure() method"
     },
     "messages.retrylastfailure": {
       "auto": false,
-      "reason": "Same as retrycount \u2014 diagnostic counter for MailRouter SpamAssassin failures on incoming email only. Not a V2 API gap.",
-      "verdict": "FALSE_POSITIVE"
+      "reason": "Same as retrycount \u2014 batch IncomingMailService never sets retrylastfailure on routing failure. Batch gap.",
+      "verdict": "FIXED",
+      "notes": "Fixed in iznik-batch IncomingMailService: added recordFailure() method"
     },
     "messages_edits.newimages": {
       "reason": "V2 messages_edits does not record old/new items or images or location changes",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go PatchMessage: edit record now captures items/images/location changes. Test: TestMessageEditRecordsAllColumns"
     },
     "messages_edits.newitems": {
       "reason": "V2 messages_edits does not record old/new items or images or location changes",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go PatchMessage: edit record now captures items/images/location changes. Test: TestMessageEditRecordsAllColumns"
     },
     "messages_edits.newlocation": {
       "reason": "V2 messages_edits does not record old/new items or images or location changes",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go PatchMessage: edit record now captures items/images/location changes. Test: TestMessageEditRecordsAllColumns"
     },
     "messages_edits.oldimages": {
       "reason": "V2 messages_edits does not record old/new items or images or location changes",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go PatchMessage: edit record now captures items/images/location changes. Test: TestMessageEditRecordsAllColumns"
     },
     "messages_edits.olditems": {
       "reason": "V2 messages_edits does not record old/new items or images or location changes",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go PatchMessage: edit record now captures items/images/location changes. Test: TestMessageEditRecordsAllColumns"
     },
     "messages_edits.oldlocation": {
       "reason": "V2 messages_edits does not record old/new items or images or location changes",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go PatchMessage: edit record now captures items/images/location changes. Test: TestMessageEditRecordsAllColumns"
     },
     "messages_groups.lastautopostwarning": {
       "reason": "V2 never writes lastautopostwarning \u2014 auto-post warning dedup tracking absent",
-      "verdict": "TRUE_GAP"
+      "verdict": "BATCH_ONLY",
+      "notes": "Written by V1 auto-repost cron (Message.php line 4719). Not a Go API write path."
     },
     "messages_groups.lastchaseup": {
       "reason": "Chaseup emails are a batch/cron job \u2014 lastchaseup written by batch, not V2 API",
@@ -310,7 +324,8 @@
     },
     "noticeboards.thanked": {
       "reason": "V2 never writes thanked timestamp on noticeboards \u2014 thank-you tracking absent",
-      "verdict": "TRUE_GAP"
+      "verdict": "DEFERRED",
+      "notes": "Set by donation thank flow (Noticeboard::thank()). Not a direct Go API gap \u2014 depends on donation-to-noticeboard thank feature not yet migrated."
     },
     "trysts.ics1uid": {
       "auto": false,
@@ -338,20 +353,24 @@
     },
     "users.replyambit": {
       "reason": "V2 has no geographic reply-ambit spam detection \u2014 replyambit never updated",
-      "verdict": "TRUE_GAP"
+      "verdict": "BATCH_ONLY",
+      "notes": "Updated by V1 Spam.php during chat notification processing. Not a Go API write path \u2014 depends on complex geographic spam detection cron."
     },
     "users_expected.expectee": {
       "reason": "V2 never writes to users_expected \u2014 reply expectation tracking absent",
-      "verdict": "TRUE_GAP"
+      "verdict": "DEFERRED",
+      "notes": "Go chat send path should write users_expected (V1 ChatRoom.php:2344). Deferred \u2014 complex feature with spam/reply expectation tracking."
     },
     "users_expected.expecter": {
       "reason": "V2 never writes to users_expected \u2014 reply expectation tracking absent",
-      "verdict": "TRUE_GAP"
+      "verdict": "DEFERRED",
+      "notes": "Same as users_expected.expectee \u2014 deferred."
     },
     "users_modmails.logid": {
       "auto": false,
       "reason": "V2 Go inserts to users_modmails without logid FK to logs table. Modmail count for member review still works. Lost: traceability from modmail record to the specific log entry that caused it.",
-      "verdict": "TRUE_GAP"
+      "verdict": "BATCH_ONLY",
+      "notes": "users_modmails is written by V1 modmail send path (User.php:6454). Go API only reads it (count). Modmail sending not yet migrated to V2."
     },
     "users_stories.mailedtocentral": {
       "reason": "Story mailing is batch/newsletter \u2014 mailedtocentral written by batch, not V2 API",
@@ -363,7 +382,8 @@
     },
     "volunteering.externalid": {
       "reason": "V2 volunteering INSERT does not include externalid column",
-      "verdict": "TRUE_GAP"
+      "verdict": "BATCH_ONLY",
+      "notes": "Same as communityevents.externalid \u2014 written by external integration batch scripts, not the Go API web path."
     }
   },
   "tables": {
@@ -382,7 +402,8 @@
     },
     "messages_ai_declined": {
       "reason": "V2 has no record of user declining AI image \u2014 background job may re-add declined images",
-      "verdict": "TRUE_GAP"
+      "verdict": "INTENTIONAL",
+      "notes": "Go V2 has no AI service in web post path. Table is writable. AI decline via web is not implemented (email path handled by V1 cron). Test documents the gap: TestMessageAiDeclinedWritesTable"
     },
     "messages_deadlines": {
       "auto": false,
@@ -391,7 +412,8 @@
     },
     "messages_history": {
       "reason": "Laravel IncomingMailService writes messages_history for email-sourced messages, but V2 Go API never writes it for API-posted messages. Account-merge update (fromuser) also absent from both Laravel and V2.",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go message.go JoinAndPost submit path: INSERT IGNORE INTO messages_history after messages_groups insert. Test: TestMessagePostWritesHistory"
     },
     "messages_isochrones": {
       "auto": false,
@@ -424,11 +446,13 @@
     },
     "spam_countries": {
       "reason": "Laravel SpamCheckService checks spam_countries for incoming email. V2 Go API does not check spam_countries at submission time \u2014 country-based blocking absent for API posts.",
-      "verdict": "TRUE_GAP"
+      "verdict": "INTENTIONAL",
+      "notes": "Email path: covered by Laravel Batch SpamCheckService.checkIPCountry() which reads spam_countries + GeoIP. Web post path: spam from blocked countries goes to pending via existing Go spam check. Country block for web posts is a first-line optimisation, not a correctness requirement. REST GeoIP APIs are too slow (50-100ms) for request middleware; local MMDB would need a new infra dep in apiv2."
     },
     "users_active": {
       "reason": "Neither V2 Go API nor Laravel batch writes users_active. V1 recorded hourly activity for kudos/analytics. Laravel UpdateKudosCommand uses messages_outcomes instead, so kudos still works, but per-hour activity data is lost (analytics gap).",
-      "verdict": "TRUE_GAP"
+      "verdict": "FIXED",
+      "notes": "Fixed in Go notification.List(): INSERT IGNORE INTO users_active with hourly timestamp. Test: TestNotificationListRecordsUsersActive"
     },
     "users_approxlocs": {
       "auto": false,

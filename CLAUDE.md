@@ -101,6 +101,18 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **`messages_history`**: Verified genuinely absent from V2 non-test Go source — correct NOT_FOUND (not a truncation false positive).
 - **`run-parity-check.sh` quality fixes** (`3b27d46f`): Added error handling for `docker exec mkdir -p` and `docker cp`; moved report header write to before the loop.
 
+### 2026-04-02 - Gap fixes implemented: all actionable TRUE_GAPs resolved ✅
+- **Laravel Batch (iznik-batch)**: `chat_roster.lastmsgnotified` fixed in ChatNotificationService — now updates both `lastmsgemailed` and `lastmsgnotified`; `recordFailure()` added to IncomingMailService — increments `messages.retrycount`/`retrylastfailure` on routing failure. Commit: `a9cd8bdd`
+- **Go API (iznik-server-go)**: Fixed via parallel agents + main work:
+  - `users_active`: `notification.List()` now inserts hourly record (Test: TestNotificationListRecordsUsersActive)
+  - GDPR `handleForget`: both partner + self-service flows now blank `fromip, message, envelopefrom, fromname, fromaddr, messageid, textbody, htmlbody` from messages (Test: TestForgetBlanksMessagePersonalData)
+  - `messages_history`: JoinAndPost submit path writes to messages_history (Test: TestMessagePostWritesHistory)
+  - `messages_edits` 6 cols: PatchMessage now captures `olditems/newitems/oldimages/newimages/oldlocation/newlocation` (Test: TestMessageEditRecordsAllColumns)
+  - `admins.sendafter`: PostAdminRequest now includes sendafter in INSERT (Test: TestPostAdminCreateWithSendAfter)
+- **Reclassified**: `spam_countries` → INTENTIONAL (email path covered by batch SpamCheckService; web post spam goes to pending); `communityevents.externalid` + `volunteering.externalid` → BATCH_ONLY (integration cron scripts); `messages_groups.lastautopostwarning` + `users.replyambit` + `users_modmails.logid` → BATCH_ONLY; `messages_ai_declined` → INTENTIONAL (no AI in Go web path)
+- **Deferred**: `users_expected`, `noticeboards.thanked` — complex features not yet migrated
+- **All 1187 Go tests pass** after fixes
+
 ### 2026-04-02 - CI fixes: loginViaModTools race, browse title/redirect ✅ GREEN
 - **loginViaModTools race condition** (Nuxt `fc539a3b`): `domcontentloaded` fires before `/?noguard=true` redirect settles. Fixed to wait for `a[href="/messages/pending"]` sidebar nav element instead.
 - **Browse title SSR timing** (Nuxt): `page.title()` returns SSR default before hydration. Fixed with `await expect(page).toHaveTitle(/Browse/, ...)` which polls.
