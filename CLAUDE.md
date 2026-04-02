@@ -84,6 +84,14 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-04-02 - CI fixes: loginViaModTools race, browse title/redirect ✅ GREEN
+- **loginViaModTools race condition** (Nuxt `fc539a3b`): `domcontentloaded` fires before `/?noguard=true` redirect settles. Fixed to wait for `a[href="/messages/pending"]` sidebar nav element instead.
+- **Browse title SSR timing** (Nuxt): `page.title()` returns SSR default before hydration. Fixed with `await expect(page).toHaveTitle(/Browse/, ...)` which polls.
+- **Browse search redirect** (Nuxt `7f003f84`): `/browse/furniture` + `/browse` redirect to `/explore` for users with no location. Fixed to accept either URL/page.
+- **chat-list ERR_ABORTED** (Nuxt `3aeff23d`): `page.goto('/chats')` aborted by Nuxt SSR auth redirect loop. Fixed with `waitUntil: 'domcontentloaded'` on goto.
+- **Browse microvolunteering title** (Nuxt `5c68f451`): Same SSR title race. Fixed to check URL rather than title.
+- **CI pipeline #2777, job #3125**: All 122 Playwright tests passed. Auto-merged to production. ✅
+
 ### 2026-04-01 - Chitchat scroll fix PR #201, worktree improvements
 - **Chitchat infinite scroll** (PR #201): Fixed by removing `force-use-infinite-wrapper="body"` from `<infinite-loading>`. Root cause: `body` as IntersectionObserver root meant `body.scrollTop` was always 0 (actual scroller is `window/html`), so observer never triggered after ~6 posts. Fixed in `pages/chitchat/[[id]].vue`.
 - **PreToolUse hook - wrong container**: Created `check-docker-container.sh` hook that warns when `docker exec` targets a container not matching current worktree's `COMPOSE_PROJECT_NAME`. Fixed false positive on `git commit` messages. Hooks moved to project-level `.claude/settings.json`.
