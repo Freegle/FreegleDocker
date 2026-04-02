@@ -106,19 +106,29 @@ After 15 seconds the lorry exits frame and the protesters disperse. If `greenSco
 ### People
 At least 8 figures always on screen, walking between buildings along road/pavement paths. At higher `greenScore` thresholds, cyclists and additional pedestrians appear. Figures have simple idle/walk animations from the Kenney sprite sheet.
 
-### Speech Bubbles
-HTML `<div>` overlays, canvas coordinates mapped to DOM. Auto-fade after 4 seconds. Item names drawn from `data.json` vocabulary.
+### Mime Gestures (no text)
 
-Triggers:
-| Event | Bubble text | Location |
+No speech bubbles anywhere. Figures express entirely through physical pantomime — pure PixiJS animation, no DOM overlay. A `MimeGesture` helper plays short tween sequences on any figure.
+
+**Gesture library:**
+
+| Category | Gestures |
+|---|---|
+| Positive | jump for joy, wave hello, hold item up triumphantly, nod, point excitedly, dust hands with satisfaction |
+| Negative/comic | shrug, throw hands up, stamp foot, peer suspiciously, shake head slowly |
+| Neutral | hold item out to offer, inspect closely, point at gauge/board, sit back down |
+
+**Item events** show a tiny floating item sprite above the figure — a coloured shape representing the item (armchair = wide brown rectangle, bike = two wheels, sofa = long cushion) — which rises 20px and fades over 1.5s.
+
+| Event | Mime | Figure |
 |---|---|---|
-| `offer_posted` | 📦 "Chest of drawers — free!" | From a house window |
-| `wanted_posted` | 🔍 "Anyone have a pushchair?" | From a house window |
-| `item_given_away` | ✅ "Sofa found a new home! 🎉" | Above Free Shop or house |
-| `chat_message` | 💬 "Is it still available?" | Between two nearby figures |
-| `new_member` | 👋 "Hello Thornwick Lane!" | New figure arriving at city edge |
-| `free_shop_drop` | 🛍️ "Leaving this here for someone!" | At Free Shop entrance |
-| `free_shop_pick` | 😊 "Perfect, just what I needed!" | At Free Shop exit |
+| `offer_posted` | holds item sprite up, points at it | House figure at window |
+| `wanted_posted` | shrugs, holds hands out (empty) | House figure at window |
+| `item_given_away` | jumps for joy, pumps fist | Free Shop or house figure |
+| `chat_message` | two nearby figures turn to face each other, nod | Nearest pair |
+| `new_member` | new figure waves hello; nearby figure waves back | City edge arrival |
+| `free_shop_drop` | figure sets item sprite down at entrance, steps back, dusts hands | Free Shop entrance |
+| `free_shop_pick` | figure picks up item sprite, hugs it, walks off | Free Shop exit |
 
 ---
 
@@ -179,13 +189,9 @@ Between events, figures do short idle loops: stretching, looking at papers, refi
 - Trigger: `new_member`
 
 **The Boiler Room**
-- 1 lone figure. Walks a circuit: screen → pipe valve → gauge on the wall → back to screen. Occasionally crouches to look at something on the floor, stands, shrugs.
-- Periodic snarky speech bubbles on its own quiet timer (every 20–40s):
-  - *"We could do that if we had some funding."*
-  - *"I could fix this if I had a team."*
-  - *"Have you tried turning it off and on again?"*
-  - *"It's not a bug. It's a feature."*
-  - *"This would take 5 minutes… to explain why it takes 3 months."*
+- 1 lone figure. Walks a circuit: screen → pipe valve → gauge on the wall → back to screen. Occasionally crouches to look at something on the floor, stands.
+- Fully mime — no text. Expressive gesture timer every 20–40s cycles through: shrug, throw hands up dramatically, crouch and peer at floor, point accusingly at gauge, stamp foot, then — when a capsule passes cleanly through — jump for joy and pump fist before returning to the circuit.
+- Positive gestures mixed in (things do sometimes work!) to keep it cheerful.
 - Not triggered by events — independent loop
 
 ---

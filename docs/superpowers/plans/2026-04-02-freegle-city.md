@@ -26,7 +26,7 @@
     surface/
       surface-stage.js        # SurfaceStage: tile grid, building sprites, people pool
       figure.js               # Figure: walking entity with waypoint queue, idle animation
-      speech-bubble.js        # SpeechBubble: HTML div overlay, positioned from canvas coords
+      mime-gesture.js         # MimeGesture: tween sequences (jump, shrug, hold item, wave, etc.) on a Figure
       free-shop.js            # FreeShop: container sprite + drop-off/pick-up animation
       bin-lorry.js            # BinLorry: lorry + 3 protesters, spawned on timer
       buildings.js            # Building definitions: sprite keys, positions, unlock thresholds
@@ -1529,94 +1529,220 @@ git commit -m "feat: walking figures with waypoint routing on surface"
 
 ---
 
-## Task 10: Speech bubbles
+## Task 10: Mime gesture system
 
 **Files:**
-- Create: `src/surface/speech-bubble.js`
-- Modify: `src/main.js`
+- Create: `src/surface/mime-gesture.js`
+- Modify: `src/main.js` (smoke-test then remove)
 
-HTML overlay bubbles. Positioned by converting PixiJS world coords through the WorldContainer's pan/zoom to DOM coords.
+No speech bubbles anywhere. Figures express via pantomime — PixiJS tween sequences only.
+A `MimeGesture` helper plays short animations on a Figure's container.
 
-- [ ] **Step 1: Create `src/surface/speech-bubble.js`**
+Item events float a tiny coloured shape sprite above the figure (rises 20px, fades over 1.5s).
+
+**Gesture library** (each plays on a Figure container, duration ~600–900ms):
+
+| Key | Description |
+|---|---|
+| `jumpForJoy` | container bounces up −20px then returns, quick |
+| `shrug` | container rocks left/right ±4px |
+| `throwHandsUp` | container hops up −10px, tilts +10deg, returns |
+| `wave` | container oscillates x ±3px, 3 cycles |
+| `holdItemUp` | small coloured shape sprite appears above, rises, fades |
+| `pointExcitedly` | container leans forward (+5px x), returns |
+| `dustHands` | container bobs up −5px twice |
+| `nodApproval` | container bobs down +4px twice |
+| `shakeHead` | container oscillates x ±5px, 2 cycles |
+| `stampFoot` | container drops +8px then returns sharply |
+| `peersAtThing` | container leans forward and tilts −5deg, holds, returns |
+
+- [ ] **Step 1: Create `src/surface/mime-gesture.js`**
 
 ```js
-// src/surface/speech-bubble.js
-const LAYER = document.getElementById('bubble-layer');
-const FADE_DURATION = 4000;   // ms visible
-const FADE_OUT = 500;         // ms fade transition
+// src/surface/mime-gesture.js
 
-export class SpeechBubble {
-  #el;
-  #timer;
+// Item shape colours — stand-in for real item sprites
+const ITEM_COLOURS = {
+  armchair:    { w: 28, h: 14, colour: 0x8B5E3C },
+  sofa:        { w: 36, h: 12, colour: 0x6B8E5A },
+  bike:        { w: 20, h: 20, colour: 0x4a7fc1, round: true },
+  default:     { w: 22, h: 14, colour: 0xb0a060 },
+};
 
+function itemShape(itemName) {
+  const def = ITEM_COLOURS[itemName] ?? ITEM_COLOURS.default;
+  const g = new PIXI.Graphics();
+  if (def.round) {
+    g.circle(0, 0, def.w / 2).fill({ color: def.colour });
+  } else {
+    g.rect(-def.w / 2, -def.h / 2, def.w, def.h).fill({ color: def.colour });
+  }
+  return g;
+}
+
+/**
+ * Tween helper — animates a property on target over durationMs.
+ * Returns a Promise that resolves when done.
+ */
+function tween(target, prop, from, to, durationMs) {
+  return new Promise(resolve => {
+    const ticker = PIXI.Ticker.shared;
+    let elapsed = 0;
+    const fn = (dt) => {
+      elapsed += ticker.elapsedMS;
+      const t = Math.min(elapsed / durationMs, 1);
+      target[prop] = from + (to - from) * t;
+      if (t >= 1) { ticker.remove(fn); resolve(); }
+    };
+    target[prop] = from;
+    ticker.add(fn);
+  });
+}
+
+async function seq(...steps) { for (const s of steps) await s; }
+
+export class MimeGesture {
   /**
-   * @param {string} html  Content (can include emoji)
-   * @param {number} domX  Canvas X in DOM pixels
-   * @param {number} domY  Canvas Y in DOM pixels
-   * @param {'surface'|'underground'} layer
+   * Play a named gesture on a PIXI Container (figure.container).
+   * @param {PIXI.Container} container
+   * @param {string} gesture  Key from gesture library
+   * @param {string} [itemName]  For holdItemUp gesture
    */
-  static show(html, domX, domY, layer = 'surface') {
-    const el = document.createElement('div');
-    el.className = 'speech-bubble' + (layer === 'underground' ? ' underground' : '');
-    el.innerHTML = html;
-    el.style.left = domX + 'px';
-    el.style.top = domY + 'px';
-    LAYER.appendChild(el);
-
-    setTimeout(() => {
-      el.classList.add('fading');
-      setTimeout(() => el.remove(), FADE_OUT);
-    }, FADE_DURATION);
+  static async play(container, gesture, itemName) {
+    const ox = container.x, oy = container.y;
+    switch (gesture) {
+      case 'jumpForJoy':
+        await seq(
+          tween(container, 'y', oy, oy - 20, 180),
+          tween(container, 'y', oy - 20, oy, 180),
+          tween(container, 'y', oy, oy - 10, 120),
+          tween(container, 'y', oy - 10, oy, 120),
+        );
+        break;
+      case 'shrug':
+        await seq(
+          tween(container, 'x', ox, ox - 4, 120),
+          tween(container, 'x', ox - 4, ox + 4, 200),
+          tween(container, 'x', ox + 4, ox, 120),
+        );
+        break;
+      case 'throwHandsUp':
+        await seq(
+          tween(container, 'y', oy, oy - 10, 150),
+          tween(container, 'rotation', 0, 0.18, 150),
+          new Promise(r => setTimeout(r, 200)),
+          tween(container, 'y', oy - 10, oy, 150),
+          tween(container, 'rotation', 0.18, 0, 150),
+        );
+        break;
+      case 'wave':
+        for (let i = 0; i < 3; i++) {
+          await tween(container, 'x', ox, ox + 3, 80);
+          await tween(container, 'x', ox + 3, ox - 3, 80);
+          await tween(container, 'x', ox - 3, ox, 80);
+        }
+        break;
+      case 'holdItemUp': {
+        const shape = itemShape(itemName ?? 'default');
+        shape.x = 0; shape.y = -32; shape.alpha = 1;
+        container.addChild(shape);
+        await tween(shape, 'y', -32, -52, 400);
+        await tween(shape, 'alpha', 1, 0, 600);
+        container.removeChild(shape);
+        shape.destroy();
+        break;
+      }
+      case 'pointExcitedly':
+        await seq(
+          tween(container, 'x', ox, ox + 5, 150),
+          new Promise(r => setTimeout(r, 300)),
+          tween(container, 'x', ox + 5, ox, 150),
+        );
+        break;
+      case 'dustHands':
+        for (let i = 0; i < 2; i++) {
+          await tween(container, 'y', oy, oy - 5, 100);
+          await tween(container, 'y', oy - 5, oy, 100);
+        }
+        break;
+      case 'nodApproval':
+        for (let i = 0; i < 2; i++) {
+          await tween(container, 'y', oy, oy + 4, 100);
+          await tween(container, 'y', oy + 4, oy, 100);
+        }
+        break;
+      case 'shakeHead':
+        for (let i = 0; i < 2; i++) {
+          await tween(container, 'x', ox, ox - 5, 100);
+          await tween(container, 'x', ox - 5, ox + 5, 120);
+          await tween(container, 'x', ox + 5, ox, 100);
+        }
+        break;
+      case 'stampFoot':
+        await seq(
+          tween(container, 'y', oy, oy + 8, 80),
+          tween(container, 'y', oy + 8, oy, 60),
+        );
+        break;
+      case 'peersAtThing':
+        await seq(
+          tween(container, 'x', ox, ox + 5, 200),
+          tween(container, 'rotation', 0, -0.09, 200),
+          new Promise(r => setTimeout(r, 500)),
+          tween(container, 'x', ox + 5, ox, 200),
+          tween(container, 'rotation', -0.09, 0, 200),
+        );
+        break;
+    }
+    // Ensure position is restored
+    container.x = ox;
+    container.y = oy;
+    container.rotation = 0;
   }
 }
 ```
 
-- [ ] **Step 2: Add `worldToDom()` helper to `WorldContainer`**
+- [ ] **Step 2: Smoke-test in `main.js`**
 
-Add to `src/world-container.js`:
-
-```js
-/**
- * Convert world (PixiJS container) coords to DOM pixel coords.
- * Use this to position speech bubble divs.
- */
-worldToDom(containerX, containerY) {
-  return {
-    x: this.container.x + containerX * this.#zoom,
-    y: this.container.y + containerY * this.#zoom,
-  };
-}
-```
-
-- [ ] **Step 3: Smoke-test in `main.js`**
-
-After building the app, add:
+Add temporarily after stage setup:
 
 ```js
-import { SpeechBubble } from './surface/speech-bubble.js';
-// After world/surface setup:
+import { MimeGesture } from './surface/mime-gesture.js';
+// Create a test square to mime on
 setTimeout(() => {
-  // Test bubble at world origin
-  const pos = world.worldToDom(0, 0);
-  SpeechBubble.show('📦 "Armchair — free!" <br><small>Thornwick Lane · just now</small>', pos.x, pos.y);
-}, 1000);
+  const testFig = new PIXI.Container();
+  const body = new PIXI.Graphics().rect(-8, -16, 16, 24).fill({ color: 0x4de86a });
+  testFig.addChild(body);
+  testFig.x = app.screen.width / 2;
+  testFig.y = app.screen.height / 2;
+  app.stage.addChild(testFig);
+  // Cycle through gestures
+  const gestures = ['jumpForJoy','shrug','throwHandsUp','wave','holdItemUp','dustHands','nodApproval','shakeHead','stampFoot','peersAtThing'];
+  let i = 0;
+  const next = () => {
+    if (i >= gestures.length) return;
+    MimeGesture.play(testFig, gestures[i], 'armchair').then(() => {
+      i++;
+      setTimeout(next, 400);
+    });
+  };
+  next();
+}, 500);
 ```
 
-- [ ] **Step 4: Verify visually**
+- [ ] **Step 3: Open in Chrome, verify each gesture plays correctly**
 
-Reload. After 1 second a speech bubble appears at world origin, fades after 4 seconds. Pan/zoom does NOT reposition it (bubbles are fire-and-forget DOM elements — that's intentional; they appear and fade quickly enough that drift is unnoticeable at normal usage).
+All 10 gestures should play in sequence. The `holdItemUp` gesture should show a brown rectangle rising and fading.
 
-- [ ] **Step 5: Remove the smoke-test setTimeout from main.js**
+- [ ] **Step 4: Remove smoke-test from main.js**
 
-```js
-// Delete the setTimeout block added in step 3
-```
+- [ ] **Step 5: Also remove `#bubble-layer` div from `index.html` and the `.speech-bubble` CSS** (no longer needed)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/surface/speech-bubble.js src/world-container.js src/main.js
-git commit -m "feat: HTML speech bubbles with fade, world-to-DOM positioning"
+git add src/surface/mime-gesture.js src/main.js index.html
+git commit -m "feat: mime gesture system replaces speech bubbles"
 ```
 
 ---
