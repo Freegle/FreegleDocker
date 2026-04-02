@@ -86,7 +86,7 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 ### 2026-04-02 - Parity extractor: truncation fix, column-level discussion
 - **SQL truncation false NOT_FOUNDs** (`57aae6c6`): `substr($sql, 0, 80)` in extractor was chopping long table names (e.g. `messages_attachments` → `messages_attachmen`, `newsfeed` → `newsfee`), causing word-boundary search to fail. Fixed by removing truncation limit entirely. Same fix for `file_get_contents` URL.
-- **Report needs re-run**: `docs/parity/2026-04-01-parity-report.md` was generated before truncation fix. Re-run `./scripts/parsers/run-parity-check.sh` to get accurate results.
+- **Accurate report**: `docs/parity/2026-04-02-parity-report.md` regenerated after fix — 2,951 NOT_FOUND (was 3,093), 142 false positives eliminated. 55,820 total behaviors, 52 endpoints.
 - **Column-level detection**: Current checker is table-level only (finds table name, checks any V2 reference exists). Does NOT detect missing column writes (e.g. V1 sets `lastdate`, V2 doesn't). Column-level would need table+column pair extraction + write-context search — deferred.
 - **`messages_history`**: Verified genuinely absent from V2 non-test Go source — correct NOT_FOUND (not a truncation false positive).
 - **`run-parity-check.sh` quality fixes** (`3b27d46f`): Added error handling for `docker exec mkdir -p` and `docker cp`; moved report header write to before the loop.
