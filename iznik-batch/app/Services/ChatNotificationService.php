@@ -203,8 +203,13 @@ class ChatNotificationService
                     $chatType
                 );
 
-                // Update roster with last message emailed.
-                $roster->update(['lastmsgemailed' => $message->id]);
+                // Update roster with last message emailed and notified.
+                // lastmsgnotified is used by V1's push notification cron (notification_chaseup.php)
+                // to avoid re-notifying users for messages already handled by email.
+                $roster->update([
+                    'lastmsgemailed' => $message->id,
+                    'lastmsgnotified' => $message->id,
+                ]);
 
                 // Update message mailedtoall if all members have been notified.
                 $this->updateMailedToAll($message);
