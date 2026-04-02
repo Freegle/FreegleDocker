@@ -197,7 +197,7 @@ Between events, figures do short idle loops: stretching, looking at papers, refi
 1. Get current hour from the city clock (default: runs at 3× real speed so a full day cycles every 8 hours; configurable)
 2. Look up busyness weight from `data.json` time-of-day curve
 3. Sample: roll for 0–4 events this tick (weighted by busyness)
-4. For each event, pick type by probability (offer 40%, wanted 22%, chat 13%, spam 8%, success 5%, new_member 2%, free_shop_drop 5%, free_shop_pick 5%)
+4. For each event, pick type by probability (offer 35%, wanted 18%, chat 13%, spam 6%, success 15%, new_member 2%, free_shop_drop 8%, free_shop_pick 8%) — success rate kept high to reinforce Freegle's positive impact
 5. Fire events on the Event Bus
 
 Events always fire at a minimum background rate (1 event per 2 ticks) regardless of time of day — the city is never dead.
@@ -213,8 +213,18 @@ Visual changes applied as score crosses thresholds:
 - Trees added as PixiJS sprites at fixed positions, one by one as score increments
 - Buildings unlock with a small fanfare animation (bunting, speech bubbles from nearby figures)
 - Bin lorry spawn interval scales from 90–180s up to 300–480s at score 300+
+- **Score 100**: Street litter bins gain a second recycling slot (two-colour bin sprite)
+- **Score 200**: Street bins become three-way recycling (general / recyclables / compost). Solar panels appear on building top faces (blue rectangle overlays on roof tops).
+- **Score 250**: Cars on roads replaced by buses (bus sprite swapped in for car sprite in traffic pool)
 - Cyclists appear at score 300 (2 figures added to road traffic pool)
 - At score 500: background sky tint shifts from dark grey-green to brighter green-blue
+
+### People diversity
+Figures use a diverse palette of skin tones, clothing colours, and mobility. The figure pool includes:
+- Standard walkers (various colours)
+- Wheelchair users (~15% of figures) — slightly wider sprite with wheel detail
+- Cyclists (appear at score 300+)
+All figure types use the same waypoint/walk system; wheelchair users move at the same speed on roads/pavements.
 
 ---
 
