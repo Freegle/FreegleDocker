@@ -1,0 +1,449 @@
+{
+  "behaviors": {
+    "http/api/group.php:71": {
+      "reason": "V2 group handler does not make this external HTTP call",
+      "verdict": "TRUE_GAP"
+    },
+    "http/api/image.php:164": {
+      "reason": "V2 image upload uses Tus external upload; V1 fetched image inline",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "http/api/session.php:273": {
+      "reason": "Session OAuth HTTP calls handled differently in V2 (Go OAuth libraries)",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "http/api/session.php:296": {
+      "reason": "Session OAuth HTTP calls handled differently in V2",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "http/api/session.php:297": {
+      "reason": "Session OAuth HTTP calls handled differently in V2",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "http/api/session.php:298": {
+      "reason": "Session OAuth HTTP calls handled differently in V2",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/ai/GeminiHelper.php:49": {
+      "reason": "V2 has no Gemini AI integration \u2014 AI model list fetch absent",
+      "verdict": "TRUE_GAP"
+    },
+    "include/dashboard/Dashboard.php:437": {
+      "reason": "V2 dashboard does not fetch this external data source",
+      "verdict": "TRUE_GAP"
+    },
+    "include/message/Attachment.php:253": {
+      "reason": "V2 handles image upload via Tus externally \u2014 PHP fetches image then uploads; V2 frontend uploads directly",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/message/Attachment.php:293": {
+      "reason": "V2 handles image upload via Tus externally \u2014 PHP fetches image then uploads; V2 frontend uploads directly",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/message/Attachment.php:413": {
+      "reason": "V2 handles image upload via Tus externally",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/message/Attachment.php:534": {
+      "reason": "V2 handles image upload via Tus externally",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/message/Attachment.php:611": {
+      "reason": "V2 handles image upload via Tus externally",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/message/Attachment.php:680": {
+      "reason": "V2 handles image upload via Tus externally",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/message/Message.php:2362": {
+      "reason": "V2 does not fetch remote message attachments/images during message processing",
+      "verdict": "TRUE_GAP"
+    },
+    "include/message/Message.php:2512": {
+      "reason": "V2 does not fetch remote message attachments/images during message processing",
+      "verdict": "TRUE_GAP"
+    },
+    "include/message/Message.php:2651": {
+      "reason": "V2 does not fetch remote message attachments/images during message processing",
+      "verdict": "TRUE_GAP"
+    },
+    "include/misc/IPBlocker.php:100": {
+      "reason": "Reading local IP whitelist file \u2014 V2 has its own IP blocking mechanism",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/IPBlocker.php:167": {
+      "reason": "Reading local IP whitelist file \u2014 V2 has its own IP blocking mechanism",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/IPBlocker.php:190": {
+      "reason": "Reading local IP whitelist file \u2014 V2 has its own IP blocking mechanism",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/IPBlocker.php:224": {
+      "reason": "Reading local IP whitelist file \u2014 V2 has its own IP blocking mechanism",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/IPBlocker.php:42": {
+      "reason": "Reading local IP whitelist file \u2014 V2 has its own IP blocking mechanism",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/IPBlocker.php:71": {
+      "reason": "Reading local IP whitelist file \u2014 V2 has its own IP blocking mechanism",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/Jobs.php:331": {
+      "reason": "Job listing fetch is a batch/cron operation \u2014 not V2 API behaviour",
+      "verdict": "BATCH_ONLY"
+    },
+    "include/misc/Jobs.php:667": {
+      "reason": "Job listing fetch is a batch/cron operation \u2014 not V2 API behaviour",
+      "verdict": "BATCH_ONLY"
+    },
+    "include/misc/Loki.php:593": {
+      "reason": "V2 has native Go Loki log shipping in systemlogs package",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/Loki.php:692": {
+      "reason": "V2 has native Go Loki log shipping in systemlogs package",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/Mail.php:238": {
+      "reason": "Part of email delivery infrastructure \u2014 batch concern, not V2 API",
+      "verdict": "BATCH_ONLY"
+    },
+    "include/misc/Pollinations.php:1027": {
+      "reason": "V2 has no Pollinations AI image generation integration",
+      "verdict": "TRUE_GAP"
+    },
+    "include/misc/Pollinations.php:1087": {
+      "reason": "V2 has no Pollinations AI image generation integration",
+      "verdict": "TRUE_GAP"
+    },
+    "include/misc/Pollinations.php:1313": {
+      "reason": "V2 has no Pollinations AI image generation integration",
+      "verdict": "TRUE_GAP"
+    },
+    "include/misc/Pollinations.php:567": {
+      "reason": "V2 has no Pollinations AI image generation integration",
+      "verdict": "TRUE_GAP"
+    },
+    "include/misc/Pollinations.php:648": {
+      "reason": "V2 has no Pollinations AI image generation integration",
+      "verdict": "TRUE_GAP"
+    },
+    "include/misc/Pollinations.php:788": {
+      "reason": "V2 has no Pollinations AI image generation integration",
+      "verdict": "TRUE_GAP"
+    },
+    "include/misc/Tus.php:118": {
+      "reason": "V2 frontend uploads directly to Tus; V1 PHP acted as proxy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/Tus.php:34": {
+      "reason": "V2 frontend uploads directly to Tus; V1 PHP acted as proxy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/Tus.php:75": {
+      "reason": "V2 frontend uploads directly to Tus; V1 PHP acted as proxy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/Tus.php:9": {
+      "reason": "V2 frontend uploads directly to Tus; V1 PHP acted as proxy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/misc/Utils.php:607": {
+      "reason": "V2 uses Go net/http with its own retry logic \u2014 curlWithRetry wrapper has no V2 equivalent needed",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/session/Facebook.php:276": {
+      "reason": "Facebook OAuth not implemented in V2",
+      "verdict": "INTENTIONAL"
+    },
+    "include/session/Google.php:51": {
+      "reason": "V2 handles Google OAuth with its own Go implementation",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/session/Yahoo.php:69": {
+      "reason": "Yahoo OAuth not implemented in V2",
+      "verdict": "INTENTIONAL"
+    },
+    "include/session/Yahoo.php:88": {
+      "reason": "Yahoo OAuth not implemented in V2",
+      "verdict": "INTENTIONAL"
+    },
+    "include/user/Isochrone.php:257": {
+      "reason": "V2 calls isochrone service differently or inlines the logic",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/user/Isochrone.php:306": {
+      "reason": "V2 calls isochrone service differently or inlines the logic",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/user/User.php:1939": {
+      "reason": "V2 does not fetch Gravatar profile images for users",
+      "verdict": "TRUE_GAP"
+    },
+    "include/user/User.php:2004": {
+      "reason": "V2 does not fetch and hash profile images to filter default images",
+      "verdict": "TRUE_GAP"
+    },
+    "include/user/User.php:3983": {
+      "reason": "Reading local word-list files for invented email \u2014 V2 uses different email invention strategy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/user/User.php:3984": {
+      "reason": "Reading local word-list files for invented email \u2014 V2 uses different email invention strategy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/user/User.php:3985": {
+      "reason": "Reading local word-list files for invented email \u2014 V2 uses different email invention strategy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/user/User.php:410": {
+      "reason": "Reading local JSON word files for password/email invention \u2014 V2 uses different name invention strategy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/user/User.php:411": {
+      "reason": "Reading local JSON word files for password/email invention \u2014 V2 uses different name invention strategy",
+      "verdict": "DIFFERENT_IMPL"
+    },
+    "include/user/User.php:412": {
+      "reason": "Reading local JSON word files for password/email invention \u2014 V2 uses different name invention strategy",
+      "verdict": "DIFFERENT_IMPL"
+    }
+  },
+  "columns": {
+    "admins.sendafter": {
+      "reason": "V2 INSERT INTO admins omits sendafter \u2014 scheduled admin sends not supported",
+      "verdict": "TRUE_GAP"
+    },
+    "ai_images.imagehash": {
+      "reason": "V2 reads ai_images but never INSERTs \u2014 Pollinations AI image generation (which populates the table) absent from V2",
+      "verdict": "TRUE_GAP"
+    },
+    "alerts.groupprogress": {
+      "reason": "groupprogress updated by alert-sending batch job, not V2 API",
+      "verdict": "BATCH_ONLY"
+    },
+    "chat_messages.facebookid": {
+      "reason": "Facebook integration absent from V2 \u2014 facebookid intentionally omitted",
+      "verdict": "INTENTIONAL"
+    },
+    "chat_messages.spamscore": {
+      "reason": "V2 chat message INSERT does not include spamscore \u2014 spam scoring absent",
+      "verdict": "TRUE_GAP"
+    },
+    "chat_roster.lastmsgnotified": {
+      "reason": "V2 never updates lastmsgnotified in chat_roster \u2014 push notification dedup tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "communityevents.externalid": {
+      "reason": "V2 INSERT INTO communityevents omits externalid \u2014 third-party event dedup broken",
+      "verdict": "TRUE_GAP"
+    },
+    "groups.welcomereview": {
+      "reason": "V2 never writes welcomereview on groups \u2014 welcome review timestamp tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "lovejunk.deletestatus": {
+      "reason": "V2 has no lovejunk table \u2014 deletion status sync with LoveJunk absent",
+      "verdict": "TRUE_GAP"
+    },
+    "messages.envelopefrom": {
+      "reason": "V2 never nulls envelopefrom on message anonymization/withdrawal",
+      "verdict": "TRUE_GAP"
+    },
+    "messages.htmlbody": {
+      "reason": "V2 never nulls htmlbody on message anonymization/withdrawal",
+      "verdict": "TRUE_GAP"
+    },
+    "messages.retrycount": {
+      "reason": "V2 never writes retrycount/retrylastfailure \u2014 message submission retry tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "messages.retrylastfailure": {
+      "reason": "V2 never writes retrylastfailure \u2014 message submission retry tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_edits.newimages": {
+      "reason": "V2 messages_edits does not record old/new items or images or location changes",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_edits.newitems": {
+      "reason": "V2 messages_edits does not record old/new items or images or location changes",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_edits.newlocation": {
+      "reason": "V2 messages_edits does not record old/new items or images or location changes",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_edits.oldimages": {
+      "reason": "V2 messages_edits does not record old/new items or images or location changes",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_edits.olditems": {
+      "reason": "V2 messages_edits does not record old/new items or images or location changes",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_edits.oldlocation": {
+      "reason": "V2 messages_edits does not record old/new items or images or location changes",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_groups.lastautopostwarning": {
+      "reason": "V2 never writes lastautopostwarning \u2014 auto-post warning dedup tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_groups.lastchaseup": {
+      "reason": "Chaseup emails are a batch/cron job \u2014 lastchaseup written by batch, not V2 API",
+      "verdict": "BATCH_ONLY"
+    },
+    "microactions.facebook_post": {
+      "reason": "Facebook integration not in V2 \u2014 facebook_post column intentionally absent",
+      "verdict": "INTENTIONAL"
+    },
+    "noticeboards.thanked": {
+      "reason": "V2 never writes thanked timestamp on noticeboards \u2014 thank-you tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "trysts.ics1uid": {
+      "reason": "V2 trysts never sends ICS calendar invites \u2014 icssent/ics1uid/ics2uid never set",
+      "verdict": "TRUE_GAP"
+    },
+    "trysts.ics2uid": {
+      "reason": "V2 trysts never sends ICS calendar invites \u2014 icssent/ics1uid/ics2uid never set",
+      "verdict": "TRUE_GAP"
+    },
+    "trysts.icssent": {
+      "reason": "V2 trysts never sends ICS calendar invites \u2014 icssent/ics1uid/ics2uid never set",
+      "verdict": "TRUE_GAP"
+    },
+    "trysts.remindersent": {
+      "reason": "V2 trysts never sends reminder emails \u2014 remindersent never set",
+      "verdict": "TRUE_GAP"
+    },
+    "users.invitesleft": {
+      "reason": "V2 has no invitation system \u2014 invitesleft never decremented/incremented",
+      "verdict": "TRUE_GAP"
+    },
+    "users.replyambit": {
+      "reason": "V2 has no geographic reply-ambit spam detection \u2014 replyambit never updated",
+      "verdict": "TRUE_GAP"
+    },
+    "users_expected.expectee": {
+      "reason": "V2 never writes to users_expected \u2014 reply expectation tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "users_expected.expecter": {
+      "reason": "V2 never writes to users_expected \u2014 reply expectation tracking absent",
+      "verdict": "TRUE_GAP"
+    },
+    "users_modmails.logid": {
+      "reason": "V2 inserts to users_modmails but does not set logid \u2014 mod log linkage absent",
+      "verdict": "TRUE_GAP"
+    },
+    "users_stories.mailedtocentral": {
+      "reason": "Story mailing is batch/newsletter \u2014 mailedtocentral written by batch, not V2 API",
+      "verdict": "BATCH_ONLY"
+    },
+    "users_stories.mailedtomembers": {
+      "reason": "Story mailing is batch/newsletter \u2014 mailedtomembers written by batch, not V2 API",
+      "verdict": "BATCH_ONLY"
+    },
+    "volunteering.externalid": {
+      "reason": "V2 volunteering INSERT does not include externalid column",
+      "verdict": "TRUE_GAP"
+    }
+  },
+  "tables": {
+    "admins_users": {
+      "reason": "Dedup table for bulk admin email sends \u2014 batch operation, not V2 API behaviour",
+      "verdict": "BATCH_ONLY"
+    },
+    "groups_facebook_toshare": {
+      "reason": "Facebook integration not implemented in V2",
+      "verdict": "INTENTIONAL"
+    },
+    "jobs_keywords": {
+      "auto": true,
+      "reason": "Table used only by batch/newsletter operations, not API",
+      "verdict": "BATCH_ONLY"
+    },
+    "messages_ai_declined": {
+      "reason": "V2 has no record of user declining AI image \u2014 background job may re-add declined images",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_deadlines": {
+      "reason": "V2 does not write FOP deadline flag \u2014 messages_deadlines never set",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_history": {
+      "reason": "V2 never writes to messages_history \u2014 IP/host tracking and user attribution on merge absent",
+      "verdict": "TRUE_GAP"
+    },
+    "messages_isochrones": {
+      "reason": "V2 uses isochrones_users but never writes messages_isochrones \u2014 message\u2194isochrone link absent",
+      "verdict": "TRUE_GAP"
+    },
+    "newsletters": {
+      "auto": true,
+      "reason": "Table used only by batch/newsletter operations, not API",
+      "verdict": "BATCH_ONLY"
+    },
+    "newsletters_articles": {
+      "auto": true,
+      "reason": "Table used only by batch/newsletter operations, not API",
+      "verdict": "BATCH_ONLY"
+    },
+    "polls": {
+      "auto": true,
+      "reason": "Endpoint explicitly SKIP:no-v2 in mapping",
+      "verdict": "INTENTIONAL"
+    },
+    "polls_users": {
+      "auto": true,
+      "reason": "Endpoint explicitly SKIP:no-v2 in mapping",
+      "verdict": "INTENTIONAL"
+    },
+    "returnpath_seedlist": {
+      "reason": "Email deliverability seed list \u2014 used by mail-sending batch, not V2 API",
+      "verdict": "BATCH_ONLY"
+    },
+    "spam_countries": {
+      "reason": "V2 has no country-based IP spam blocking \u2014 spam_countries never queried in V2",
+      "verdict": "TRUE_GAP"
+    },
+    "users_active": {
+      "reason": "V2 does not record hourly user activity to users_active \u2014 kudos/analytics data missing",
+      "verdict": "TRUE_GAP"
+    },
+    "users_approxlocs": {
+      "reason": "V2 has no nearby-user notification system \u2014 users_approxlocs never written or queried",
+      "verdict": "TRUE_GAP"
+    },
+    "users_dashboard": {
+      "reason": "V2 has no dashboard query caching (users_dashboard) \u2014 every dashboard request recomputes",
+      "verdict": "TRUE_GAP"
+    },
+    "users_donations_asks": {
+      "reason": "V2 never records when a donation ask was shown to a user \u2014 users may be asked repeatedly",
+      "verdict": "TRUE_GAP"
+    },
+    "users_invitations": {
+      "reason": "V2 does not track sent invitations or outcomes \u2014 users_invitations table absent from V2",
+      "verdict": "TRUE_GAP"
+    },
+    "users_kudos": {
+      "reason": "V2 has no kudos system \u2014 users_kudos never written or read in V2",
+      "verdict": "TRUE_GAP"
+    },
+    "users_nearby": {
+      "reason": "Part of nearby-user notification system \u2014 same gap as users_approxlocs",
+      "verdict": "TRUE_GAP"
+    },
+    "users_stories_requested": {
+      "reason": "Story solicitation is a batch cron job \u2014 users_stories_requested is batch-only, not API",
+      "verdict": "BATCH_ONLY"
+    }
+  }
+}

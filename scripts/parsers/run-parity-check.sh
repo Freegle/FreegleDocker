@@ -22,6 +22,7 @@ PHP_EXTRACTOR_CONTAINER="/var/www/iznik/scripts/parsers/v1-behavior-extractor.ph
 GO_ROOT="$REPO_ROOT/iznik-server-go"
 REPORT_DIR="$REPO_ROOT/docs/parity"
 REPORT="$REPORT_DIR/$(date +%Y-%m-%d)-parity-report.md"
+ANNOTATED_DIR="$REPORT_DIR/annotated"
 TMP_DIR="$(mktemp -d)"
 PROJECT_NAME=$(grep -E '^COMPOSE_PROJECT_NAME=' "$REPO_ROOT/.env" 2>/dev/null | cut -d= -f2)
 PROJECT_NAME="${PROJECT_NAME:-freegle}"
@@ -29,7 +30,7 @@ CONTAINER="${PROJECT_NAME}-apiv1"
 
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-mkdir -p "$REPORT_DIR"
+mkdir -p "$REPORT_DIR" "$ANNOTATED_DIR"
 
 echo "Copying PHP extractor into container..."
 if ! docker exec "$CONTAINER" mkdir -p "$(dirname "$PHP_EXTRACTOR_CONTAINER")"; then
@@ -111,6 +112,8 @@ while IFS= read -r php_file; do
         echo "CHECKER ERROR"
         continue
     fi
+    # Persist annotated JSON for gap analysis tool
+    cp "$annotated" "$ANNOTATED_DIR/${php_file%.php}.json"
 
     # Step 3: count results
     if ! counts=$(python3 - "$annotated" <<'PYEOF'

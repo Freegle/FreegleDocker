@@ -1,0 +1,9 @@
+[
+  {
+    "category": "SQL",
+    "description": "preQuery: SELECT * FROM logos WHERE `date` LIKE ? AND active = 1 ORDER BY RAND();",
+    "file": "http/api/logo.php",
+    "line": 19,
+    "v2_status": "FOUND"
+  }
+]
