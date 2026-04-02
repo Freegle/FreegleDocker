@@ -1,69 +1,70 @@
 # V1→V2 Migration Parity Report
 
-Generated: 2026-04-02 04:30 UTC
+Generated: 2026-04-02 04:51 UTC
 
 Only NOT_FOUND and UNCERTAIN behaviors are shown per endpoint. The checker searches all V2 Go packages (not just the target package) to avoid false NOT_FOUNDs from transitive shared-class includes.
 NOT_FOUND means the extractor found no evidence of the V1 behavior in V2 Go source.
 UNCERTAIN means the table name could not be extracted from the V1 SQL string.
+FOUND_PARTIAL means the table is in V2 but specific columns written by V1 are absent (possible missing column writes).
 
 ---
 
 ## Summary
 
-| Endpoint | Behaviors | NOT_FOUND | UNCERTAIN |
-|----------|-----------|-----------|-----------|
-| `abtest.php` | 1152 | 59 | 465 |
-| `activity.php` | 1199 | 61 | 491 |
-| `address.php` | 1156 | 56 | 472 |
-| `admin.php` | 1166 | 58 | 467 |
-| `alert.php` | 1179 | 56 | 472 |
-| `authority.php` | 471 | 19 | 215 |
-| `changes.php` | 1264 | 72 | 509 |
-| `chatmessages.php` | 1252 | 72 | 498 |
-| `chatrooms.php` | 1205 | 61 | 487 |
-| `comment.php` | 1251 | 72 | 498 |
-| `communityevent.php` | 1175 | 61 | 467 |
-| `config.php` | 2 | 1 | 0 |
-| `dashboard.php` | 1208 | 58 | 497 |
-| `domains.php` | 3 | 1 | 1 |
-| `donations.php` | 1253 | 72 | 498 |
-| `export.php` | 1251 | 72 | 498 |
-| `giftaid.php` | 1161 | 56 | 473 |
-| `group.php` | 1252 | 73 | 498 |
-| `groups.php` | 1169 | 61 | 466 |
-| `image.php` | 25 | 13 | 10 |
-| `isochrone.php` | 1153 | 56 | 466 |
-| `item.php` | 1168 | 56 | 479 |
-| `jobs.php` | 1163 | 66 | 464 |
-| `locations.php` | 1207 | 61 | 485 |
-| `logo.php` | 1 | 0 | 0 |
-| `logs.php` | 1251 | 72 | 498 |
-| `memberships.php` | 1263 | 77 | 502 |
-| `merge.php` | 1261 | 72 | 498 |
-| `message.php` | 1259 | 73 | 502 |
-| `messages.php` | 1219 | 61 | 495 |
-| `microvolunteering.php` | 1220 | 62 | 489 |
-| `modconfig.php` | 1155 | 56 | 467 |
-| `newsfeed.php` | 1221 | 66 | 487 |
-| `noticeboard.php` | 1280 | 72 | 501 |
-| `notification.php` | 1153 | 56 | 465 |
-| `profile.php` | 1251 | 72 | 498 |
-| `session.php` | 1298 | 85 | 510 |
-| `shortlink.php` | 1152 | 56 | 465 |
-| `simulation.php` | 1153 | 56 | 464 |
-| `spammers.php` | 1181 | 56 | 480 |
-| `src.php` | 1147 | 56 | 464 |
-| `status.php` | 0 | 0 | 0 |
-| `stdmsg.php` | 1155 | 56 | 467 |
-| `stories.php` | 1223 | 66 | 488 |
-| `stripecreateintent.php` | 1147 | 56 | 464 |
-| `stripecreatesubscription.php` | 1147 | 56 | 464 |
-| `team.php` | 1261 | 72 | 498 |
-| `tryst.php` | 1174 | 56 | 469 |
-| `user.php` | 1288 | 72 | 507 |
-| `usersearch.php` | 1151 | 56 | 464 |
-| `visualise.php` | 1149 | 59 | 464 |
-| `volunteering.php` | 1175 | 61 | 467 |
+| Endpoint | Behaviors | NOT_FOUND | UNCERTAIN | FOUND_PARTIAL |
+|----------|-----------|-----------|-----------|---------------|
+| `abtest.php` | 1129 | 57 | 445 | 18 |
+| `activity.php` | 1176 | 59 | 471 | 18 |
+| `address.php` | 1133 | 54 | 452 | 18 |
+| `admin.php` | 1143 | 56 | 447 | 19 |
+| `alert.php` | 1156 | 54 | 452 | 19 |
+| `authority.php` | 471 | 19 | 215 | 5 |
+| `changes.php` | 1241 | 70 | 489 | 21 |
+| `chatmessages.php` | 1229 | 70 | 478 | 21 |
+| `chatrooms.php` | 1182 | 59 | 467 | 20 |
+| `comment.php` | 1228 | 70 | 478 | 21 |
+| `communityevent.php` | 1152 | 59 | 447 | 20 |
+| `config.php` | 2 | 1 | 0 | 0 |
+| `dashboard.php` | 1185 | 56 | 477 | 18 |
+| `domains.php` | 3 | 1 | 1 | 0 |
+| `donations.php` | 1230 | 70 | 478 | 21 |
+| `export.php` | 1228 | 70 | 478 | 21 |
+| `giftaid.php` | 1138 | 54 | 453 | 18 |
+| `group.php` | 1229 | 71 | 478 | 21 |
+| `groups.php` | 1146 | 59 | 446 | 20 |
+| `image.php` | 25 | 13 | 10 | 0 |
+| `isochrone.php` | 1130 | 54 | 446 | 18 |
+| `item.php` | 1145 | 54 | 459 | 18 |
+| `jobs.php` | 1140 | 64 | 444 | 19 |
+| `locations.php` | 1184 | 59 | 465 | 20 |
+| `logo.php` | 1 | 0 | 0 | 0 |
+| `logs.php` | 1228 | 70 | 478 | 21 |
+| `memberships.php` | 1240 | 75 | 482 | 21 |
+| `merge.php` | 1238 | 70 | 478 | 21 |
+| `message.php` | 1236 | 71 | 482 | 21 |
+| `messages.php` | 1196 | 59 | 475 | 20 |
+| `microvolunteering.php` | 1197 | 60 | 469 | 19 |
+| `modconfig.php` | 1132 | 54 | 447 | 18 |
+| `newsfeed.php` | 1198 | 64 | 467 | 18 |
+| `noticeboard.php` | 1257 | 70 | 481 | 22 |
+| `notification.php` | 1130 | 54 | 445 | 18 |
+| `profile.php` | 1228 | 70 | 478 | 21 |
+| `session.php` | 1275 | 83 | 490 | 21 |
+| `shortlink.php` | 1129 | 54 | 445 | 18 |
+| `simulation.php` | 1130 | 54 | 444 | 18 |
+| `spammers.php` | 1158 | 54 | 460 | 18 |
+| `src.php` | 1124 | 54 | 444 | 18 |
+| `status.php` | 0 | 0 | 0 | 0 |
+| `stdmsg.php` | 1132 | 54 | 447 | 18 |
+| `stories.php` | 1200 | 64 | 468 | 20 |
+| `stripecreateintent.php` | 1124 | 54 | 444 | 18 |
+| `stripecreatesubscription.php` | 1124 | 54 | 444 | 18 |
+| `team.php` | 1238 | 70 | 478 | 21 |
+| `tryst.php` | 1151 | 54 | 449 | 22 |
+| `user.php` | 1265 | 70 | 487 | 21 |
+| `usersearch.php` | 1128 | 54 | 444 | 18 |
+| `visualise.php` | 1126 | 57 | 444 | 18 |
+| `volunteering.php` | 1152 | 59 | 447 | 20 |
 
 ---
 
@@ -215,8 +216,10 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -240,6 +243,7 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -251,6 +255,7 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -284,6 +289,7 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -291,6 +297,11 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -327,9 +338,13 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -352,6 +367,8 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -380,9 +397,11 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -463,6 +482,8 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -470,7 +491,6 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -493,69 +513,14 @@ UNCERTAIN means the table name could not be extracted from the V1 SQL string.
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -573,8 +538,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -611,8 +578,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -806,8 +775,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -831,6 +802,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -842,6 +814,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -875,6 +848,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -897,6 +871,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -919,6 +896,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -947,9 +926,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -1017,6 +998,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [NOT_FOUND] **SQL**: preQuery: SELECT COUNT(DISTINCT users_approxlocs.userid) AS count
             FROM users_approxlocs
             INNER JOIN isochrones ON ST_Contains(isochrones.polygon, users_approxlocs.position)
@@ -1032,6 +1014,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -1081,6 +1068,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -1088,7 +1077,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -1111,69 +1099,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -1191,8 +1124,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -1202,8 +1137,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:322`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:368`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:421`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -1414,8 +1351,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -1439,6 +1378,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -1450,6 +1390,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -1483,6 +1424,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -1490,7 +1432,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -1513,72 +1454,21 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:105`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -1615,9 +1505,13 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -1640,6 +1534,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -1668,9 +1564,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -1751,10 +1649,13 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -1772,8 +1673,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -1810,8 +1713,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -1861,6 +1766,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:261`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/session/Session.php:317`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Utils.php:607`
+- [FOUND_PARTIAL: missing cols sendafter] **SQL**: preExec: INSERT INTO admins (`groupid`, `createdby`, `subject`, `text`, `ctatext`, `ctalink`, `sendafter`, `essential`) VALUES (?,?,?,?,?,?,?,?); — `include/group/Admin.php:26`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Admin.php:116`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Admin.php:157`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM admins_users WHERE adminid = ? AND userid = ?; — `include/group/Admin.php:183`
@@ -1999,8 +1905,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -2024,6 +1932,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -2035,6 +1944,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -2068,6 +1978,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -2075,6 +1986,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:208`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:223`
@@ -2102,6 +2018,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -2114,6 +2031,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -2136,6 +2056,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -2164,9 +2086,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -2247,6 +2171,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -2254,7 +2180,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -2277,69 +2202,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -2357,8 +2227,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -2395,8 +2267,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -2449,6 +2323,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Alert.php:53`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Alert.php:112`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Alert.php:122`
+- [FOUND_PARTIAL: missing cols groupprogress] **SQL**: preExec: UPDATE alerts SET groupprogress = ? WHERE id = ?; — `include/group/Alert.php:136`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Alert.php:220`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Alert.php:228`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Alert.php:249`
@@ -2587,8 +2462,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -2612,6 +2489,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -2623,6 +2501,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -2656,6 +2535,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -2686,6 +2566,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -2693,6 +2574,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -2702,6 +2588,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -2724,6 +2613,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -2752,9 +2643,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -2835,6 +2728,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -2842,7 +2737,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -2865,69 +2759,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -2945,8 +2784,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -2983,8 +2824,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -3190,8 +3033,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -3215,6 +3060,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -3226,6 +3072,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -3259,6 +3106,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -3416,8 +3264,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -3441,6 +3291,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -3452,6 +3303,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -3485,6 +3337,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -3507,6 +3360,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -3529,6 +3385,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -3557,9 +3415,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -3627,6 +3487,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [NOT_FOUND] **SQL**: preQuery: SELECT COUNT(DISTINCT users_approxlocs.userid) AS count
             FROM users_approxlocs
             INNER JOIN isochrones ON ST_Contains(isochrones.polygon, users_approxlocs.position)
@@ -3642,6 +3503,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -3691,6 +3557,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -3698,7 +3566,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -3721,69 +3588,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -3801,8 +3613,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -3812,8 +3626,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:322`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:368`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:421`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -3877,6 +3693,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -3902,6 +3720,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `chatmessages.php`
@@ -3937,9 +3757,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -4087,8 +3910,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -4112,6 +3937,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -4123,6 +3949,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -4137,6 +3964,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -4159,6 +3989,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -4187,9 +4019,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -4258,10 +4092,16 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:105`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:208`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:223`
@@ -4289,6 +4129,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Attachment.php:227`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:253`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:293`
@@ -4305,12 +4146,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Shortlink.php:76`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:56`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -4333,68 +4175,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -4421,8 +4207,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -4443,8 +4231,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -4532,6 +4322,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `chatrooms.php`
@@ -4572,6 +4364,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
@@ -4708,8 +4502,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -4733,6 +4529,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -4744,6 +4541,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -4777,6 +4575,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -4787,6 +4586,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:208`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:223`
@@ -4814,9 +4618,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -4839,6 +4647,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -4867,9 +4677,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -4911,6 +4723,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
                 LIMIT 1
              — `include/message/Message.php:6012`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -4935,6 +4748,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -4956,7 +4771,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -4979,68 +4793,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:167`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:203`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:211`
@@ -5050,8 +4808,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -5072,8 +4832,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -5279,8 +5041,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -5304,6 +5068,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -5315,6 +5080,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -5333,6 +5099,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:124`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:200`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/session/Session.php:231`
@@ -5374,9 +5145,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -5399,6 +5174,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -5427,9 +5204,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -5510,6 +5289,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -5517,7 +5298,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -5540,69 +5320,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -5620,8 +5345,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -5658,8 +5385,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -5718,6 +5447,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
@@ -5740,6 +5470,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -5770,6 +5502,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `communityevent.php`
@@ -5807,6 +5541,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
@@ -5943,8 +5679,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -5968,6 +5706,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -5979,6 +5718,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -6012,6 +5752,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -6046,9 +5787,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -6077,7 +5821,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -6100,68 +5843,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -6179,6 +5866,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -6188,6 +5880,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -6210,6 +5905,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -6238,9 +5935,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -6301,8 +6000,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -6323,6 +6024,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -6352,6 +6054,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Tus.php:9`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:34`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:75`
@@ -6540,8 +6244,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -6565,6 +6271,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -6576,6 +6283,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -6609,6 +6317,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -6639,6 +6348,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -6652,6 +6362,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -6664,6 +6379,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -6686,6 +6404,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -6714,9 +6434,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -6797,6 +6519,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -6804,7 +6528,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -6827,69 +6550,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -6907,8 +6575,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [NOT_FOUND] **SQL**: preQuery: SELECT COUNT(DISTINCT users_approxlocs.userid) AS count
             FROM users_approxlocs
             INNER JOIN isochrones ON ST_Contains(isochrones.polygon, users_approxlocs.position)
@@ -6936,8 +6606,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -7135,8 +6807,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -7160,6 +6834,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -7171,6 +6846,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -7213,6 +6889,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -7220,7 +6897,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -7243,68 +6919,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:208`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:223`
@@ -7332,13 +6952,22 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:105`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -7361,6 +6990,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -7389,9 +7020,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -7472,10 +7105,13 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -7493,8 +7129,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [NOT_FOUND] **SQL**: preQuery: SELECT COUNT(DISTINCT users_approxlocs.userid) AS count
             FROM users_approxlocs
             INNER JOIN isochrones ON ST_Contains(isochrones.polygon, users_approxlocs.position)
@@ -7522,8 +7160,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -7590,6 +7230,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Authority.php:81`
@@ -7612,6 +7254,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `export.php`
@@ -7756,8 +7400,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -7781,6 +7427,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -7792,6 +7439,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -7825,6 +7473,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -7832,6 +7481,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -7868,9 +7522,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -7893,6 +7551,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -7921,9 +7581,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -8004,6 +7666,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -8011,7 +7675,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -8034,69 +7697,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -8114,8 +7722,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -8152,8 +7762,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -8212,6 +7824,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -8242,6 +7856,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `giftaid.php`
@@ -8395,8 +8011,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -8420,6 +8038,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -8431,6 +8050,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -8464,6 +8084,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -8471,7 +8092,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -8494,68 +8114,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:208`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:223`
@@ -8583,6 +8147,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -8590,6 +8155,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -8599,6 +8169,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -8621,6 +8194,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -8649,9 +8224,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -8732,10 +8309,13 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -8753,8 +8333,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [NOT_FOUND] **SQL**: preQuery: SELECT COUNT(DISTINCT users_approxlocs.userid) AS count
             FROM users_approxlocs
             INNER JOIN isochrones ON ST_Contains(isochrones.polygon, users_approxlocs.position)
@@ -8782,8 +8364,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -8869,6 +8453,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/user/User.php:410`
@@ -9003,8 +8588,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -9028,6 +8615,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -9039,6 +8627,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -9088,6 +8677,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -9122,9 +8712,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -9137,7 +8730,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -9160,68 +8752,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -9229,6 +8765,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -9238,6 +8779,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -9260,6 +8804,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -9288,9 +8834,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -9351,8 +8899,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -9373,8 +8923,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -9419,6 +8971,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:79`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Search.php:90`
@@ -9462,6 +9016,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `groups.php`
@@ -9498,6 +9054,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Utils.php:607`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
@@ -9633,8 +9190,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -9658,6 +9217,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -9669,6 +9229,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -9702,6 +9263,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -9736,9 +9298,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -9767,7 +9332,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -9790,68 +9354,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -9859,6 +9367,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -9868,6 +9381,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -9890,6 +9406,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -9918,9 +9436,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -9981,8 +9501,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -10003,8 +9525,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -10044,6 +9568,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Tus.php:9`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:34`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:75`
@@ -10100,7 +9626,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -10123,68 +9648,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/user/User.php:410`
@@ -10319,8 +9788,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -10344,6 +9815,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -10355,6 +9827,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -10388,6 +9861,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -10419,10 +9893,16 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:105`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -10435,6 +9915,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -10457,6 +9940,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -10485,9 +9970,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -10568,10 +10055,13 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -10589,8 +10079,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -10616,8 +10108,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -10801,8 +10295,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -10826,6 +10322,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -10837,6 +10334,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -10870,6 +10368,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -10892,6 +10391,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -10928,9 +10432,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -10953,6 +10461,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -10981,9 +10491,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -11064,6 +10576,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -11071,7 +10585,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -11094,69 +10607,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -11174,8 +10632,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -11212,8 +10672,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -11416,8 +10878,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -11441,6 +10905,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -11452,6 +10917,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -11485,6 +10951,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -11493,11 +10960,18 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:105`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -11534,9 +11008,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -11559,6 +11037,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -11587,9 +11067,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -11670,6 +11152,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -11677,7 +11161,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -11700,69 +11183,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -11780,8 +11208,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -11818,8 +11248,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -11857,7 +11289,6 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -11880,68 +11311,12 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:208`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:223`
@@ -11969,9 +11344,13 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -11994,6 +11373,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -12022,9 +11403,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -12199,8 +11582,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -12224,6 +11609,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -12235,6 +11621,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -12268,6 +11655,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -12303,9 +11691,12 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -12337,6 +11728,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:79`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Search.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:110`
@@ -12389,8 +11785,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -12400,8 +11798,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:322`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:368`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:421`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -12441,6 +11841,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Tus.php:9`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:34`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:75`
@@ -12599,8 +12001,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -12624,6 +12028,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -12635,6 +12040,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -12668,6 +12074,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
@@ -12675,6 +12082,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -12711,9 +12123,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -12736,6 +12152,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -12764,9 +12182,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -12847,6 +12267,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -12854,7 +12276,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -12877,69 +12298,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -12957,8 +12323,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -12995,8 +12363,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -13052,6 +12422,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -13082,6 +12454,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `memberships.php`
@@ -13119,6 +12493,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/user/User.php:410`
@@ -13253,8 +12628,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -13278,6 +12655,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -13289,6 +12667,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -13313,6 +12692,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:190`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/ModConfig.php:218`
@@ -13344,6 +12728,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -13378,9 +12763,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -13409,7 +12797,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -13432,68 +12819,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -13506,6 +12837,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -13528,6 +12862,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -13556,9 +12892,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -13610,8 +12948,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -13632,8 +12972,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -13676,6 +13018,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Tus.php:9`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:34`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:75`
@@ -13721,6 +13065,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `merge.php`
@@ -13865,8 +13211,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -13890,6 +13238,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -13901,6 +13250,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -13937,6 +13287,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -13944,6 +13295,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -13977,9 +13333,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -14002,6 +13362,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -14030,9 +13392,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -14113,6 +13477,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -14120,7 +13486,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -14143,69 +13508,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -14223,8 +13533,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -14261,8 +13573,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -14321,6 +13635,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -14351,6 +13667,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `message.php`
@@ -14369,6 +13687,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -14391,6 +13712,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -14419,9 +13742,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -14489,6 +13814,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/user/User.php:410`
@@ -14623,8 +13949,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -14648,6 +13976,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -14659,6 +13988,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -14674,7 +14004,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -14697,68 +14026,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/spam/Spam.php:106`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM spam_countries WHERE country = ?; — `include/spam/Spam.php:131`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/spam/Spam.php:141`
@@ -14781,6 +14054,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:120`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:241`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/chat/ChatRoom.php:447`
@@ -14811,9 +14087,12 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -14830,6 +14109,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:79`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Search.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:110`
@@ -14901,8 +14185,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -14912,8 +14198,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:322`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:368`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:421`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -14986,6 +14274,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `messages.php`
@@ -15010,6 +14300,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -15032,6 +14325,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -15060,9 +14355,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -15107,7 +14404,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -15130,68 +14426,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:208`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:223`
@@ -15219,6 +14459,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/user/User.php:410`
@@ -15353,8 +14594,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -15378,6 +14621,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -15389,6 +14633,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -15422,6 +14667,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -15457,6 +14703,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:79`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Search.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:110`
@@ -15505,6 +14756,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:148`
@@ -15517,6 +14770,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/ModConfig.php:271`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:356`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -15543,8 +14797,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -15554,8 +14810,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:322`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:368`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:421`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -15600,6 +14858,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:75`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:118`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/ai/GeminiHelper.php:49`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
@@ -15617,6 +14877,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/MicroVolunteering.php:68`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/MicroVolunteering.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/MicroVolunteering.php:207`
+- [FOUND_PARTIAL: missing cols facebook_post] **SQL**: preExec: INSERT IGNORE INTO microactions (actiontype, userid, facebook_post, result, version) VALUES (?, ?, ?, ?, ?); — `include/user/MicroVolunteering.php:272`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/MicroVolunteering.php:442`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/MicroVolunteering.php:475`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/MicroVolunteering.php:531`
@@ -15758,8 +15019,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -15783,6 +15046,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -15794,6 +15058,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -15827,6 +15092,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -15849,6 +15115,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -15871,6 +15140,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -15899,9 +15170,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -15952,6 +15225,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -15982,6 +15260,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:190`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/ModConfig.php:218`
@@ -16022,6 +15301,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -16029,7 +15310,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -16052,69 +15332,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -16132,8 +15357,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -16154,8 +15381,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -16368,8 +15597,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -16393,6 +15624,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -16404,6 +15636,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -16437,6 +15670,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -16447,6 +15681,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -16483,9 +15722,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -16508,6 +15751,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -16536,9 +15781,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -16610,6 +15857,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -16617,7 +15866,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -16640,69 +15888,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -16720,8 +15913,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -16758,8 +15953,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -16840,6 +16037,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/user/User.php:410`
@@ -16974,8 +16172,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -16999,6 +16199,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -17010,6 +16211,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -17051,6 +16253,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -17077,6 +16280,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -17099,6 +16305,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -17127,9 +16335,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -17170,8 +16380,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
                 ORDER BY timestamp DESC
                 LIMIT 1
              — `include/message/Message.php:6012`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -17187,8 +16399,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -17199,6 +16413,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:190`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/ModConfig.php:218`
@@ -17239,6 +16458,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -17246,7 +16467,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -17269,69 +16489,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -17423,6 +16588,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/session/Session.php:317`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Utils.php:607`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/noticeboard/Noticeboard.php:26`
+- [FOUND_PARTIAL: missing cols thanked] **SQL**: preExec: UPDATE noticeboards SET thanked = NOW() WHERE addedby = ?; — `include/noticeboard/Noticeboard.php:150`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/noticeboard/Noticeboard.php:247`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
@@ -17558,8 +16724,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -17583,6 +16751,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -17594,6 +16763,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -17627,6 +16797,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -17663,6 +16834,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -17696,9 +16872,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -17721,6 +16901,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -17749,9 +16931,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -17832,6 +17016,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -17839,7 +17025,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -17862,69 +17047,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -17942,8 +17072,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -17964,8 +17096,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -18020,6 +17154,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -18044,6 +17180,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `notification.php`
@@ -18194,8 +17332,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -18219,6 +17359,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -18230,6 +17371,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -18263,6 +17405,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -18280,6 +17423,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -18310,9 +17458,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -18335,6 +17487,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -18363,9 +17517,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -18446,6 +17602,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -18453,7 +17611,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -18476,69 +17633,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -18556,8 +17658,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -18594,8 +17698,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -18764,8 +17870,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -18789,6 +17897,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -18800,6 +17909,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -18818,6 +17928,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:124`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:200`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/session/Session.php:231`
@@ -18859,9 +17974,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -18884,6 +18003,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -18912,9 +18033,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -18995,6 +18118,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -19002,7 +18127,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -19025,69 +18149,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -19105,8 +18174,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -19143,8 +18214,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -19203,6 +18276,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
@@ -19225,6 +18299,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -19255,6 +18331,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `session.php`
@@ -19274,6 +18352,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/newsfeed/Newsfeed.php:85`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/newsfeed/Newsfeed.php:134`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/newsfeed/Newsfeed.php:301`
@@ -19429,8 +18512,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -19454,6 +18539,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -19465,6 +18551,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -19508,6 +18595,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
@@ -19544,6 +18632,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:202`
@@ -19573,6 +18663,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -19599,6 +18690,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -19621,6 +18715,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -19649,9 +18745,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -19692,8 +18790,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
                 ORDER BY timestamp DESC
                 LIMIT 1
              — `include/message/Message.php:6012`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -19709,8 +18809,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -19739,7 +18841,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -19762,69 +18863,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -19862,6 +18908,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: DROP TABLE IF EXISTS jobs_old; — `include/misc/Jobs.php:728`
 - [UNCERTAIN] **SQL**: preExec: RENAME TABLE jobs TO jobs_old, jobs_new TO jobs; — `include/misc/Jobs.php:729`
 - [UNCERTAIN] **SQL**: preExec: DROP TABLE IF EXISTS jobs_old; — `include/misc/Jobs.php:730`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Shortlink.php:76`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Tus.php:9`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:34`
@@ -19910,6 +18958,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `shortlink.php`
@@ -20055,8 +19105,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -20080,6 +19132,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -20091,6 +19144,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -20124,6 +19178,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -20154,10 +19209,16 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:105`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -20170,6 +19231,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -20192,6 +19256,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -20220,9 +19286,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -20303,6 +19371,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -20310,7 +19380,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -20333,69 +19402,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -20413,8 +19427,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -20451,8 +19467,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -20635,8 +19653,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -20660,6 +19680,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -20671,6 +19692,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -20704,6 +19726,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -20711,6 +19734,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -20747,9 +19775,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -20772,6 +19804,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -20800,9 +19834,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -20883,6 +19919,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -20890,7 +19928,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -20913,69 +19950,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -20993,8 +19975,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -21031,8 +20015,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -21103,6 +20089,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:269`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/user/User.php:410`
@@ -21237,8 +20224,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -21262,6 +20251,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -21273,6 +20263,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -21296,6 +20287,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -21318,6 +20312,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -21346,9 +20342,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -21393,6 +20391,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -21426,6 +20429,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:190`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/ModConfig.php:218`
@@ -21466,6 +20470,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -21473,7 +20479,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -21496,69 +20501,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -21576,8 +20526,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -21614,8 +20566,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -21811,8 +20765,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -21836,6 +20792,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -21847,6 +20804,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -21880,6 +20838,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -21887,6 +20846,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -21923,9 +20887,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -21948,6 +20916,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -21976,9 +20946,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -22059,6 +21031,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -22066,7 +21040,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -22089,69 +21062,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -22169,8 +21087,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -22207,8 +21127,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -22395,8 +21317,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -22420,6 +21344,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -22431,6 +21356,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -22464,6 +21390,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -22480,6 +21407,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -22516,9 +21448,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -22541,6 +21477,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -22569,9 +21507,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -22643,6 +21583,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -22650,7 +21592,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -22673,69 +21614,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -22753,8 +21639,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -22791,8 +21679,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -22848,8 +21738,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:124`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:200`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/session/Session.php:231`
@@ -22882,6 +21774,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/newsfeed/Newsfeed.php:85`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/newsfeed/Newsfeed.php:134`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/newsfeed/Newsfeed.php:301`
@@ -23026,8 +21919,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -23051,6 +21946,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -23062,6 +21958,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -23125,6 +22022,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -23159,9 +22057,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -23174,7 +22075,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -23197,68 +22097,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -23269,6 +22113,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -23291,6 +22138,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -23319,9 +22168,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -23362,8 +22213,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
                 ORDER BY timestamp DESC
                 LIMIT 1
              — `include/message/Message.php:6012`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -23374,6 +22227,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/ModConfig.php:190`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/ModConfig.php:218`
@@ -23433,6 +22291,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Search.php:79`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Search.php:90`
@@ -23592,8 +22452,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -23617,6 +22479,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -23628,6 +22491,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -23661,6 +22525,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -23668,6 +22533,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -23704,9 +22574,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -23729,6 +22603,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -23757,9 +22633,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -23840,6 +22718,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -23847,7 +22727,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -23870,69 +22749,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -23950,8 +22774,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -23988,8 +22814,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -24172,8 +23000,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -24197,6 +23027,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -24208,6 +23039,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -24241,6 +23073,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -24248,6 +23081,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -24284,9 +23122,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -24309,6 +23151,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -24337,9 +23181,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -24420,6 +23266,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -24427,7 +23275,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -24450,69 +23297,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -24530,8 +23322,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -24568,8 +23362,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -24752,8 +23548,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -24777,6 +23575,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -24788,6 +23587,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -24821,6 +23621,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -24828,6 +23629,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -24864,9 +23670,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -24889,6 +23699,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -24917,9 +23729,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -25000,6 +23814,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -25007,7 +23823,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -25030,69 +23845,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -25110,8 +23870,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -25148,8 +23910,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -25208,6 +23972,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -25238,6 +24004,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `tryst.php`
@@ -25249,7 +24017,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/session/Session.php:317`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Utils.php:607`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Tryst.php:164`
+- [FOUND_PARTIAL: missing cols icssent, ics1uid, ics2uid] **SQL**: preExec: UPDATE trysts SET icssent = 1, ics1uid = ?, ics2uid = ? WHERE id = ?; — `include/user/Tryst.php:174`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Tryst.php:197`
+- [FOUND_PARTIAL: missing cols remindersent] **SQL**: preExec: UPDATE trysts SET remindersent = NOW() WHERE id = ?; — `include/user/Tryst.php:232`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/Tryst.php:252`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/Tryst.php:260`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:149`
@@ -25386,8 +24156,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -25411,6 +24183,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -25422,6 +24195,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -25455,6 +24229,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -25488,12 +24263,15 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -25506,6 +24284,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -25539,9 +24322,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -25564,6 +24351,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -25592,9 +24381,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -25650,7 +24441,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -25673,68 +24463,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:167`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:203`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:211`
@@ -25744,8 +24478,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -25782,8 +24518,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -25823,6 +24561,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Shortlink.php:76`
 
 ### `user.php`
@@ -25967,8 +24707,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -25992,6 +24734,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -26003,6 +24746,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -26036,6 +24780,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -26066,6 +24811,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Engage.php:49`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Engage.php:66`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Engage.php:130`
@@ -26079,6 +24825,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -26091,6 +24842,9 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -26113,6 +24867,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -26141,9 +24897,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -26224,6 +24982,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -26231,7 +24991,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -26254,69 +25013,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -26334,8 +25038,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -26372,8 +25078,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -26432,6 +25140,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:73`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/config/BulkOp.php:100`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/config/BulkOp.php:110`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/LoggedPDO.php:551`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:48`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Authority.php:63`
@@ -26462,6 +25172,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:788`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1027`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Pollinations.php:1087`
+- [FOUND_PARTIAL: missing cols imagehash] **SQL**: preExec: INSERT INTO ai_images (name, externaluid, imagehash) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE externaluid = VALUES(externaluid), imagehash = VALUES(imagehash), created = NOW() — `include/misc/Pollinations.php:1182`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Pollinations.php:1313`
 
 ### `usersearch.php`
@@ -26606,8 +25318,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -26631,6 +25345,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -26642,6 +25357,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -26675,6 +25391,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -26682,6 +25399,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -26718,9 +25440,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -26743,6 +25469,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -26771,9 +25499,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -26854,6 +25584,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -26861,7 +25593,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -26884,69 +25615,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -26964,8 +25640,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -27002,8 +25680,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:640`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Attachment.php:644`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Attachment.php:680`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -27182,8 +25862,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -27207,6 +25889,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -27218,6 +25901,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -27252,6 +25936,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:124`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/session/Session.php:200`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/session/Session.php:231`
@@ -27293,9 +25982,13 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -27318,6 +26011,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -27346,9 +26041,11 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -27429,6 +26126,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [NOT_FOUND] **HTTP**: file_get_contents: https://limited.facebook.com/.well-known/oauth/openid/jwks/ — `include/session/Facebook.php:276`
@@ -27436,7 +26135,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -27459,69 +26157,14 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -27539,8 +26182,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -27561,8 +26206,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -27621,6 +26268,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Tus.php:9`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:34`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:75`
@@ -27662,6 +26310,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/group/Group.php:1205`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1223`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Group.php:1297`
+- [FOUND_PARTIAL: missing cols welcomereview] **SQL**: preExec: UPDATE `groups` SET welcomereview = NOW() WHERE id = ?; — `include/group/Group.php:1309`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO volunteering (`userid`, `pending`, `title`, `online`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `timecommitment`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?,?,?); — `include/group/Volunteering.php:24`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:84`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:95`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/Volunteering.php:138`
@@ -27802,8 +26452,10 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4229`
 - [NOT_FOUND] **SQL**: preQuery: SELECT id FROM users_invitations WHERE email = ? AND outcome = ?; — `include/user/User.php:4627`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_invitations (userid, email) VALUES (?,?); — `include/user/User.php:4636`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft - 1 WHERE id = ?; — `include/user/User.php:4670`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_invitations WHERE id = ?; — `include/user/User.php:4685`
 - [NOT_FOUND] **SQL**: preExec: UPDATE users_invitations SET outcome = ?, outcometimestamp = NOW() WHERE id = ?; — `include/user/User.php:4691`
+- [FOUND_PARTIAL: missing cols invitesleft] **SQL**: preExec: UPDATE users SET invitesleft = invitesleft + 2 WHERE id = ?; — `include/user/User.php:4700`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4714`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4763`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:4796`
@@ -27827,6 +26479,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5387`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:5876`
+- [FOUND_PARTIAL: missing cols envelopefrom, htmlbody] **SQL**: preExec: UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE id = ?; — `include/user/User.php:5922`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6038`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6052`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM users_active WHERE userid = ? AND timestamp = ?; — `include/user/User.php:6111`
@@ -27838,6 +26491,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6278`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6372`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6450`
+- [FOUND_PARTIAL: missing cols logid] **SQL**: preExec: INSERT IGNORE INTO users_modmails (userid, logid, timestamp, groupid) VALUES (?,?,?,?); — `include/user/User.php:6455`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6467`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6479`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/User.php:6504`
@@ -27871,6 +26525,7 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:814`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:905`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/spam/Spam.php:953`
+- [FOUND_PARTIAL: missing cols replyambit] **SQL**: preExec: UPDATE users SET replyambit = ? WHERE id = ?; — `include/spam/Spam.php:1075`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:130`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:148`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Log.php:164`
@@ -27905,9 +26560,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2141`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2287`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2322`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2344`
+- [FOUND_PARTIAL: missing cols expecter] **SQL**: preExec: INSERT IGNORE INTO users_expected (expecter, expectee, chatmsgid, value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = ?; — `include/chat/ChatRoom.php:2354`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2668`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatRoom.php:2745`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:99`
+- [FOUND_PARTIAL: missing cols spamscore, facebookid] **SQL**: preExec: INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, platform, reviewrequired, spamscore, reportreason, refchatid, imageid, facebookid, processingrequired, replyreceived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,0); — `include/chat/ChatMessage.php:498`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:605`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:625`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/chat/ChatMessage.php:671`
@@ -27936,7 +26594,6 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:60`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:73`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:77`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:90`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:104`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:140`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:170`
@@ -27959,68 +26616,12 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:530`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:537`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:546`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:555`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:611`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:616`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:652`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:716`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:730`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS postgis; — `include/misc/Location.php:750`
-- [UNCERTAIN] **SQL**: preExec: CREATE EXTENSION IF NOT EXISTS btree_gist; — `include/misc/Location.php:751`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:756`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:757`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:758`
-- [NOT_FOUND] **SQL**: preQuery: SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'location_type'); — `include/misc/Location.php:762`
-- [UNCERTAIN] **SQL**: preExec: CREATE TYPE location_type AS ENUM('Road','Polygon','Line','Point','Postcode'); — `include/misc/Location.php:764`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:771`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:772`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:785`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:796`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:797`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:798`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:804`
-- [UNCERTAIN] **SQL**: preExec: BEGIN; — `include/misc/Location.php:806`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:808`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:809`
-- [UNCERTAIN] **SQL**: preExec: [expr] — `include/misc/Location.php:810`
-- [UNCERTAIN] **SQL**: preExec: COMMIT; — `include/misc/Location.php:813`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Location.php:832`
-- [NOT_FOUND] **SQL**: preQuery: 
-WITH ourpoint AS
-(
- SELECT ST_MakePoint(?, ?) as p
-)
-SELECT
-   locationid,
-   name,
-   ST_Area(location) AS area,
-   dist,
-   CASE
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00015625), 3857)) THEN 1
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0003125), 3857)) THEN 2
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.000625), 3857)) THEN 3
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.00125), 3857)) THEN 4
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.0025), 3857)) THEN 5
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.005), 3857)) THEN 6
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.01), 3857)) THEN 7
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.02), 3857)) THEN 8
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.04), 3857)) THEN 9
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.08), 3857)) THEN 10
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.16), 3857)) THEN 11
-       WHEN ST_Intersects(location, ST_SetSRID(ST_Buffer((SELECT p FROM ourpoint),0.32), 3857)) THEN 12
-   END AS intersects
-  FROM (
-    SELECT   locationid,
-             name,
-             location,
-             location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857) AS dist
-    FROM     locations 
-    WHERE    ST_Area(location) BETWEEN 0.00001 AND 0.15
-    ORDER BY location <-> ST_SetSRID((SELECT p FROM ourpoint), 3857)
-    LIMIT 10
-) q
-ORDER BY intersects ASC, area ASC LIMIT 1;
- — `include/misc/Location.php:846`
 - [NOT_FOUND] **SQL**: preQuery: SELECT * FROM returnpath_seedlist WHERE active = 1 AND userid IS NOT NULL; — `include/misc/Mail.php:160`
 - [NOT_FOUND] **SQL**: preExec: UPDATE returnpath_seedlist SET active = 0 WHERE id = ?; — `include/misc/Mail.php:166`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Mail.php:238`
@@ -28038,6 +26639,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:128`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/user/PushNotifications.php:138`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/PushNotifications.php:416`
+- [FOUND_PARTIAL: missing cols lastmsgnotified] **SQL**: preExec: 
+                INSERT INTO chat_roster (chatid, userid, lastmsgnotified, date)
+                VALUES (?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE lastmsgnotified = ?
+             — `include/user/PushNotifications.php:497`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:54`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:70`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Notifications.php:79`
@@ -28047,6 +26653,9 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:199`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO messages_deadlines (msgid, fop) VALUES (?,?) ON DUPLICATE KEY UPDATE fop = ?; — `include/message/Message.php:218`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:414`
+- [FOUND_PARTIAL: missing cols olditems, newitems, oldimages, newimages, oldlocation, newlocation] **SQL**: preExec: INSERT INTO messages_edits (msgid, oldtext, newtext, oldsubject, newsubject, 
+              oldtype, newtype, olditems, newitems, oldimages, newimages, oldlocation, newlocation, byuser, reviewrequired) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?); — `include/message/Message.php:452`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:470`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:504`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:718`
@@ -28069,6 +26678,8 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/message/Message.php:2651`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2746`
 - [UNCERTAIN] **SQL**: preExec: [expr] — `include/message/Message.php:2839`
+- [FOUND_PARTIAL: missing cols retrycount, retrylastfailure] **SQL**: preExec: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount),
+          retrylastfailure = NOW() WHERE id = ?; — `include/message/Message.php:2856`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2897`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2925`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:2937`
@@ -28097,9 +26708,11 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: beginTransaction: [expr] — `include/message/Message.php:4572`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4631`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4665`
+- [FOUND_PARTIAL: missing cols lastautopostwarning] **SQL**: preExec: UPDATE messages_groups SET lastautopostwarning = NOW() WHERE msgid = ?; — `include/message/Message.php:4719`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4797`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4818`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4839`
+- [FOUND_PARTIAL: missing cols lastchaseup] **SQL**: preExec: UPDATE messages_groups SET lastchaseup = NOW() WHERE msgid = ?; — `include/message/Message.php:4929`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:4977`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5084`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/message/Message.php:5114`
@@ -28160,8 +26773,10 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:268`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_stories_requested (userid) VALUES (?); — `include/user/Story.php:282`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:352`
+- [FOUND_PARTIAL: missing cols mailedtocentral] **SQL**: preExec: UPDATE users_stories SET mailedtocentral = 1 WHERE id = ?; — `include/user/Story.php:369`
 - [NOT_FOUND] **SQL**: preQuery: SELECT MAX(created) AS max FROM newsletters WHERE type = 'Stories'; — `include/user/Story.php:415`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Story.php:422`
+- [FOUND_PARTIAL: missing cols mailedtomembers] **SQL**: preExec: UPDATE users_stories SET mailedtomembers = 1 WHERE id = ?; — `include/user/Story.php:454`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:74`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Donations.php:83`
 - [NOT_FOUND] **SQL**: preExec: INSERT INTO users_donations_asks (userid) VALUES (?); — `include/misc/Donations.php:91`
@@ -28182,6 +26797,7 @@ ORDER BY intersects ASC, area ASC LIMIT 1;
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/user/Isochrone.php:212`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:257`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/user/Isochrone.php:306`
+- [FOUND_PARTIAL: missing cols externalid] **SQL**: preExec: INSERT INTO communityevents (`userid`, `pending`, `title`, `location`, `contactname`, `contactphone`, `contactemail`, `contacturl`, `description`, `externalid`) VALUES (?,1,?,?,?,?,?,?,?,?); — `include/group/CommunityEvent.php:21`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:97`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/group/CommunityEvent.php:139`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Jobs.php:80`
@@ -28207,6 +26823,8 @@ temp WHERE temp.row_num = ROUND (.95* @row_num); — `include/misc/Jobs.php:298`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:593`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Loki.php:692`
 - [UNCERTAIN] **SQL**: preQuery: [expr] — `include/misc/Loki.php:890`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NOW(), deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:254`
+- [FOUND_PARTIAL: missing cols deletestatus] **SQL**: preExec: UPDATE lovejunk SET deleted = NULL, deletestatus = ? WHERE msgid = ? — `include/integrations/LoveJunk.php:259`
 - [NOT_FOUND] **HTTP**: file_get_contents — `include/misc/Tus.php:9`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:34`
 - [NOT_FOUND] **HTTP**: curl_exec — `include/misc/Tus.php:75`
