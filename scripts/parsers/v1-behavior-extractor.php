@@ -46,7 +46,7 @@ class BehaviorCollector extends NodeVisitorAbstract {
 
             if (in_array($method, self::SQL_METHODS, true)) {
                 $sql = $this->firstStringArg($node);
-                $this->record('SQL', $method . ': ' . substr($sql ?? '[expr]', 0, 80), $line);
+                $this->record('SQL', $method . ': ' . ($sql ?? '[expr]'), $line);
             } elseif (in_array($method, self::EMAIL_METHODS, true)) {
                 $this->record('Email', $method, $line);
             } elseif (in_array($method, self::LOG_METHODS, true)) {
@@ -82,7 +82,7 @@ class BehaviorCollector extends NodeVisitorAbstract {
                 // Only flag remote URL fetches, not local file reads
                 $url = $this->firstStringArg($node);
                 if ($url === null || str_starts_with($url, 'http')) {
-                    $this->record('HTTP', $func . ($url ? ': ' . substr($url, 0, 60) : ''), $node->getLine());
+                    $this->record('HTTP', $func . ($url ? ': ' . $url : ''), $node->getLine());
                 }
             }
         }
