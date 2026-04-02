@@ -84,6 +84,13 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-04-02 - Parity extractor: truncation fix, column-level discussion
+- **SQL truncation false NOT_FOUNDs** (`57aae6c6`): `substr($sql, 0, 80)` in extractor was chopping long table names (e.g. `messages_attachments` → `messages_attachmen`, `newsfeed` → `newsfee`), causing word-boundary search to fail. Fixed by removing truncation limit entirely. Same fix for `file_get_contents` URL.
+- **Report needs re-run**: `docs/parity/2026-04-01-parity-report.md` was generated before truncation fix. Re-run `./scripts/parsers/run-parity-check.sh` to get accurate results.
+- **Column-level detection**: Current checker is table-level only (finds table name, checks any V2 reference exists). Does NOT detect missing column writes (e.g. V1 sets `lastdate`, V2 doesn't). Column-level would need table+column pair extraction + write-context search — deferred.
+- **`messages_history`**: Verified genuinely absent from V2 non-test Go source — correct NOT_FOUND (not a truncation false positive).
+- **`run-parity-check.sh` quality fixes** (`3b27d46f`): Added error handling for `docker exec mkdir -p` and `docker cp`; moved report header write to before the loop.
+
 ### 2026-04-02 - CI fixes: loginViaModTools race, browse title/redirect ✅ GREEN
 - **loginViaModTools race condition** (Nuxt `fc539a3b`): `domcontentloaded` fires before `/?noguard=true` redirect settles. Fixed to wait for `a[href="/messages/pending"]` sidebar nav element instead.
 - **Browse title SSR timing** (Nuxt): `page.title()` returns SSR default before hydration. Fixed with `await expect(page).toHaveTitle(/Browse/, ...)` which polls.
