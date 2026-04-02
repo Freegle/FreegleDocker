@@ -307,24 +307,24 @@
       "verdict": "TRUE_GAP"
     },
     "trysts.ics1uid": {
-      "reason": "V2 trysts never sends ICS calendar invites \u2014 icssent/ics1uid/ics2uid never set",
+      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
       "verdict": "TRUE_GAP"
     },
     "trysts.ics2uid": {
-      "reason": "V2 trysts never sends ICS calendar invites \u2014 icssent/ics1uid/ics2uid never set",
+      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
       "verdict": "TRUE_GAP"
     },
     "trysts.icssent": {
-      "reason": "V2 trysts never sends ICS calendar invites \u2014 icssent/ics1uid/ics2uid never set",
+      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
       "verdict": "TRUE_GAP"
     },
     "trysts.remindersent": {
-      "reason": "V2 trysts never sends reminder emails \u2014 remindersent never set",
+      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
       "verdict": "TRUE_GAP"
     },
     "users.invitesleft": {
-      "reason": "V2 has no invitation system \u2014 invitesleft never decremented/incremented",
-      "verdict": "TRUE_GAP"
+      "reason": "No invitation system in V2 \u2014 invitesleft column never decremented. Consistent with users_invitations removal.",
+      "verdict": "INTENTIONAL_WARNING"
     },
     "users.replyambit": {
       "reason": "V2 has no geographic reply-ambit spam detection \u2014 replyambit never updated",
@@ -378,7 +378,7 @@
       "verdict": "TRUE_GAP"
     },
     "messages_history": {
-      "reason": "V2 never writes to messages_history \u2014 IP/host tracking and user attribution on merge absent",
+      "reason": "Laravel IncomingMailService writes messages_history for email-sourced messages, but V2 Go API never writes it for API-posted messages. Account-merge update (fromuser) also absent from both Laravel and V2.",
       "verdict": "TRUE_GAP"
     },
     "messages_isochrones": {
@@ -410,11 +410,11 @@
       "verdict": "BATCH_ONLY"
     },
     "spam_countries": {
-      "reason": "V2 has no country-based IP spam blocking \u2014 spam_countries never queried in V2",
+      "reason": "Laravel SpamCheckService checks spam_countries for incoming email. V2 Go API does not check spam_countries at submission time \u2014 country-based blocking absent for API posts.",
       "verdict": "TRUE_GAP"
     },
     "users_active": {
-      "reason": "V2 does not record hourly user activity to users_active \u2014 kudos/analytics data missing",
+      "reason": "Neither V2 Go API nor Laravel batch writes users_active. V1 recorded hourly activity for kudos/analytics. Laravel UpdateKudosCommand uses messages_outcomes instead, so kudos still works, but per-hour activity data is lost (analytics gap).",
       "verdict": "TRUE_GAP"
     },
     "users_approxlocs": {
@@ -426,16 +426,16 @@
       "verdict": "TRUE_GAP"
     },
     "users_donations_asks": {
-      "reason": "V2 never records when a donation ask was shown to a user \u2014 users may be asked repeatedly",
-      "verdict": "TRUE_GAP"
+      "reason": "Fully covered by Laravel AskDonationsCommand/DonationService \u2014 batch-only, not API behaviour",
+      "verdict": "BATCH_ONLY"
     },
     "users_invitations": {
-      "reason": "V2 does not track sent invitations or outcomes \u2014 users_invitations table absent from V2",
-      "verdict": "TRUE_GAP"
+      "reason": "No /invitation route in V2 \u2014 invitation feature appears deliberately removed. Flag: users_invitations table is never written; invite emails never sent from V2.",
+      "verdict": "INTENTIONAL_WARNING"
     },
     "users_kudos": {
-      "reason": "V2 has no kudos system \u2014 users_kudos never written or read in V2",
-      "verdict": "TRUE_GAP"
+      "reason": "No /kudos route in V2. Laravel UpdateKudosCommand writes users.kudos field instead. users_kudos detailed breakdown table appears deliberately deprecated \u2014 flag as architectural change.",
+      "verdict": "INTENTIONAL_WARNING"
     },
     "users_nearby": {
       "reason": "Part of nearby-user notification system \u2014 same gap as users_approxlocs",
