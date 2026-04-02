@@ -9,13 +9,30 @@ of implementation, then writes an annotated JSON ledger to stdout.
 Usage:
     python3 v2-coverage-checker.py <ledger.json> <go-package-dir>
 
-Output: JSON to stdout with v2_status: FOUND | NOT_FOUND | UNCERTAIN
+Output: JSON to stdout with v2_status: FOUND | NOT_FOUND | UNCERTAIN | FOUND_PARTIAL
+  FOUND_PARTIAL means the table is referenced in V2 but specific columns written
+  by V1 are absent from V2 source entirely (possible missing writes).
 """
 
 import json
 import re
 import sys
 from pathlib import Path
+
+
+# Column names too generic to be meaningful signals on their own.
+# These appear in nearly every table and across all Go files.
+_GENERIC_COLS = {
+    'id', 'userid', 'groupid', 'msgid', 'chatid', 'threadid', 'postid',
+    'timestamp', 'created', 'updated', 'modified', 'date', 'time',
+    'active', 'deleted', 'hidden', 'type', 'name', 'email', 'role',
+    'count', 'value', 'data', 'text', 'status', 'result', 'state',
+    'position', 'order', 'key', 'url', 'ip', 'host', 'port', 'path',
+    'subject', 'body', 'message', 'content', 'title', 'description',
+    'lat', 'lng', 'location', 'address', 'country', 'city',
+    'start', 'end', 'from', 'to', 'source', 'target',
+    'systemwide', 'heldby', 'pending', 'complete', 'response',
+}
 
 
 def go_files(go_root: str):
@@ -47,36 +64,84 @@ def extract_table(sql_desc: str) -> str:
     return m.group(1) if m else ''
 
 
-def check(behavior: dict, go_root: str) -> str:
+def extract_write_columns(sql_desc: str) -> list[str]:
+    """
+    Extract column names being written in an UPDATE/INSERT/REPLACE statement.
+    Returns only non-generic columns worth checking in V2.
+    Strips the leading 'preExec: ' / 'preQuery: ' method prefix first.
+    """
+    sql = re.sub(r'^\w+:\s*', '', sql_desc, count=1)
+
+    # UPDATE table SET col1 = ..., col2 = ... [WHERE ...]
+    m = re.match(
+        r'UPDATE\s+`?\w+`?\s+SET\s+(.+?)(?:\s+WHERE\b|$)',
+        sql, re.IGNORECASE | re.DOTALL
+    )
+    if m:
+        set_clause = m.group(1)
+        cols = re.findall(r'`?(\w+)`?\s*=', set_clause)
+        return [c for c in cols if c.lower() not in _GENERIC_COLS]
+
+    # INSERT [IGNORE] INTO table (col1, col2) VALUES ...
+    # REPLACE INTO table (col1, col2) VALUES ...
+    m = re.match(
+        r'(?:INSERT(?:\s+IGNORE)?|REPLACE)\s+INTO\s+`?\w+`?\s*\(([^)]+)\)',
+        sql, re.IGNORECASE
+    )
+    if m:
+        cols = [c.strip().strip('`') for c in m.group(1).split(',')]
+        return [c for c in cols if c and c.lower() not in _GENERIC_COLS]
+
+    return []
+
+
+def check(behavior: dict, go_root: str) -> tuple[str, list[str]]:
+    """
+    Returns (v2_status, missing_columns).
+    missing_columns is non-empty only when v2_status is FOUND_PARTIAL.
+    """
     category = behavior['category']
     desc = behavior['description']
 
     if category == 'Queue':
-        return 'FOUND'
+        return 'FOUND', []
     # V1 constructs Swift Mailer inline; V2 uses background_tasks queue.
     # These V1 patterns are intentionally absent in V2.
     if category == 'Email' and desc in ('getMailer', 'Mail::getMailer'):
-        return 'FOUND'
+        return 'FOUND', []
 
     if category == 'SQL':
         table = extract_table(desc)
         if not table:
-            return 'UNCERTAIN'
-        return 'FOUND' if search(go_root, r'\b' + re.escape(table) + r'\b') else 'NOT_FOUND'
+            return 'UNCERTAIN', []
+        if not search(go_root, r'\b' + re.escape(table) + r'\b'):
+            return 'NOT_FOUND', []
+
+        # Table is present in V2 — check specific write columns.
+        write_cols = extract_write_columns(desc)
+        missing = [c for c in write_cols
+                   if not search(go_root, r'\b' + re.escape(c) + r'\b')]
+        if missing:
+            return 'FOUND_PARTIAL', missing
+        return 'FOUND', []
 
     if category == 'Email':
-        return 'FOUND' if search(go_root, r'background_tasks|email_|QueueTask') else 'NOT_FOUND'
+        found = search(go_root, r'background_tasks|email_|QueueTask')
+        return ('FOUND' if found else 'NOT_FOUND'), []
 
     if category == 'Push':
-        return 'FOUND' if search(go_root, r'background_tasks|push_|QueueTask') else 'NOT_FOUND'
+        found = search(go_root, r'background_tasks|push_|QueueTask')
+        return ('FOUND' if found else 'NOT_FOUND'), []
 
     if category == 'AuditLog':
-        return 'FOUND' if search(go_root, r'INSERT INTO logs|log\.LOG_TYPE_') else 'NOT_FOUND'
+        found = search(go_root, r'INSERT INTO logs|log\.LOG_TYPE_')
+        return ('FOUND' if found else 'NOT_FOUND'), []
 
     if category == 'HTTP':
-        return 'FOUND' if search(go_root, r'http\.(Get|Post|Do)\(') else 'NOT_FOUND'
+        found = search(go_root, r'http\.(Get|Post|Do)\(')
+        return ('FOUND' if found else 'NOT_FOUND'), []
 
-    return 'UNCERTAIN'
+    return 'UNCERTAIN', []
 
 
 def main():
@@ -99,7 +164,10 @@ def main():
         behaviors = json.load(f)
 
     for b in behaviors:
-        b['v2_status'] = check(b, go_root)
+        status, missing_cols = check(b, go_root)
+        b['v2_status'] = status
+        if missing_cols:
+            b['missing_columns'] = missing_cols
 
     print(json.dumps(behaviors, indent=2))
 

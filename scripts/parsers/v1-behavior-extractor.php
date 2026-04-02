@@ -44,6 +44,15 @@ class BehaviorCollector extends NodeVisitorAbstract {
             $method = $node->name->toString();
             $line   = $node->getLine();
 
+            // Skip calls on non-MySQL DB objects (e.g. $pgsql is a PostgreSQL/PostGIS
+            // connection used for batch spatial indexing — not V2 API behaviour).
+            if ($node->var instanceof Node\Expr\Variable) {
+                $varName = is_string($node->var->name) ? $node->var->name : '';
+                if (str_contains($varName, 'pgsql') || str_contains($varName, 'pg_')) {
+                    return;
+                }
+            }
+
             if (in_array($method, self::SQL_METHODS, true)) {
                 $sql = $this->firstStringArg($node);
                 $this->record('SQL', $method . ': ' . ($sql ?? '[expr]'), $line);

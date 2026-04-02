@@ -50,13 +50,14 @@ Generated: $(date -u '+%Y-%m-%d %H:%M UTC')
 Only NOT_FOUND and UNCERTAIN behaviors are shown per endpoint. The checker searches all V2 Go packages (not just the target package) to avoid false NOT_FOUNDs from transitive shared-class includes.
 NOT_FOUND means the extractor found no evidence of the V1 behavior in V2 Go source.
 UNCERTAIN means the table name could not be extracted from the V1 SQL string.
+FOUND_PARTIAL means the table is in V2 but specific columns written by V1 are absent (possible missing column writes).
 
 ---
 
 ## Summary
 
-| Endpoint | Behaviors | NOT_FOUND | UNCERTAIN |
-|----------|-----------|-----------|-----------|
+| Endpoint | Behaviors | NOT_FOUND | UNCERTAIN | FOUND_PARTIAL |
+|----------|-----------|-----------|-----------|---------------|
 HEADER
 
 # Read mapping as tab-separated pairs
@@ -118,7 +119,8 @@ data = json.load(open(sys.argv[1]))
 total = len(data)
 not_found = sum(1 for b in data if b['v2_status'] == 'NOT_FOUND')
 uncertain = sum(1 for b in data if b['v2_status'] == 'UNCERTAIN')
-print(f"{total}\t{not_found}\t{uncertain}")
+partial = sum(1 for b in data if b['v2_status'] == 'FOUND_PARTIAL')
+print(f"{total}\t{not_found}\t{uncertain}\t{partial}")
 PYEOF
 ); then
         echo "COUNT ERROR"
@@ -127,19 +129,23 @@ PYEOF
     total=$(echo "$counts" | cut -f1)
     not_found=$(echo "$counts" | cut -f2)
     uncertain=$(echo "$counts" | cut -f3)
+    partial=$(echo "$counts" | cut -f4)
 
-    SUMMARY_ROWS["$php_file"]="| \`$php_file\` | $total | $not_found | $uncertain |"
+    SUMMARY_ROWS["$php_file"]="| \`$php_file\` | $total | $not_found | $uncertain | $partial |"
 
     # Step 4: collect gap details
     if ! details=$(python3 - "$annotated" <<'PYEOF'
 import json, sys
 data = json.load(open(sys.argv[1]))
-gaps = [b for b in data if b['v2_status'] in ('NOT_FOUND', 'UNCERTAIN')]
+gaps = [b for b in data if b['v2_status'] in ('NOT_FOUND', 'UNCERTAIN', 'FOUND_PARTIAL')]
 if not gaps:
     print('(none)')
 else:
     for b in gaps:
         status = b['v2_status']
+        if status == 'FOUND_PARTIAL':
+            missing = b.get('missing_columns', [])
+            status = f"FOUND_PARTIAL: missing cols {', '.join(missing)}"
         cat = b['category']
         desc = b['description']
         loc = f"{b['file']}:{b['line']}"
