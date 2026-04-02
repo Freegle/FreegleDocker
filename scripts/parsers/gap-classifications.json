@@ -219,8 +219,9 @@
       "verdict": "TRUE_GAP"
     },
     "ai_images.imagehash": {
-      "reason": "V2 reads ai_images but never INSERTs \u2014 Pollinations AI image generation (which populates the table) absent from V2",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 messages_illustrations.php cron (every 1 min). Fetches AI line drawings from Pollinations.ai and stores them. Not yet migrated to Laravel. V1 cron still running.",
+      "verdict": "BATCH_ONLY"
     },
     "alerts.groupprogress": {
       "reason": "groupprogress updated by alert-sending batch job, not V2 API",
@@ -231,8 +232,9 @@
       "verdict": "INTENTIONAL"
     },
     "chat_messages.spamscore": {
-      "reason": "V2 chat message INSERT does not include spamscore \u2014 spam scoring absent",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Only set by V1 MailRouter during email ingestion (SpamAssassin check on incoming email). Go API never processes incoming email \u2014 not a V2 API gap.",
+      "verdict": "FALSE_POSITIVE"
     },
     "chat_roster.lastmsgnotified": {
       "reason": "V2 never updates lastmsgnotified in chat_roster \u2014 push notification dedup tracking absent",
@@ -243,12 +245,14 @@
       "verdict": "TRUE_GAP"
     },
     "groups.welcomereview": {
-      "reason": "V2 never writes welcomereview on groups \u2014 welcome review timestamp tracking absent",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 group_welcomereview.php cron (daily 01:00 and 15:00). Timestamps when welcome review was last processed per group. Not yet migrated to Laravel.",
+      "verdict": "BATCH_ONLY"
     },
     "lovejunk.deletestatus": {
-      "reason": "V2 has no lovejunk table \u2014 deletion status sync with LoveJunk absent",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 lovejunk.php cron (every 1 min). Syncs edit/delete status with LoveJunk API. Not yet migrated to Laravel. V1 cron still running.",
+      "verdict": "BATCH_ONLY"
     },
     "messages.envelopefrom": {
       "reason": "V2 never nulls envelopefrom on message anonymization/withdrawal",
@@ -259,12 +263,14 @@
       "verdict": "TRUE_GAP"
     },
     "messages.retrycount": {
-      "reason": "V2 never writes retrycount/retrylastfailure \u2014 message submission retry tracking absent",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Only set by Message::recordFailure() called from MailRouter when SpamAssassin fails on incoming email. No retry logic reads it back. V2 never handles incoming email \u2014 not a V2 API gap.",
+      "verdict": "FALSE_POSITIVE"
     },
     "messages.retrylastfailure": {
-      "reason": "V2 never writes retrylastfailure \u2014 message submission retry tracking absent",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Same as retrycount \u2014 diagnostic counter for MailRouter SpamAssassin failures on incoming email only. Not a V2 API gap.",
+      "verdict": "FALSE_POSITIVE"
     },
     "messages_edits.newimages": {
       "reason": "V2 messages_edits does not record old/new items or images or location changes",
@@ -307,20 +313,24 @@
       "verdict": "TRUE_GAP"
     },
     "trysts.ics1uid": {
-      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 tryst.php cron (every 1 min). Tryst::sendCalendarsDue()/sendRemindersDue() sends ICS calendar invites and reminders. Not yet migrated to Laravel. V1 cron still running.",
+      "verdict": "BATCH_ONLY"
     },
     "trysts.ics2uid": {
-      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 tryst.php cron (every 1 min). Tryst::sendCalendarsDue()/sendRemindersDue() sends ICS calendar invites and reminders. Not yet migrated to Laravel. V1 cron still running.",
+      "verdict": "BATCH_ONLY"
     },
     "trysts.icssent": {
-      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 tryst.php cron (every 1 min). Tryst::sendCalendarsDue()/sendRemindersDue() sends ICS calendar invites and reminders. Not yet migrated to Laravel. V1 cron still running.",
+      "verdict": "BATCH_ONLY"
     },
     "trysts.remindersent": {
-      "reason": "V2 /tryst endpoint exists (GET) but never sends ICS calendar invites or reminders. Check if this should be a Laravel batch job.",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 tryst.php cron (every 1 min). Tryst::sendCalendarsDue()/sendRemindersDue() sends ICS calendar invites and reminders. Not yet migrated to Laravel. V1 cron still running.",
+      "verdict": "BATCH_ONLY"
     },
     "users.invitesleft": {
       "reason": "No invitation system in V2 \u2014 invitesleft column never decremented. Consistent with users_invitations removal.",
@@ -339,7 +349,8 @@
       "verdict": "TRUE_GAP"
     },
     "users_modmails.logid": {
-      "reason": "V2 inserts to users_modmails but does not set logid \u2014 mod log linkage absent",
+      "auto": false,
+      "reason": "V2 Go inserts to users_modmails without logid FK to logs table. Modmail count for member review still works. Lost: traceability from modmail record to the specific log entry that caused it.",
       "verdict": "TRUE_GAP"
     },
     "users_stories.mailedtocentral": {
@@ -374,16 +385,18 @@
       "verdict": "TRUE_GAP"
     },
     "messages_deadlines": {
-      "reason": "V2 does not write FOP deadline flag \u2014 messages_deadlines never set",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "FOP flag has zero references in Nuxt3 client \u2014 feature deliberately absent from V2 UI. messages:process-expired Laravel command exists but scheduler disabled. Deadline expiry still handled by V1 cron for any legacy messages with deadlines.",
+      "verdict": "INTENTIONAL"
     },
     "messages_history": {
       "reason": "Laravel IncomingMailService writes messages_history for email-sourced messages, but V2 Go API never writes it for API-posted messages. Account-merge update (fromuser) also absent from both Laravel and V2.",
       "verdict": "TRUE_GAP"
     },
     "messages_isochrones": {
-      "reason": "V2 uses isochrones_users but never writes messages_isochrones \u2014 message\u2194isochrone link absent",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 message_spatial.php cron (every 5 min). Message::updateSpatialIndex() builds the isochrone for each message as replies come in, widening search radius. Not yet migrated to Laravel.",
+      "verdict": "BATCH_ONLY"
     },
     "newsletters": {
       "auto": true,
@@ -418,12 +431,14 @@
       "verdict": "TRUE_GAP"
     },
     "users_approxlocs": {
-      "reason": "V2 has no nearby-user notification system \u2014 users_approxlocs never written or queried",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 nearby.php cron (daily 14:05). Nearby::updateLocations() blurs user positions for nearby-message notifications. Not yet migrated to Laravel. V1 cron still running.",
+      "verdict": "BATCH_ONLY"
     },
     "users_dashboard": {
-      "reason": "V2 has no dashboard query caching (users_dashboard) \u2014 every dashboard request recomputes",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "V2 Go has a dashboard package that recomputes on each request \u2014 no caching table. V1 wrote computed results to users_dashboard for reuse. Performance difference only; dashboard functionality present in V2.",
+      "verdict": "DIFFERENT_IMPL"
     },
     "users_donations_asks": {
       "reason": "Fully covered by Laravel AskDonationsCommand/DonationService \u2014 batch-only, not API behaviour",
@@ -438,8 +453,9 @@
       "verdict": "INTENTIONAL_WARNING"
     },
     "users_nearby": {
-      "reason": "Part of nearby-user notification system \u2014 same gap as users_approxlocs",
-      "verdict": "TRUE_GAP"
+      "auto": false,
+      "reason": "Written by V1 nearby.php cron (daily 14:05). Nearby::messages() tracks which users have been notified about which messages to avoid re-sending. Not yet migrated to Laravel.",
+      "verdict": "BATCH_ONLY"
     },
     "users_stories_requested": {
       "reason": "Story solicitation is a batch cron job \u2014 users_stories_requested is batch-only, not API",

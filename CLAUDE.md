@@ -84,6 +84,16 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-04-02 - Gap analysis complete: 22 TRUE_GAPs identified, cron coverage verified
+- **Cron cross-reference**: Checked all V1 cron scripts against TRUE_GAPs. Reclassified: `users_approxlocs`, `users_nearby` (nearby.php), `messages_isochrones` (message_spatial.php), `trysts.*` (tryst.php), `lovejunk.deletestatus` (lovejunk.php), `ai_images.imagehash` (messages_illustrations.php), `groups.welcomereview` (group_welcomereview.php) — all BATCH_ONLY, V1 cron still running.
+- **FOP (messages_deadlines)**: Reclassified INTENTIONAL — FOP flag has zero references in Nuxt3 client, deliberately absent from V2 UI.
+- **users_dashboard**: Reclassified DIFFERENT_IMPL — Go dashboard computes on demand rather than caching.
+- **False positives**: `chat_messages.spamscore`, `messages.retrycount`, `messages.retrylastfailure` — all email ingestion path only (MailRouter/SpamAssassin), not V2 API gaps.
+- **GDPR gap confirmed**: `messages.envelopefrom`+`htmlbody` — Go `handleForget()` only soft-deletes user row, never blanks personal data from posted messages (V1 blanks fromip, message, envelopefrom, fromname, fromaddr, messageid, textbody, htmlbody).
+- **lastmsgnotified explanation**: V2 Go queues chat push via background_tasks; Laravel sends but never updates `lastmsgnotified`; V1 chaseup cron sees 0 and re-sends → duplicate push notifications.
+- **users_active confirmed gap**: Read by Stats.php for active-users-per-group dashboard count and moderator activity leaderboard. Neither Go nor Laravel writes it.
+- **Fix list**: 7 high-priority (messages_ai_declined, messages_history, spam_countries, users_active, chat_roster.lastmsgnotified, envelopefrom/htmlbody GDPR, messages_edits 6 columns) + 10 lower-priority. Work not yet started.
+
 ### 2026-04-02 - Parity extractor: truncation fix, column-level discussion
 - **SQL truncation false NOT_FOUNDs** (`57aae6c6`): `substr($sql, 0, 80)` in extractor was chopping long table names (e.g. `messages_attachments` → `messages_attachmen`, `newsfeed` → `newsfee`), causing word-boundary search to fail. Fixed by removing truncation limit entirely. Same fix for `file_get_contents` URL.
 - **Accurate report**: `docs/parity/2026-04-02-parity-report.md` regenerated after fix — 2,951 NOT_FOUND (was 3,093), 142 false positives eliminated. 55,820 total behaviors, 52 endpoints.
