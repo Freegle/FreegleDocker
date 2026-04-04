@@ -847,6 +847,58 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertStringContains('Location Required please', $chatMsg->message);
     }
 
+    public function test_mod_stdmsg_for_member_creates_log_and_modmails_record(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $member = $this->createTestUser();
+        $this->createTestUserEmail($member, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Test Moderator']);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_mod_stdmsg',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Please read our group rules',
+                'body' => 'Welcome to the group. Please read our rules.',
+                'action' => 'Leave Approved Member',
+                'stdmsgid' => 42,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Verify a log entry was created (so modmail appears in mod logs).
+        // V1 parity: modmails are logged as User/Mailed (not Message/Replied).
+        $logEntry = DB::table('logs')
+            ->where('type', 'User')
+            ->where('subtype', 'Mailed')
+            ->where('byuser', $mod->id)
+            ->where('user', $member->id)
+            ->where('groupid', $group->id)
+            ->first();
+        $this->assertNotNull($logEntry, 'Log entry should be created so modmail appears in logs');
+        $this->assertEquals('Please read our group rules', $logEntry->text);
+        $this->assertEquals(42, $logEntry->stdmsgid);
+
+        // Verify users_modmails record was created (so modmail badge count shows > 0).
+        $modmail = DB::table('users_modmails')
+            ->where('userid', $member->id)
+            ->where('groupid', $group->id)
+            ->first();
+        $this->assertNotNull($modmail, 'users_modmails record should be created so badge shows modmail count');
+        $this->assertEquals($logEntry->id, $modmail->logid);
+    }
+
     public function test_mod_stdmsg_for_member_without_content_skips_email(): void
     {
         Mail::fake();

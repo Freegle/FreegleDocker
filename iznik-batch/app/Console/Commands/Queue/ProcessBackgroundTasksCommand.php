@@ -545,6 +545,27 @@ class ProcessBackgroundTasksCommand extends Command
                     'processingsuccessful' => 1,
                 ]);
             }
+
+            // Create a log entry so the modmail appears in mod logs (V1 parity: User/Mailed)
+            // and insert into users_modmails so the modmail badge count shows > 0.
+            $logId = DB::table('logs')->insertGetId([
+                'timestamp' => now(),
+                'type' => 'User',
+                'subtype' => 'Mailed',
+                'byuser' => $byUser,
+                'user' => $userId,
+                'groupid' => $groupId,
+                'stdmsgid' => $stdmsgId ?: null,
+                'text' => $subject,
+            ]);
+
+            // logid has a UNIQUE key — use insertOrIgnore to be safe against retries.
+            DB::table('users_modmails')->insertOrIgnore([
+                'userid' => $userId,
+                'groupid' => $groupId,
+                'logid' => $logId,
+                'timestamp' => now(),
+            ]);
         }
 
         Log::info('Sent mod stdmsg email to member', [
