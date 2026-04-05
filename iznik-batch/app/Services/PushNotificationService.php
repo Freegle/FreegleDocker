@@ -138,6 +138,115 @@ class PushNotificationService
     }
 
     /**
+     * Compute the badge count for a ModTools user.
+     *
+     * Mirrors session.go's work total calculation:
+     * - Only ACTIVE groups (membership settings.active != 0 and settings.showmessages != 0)
+     * - Only unheld pending messages (heldby IS NULL)
+     * - Only spam collection messages (not spamtype in Pending)
+     * - Excludes deleted (mg.deleted = 0) and system messages (fromuser IS NOT NULL)
+     *
+     * This prevents phantom badges caused by held messages, deleted messages, or
+     * work from inactive groups inflating the count while the app shows nothing.
+     *
+     * Note: currently covers only pending + spam (2 of 14 session.go work categories).
+     * Omitted categories: pendingmembers, spammembers, pendingevents, pendingadmins,
+     * editreview, pendingvolunteering, stories, spammerpendingadd, spammerpendingremove,
+     * chatreview, newsletterstories, relatedmembers. Add those here as needed.
+     *
+     * See: Discourse #9547 — phantom badge count on Android/iOS ModTools.
+     */
+    public function getBadgeCount(int $userId): int
+    {
+        // Get all approved mod/owner memberships with settings to determine active/inactive.
+        $memberships = DB::select(
+            "SELECT groupid, settings FROM memberships
+             WHERE userid = ? AND role IN ('Owner', 'Moderator') AND collection = 'Approved'",
+            [$userId]
+        );
+
+        if (empty($memberships)) {
+            return 0;
+        }
+
+        // Mirror session.go: only count work from active groups in the badge total.
+        // Inactive groups' work appears as blue informational badges in the app — not in total.
+        $activeGroupIds = [];
+        foreach ($memberships as $m) {
+            if ($this->isActiveMod($m->settings)) {
+                $activeGroupIds[] = $m->groupid;
+            }
+        }
+
+        if (empty($activeGroupIds)) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($activeGroupIds), '?'));
+
+        // Unheld pending messages in active groups.
+        $pendingParams = array_merge([$userId], $activeGroupIds);
+        $pending = DB::selectOne(
+            "SELECT COUNT(*) as cnt FROM messages_groups mg
+             INNER JOIN messages m ON m.id = mg.msgid
+             INNER JOIN memberships mem ON mem.groupid = mg.groupid AND mem.userid = ?
+             WHERE mem.role IN ('Owner', 'Moderator')
+             AND mem.collection = 'Approved'
+             AND mg.collection = 'Pending'
+             AND mg.groupid IN ({$placeholders})
+             AND mg.deleted = 0
+             AND m.fromuser IS NOT NULL
+             AND m.heldby IS NULL",
+            $pendingParams
+        );
+
+        // Spam collection messages in active groups.
+        $spamParams = array_merge([$userId], $activeGroupIds);
+        $spam = DB::selectOne(
+            "SELECT COUNT(*) as cnt FROM messages_groups mg
+             INNER JOIN messages m ON m.id = mg.msgid
+             INNER JOIN memberships mem ON mem.groupid = mg.groupid AND mem.userid = ?
+             WHERE mem.role IN ('Owner', 'Moderator')
+             AND mem.collection = 'Approved'
+             AND mg.collection = 'Spam'
+             AND mg.groupid IN ({$placeholders})
+             AND mg.deleted = 0
+             AND m.fromuser IS NOT NULL",
+            $spamParams
+        );
+
+        return ($pending->cnt ?? 0) + ($spam->cnt ?? 0);
+    }
+
+    /**
+     * Determine if a moderator is active for a group based on membership settings JSON.
+     *
+     * Mirrors session.go isActiveModForGroup: defaults to active unless explicitly
+     * set to false/0 via the 'active' or 'showmessages' setting.
+     */
+    private function isActiveMod(?string $settingsJson): bool
+    {
+        if (! $settingsJson) {
+            return true;
+        }
+
+        $settings = json_decode($settingsJson, true);
+        if (! is_array($settings)) {
+            return true;
+        }
+
+        if (array_key_exists('active', $settings)) {
+            return (bool) $settings['active'];
+        }
+
+        if (array_key_exists('showmessages', $settings)) {
+            return (bool) $settings['showmessages'];
+        }
+
+        return true;
+    }
+
+    /**
      * Build the ModTools notification payload.
      *
      * For ModTools, we send a simple "pending messages" notification.
@@ -145,29 +254,7 @@ class PushNotificationService
      */
     private function buildModToolsPayload(int $userId): ?array
     {
-        // Count pending messages across all groups this mod manages
-        $pending = DB::selectOne(
-            "SELECT COUNT(*) as cnt FROM messages_groups mg
-             INNER JOIN memberships m ON m.groupid = mg.groupid AND m.userid = ?
-             WHERE m.role IN ('Owner', 'Moderator')
-             AND mg.collection = 'Pending'",
-            [$userId]
-        );
-
-        // Count pending spam
-        $spam = DB::selectOne(
-            "SELECT COUNT(*) as cnt FROM messages_groups mg
-             INNER JOIN messages ON messages.id = mg.msgid
-             INNER JOIN memberships m ON m.groupid = mg.groupid AND m.userid = ?
-             WHERE m.role IN ('Owner', 'Moderator')
-             AND mg.collection = 'Pending'
-             AND messages.spamtype IS NOT NULL",
-            [$userId]
-        );
-
-        $pendingCount = $pending->cnt ?? 0;
-        $spamCount = $spam->cnt ?? 0;
-        $total = $pendingCount + $spamCount;
+        $total = $this->getBadgeCount($userId);
 
         if ($total === 0) {
             // Still send a zero-count to clear badge
@@ -188,10 +275,7 @@ class PushNotificationService
         }
 
         $title = "$total message" . ($total > 1 ? 's' : '') . " pending";
-        $message = $pendingCount . ' pending';
-        if ($spamCount > 0) {
-            $message .= ", $spamCount possible spam";
-        }
+        $message = "$total pending";
 
         return [
             'badge' => (string) $total,
