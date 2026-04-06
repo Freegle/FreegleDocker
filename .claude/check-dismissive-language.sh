@@ -18,14 +18,15 @@ fi
 
 # Patterns that dismiss test failures instead of fixing them.
 # Each pattern is case-insensitive and targets phrases used to avoid investigation.
+# Patterns must be anchored near failure/test/error context to avoid false positives.
 DISMISSIVE_PATTERNS=(
   'pre-existing'
   'pre existing'
   'already fail'
   'already broken'
-  'already known'
-  'not caused by'
-  'not related to'
+  'already known.*(fail|test|error|bug)'
+  'not caused by.*(fail|test|error)'
+  'not related to.*(fail|test|error)'
   'unrelated.*(fail|test|error)'
   '(fail|test|error).*unrelated'
   'known (issue|failure|flak)'
@@ -36,10 +37,10 @@ DISMISSIVE_PATTERNS=(
   'beyond the scope'
   'out of scope.*(test|fail)'
   'can be addressed later'
-  'separate issue'
+  'separate issue.*(test|fail|error)'
   'existing (bug|issue|problem|failure)'
-  'was already'
-  'were already'
+  'was already (fail|broken|known|passing|flak)'
+  'were already (fail|broken|known|passing|flak)'
 )
 
 MATCHED=""
