@@ -1,18 +1,18 @@
 #!/bin/bash
-# Hook script to prevent running tests on the live server.
+# Hook script to enforce use of the status API for running tests locally.
+# Direct test runner invocations (go test, artisan test, etc.) are blocked —
+# use the status container API instead:
+#
+#   curl -s -X POST http://localhost:8081/api/tests/go
+#   curl -s -X POST http://localhost:8081/api/tests/laravel
+#   curl -s -X POST http://localhost:8081/api/tests/php
+#   curl -s -X POST http://localhost:8081/api/tests/vitest
+#   curl -s -X POST http://localhost:8081/api/tests/playwright
+#
 # On CI (CIRCLECI=true) this hook is a no-op — tests run normally there.
 
-# Only block on production. CI and dev environments can run tests freely.
 if [ -n "$CI" ]; then
   exit 0
-fi
-
-# Check COMPOSE_PROFILES from .env — if it doesn't contain "production", allow tests.
-if [ -f "$CLAUDE_PROJECT_DIR/.env" ]; then
-  PROFILES=$(grep -E '^COMPOSE_PROFILES=' "$CLAUDE_PROJECT_DIR/.env" | cut -d= -f2-)
-  if ! echo "$PROFILES" | grep -q 'production'; then
-    exit 0
-  fi
 fi
 
 # Read the tool input from stdin
@@ -25,9 +25,36 @@ if [ -z "$COMMAND" ]; then
   exit 0  # No command, allow
 fi
 
-# Check if this is a test execution command.
-# We match actual test runner invocations, not arbitrary strings in URLs/paths.
-# Each pattern is a regex that anchors to word boundaries or command structure.
+# Skip commands that are just reading/checking data (not executing tests).
+IS_DATA_COMMAND=false
+if echo "$COMMAND" | grep -qE '\bcurl\b.*localhost:8081/api/tests.*/status'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '\bcurl\b.*circle-artifacts\.com'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '\bcurl\b.*circleci\.com/api'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '^\s*(cat|tail|head|less|wc)\b.*/tmp/'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '\bdocker (top|logs)\b'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '\b(ps|pgrep)\b'; then
+  IS_DATA_COMMAND=true
+fi
+if echo "$COMMAND" | grep -qE '^\s*git\b'; then
+  IS_DATA_COMMAND=true
+fi
+
+# Allow status API POSTs — this IS the correct way to run tests locally.
+if echo "$COMMAND" | grep -qE '\bcurl\b.*-X\s*POST.*localhost:8081/api/tests'; then
+  IS_DATA_COMMAND=true
+fi
+
+# Check if this is a direct test runner invocation.
 TEST_PATTERNS=(
   '\bplaywright test\b'
   '\bnpx playwright test\b'
@@ -42,44 +69,6 @@ TEST_PATTERNS=(
   '\bvitest\b'
   '\bnpx vitest\b'
 )
-
-# Block curl POST to status container test API (triggers test execution on live).
-# Allow GET requests (status checks) but block POST (test runs).
-if echo "$COMMAND" | grep -qE '\bcurl\b.*-X\s*POST.*localhost:8081/api/tests'; then
-  echo "BLOCKED: Do not run tests on the live server. Use CircleCI instead." >&2
-  echo "" >&2
-  echo "  Push to master and CI will run tests automatically." >&2
-  echo "  To check CI status: gh run list --repo Freegle/FreegleDocker" >&2
-  exit 2
-fi
-
-# Skip commands that are just downloading/reading files (not executing tests).
-# These commonly contain test-related strings in URLs or file paths.
-IS_DATA_COMMAND=false
-if echo "$COMMAND" | grep -qE '\bcurl\b.*localhost:8081/api/tests.*/status'; then
-  IS_DATA_COMMAND=true
-fi
-if echo "$COMMAND" | grep -qE '\bcurl\b.*circle-artifacts\.com'; then
-  IS_DATA_COMMAND=true
-fi
-if echo "$COMMAND" | grep -qE '\bcurl\b.*circleci\.com/api'; then
-  IS_DATA_COMMAND=true
-fi
-if echo "$COMMAND" | grep -qE '^\s*(cat|tail|head|less|wc)\b.*/tmp/'; then
-  IS_DATA_COMMAND=true
-fi
-# docker exec commands that only read processes/logs (not running tests)
-if echo "$COMMAND" | grep -qE '\bdocker (top|logs)\b'; then
-  IS_DATA_COMMAND=true
-fi
-# grep/ps commands looking at processes
-if echo "$COMMAND" | grep -qE '\b(ps|pgrep)\b'; then
-  IS_DATA_COMMAND=true
-fi
-# git commands (commit messages may mention test tools)
-if echo "$COMMAND" | grep -qE '^\s*git\b'; then
-  IS_DATA_COMMAND=true
-fi
 
 IS_TEST_COMMAND=false
 if [ "$IS_DATA_COMMAND" = false ]; then
@@ -100,9 +89,15 @@ if echo "$COMMAND" | grep -qE -- "--list|--help"; then
   exit 0
 fi
 
-# Block the command
-echo "BLOCKED: Do not run tests on the live server. Use CircleCI instead." >&2
+# Block direct test execution — use the status API instead.
+echo "BLOCKED: Use the status API to run tests locally, not direct test commands." >&2
 echo "" >&2
-echo "  Push to master and CI will run tests automatically." >&2
-echo "  To check CI status: gh run list --repo Freegle/FreegleDocker" >&2
+echo "  curl -s -X POST http://localhost:8081/api/tests/go" >&2
+echo "  curl -s -X POST http://localhost:8081/api/tests/laravel" >&2
+echo "  curl -s -X POST http://localhost:8081/api/tests/php" >&2
+echo "  curl -s -X POST http://localhost:8081/api/tests/vitest" >&2
+echo "  curl -s -X POST http://localhost:8081/api/tests/playwright" >&2
+echo "" >&2
+echo "  Then poll for results:" >&2
+echo "  curl -s http://localhost:8081/api/tests/go/status" >&2
 exit 2
