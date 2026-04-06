@@ -895,6 +895,190 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertStringContains('Location Required please', $chatMsg->message);
     }
 
+    public function test_mod_stdmsg_for_tn_user_sends_email_to_tn_proxy(): void
+    {
+        // Regression: on 2026-04-03 a stdmsg sent to TN user 41825411 was never received.
+        // The member's only emails are @user.trashnothing.com proxies. Verify the batch
+        // processor sends to the TN proxy address and does not silently skip the member.
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $tnEmail = 'user' . uniqid() . '@user.trashnothing.com';
+        $member = $this->createTestUser(['email_preferred' => $tnEmail]);
+        $mod = $this->createTestUser(['fullname' => 'Test Moderator']);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_mod_stdmsg',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Membership of Hertford Freegle',
+                'body' => 'Dear member, please update your location.',
+                'stdmsgid' => 219508,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Email must be sent to the TN proxy — not skipped because the address is external.
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($tnEmail) {
+            return collect($mail->to)->pluck('address')->contains($tnEmail);
+        });
+
+        // Chat message must be created so the conversation appears in modtools.
+        $chatRoom = DB::table('chat_rooms')
+            ->where('user1', $member->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', 'User2Mod')
+            ->first();
+        $this->assertNotNull($chatRoom, 'Chat room should be created for TN user');
+
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $mod->id)
+            ->where('type', 'ModMail')
+            ->first();
+        $this->assertNotNull($chatMsg, 'ModMail chat message should be created for TN user');
+    }
+
+    public function test_mod_stdmsg_for_member_sets_lastmsgemailed_after_direct_send(): void
+    {
+        // Regression: on 2026-04-03 the notification daemon found lastmsgemailed equal to
+        // the new ModMail message ID and skipped emailing the member — they got nothing.
+        // After handleModStdMessageForMember sends the email and creates the chat message,
+        // it must update chat_roster.lastmsgemailed to that message ID so the notification
+        // daemon (NotifyUser2ModCommand) does not send a duplicate and then mark it done.
+        // Without this update the daemon would either:
+        //   (a) send a duplicate notification (double email to member), or
+        //   (b) find lastmsgemailed already set by some other path and skip sending entirely.
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $tnEmail = 'user' . uniqid() . '@user.trashnothing.com';
+        $member = $this->createTestUser(['email_preferred' => $tnEmail]);
+        $mod = $this->createTestUser(['fullname' => 'Test Moderator']);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_mod_stdmsg',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Membership of Hertford Freegle',
+                'body' => 'Dear member, please update your location.',
+                'stdmsgid' => 219508,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        $chatRoom = DB::table('chat_rooms')
+            ->where('user1', $member->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', 'User2Mod')
+            ->first();
+        $this->assertNotNull($chatRoom);
+
+        $chatMsg = DB::table('chat_messages')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $mod->id)
+            ->where('type', 'ModMail')
+            ->first();
+        $this->assertNotNull($chatMsg);
+
+        // After the direct email send, lastmsgemailed MUST equal the new message ID.
+        // This prevents NotifyUser2ModCommand from treating it as unnotified and either
+        // sending a duplicate or (if something else already set it) silently skipping the member.
+        $roster = DB::table('chat_roster')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $member->id)
+            ->first();
+        $this->assertNotNull($roster, 'Member must have a roster entry');
+        $this->assertEquals(
+            $chatMsg->id,
+            $roster->lastmsgemailed,
+            'lastmsgemailed must be set to the ModMail message ID after direct send, ' .
+            'otherwise the notification daemon will attempt to re-send'
+        );
+    }
+
+    public function test_mod_stdmsg_only_marks_member_as_emailed_not_other_mods(): void
+    {
+        // After handleModStdMessageForMember runs:
+        // - The member's lastmsgemailed must be set (direct email already sent — daemon must not duplicate).
+        // - Other mods' lastmsgemailed must NOT be pre-set, so the notification daemon CAN notify them
+        //   that a stdmsg was sent (V1 parity: mods see ModMail messages in their chat queue).
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $tnEmail = 'user' . uniqid() . '@user.trashnothing.com';
+        $member = $this->createTestUser(['email_preferred' => $tnEmail]);
+        $mod = $this->createTestUser(['fullname' => 'Sending Mod']);
+        $otherMod = $this->createTestUser(['fullname' => 'Other Mod']);
+
+        $this->createMembership($otherMod, $group, ['role' => 'Moderator']);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_mod_stdmsg',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Membership of Hertford Freegle',
+                'body' => 'Dear member, please update your location.',
+                'stdmsgid' => 219508,
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        $chatRoom = DB::table('chat_rooms')
+            ->where('user1', $member->id)
+            ->where('groupid', $group->id)
+            ->where('chattype', 'User2Mod')
+            ->first();
+        $this->assertNotNull($chatRoom);
+
+        // Member's lastmsgemailed must be set — direct email already sent.
+        $memberRoster = DB::table('chat_roster')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $member->id)
+            ->first();
+        $this->assertNotNull($memberRoster->lastmsgemailed, 'Member lastmsgemailed must be set');
+
+        // Other mod's roster must NOT have lastmsgemailed pre-set — the notification daemon
+        // should be able to notify them that a stdmsg was sent to the member.
+        $otherModRoster = DB::table('chat_roster')
+            ->where('chatid', $chatRoom->id)
+            ->where('userid', $otherMod->id)
+            ->first();
+        if ($otherModRoster) {
+            $this->assertNull(
+                $otherModRoster->lastmsgemailed,
+                'Other mod lastmsgemailed must not be pre-set — daemon must be able to notify them'
+            );
+        }
+    }
+
     public function test_mod_stdmsg_for_member_creates_log_and_modmails_record(): void
     {
         Mail::fake();

@@ -1594,4 +1594,5 @@ class ChatNotificationServiceTest extends TestCase
         // Verify we only sent 1 notification (to user2), not 2.
         $this->assertEquals(1, $count, 'Should only notify the actual recipient, not the moderator');
     }
+
 }

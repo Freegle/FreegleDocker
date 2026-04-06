@@ -569,7 +569,7 @@ class ProcessBackgroundTasksCommand extends Command
             $chatRoom = ChatRoom::getOrCreateUser2Mod($userId, $groupId);
 
             if ($chatRoom) {
-                DB::table('chat_messages')->insert([
+                $chatMessageId = DB::table('chat_messages')->insertGetId([
                     'chatid' => $chatRoom->id,
                     'userid' => $byUser,
                     'message' => "{$subject}\r\n\r\n{$body}",
@@ -579,6 +579,21 @@ class ProcessBackgroundTasksCommand extends Command
                     'processingrequired' => 0,
                     'processingsuccessful' => 1,
                 ]);
+
+                // V1 parity: upToDate() — mark the chat message as already emailed to the member
+                // so the notification daemon (NotifyUser2ModCommand) does not send a duplicate.
+                // V1 calls $r->upToDate($fromuser) after the direct email send, which sets
+                // lastmsgemailed = MAX(chat_messages.id) for the member's roster entry.
+                DB::table('chat_roster')->upsert(
+                    [
+                        'chatid' => $chatRoom->id,
+                        'userid' => $userId,
+                        'lastmsgemailed' => $chatMessageId,
+                        'lastemailed' => now(),
+                    ],
+                    ['chatid', 'userid'],
+                    ['lastmsgemailed', 'lastemailed']
+                );
             }
 
             // Only create the User/Mailed log for email_mod_stdmsg (direct mod message to member).
