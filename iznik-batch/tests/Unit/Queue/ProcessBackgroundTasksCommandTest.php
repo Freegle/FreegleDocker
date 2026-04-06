@@ -389,7 +389,11 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $this->mock(PushNotificationService::class);
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')
+            ->once()
+            ->with($group->id)
+            ->andReturn(0);
 
         $this->artisan('queue:background-tasks', [
             '--max-iterations' => 1,
@@ -405,6 +409,15 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             return TRUE;
         });
 
+        // Verify log entry was created.
+        $log = DB::table('logs')
+            ->where('msgid', $msgId)
+            ->where('type', 'Message')
+            ->where('subtype', 'Rejected')
+            ->first();
+        $this->assertNotNull($log, 'Rejected log entry should be created');
+        $this->assertEquals($mod->id, $log->byuser);
+
         $task = DB::table('background_tasks')->first();
         $this->assertNotNull($task->processed_at);
     }
@@ -413,6 +426,7 @@ class ProcessBackgroundTasksCommandTest extends TestCase
     {
         Mail::fake();
 
+        $group = $this->createTestGroup();
         $poster = $this->createTestUser();
         $mod = $this->createTestUser();
 
@@ -421,19 +435,29 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             'subject' => 'OFFER: Test item',
             'date' => now(),
         ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
 
         DB::table('background_tasks')->insert([
             'task_type' => 'email_message_approved',
             'data' => json_encode([
                 'msgid' => $msgId,
                 'byuser' => $mod->id,
+                'groupid' => $group->id,
                 'subject' => '',
                 'body' => '',
             ]),
             'created_at' => now(),
         ]);
 
-        $this->mock(PushNotificationService::class);
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')
+            ->once()
+            ->with($group->id)
+            ->andReturn(0);
 
         $this->artisan('queue:background-tasks', [
             '--max-iterations' => 1,
@@ -443,7 +467,15 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         // No email should be sent for empty stdmsg.
         Mail::assertNothingSent();
 
-        // But the task should be marked as processed (not failed).
+        // But the log entry should always be created (even without email content).
+        $log = DB::table('logs')
+            ->where('msgid', $msgId)
+            ->where('type', 'Message')
+            ->where('subtype', 'Approved')
+            ->first();
+        $this->assertNotNull($log, 'Approved log entry should be created even without email content');
+
+        // And the task should be marked as processed (not failed).
         $task = DB::table('background_tasks')->first();
         $this->assertNotNull($task->processed_at);
     }
@@ -480,7 +512,11 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $this->mock(PushNotificationService::class);
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')
+            ->once()
+            ->with($group->id)
+            ->andReturn(0);
 
         $this->artisan('queue:background-tasks', [
             '--max-iterations' => 1,
@@ -491,6 +527,14 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             $this->assertEquals($group->nameshort, $mail->groupNameShort);
             return TRUE;
         });
+
+        // Verify reply log entry was created.
+        $log = DB::table('logs')
+            ->where('msgid', $msgId)
+            ->where('type', 'Message')
+            ->where('subtype', 'Replied')
+            ->first();
+        $this->assertNotNull($log, 'Replied log entry should be created');
 
         $task = DB::table('background_tasks')->first();
         $this->assertNotNull($task->processed_at);
@@ -529,7 +573,11 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $this->mock(PushNotificationService::class);
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')
+            ->once()
+            ->with($group->id)
+            ->andReturn(0);
 
         $this->artisan('queue:background-tasks', [
             '--max-iterations' => 1,
@@ -890,13 +938,8 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertEquals('Please read our group rules', $logEntry->text);
         $this->assertEquals(42, $logEntry->stdmsgid);
 
-        // Verify users_modmails record was created (so modmail badge count shows > 0).
-        $modmail = DB::table('users_modmails')
-            ->where('userid', $member->id)
-            ->where('groupid', $group->id)
-            ->first();
-        $this->assertNotNull($modmail, 'users_modmails record should be created so badge shows modmail count');
-        $this->assertEquals($logEntry->id, $modmail->logid);
+        // users_modmails is no longer populated here — the syncModMailCounts cron job
+        // populates it by scanning the logs table.
     }
 
     public function test_mod_stdmsg_for_member_without_content_skips_email(): void
@@ -934,25 +977,21 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertNotNull($task->processed_at);
     }
 
-    public function test_membership_approved_routes_to_mod_stdmsg_for_member(): void
+    public function test_email_membership_approved_task_type_no_longer_exists(): void
     {
-        Mail::fake();
-
-        $group = $this->createTestGroup();
-        $member = $this->createTestUser();
-        $memberEmail = $this->createTestUserEmail($member, ['preferred' => 1]);
-        $mod = $this->createTestUser(['fullname' => 'Neville Reid']);
-
+        // email_membership_approved was removed — membership approve now queues
+        // email_mod_stdmsg directly (when content is provided) or nothing (no content).
         DB::table('background_tasks')->insert([
             'task_type' => 'email_membership_approved',
             'data' => json_encode([
-                'userid' => $member->id,
-                'byuser' => $mod->id,
-                'groupid' => $group->id,
-                'subject' => 'Joining multiple Freegle communities',
-                'body' => 'It is OK to join more than one Freegle community.',
+                'userid' => 1,
+                'byuser' => 2,
+                'groupid' => 3,
+                'subject' => 'Welcome',
+                'body' => 'You have been approved.',
             ]),
             'created_at' => now(),
+            'attempts' => 2,  // Already tried twice — next attempt marks as failed.
         ]);
 
         $this->mock(PushNotificationService::class);
@@ -962,36 +1001,28 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             '--sleep' => 0,
         ])->assertSuccessful();
 
-        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
-            $this->assertEquals('Neville Reid', $mail->modName);
-            $this->assertEquals('Joining multiple Freegle communities', $mail->stdSubject);
-            return TRUE;
-        });
-
+        // Should fail with "Unknown task type" on the third (final) attempt.
         $task = DB::table('background_tasks')->first();
-        $this->assertNotNull($task->processed_at);
+        $this->assertNotNull($task->failed_at, 'Unknown task type should be permanently failed');
+        $this->assertStringContains('Unknown task type', $task->error_message ?? '');
     }
 
-    public function test_membership_rejected_routes_to_mod_stdmsg_for_member(): void
+    public function test_email_membership_rejected_task_type_no_longer_exists(): void
     {
-        Mail::fake();
-
-        $group = $this->createTestGroup();
-        $member = $this->createTestUser();
-        $memberEmail = $this->createTestUserEmail($member, ['preferred' => 1]);
-        $mod = $this->createTestUser(['fullname' => 'Maureen Campbell']);
-
+        // email_membership_rejected was removed — membership reject now queues
+        // email_mod_stdmsg directly (when content is provided) or nothing (no content).
         DB::table('background_tasks')->insert([
             'task_type' => 'email_membership_rejected',
             'data' => json_encode([
-                'userid' => $member->id,
-                'byuser' => $mod->id,
-                'groupid' => $group->id,
-                'subject' => 'Out of Area - Reject',
-                'body' => 'Sorry, you do not live in our area.',
-                'stdmsgid' => 219241,
+                'userid' => 1,
+                'byuser' => 2,
+                'groupid' => 3,
+                'subject' => 'Sorry',
+                'body' => 'Your application was rejected.',
+                'stdmsgid' => 0,
             ]),
             'created_at' => now(),
+            'attempts' => 2,  // Already tried twice — next attempt marks as failed.
         ]);
 
         $this->mock(PushNotificationService::class);
@@ -1001,22 +1032,10 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             '--sleep' => 0,
         ])->assertSuccessful();
 
-        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
-            $this->assertEquals('Maureen Campbell', $mail->modName);
-            $this->assertEquals('Out of Area - Reject', $mail->stdSubject);
-            return TRUE;
-        });
-
+        // Should fail with "Unknown task type" on the third (final) attempt.
         $task = DB::table('background_tasks')->first();
-        $this->assertNotNull($task->processed_at);
-
-        // Verify chat room created.
-        $chatRoom = DB::table('chat_rooms')
-            ->where('user1', $member->id)
-            ->where('groupid', $group->id)
-            ->where('chattype', 'User2Mod')
-            ->first();
-        $this->assertNotNull($chatRoom, 'User2Mod chat room should be created');
+        $this->assertNotNull($task->failed_at, 'Unknown task type should be permanently failed');
+        $this->assertStringContains('Unknown task type', $task->error_message ?? '');
     }
 
     public function test_refer_to_support_sends_plain_text_email(): void
