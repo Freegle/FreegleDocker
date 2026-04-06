@@ -177,9 +177,9 @@ class ProcessBackgroundTasksCommand extends Command
             'email_forgot_password' => $this->handleEmailForgotPassword($data, $spooler, $shouldSpool),
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
             'email_message_approved', 'email_message_rejected', 'email_message_reply'
-                => $this->handleModStdMessage($taskType, $data, $spooler, $shouldSpool),
-            'email_mod_stdmsg', 'email_membership_approved', 'email_membership_rejected'
-                => $this->handleModStdMessageForMember($data, $spooler, $shouldSpool),
+                => $this->handleModStdMessage($taskType, $data, $pushService, $spooler, $shouldSpool),
+            'email_mod_stdmsg'
+                => $this->handleModStdMessageForMember($taskType, $data, $spooler, $shouldSpool),
             'email_merge' => $this->handleEmailMerge($data, $spooler, $shouldSpool),
             'email_verify' => $this->handleEmailVerify($data, $spooler, $shouldSpool),
             'refer_to_support' => $this->handleReferToSupport($data, $spooler, $shouldSpool),
@@ -340,12 +340,16 @@ class ProcessBackgroundTasksCommand extends Command
     /**
      * Handle mod standard message emails (approve, reject, reply).
      *
-     * Looks up the message poster, group, and mod info, then sends the stdmsg email
-     * and creates a User2Mod chat message for the mod log.
+     * Looks up the message poster, group, and mod info, then:
+     * 1. Sends the stdmsg email (if subject/body provided).
+     * 2. Creates a User2Mod chat message for the mod log.
+     * 3. Creates a mod log entry (always — even for plain approve with no stdmsg).
+     * 4. Queues push notifications to group moderators.
      */
     protected function handleModStdMessage(
         string $taskType,
         array $data,
+        PushNotificationService $pushService,
         EmailSpoolerService $spooler,
         bool $shouldSpool
     ): void {
@@ -354,6 +358,7 @@ class ProcessBackgroundTasksCommand extends Command
         $groupId = (int) ($data['groupid'] ?? 0);
         $subject = $data['subject'] ?? '';
         $body = $data['body'] ?? '';
+        $stdmsgId = (int) ($data['stdmsgid'] ?? 0);
 
         // Fall back to looking up group from messages_groups if not provided.
         if ($groupId === 0 && $msgId > 0) {
@@ -364,7 +369,39 @@ class ProcessBackgroundTasksCommand extends Command
             throw new \RuntimeException("{$taskType} requires msgid and byuser");
         }
 
-        // No subject/body means no stdmsg to send (e.g. plain approve without message).
+        // Look up the poster (needed for both log and email).
+        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
+
+        // Determine the log subtype from the task type.
+        // email_message_approved → Approved
+        // email_message_rejected with subject → Rejected, without subject → Deleted
+        // email_message_reply → Replied
+        $subtype = match ($taskType) {
+            'email_message_approved' => 'Approved',
+            'email_message_rejected' => $subject !== '' ? 'Rejected' : 'Deleted',
+            'email_message_reply' => 'Replied',
+            default => 'Approved',
+        };
+
+        // Always create the mod log entry (even if no stdmsg content).
+        DB::table('logs')->insert([
+            'timestamp' => now(),
+            'type' => 'Message',
+            'subtype' => $subtype,
+            'msgid' => $msgId,
+            'user' => $posterId ?: null,
+            'byuser' => $byUser,
+            'groupid' => $groupId ?: null,
+            'stdmsgid' => $stdmsgId ?: null,
+            'text' => $subject,
+        ]);
+
+        // Queue push notifications to group moderators.
+        if ($groupId > 0) {
+            $pushService->notifyGroupMods($groupId);
+        }
+
+        // No subject/body means no stdmsg email to send (e.g. plain approve without message).
         if ($subject === '' && $body === '') {
             Log::info("Mod action {$taskType} without stdmsg content, skipping email", [
                 'msgid' => $msgId,
@@ -372,9 +409,6 @@ class ProcessBackgroundTasksCommand extends Command
             ]);
             return;
         }
-
-        // Look up the poster and their preferred email.
-        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
 
         if (! $posterId) {
             Log::warning("No poster found for message {$msgId}");
@@ -462,6 +496,7 @@ class ProcessBackgroundTasksCommand extends Command
      * 2. Create a User2Mod chat message for the mod log.
      */
     protected function handleModStdMessageForMember(
+        string $taskType,
         array $data,
         EmailSpoolerService $spooler,
         bool $shouldSpool
@@ -544,6 +579,24 @@ class ProcessBackgroundTasksCommand extends Command
                     'processingrequired' => 0,
                     'processingsuccessful' => 1,
                 ]);
+            }
+
+            // Only create the User/Mailed log for email_mod_stdmsg (direct mod message to member).
+            // Membership approve/reject actions no longer route here — they use email_mod_stdmsg
+            // directly (or create no task if no content), so we only log when it's a direct modmail.
+            if ($taskType === 'email_mod_stdmsg') {
+                DB::table('logs')->insert([
+                    'timestamp' => now(),
+                    'type' => 'User',
+                    'subtype' => 'Mailed',
+                    'byuser' => $byUser,
+                    'user' => $userId,
+                    'groupid' => $groupId,
+                    'stdmsgid' => $stdmsgId ?: null,
+                    'text' => $subject,
+                ]);
+                // Note: users_modmails is populated by the syncModMailCounts cron job
+                // which scans the logs table — no direct insert needed here.
             }
         }
 
