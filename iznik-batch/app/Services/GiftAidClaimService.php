@@ -20,8 +20,9 @@ class GiftAidClaimService
     /**
      * Identify and store postcodes for giftaid records that lack one.
      *
-     * Looks for a known postcode in the user's saved addresses or falls back
-     * to UK postcode regex extraction from homeaddress.
+     * First checks the user's saved addresses (users_addresses → paf_addresses → locations)
+     * for a postcode that appears in their homeaddress text. Falls back to UK postcode
+     * regex extraction from homeaddress if no saved address matches.
      */
     public function identifyPostcodes(): int
     {
@@ -32,7 +33,8 @@ class GiftAidClaimService
         );
 
         foreach ($records as $record) {
-            $postcode = $this->extractPostcodeFromAddress($record->homeaddress);
+            $postcode = $this->findPostcodeFromSavedAddresses($record->userid, $record->homeaddress)
+                ?? $this->extractPostcodeFromAddress($record->homeaddress);
 
             if ($postcode !== null) {
                 DB::update('UPDATE giftaid SET postcode = ? WHERE id = ?', [$postcode, $record->id]);
@@ -41,6 +43,29 @@ class GiftAidClaimService
         }
 
         return $found;
+    }
+
+    /**
+     * Look up the user's saved addresses and return any postcode that appears in homeaddress.
+     */
+    private function findPostcodeFromSavedAddresses(int $userid, string $homeaddress): ?string
+    {
+        $postcodes = DB::select(
+            'SELECT l.name AS postcode
+             FROM users_addresses ua
+             JOIN paf_addresses pa ON ua.pafid = pa.id
+             JOIN locations l ON pa.postcodeid = l.id
+             WHERE ua.userid = ? AND l.type = ?',
+            [$userid, 'Postcode']
+        );
+
+        foreach ($postcodes as $row) {
+            if (stripos($homeaddress, $row->postcode) !== false) {
+                return $row->postcode;
+            }
+        }
+
+        return null;
     }
 
     /**

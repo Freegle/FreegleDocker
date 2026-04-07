@@ -63,6 +63,74 @@ class GiftAidClaimServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // identifyPostcodes tests
+    // -------------------------------------------------------------------------
+
+    public function test_identify_postcodes_uses_saved_address_lookup(): void
+    {
+        $user = $this->createTestUser();
+
+        // Insert a locations record for the postcode
+        DB::insert(
+            "INSERT INTO locations (name, type) VALUES ('SW1A 1AA', 'Postcode')"
+        );
+        $locationId = DB::getPdo()->lastInsertId();
+
+        // Insert paf_addresses record pointing to that location
+        DB::insert(
+            'INSERT INTO paf_addresses (postcodeid) VALUES (?)',
+            [$locationId]
+        );
+        $pafId = DB::getPdo()->lastInsertId();
+
+        // Link the user to that address
+        DB::insert(
+            'INSERT INTO users_addresses (userid, pafid) VALUES (?, ?)',
+            [$user->id, $pafId]
+        );
+
+        // Gift aid record with no postcode, but homeaddress contains the postcode
+        DB::insert(
+            "INSERT INTO giftaid (userid, period, fullname, homeaddress, reviewed, timestamp)
+             VALUES (?, 'Past4YearsAndFuture', 'Test User', '1 Downing Street SW1A 1AA London', NOW(), NOW())",
+            [$user->id]
+        );
+
+        $found = $this->service->identifyPostcodes();
+
+        $this->assertGreaterThanOrEqual(1, $found);
+        $postcode = DB::table('giftaid')->where('userid', $user->id)->value('postcode');
+        $this->assertEquals('SW1A 1AA', $postcode);
+
+        // Cleanup
+        DB::delete('DELETE FROM giftaid WHERE userid = ?', [$user->id]);
+        DB::delete('DELETE FROM users_addresses WHERE userid = ?', [$user->id]);
+        DB::delete('DELETE FROM paf_addresses WHERE id = ?', [$pafId]);
+        DB::delete('DELETE FROM locations WHERE id = ?', [$locationId]);
+    }
+
+    public function test_identify_postcodes_falls_back_to_regex(): void
+    {
+        $user = $this->createTestUser();
+
+        // Gift aid record with no postcode and no saved addresses; postcode in homeaddress text
+        DB::insert(
+            "INSERT INTO giftaid (userid, period, fullname, homeaddress, reviewed, timestamp)
+             VALUES (?, 'Past4YearsAndFuture', 'Regex User', '42 High Street, Manchester M1 1AA', NOW(), NOW())",
+            [$user->id]
+        );
+
+        $found = $this->service->identifyPostcodes();
+
+        $this->assertGreaterThanOrEqual(1, $found);
+        $postcode = DB::table('giftaid')->where('userid', $user->id)->value('postcode');
+        $this->assertEquals('M1 1AA', $postcode);
+
+        // Cleanup
+        DB::delete('DELETE FROM giftaid WHERE userid = ?', [$user->id]);
+    }
+
+    // -------------------------------------------------------------------------
     // generateClaim dry run tests
     // -------------------------------------------------------------------------
 
