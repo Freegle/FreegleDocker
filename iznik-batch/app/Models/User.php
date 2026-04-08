@@ -928,19 +928,17 @@ class User extends Model
             DB::beginTransaction();
 
             // --- Merge memberships ---
-            $id2Memberships = DB::table('memberships')->where('userid', $id2)->get();
+            $id2Memberships = Membership::where('userid', $id2)->get();
 
             # Merge the top-level memberships
             foreach ($id2Memberships as $id2Memb) {
-                $id1Memb = DB::table('memberships')
-                    ->where('userid', $id1)
+                $id1Memb = Membership::where('userid', $id1)
                     ->where('groupid', $id2Memb->groupid)
                     ->first();
 
                 if (!$id1Memb) {
                     // id1 is not already a member — just reassign the membership.
-                    DB::table('memberships')
-                        ->where('userid', $id2)
+                    Membership::where('userid', $id2)
                         ->where('groupid', $id2Memb->groupid)
                         ->update(['userid' => $id1]);
                 } else {
@@ -948,32 +946,28 @@ class User extends Model
                     $role = self::roleMax($id1Memb->role, $id2Memb->role);
 
                     if ($role !== $id1Memb->role) {
-                        DB::table('memberships')
-                            ->where('userid', $id1)
+                        Membership::where('userid', $id1)
                             ->where('groupid', $id2Memb->groupid)
                             ->update(['role' => $role]);
                     }
 
                     // Keep the older added date.
                     $date = min(strtotime($id1Memb->added), strtotime($id2Memb->added));
-                    DB::table('memberships')
-                        ->where('userid', $id1)
+                    Membership::where('userid', $id1)
                         ->where('groupid', $id2Memb->groupid)
                         ->update(['added' => date('Y-m-d H:i:s', $date)]);
 
                     // Take non-NULL values from id2 for these attributes.
                     foreach (['configid', 'settings', 'heldby'] as $key) {
                         if ($id2Memb->$key !== NULL) {
-                            DB::table('memberships')
-                                ->where('userid', $id1)
+                            Membership::where('userid', $id1)
                                 ->where('groupid', $id2Memb->groupid)
                                 ->update([$key => $id2Memb->$key]);
                         }
                     }
 
                     // Remove the now-redundant id2 membership.
-                    DB::table('memberships')
-                        ->where('userid', $id2)
+                    Membership::where('userid', $id2)
                         ->where('groupid', $id2Memb->groupid)
                         ->delete();
                 }
@@ -984,8 +978,7 @@ class User extends Model
             $primary = NULL;
             $foundPrim = FALSE;
 
-            $id2PrimaryEmail = DB::table('users_emails')
-                ->where('userid', $id2)
+            $id2PrimaryEmail = UserEmail::where('userid', $id2)
                 ->where('preferred', 1)
                 ->first();
 
@@ -994,8 +987,7 @@ class User extends Model
                 $foundPrim = TRUE;
             }
 
-            $id1PrimaryEmail = DB::table('users_emails')
-                ->where('userid', $id1)
+            $id1PrimaryEmail = UserEmail::where('userid', $id1)
                 ->where('preferred', 1)
                 ->first();
 
@@ -1008,8 +1000,7 @@ class User extends Model
                 // No primary — use whatever getEmailPreferred would choose for id1.
                 $preferredEmail = $u1->email_preferred;
                 if ($preferredEmail) {
-                    $emailRow = DB::table('users_emails')
-                        ->where('email', $preferredEmail)
+                    $emailRow = UserEmail::where('email', $preferredEmail)
                         ->first();
                     if ($emailRow) {
                         $primary = $emailRow->id;
@@ -1018,13 +1009,11 @@ class User extends Model
             }
 
             // Move all id2 emails to id1, clearing preferred.
-            DB::table('users_emails')
-                ->where('userid', $id2)
+            UserEmail::where('userid', $id2)
                 ->update(['userid' => $id1, 'preferred' => 0]);
 
             if ($primary) {
-                DB::table('users_emails')
-                    ->where('id', $primary)
+                UserEmail::where('id', $primary)
                     ->update(['preferred' => 1]);
             }
 
@@ -1078,9 +1067,9 @@ class User extends Model
             }
 
             // Non-IGNORE updates (no unique constraint conflicts expected).
-            DB::table('users_comments')->where('userid', $id2)->update(['userid' => $id1]);
-            DB::table('users_comments')->where('byuserid', $id2)->update(['byuserid' => $id1]);
-            DB::table('users_logins')->where('userid', $id2)->update(['userid' => $id1]);
+            UserComment::where('userid', $id2)->update(['userid' => $id1]);
+            UserComment::where('byuserid', $id2)->update(['byuserid' => $id1]);
+            UserLogin::where('userid', $id2)->update(['userid' => $id1]);
 
             // Update Native login uid to match new userid.
             DB::statement(
@@ -1093,17 +1082,16 @@ class User extends Model
             DB::statement("UPDATE IGNORE users_banned SET byuser = ? WHERE byuser = ?", [$id1, $id2]);
 
             // Remove memberships for groups the merged user is banned from.
-            $bans = DB::table('users_banned')->where('userid', $id1)->get();
+            $bans = UserBanned::where('userid', $id1)->get();
             foreach ($bans as $ban) {
-                DB::table('memberships')
-                    ->where('userid', $id1)
+                Membership::where('userid', $id1)
                     ->where('groupid', $ban->groupid)
-                    ->delete();
+                    ->first()
+                    ?->delete();
             }
 
             // --- Merge chat rooms ---
-            $rooms = DB::table('chat_rooms')
-                ->where(function ($q) use ($id2) {
+            $rooms = ChatRoom::where(function ($q) use ($id2) {
                     $q->where('user1', $id2)->orWhere('user2', $id2);
                 })
                 ->whereIn('chattype', [ChatRoom::TYPE_USER2MOD, ChatRoom::TYPE_USER2USER])
@@ -1113,14 +1101,12 @@ class User extends Model
                 $existing = NULL;
 
                 if ($room->chattype === ChatRoom::TYPE_USER2MOD) {
-                    $existing = DB::table('chat_rooms')
-                        ->where('user1', $id1)
+                    $existing = ChatRoom::where('user1', $id1)
                         ->where('groupid', $room->groupid)
                         ->first();
                 } elseif ($room->chattype === ChatRoom::TYPE_USER2USER) {
                     $other = ($room->user1 == $id2) ? $room->user2 : $room->user1;
-                    $existing = DB::table('chat_rooms')
-                        ->where(function ($q) use ($id1, $other) {
+                    $existing = ChatRoom::where(function ($q) use ($id1, $other) {
                             $q->where(function ($q2) use ($id1, $other) {
                                 $q2->where('user1', $id1)->where('user2', $other);
                             })->orWhere(function ($q2) use ($id1, $other) {
@@ -1132,8 +1118,7 @@ class User extends Model
 
                 if ($existing) {
                     // Room already exists for id1 — move messages into it.
-                    DB::table('chat_messages')
-                        ->where('chatid', $room->id)
+                    ChatMessage::where('chatid', $room->id)
                         ->update(['chatid' => $existing->id]);
 
                     // Keep the latest message timestamp.
@@ -1144,14 +1129,13 @@ class User extends Model
                 } else {
                     // No existing room — just reassign user reference.
                     $col = ($room->user1 == $id2) ? 'user1' : 'user2';
-                    DB::table('chat_rooms')
-                        ->where('id', $room->id)
+                    ChatRoom::where('id', $room->id)
                         ->update([$col => $id1]);
                 }
             }
 
             // Move all remaining chat messages from id2.
-            DB::table('chat_messages')->where('userid', $id2)->update(['userid' => $id1]);
+            ChatMessage::where('userid', $id2)->update(['userid' => $id1]);
 
             // --- Merge user attributes (keep non-NULL from id2 if id1 is NULL) ---
             // Refresh models after membership changes.
@@ -1165,18 +1149,16 @@ class User extends Model
                 }
 
                 // Clear id2's attribute first (unique key safety for yahooid).
-                DB::table('users')->where('id', $id2)->update([$att => NULL]);
+                User::where('id', $id2)->update([$att => NULL]);
 
                 if ($u1->$att === NULL) {
                     if ($att !== 'fullname') {
-                        DB::table('users')
-                            ->where('id', $id1)
+                        User::where('id', $id1)
                             ->whereNull($att)
                             ->update([$att => $id2Value]);
                     } elseif (stripos($id2Value, 'fbuser') === FALSE && stripos($id2Value, '-owner') === FALSE) {
                         // Don't overwrite a name with FBUser or a -owner address.
-                        DB::table('users')
-                            ->where('id', $id1)
+                        User::where('id', $id1)
                             ->update([$att => $id2Value]);
                     }
                 }
@@ -1185,26 +1167,26 @@ class User extends Model
             }
 
             // --- Merge logs ---
-            DB::table('logs')->where('user', $id2)->update(['user' => $id1]);
-            DB::table('logs')->where('byuser', $id2)->update(['byuser' => $id1]);
+            Log::where('user', $id2)->update(['user' => $id1]);
+            Log::where('byuser', $id2)->update(['byuser' => $id1]);
 
             // --- Merge messages ---
-            DB::table('messages')->where('fromuser', $id2)->update(['fromuser' => $id1]);
+            Message::where('fromuser', $id2)->update(['fromuser' => $id1]);
 
             // --- Merge history ---
-            DB::table('messages_history')->where('fromuser', $id2)->update(['fromuser' => $id1]);
-            DB::table('memberships_history')->where('userid', $id2)->update(['userid' => $id1]);
+            MessageHistory::where('fromuser', $id2)->update(['fromuser' => $id1]);
+            MembershipHistory::where('userid', $id2)->update(['userid' => $id1]);
 
             // --- Merge system role (take highest) ---
             $u1->refresh();
             $u2->refresh();
 
             $mergedSystemRole = self::systemRoleMax($u1->systemrole, $u2->systemrole);
-            DB::table('users')->where('id', $id1)->update(['systemrole' => $mergedSystemRole]);
+            User::where('id', $id1)->update(['systemrole' => $mergedSystemRole]);
 
             // --- Merge added date (keep oldest) ---
             $earlierAdded = ($u1->added < $u2->added) ? $u1->added : $u2->added;
-            DB::table('users')->where('id', $id1)->update([
+            User::where('id', $id1)->update([
                 'added' => $earlierAdded,
                 'lastupdated' => now(),
             ]);
@@ -1214,13 +1196,12 @@ class User extends Model
             $tnId2 = $u2->tnuserid;
 
             if (!$tnId1 && $tnId2) {
-                DB::table('users')->where('id', $id2)->update(['tnuserid' => NULL]);
-                DB::table('users')->where('id', $id1)->update(['tnuserid' => $tnId2]);
+                User::where('id', $id2)->update(['tnuserid' => NULL]);
+                User::where('id', $id1)->update(['tnuserid' => $tnId2]);
             }
 
             // --- Merge gift aid (keep most favourable declaration) ---
-            $giftAids = DB::table('giftaid')
-                ->whereIn('userid', [$id1, $id2])
+            $giftAids = GiftAid::whereIn('userid', [$id1, $id2])
                 ->orderBy('id')
                 ->get();
 
@@ -1246,18 +1227,18 @@ class User extends Model
                 // Delete all except the best.
                 foreach ($giftAids as $giftAid) {
                     if ($giftAid->id !== $best->id) {
-                        DB::table('giftaid')->where('id', $giftAid->id)->delete();
+                        GiftAid::where('id', $giftAid->id)->delete();
                     }
                 }
 
                 // Assign the best to id1.
-                DB::table('giftaid')->where('id', $best->id)->update(['userid' => $id1]);
+                GiftAid::where('id', $best->id)->update(['userid' => $id1]);
             }
 
             // --- Log the merge (before deleting id2) ---
             $mergeText = "Merged {$id2} into {$id1} ({$reason})";
 
-            DB::table('logs')->insert([
+            Log::insert([
                 'timestamp' => now(),
                 'type' => 'User',
                 'subtype' => 'Merged',
@@ -1266,7 +1247,7 @@ class User extends Model
                 'text' => $mergeText,
             ]);
 
-            DB::table('logs')->insert([
+            Log::insert([
                 'timestamp' => now(),
                 'type' => 'User',
                 'subtype' => 'Merged',
@@ -1289,8 +1270,8 @@ class User extends Model
         #
         # Make sure we don't pick up an old cached version, as we've just changed it quite a bit.
         try {
-            DB::table('memberships')->where('userid', $id2)->delete();
-            DB::table('users')->where('id', $id2)->delete();
+            Membership::where('userid', $id2)->delete();
+            User::where('id', $id2)->delete();
             Log::info("Merged {$id1} < {$id2}, {$reason}");
         } catch (\Exception $e) {
             Log::error("Failed to delete merged user {$id2}: " . $e->getMessage());
