@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 
 class Location extends Model
 {
@@ -44,7 +43,7 @@ class Location extends Model
             $poly = "POLYGON(($swlng $swlat, $swlng $nelat, $nelng $nelat, $nelng $swlat, $swlng $swlat))";
             $point = "POINT($lng $lat)";
 
-            $result = DB::table('locations_spatial')
+            $result = LocationSpatial::query()
                 ->join('locations', 'locations.id', '=', 'locations_spatial.locationid')
                 ->selectRaw('locations.id, locations.name, locations.areaid, locations.lat, locations.lng')
                 ->whereRaw("MBRContains(ST_Envelope(ST_GeomFromText(?, ?)), locations_spatial.geometry)", [$poly, $srid])
