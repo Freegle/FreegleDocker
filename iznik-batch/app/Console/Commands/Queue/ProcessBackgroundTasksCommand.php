@@ -14,6 +14,7 @@ use App\Mail\Message\ModStdMessageMail;
 use App\Models\ChatRoom;
 use App\Models\User;
 use App\Services\EmailSpoolerService;
+use App\Services\HousekeeperService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
@@ -184,6 +185,7 @@ class ProcessBackgroundTasksCommand extends Command
             'email_verify' => $this->handleEmailVerify($data, $spooler, $shouldSpool),
             'refer_to_support' => $this->handleReferToSupport($data, $spooler, $shouldSpool),
             'message_outcome' => $this->handleMessageOutcome($data),
+            'housekeeper_notify' => $this->handleHousekeeperNotify($data, $spooler, $shouldSpool),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -945,6 +947,18 @@ class ProcessBackgroundTasksCommand extends Command
             'chat_id' => $chatId,
             'user_id' => $userId,
         ]);
+    }
+
+    /**
+     * Process a housekeeping notification from the Chrome extension.
+     */
+    protected function handleHousekeeperNotify(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $service = app(HousekeeperService::class);
+        $service->process($data, $spooler, $shouldSpool);
     }
 
     /**
