@@ -9,6 +9,106 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @see ../../database/migrations/2025_12_10_094529_create_users_table.php
+ * @property int $id
+ * @property string|null $yahooUserId Unique ID of user on Yahoo if known
+ * @property string|null $firstname
+ * @property string|null $lastname
+ * @property string|null $fullname
+ * @property string $systemrole System-wide roles
+ * @property \Illuminate\Support\Carbon $added
+ * @property \Illuminate\Support\Carbon $lastaccess
+ * @property array<array-key, mixed>|null $settings JSON-encoded settings
+ * @property int $gotrealemail Until migrated, whether polled FD/TN to get real email
+ * @property string|null $yahooid Any known YahooID for this user
+ * @property int $licenses Any licenses not added to groups
+ * @property int $newslettersallowed Central mails
+ * @property int $relevantallowed
+ * @property string|null $onholidaytill
+ * @property int $marketingconsent Whether we have PECR consent
+ * @property int $publishconsent Can we republish posts to non-members
+ * @property int|null $lastlocation
+ * @property string|null $lastrelevantcheck
+ * @property string|null $lastidlechaseup
+ * @property int $bouncing Whether preferred email has been determined to be bouncing
+ * @property string|null $permissions
+ * @property int|null $invitesleft
+ * @property string|null $source
+ * @property string $chatmodstatus
+ * @property \Illuminate\Support\Carbon|null $deleted
+ * @property int $inventedname
+ * @property string $newsfeedmodstatus
+ * @property int $replyambit
+ * @property string|null $engagement
+ * @property string|null $trustlevel
+ * @property string|null $lastupdated
+ * @property int|null $tnuserid
+ * @property int|null $ljuserid
+ * @property \Illuminate\Support\Carbon|null $forgotten
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ChatMessage> $chatMessages
+ * @property-read int|null $chat_messages_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ChatRoom> $chatRoomsAsUser1
+ * @property-read int|null $chat_rooms_as_user1_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ChatRoom> $chatRoomsAsUser2
+ * @property-read int|null $chat_rooms_as_user2_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\UserDonation> $donations
+ * @property-read int|null $donations_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\EmailTracking> $emailTracking
+ * @property-read int|null $email_tracking_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\UserEmail> $emails
+ * @property-read int|null $emails_count
+ * @property-read string $display_name
+ * @property-read string|null $email_preferred
+ * @property-read string|null $first_name
+ * @property-read \App\Models\GiftAid|null $giftAid
+ * @property-read \App\Models\Location|null $lastLocation
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Membership> $memberships
+ * @property-read int|null $memberships_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Message> $messages
+ * @property-read int|null $messages_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Notification> $notifications
+ * @property-read int|null $notifications_count
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereAdded($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereBouncing($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereChatmodstatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereDeleted($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEngagement($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereFirstname($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereForgotten($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereFullname($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereGotrealemail($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereInventedname($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereInvitesleft($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastaccess($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastidlechaseup($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastlocation($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastname($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastrelevantcheck($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastupdated($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLicenses($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLjuserid($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereMarketingconsent($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereNewsfeedmodstatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereNewslettersallowed($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereOnholidaytill($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePermissions($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePublishconsent($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereRelevantallowed($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereReplyambit($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereSettings($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereSource($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereSystemrole($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereTnuserid($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereTrustlevel($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereYahooUserId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereYahooid($value)
+ * @mixin \Eloquent
+ */
 class User extends Model
 {
     protected $table = 'users';
@@ -270,10 +370,10 @@ class User extends Model
      */
     public function removeEmail(string $email): void
     {
-        DB::table('users_emails')
-            ->where('userid', $this->id)
+        UserEmail::where('userid', $this->id)
             ->where('email', $email)
-            ->delete();
+            ->first()
+            ?->delete();
     }
 
     /**
@@ -341,27 +441,25 @@ class User extends Model
             # that scales badly for clusters.
             $canon = self::canonMail($email);
 
-            $emails = DB::table('users_emails')
-                ->select('id', 'preferred')
+            $emails = UserEmail::select('id', 'preferred')
                 ->where('userid', $this->id)
                 ->where('email', $email)
                 ->get()
                 ->toArray();
 
             if (empty($emails)) {
-                DB::table('users_emails')->insert([
+                $newEmail = UserEmail::create([
                     'userid' => $this->id,
                     'email' => $email,
                     'preferred' => $primary,
                     'canon' => $canon,
                     'backwards' => strrev($canon),
                 ]);
-                $rc = DB::getPdo()->lastInsertId();
+                $rc = $newEmail->id;
 
                 if ($rc && $primary) {
                     # Make sure no other email is flagged as primary
-                    DB::table('users_emails')
-                        ->where('userid', $this->id)
+                    UserEmail::where('userid', $this->id)
                         ->where('id', '!=', $rc)
                         ->update(['preferred' => 0]);
                 }
@@ -370,15 +468,13 @@ class User extends Model
 
                 if ($changeprimary && $primary != $emails[0]->preferred) {
                     # Change in status.
-                    DB::table('users_emails')
-                        ->where('id', $rc)
+                    UserEmail::where('id', $rc)
                         ->update(['preferred' => $primary]);
                 }
 
                 if ($primary) {
                     # Make sure no other email is flagged as primary
-                    DB::table('users_emails')
-                        ->where('userid', $this->id)
+                    UserEmail::where('userid', $this->id)
                         ->where('id', '!=', $rc)
                         ->update(['preferred' => 0]);
 
@@ -399,13 +495,11 @@ class User extends Model
     public function unbounce(int $emailid): void
     {
         if ($emailid) {
-            DB::table('bounces_emails')
-                ->where('emailid', $emailid)
+            BounceEmail::where('emailid', $emailid)
                 ->update(['reset' => 1]);
         }
 
-        DB::table('users')
-            ->where('id', $this->id)
+        User::where('id', $this->id)
             ->update(['bouncing' => 0]);
     }
 
@@ -416,18 +510,16 @@ class User extends Model
         if (strlen($email)) {
             # We might have donations made via PayPal using this email address which we can now link to this user.  Do
             # SELECT first to avoid this having to replicate in the cluster.
-            $donations = DB::table('users_donations')
-                ->select('id')
+            $donations = UserDonation::select('id')
                 ->where('Payer', $email)
                 ->whereNull('userid')
                 ->get();
 
             foreach ($donations as $donation) {
                 // Check if user exists before updating to avoid foreign key constraint violations
-                $userExists = DB::table('users')->where('id', $userid)->exists();
+                $userExists = User::where('id', $userid)->exists();
                 if ($userExists) {
-                    DB::table('users_donations')
-                        ->where('id', $donation->id)
+                    UserDonation::where('id', $donation->id)
                         ->update(['userid' => $userid]);
                 }
             }
@@ -635,8 +727,7 @@ class User extends Model
     public function getProfileImageUrl(bool $thumbnail = TRUE): ?string
     {
         // Find the user's profile image, preferring the default one.
-        $profileImage = \DB::table('users_images')
-            ->where('userid', $this->id)
+        $profileImage = UserImage::where('userid', $this->id)
             ->orderByDesc('default')
             ->orderBy('id')
             ->first(['id', 'url']);
@@ -671,8 +762,7 @@ class User extends Model
     public function getUserKey(): string
     {
         // Check for existing LOGIN_LINK credential.
-        $login = \DB::table('users_logins')
-            ->where('userid', $this->id)
+        $login = UserLogin::where('userid', $this->id)
             ->where('type', self::LOGIN_LINK)
             ->first(['credentials']);
 
@@ -683,7 +773,7 @@ class User extends Model
         // Create a new key.
         $key = bin2hex(random_bytes(16));
 
-        \DB::table('users_logins')->insert([
+        UserLogin::create([
             'userid' => $this->id,
             'type' => self::LOGIN_LINK,
             'credentials' => $key,
@@ -1369,15 +1459,14 @@ class User extends Model
 
         if ($ban) {
             // Record the ban.
-            DB::table('users_banned')->insertOrIgnore([
+            UserBanned::insertOrIgnore([
                 'userid' => $this->id,
                 'groupid' => $groupId,
                 'byuser' => $byUserId,
             ]);
 
             // Withdraw active Offer/Wanted messages on this group that have no outcome yet.
-            $msgIds = DB::table('messages_groups')
-                ->join('messages', 'messages_groups.msgid', '=', 'messages.id')
+            $msgIds = MessageGroup::join('messages', 'messages_groups.msgid', '=', 'messages.id')
                 ->where('messages.fromuser', $this->id)
                 ->where('messages_groups.groupid', $groupId)
                 ->whereIn('messages.type', [Message::TYPE_OFFER, Message::TYPE_WANTED])
@@ -1393,13 +1482,13 @@ class User extends Model
         }
 
         // Remove the membership.
-        $deleted = DB::table('memberships')
-            ->where('userid', $this->id)
+        $deleted = Membership::where('userid', $this->id)
             ->where('groupid', $groupId)
-            ->delete();
+            ->first()
+            ?->delete();
 
         if ($deleted || $ban) {
-            DB::table('logs')->insert([
+            Log::insert([
                 'timestamp' => now(),
                 'type' => 'Group',
                 'subtype' => 'Left',

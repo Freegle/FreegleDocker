@@ -5,6 +5,26 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @property int $id
+ * @property int $userid
+ * @property int|null $pafid
+ * @property string|null $to
+ * @property string|null $instructions
+ * @property float|null $lat
+ * @property float|null $lng
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress whereInstructions($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress whereLat($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress whereLng($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress wherePafid($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress whereTo($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress whereUserid($value)
+ * @mixin \Eloquent
+ */
 class UserAddress extends Model
 {
     protected $table = 'users_addresses';
