@@ -101,6 +101,27 @@ Schedule::command('messages:process-expired --spatial')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Auto-approve pending messages after 48 hours.
+// V1: cron/autoapprove.php
+Schedule::command('messages:auto-approve')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Auto-repost messages based on group repost settings.
+// V1: cron/autorepost.php
+Schedule::command('messages:auto-repost')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Chase up messages with replies but no outcome.
+// V1: cron/chaseup.php
+Schedule::command('messages:chase-up')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Purge operations - run daily at off-peak hours.
 Schedule::command('purge:chats')
     ->dailyAt('02:00')

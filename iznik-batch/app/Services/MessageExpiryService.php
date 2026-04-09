@@ -22,7 +22,7 @@ class MessageExpiryService
     /**
      * Process messages that have reached their deadline.
      */
-    public function processDeadlineExpired(): array
+    public function processDeadlineExpired(bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -34,6 +34,13 @@ class MessageExpiryService
 
         foreach ($messages as $message) {
             try {
+                if ($dryRun) {
+                    Log::info("Dry run: would expire message #{$message->id}: {$message->subject}");
+                    $stats['processed']++;
+                    $stats['emails_sent']++;
+                    continue;
+                }
+
                 $this->markAsExpired($message);
                 $this->sendDeadlineNotification($message);
                 $stats['processed']++;
@@ -96,7 +103,7 @@ class MessageExpiryService
     /**
      * Process messages that are expired based on spatial index.
      */
-    public function processExpiredFromSpatialIndex(): int
+    public function processExpiredFromSpatialIndex(bool $dryRun = false): int
     {
         $count = 0;
 
@@ -108,6 +115,12 @@ class MessageExpiryService
             try {
                 $message = Message::find($msgid);
                 if ($message) {
+                    if ($dryRun) {
+                        Log::info("Dry run: would expire spatial message #{$msgid}");
+                        $count++;
+                        continue;
+                    }
+
                     $this->processMessageExpiry($message);
                     $count++;
                 }
