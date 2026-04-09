@@ -39,7 +39,7 @@ fi
 if echo "$COMMAND" | grep -qE '^\s*(cat|tail|head|less|wc)\b.*/tmp/'; then
   IS_DATA_COMMAND=true
 fi
-if echo "$COMMAND" | grep -qE '\bdocker (top|logs)\b'; then
+if echo "$COMMAND" | grep -qE '\bdocker (top|logs|cp|exec)\b'; then
   IS_DATA_COMMAND=true
 fi
 if echo "$COMMAND" | grep -qE '\b(ps|pgrep)\b'; then
