@@ -1298,7 +1298,7 @@ class User extends Model
     public function forget(string $reason): void
     {
         // --- Clear personal attributes ---
-        DB::table('users')->where('id', $this->id)->update([
+        User::where('id', $this->id)->update([
             'firstname' => NULL,
             'lastname' => NULL,
             'fullname' => 'Deleted User #' . $this->id,
@@ -1314,16 +1314,15 @@ class User extends Model
         }
 
         // --- Delete all login credentials ---
-        DB::table('users_logins')->where('userid', $this->id)->delete();
+        UserLogin::where('userid', $this->id)->delete();
 
         // --- Clear message content and withdraw messages without an outcome ---
-        $msgIds = DB::table('messages')
-            ->where('fromuser', $this->id)
+        $msgIds = Message::where('fromuser', $this->id)
             ->whereIn('type', [Message::TYPE_OFFER, Message::TYPE_WANTED])
             ->pluck('id');
 
         foreach ($msgIds as $msgId) {
-            DB::table('messages')->where('id', $msgId)->update([
+            Message::where('id', $msgId)->update([
                 'fromip' => NULL,
                 'message' => NULL,
                 'envelopefrom' => NULL,
@@ -1335,10 +1334,10 @@ class User extends Model
                 'deleted' => now(),
             ]);
 
-            DB::table('messages_groups')->where('msgid', $msgId)->update(['deleted' => 1]);
+            MessageGroup::where('msgid', $msgId)->update(['deleted' => 1]);
 
             // Clear any outcome comments that might contain personal data.
-            DB::table('messages_outcomes')->where('msgid', $msgId)->update(['comments' => NULL]);
+            MessageOutcome::where('msgid', $msgId)->update(['comments' => NULL]);
 
             $m = Message::find($msgId);
 
@@ -1349,17 +1348,17 @@ class User extends Model
         }
 
         // --- Clear chat message content ---
-        DB::table('chat_messages')->where('userid', $this->id)->update(['message' => NULL]);
+        ChatMessage::where('userid', $this->id)->update(['message' => NULL]);
 
         // --- Delete user-generated content ---
-        DB::table('communityevents')->where('userid', $this->id)->delete();
-        DB::table('volunteering')->where('userid', $this->id)->delete();
-        DB::table('newsfeed')->where('userid', $this->id)->delete();
-        DB::table('users_stories')->where('userid', $this->id)->delete();
-        DB::table('users_searches')->where('userid', $this->id)->delete();
-        DB::table('users_aboutme')->where('userid', $this->id)->delete();
-        DB::table('ratings')->where('rater', $this->id)->delete();
-        DB::table('ratings')->where('ratee', $this->id)->delete();
+        CommunityEvent::where('userid', $this->id)->delete();
+        Volunteering::where('userid', $this->id)->delete();
+        Newsfeed::where('userid', $this->id)->delete();
+        UserStory::where('userid', $this->id)->delete();
+        UserSearch::where('userid', $this->id)->delete();
+        UserAboutMe::where('userid', $this->id)->delete();
+        Rating::where('rater', $this->id)->delete();
+        Rating::where('ratee', $this->id)->delete();
 
         // --- Remove all group memberships ---
         $groupIds = collect($this->getMembershipList())->pluck('id');
@@ -1368,23 +1367,23 @@ class User extends Model
         }
 
         // --- Delete postal addresses and profile images ---
-        DB::table('users_addresses')->where('userid', $this->id)->delete();
-        DB::table('users_images')->where('userid', $this->id)->delete();
+        UserAddress::where('userid', $this->id)->delete();
+        UserImage::where('userid', $this->id)->delete();
 
         // --- Delete message promises ---
-        DB::table('messages_promises')->where('userid', $this->id)->delete();
+        MessagePromise::where('userid', $this->id)->delete();
 
         // --- Mark user as forgotten ---
-        DB::table('users')->where('id', $this->id)->update([
+        User::where('id', $this->id)->update([
             'forgotten' => now(),
             'tnuserid' => NULL,
         ]);
 
         // --- Delete sessions ---
-        DB::table('sessions')->where('userid', $this->id)->delete();
+        UserSession::where('userid', $this->id)->delete();
 
         // --- Log the deletion ---
-        DB::table('logs')->insert([
+        Log::insert([
             'timestamp' => now(),
             'type' => 'User',
             'subtype' => 'Deleted',
