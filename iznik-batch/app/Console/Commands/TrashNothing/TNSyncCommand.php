@@ -348,8 +348,7 @@ class TNSyncCommand extends Command
             ->where('email', 'LIKE', '%@user.trashnothing.com')
             ->groupBy('username')
             ->having('count', '>', 1)
-            ->get()
-            ->toArray();
+            ->get();
 
         if (empty($duplicates)) {
             return 0;

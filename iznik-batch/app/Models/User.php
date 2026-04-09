@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Log as Logger;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_users_table.php
@@ -444,10 +444,9 @@ class User extends Model
             $emails = UserEmail::select('id', 'preferred')
                 ->where('userid', $this->id)
                 ->where('email', $email)
-                ->get()
-                ->toArray();
+                ->get();
 
-            if (empty($emails)) {
+            if ($emails->isEmpty()) {
                 $newEmail = UserEmail::create([
                     'userid' => $this->id,
                     'email' => $email,
@@ -894,7 +893,7 @@ class User extends Model
      */
     public static function merge(int $id1, int $id2, string $reason, bool $forceMerge = FALSE, ?int $byUserId = NULL): bool
     {
-        Log::info("Merge {$id2} into {$id1}, {$reason}");
+        Logger::info("Merge {$id2} into {$id1}, {$reason}");
 
         if ($id1 === $id2) {
             return FALSE;
@@ -1019,52 +1018,43 @@ class User extends Model
 
             // --- Merge foreign keys (less critical — use IGNORE equivalent) ---
             // For tables with unique constraints, we delete id2 rows that would conflict.
-            $ignoreUpdates = [
-                ['table' => 'locations_excluded', 'column' => 'userid'],
-                ['table' => 'chat_roster', 'column' => 'userid'],
-                ['table' => 'sessions', 'column' => 'userid'],
-                ['table' => 'spam_users', 'column' => 'userid'],
-                ['table' => 'spam_users', 'column' => 'byuserid'],
-                ['table' => 'users_addresses', 'column' => 'userid'],
-                ['table' => 'users_donations', 'column' => 'userid'],
-                ['table' => 'users_images', 'column' => 'userid'],
-                ['table' => 'users_invitations', 'column' => 'userid'],
-                ['table' => 'users_nearby', 'column' => 'userid'],
-                ['table' => 'users_notifications', 'column' => 'fromuser'],
-                ['table' => 'users_notifications', 'column' => 'touser'],
-                ['table' => 'users_nudges', 'column' => 'fromuser'],
-                ['table' => 'users_nudges', 'column' => 'touser'],
-                ['table' => 'users_push_notifications', 'column' => 'userid'],
-                ['table' => 'users_requests', 'column' => 'userid'],
-                ['table' => 'users_requests', 'column' => 'completedby'],
-                ['table' => 'users_searches', 'column' => 'userid'],
-                ['table' => 'newsfeed', 'column' => 'userid'],
-                ['table' => 'messages_reneged', 'column' => 'userid'],
-                ['table' => 'users_stories', 'column' => 'userid'],
-                ['table' => 'users_stories_likes', 'column' => 'userid'],
-                ['table' => 'users_stories_requested', 'column' => 'userid'],
-                ['table' => 'users_thanks', 'column' => 'userid'],
-                ['table' => 'modnotifs', 'column' => 'userid'],
-                ['table' => 'teams_members', 'column' => 'userid'],
-                ['table' => 'users_aboutme', 'column' => 'userid'],
-                ['table' => 'ratings', 'column' => 'rater'],
-                ['table' => 'ratings', 'column' => 'ratee'],
-                ['table' => 'users_replytime', 'column' => 'userid'],
-                ['table' => 'messages_promises', 'column' => 'userid'],
-                ['table' => 'messages_by', 'column' => 'userid'],
-                ['table' => 'trysts', 'column' => 'user1'],
-                ['table' => 'trysts', 'column' => 'user2'],
-                ['table' => 'isochrones_users', 'column' => 'userid'],
-                ['table' => 'microactions', 'column' => 'userid'],
-            ];
-
-            foreach ($ignoreUpdates as $upd) {
-                // UPDATE IGNORE equivalent: try update, silently skip constraint violations.
-                DB::statement(
-                    "UPDATE IGNORE `{$upd['table']}` SET `{$upd['column']}` = ? WHERE `{$upd['column']}` = ?",
-                    [$id1, $id2]
-                );
-            }
+            // UPDATE IGNORE equivalent: try update, silently skip constraint violations.
+            LocationExcluded::where('userid', $id2)->update(['userid' => $id1]);
+            ChatRoster::where('userid', $id2)->update(['userid' => $id1]);
+            UserSession::where('userid', $id2)->update(['userid' => $id1]);
+            SpamUser::where('userid', $id2)->update(['userid' => $id1]);
+            SpamUser::where('byuserid', $id2)->update(['byuserid' => $id1]);
+            UserAddress::where('userid', $id2)->update(['userid' => $id1]);
+            UserDonation::where('userid', $id2)->update(['userid' => $id1]);
+            UserImage::where('userid', $id2)->update(['userid' => $id1]);
+            UserInvitation::where('userid', $id2)->update(['userid' => $id1]);
+            UserNearby::where('userid', $id2)->update(['userid' => $id1]);
+            Notification::where('fromuser', $id2)->update(['fromuser' => $id1]);
+            Notification::where('touser', $id2)->update(['touser' => $id1]);
+            UserNudge::where('fromuser', $id2)->update(['fromuser' => $id1]);
+            UserNudge::where('touser', $id2)->update(['touser' => $id1]);
+            UserPushNotification::where('userid', $id2)->update(['userid' => $id1]);
+            UserRequest::where('userid', $id2)->update(['userid' => $id1]);
+            UserRequest::where('completedby', $id2)->update(['completedby' => $id1]);
+            UserSearch::where('userid', $id2)->update(['userid' => $id1]);
+            Newsfeed::where('userid', $id2)->update(['userid' => $id1]);
+            MessageReneged::where('userid', $id2)->update(['userid' => $id1]);
+            UserStory::where('userid', $id2)->update(['userid' => $id1]);
+            UserStoryLike::where('userid', $id2)->update(['userid' => $id1]);
+            UserStoryRequested::where('userid', $id2)->update(['userid' => $id1]);
+            UserThanks::where('userid', $id2)->update(['userid' => $id1]);
+            ModNotif::where('userid', $id2)->update(['userid' => $id1]);
+            TeamMember::where('userid', $id2)->update(['userid' => $id1]);
+            UserAboutMe::where('userid', $id2)->update(['userid' => $id1]);
+            Rating::where('rater', $id2)->update(['rater' => $id1]);
+            Rating::where('ratee', $id2)->update(['ratee' => $id1]);
+            UserReplyTime::where('userid', $id2)->update(['userid' => $id1]);
+            MessagePromise::where('userid', $id2)->update(['userid' => $id1]);
+            MessageBy::where('userid', $id2)->update(['userid' => $id1]);
+            Tryst::where('user1', $id2)->update(['user1' => $id1]);
+            Tryst::where('user2', $id2)->update(['user2' => $id1]);
+            IsochroneUser::where('userid', $id2)->update(['userid' => $id1]);
+            Microaction::where('userid', $id2)->update(['userid' => $id1]);
 
             // Non-IGNORE updates (no unique constraint conflicts expected).
             UserComment::where('userid', $id2)->update(['userid' => $id1]);
@@ -1259,7 +1249,7 @@ class User extends Model
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Merge exception: " . $e->getMessage());
+            Logger::error("Merge exception: " . $e->getMessage());
             return FALSE;
         }
 
@@ -1272,9 +1262,9 @@ class User extends Model
         try {
             Membership::where('userid', $id2)->delete();
             User::where('id', $id2)->delete();
-            Log::info("Merged {$id1} < {$id2}, {$reason}");
+            Logger::info("Merged {$id1} < {$id2}, {$reason}");
         } catch (\Exception $e) {
-            Log::error("Failed to delete merged user {$id2}: " . $e->getMessage());
+            Logger::error("Failed to delete merged user {$id2}: " . $e->getMessage());
             // The merge itself succeeded — the user data is consolidated in id1.
             // A dangling id2 row is less harmful than rolling back the entire merge.
         }
@@ -1433,7 +1423,7 @@ class User extends Model
                             ->to($preferredEmail);
                     });
                 } catch (\Exception $e) {
-                    Log::warning("Failed to send farewell email for user {$this->id} on group {$groupId}: " . $e->getMessage());
+                    Logger::warning("Failed to send farewell email for user {$this->id} on group {$groupId}: " . $e->getMessage());
                 }
             }
         }
