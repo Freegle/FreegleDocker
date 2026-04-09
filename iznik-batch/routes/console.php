@@ -276,6 +276,22 @@ Schedule::command('mail:admin:chase')
     ->runInBackground();
 
 // =============================================================================
+// AI IMAGE REVIEW
+// =============================================================================
+
+// Update usage counts for AI images (how many posts use each image).
+Schedule::command('ai:usage-counts:update')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Daily digest of AI image review verdicts to geeks.
+Schedule::command('mail:ai-image-review:digest --spool')
+    ->dailyAt('12:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// =============================================================================
 // GIT SUMMARY
 // =============================================================================
 

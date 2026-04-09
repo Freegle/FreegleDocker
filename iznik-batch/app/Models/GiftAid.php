@@ -54,6 +54,55 @@ class GiftAid extends Model
     ];
 
     /**
+     * Get first name: use dedicated firstname column if set, else split fullname on first space.
+     */
+    public function getFirstname(): string
+    {
+        if ($this->firstname !== null && $this->firstname !== '') {
+            return $this->firstname;
+        }
+
+        $spacePos = strpos($this->fullname ?? '', ' ');
+        if ($spacePos === false) {
+            return $this->fullname ?? '';
+        }
+
+        return substr($this->fullname, 0, $spacePos);
+    }
+
+    /**
+     * Get last name: use dedicated lastname column if set, else split fullname on first space.
+     * Returns empty string if fullname has no space and lastname is not set.
+     */
+    public function getLastname(): string
+    {
+        if ($this->lastname !== null && $this->lastname !== '') {
+            return $this->lastname;
+        }
+
+        $spacePos = strpos($this->fullname ?? '', ' ');
+        if ($spacePos === false) {
+            return '';
+        }
+
+        return substr($this->fullname, $spacePos + 1);
+    }
+
+    /**
+     * Check if the record has enough name information to produce a valid first and last name.
+     * Either firstname+lastname must both be set, or fullname must contain a space.
+     */
+    public function hasValidNameSplit(): bool
+    {
+        if ($this->firstname !== null && $this->firstname !== '' &&
+            $this->lastname !== null && $this->lastname !== '') {
+            return true;
+        }
+
+        return strpos($this->fullname ?? '', ' ') !== false;
+    }
+
+    /**
      * Get the user.
      */
     public function user(): BelongsTo

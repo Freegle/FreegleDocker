@@ -27,6 +27,7 @@ export const useTestStore = defineStore('tests', {
       go: createInitialTestState('go'),
       php: createInitialTestState('php'),
       laravel: createInitialTestState('laravel'),
+      vitest: createInitialTestState('vitest'),
       playwright: createInitialTestState('playwright'),
     },
     pollingIntervals: new Map(),

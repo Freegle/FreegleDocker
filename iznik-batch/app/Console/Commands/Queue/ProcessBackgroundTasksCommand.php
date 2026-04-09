@@ -14,6 +14,7 @@ use App\Mail\Message\ModStdMessageMail;
 use App\Models\ChatRoom;
 use App\Models\User;
 use App\Services\EmailSpoolerService;
+use App\Services\HousekeeperService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
@@ -177,13 +178,14 @@ class ProcessBackgroundTasksCommand extends Command
             'email_forgot_password' => $this->handleEmailForgotPassword($data, $spooler, $shouldSpool),
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
             'email_message_approved', 'email_message_rejected', 'email_message_reply'
-                => $this->handleModStdMessage($taskType, $data, $spooler, $shouldSpool),
-            'email_mod_stdmsg', 'email_membership_approved', 'email_membership_rejected'
-                => $this->handleModStdMessageForMember($data, $spooler, $shouldSpool),
+                => $this->handleModStdMessage($taskType, $data, $pushService, $spooler, $shouldSpool),
+            'email_mod_stdmsg'
+                => $this->handleModStdMessageForMember($taskType, $data, $spooler, $shouldSpool),
             'email_merge' => $this->handleEmailMerge($data, $spooler, $shouldSpool),
             'email_verify' => $this->handleEmailVerify($data, $spooler, $shouldSpool),
             'refer_to_support' => $this->handleReferToSupport($data, $spooler, $shouldSpool),
             'message_outcome' => $this->handleMessageOutcome($data),
+            'housekeeper_notify' => $this->handleHousekeeperNotify($data, $spooler, $shouldSpool),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -340,12 +342,16 @@ class ProcessBackgroundTasksCommand extends Command
     /**
      * Handle mod standard message emails (approve, reject, reply).
      *
-     * Looks up the message poster, group, and mod info, then sends the stdmsg email
-     * and creates a User2Mod chat message for the mod log.
+     * Looks up the message poster, group, and mod info, then:
+     * 1. Sends the stdmsg email (if subject/body provided).
+     * 2. Creates a User2Mod chat message for the mod log.
+     * 3. Creates a mod log entry (always — even for plain approve with no stdmsg).
+     * 4. Queues push notifications to group moderators.
      */
     protected function handleModStdMessage(
         string $taskType,
         array $data,
+        PushNotificationService $pushService,
         EmailSpoolerService $spooler,
         bool $shouldSpool
     ): void {
@@ -354,6 +360,7 @@ class ProcessBackgroundTasksCommand extends Command
         $groupId = (int) ($data['groupid'] ?? 0);
         $subject = $data['subject'] ?? '';
         $body = $data['body'] ?? '';
+        $stdmsgId = (int) ($data['stdmsgid'] ?? 0);
 
         // Fall back to looking up group from messages_groups if not provided.
         if ($groupId === 0 && $msgId > 0) {
@@ -364,7 +371,39 @@ class ProcessBackgroundTasksCommand extends Command
             throw new \RuntimeException("{$taskType} requires msgid and byuser");
         }
 
-        // No subject/body means no stdmsg to send (e.g. plain approve without message).
+        // Look up the poster (needed for both log and email).
+        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
+
+        // Determine the log subtype from the task type.
+        // email_message_approved → Approved
+        // email_message_rejected with subject → Rejected, without subject → Deleted
+        // email_message_reply → Replied
+        $subtype = match ($taskType) {
+            'email_message_approved' => 'Approved',
+            'email_message_rejected' => $subject !== '' ? 'Rejected' : 'Deleted',
+            'email_message_reply' => 'Replied',
+            default => 'Approved',
+        };
+
+        // Always create the mod log entry (even if no stdmsg content).
+        DB::table('logs')->insert([
+            'timestamp' => now(),
+            'type' => 'Message',
+            'subtype' => $subtype,
+            'msgid' => $msgId,
+            'user' => $posterId ?: null,
+            'byuser' => $byUser,
+            'groupid' => $groupId ?: null,
+            'stdmsgid' => $stdmsgId ?: null,
+            'text' => $subject,
+        ]);
+
+        // Queue push notifications to group moderators.
+        if ($groupId > 0) {
+            $pushService->notifyGroupMods($groupId);
+        }
+
+        // No subject/body means no stdmsg email to send (e.g. plain approve without message).
         if ($subject === '' && $body === '') {
             Log::info("Mod action {$taskType} without stdmsg content, skipping email", [
                 'msgid' => $msgId,
@@ -372,9 +411,6 @@ class ProcessBackgroundTasksCommand extends Command
             ]);
             return;
         }
-
-        // Look up the poster and their preferred email.
-        $posterId = (int) DB::table('messages')->where('id', $msgId)->value('fromuser');
 
         if (! $posterId) {
             Log::warning("No poster found for message {$msgId}");
@@ -427,6 +463,25 @@ class ProcessBackgroundTasksCommand extends Command
             Mail::to($posterEmail)->send($mail);
         }
 
+        // V1 parity: send BCC copy if configured in mod's ModConfig.
+        $this->sendBccIfConfigured(
+            data: $data,
+            byUser: $byUser,
+            groupId: $groupId,
+            groupNameShort: $groupNameShort,
+            groupName: $groupName,
+            subject: $subject,
+            body: $body,
+            recipientUserId: $posterId,
+            recipientEmail: $posterEmail,
+            messageSubject: $messageSubject,
+            msgId: $msgId,
+            groupContactMail: $groupContactMail,
+            modName: $modName,
+            spooler: $spooler,
+            shouldSpool: $shouldSpool,
+        );
+
         // Create a User2Mod chat message so the conversation appears in modtools chats.
         if ($groupId > 0) {
             $chatRoom = ChatRoom::getOrCreateUser2Mod($posterId, $groupId);
@@ -462,6 +517,7 @@ class ProcessBackgroundTasksCommand extends Command
      * 2. Create a User2Mod chat message for the mod log.
      */
     protected function handleModStdMessageForMember(
+        string $taskType,
         array $data,
         EmailSpoolerService $spooler,
         bool $shouldSpool
@@ -529,12 +585,31 @@ class ProcessBackgroundTasksCommand extends Command
             Mail::to($memberEmail)->send($mail);
         }
 
+        // V1 parity: send BCC copy if configured in mod's ModConfig.
+        $this->sendBccIfConfigured(
+            data: $data,
+            byUser: $byUser,
+            groupId: $groupId,
+            groupNameShort: $groupNameShort,
+            groupName: $groupName,
+            subject: $subject,
+            body: $body,
+            recipientUserId: $userId,
+            recipientEmail: $memberEmail,
+            messageSubject: '',
+            msgId: 0,
+            groupContactMail: $groupContactMail,
+            modName: $modName,
+            spooler: $spooler,
+            shouldSpool: $shouldSpool,
+        );
+
         // Create a User2Mod chat message so the conversation appears in modtools chats.
         if ($groupId > 0) {
             $chatRoom = ChatRoom::getOrCreateUser2Mod($userId, $groupId);
 
             if ($chatRoom) {
-                DB::table('chat_messages')->insert([
+                $chatMessageId = DB::table('chat_messages')->insertGetId([
                     'chatid' => $chatRoom->id,
                     'userid' => $byUser,
                     'message' => "{$subject}\r\n\r\n{$body}",
@@ -544,6 +619,39 @@ class ProcessBackgroundTasksCommand extends Command
                     'processingrequired' => 0,
                     'processingsuccessful' => 1,
                 ]);
+
+                // V1 parity: upToDate() — mark the chat message as already emailed to the member
+                // so the notification daemon (NotifyUser2ModCommand) does not send a duplicate.
+                // V1 calls $r->upToDate($fromuser) after the direct email send, which sets
+                // lastmsgemailed = MAX(chat_messages.id) for the member's roster entry.
+                DB::table('chat_roster')->upsert(
+                    [
+                        'chatid' => $chatRoom->id,
+                        'userid' => $userId,
+                        'lastmsgemailed' => $chatMessageId,
+                        'lastemailed' => now(),
+                    ],
+                    ['chatid', 'userid'],
+                    ['lastmsgemailed', 'lastemailed']
+                );
+            }
+
+            // Only create the User/Mailed log for email_mod_stdmsg (direct mod message to member).
+            // Membership approve/reject actions no longer route here — they use email_mod_stdmsg
+            // directly (or create no task if no content), so we only log when it's a direct modmail.
+            if ($taskType === 'email_mod_stdmsg') {
+                DB::table('logs')->insert([
+                    'timestamp' => now(),
+                    'type' => 'User',
+                    'subtype' => 'Mailed',
+                    'byuser' => $byUser,
+                    'user' => $userId,
+                    'groupid' => $groupId,
+                    'stdmsgid' => $stdmsgId ?: null,
+                    'text' => $subject,
+                ]);
+                // Note: users_modmails is populated by the syncModMailCounts cron job
+                // which scans the logs table — no direct insert needed here.
             }
         }
 
@@ -876,6 +984,171 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Sent refer to support email', [
             'chat_id' => $chatId,
             'user_id' => $userId,
+        ]);
+    }
+
+    /**
+     * Process a housekeeping notification from the Chrome extension.
+     */
+    protected function handleHousekeeperNotify(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $service = app(HousekeeperService::class);
+        $service->process($data, $spooler, $shouldSpool);
+    }
+
+    /**
+     * Resolve the BCC address for a mod standard message action.
+     *
+     * V1 parity: ModConfig::getForGroup() + ModConfig::getBcc() + ModConfig::evalIt().
+     *
+     * @param int    $byUser  The moderator's user ID
+     * @param int    $groupId The group ID
+     * @param string $action  The action string (Approve, Reject, Leave Approved Member, etc.)
+     * @return string|null    The resolved BCC email address, or null if none configured
+     */
+    private function resolveBccAddress(int $byUser, int $groupId, string $action): ?string
+    {
+        if ($groupId === 0 || $action === '') {
+            return null;
+        }
+
+        // Step 1: Find the mod's config for this group (V1: ModConfig::getForGroup).
+        $configId = DB::table('memberships')
+            ->where('userid', $byUser)
+            ->where('groupid', $groupId)
+            ->value('configid');
+
+        if (! $configId) {
+            // Fall back to any other mod's config for this group.
+            $configId = DB::table('memberships')
+                ->where('groupid', $groupId)
+                ->whereIn('role', ['Moderator', 'Owner'])
+                ->whereNotNull('configid')
+                ->value('configid');
+        }
+
+        if (! $configId) {
+            // Fall back to any config created by this mod.
+            $configId = DB::table('mod_configs')
+                ->where('createdby', $byUser)
+                ->value('id');
+        }
+
+        if (! $configId) {
+            // Fall back to a default config.
+            $configId = DB::table('mod_configs')
+                ->where('default', 1)
+                ->value('id');
+        }
+
+        if (! $configId) {
+            return null;
+        }
+
+        // Step 2: Map action to CC column pair (V1: ModConfig::getBcc).
+        [$toColumn, $addrColumn] = match ($action) {
+            'Approve', 'Reject', 'Leave' => ['ccrejectto', 'ccrejectaddr'],
+            'Leave Member' => ['ccrejmembto', 'ccrejmembaddr'],
+            'Leave Approved Message', 'Delete Approved Message' => ['ccfollowupto', 'ccfollowupaddr'],
+            'Leave Approved Member', 'Delete Approved Member' => ['ccfollmembto', 'ccfollmembaddr'],
+            default => [null, null],
+        };
+
+        if (! $toColumn) {
+            return null;
+        }
+
+        // Step 3: Look up the config and evaluate (V1: ModConfig::evalIt).
+        $config = DB::table('mod_configs')
+            ->where('id', $configId)
+            ->first([$toColumn, $addrColumn]);
+
+        if (! $config) {
+            return null;
+        }
+
+        $to = $config->$toColumn;
+        $addr = $config->$addrColumn;
+
+        if ($to === 'Me') {
+            $modUser = User::find($byUser);
+
+            return $modUser?->email_preferred;
+        }
+
+        if ($to === 'Specific') {
+            return $addr ?: null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Send a BCC copy of a mod standard message if configured.
+     *
+     * V1 parity: both Message::mail() and User::maybeMail() send a BCC copy
+     * with body prefixed by "(This is a BCC of a message sent to Freegle user #...)".
+     */
+    private function sendBccIfConfigured(
+        array $data,
+        int $byUser,
+        int $groupId,
+        string $groupNameShort,
+        string $groupName,
+        string $subject,
+        string $body,
+        int $recipientUserId,
+        string $recipientEmail,
+        string $messageSubject,
+        int $msgId,
+        ?string $groupContactMail,
+        string $modName,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        $action = $data['action'] ?? '';
+        if ($action === '' || $groupId === 0) {
+            return;
+        }
+
+        $bccAddress = $this->resolveBccAddress($byUser, $groupId, $action);
+        if (! $bccAddress) {
+            return;
+        }
+
+        // V1: replace $groupname in BCC address.
+        $bccAddress = str_replace('$groupname', $groupNameShort, $bccAddress);
+
+        // V1: prefix BCC body with notice.
+        $bccBody = "(This is a BCC of a message sent to Freegle user #{$recipientUserId} {$recipientEmail})\n\n{$body}";
+
+        $bccMail = new ModStdMessageMail(
+            modName: $modName,
+            groupName: $groupName,
+            groupNameShort: $groupNameShort,
+            stdSubject: $subject,
+            stdBody: $bccBody,
+            messageSubject: $messageSubject,
+            msgId: $msgId,
+            recipientUserId: 0,
+            recipientEmail: $bccAddress,
+            groupContactMail: $groupContactMail,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($bccMail, $bccAddress);
+        } else {
+            Mail::to($bccAddress)->send($bccMail);
+        }
+
+        Log::info('Sent BCC copy of mod stdmsg', [
+            'action' => $action,
+            'bcc' => $bccAddress,
+            'byuser' => $byUser,
+            'groupid' => $groupId,
         ]);
     }
 

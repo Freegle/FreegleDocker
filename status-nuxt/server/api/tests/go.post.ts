@@ -70,6 +70,7 @@ export default defineEventHandler(async (event) => {
       const runMatch = line.match(/^=== RUN\s+(\S+)/)
       if (runMatch) {
         state.progress.current = runMatch[1]
+        state.progress.total++
       }
       // Count passes: --- PASS: TestName
       if (line.match(/^--- PASS:/)) {

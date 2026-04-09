@@ -84,6 +84,79 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
+### 2026-04-02 - CLS improvements: 4 fixes across chat, browse, stories
+- **MessageList.vue**: Removed `!loading` from split-view template conditions — subsequent fetches were hiding the seen/unseen divider and re-showing it, causing CLS. `initialFetchDone` guard is sufficient.
+- **StoryOne.vue**: Added `width: 250px; height: 250px` to `.story-card__image` container so image loads into pre-reserved space instead of expanding from 0.
+- **ChatFooter.vue**: Reduced `transition: height` from 1s to 0.1s — shifts within 500ms of user input are excluded from CLS; the 1s animation fell outside the exclusion window.
+- **ChatPane.vue**: Replaced `stickyAdRendered` class binding on `chatHolder` with `allowAd` (`!recentDonor`) so height is pre-reduced for non-donors from page load — previously the 1s animated height change caused all chat message profile pics to shift when the sticky ad rendered. Removed `transition: height 1s`.
+- All 102 unit tests pass.
+
+### 2026-04-02 - Gap analysis complete: 22 TRUE_GAPs identified, cron coverage verified
+- **Cron cross-reference**: Checked all V1 cron scripts against TRUE_GAPs. Reclassified: `users_approxlocs`, `users_nearby` (nearby.php), `messages_isochrones` (message_spatial.php), `trysts.*` (tryst.php), `lovejunk.deletestatus` (lovejunk.php), `ai_images.imagehash` (messages_illustrations.php), `groups.welcomereview` (group_welcomereview.php) — all BATCH_ONLY, V1 cron still running.
+- **FOP (messages_deadlines)**: Reclassified INTENTIONAL — FOP flag has zero references in Nuxt3 client, deliberately absent from V2 UI.
+- **users_dashboard**: Reclassified DIFFERENT_IMPL — Go dashboard computes on demand rather than caching.
+- **False positives**: `chat_messages.spamscore`, `messages.retrycount`, `messages.retrylastfailure` — all email ingestion path only (MailRouter/SpamAssassin), not V2 API gaps.
+- **GDPR gap confirmed**: `messages.envelopefrom`+`htmlbody` — Go `handleForget()` only soft-deletes user row, never blanks personal data from posted messages (V1 blanks fromip, message, envelopefrom, fromname, fromaddr, messageid, textbody, htmlbody).
+- **lastmsgnotified explanation**: V2 Go queues chat push via background_tasks; Laravel sends but never updates `lastmsgnotified`; V1 chaseup cron sees 0 and re-sends → duplicate push notifications.
+- **users_active confirmed gap**: Read by Stats.php for active-users-per-group dashboard count and moderator activity leaderboard. Neither Go nor Laravel writes it.
+- **Fix list**: 7 high-priority (messages_ai_declined, messages_history, spam_countries, users_active, chat_roster.lastmsgnotified, envelopefrom/htmlbody GDPR, messages_edits 6 columns) + 10 lower-priority. Work not yet started.
+
+### 2026-04-02 - Parity extractor: truncation fix, column-level discussion
+- **SQL truncation false NOT_FOUNDs** (`57aae6c6`): `substr($sql, 0, 80)` in extractor was chopping long table names (e.g. `messages_attachments` → `messages_attachmen`, `newsfeed` → `newsfee`), causing word-boundary search to fail. Fixed by removing truncation limit entirely. Same fix for `file_get_contents` URL.
+- **Accurate report**: `docs/parity/2026-04-02-parity-report.md` regenerated after fix — 2,951 NOT_FOUND (was 3,093), 142 false positives eliminated. 55,820 total behaviors, 52 endpoints.
+- **Column-level detection**: Current checker is table-level only (finds table name, checks any V2 reference exists). Does NOT detect missing column writes (e.g. V1 sets `lastdate`, V2 doesn't). Column-level would need table+column pair extraction + write-context search — deferred.
+- **`messages_history`**: Verified genuinely absent from V2 non-test Go source — correct NOT_FOUND (not a truncation false positive).
+- **`run-parity-check.sh` quality fixes** (`3b27d46f`): Added error handling for `docker exec mkdir -p` and `docker cp`; moved report header write to before the loop.
+
+### 2026-04-02 - Gap fixes implemented: all actionable TRUE_GAPs resolved ✅
+- **Laravel Batch (iznik-batch)**: `chat_roster.lastmsgnotified` fixed in ChatNotificationService — now updates both `lastmsgemailed` and `lastmsgnotified`; `recordFailure()` added to IncomingMailService — increments `messages.retrycount`/`retrylastfailure` on routing failure. Commit: `a9cd8bdd`
+- **Go API (iznik-server-go)**: Fixed via parallel agents + main work:
+  - `users_active`: `notification.List()` now inserts hourly record (Test: TestNotificationListRecordsUsersActive)
+  - GDPR `handleForget`: both partner + self-service flows now blank `fromip, message, envelopefrom, fromname, fromaddr, messageid, textbody, htmlbody` from messages (Test: TestForgetBlanksMessagePersonalData)
+  - `messages_history`: JoinAndPost submit path writes to messages_history (Test: TestMessagePostWritesHistory)
+  - `messages_edits` 6 cols: PatchMessage now captures `olditems/newitems/oldimages/newimages/oldlocation/newlocation` (Test: TestMessageEditRecordsAllColumns)
+  - `admins.sendafter`: PostAdminRequest now includes sendafter in INSERT (Test: TestPostAdminCreateWithSendAfter)
+- **Reclassified**: `spam_countries` → INTENTIONAL (email path covered by batch SpamCheckService; web post spam goes to pending); `communityevents.externalid` + `volunteering.externalid` → BATCH_ONLY (integration cron scripts); `messages_groups.lastautopostwarning` + `users.replyambit` + `users_modmails.logid` → BATCH_ONLY; `messages_ai_declined` → INTENTIONAL (no AI in Go web path)
+- **Deferred**: `users_expected`, `noticeboards.thanked` — complex features not yet migrated
+- **All 1187 Go tests pass** after fixes
+
+### 2026-04-02 - CI fixes: loginViaModTools race, browse title/redirect ✅ GREEN
+- **loginViaModTools race condition** (Nuxt `fc539a3b`): `domcontentloaded` fires before `/?noguard=true` redirect settles. Fixed to wait for `a[href="/messages/pending"]` sidebar nav element instead.
+- **Browse title SSR timing** (Nuxt): `page.title()` returns SSR default before hydration. Fixed with `await expect(page).toHaveTitle(/Browse/, ...)` which polls.
+- **Browse search redirect** (Nuxt `7f003f84`): `/browse/furniture` + `/browse` redirect to `/explore` for users with no location. Fixed to accept either URL/page.
+- **chat-list ERR_ABORTED** (Nuxt `3aeff23d`): `page.goto('/chats')` aborted by Nuxt SSR auth redirect loop. Fixed with `waitUntil: 'domcontentloaded'` on goto.
+- **Browse microvolunteering title** (Nuxt `5c68f451`): Same SSR title race. Fixed to check URL rather than title.
+- **CI pipeline #2777, job #3125**: All 122 Playwright tests passed. Auto-merged to production. ✅
+
+### 2026-04-01 - Chitchat scroll fix PR #201, worktree improvements
+- **Chitchat infinite scroll** (PR #201): Fixed by removing `force-use-infinite-wrapper="body"` from `<infinite-loading>`. Root cause: `body` as IntersectionObserver root meant `body.scrollTop` was always 0 (actual scroller is `window/html`), so observer never triggered after ~6 posts. Fixed in `pages/chitchat/[[id]].vue`.
+- **PreToolUse hook - wrong container**: Created `check-docker-container.sh` hook that warns when `docker exec` targets a container not matching current worktree's `COMPOSE_PROJECT_NAME`. Fixed false positive on `git commit` messages. Hooks moved to project-level `.claude/settings.json`.
+- **freegle CLI worktree improvements**: Port isolation via slot×9000 offsets, auto-start containers on create, removed activate/deactivate. All committed to master.
+- **Worktree list last-active time**: Added `git log -1 --format="%ar"` to `freegle worktree list`. Committed to master (`bed92091`).
+- **CI Vitest fixes** (Nuxt `ed8490b5`): 8 tests were failing in CI. Root cause: (1) container had stale version of `[[id]].vue` without `!me.value` guard — needed manual docker cp sync; (2) `nuxt-app.js` mock missing `useHead`/`useRoute` exports; (3) `myposts.spec.js` wrong store fields (`myPosts` vs `byUserList`), missing `myid`/`fetchByUser`/`isApp`; (4) `chats/id.spec.js` needed Suspense wrapping for async setup + `b-badge` stub. Pushed to PR #201 branch.
+- **CI Vitest unhandled errors fix** (Nuxt `7669861c`): After `ed8490b5`, all 10862 tests passed but Vitest still exited non-zero due to 3 unhandled errors in `chitchat/id.spec.js`: (1) `b-form-select` stub missing `props` declaration → Vue tried to set objects array on native `<select>` DOM element; (2) wrappers not unmounted between tests → Vue scheduler had pending DOM updates hitting null parentNode. Fixed with `props: ['modelValue','options']` on stub + `afterEach` unmount pattern.
+- **PR #201 status**: CI running on job 6080 after `7669861c` push. Vitest step confirmed passing. Playwright tests running.
+
+### 2026-04-01 - V1→V2 parity extractor toolchain built and run
+- **Parity extractor built** (`scripts/parsers/`): PHP-Parser AST extractor (`v1-behavior-extractor.php`) + Python ripgrep checker (`v2-coverage-checker.py`) + shell driver (`run-parity-check.sh`). PHP→Go mapping in `php-go-mapping.json` (59 entries, 7 SKIP).
+- **Key design**: BFS traversal 3 levels deep via shared classes; searches all of `iznik-server-go/` (not just target package) to avoid false NOT_FOUNDs from transitive includes.
+- **Full run results** (`docs/parity/2026-04-01-parity-report.md`): 52 endpoints checked, 7 skipped. 3,093 NOT_FOUND behaviors, 23,063 UNCERTAIN (dynamic SQL — table names unextractable statically). Top gaps: session.php (88), memberships.php (80), user.php/team.php/message.php (76 each).
+- **Known bugs #14 and #15** (DELETE /user audit log, Notifications push queuing): appear as UNCERTAIN — dynamic SQL construction means table names are not statically extractable. Genuine gaps not surfaced as NOT_FOUND by this tool.
+- **Future use**: Run extractor on V1 endpoint → locked behaviour ledger → approve → implement → coverage checker confirms all FOUND before marking done.
+
+### 2026-04-01 - InventName query fix, session name invention, V1 parity comment cleanup
+- **InventName query bugs** (Go `b2349b5`): `InventName` queried `users_emails` with non-existent columns `cancelled` and `canonical`. MySQL silently errored → email always empty → name never invented. Fixed to `ORDER BY preferred DESC, id ASC`. Also added `InventName` call to `GetSession` (was missing — only `GetUser` had it). Removed all "V1 parity" comment markers from 27 files.
+- **Tests**: Extended `TestInventNameForBlankUser` to cover `fullname=''` (empty string, matching prod); added `TestGetSessionInventsNameFromEmail`. Full suite passes.
+
+### 2026-04-01 - myposts perf fix, lastpush bug, new member log bug, hook fix
+- **myposts load perf** (Nuxt): Removed `watch(postIds)` in `MyPostsPostsList.vue` that was eagerly fetching full details for all old posts on page load. Both active posts now render in ~300ms instead of 8 seconds.
+- **lastpush "2025 years ago"** (#9518/47, Go `3f3cbd1`): GORM scanning NULL `MAX(lastsent)` could produce non-nil pointer to zero time. Added `IsZero()` guard to nil-out the pointer, preventing `omitempty` bypass. Test added.
+- **New member not in logs** (#9532, Go `f60d807`): `handleJoinAndPost()` in message.go was joining users to groups via `INSERT IGNORE` without creating a mod log entry. Fixed to check `RowsAffected` and create `Group/Joined` log. Test added.
+- **"A freegler" display name** (#9532, Go `9d06707`): Go API returned raw DB value when user has no name set. Added `InventName()` to derive name from email local part and store it (V1 parity: `getDisplayName()` invents name and writes to DB). Test added.
+- **View profile 500 error** (#9532, Nuxt `f7d05943`): `useRoute()` imported from `vue-router` directly can return undefined in SSR hydration context. Fixed to import from `#imports` and added `route?.params?.id` guard. Same fix applied to `pages/message/[id].vue`.
+- **Chitchat infinite scroll** (Nuxt `2a50dada`): Removed `force-use-infinite-wrapper="body"` — body.scrollTop is always 0 so IntersectionObserver never triggered.
+- **PreToolUse hook fire rate**: `check-tests-before-commit.sh` was firing on ALL bash commands (the `"if"` field in settings.json is not supported for inner hooks). Fixed script to read stdin JSON and only output checklist when command matches `git commit`.
+
 ### 2026-03-12/13 - TODO sweep: mod log crown, message fetch resilience, member comments, edits test, Playwright fixes
 - **Mod log crown**: Fixed `hideSensitiveFields` stripping `systemrole` — now preserved as public info (Go `99d03c8`)
 - **Message fetch resilience** (#77): Added try/catch around individual message fetches in store to prevent "Oh dear" page (Nuxt `58909407`)

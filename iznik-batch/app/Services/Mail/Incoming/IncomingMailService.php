@@ -2475,6 +2475,7 @@ class IncomingMailService
         ?string $spamType = null,
         ?string $spamReason = null
     ): ?int {
+        $message = null;
         try {
             // Determine message type from subject using keyword matching
             $type = Message::determineType($email->subject);
@@ -2622,6 +2623,12 @@ class IncomingMailService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
+            // If the message row was created before the failure, record the failure
+            // so retrycount/retrylastfailure are updated (V1 parity: Message::recordFailure).
+            if ($message !== null && $message->id) {
+                $this->recordFailure($message->id, $e->getMessage());
+            }
 
             return null;
         }
@@ -3888,5 +3895,35 @@ class IncomingMailService
 
             return substr(md5($imageData), 0, 16);
         }
+    }
+
+    /**
+     * Record a processing failure against a message.
+     *
+     * V1 parity: Message::recordFailure() in iznik-server/include/message/Message.php.
+     * Increments retrycount and sets retrylastfailure so the message can be retried later.
+     * Also logs the failure to the logs table (type=Message, subtype=Failure).
+     */
+    public function recordFailure(int $messageId, string $reason): void
+    {
+        DB::table('messages')
+            ->where('id', $messageId)
+            ->update([
+                'retrycount' => DB::raw('retrycount + 1'),
+                'retrylastfailure' => now(),
+            ]);
+
+        DB::table('logs')->insert([
+            'timestamp' => now(),
+            'type' => 'Message',
+            'subtype' => 'Failure',
+            'msgid' => $messageId,
+            'text' => $reason,
+        ]);
+
+        Log::warning('Recorded message failure', [
+            'message_id' => $messageId,
+            'reason' => $reason,
+        ]);
     }
 }
