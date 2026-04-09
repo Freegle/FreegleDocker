@@ -1064,15 +1064,15 @@ class User extends Model
             UserComment::where('byuserid', $id2)->update(['byuserid' => $id1]);
             UserLogin::where('userid', $id2)->update(['userid' => $id1]);
 
-            // Update Native login uid to match new userid.
-            DB::statement(
-                "UPDATE IGNORE users_logins SET uid = ? WHERE userid = ? AND `type` = ?",
-                [$id1, $id1, self::LOGIN_NATIVE]
-            );
-
-            // --- Handle bans ---
-            DB::statement("UPDATE IGNORE users_banned SET userid = ? WHERE userid = ?", [$id1, $id2]);
-            DB::statement("UPDATE IGNORE users_banned SET byuser = ? WHERE byuser = ?", [$id1, $id2]);
+            DBIgnore::executeIgnored([
+                // Update Native login uid to match new userid.
+                fn() => UserLogin::where('userid', $id1)
+                    ->where('type', self::LOGIN_NATIVE)
+                    ->update(['uid' => $id1]),
+                // --- Handle bans ---
+                fn() => UserBanned::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserBanned::where('byuser', $id2)->update(['byuser' => $id1]),
+            ]);
 
             // Remove memberships for groups the merged user is banned from.
             $bans = UserBanned::where('userid', $id1)->get();
@@ -1115,10 +1115,8 @@ class User extends Model
                         ->update(['chatid' => $existing->id]);
 
                     // Keep the latest message timestamp.
-                    DB::statement(
-                        "UPDATE chat_rooms SET latestmessage = GREATEST(latestmessage, ?) WHERE id = ?",
-                        [$room->latestmessage, $existing->id]
-                    );
+                    ChatRoom::where('id', $existing->id)
+                        ->update(['latestmessage' => DB::raw("GREATEST(latestmessage, '{$room->latestmessage}')")]);
                 } else {
                     // No existing room — just reassign user reference.
                     $col = ($room->user1 == $id2) ? 'user1' : 'user2';
