@@ -179,17 +179,14 @@ class TNSyncCommand extends Command
 
                 try {
                     if ($rating['rating']) {
-                        Rating::upsert(
-                            [
-                                'ratee' => $rating['ratee_fd_user_id'],
-                                'rating' => $rating['rating'],
-                                'timestamp' => $rating['date'],
-                                'visible' => 1,
-                                'tn_rating_id' => $rating['rating_id'],
-                            ],
-                            ['tn_rating_id'],
-                            ['rating', 'timestamp']
-                        );
+                        $ratingModel = Rating::firstOrNew(['tn_rating_id' => $rating['rating_id']]);
+                        if (!$ratingModel->exists) {
+                            $ratingModel->ratee = $rating['ratee_fd_user_id'];
+                            $ratingModel->visible = 1;
+                        }
+                        $ratingModel->rating = $rating['rating'];
+                        $ratingModel->timestamp = $rating['date'];
+                        $ratingModel->save();
                     } else {
                         Rating::where('ratee', $rating['ratee_fd_user_id'])
                             ->where('tn_rating_id', $rating['rating_id'])
@@ -263,28 +260,18 @@ class TNSyncCommand extends Command
                     }
 
                     if (!empty($change['reply_time'])) {
-                        UserReplyTime::upsert(
-                            [
-                                'userid' => $change['fd_user_id'],
-                                'replytime' => $change['reply_time'],
-                                'timestamp' => $change['date'],
-                            ],
-                            ['userid'],
-                            ['replytime', 'timestamp']
-                        );
+                        $replyTime = UserReplyTime::firstOrNew(['userid' => $change['fd_user_id']]);
+                        $replyTime->replytime = $change['reply_time'];
+                        $replyTime->timestamp = $change['date'];
+                        $replyTime->save();
                     }
 
                     if (!empty($change['about_me'])) {
                         try {
-                            UserAboutMe::upsert(
-                                [
-                                    'userid' => $change['fd_user_id'],
-                                    'timestamp' => $change['date'],
-                                    'text' => $change['about_me'],
-                                ],
-                                ['userid'],
-                                ['timestamp', 'text']
-                            );
+                            $aboutMe = UserAboutMe::firstOrNew(['userid' => $change['fd_user_id']]);
+                            $aboutMe->timestamp = $change['date'];
+                            $aboutMe->text = $change['about_me'];
+                            $aboutMe->save();
                         } catch (\Exception $e) {
                             if (function_exists('\Sentry\captureException')) {
                                 \Sentry\captureException($e);
@@ -298,7 +285,7 @@ class TNSyncCommand extends Command
 
                         if ($oldname != $change['username']) {
                             Log::info("Name change for {$change['fd_user_id']} {$oldname} => {$change['username']}");
-                            $user->update(['fullname' => $change['username']]);
+                            $user->fullname = $change['username'];
 
                             $emails = $user->emails()->pluck('email');
 
@@ -323,10 +310,12 @@ class TNSyncCommand extends Command
 
                             if ($loc) {
                                 Log::info("FD #{$change['fd_user_id']} TN lat/lng {$lat},{$lng} has changed  => {$loc['id']} {$loc['name']}");
-                                $user->update(['lastlocation' => $loc['id']]);
+                                $user->lastlocation = $loc['id'];
                             }
                         }
                     }
+
+                    $user->save();
                 } catch (\Exception $e) {
                     Log::error('TN sync: user changes sync failed', [
                         'error' => $e->getMessage(),
