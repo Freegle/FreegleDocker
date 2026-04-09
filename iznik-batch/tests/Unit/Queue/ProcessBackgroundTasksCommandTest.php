@@ -1376,6 +1376,362 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertNotNull($task->processed_at);
     }
 
+    public function test_bcc_specific_sends_extra_email_for_message_reject(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'BCC Test Mod']);
+        $this->createMembership($mod, $group, ['role' => 'Moderator']);
+
+        // Create a mod_config with ccrejectto = Specific.
+        $configId = DB::table('mod_configs')->insertGetId([
+            'name' => 'BCC Test Config',
+            'createdby' => $mod->id,
+            'ccrejectto' => 'Specific',
+            'ccrejectaddr' => 'bcc-archive@example.com',
+            'ccfollowupto' => 'Nobody',
+            'ccfollowupaddr' => '',
+            'ccrejmembto' => 'Nobody',
+            'ccrejmembaddr' => '',
+            'ccfollmembto' => 'Nobody',
+            'ccfollmembaddr' => '',
+            'network' => 'Freegle',
+        ]);
+
+        // Assign config to the mod's membership.
+        DB::table('memberships')
+            ->where('userid', $mod->id)
+            ->where('groupid', $group->id)
+            ->update(['configid' => $configId]);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: BCC Test',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Pending',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_rejected',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Sorry, not suitable',
+                'body' => 'Your post does not meet guidelines.',
+                'stdmsgid' => 0,
+                'action' => 'Reject',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')->andReturn(0);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Two emails: one to poster, one BCC.
+        Mail::assertSent(ModStdMessageMail::class, 2);
+
+        // Verify BCC copy was sent to the specific address.
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
+            return collect($mail->to)->pluck('address')->contains('bcc-archive@example.com');
+        });
+
+        // Verify BCC body has the V1 prefix.
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
+            if (! collect($mail->to)->pluck('address')->contains('bcc-archive@example.com')) {
+                return FALSE;
+            }
+            return str_contains($mail->stdBody, '(This is a BCC of');
+        });
+    }
+
+    public function test_bcc_me_resolves_to_mod_email_for_member_action(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $member = $this->createTestUser();
+        $memberEmail = $this->createTestUserEmail($member, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'BCC Me Mod']);
+        $this->createMembership($mod, $group, ['role' => 'Moderator']);
+
+        // Create a mod_config with ccfollmembto = Me.
+        $configId = DB::table('mod_configs')->insertGetId([
+            'name' => 'BCC Me Config',
+            'createdby' => $mod->id,
+            'ccrejectto' => 'Nobody',
+            'ccrejectaddr' => '',
+            'ccfollowupto' => 'Nobody',
+            'ccfollowupaddr' => '',
+            'ccrejmembto' => 'Nobody',
+            'ccrejmembaddr' => '',
+            'ccfollmembto' => 'Me',
+            'ccfollmembaddr' => '',
+            'network' => 'Freegle',
+        ]);
+
+        DB::table('memberships')
+            ->where('userid', $mod->id)
+            ->where('groupid', $group->id)
+            ->update(['configid' => $configId]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_mod_stdmsg',
+            'data' => json_encode([
+                'userid' => $member->id,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Location Required',
+                'body' => 'Please update your location.',
+                'stdmsgid' => 0,
+                'action' => 'Leave Approved Member',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Two emails: one to member, one BCC to the mod.
+        Mail::assertSent(ModStdMessageMail::class, 2);
+
+        // The mod's preferred email should be the BCC recipient.
+        $modEmail = DB::table('users_emails')
+            ->where('userid', $mod->id)
+            ->where('preferred', 1)
+            ->value('email');
+
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($modEmail) {
+            return collect($mail->to)->pluck('address')->contains($modEmail);
+        });
+    }
+
+    public function test_bcc_nobody_sends_no_extra_email(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'No BCC Mod']);
+        $this->createMembership($mod, $group, ['role' => 'Moderator']);
+
+        // Config with all CC set to Nobody.
+        $configId = DB::table('mod_configs')->insertGetId([
+            'name' => 'No BCC Config',
+            'createdby' => $mod->id,
+            'ccrejectto' => 'Nobody',
+            'ccrejectaddr' => '',
+            'ccfollowupto' => 'Nobody',
+            'ccfollowupaddr' => '',
+            'ccrejmembto' => 'Nobody',
+            'ccrejmembaddr' => '',
+            'ccfollmembto' => 'Nobody',
+            'ccfollmembaddr' => '',
+            'network' => 'Freegle',
+        ]);
+
+        DB::table('memberships')
+            ->where('userid', $mod->id)
+            ->where('groupid', $group->id)
+            ->update(['configid' => $configId]);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: No BCC Test',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Pending',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_rejected',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Not suitable',
+                'body' => 'Sorry.',
+                'stdmsgid' => 0,
+                'action' => 'Reject',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')->andReturn(0);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Only one email — to the poster. No BCC.
+        Mail::assertSent(ModStdMessageMail::class, 1);
+    }
+
+    public function test_bcc_groupname_substitution_in_address(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $mod = $this->createTestUser(['fullname' => 'Subst Mod']);
+        $this->createMembership($mod, $group, ['role' => 'Moderator']);
+
+        // Config with $groupname in the BCC address.
+        $configId = DB::table('mod_configs')->insertGetId([
+            'name' => 'Groupname BCC Config',
+            'createdby' => $mod->id,
+            'ccrejectto' => 'Specific',
+            'ccrejectaddr' => '$groupname-archive@example.com',
+            'ccfollowupto' => 'Nobody',
+            'ccfollowupaddr' => '',
+            'ccrejmembto' => 'Nobody',
+            'ccrejmembaddr' => '',
+            'ccfollmembto' => 'Nobody',
+            'ccfollmembaddr' => '',
+            'network' => 'Freegle',
+        ]);
+
+        DB::table('memberships')
+            ->where('userid', $mod->id)
+            ->where('groupid', $group->id)
+            ->update(['configid' => $configId]);
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Subst Test',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_approved',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $mod->id,
+                'groupid' => $group->id,
+                'subject' => 'Approved!',
+                'body' => 'Your message is approved.',
+                'stdmsgid' => 0,
+                'action' => 'Approve',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')->andReturn(0);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // BCC address should have $groupname replaced with the group's nameshort.
+        $expectedBcc = $group->nameshort . '-archive@example.com';
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) use ($expectedBcc) {
+            return collect($mail->to)->pluck('address')->contains($expectedBcc);
+        });
+    }
+
+    public function test_bcc_config_fallback_to_other_mod_config(): void
+    {
+        Mail::fake();
+
+        $group = $this->createTestGroup();
+        $poster = $this->createTestUser();
+        $posterEmail = $this->createTestUserEmail($poster, ['preferred' => 1]);
+        $modWithConfig = $this->createTestUser(['fullname' => 'Configured Mod']);
+        $modWithoutConfig = $this->createTestUser(['fullname' => 'New Mod']);
+        $this->createMembership($modWithConfig, $group, ['role' => 'Owner']);
+        $this->createMembership($modWithoutConfig, $group, ['role' => 'Moderator']);
+
+        // Only modWithConfig has a config.
+        $configId = DB::table('mod_configs')->insertGetId([
+            'name' => 'Fallback Config',
+            'createdby' => $modWithConfig->id,
+            'ccrejectto' => 'Specific',
+            'ccrejectaddr' => 'fallback-bcc@example.com',
+            'ccfollowupto' => 'Nobody',
+            'ccfollowupaddr' => '',
+            'ccrejmembto' => 'Nobody',
+            'ccrejmembaddr' => '',
+            'ccfollmembto' => 'Nobody',
+            'ccfollmembaddr' => '',
+            'network' => 'Freegle',
+        ]);
+
+        DB::table('memberships')
+            ->where('userid', $modWithConfig->id)
+            ->where('groupid', $group->id)
+            ->update(['configid' => $configId]);
+
+        // modWithoutConfig has no configid set — should fall back.
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Fallback Test',
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Pending',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_message_rejected',
+            'data' => json_encode([
+                'msgid' => $msgId,
+                'byuser' => $modWithoutConfig->id,
+                'groupid' => $group->id,
+                'subject' => 'Rejected',
+                'body' => 'Not allowed.',
+                'stdmsgid' => 0,
+                'action' => 'Reject',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $mockPush = $this->mock(PushNotificationService::class);
+        $mockPush->shouldReceive('notifyGroupMods')->andReturn(0);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // Should still send BCC using the fallback config from the other mod.
+        Mail::assertSent(ModStdMessageMail::class, 2);
+        Mail::assertSent(ModStdMessageMail::class, function (ModStdMessageMail $mail) {
+            return collect($mail->to)->pluck('address')->contains('fallback-bcc@example.com');
+        });
+    }
+
     /**
      * Custom assertion for string containment (PHPUnit 10+ compatible).
      */
