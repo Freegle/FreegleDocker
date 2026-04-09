@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DBIgnore;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -1019,42 +1020,44 @@ class User extends Model
             // --- Merge foreign keys (less critical — use IGNORE equivalent) ---
             // For tables with unique constraints, we delete id2 rows that would conflict.
             // UPDATE IGNORE equivalent: try update, silently skip constraint violations.
-            LocationExcluded::where('userid', $id2)->update(['userid' => $id1]);
-            ChatRoster::where('userid', $id2)->update(['userid' => $id1]);
-            UserSession::where('userid', $id2)->update(['userid' => $id1]);
-            SpamUser::where('userid', $id2)->update(['userid' => $id1]);
-            SpamUser::where('byuserid', $id2)->update(['byuserid' => $id1]);
-            UserAddress::where('userid', $id2)->update(['userid' => $id1]);
-            UserDonation::where('userid', $id2)->update(['userid' => $id1]);
-            UserImage::where('userid', $id2)->update(['userid' => $id1]);
-            UserInvitation::where('userid', $id2)->update(['userid' => $id1]);
-            UserNearby::where('userid', $id2)->update(['userid' => $id1]);
-            Notification::where('fromuser', $id2)->update(['fromuser' => $id1]);
-            Notification::where('touser', $id2)->update(['touser' => $id1]);
-            UserNudge::where('fromuser', $id2)->update(['fromuser' => $id1]);
-            UserNudge::where('touser', $id2)->update(['touser' => $id1]);
-            UserPushNotification::where('userid', $id2)->update(['userid' => $id1]);
-            UserRequest::where('userid', $id2)->update(['userid' => $id1]);
-            UserRequest::where('completedby', $id2)->update(['completedby' => $id1]);
-            UserSearch::where('userid', $id2)->update(['userid' => $id1]);
-            Newsfeed::where('userid', $id2)->update(['userid' => $id1]);
-            MessageReneged::where('userid', $id2)->update(['userid' => $id1]);
-            UserStory::where('userid', $id2)->update(['userid' => $id1]);
-            UserStoryLike::where('userid', $id2)->update(['userid' => $id1]);
-            UserStoryRequested::where('userid', $id2)->update(['userid' => $id1]);
-            UserThanks::where('userid', $id2)->update(['userid' => $id1]);
-            ModNotif::where('userid', $id2)->update(['userid' => $id1]);
-            TeamMember::where('userid', $id2)->update(['userid' => $id1]);
-            UserAboutMe::where('userid', $id2)->update(['userid' => $id1]);
-            Rating::where('rater', $id2)->update(['rater' => $id1]);
-            Rating::where('ratee', $id2)->update(['ratee' => $id1]);
-            UserReplyTime::where('userid', $id2)->update(['userid' => $id1]);
-            MessagePromise::where('userid', $id2)->update(['userid' => $id1]);
-            MessageBy::where('userid', $id2)->update(['userid' => $id1]);
-            Tryst::where('user1', $id2)->update(['user1' => $id1]);
-            Tryst::where('user2', $id2)->update(['user2' => $id1]);
-            IsochroneUser::where('userid', $id2)->update(['userid' => $id1]);
-            Microaction::where('userid', $id2)->update(['userid' => $id1]);
+            DBIgnore::executeIgnored([
+                fn() => LocationExcluded::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => ChatRoster::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserSession::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => SpamUser::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => SpamUser::where('byuserid', $id2)->update(['byuserid' => $id1]),
+                fn() => UserAddress::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserDonation::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserImage::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserInvitation::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserNearby::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => Notification::where('fromuser', $id2)->update(['fromuser' => $id1]),
+                fn() => Notification::where('touser', $id2)->update(['touser' => $id1]),
+                fn() => UserNudge::where('fromuser', $id2)->update(['fromuser' => $id1]),
+                fn() => UserNudge::where('touser', $id2)->update(['touser' => $id1]),
+                fn() => UserPushNotification::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserRequest::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserRequest::where('completedby', $id2)->update(['completedby' => $id1]),
+                fn() => UserSearch::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => Newsfeed::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => MessageReneged::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserStory::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserStoryLike::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserStoryRequested::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserThanks::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => ModNotif::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => TeamMember::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => UserAboutMe::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => Rating::where('rater', $id2)->update(['rater' => $id1]),
+                fn() => Rating::where('ratee', $id2)->update(['ratee' => $id1]),
+                fn() => UserReplyTime::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => MessagePromise::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => MessageBy::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => Tryst::where('user1', $id2)->update(['user1' => $id1]),
+                fn() => Tryst::where('user2', $id2)->update(['user2' => $id1]),
+                fn() => IsochroneUser::where('userid', $id2)->update(['userid' => $id1]),
+                fn() => Microaction::where('userid', $id2)->update(['userid' => $id1]),
+            ]);
 
             // Non-IGNORE updates (no unique constraint conflicts expected).
             UserComment::where('userid', $id2)->update(['userid' => $id1]);
