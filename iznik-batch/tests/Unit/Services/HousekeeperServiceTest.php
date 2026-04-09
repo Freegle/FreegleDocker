@@ -180,4 +180,47 @@ class HousekeeperServiceTest extends TestCase
             return $mail->hasTo('e2e@example.com');
         });
     }
+
+    public function test_process_upserts_housekeeper_tasks(): void
+    {
+        $spooler = $this->createMock(EmailSpoolerService::class);
+        $taskKey = 'test-task-' . uniqid();
+
+        $this->service->process([
+            'task' => $taskKey,
+            'status' => 'success',
+            'summary' => 'Test tracking',
+            'data' => [],
+        ], $spooler, false);
+
+        $row = DB::table('housekeeper_tasks')
+            ->where('task_key', $taskKey)
+            ->first();
+
+        $this->assertNotNull($row, 'housekeeper_tasks row should be created');
+        $this->assertEquals('success', $row->last_status);
+        $this->assertEquals('Test tracking', $row->last_summary);
+        $this->assertNotNull($row->last_run_at);
+
+        // Process again with failure — should update, not duplicate.
+        $this->service->process([
+            'task' => $taskKey,
+            'status' => 'failure',
+            'summary' => 'Failed this time',
+            'data' => [],
+        ], $spooler, false);
+
+        $row = DB::table('housekeeper_tasks')
+            ->where('task_key', $taskKey)
+            ->first();
+
+        $this->assertEquals('failure', $row->last_status);
+        $this->assertEquals('Failed this time', $row->last_summary);
+
+        $count = DB::table('housekeeper_tasks')
+            ->where('task_key', $taskKey)
+            ->count();
+
+        $this->assertEquals(1, $count, 'Should not duplicate rows');
+    }
 }

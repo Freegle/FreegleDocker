@@ -28,6 +28,20 @@ class HousekeeperService
 
         Log::info("Housekeeper: processing {$task} ({$status}): {$summary}");
 
+        // Record this task run.
+        if ($task) {
+            DB::table('housekeeper_tasks')->updateOrInsert(
+                ['task_key' => $task],
+                [
+                    'name' => $task,
+                    'last_run_at' => now(),
+                    'last_status' => $status,
+                    'last_summary' => $summary,
+                    'updated_at' => now(),
+                ]
+            );
+        }
+
         $results = [];
 
         if ($task === 'facebook-deletion' && $status === 'success') {
