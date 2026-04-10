@@ -17,8 +17,12 @@ class MailHelper
      *
      * Case-insensitive to match V1's use of stripos().
      */
-    public static function isOurDomain(string $email): bool
+    public static function isOurDomain(?string $email): bool
     {
+        if ($email === null || $email === '') {
+            return false;
+        }
+
         $domains = config('freegle.mail.internal_domains', ['users.ilovefreegle.org']);
         $emailLower = strtolower($email);
 
