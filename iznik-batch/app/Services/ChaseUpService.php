@@ -2,11 +2,16 @@
 
 namespace App\Services;
 
+use App\Helpers\MailHelper;
+use App\Mail\Message\ChaseUp as ChaseUpMail;
+use App\Mail\Message\ChaseUpPromised;
 use App\Models\Group;
 use App\Models\Message;
 use App\Models\MessageGroup;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class ChaseUpService
 {
@@ -39,11 +44,8 @@ class ChaseUpService
      *
      * V1 side effects included:
      *   - UPDATE messages_groups SET lastchaseup = NOW() (per-group)
-     *
-     * V1 side effects NOT included:
-     *   - Chase-up email (TODO: create Mailable + MJML template)
-     *     V1 sends "What happened to: {subject}" with links to
-     *     mark completed/repost/withdraw. Different wording if promised.
+     *   - Chase-up email: "What happened to: {subject}" with links to
+     *     mark completed/repost/withdraw. Different template if promised.
      */
     public function process(bool $dryRun = false): array
     {
@@ -91,7 +93,7 @@ class ChaseUpService
 
         foreach ($messages as $msg) {
             // V1: Mail::ourDomain check.
-            if (!$this->isOurDomain($msg->fromaddr)) {
+            if (!MailHelper::isOurDomain($msg->fromaddr)) {
                 $stats['skipped']++;
                 continue;
             }
@@ -146,12 +148,31 @@ class ChaseUpService
                 ->where('groupid', $group->id)
                 ->update(['lastchaseup' => now()]);
 
-            // TODO: Send chase-up email (needs Mailable + MJML template).
-            // V1 sends "What happened to: {subject}" with links to:
-            //   - Mark completed (TAKEN/RECEIVED)
-            //   - Withdraw
-            //   - Repost
-            // Different template if message is promised (chaseup_promised.html).
+            // V1: "What happened to: {subject}" — different template if promised.
+            $user = User::find($msg->fromuser);
+            if ($user && $user->email_preferred) {
+                $promised = $this->isPromised($msg->msgid);
+                $mailable = $promised
+                    ? new ChaseUpPromised(
+                        messageId: $msg->msgid,
+                        messageSubject: $msg->subject ?? '',
+                        messageType: $msg->type,
+                        userId: $msg->fromuser,
+                        userName: $user->displayname,
+                        userEmail: $user->email_preferred,
+                        groupId: $group->id,
+                    )
+                    : new ChaseUpMail(
+                        messageId: $msg->msgid,
+                        messageSubject: $msg->subject ?? '',
+                        messageType: $msg->type,
+                        userId: $msg->fromuser,
+                        userName: $user->displayname,
+                        userEmail: $user->email_preferred,
+                        groupId: $group->id,
+                    );
+                Mail::send($mailable);
+            }
 
             Log::info("Chase-up sent for message #{$msg->msgid} on group #{$group->id}");
             $stats['chased']++;
@@ -185,6 +206,7 @@ class ChaseUpService
                 'messages_groups.lastchaseup',
                 'messages_groups.autoreposts',
                 'messages.type',
+                'messages.subject',
                 'messages.fromaddr',
                 'messages.fromuser',
                 DB::raw('TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) AS hoursago')
@@ -204,6 +226,7 @@ class ChaseUpService
                 'messages_groups.lastchaseup',
                 'messages_groups.autoreposts',
                 'messages.type',
+                'messages.subject',
                 'messages.fromaddr',
                 'messages.fromuser',
                 'messages_groups.arrival'
@@ -212,9 +235,12 @@ class ChaseUpService
     }
 
     /**
-     * Check if a message can be chased up.
+     * Check if a message can be chased up on this specific group.
      *
-     * V1 canChaseup(): max reposts reached AND enough time since last chaseup.
+     * V1 canChaseup(): queries ALL groups, returns TRUE if ANY passes.
+     * Multi-group fix: we check only the current group. V1's cross-group
+     * leak (chasing up on group A because group B hit max reposts) is not
+     * reproduced — each group is evaluated independently.
      */
     protected function canChaseup(object $msg, array $reposts): bool
     {
@@ -225,26 +251,29 @@ class ChaseUpService
             return false;
         }
 
-        // V1: interval = max(type_interval, chaseups * 24)
-        $typeInterval = $msg->type === Message::TYPE_OFFER
+        // V1 had a unit-mixing bug here: max(days, chaseups * 24) compared days
+        // to hours, making repeat chaseups fire after ~120 days instead of 5.
+        // Fixed: both values are now in days.
+        $typeIntervalDays = $msg->type === Message::TYPE_OFFER
             ? ($reposts['offer'] ?? 3)
             : ($reposts['wanted'] ?? 7);
         $chaseupDays = $reposts['chaseups'] ?? 2;
-        $interval = max($typeInterval, $chaseupDays * 24);
+        $intervalDays = max($typeIntervalDays, $chaseupDays);
 
         // If last chaseup exists, must be older than interval.
         if ($msg->lastchaseup) {
             $ageHours = (time() - strtotime($msg->lastchaseup)) / 3600;
-            return $ageHours > $interval * 24;
+            return $ageHours > $intervalDays * 24;
         }
 
         return true;
     }
 
     /**
-     * Check if a message is old enough to be reposted.
+     * Check if a message is old enough to be reposted on this group.
      *
-     * V1 canRepost(): hoursago > interval * 24 for any group.
+     * V1 canRepost(): queries ALL groups, returns TRUE if ANY passes.
+     * Multi-group fix: we check only the current group's arrival time.
      */
     protected function canRepost(object $msg, array $reposts): bool
     {
@@ -267,13 +296,4 @@ class ChaseUpService
             ->exists();
     }
 
-    /**
-     * Check if an email address is on our domain.
-     */
-    protected function isOurDomain(string $email): bool
-    {
-        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
-
-        return str_ends_with($email, '@' . $domain);
-    }
 }

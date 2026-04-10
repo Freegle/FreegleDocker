@@ -1,27 +1,21 @@
 <mjml>
-    <mj-head>
-        <mj-attributes>
-            <mj-all font-family="Arial, sans-serif" />
-            <mj-text font-size="14px" color="#333333" line-height="1.5" />
-            <mj-button background-color="#5cb85c" color="#ffffff" font-size="14px" />
-        </mj-attributes>
-        <mj-style inline="inline">
-            .message-type { font-size: 12px; color: #5cb85c; text-transform: uppercase; font-weight: bold; }
-            a { color: #5cb85c; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-        </mj-style>
-        <mj-title>{{ $message->subject }}</mj-title>
-    </mj-head>
+    @include('emails.mjml.partials.head', [
+        'preview' => $post->subject,
+        'styles' => '
+            .message-type { font-size: 12px; color: #338808; text-transform: uppercase; font-weight: bold; }
+        ',
+    ])
+
     <mj-body background-color="#f4f4f4">
         @include('emails.mjml.components.header')
 
         <mj-section background-color="#ffffff" padding="20px">
             <mj-column>
                 <mj-text css-class="message-type">
-                    {{ $message->type === 'Offer' ? 'OFFER' : 'WANTED' }} on {{ $group->nameshort }}
+                    {{ $post->type === 'Offer' ? 'OFFER' : 'WANTED' }} on {{ $group->nameshort }}
                 </mj-text>
                 <mj-text font-size="20px" font-weight="bold" padding-bottom="0">
-                    {{ $message->subject }}
+                    {{ $post->subject }}
                 </mj-text>
             </mj-column>
         </mj-section>
@@ -50,8 +44,8 @@
 
         <mj-section background-color="#ffffff" padding="20px">
             <mj-column>
-                <mj-button href="{{ $messageUrl }}">
-                    @if($message->type === 'Offer')
+                <mj-button href="{{ $messageUrl }}" mj-class="btn-success" border-radius="3px">
+                    @if($post->type === 'Offer')
                     I'm Interested!
                     @else
                     I Can Help!
@@ -69,10 +63,14 @@
             </mj-column>
         </mj-section>
 
-        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
-
-        @if(isset($trackingPixelMjml))
-        {!! $trackingPixelMjml !!}
+        @if(!empty($trackingPixelMjml))
+        <mj-section padding="0">
+            <mj-column>
+                {!! $trackingPixelMjml !!}
+            </mj-column>
+        </mj-section>
         @endif
+
+        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
     </mj-body>
 </mjml>

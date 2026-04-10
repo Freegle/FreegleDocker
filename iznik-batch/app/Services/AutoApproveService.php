@@ -6,6 +6,7 @@ use App\Models\Group;
 use App\Models\MessageGroup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class AutoApproveService
 {
@@ -49,6 +50,9 @@ class AutoApproveService
         // V1 query: SELECT msgid, groupid, TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) AS ago
         // FROM messages_groups INNER JOIN messages ON messages.id = messages_groups.msgid
         // WHERE collection = 'Pending' AND heldby IS NULL HAVING ago > 48
+        //
+        // Returns one row per (msgid, groupid). We group by msgid to match V1's pattern:
+        // check logs once per message, then process all groups in the inner loop.
         $candidates = DB::table('messages_groups')
             ->join('messages', 'messages.id', '=', 'messages_groups.msgid')
             ->select(
@@ -56,40 +60,37 @@ class AutoApproveService
                 'messages_groups.groupid',
                 'messages.fromuser',
                 'messages.spamtype',
+                'messages.subject',
                 DB::raw('TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) AS hours_pending')
             )
             ->where('messages_groups.collection', MessageGroup::COLLECTION_PENDING)
             ->whereNull('messages.heldby')
             ->whereRaw('TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) > ?', [self::PENDING_HOURS])
-            ->get();
+            ->get()
+            ->groupBy('msgid');
 
-        foreach ($candidates as $candidate) {
+        foreach ($candidates as $msgid => $groupRows) {
             try {
-                // V1: check for recent logs referencing this message (avoids auto-approving
-                // messages that were recently held/unheld).
+                // V1: check for recent logs referencing this message ONCE (not per group).
+                // This avoids auto-approving messages recently held/unheld, while still
+                // allowing multi-group messages to be approved across all groups in one pass.
                 $recentLogs = DB::table('logs')
-                    ->where('msgid', $candidate->msgid)
+                    ->where('msgid', $msgid)
                     ->where('timestamp', '>', now()->subHours(self::PENDING_HOURS))
                     ->exists();
 
                 if ($recentLogs) {
-                    $stats['skipped']++;
+                    $stats['skipped'] += $groupRows->count();
                     continue;
                 }
 
-                // V1: iterates all groups for the message, checks each independently.
-                $groups = DB::table('messages_groups')
-                    ->where('msgid', $candidate->msgid)
-                    ->where('collection', MessageGroup::COLLECTION_PENDING)
-                    ->pluck('groupid');
-
-                foreach ($groups as $groupid) {
-                    if ($this->shouldApproveOnGroup($candidate, $groupid)) {
+                foreach ($groupRows as $candidate) {
+                    if ($this->shouldApproveOnGroup($candidate, $candidate->groupid)) {
                         if ($dryRun) {
-                            Log::info("Dry run: would auto-approve message #{$candidate->msgid} on group #{$groupid}");
+                            Log::info("Dry run: would auto-approve message #{$candidate->msgid} on group #{$candidate->groupid}");
                             $stats['approved']++;
                         } else {
-                            $this->approveOnGroup($candidate, $groupid);
+                            $this->approveOnGroup($candidate, $candidate->groupid);
                             $stats['approved']++;
                         }
                     } else {
@@ -97,7 +98,7 @@ class AutoApproveService
                     }
                 }
             } catch (\Exception $e) {
-                Log::error("Error auto-approving message #{$candidate->msgid}: " . $e->getMessage());
+                Log::error("Error auto-approving message #{$msgid}: " . $e->getMessage());
                 $stats['errors']++;
             }
         }
@@ -157,6 +158,16 @@ class AutoApproveService
      */
     protected function approveOnGroup(object $candidate, int $groupid): void
     {
+        // V1 notSpam(): if spamtype is SubjectUsedForDifferentGroups, whitelist the subject.
+        // V1: Spam::notSpamSubject(getPrunedSubject()) → INSERT IGNORE INTO spam_whitelist_subjects
+        if ($candidate->spamtype === 'SubjectUsedForDifferentGroups' && $candidate->subject) {
+            $prunedSubject = self::getPrunedSubject($candidate->subject);
+            DB::table('spam_whitelist_subjects')->insertOrIgnore([
+                'subject' => $prunedSubject,
+                'comment' => 'Marked as not spam',
+            ]);
+        }
+
         // V1 notSpam(): record HAM in messages_spamham if message was marked spam.
         if ($candidate->spamtype) {
             DB::table('messages_spamham')->upsert(
@@ -167,7 +178,7 @@ class AutoApproveService
         }
 
         // V1 approve() log: type=Message, subtype=Approved.
-        // V1 uses byuser=0 for system actions; we use NULL (FK constraint prevents user 0).
+        // V1 uses Session::whoAmId() which returns NULL in cron context.
         DB::table('logs')->insert([
             'timestamp' => now(),
             'type' => 'Message',
@@ -178,9 +189,9 @@ class AutoApproveService
             'byuser' => null,
         ]);
 
-        // V1 approve(): UPDATE messages_groups SET collection='Approved', approvedby=0,
+        // V1 approve(): UPDATE messages_groups SET collection='Approved', approvedby=whoAmId(),
         // approvedat=NOW(), arrival=NOW() WHERE msgid=? AND groupid=? AND collection!='Approved'
-        // V1 uses approvedby=0; we use NULL (FK constraint prevents user 0).
+        // V1 whoAmId() returns NULL in cron context (no session).
         DB::table('messages_groups')
             ->where('msgid', $candidate->msgid)
             ->where('groupid', $groupid)
@@ -203,5 +214,29 @@ class AutoApproveService
         ]);
 
         Log::info("Auto-approved message #{$candidate->msgid} on group #{$groupid}");
+    }
+
+    /**
+     * V1 Message::getPrunedSubject() — strip location (parentheses), group name (brackets),
+     * trim, and quoted-printable encode.
+     */
+    public static function getPrunedSubject(string $subject): string
+    {
+        // Strip possible location — e.g. "OFFER: Sofa (Southend)" → "OFFER: Sofa "
+        if (preg_match('/(.*)\(.*\)/', $subject, $matches)) {
+            $subject = $matches[1];
+        }
+
+        // Strip possible group name — e.g. "[Essex] OFFER: Sofa" → " OFFER: Sofa"
+        if (preg_match('/\[.*\](.*)/', $subject, $matches)) {
+            $subject = $matches[1];
+        }
+
+        $subject = trim($subject);
+
+        // Remove odd characters (V1 uses quoted_printable_encode).
+        $subject = quoted_printable_encode($subject);
+
+        return $subject;
     }
 }

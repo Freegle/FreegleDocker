@@ -14,7 +14,7 @@
     <mj-section background-color="#ffffff" padding="25px 20px 15px 20px">
       <mj-column>
         <mj-text font-size="16px" color="#333333" line-height="1.6">
-          Hi {{ $userName }},
+          Dear {{ $userName }},
         </mj-text>
       </mj-column>
     </mj-section>
@@ -69,6 +69,14 @@
         </mj-button>
       </mj-column>
     </mj-section>
+
+    @if(!empty($trackingPixelMjml))
+    <mj-section padding="0">
+      <mj-column>
+        {!! $trackingPixelMjml !!}
+      </mj-column>
+    </mj-section>
+    @endif
 
     {{-- Footer --}}
     <mj-section background-color="#f5f5f5" padding="20px">

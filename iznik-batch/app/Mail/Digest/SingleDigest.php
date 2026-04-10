@@ -72,7 +72,7 @@ class SingleDigest extends MjmlMailable
         return $this->mjmlView('emails.mjml.digest.single', array_merge([
             'user' => $this->user,
             'group' => $this->group,
-            'message' => $this->message,
+            'post' => $this->message,
             'messageText' => $messageText,
             'frequency' => $this->frequency,
             'settingsUrl' => $this->trackedUrl($this->getSettingsUrl(), 'footer_settings', 'settings'),

@@ -4,6 +4,7 @@ namespace App\Mail\Session;
 
 use App\Mail\MjmlMailable;
 use App\Mail\Traits\LoggableEmail;
+use App\Mail\Traits\TrackableEmail;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
@@ -14,6 +15,7 @@ use Illuminate\Mail\Mailables\Envelope;
  */
 class ForgotPasswordMail extends MjmlMailable
 {
+    use TrackableEmail;
     use LoggableEmail;
 
     public function __construct(
@@ -22,6 +24,14 @@ class ForgotPasswordMail extends MjmlMailable
         public string $resetUrl,
     ) {
         parent::__construct();
+
+        $this->initTracking(
+            'ForgotPassword',
+            $this->email,
+            $this->userId,
+            null,
+            $this->getSubject()
+        );
     }
 
     public function envelope(): Envelope
@@ -44,10 +54,10 @@ class ForgotPasswordMail extends MjmlMailable
     {
         return $this->mjmlView(
             'emails.mjml.session.forgot-password',
-            [
+            array_merge([
                 'resetUrl' => $this->resetUrl,
                 'email' => $this->email,
-            ]
+            ], $this->getTrackingData())
         )->to($this->email)
             ->applyLogging('ForgotPassword');
     }

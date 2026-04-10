@@ -2,11 +2,15 @@
 
 namespace App\Services;
 
+use App\Helpers\MailHelper;
+use App\Mail\Message\AutoRepostWarning;
 use App\Models\Group;
 use App\Models\Message;
 use App\Models\MessageGroup;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class AutoRepostService
 {
@@ -41,10 +45,12 @@ class AutoRepostService
      *   - Log AUTOREPOSTED entry per group
      *   - INSERT messages_postings per group
      *   - UPDATE lastautopostwarning for warning emails
+     *   - Warning email: "Will Repost: {subject}" with completed/withdraw/promise buttons
      *
      * V1 side effects NOT included:
-     *   - Warning email (TODO: create Mailable + MJML template)
-     *   - Search index bump (handled by message_unindexed.php cron)
+     *   - Search index bump: V1 calls $this->s->bump() to update arrival in
+     *     messages_index. Not critical: Go API search sorts by wordmatch/popularity,
+     *     not arrival. messages_groups.arrival IS updated (the source of truth).
      */
     public function process(bool $dryRun = false): array
     {
@@ -97,7 +103,7 @@ class AutoRepostService
 
         foreach ($messages as $msg) {
             // V1: Mail::ourDomain($message['fromaddr'])
-            if (!$this->isOurDomain($msg->fromaddr)) {
+            if (!MailHelper::isOurDomain($msg->fromaddr)) {
                 $stats['skipped']++;
                 continue;
             }
@@ -122,7 +128,9 @@ class AutoRepostService
             }
 
             // V1: user must have been active since the original post.
-            if ($msg->hoursago < ($msg->activehoursago ?? PHP_INT_MAX) + 1) {
+            // V1: NULL lastaccess → PHP NULL+1=1 → hoursago >= 1 (treated as "active").
+            // We use ?? 0 to match: hoursago < 0+1 is only true for sub-hour messages.
+            if ($msg->hoursago < ($msg->activehoursago ?? 0) + 1) {
                 $stats['skipped']++;
                 continue;
             }
@@ -169,8 +177,19 @@ class AutoRepostService
                             ->where('groupid', $group->id)
                             ->update(['lastautopostwarning' => now()]);
 
-                        // TODO: Send warning email (needs Mailable + MJML template).
-                        // V1 sends "Will Repost: {subject}" with links to mark completed/withdraw/promise.
+                        // V1: "Will Repost: {subject}" with links to mark completed/withdraw/promise.
+                        $user = User::find($msg->fromuser);
+                        if ($user && $user->email_preferred) {
+                            Mail::send(new AutoRepostWarning(
+                                messageId: $msg->msgid,
+                                messageSubject: $msg->subject ?? '',
+                                messageType: $msg->type,
+                                userId: $msg->fromuser,
+                                userName: $user->displayname,
+                                userEmail: $user->email_preferred,
+                                groupId: $group->id,
+                            ));
+                        }
                     }
                     $stats['warned']++;
                 }
@@ -212,6 +231,7 @@ class AutoRepostService
                 'messages_groups.autoreposts',
                 'messages_groups.lastautopostwarning',
                 'messages.type',
+                'messages.subject',
                 'messages.fromaddr',
                 'messages.fromuser',
                 DB::raw('TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) AS hoursago'),
@@ -258,7 +278,10 @@ class AutoRepostService
             return false;
         }
 
-        return (time() - strtotime($maxDate)) < $intervalDays * 24 * 60 * 60;
+        // V1 bug preserved for parity: V1 uses $interval * 60 * 60 where $interval
+        // is in days. So offer(3) → 3 * 3600 = 10800s = 3 hours, not 3 days.
+        // V1 line 4691: $recentreply = $max && ($now - strtotime($max)) < $interval * 60 * 60;
+        return (time() - strtotime($maxDate)) < $intervalDays * 60 * 60;
     }
 
     /**
@@ -307,15 +330,4 @@ class AutoRepostService
         Log::info("Auto-reposted message #{$msg->msgid} on group #{$groupid} ({$newReposts}/{$maxReposts})");
     }
 
-    /**
-     * Check if an email address is on our domain.
-     *
-     * V1: Mail::ourDomain() checks if the email is on users.ilovefreegle.org.
-     */
-    protected function isOurDomain(string $email): bool
-    {
-        $domain = config('freegle.mail.user_domain', 'users.ilovefreegle.org');
-
-        return str_ends_with($email, '@' . $domain);
-    }
 }

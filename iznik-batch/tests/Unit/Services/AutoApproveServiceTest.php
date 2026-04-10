@@ -361,6 +361,199 @@ class AutoApproveServiceTest extends TestCase
         ]);
     }
 
+    public function test_whitelists_subject_for_subject_used_for_different_groups(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, [
+            'added' => now()->subHours(72),
+        ]);
+
+        $message = $this->createTestMessage($user, $group, [
+            'subject' => '[TestGroup] OFFER: Sofa (Southend)',
+        ]);
+
+        // Mark with SubjectUsedForDifferentGroups spamtype.
+        DB::table('messages')->where('id', $message->id)->update([
+            'spamtype' => 'SubjectUsedForDifferentGroups',
+        ]);
+
+        DB::table('messages_groups')
+            ->where('msgid', $message->id)
+            ->where('groupid', $group->id)
+            ->update([
+                'collection' => MessageGroup::COLLECTION_PENDING,
+                'arrival' => now()->subHours(49),
+            ]);
+
+        $stats = $this->service->process();
+
+        $this->assertGreaterThanOrEqual(1, $stats['approved']);
+
+        // Verify subject was whitelisted (pruned: strips [group] and (location)).
+        $this->assertDatabaseHas('spam_whitelist_subjects', [
+            'subject' => AutoApproveService::getPrunedSubject('[TestGroup] OFFER: Sofa (Southend)'),
+            'comment' => 'Marked as not spam',
+        ]);
+
+        // Also verify Ham was recorded.
+        $this->assertDatabaseHas('messages_spamham', [
+            'msgid' => $message->id,
+            'spamham' => 'Ham',
+        ]);
+    }
+
+    public function test_does_not_whitelist_subject_for_other_spamtypes(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, [
+            'added' => now()->subHours(72),
+        ]);
+
+        $message = $this->createTestMessage($user, $group, [
+            'subject' => 'OFFER: Something',
+        ]);
+
+        DB::table('messages')->where('id', $message->id)->update([
+            'spamtype' => 'Spam',
+        ]);
+
+        DB::table('messages_groups')
+            ->where('msgid', $message->id)
+            ->where('groupid', $group->id)
+            ->update([
+                'collection' => MessageGroup::COLLECTION_PENDING,
+                'arrival' => now()->subHours(49),
+            ]);
+
+        $this->service->process();
+
+        // Should NOT whitelist subject for non-SubjectUsedForDifferentGroups spamtype.
+        $this->assertDatabaseMissing('spam_whitelist_subjects', [
+            'subject' => AutoApproveService::getPrunedSubject('OFFER: Something'),
+        ]);
+
+        // But Ham should still be recorded.
+        $this->assertDatabaseHas('messages_spamham', [
+            'msgid' => $message->id,
+            'spamham' => 'Ham',
+        ]);
+    }
+
+    public function test_multi_group_message_approved_independently(): void
+    {
+        $user = $this->createTestUser();
+        $group1 = $this->createTestGroup();
+        $group2 = $this->createTestGroup();
+        $this->createMembership($user, $group1, [
+            'added' => now()->subHours(72),
+        ]);
+        $this->createMembership($user, $group2, [
+            'added' => now()->subHours(72),
+        ]);
+
+        $message = $this->createTestMessage($user, $group1);
+
+        // Add message to second group too.
+        DB::table('messages_groups')->insert([
+            'msgid' => $message->id,
+            'groupid' => $group2->id,
+            'collection' => MessageGroup::COLLECTION_PENDING,
+            'arrival' => now()->subHours(49),
+        ]);
+
+        // Group1: pending 49h (should approve). Group2: pending 49h (should approve).
+        DB::table('messages_groups')
+            ->where('msgid', $message->id)
+            ->where('groupid', $group1->id)
+            ->update([
+                'collection' => MessageGroup::COLLECTION_PENDING,
+                'arrival' => now()->subHours(49),
+            ]);
+
+        $stats = $this->service->process();
+
+        $this->assertGreaterThanOrEqual(2, $stats['approved']);
+
+        // Both groups should be approved.
+        $this->assertDatabaseHas('messages_groups', [
+            'msgid' => $message->id,
+            'groupid' => $group1->id,
+            'collection' => MessageGroup::COLLECTION_APPROVED,
+        ]);
+        $this->assertDatabaseHas('messages_groups', [
+            'msgid' => $message->id,
+            'groupid' => $group2->id,
+            'collection' => MessageGroup::COLLECTION_APPROVED,
+        ]);
+    }
+
+    public function test_multi_group_one_skipped_one_approved(): void
+    {
+        $user = $this->createTestUser();
+        $group1 = $this->createTestGroup();
+        $group2 = $this->createTestGroup([
+            'settings' => ['closed' => true],
+        ]);
+        $this->createMembership($user, $group1, [
+            'added' => now()->subHours(72),
+        ]);
+        $this->createMembership($user, $group2, [
+            'added' => now()->subHours(72),
+        ]);
+
+        $message = $this->createTestMessage($user, $group1);
+
+        // Add message to closed group too.
+        DB::table('messages_groups')->insert([
+            'msgid' => $message->id,
+            'groupid' => $group2->id,
+            'collection' => MessageGroup::COLLECTION_PENDING,
+            'arrival' => now()->subHours(49),
+        ]);
+
+        DB::table('messages_groups')
+            ->where('msgid', $message->id)
+            ->where('groupid', $group1->id)
+            ->update([
+                'collection' => MessageGroup::COLLECTION_PENDING,
+                'arrival' => now()->subHours(49),
+            ]);
+
+        $this->service->process();
+
+        // Group1 should be approved (open group).
+        $this->assertDatabaseHas('messages_groups', [
+            'msgid' => $message->id,
+            'groupid' => $group1->id,
+            'collection' => MessageGroup::COLLECTION_APPROVED,
+        ]);
+
+        // Group2 should still be pending (closed group).
+        $this->assertDatabaseHas('messages_groups', [
+            'msgid' => $message->id,
+            'groupid' => $group2->id,
+            'collection' => MessageGroup::COLLECTION_PENDING,
+        ]);
+    }
+
+    public function test_get_pruned_subject(): void
+    {
+        // Strip location in parentheses.
+        $this->assertEquals('OFFER: Sofa', AutoApproveService::getPrunedSubject('OFFER: Sofa (Southend)'));
+
+        // Strip group name in brackets.
+        $this->assertEquals('OFFER: Table', AutoApproveService::getPrunedSubject('[Essex] OFFER: Table'));
+
+        // Strip both.
+        $pruned = AutoApproveService::getPrunedSubject('[Essex] OFFER: Sofa (Southend)');
+        $this->assertEquals('OFFER: Sofa', $pruned);
+
+        // No stripping needed.
+        $this->assertEquals('OFFER: Chair', AutoApproveService::getPrunedSubject('OFFER: Chair'));
+    }
+
     public function test_constants(): void
     {
         $this->assertEquals(48, AutoApproveService::PENDING_HOURS);
