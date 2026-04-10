@@ -121,7 +121,6 @@ Schedule::command('purge:logs')
     ->dailyAt('04:00')
     ->withoutOverlapping()
     ->runInBackground();
-
 Schedule::command('cleanup:search-duplicates')
     ->hourly()
     ->withoutOverlapping()
