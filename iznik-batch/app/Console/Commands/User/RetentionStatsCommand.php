@@ -11,23 +11,33 @@ class RetentionStatsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'users:retention-stats';
+    protected $signature = 'users:retention-stats
+                            {--dry-run : Count what would be affected without making changes}';
 
     /**
      * The console command description.
      */
-    protected $description = 'Calculate and display user retention statistics';
+    protected $description = 'Calculate user retention statistics and perform user cleanup (Yahoo users, inactive users, GDPR forgets)';
 
     /**
      * Execute the console command.
      */
     public function handle(UserManagementService $userService): int
     {
-        $this->info('Calculating user retention statistics...');
+        $dryRun = $this->option('dry-run');
 
-        $stats = $userService->updateRetentionStats();
+        if ($dryRun) {
+            $this->warn('DRY RUN MODE — no data will be modified.');
+        }
+
+        $this->info('Calculating user retention statistics and performing cleanup...');
+
+        $stats = $userService->updateRetentionStats($dryRun);
+
+        $prefix = $dryRun ? 'Would ' : '';
 
         $this->newLine();
+        $this->info('Retention Statistics:');
         $this->table(
             ['Metric', 'Value'],
             [
@@ -38,7 +48,19 @@ class RetentionStatsCommand extends Command
             ]
         );
 
-        Log::info('Retention stats calculated', $stats);
+        $this->newLine();
+        $this->info('Cleanup Operations:');
+        $this->table(
+            ['Operation', 'Count'],
+            [
+                [$prefix . 'Delete Yahoo Groups users', number_format($stats['yahoo_users_deleted'])],
+                [$prefix . 'Forget inactive users', number_format($stats['inactive_users_forgotten'])],
+                [$prefix . 'Process GDPR forgets', number_format($stats['gdpr_forgets_processed'])],
+                [$prefix . 'Delete fully forgotten users', number_format($stats['forgotten_users_deleted'])],
+            ]
+        );
+
+        Log::info('Retention stats and cleanup completed', $stats);
 
         return Command::SUCCESS;
     }

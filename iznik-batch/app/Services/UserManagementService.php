@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\MailHelper;
 use App\Models\User;
 use App\Models\UserEmail;
 use App\Traits\ChunkedProcessing;
@@ -28,7 +29,7 @@ class UserManagementService
      * Merge duplicate user accounts.
      * Users with the same email should be merged.
      */
-    public function mergeDuplicates(): array
+    public function mergeDuplicates(bool $dryRun = false): array
     {
         $stats = [
             'duplicates_found' => 0,
@@ -46,7 +47,9 @@ class UserManagementService
 
         foreach ($duplicates as $duplicate) {
             try {
-                $this->mergeUsersForEmail($duplicate->email);
+                if (!$dryRun) {
+                    $this->mergeUsersForEmail($duplicate->email);
+                }
                 $stats['users_merged']++;
             } catch (\Exception $e) {
                 Log::error("Error merging users for email {$duplicate->email}: ".$e->getMessage());
@@ -118,39 +121,136 @@ class UserManagementService
     }
 
     /**
-     * Check and update user email validity via bounce tracking.
-     * Emails that have bounced (bounced timestamp is set) and were validated
-     * are marked as invalid (validated set to NULL).
+     * Suspend mail for users with excessive bounces.
+     *
+     * Matches V1 Bounce::suspendMail() behavior:
+     * - If a user has >= PERM_THRESHOLD (3) permanent bounces on their preferred email, set bouncing = 1
+     * - If a user has >= ALL_THRESHOLD (50) total bounces on their preferred email, set bouncing = 1
+     * - Only suspends if the bouncing email matches the user's preferred/primary email
+     * - Logs the suspension (TYPE_USER, SUBTYPE_SUSPEND_MAIL equivalent)
      */
-    public function processBouncedEmails(bool $dryRun = false): array
+    public function processBouncedEmails(bool $dryRun = false, int $permThreshold = 3, int $allThreshold = 50): array
     {
         $stats = [
-            'processed' => 0,
-            'marked_invalid' => 0,
+            'permanent_suspended' => 0,
+            'total_suspended' => 0,
         ];
 
-        // Get validated emails that have bounced.
-        $bouncedEmails = DB::table('users_emails')
-            ->whereNotNull('bounced')
-            ->whereNotNull('validated')
-            ->limit($this->chunkSize)
+        // Query 1: Users with permanent bounces >= threshold.
+        // V1: SELECT COUNT(*) AS count, userid, emailid, email, reason
+        //     FROM bounces_emails
+        //     INNER JOIN users_emails ON users_emails.id = bounces_emails.emailid
+        //     INNER JOIN users ON users.id = users_emails.userid
+        //     WHERE permanent = 1 AND reset = 0 AND users.bouncing = 0
+        //     GROUP BY userid ORDER BY count DESC
+        $permUsers = DB::table('bounces_emails')
+            ->join('users_emails', 'users_emails.id', '=', 'bounces_emails.emailid')
+            ->join('users', 'users.id', '=', 'users_emails.userid')
+            ->where('bounces_emails.permanent', 1)
+            ->where('bounces_emails.reset', 0)
+            ->where('users.bouncing', 0)
+            ->select(
+                DB::raw('COUNT(*) as count'),
+                'users_emails.userid',
+                'bounces_emails.emailid',
+                'users_emails.email',
+            )
+            ->groupBy('users_emails.userid', 'bounces_emails.emailid', 'users_emails.email')
+            ->havingRaw('COUNT(*) >= ?', [$permThreshold])
+            ->orderByDesc('count')
             ->get();
 
-        foreach ($bouncedEmails as $email) {
-            if (!$dryRun) {
-                UserEmail::where('id', $email->id)
-                    ->update(['validated' => null]);
-
-                $this->lokiService->logBounceEvent(
-                    $email->email ?? '',
-                    $email->userid ?? 0,
-                    true,
-                    'Bounced email marked invalid',
-                );
+        foreach ($permUsers as $row) {
+            $user = User::find($row->userid);
+            if (!$user) {
+                continue;
             }
 
-            $stats['marked_invalid']++;
-            $stats['processed']++;
+            // V1: Only suspend if the bouncing email is the user's preferred email.
+            if ($row->email === $user->email_preferred) {
+                if (!$dryRun) {
+                    DB::table('users')
+                        ->where('id', $row->userid)
+                        ->update(['bouncing' => 1]);
+
+                    DB::table('logs')->insert([
+                        'timestamp' => now(),
+                        'type' => 'User',
+                        'subtype' => 'SuspendMail',
+                        'user' => $row->userid,
+                        'text' => "Permanent bounces ({$row->count}) >= {$permThreshold} for {$row->email}",
+                    ]);
+
+                    $this->lokiService->logBounceEvent(
+                        $row->email,
+                        $row->userid,
+                        true,
+                        "Suspended: {$row->count} permanent bounces",
+                    );
+
+                    Log::info("Suspended mail for user #{$row->userid}: {$row->count} permanent bounces on {$row->email}");
+                }
+
+                $stats['permanent_suspended']++;
+            }
+        }
+
+        // Query 2: Users with total bounces (permanent + temporary) >= threshold.
+        // V1: Same query but without permanent = 1 filter.
+        $allUsers = DB::table('bounces_emails')
+            ->join('users_emails', 'users_emails.id', '=', 'bounces_emails.emailid')
+            ->join('users', 'users.id', '=', 'users_emails.userid')
+            ->where('bounces_emails.reset', 0)
+            ->where('users.bouncing', 0)
+            ->select(
+                DB::raw('COUNT(*) as count'),
+                'users_emails.userid',
+                'bounces_emails.emailid',
+                'users_emails.email',
+            )
+            ->groupBy('users_emails.userid', 'bounces_emails.emailid', 'users_emails.email')
+            ->havingRaw('COUNT(*) >= ?', [$allThreshold])
+            ->orderByDesc('count')
+            ->get();
+
+        foreach ($allUsers as $row) {
+            $user = User::find($row->userid);
+            if (!$user) {
+                continue;
+            }
+
+            // Re-check bouncing=0 since the permanent pass may have already set it.
+            $user->refresh();
+            if ($user->bouncing) {
+                continue;
+            }
+
+            if ($row->email === $user->email_preferred) {
+                if (!$dryRun) {
+                    DB::table('users')
+                        ->where('id', $row->userid)
+                        ->update(['bouncing' => 1]);
+
+                    DB::table('logs')->insert([
+                        'timestamp' => now(),
+                        'type' => 'User',
+                        'subtype' => 'SuspendMail',
+                        'user' => $row->userid,
+                        'text' => "Total bounces ({$row->count}) >= {$allThreshold} for {$row->email}",
+                    ]);
+
+                    $this->lokiService->logBounceEvent(
+                        $row->email,
+                        $row->userid,
+                        false,
+                        "Suspended: {$row->count} total bounces",
+                    );
+
+                    Log::info("Suspended mail for user #{$row->userid}: {$row->count} total bounces on {$row->email}");
+                }
+
+                $stats['total_suspended']++;
+            }
         }
 
         return $stats;
@@ -158,35 +258,30 @@ class UserManagementService
 
     /**
      * Update user kudos based on their activity.
+     *
+     * Matches V1 iznik-server/scripts/cron/users_kudos.php + User::updateKudos().
+     * Selects users with lastaccess > 2 days ago, calculates kudos per user,
+     * and writes to users_kudos table via REPLACE INTO.
      */
-    public function updateKudos(): int
+    public function updateKudos(bool $dryRun = FALSE): int
     {
         $updated = 0;
 
-        // Calculate kudos based on:
-        // - Number of items given away.
-        // - Number of items received.
-        // - Time on platform.
-        // - Positive ratings.
+        $mysqltime = now()->subDays(2)->startOfDay()->toDateString();
 
         $users = DB::table('users')
-            ->select('users.id')
-            ->leftJoin('messages_outcomes', function ($join) {
-                $join->on('messages_outcomes.msgid', '=', DB::raw('(SELECT id FROM messages WHERE fromuser = users.id LIMIT 1)'))
-                    ->whereIn('messages_outcomes.outcome', ['Taken', 'Received']);
-            })
-            ->whereNull('users.deleted')
-            ->groupBy('users.id')
-            ->havingRaw('COUNT(messages_outcomes.id) > 0')
-            ->limit($this->chunkSize)
+            ->select('id')
+            ->where('lastaccess', '>', $mysqltime)
             ->get();
 
+        $total = $users->count();
+
         foreach ($users as $userData) {
-            $user = User::find($userData->id);
-            if ($user) {
-                $kudos = $this->calculateKudos($user);
-                $user->update(['kudos' => $kudos]);
-                $updated++;
+            $this->updateKudosForUser($userData->id, $dryRun);
+            $updated++;
+
+            if ($updated % 10 === 0) {
+                Log::info("Kudos update progress: {$updated} / {$total}");
             }
         }
 
@@ -194,52 +289,151 @@ class UserManagementService
     }
 
     /**
-     * Calculate kudos score for a user.
+     * Update kudos for a single user.
+     *
+     * Matches V1 User::updateKudos(). Only updates if:
+     * - No existing kudos record, OR
+     * - Existing record is more than 24 hours old.
+     *
+     * Writes to users_kudos table with columns: userid, kudos, posts, chats,
+     * newsfeed, events, vols, facebook, platform.
      */
-    protected function calculateKudos(User $user): int
+    public function updateKudosForUser(int $userId, bool $dryRun = FALSE): void
     {
-        $kudos = 0;
+        // Check throttle: only update if no existing record or record is older than 24h.
+        $current = DB::table('users_kudos')->where('userid', $userId)->first();
 
-        // Points for items given.
-        $given = DB::table('messages')
-            ->join('messages_outcomes', 'messages_outcomes.msgid', '=', 'messages.id')
-            ->where('messages.fromuser', $user->id)
-            ->where('messages_outcomes.outcome', 'Taken')
-            ->count();
-        $kudos += $given * 10;
+        if ($current && $current->timestamp) {
+            $age = now()->diffInSeconds(\Carbon\Carbon::parse($current->timestamp));
+            if ($age <= 24 * 60 * 60) {
+                return;
+            }
+        }
 
-        // Points for items received.
-        $received = DB::table('messages_by')
-            ->where('userid', $user->id)
-            ->count();
-        $kudos += $received * 5;
+        $kudosData = $this->calculateKudos($userId);
 
-        // Points for ratings.
-        $positiveRatings = DB::table('ratings')
-            ->where('ratee', $user->id)
-            ->where('rating', 'Up')
-            ->count();
-        $kudos += $positiveRatings * 3;
+        $kudos = $kudosData['posts'] + $kudosData['chats'] + $kudosData['newsfeed']
+            + $kudosData['events'] + $kudosData['vols'];
 
-        // Points for tenure (1 point per month).
-        $monthsOnPlatform = $user->added
-            ? now()->diffInMonths($user->added)
-            : 0;
-        $kudos += $monthsOnPlatform;
+        if ($kudos > 0) {
+            // No sense in creating entries which are blank or the same.
+            $currentKudos = $current ? $current->kudos : 0;
 
-        return $kudos;
+            if ($currentKudos != $kudos) {
+                if (!$dryRun) {
+                    DB::statement(
+                        'REPLACE INTO users_kudos (userid, kudos, posts, chats, newsfeed, events, vols, facebook, platform) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        [
+                            $userId,
+                            $kudos,
+                            $kudosData['posts'],
+                            $kudosData['chats'],
+                            $kudosData['newsfeed'],
+                            $kudosData['events'],
+                            $kudosData['vols'],
+                            $kudosData['facebook'] ? 1 : 0,
+                            $kudosData['platform'] ? 1 : 0,
+                        ]
+                    );
+                }
+            }
+        }
     }
 
     /**
-     * Update user retention statistics.
+     * Calculate kudos components for a user.
+     *
+     * Matches V1 User::updateKudos() logic exactly:
+     * - Distinct months with posts (messages table, last 365 days)
+     * - Distinct months with chats (chat_messages table, last 365 days)
+     * - Distinct months with newsfeed posts (newsfeed table, last 365 days)
+     * - Community events count (last 365 days)
+     * - Volunteering count (last 365 days)
+     * - Facebook login (boolean)
+     * - Platform posting (boolean, sourceheader = 'Platform', last 365 days)
      */
-    public function updateRetentionStats(): array
+    protected function calculateKudos(int $userId): array
+    {
+        $start = now()->subDays(365)->toDateString();
+
+        // Distinct months with posts.
+        $posts = (int) DB::table('messages')
+            ->where('fromuser', $userId)
+            ->where('date', '>=', $start)
+            ->selectRaw("COUNT(DISTINCT CONCAT(YEAR(date), '-', MONTH(date))) AS count")
+            ->value('count');
+
+        // Distinct months with chat messages.
+        $chats = (int) DB::table('chat_messages')
+            ->where('userid', $userId)
+            ->where('date', '>=', $start)
+            ->selectRaw("COUNT(DISTINCT CONCAT(YEAR(date), '-', MONTH(date))) AS count")
+            ->value('count');
+
+        // Distinct months with newsfeed posts.
+        $newsfeed = (int) DB::table('newsfeed')
+            ->where('userid', $userId)
+            ->where('added', '>=', $start)
+            ->selectRaw("COUNT(DISTINCT CONCAT(YEAR(timestamp), '-', MONTH(timestamp))) AS count")
+            ->value('count');
+
+        // Community events count.
+        $events = (int) DB::table('communityevents')
+            ->where('userid', $userId)
+            ->where('added', '>=', $start)
+            ->count();
+
+        // Volunteering count.
+        $vols = (int) DB::table('volunteering')
+            ->where('userid', $userId)
+            ->where('added', '>=', $start)
+            ->count();
+
+        // Facebook login.
+        $facebook = DB::table('users_logins')
+            ->where('userid', $userId)
+            ->where('type', 'Facebook')
+            ->count() > 0;
+
+        // Posted from the platform (vs email/TN).
+        $platform = DB::table('messages')
+            ->where('fromuser', $userId)
+            ->where('arrival', '>=', $start)
+            ->where('sourceheader', 'Platform')
+            ->count() > 0;
+
+        return [
+            'posts' => $posts,
+            'chats' => $chats,
+            'newsfeed' => $newsfeed,
+            'events' => $events,
+            'vols' => $vols,
+            'facebook' => $facebook,
+            'platform' => $platform,
+        ];
+    }
+
+    /**
+     * Update user retention statistics and perform cleanup.
+     *
+     * Migrated from iznik-server/scripts/cron/users_retention.php which calls:
+     *   - User::userRetention() — deletes Yahoo Groups users, forgets inactive users,
+     *     hard-deletes fully forgotten users with no messages
+     *   - User::processForgets() — GDPR forget for users deleted > 14 days ago
+     *
+     * @param  bool  $dryRun  If true, count what would be affected but don't modify data.
+     */
+    public function updateRetentionStats(bool $dryRun = FALSE): array
     {
         $stats = [
             'active_users_30d' => 0,
             'active_users_90d' => 0,
             'new_users_30d' => 0,
             'churned_users' => 0,
+            'yahoo_users_deleted' => 0,
+            'inactive_users_forgotten' => 0,
+            'gdpr_forgets_processed' => 0,
+            'forgotten_users_deleted' => 0,
         ];
 
         // Active in last 30 days.
@@ -263,9 +457,284 @@ class UserManagementService
             ->whereNull('deleted')
             ->count();
 
+        // Destructive cleanup operations (from V1 userRetention + processForgets).
+        $stats['yahoo_users_deleted'] = $this->deleteYahooGroupsUsers($dryRun);
+        $stats['inactive_users_forgotten'] = $this->forgetInactiveUsers($dryRun);
+        $stats['gdpr_forgets_processed'] = $this->processForgets($dryRun);
+        $stats['forgotten_users_deleted'] = $this->deleteFullyForgottenUsers($dryRun);
+
         Log::info('User retention stats updated', $stats);
 
         return $stats;
+    }
+
+    /**
+     * Delete users with @yahoogroups.com emails.
+     *
+     * These are legacy Yahoo Groups users that no longer serve a purpose.
+     * Matches V1 User::userRetention() Yahoo cleanup block.
+     */
+    public function deleteYahooGroupsUsers(bool $dryRun = FALSE): int
+    {
+        $yahooUsers = DB::table('users')
+            ->join('users_emails', 'users.id', '=', 'users_emails.userid')
+            ->where('users_emails.email', 'LIKE', '%@yahoogroups.com')
+            ->whereNull('users.deleted')
+            ->distinct()
+            ->pluck('users.id');
+
+        $count = $yahooUsers->count();
+
+        if (!$dryRun) {
+            foreach ($yahooUsers as $userId) {
+                Log::info("Deleting Yahoo Groups user #{$userId}");
+
+                // Remove memberships first (matches V1 User::delete()).
+                DB::table('memberships')->where('userid', $userId)->delete();
+
+                // Hard delete the user.
+                DB::table('users')->where('id', $userId)->delete();
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Forget inactive users who meet all criteria:
+     * - No group memberships
+     * - Last access > 6 months ago
+     * - Not a spammer
+     * - No moderator notes (users_comments)
+     * - No meaningful logs in 90 days (excluding User/Created and User/Deleted log entries)
+     * - systemrole = 'User'
+     * - Not already deleted
+     *
+     * Matches V1 User::userRetention() inactive user block.
+     */
+    public function forgetInactiveUsers(bool $dryRun = FALSE): int
+    {
+        $sixMonthsAgo = now()->subMonths(6)->format('Y-m-d');
+
+        // Find candidates: no memberships, no spammer record, no mod notes,
+        // last access > 6 months, systemrole = User, not deleted.
+        $candidates = DB::select("
+            SELECT users.id
+            FROM users
+            LEFT JOIN memberships ON users.id = memberships.userid
+            LEFT JOIN spam_users ON users.id = spam_users.userid
+            LEFT JOIN users_comments ON users.id = users_comments.userid
+            WHERE memberships.userid IS NULL
+              AND spam_users.userid IS NULL
+              AND users_comments.userid IS NULL
+              AND users.lastaccess < ?
+              AND users.systemrole = ?
+              AND users.deleted IS NULL
+        ", [$sixMonthsAgo, 'User']);
+
+        $count = 0;
+
+        foreach ($candidates as $candidate) {
+            // Check for recent meaningful logs (excluding User/Created and User/Deleted).
+            $logs = DB::select("
+                SELECT DATEDIFF(NOW(), timestamp) AS logsago
+                FROM logs
+                WHERE user = ?
+                  AND (type != 'User' OR (subtype != 'Created' AND subtype != 'Deleted'))
+                ORDER BY id DESC
+                LIMIT 1
+            ", [$candidate->id]);
+
+            // Forget if no logs at all, or most recent meaningful log is > 90 days old.
+            if (count($logs) === 0 || $logs[0]->logsago > 90) {
+                if (!$dryRun) {
+                    Log::info("Forgetting inactive user #{$candidate->id}");
+                    $this->forgetUser($candidate->id, 'Inactive');
+                }
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Process GDPR forgets: users with deleted timestamp > 14 days ago
+     * who haven't been forgotten yet.
+     *
+     * Matches V1 User::processForgets().
+     */
+    public function processForgets(bool $dryRun = FALSE): int
+    {
+        $users = DB::select("
+            SELECT id
+            FROM users
+            WHERE deleted IS NOT NULL
+              AND DATEDIFF(NOW(), deleted) > 14
+              AND forgotten IS NULL
+        ");
+
+        $count = count($users);
+
+        if (!$dryRun) {
+            foreach ($users as $user) {
+                Log::info("GDPR forget for user #{$user->id} (grace period expired)");
+                $this->forgetUser($user->id, 'Grace period');
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Wipe a user's personal data for GDPR right to be forgotten.
+     *
+     * Matches V1 User::forget() — clears name, settings, yahooid;
+     * deletes non-internal emails, logins, community events, volunteering,
+     * newsfeed, stories, searches, about me, ratings, addresses, images,
+     * promises, sessions; nullifies message content; removes group memberships;
+     * marks user as forgotten.
+     */
+    public function forgetUser(int $userId, string $reason): void
+    {
+        // Clear personal fields.
+        DB::table('users')->where('id', $userId)->update([
+            'firstname' => NULL,
+            'lastname' => NULL,
+            'fullname' => "Deleted User #{$userId}",
+            'settings' => NULL,
+            'yahooid' => NULL,
+        ]);
+
+        // Delete non-internal-domain emails (keep our platform emails).
+        $emails = DB::table('users_emails')->where('userid', $userId)->get();
+        foreach ($emails as $email) {
+            if (!MailHelper::isOurDomain($email->email)) {
+                DB::table('users_emails')->where('id', $email->id)->delete();
+            }
+        }
+
+        // Delete all logins.
+        DB::table('users_logins')->where('userid', $userId)->delete();
+
+        // Wipe message content for Offer/Wanted messages from this user.
+        $messageIds = DB::table('messages')
+            ->where('fromuser', $userId)
+            ->whereIn('type', ['Offer', 'Wanted'])
+            ->pluck('id');
+
+        foreach ($messageIds as $msgId) {
+            DB::table('messages')->where('id', $msgId)->update([
+                'fromip' => NULL,
+                'message' => NULL,
+                'envelopefrom' => NULL,
+                'fromname' => NULL,
+                'fromaddr' => NULL,
+                'messageid' => NULL,
+                'textbody' => NULL,
+                'htmlbody' => NULL,
+                'deleted' => now(),
+            ]);
+
+            DB::table('messages_groups')->where('msgid', $msgId)->update([
+                'deleted' => 1,
+            ]);
+
+            // Delete outcome comments (may contain personal data).
+            DB::table('messages_outcomes')->where('msgid', $msgId)->update([
+                'comments' => NULL,
+            ]);
+        }
+
+        // Remove content of all chat messages sent by this user.
+        DB::table('chat_messages')->where('userid', $userId)->update([
+            'message' => NULL,
+        ]);
+
+        // Delete community events, volunteering, newsfeed, stories, searches, about me.
+        DB::table('communityevents')->where('userid', $userId)->delete();
+        DB::table('volunteering')->where('userid', $userId)->delete();
+        DB::table('newsfeed')->where('userid', $userId)->delete();
+        DB::table('users_stories')->where('userid', $userId)->delete();
+        DB::table('users_searches')->where('userid', $userId)->delete();
+        DB::table('users_aboutme')->where('userid', $userId)->delete();
+
+        // Delete ratings by and about this user.
+        DB::table('ratings')->where('rater', $userId)->delete();
+        DB::table('ratings')->where('ratee', $userId)->delete();
+
+        // Remove from all groups.
+        DB::table('memberships')->where('userid', $userId)->delete();
+
+        // Delete postal addresses.
+        DB::table('users_addresses')->where('userid', $userId)->delete();
+
+        // Delete profile images.
+        DB::table('users_images')->where('userid', $userId)->delete();
+
+        // Remove promises.
+        DB::table('messages_promises')->where('userid', $userId)->delete();
+
+        // Mark as forgotten and clear TN user ID.
+        DB::table('users')->where('id', $userId)->update([
+            'forgotten' => now(),
+            'tnuserid' => NULL,
+        ]);
+
+        // Delete sessions.
+        DB::table('sessions')->where('userid', $userId)->delete();
+
+        // Log the forget action.
+        DB::table('logs')->insert([
+            'type' => 'User',
+            'subtype' => 'Deleted',
+            'user' => $userId,
+            'text' => $reason,
+            'timestamp' => now(),
+        ]);
+    }
+
+    /**
+     * Delete fully forgotten users who have no remaining messages.
+     *
+     * These users have been forgotten (personal data wiped) and have no messages
+     * left as a placeholder — they can be safely hard-deleted.
+     *
+     * Matches V1 User::userRetention() final cleanup block.
+     */
+    public function deleteFullyForgottenUsers(bool $dryRun = FALSE): int
+    {
+        $sixMonthsAgo = now()->subMonths(6)->format('Y-m-d');
+
+        $users = DB::select("
+            SELECT users.id
+            FROM users
+            LEFT JOIN messages ON messages.fromuser = users.id
+            WHERE users.forgotten IS NOT NULL
+              AND users.lastaccess < ?
+              AND messages.id IS NULL
+            LIMIT 100000
+        ", [$sixMonthsAgo]);
+
+        $count = count($users);
+
+        if (!$dryRun) {
+            $processed = 0;
+            foreach ($users as $user) {
+                // Remove memberships first (matches V1 User::delete()).
+                DB::table('memberships')->where('userid', $user->id)->delete();
+
+                // Hard delete the user.
+                DB::table('users')->where('id', $user->id)->delete();
+
+                $processed++;
+                if ($processed % 1000 === 0) {
+                    Log::info("Deleted {$processed} / {$count} fully forgotten users");
+                }
+            }
+        }
+
+        return $count;
     }
 
     /**
@@ -276,7 +745,7 @@ class UserManagementService
      *
      * Migrated from iznik-server/scripts/cron/lastaccess.php
      */
-    public function updateLastAccess(): array
+    public function updateLastAccess(bool $dryRun = false): array
     {
         $stats = [
             'candidates' => 0,
@@ -316,9 +785,11 @@ class UserManagementService
                 $diff = strtotime($result->max) - strtotime($currentAccess);
 
                 if ($diff > 600) {
-                    DB::table('users')
-                        ->where('id', $user->userid)
-                        ->update(['lastaccess' => $result->max]);
+                    if (!$dryRun) {
+                        DB::table('users')
+                            ->where('id', $user->userid)
+                            ->update(['lastaccess' => $result->max]);
+                    }
 
                     $stats['updated']++;
                 }
@@ -341,7 +812,7 @@ class UserManagementService
      *
      * Migrated from iznik-server/scripts/cron/supporttools.php
      */
-    public function updateSupportRoles(): array
+    public function updateSupportRoles(bool $dryRun = false): array
     {
         $stats = [
             'granted' => 0,
@@ -365,12 +836,15 @@ class UserManagementService
         // Grant support role to users who need it but don't have it.
         foreach ($needSupport as $userId) {
             if (!in_array($userId, $currentSupport)) {
-                DB::table('users')
-                    ->where('id', $userId)
-                    ->update(['systemrole' => 'Support']);
+                if (!$dryRun) {
+                    DB::table('users')
+                        ->where('id', $userId)
+                        ->update(['systemrole' => 'Support']);
+
+                    Log::info("Granted support role to user #{$userId}");
+                }
 
                 $stats['granted']++;
-                Log::info("Granted support role to user #{$userId}");
             }
         }
 
@@ -385,12 +859,15 @@ class UserManagementService
 
             // Only downgrade Support, never Admin.
             if ($currentRole === 'Support') {
-                DB::table('users')
-                    ->where('id', $userId)
-                    ->update(['systemrole' => 'Moderator']);
+                if (!$dryRun) {
+                    DB::table('users')
+                        ->where('id', $userId)
+                        ->update(['systemrole' => 'Moderator']);
+
+                    Log::info("Removed support role from user #{$userId}");
+                }
 
                 $stats['removed']++;
-                Log::info("Removed support role from user #{$userId}");
             }
         }
 
@@ -404,7 +881,7 @@ class UserManagementService
      *
      * Migrated from iznik-server/scripts/cron/email_validate.php
      */
-    public function validateEmails(): array
+    public function validateEmails(bool $dryRun = false): array
     {
         $stats = [
             'total' => 0,
@@ -421,9 +898,11 @@ class UserManagementService
 
         foreach ($emails as $email) {
             if (!preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', $email->email)) {
-                DB::table('users_emails')->where('id', $email->id)->delete();
+                if (!$dryRun) {
+                    DB::table('users_emails')->where('id', $email->id)->delete();
+                    Log::info("Deleted invalid email: {$email->email} for user #{$email->userid}");
+                }
                 $stats['invalid']++;
-                Log::info("Deleted invalid email: {$email->email} for user #{$email->userid}");
             }
 
             if ($stats['total'] > 0 && ($stats['invalid'] + ($stats['total'] - $stats['invalid'])) % 1000 === 0) {
@@ -445,7 +924,7 @@ class UserManagementService
      *
      * Migrated from iznik-server User::ratingVisibility()
      */
-    public function updateRatingVisibility(string $since = '1 hour ago'): array
+    public function updateRatingVisibility(string $since = '1 hour ago', bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -502,12 +981,14 @@ class UserManagementService
             $oldVisible = (bool) $rating->visible;
 
             if ($visible !== $oldVisible) {
-                DB::table('ratings')
-                    ->where('id', $rating->id)
-                    ->update([
-                        'visible' => $visible,
-                        'timestamp' => now(),
-                    ]);
+                if (!$dryRun) {
+                    DB::table('ratings')
+                        ->where('id', $rating->id)
+                        ->update([
+                            'visible' => $visible,
+                            'timestamp' => now(),
+                        ]);
+                }
 
                 if ($visible) {
                     $stats['made_visible']++;
@@ -525,7 +1006,7 @@ class UserManagementService
     /**
      * Clean up inactive user data for GDPR compliance.
      */
-    public function cleanupInactiveUsers(int $yearsInactive = 3): int
+    public function cleanupInactiveUsers(int $yearsInactive = 3, bool $dryRun = false): int
     {
         $cutoff = now()->subYears($yearsInactive);
         $cleaned = 0;
@@ -536,16 +1017,18 @@ class UserManagementService
             ->get();
 
         foreach ($inactiveUsers as $user) {
-            // Anonymize rather than delete.
-            $user->update([
-                'firstname' => 'Deleted',
-                'lastname' => 'User',
-                'fullname' => 'Deleted User',
-                'deleted' => now(),
-            ]);
+            if (!$dryRun) {
+                // Anonymize rather than delete.
+                $user->update([
+                    'firstname' => 'Deleted',
+                    'lastname' => 'User',
+                    'fullname' => 'Deleted User',
+                    'deleted' => now(),
+                ]);
 
-            // Remove email addresses.
-            UserEmail::where('userid', $user->id)->delete();
+                // Remove email addresses.
+                UserEmail::where('userid', $user->id)->delete();
+            }
 
             $cleaned++;
         }

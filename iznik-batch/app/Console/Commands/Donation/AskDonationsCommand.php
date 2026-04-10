@@ -11,7 +11,8 @@ class AskDonationsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'mail:donations:ask';
+    protected $signature = 'mail:donations:ask
+                            {--dry-run : Show what would be sent without actually sending}';
 
     /**
      * The console command description.
@@ -23,10 +24,16 @@ class AskDonationsCommand extends Command
      */
     public function handle(DonationService $donationService): int
     {
-        Log::info('Starting donation ask process');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        Log::info('Starting donation ask process', ['dry_run' => $dryRun]);
         $this->info('Asking for donations...');
 
-        $stats = $donationService->askForDonations();
+        $stats = $donationService->askForDonations($dryRun);
 
         $this->table(
             ['Metric', 'Value'],

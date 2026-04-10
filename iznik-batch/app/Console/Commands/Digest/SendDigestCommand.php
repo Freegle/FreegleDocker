@@ -20,7 +20,8 @@ class SendDigestCommand extends Command
                             {frequency : Digest frequency in hours (-1 for immediate, 1 for hourly, etc.)}
                             {--mod=1 : Modulo divisor for sharding}
                             {--val=0 : Modulo value for this instance}
-                            {--group= : Process only a specific group ID}';
+                            {--group= : Process only a specific group ID}
+                            {--dry-run : Show what would be sent without actually sending}';
 
     /**
      * The console command description.
@@ -36,6 +37,11 @@ class SendDigestCommand extends Command
         $this->mod = (int) $this->option('mod');
         $this->val = (int) $this->option('val');
         $groupId = $this->option('group');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
 
         // Validate frequency.
         if (!in_array($frequency, DigestService::getValidFrequencies())) {
@@ -86,7 +92,7 @@ class SendDigestCommand extends Command
             try {
                 $this->line("Processing group: {$group->nameshort} (ID: {$group->id})");
 
-                $stats = $digestService->sendDigestForGroup($group, $frequency);
+                $stats = $digestService->sendDigestForGroup($group, $frequency, $dryRun);
 
                 $totalStats['groups_processed']++;
                 $totalStats['members_processed'] += $stats['members_processed'];

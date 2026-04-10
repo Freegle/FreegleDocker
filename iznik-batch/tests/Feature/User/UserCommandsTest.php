@@ -17,9 +17,9 @@ class UserCommandsTest extends TestCase
     public function test_process_bounced_displays_stats(): void
     {
         $this->artisan('mail:bounced')
-            ->expectsOutputToContain('Processing bounced emails')
-            ->expectsOutputToContain('Processed:')
-            ->expectsOutputToContain('Marked invalid:')
+            ->expectsOutputToContain('Processing bounce suspensions')
+            ->expectsOutputToContain('Suspended (permanent bounces >= 3):')
+            ->expectsOutputToContain('Suspended (total bounces >= 50):')
             ->assertExitCode(0);
     }
 
@@ -97,6 +97,9 @@ class UserCommandsTest extends TestCase
         $user = $this->createTestUser();
         $group = $this->createTestGroup();
         $this->createMembership($user, $group);
+
+        // Set lastaccess to recent so user is selected (V1: lastaccess > 2 days ago).
+        $user->update(['lastaccess' => now()]);
 
         // Create some messages to generate kudos.
         for ($i = 0; $i < 3; $i++) {

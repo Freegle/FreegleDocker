@@ -18,6 +18,8 @@ class AutoRepostServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Ensure feature flag is enabled for tests.
+        config(['freegle.mail.enabled_types' => config('freegle.mail.enabled_types') . ',AutoRepost']);
         $this->service = new AutoRepostService();
     }
 

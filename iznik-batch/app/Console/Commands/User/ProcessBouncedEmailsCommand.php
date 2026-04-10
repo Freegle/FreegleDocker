@@ -16,7 +16,7 @@ class ProcessBouncedEmailsCommand extends Command
     /**
      * The console command description.
      */
-    protected $description = 'Process bounced emails and mark them as invalid';
+    protected $description = 'Suspend mail for users with excessive bounces (matches V1 bounce_users.php)';
 
     /**
      * Execute the console command.
@@ -29,16 +29,16 @@ class ProcessBouncedEmailsCommand extends Command
             $this->info('DRY RUN — no changes will be made.');
         }
 
-        Log::info('Starting bounced email processing');
-        $this->info('Processing bounced emails...');
+        Log::info('Starting bounce suspension processing');
+        $this->info('Processing bounce suspensions...');
 
         $stats = $userService->processBouncedEmails($dryRun);
 
         $prefix = $dryRun ? '[DRY RUN] ' : '';
-        $this->info("{$prefix}Processed: {$stats['processed']}");
-        $this->info("{$prefix}Marked invalid: {$stats['marked_invalid']}");
+        $this->info("{$prefix}Suspended (permanent bounces >= 3): {$stats['permanent_suspended']}");
+        $this->info("{$prefix}Suspended (total bounces >= 50): {$stats['total_suspended']}");
 
-        Log::info('Bounced email processing complete', $stats);
+        Log::info('Bounce suspension processing complete', $stats);
 
         return Command::SUCCESS;
     }

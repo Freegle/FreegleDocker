@@ -8,14 +8,14 @@ use App\Traits\LogsBatchJob;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
-class UpdateMessageCountsCommand extends Command
+class ReopenClosedChatsCommand extends Command
 {
     use GracefulShutdown, LogsBatchJob;
 
-    protected $signature = 'chats:update-counts
-                            {--dry-run : Show what would be updated without actually changing}';
+    protected $signature = 'chats:reopen-closed
+                            {--dry-run : Show what would be reopened without actually changing}';
 
-    protected $description = 'Update chat room message counts and reopen closed User2Mod chats with unseen messages';
+    protected $description = 'Reopen closed User2Mod chats where moderators have sent new messages';
 
     public function handle(ChatMaintenanceService $service): int
     {
@@ -28,13 +28,13 @@ class UpdateMessageCountsCommand extends Command
         }
 
         return $this->runWithLogging(function () use ($service, $dryRun) {
-            Log::info('Starting chat message count update', ['dry_run' => $dryRun]);
-            $this->info('Updating chat message counts...');
+            Log::info('Starting reopen closed chats', ['dry_run' => $dryRun]);
+            $this->info('Reopening closed User2Mod chats...');
 
             $stats = $service->updateMessageCounts($dryRun);
 
-            $this->info("Updated {$stats['rooms_updated']} rooms, reopened {$stats['rooms_reopened']} closed chats.");
-            Log::info('Chat message count update complete', $stats);
+            $this->info("Reopened {$stats['rooms_reopened']} closed chats.");
+            Log::info('Reopen closed chats complete', $stats);
 
             return Command::SUCCESS;
         });

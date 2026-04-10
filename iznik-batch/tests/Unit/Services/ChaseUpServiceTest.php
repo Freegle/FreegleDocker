@@ -18,6 +18,8 @@ class ChaseUpServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Ensure feature flag is enabled for tests.
+        config(['freegle.mail.enabled_types' => config('freegle.mail.enabled_types') . ',ChaseUp']);
         $this->service = new ChaseUpService();
     }
 
