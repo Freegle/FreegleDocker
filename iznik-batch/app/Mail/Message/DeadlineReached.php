@@ -20,6 +20,14 @@ class DeadlineReached extends MjmlMailable
 
     public User $user;
 
+    public string $extendUrl;
+
+    public string $completedUrl;
+
+    public string $withdrawUrl;
+
+    public string $outcomeType;
+
     /**
      * Create a new message instance.
      */
@@ -29,6 +37,16 @@ class DeadlineReached extends MjmlMailable
 
         $this->message = $message;
         $this->user = $user;
+
+        $userSite = config('freegle.sites.user');
+        $messageId = $message->id;
+
+        $this->extendUrl = "{$userSite}/mypost/{$messageId}/extend";
+        $this->completedUrl = "{$userSite}/mypost/{$messageId}/completed";
+        $this->withdrawUrl = "{$userSite}/mypost/{$messageId}/withdraw";
+        $this->outcomeType = $message->type === Message::TYPE_OFFER
+            ? Message::OUTCOME_TAKEN
+            : Message::OUTCOME_RECEIVED;
 
         $group = $message->groups->first();
 
@@ -48,40 +66,20 @@ class DeadlineReached extends MjmlMailable
     public function build(): static
     {
         $userSite = config('freegle.sites.user');
-        $messageId = $this->message->id;
         $group = $this->message->groups->first();
         $groupName = $group?->nameshort ?? 'Freegle';
-        $outcomeType = $this->message->type === Message::TYPE_OFFER
-            ? Message::OUTCOME_TAKEN
-            : Message::OUTCOME_RECEIVED;
 
         return $this->to($this->user->email_preferred, $this->user->displayname)
             ->subject($this->getSubject())
             ->mjmlView('emails.mjml.message.deadline-reached', array_merge([
                 'post' => $this->message,
                 'user' => $this->user,
-                'outcomeType' => $outcomeType,
+                'outcomeType' => $this->outcomeType,
                 'groupName' => $groupName,
-                'extendUrl' => $this->trackedUrl(
-                    "{$userSite}/mypost/{$messageId}/extend",
-                    'extend_button',
-                    'extend'
-                ),
-                'completedUrl' => $this->trackedUrl(
-                    "{$userSite}/mypost/{$messageId}/completed",
-                    'completed_button',
-                    'completed'
-                ),
-                'withdrawUrl' => $this->trackedUrl(
-                    "{$userSite}/mypost/{$messageId}/withdraw",
-                    'withdraw_button',
-                    'withdraw'
-                ),
-                'settingsUrl' => $this->trackedUrl(
-                    "{$userSite}/settings",
-                    'footer_settings',
-                    'settings'
-                ),
+                'extendUrl' => $this->trackedUrl($this->extendUrl, 'extend_button', 'extend'),
+                'completedUrl' => $this->trackedUrl($this->completedUrl, 'completed_button', 'completed'),
+                'withdrawUrl' => $this->trackedUrl($this->withdrawUrl, 'withdraw_button', 'withdraw'),
+                'settingsUrl' => $this->trackedUrl("{$userSite}/settings", 'footer_settings', 'settings'),
                 'email' => $this->user->email_preferred,
             ], $this->getTrackingData()))
             ->applyLogging('DeadlineReached');
