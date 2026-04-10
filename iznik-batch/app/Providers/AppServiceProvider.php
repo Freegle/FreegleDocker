@@ -6,6 +6,7 @@ use App\Console\FlockEventMutex;
 use App\Listeners\CronJobStatusListener;
 use App\Listeners\SpamCheckListener;
 use App\Services\LokiService;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Events\ScheduledTaskStarting;
 use Illuminate\Console\Scheduling\EventMutex;
@@ -43,6 +44,28 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->checkRequiredBinaries();
         $this->registerSpamCheckListener();
+        $this->blockMigrationsInProduction();
+    }
+
+    /**
+     * Block artisan migrate commands in production.
+     * Migrations on the Galera cluster must only be run manually by the operator.
+     */
+    protected function blockMigrationsInProduction(): void
+    {
+        if (!$this->app->environment('production')) {
+            return;
+        }
+
+        Event::listen(CommandStarting::class, function (CommandStarting $event) {
+            $blocked = ['migrate', 'migrate:fresh', 'migrate:refresh', 'migrate:reset', 'migrate:rollback'];
+
+            if (in_array($event->command, $blocked)) {
+                $event->output->writeln('<error>BLOCKED: artisan ' . $event->command . ' is not allowed in production.</error>');
+                $event->output->writeln('<comment>Migrations must be run manually by the operator on the database directly.</comment>');
+                exit(1);
+            }
+        });
     }
 
     /**
