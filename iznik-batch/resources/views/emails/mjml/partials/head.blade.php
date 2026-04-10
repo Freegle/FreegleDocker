@@ -5,6 +5,7 @@
     a { color: #338808; text-decoration: none; font-weight: bold }
     ol { margin-top: 0; margin-bottom: 0; padding-left: 2.4em; }
     li { margin: 0.5em 0; }
+    @if(!empty($styles)){!! $styles !!}@endif
   </mj-style>
   <mj-attributes>
     {{-- Modern system font stack: San Francisco (Apple), Segoe UI (Windows), Roboto (Android) --}}
@@ -22,6 +23,8 @@
     <mj-class name="text-header" color="#1d6607" />
     <mj-class name="btn-success" background-color="#338808" color="white" font-weight="bold" />
     <mj-class name="btn-secondary" background-color="#00A1CB" color="white" font-weight="bold" />
+    <mj-class name="btn-dark" background-color="#333333" color="white" font-weight="bold" />
+    <mj-class name="btn-warning" background-color="#e38d13" color="white" font-weight="bold" />
     {{-- ModTools brand colors --}}
     <mj-class name="bg-modtools" background-color="#396aa3" />
     <mj-class name="bg-modtools-dark" background-color="#2b5280" />

@@ -3,6 +3,8 @@
 namespace App\Mail\Message;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
+use App\Mail\Traits\TrackableEmail;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
@@ -15,6 +17,9 @@ use Illuminate\Mail\Mailables\Envelope;
  */
 class ModStdMessageMail extends MjmlMailable
 {
+    use TrackableEmail;
+    use LoggableEmail;
+
     protected string $mjmlTemplate = 'emails.mjml.message.mod-std-message';
 
     public function __construct(
@@ -31,14 +36,23 @@ class ModStdMessageMail extends MjmlMailable
     ) {
         parent::__construct();
 
-        $this->mjmlData = [
+        $this->initTracking(
+            'ModStdMessage',
+            $this->recipientEmail,
+            $this->recipientUserId,
+            null,
+            $this->stdSubject,
+            ['message_id' => $this->msgId]
+        );
+
+        $this->mjmlData = array_merge([
             'modName' => $this->modName,
             'groupName' => $this->groupName,
             'body' => $this->stdBody,
             'messageSubject' => $this->messageSubject,
             'userSite' => config('freegle.sites.user'),
             'email' => $this->recipientEmail,
-        ];
+        ], $this->getTrackingData());
     }
 
     public function envelope(): Envelope

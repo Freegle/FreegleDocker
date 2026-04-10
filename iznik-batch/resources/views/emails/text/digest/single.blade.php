@@ -1,12 +1,12 @@
-{{ $message->type === 'Offer' ? 'OFFER' : 'WANTED' }} on {!! $group->nameshort !!}
+{{ $post->type === 'Offer' ? 'OFFER' : 'WANTED' }} on {!! $group->nameshort !!}
 
-{!! $message->subject !!}
+{!! $post->subject !!}
 
 @if($messageText)
 {!! \Illuminate\Support\Str::limit($messageText, 500) !!}
 
 @endif
-@if($message->type === 'Offer')
+@if($post->type === 'Offer')
 If you're interested, click here: {!! $messageUrl !!}
 @else
 If you can help, click here: {!! $messageUrl !!}

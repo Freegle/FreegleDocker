@@ -3,6 +3,8 @@
 namespace App\Mail\Session;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
+use App\Mail\Traits\TrackableEmail;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
@@ -13,12 +15,23 @@ use Illuminate\Mail\Mailables\Envelope;
  */
 class VerifyEmailMail extends MjmlMailable
 {
+    use TrackableEmail;
+    use LoggableEmail;
+
     public function __construct(
         public readonly int $userId,
         public readonly string $email,
         public readonly string $confirmUrl,
     ) {
         parent::__construct();
+
+        $this->initTracking(
+            'VerifyEmail',
+            $this->email,
+            $this->userId,
+            null,
+            $this->getSubject()
+        );
     }
 
     public function envelope(): Envelope
@@ -41,11 +54,12 @@ class VerifyEmailMail extends MjmlMailable
     {
         return $this->mjmlView(
             'emails.mjml.session.verify-email',
-            [
+            array_merge([
                 'email' => $this->email,
                 'confirmUrl' => $this->confirmUrl,
-            ]
-        )->to($this->email);
+            ], $this->getTrackingData())
+        )->to($this->email)
+            ->applyLogging('VerifyEmail');
     }
 
     protected function getRecipientUserId(): ?int
