@@ -122,7 +122,7 @@ class UserManagementService
      * Emails that have bounced (bounced timestamp is set) and were validated
      * are marked as invalid (validated set to NULL).
      */
-    public function processBouncedEmails(): array
+    public function processBouncedEmails(bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -137,15 +137,17 @@ class UserManagementService
             ->get();
 
         foreach ($bouncedEmails as $email) {
-            UserEmail::where('id', $email->id)
-                ->update(['validated' => null]);
+            if (!$dryRun) {
+                UserEmail::where('id', $email->id)
+                    ->update(['validated' => null]);
 
-            $this->lokiService->logBounceEvent(
-                $email->email ?? '',
-                $email->userid ?? 0,
-                true,
-                'Bounced email marked invalid',
-            );
+                $this->lokiService->logBounceEvent(
+                    $email->email ?? '',
+                    $email->userid ?? 0,
+                    true,
+                    'Bounced email marked invalid',
+                );
+            }
 
             $stats['marked_invalid']++;
             $stats['processed']++;

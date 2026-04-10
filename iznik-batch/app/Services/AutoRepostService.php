@@ -278,10 +278,9 @@ class AutoRepostService
             return false;
         }
 
-        // V1 bug preserved for parity: V1 uses $interval * 60 * 60 where $interval
-        // is in days. So offer(3) → 3 * 3600 = 10800s = 3 hours, not 3 days.
-        // V1 line 4691: $recentreply = $max && ($now - strtotime($max)) < $interval * 60 * 60;
-        return (time() - strtotime($maxDate)) < $intervalDays * 60 * 60;
+        // V1 bug: used $interval * 60 * 60 where $interval is in days, so offer(3) checked
+        // 3 hours instead of 3 days. We fix this to use the correct day-to-seconds conversion.
+        return (time() - strtotime($maxDate)) < $intervalDays * 24 * 60 * 60;
     }
 
     /**

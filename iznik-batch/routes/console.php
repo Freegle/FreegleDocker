@@ -54,6 +54,55 @@ Schedule::command('data:update-cpi')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Auto-approve pending messages after 48 hours.
+// V1: cron/autoapprove.php
+Schedule::command('messages:auto-approve')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Auto-repost messages based on group repost settings.
+// V1: cron/autorepost.php
+Schedule::command('messages:auto-repost')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Chase up messages with replies but no outcome.
+// V1: cron/chaseup.php
+Schedule::command('messages:chase-up')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Deduplicate searches.
+// V1: cron/searchdups.php
+Schedule::command('cleanup:search-duplicates')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Deduplicate chat messages.
+// V1: cron/chatdups.php
+Schedule::command('cleanup:chat-duplicates')
+    ->everyTwoHours()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Clean up old sessions.
+// V1: cron/purge_sessions.php
+Schedule::command('cleanup:sessions')
+    ->dailyAt('03:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Process bounced emails — mark as invalid.
+// V1: cron/bounce.php + bounce_users.php
+Schedule::command('mail:bounced')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // =============================================================================
 // DISABLED COMMANDS (to be enabled when ready)
 // =============================================================================
@@ -101,27 +150,6 @@ Schedule::command('messages:process-expired --spatial')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Auto-approve pending messages after 48 hours.
-// V1: cron/autoapprove.php
-Schedule::command('messages:auto-approve')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Auto-repost messages based on group repost settings.
-// V1: cron/autorepost.php
-Schedule::command('messages:auto-repost')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Chase up messages with replies but no outcome.
-// V1: cron/chaseup.php
-Schedule::command('messages:chase-up')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
 // Purge operations - run daily at off-peak hours.
 Schedule::command('purge:chats')
     ->dailyAt('02:00')
@@ -133,25 +161,10 @@ Schedule::command('purge:messages')
     ->withoutOverlapping()
     ->runInBackground();
 
-Schedule::command('cleanup:sessions')
-    ->dailyAt('03:00')
-    ->withoutOverlapping()
-    ->runInBackground();
-
 Schedule::command('purge:logs')
     ->dailyAt('04:00')
     ->withoutOverlapping()
     ->runInBackground();
-Schedule::command('cleanup:search-duplicates')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-Schedule::command('cleanup:chat-duplicates')
-    ->everyTwoHours()
-    ->withoutOverlapping()
-    ->runInBackground();
-
 Schedule::command('emails:validate')
     ->dailyAt('04:00')
     ->withoutOverlapping()
@@ -194,11 +207,6 @@ Schedule::command('mail:donations:ask')
 // User management commands.
 Schedule::command('users:update-kudos')
     ->dailyAt('04:00')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-Schedule::command('mail:bounced')
-    ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
 
