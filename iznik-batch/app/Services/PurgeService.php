@@ -765,9 +765,16 @@ class PurgeService
      *
      * Migrated from purge_sessions.php
      */
-    public function purgeSessions(int $daysOld = 31): int
+    public function purgeSessions(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('sessions')
+                ->where('lastactive', '<', $cutoff)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -793,14 +800,15 @@ class PurgeService
      *
      * Migrated from purge_sessions.php
      */
-    public function purgeOldLoginLinks(int $daysOld = 31): int
+    public function purgeOldLoginLinks(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
 
-        return DB::table('users_logins')
+        $query = DB::table('users_logins')
             ->where('lastaccess', '<', $cutoff)
-            ->where('type', 'Link')
-            ->delete();
+            ->where('type', 'Link');
+
+        return $dryRun ? $query->count() : $query->delete();
     }
 
     /**
@@ -811,27 +819,31 @@ class PurgeService
      *
      * Migrated from searchdups.php
      */
-    public function deduplicateSearchHistory(int $daysBack = 2): int
+    public function deduplicateSearchHistory(int $daysBack = 2, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysBack)->startOfDay();
         $deleted = 0;
 
         $searches = DB::table('search_history')
             ->where('date', '>', $cutoff)
+            ->orderBy('userid')
             ->orderBy('groups')
             ->orderBy('id')
-            ->get(['id', 'term', 'locationid', 'groups']);
+            ->get(['id', 'userid', 'term', 'locationid', 'groups']);
 
         $last = null;
 
         foreach ($searches as $search) {
             if ($last !== null) {
-                $isDuplicate = $search->term === $last->term
+                $isDuplicate = $search->userid === $last->userid
+                    && $search->term === $last->term
                     && $search->locationid === $last->locationid
                     && $search->groups === $last->groups;
 
                 if ($isDuplicate) {
-                    DB::table('search_history')->where('id', $search->id)->delete();
+                    if (! $dryRun) {
+                        DB::table('search_history')->where('id', $search->id)->delete();
+                    }
                     $deleted++;
                 }
             }
@@ -850,7 +862,7 @@ class PurgeService
      *
      * Migrated from chatdups.php
      */
-    public function deduplicateChatMessages(int $daysBack = 3): int
+    public function deduplicateChatMessages(int $daysBack = 3, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysBack)->startOfDay();
         $deleted = 0;
@@ -867,20 +879,25 @@ class PurgeService
                 ->where('date', '>', $cutoff)
                 ->where('chatid', $chat->chatid)
                 ->orderBy('id')
-                ->get(['id', 'message', 'refmsgid']);
+                ->get(['id', 'userid', 'type', 'message', 'refmsgid', 'refchatid', 'imageid', 'scheduleid']);
 
-            $lastMessage = null;
-            $lastRefmsgid = null;
+            $last = null;
 
             foreach ($messages as $msg) {
-                if ($lastMessage !== null
-                    && $lastMessage === $msg->message
-                    && $lastRefmsgid === $msg->refmsgid) {
-                    DB::table('chat_messages')->where('id', $msg->id)->delete();
+                if ($last !== null
+                    && $last->userid === $msg->userid
+                    && $last->type === $msg->type
+                    && $last->message === $msg->message
+                    && $last->refmsgid === $msg->refmsgid
+                    && $last->refchatid === $msg->refchatid
+                    && $last->imageid === $msg->imageid
+                    && $last->scheduleid === $msg->scheduleid) {
+                    if (! $dryRun) {
+                        DB::table('chat_messages')->where('id', $msg->id)->delete();
+                    }
                     $deleted++;
                 } else {
-                    $lastMessage = $msg->message;
-                    $lastRefmsgid = $msg->refmsgid;
+                    $last = $msg;
                 }
             }
         }
