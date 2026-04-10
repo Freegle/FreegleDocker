@@ -58,27 +58,38 @@ export default defineEventHandler(async (event) => {
     docker exec -w /app ${prefix}-apiv2 sh -c "${testCmd} 2>&1"
   `], { stdio: 'pipe' })
 
+  // Buffer for incomplete lines split across chunks.
+  let stdoutBuffer = ''
+
   testProcess.stdout.on('data', (data) => {
     const text = data.toString()
     appendTestLogs('go', text)
 
-    const state = getTestState('go')
-    const lines = text.split('\n')
+    // Prepend any leftover from the previous chunk.
+    const combined = stdoutBuffer + text
+    const parts = combined.split('\n')
+    // Last element is incomplete (no trailing newline) — save for next chunk.
+    stdoutBuffer = parts.pop() || ''
 
-    for (const line of lines) {
-      // Count test starts: === RUN   TestName
-      const runMatch = line.match(/^=== RUN\s+(\S+)/)
+    const state = getTestState('go')
+
+    for (const line of parts) {
+      // Count test starts: === RUN   TestName (top-level only, exclude subtests with /)
+      const runMatch = line.match(/=== RUN\s+(\S+)/)
       if (runMatch) {
         state.progress.current = runMatch[1]
-        state.progress.total++
+        if (!runMatch[1].includes('/')) {
+          state.progress.total++
+        }
       }
-      // Count passes: --- PASS: TestName
-      if (line.match(/^--- PASS:/)) {
+      // Count passes: --- PASS: TestName (top-level only).
+      // Exclude subtests which have 4+ leading spaces: "    --- PASS:"
+      if (line.match(/--- PASS:/) && !line.match(/^\s{4,}--- PASS:/)) {
         state.progress.passed++
         state.progress.completed++
       }
-      // Count failures: --- FAIL: TestName
-      if (line.match(/^--- FAIL:/)) {
+      // Count failures: --- FAIL: TestName (top-level only)
+      if (line.match(/--- FAIL:/) && !line.match(/^\s{4,}--- FAIL:/)) {
         state.progress.failed++
         state.progress.completed++
       }
@@ -98,6 +109,26 @@ export default defineEventHandler(async (event) => {
   })
 
   testProcess.on('close', (code) => {
+    // Process any remaining buffered output.
+    if (stdoutBuffer.length > 0) {
+      const state = getTestState('go')
+      const line = stdoutBuffer
+      const runMatch = line.match(/=== RUN\s+(\S+)/)
+      if (runMatch && !runMatch[1].includes('/')) {
+        state.progress.total++
+      }
+      if (line.match(/--- PASS:/) && !line.match(/^\s{4,}--- PASS:/)) {
+        state.progress.passed++
+        state.progress.completed++
+      }
+      if (line.match(/--- FAIL:/) && !line.match(/^\s{4,}--- FAIL:/)) {
+        state.progress.failed++
+        state.progress.completed++
+      }
+      setTestState('go', state)
+      stdoutBuffer = ''
+    }
+
     const state = getTestState('go')
     const p = state.progress
     setTestState('go', {

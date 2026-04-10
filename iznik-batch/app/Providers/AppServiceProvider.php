@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use App\Console\FlockEventMutex;
+use App\Listeners\CronJobStatusListener;
 use App\Listeners\SpamCheckListener;
 use App\Services\LokiService;
+use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Console\Events\ScheduledTaskStarting;
 use Illuminate\Console\Scheduling\EventMutex;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Event;
@@ -49,6 +52,10 @@ class AppServiceProvider extends ServiceProvider
     protected function registerSpamCheckListener(): void
     {
         Event::listen(MessageSending::class, SpamCheckListener::class);
+
+        $cronListener = new CronJobStatusListener();
+        Event::listen(ScheduledTaskStarting::class, [$cronListener, 'handleStarting']);
+        Event::listen(ScheduledTaskFinished::class, [$cronListener, 'handleFinished']);
     }
 
     /**

@@ -19,6 +19,7 @@ return new class extends Migration
             $table->timestamp('last_run_at')->nullable();
             $table->string('last_status', 50)->nullable();
             $table->text('last_summary')->nullable();
+            $table->mediumText('last_log')->nullable();
             $table->timestamp('updated_at')->useCurrent();
         });
     }

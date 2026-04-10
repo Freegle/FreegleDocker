@@ -185,7 +185,7 @@ class ProcessBackgroundTasksCommand extends Command
             'email_verify' => $this->handleEmailVerify($data, $spooler, $shouldSpool),
             'refer_to_support' => $this->handleReferToSupport($data, $spooler, $shouldSpool),
             'message_outcome' => $this->handleMessageOutcome($data),
-            'housekeeper_notify' => $this->handleHousekeeperNotify($data, $spooler, $shouldSpool),
+            'housekeeper_notify' => $this->handleHousekeeperNotify($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -990,13 +990,10 @@ class ProcessBackgroundTasksCommand extends Command
     /**
      * Process a housekeeping notification from the Chrome extension.
      */
-    protected function handleHousekeeperNotify(
-        array $data,
-        EmailSpoolerService $spooler,
-        bool $shouldSpool
-    ): void {
+    protected function handleHousekeeperNotify(array $data): void
+    {
         $service = app(HousekeeperService::class);
-        $service->process($data, $spooler, $shouldSpool);
+        $service->process($data);
     }
 
     /**
