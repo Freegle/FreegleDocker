@@ -1,6 +1,8 @@
 import { spawn, execSync } from 'child_process'
 import { getTestState, setTestState, appendTestLogs, isTestRunning } from '../../utils/testState'
 
+const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+
 export default defineEventHandler(async (event) => {
   console.log('Starting PHP tests...')
 
@@ -31,7 +33,7 @@ export default defineEventHandler(async (event) => {
 
   // Start the container
   try {
-    execSync('docker start freegle-apiv1-phpunit', {
+    execSync(`docker start ${prefix}-apiv1-phpunit`, {
       encoding: 'utf8',
       timeout: 60000,
     })
@@ -62,7 +64,7 @@ async function waitForHealthyAndRunTests(filter: string) {
   while (Date.now() - startTime < maxWait) {
     try {
       const health = execSync(
-        'docker inspect --format="{{.State.Health.Status}}" freegle-apiv1-phpunit 2>/dev/null || echo "unknown"',
+        `docker inspect --format="{{.State.Health.Status}}" ${prefix}-apiv1-phpunit 2>/dev/null || echo "unknown"`,
         { encoding: 'utf8' }
       ).trim()
 
@@ -85,7 +87,7 @@ async function waitForHealthyAndRunTests(filter: string) {
   setTestState('php', { message: 'Setting up test environment...' })
   try {
     execSync(
-      'docker exec freegle-apiv1-phpunit sh -c "cd /var/www/iznik && php install/testenv.php"',
+      `docker exec ${prefix}-apiv1-phpunit sh -c "cd /var/www/iznik && php install/testenv.php"`,
       { encoding: 'utf8', timeout: 60000 }
     )
     appendTestLogs('php', 'Test environment set up\n')
@@ -98,7 +100,7 @@ async function waitForHealthyAndRunTests(filter: string) {
   setTestState('php', { message: 'Running PHPUnit tests...' })
 
   const testProcess = spawn('sh', ['-c', `
-    docker exec -w /var/www/iznik freegle-apiv1-phpunit sh -c "
+    docker exec -w /var/www/iznik ${prefix}-apiv1-phpunit sh -c "
       /var/www/iznik/run-phpunit.sh ${testPath} 2>&1"
   `], { stdio: 'pipe' })
 

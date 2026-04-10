@@ -12,7 +12,8 @@ class DeduplicateSearchesCommand extends Command
      * The name and signature of the console command.
      */
     protected $signature = 'cleanup:search-duplicates
-                            {--days=2 : Days back to check for duplicates}';
+                            {--days=2 : Days back to check for duplicates}
+                            {--dry-run : Show what would be deleted without deleting}';
 
     /**
      * The console command description.
@@ -25,13 +26,18 @@ class DeduplicateSearchesCommand extends Command
     public function handle(PurgeService $purgeService): int
     {
         $days = (int) $this->option('days');
+        $dryRun = (bool) $this->option('dry-run');
 
-        Log::info('Starting search deduplication', ['days' => $days]);
+        if ($dryRun) {
+            $this->warn('DRY RUN — no data will be deleted.');
+        }
+
+        Log::info('Starting search deduplication', ['days' => $days, 'dry_run' => $dryRun]);
         $this->info("Deduplicating searches from the last {$days} days...");
 
-        $deleted = $purgeService->deduplicateSearchHistory($days);
+        $deleted = $purgeService->deduplicateSearchHistory($days, $dryRun);
 
-        $this->info("Deleted {$deleted} duplicate search entries.");
+        $this->info(($dryRun ? 'Would delete' : 'Deleted') . " {$deleted} duplicate search entries.");
         Log::info('Search deduplication complete', ['deleted' => $deleted]);
 
         return Command::SUCCESS;

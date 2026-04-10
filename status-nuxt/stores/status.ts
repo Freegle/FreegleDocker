@@ -16,6 +16,8 @@ interface StatusStoreState {
   lastUpdated: Date | null
   error: string | null
   liveV2: LiveV2State
+  project: string
+  branch: string
 }
 
 export const useStatusStore = defineStore('status', {
@@ -26,6 +28,8 @@ export const useStatusStore = defineStore('status', {
     lastUpdated: null,
     error: null,
     liveV2: { freegle: false, modtools: false, apiv2LiveRunning: false, liveDbPort: '1234' },
+    project: '',
+    branch: '',
   }),
 
   getters: {
@@ -90,6 +94,8 @@ export const useStatusStore = defineStore('status', {
           }
         }
 
+        this.project = response.project || ''
+        this.branch = response.branch || ''
         this.lastUpdated = new Date()
       }
       catch (err) {

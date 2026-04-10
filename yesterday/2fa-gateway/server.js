@@ -327,22 +327,41 @@ const loginPageHTML = `
         {{ERROR}}
     </div>
     <script>
-        fetch('/apiv2/latestmessage')
+        fetch('/api/restore-status')
             .then(response => response.json())
             .then(data => {
                 const statusEl = document.getElementById('backup-status');
-                if (data.ret === 0 && data.latestmessage) {
-                    const date = new Date(data.latestmessage);
-                    statusEl.textContent = 'Latest message: ' + date.toLocaleString();
-                    statusEl.style.color = '#4A9025';
+                if (data.inProgress) {
+                    const mins = data.eta && data.eta.estimatedMinutesRemaining;
+                    const etaText = mins != null
+                        ? (mins <= 1 ? 'less than a minute' : '~' + mins + ' minutes')
+                        : '';
+                    statusEl.innerHTML = '⏳ Restore in progress: ' + (data.message || data.status)
+                        + (etaText ? '<br>ETA: ' + etaText : '');
+                    statusEl.style.color = '#e65100';
                 } else {
-                    statusEl.textContent = 'Restoring...';
-                    statusEl.style.color = '#666';
+                    // Check the latest message date
+                    fetch('/apiv2/latestmessage')
+                        .then(r => r.json())
+                        .then(d => {
+                            if (d.ret === 0 && d.latestmessage) {
+                                const date = new Date(d.latestmessage);
+                                statusEl.textContent = 'Latest message: ' + date.toLocaleString();
+                                statusEl.style.color = '#4A9025';
+                            } else {
+                                statusEl.textContent = 'System ready';
+                                statusEl.style.color = '#4A9025';
+                            }
+                        })
+                        .catch(() => {
+                            statusEl.textContent = 'System ready';
+                            statusEl.style.color = '#4A9025';
+                        });
                 }
             })
             .catch(err => {
                 const statusEl = document.getElementById('backup-status');
-                statusEl.textContent = 'Restoring...';
+                statusEl.textContent = 'Checking status...';
                 statusEl.style.color = '#666';
             });
     </script>
@@ -404,6 +423,79 @@ const accessDeniedHTML = `
 </body>
 </html>
 `;
+
+// Restore in progress page
+function restoreInProgressHTML(status) {
+    const eta = status.eta || {};
+    const mins = eta.estimatedMinutesRemaining;
+    const etaText = mins != null
+        ? (mins <= 1 ? 'less than a minute' : `~${mins} minutes`)
+        : 'unknown';
+    const phase = eta.currentPhase || status.status || 'unknown';
+    const phaseLabels = {
+        starting: 'Starting restore',
+        stopping: 'Stopping containers',
+        extracting: 'Downloading & extracting backup',
+        decompressing: 'Decompressing database files',
+        preparing: 'Preparing database',
+        restoring_loki: 'Restoring log history',
+        building: 'Building containers',
+        starting_infra: 'Starting infrastructure',
+        starting_apps: 'Starting applications'
+    };
+    const phaseLabel = phaseLabels[phase] || phase;
+    const progress = eta.phaseIndex && eta.totalPhases
+        ? `Step ${eta.phaseIndex} of ${eta.totalPhases}`
+        : '';
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <title>Freegle Yesterday - Restoring</title>
+    <link rel="icon" type="image/png" href="https://www.ilovefreegle.org/icon.png">
+    <meta http-equiv="refresh" content="30">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #5AB12E 0%, #4A9025 100%);
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; margin: 0; padding: 20px;
+        }
+        .container {
+            background: white; padding: 40px; border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2); text-align: center;
+            max-width: 500px; width: 100%;
+        }
+        .logo img { width: 80px; margin-bottom: 15px; }
+        h1 { color: #333; margin: 0 0 10px; font-size: 22px; }
+        .status { color: #666; font-size: 16px; margin: 20px 0; }
+        .phase { color: #4A9025; font-weight: 600; font-size: 18px; margin: 15px 0; }
+        .eta { color: #333; font-size: 20px; font-weight: 600; margin: 15px 0; }
+        .progress-text { color: #999; font-size: 13px; margin-top: 5px; }
+        .spinner {
+            display: inline-block; width: 30px; height: 30px;
+            border: 3px solid #e0e0e0; border-top-color: #5AB12E;
+            border-radius: 50%; animation: spin 1s linear infinite; margin: 15px 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .info { color: #999; font-size: 12px; margin-top: 25px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo"><img src="https://www.ilovefreegle.org/icon.png" alt="Freegle"></div>
+        <h1>Yesterday is restoring</h1>
+        <div class="status">A new backup is being loaded. The system will be available shortly.</div>
+        <div class="spinner"></div>
+        <div class="phase">${phaseLabel}</div>
+        <div class="eta">ETA: ${etaText}</div>
+        ${progress ? `<div class="progress-text">${progress}</div>` : ''}
+        ${status.filesRemaining ? `<div class="progress-text">${status.filesRemaining} files remaining</div>` : ''}
+        <div class="info">This page refreshes automatically every 30 seconds.</div>
+    </div>
+</body>
+</html>`;
+}
 
 // Detect Docker network subnets at runtime
 let containerSubnets = [];
@@ -856,8 +948,58 @@ app.use(requireAuth, checkAdminPorts, createProxyMiddleware({
     },
     onError: (err, req, res) => {
         const duration = Date.now() - (req.proxyStartTime || Date.now());
-        console.error(`Proxy error after ${duration}ms:`, err.message, 'Path:', req.path);
-        res.status(502).send('Bad Gateway');
+        const port = req.headers['x-forwarded-port'];
+        console.error(`Proxy error after ${duration}ms:`, err.message, 'Path:', req.path, 'Port:', port);
+
+        // Check if a restore is in progress by querying yesterday-api
+        const statusReq = http.request({
+            hostname: 'yesterday-api',
+            port: 8082,
+            path: '/api/restore-status',
+            method: 'GET',
+            timeout: 3000
+        }, (statusRes) => {
+            let body = '';
+            statusRes.on('data', chunk => body += chunk);
+            statusRes.on('end', () => {
+                try {
+                    const status = JSON.parse(body);
+                    if (status.inProgress) {
+                        // API ports: return JSON
+                        if (port === '8181' || port === '8193') {
+                            res.setHeader('Content-Type', 'application/json');
+                            res.status(503).json({
+                                ret: 111,
+                                status: 'Restore in progress',
+                                restoreStatus: status.status,
+                                message: status.message,
+                                backupDate: status.backupDate,
+                                eta: status.eta
+                            });
+                        } else {
+                            // Browser ports: show maintenance page
+                            res.status(503).send(restoreInProgressHTML(status));
+                        }
+                    } else {
+                        res.status(502).send('Bad Gateway');
+                    }
+                } catch (e) {
+                    res.status(502).send('Bad Gateway');
+                }
+            });
+        });
+
+        statusReq.on('error', () => {
+            // yesterday-api is also down — generic error
+            res.status(502).send('Bad Gateway');
+        });
+
+        statusReq.on('timeout', () => {
+            statusReq.destroy();
+            res.status(502).send('Bad Gateway');
+        });
+
+        statusReq.end();
     }
 }));
 

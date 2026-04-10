@@ -11,6 +11,9 @@ LOG_FILE="/var/log/yesterday-restore-${BACKUP_DATE}.log"
 COMPOSE_FILE="/var/www/FreegleDocker/docker-compose.yml"
 STATUS_FILE="/var/www/FreegleDocker/yesterday/data/restore-status.json"
 
+# Derive the Docker Compose project name dynamically (defaults to directory name)
+PROJECT_NAME=$(cd /var/www/FreegleDocker && docker compose config --format json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('name','freegledocker'))" 2>/dev/null || echo "freegledocker")
+
 # Helper function to update restore status
 update_status() {
     local status=$1
@@ -121,6 +124,13 @@ docker stop $(docker ps -q) 2>/dev/null || true
 # Remove all containers to prevent name conflicts
 docker rm -f $(docker ps -aq) 2>/dev/null || true
 echo "✅ All containers stopped and removed"
+
+echo "Restarting Yesterday services (status page available during restore)..."
+# Recreate the freegledocker_default network (destroyed by docker compose down above).
+# yesterday-2fa needs this network in its compose config even though backends are down.
+docker network create freegledocker_default 2>/dev/null || true
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d 2>/dev/null || true
+echo "✅ Yesterday services running — users see restore progress instead of connection errors"
 
 echo "Getting volume path..."
 VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}' 2>/dev/null || echo "")
@@ -354,14 +364,14 @@ verify_all_containers() {
         if [ -n "$container" ]; then
             created_containers+=("$container")
         fi
-    done < <(docker-compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed "s/${PROJECT_NAME}-//")
 
     # Get list of exited/unhealthy containers
     while IFS= read -r container; do
         if [ -n "$container" ]; then
             failed_containers+=("$container")
         fi
-    done < <(docker-compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed "s/${PROJECT_NAME}-//")
 
     if [ ${#created_containers[@]} -gt 0 ]; then
         echo "⚠️  Found containers in Created state (not started): ${created_containers[*]}"
@@ -496,7 +506,7 @@ echo ""
 echo "=========================================="
 echo "Starting infrastructure containers first..."
 echo "=========================================="
-update_status "starting" "Starting infrastructure containers..."
+update_status "starting_infra" "Starting infrastructure containers..."
 # Start infrastructure services individually, NOT with 'docker compose up -d' which
 # enforces depends_on health check constraints. After restoring 22GB+ Loki backup,
 # disk I/O is saturated and containers may take longer than their health check windows
@@ -510,7 +520,7 @@ echo "Waiting for critical infrastructure containers..."
 # Wait for Percona to be healthy - restored production DB needs InnoDB init (60-90s)
 wait_for_container_health "percona" 240 || {
     echo "❌ Percona failed to start. Checking logs..."
-    docker logs freegle-percona --tail 20
+    docker logs ${PROJECT_NAME}-percona --tail 20
     exit 1
 }
 
@@ -525,14 +535,14 @@ docker compose start percona
 # The healthcheck uses TCP, so it will never pass. Wait for the socket instead.
 echo "Waiting for MySQL socket (skip-grant-tables disables TCP)..."
 for i in $(seq 1 60); do
-    if docker exec freegle-percona mysqladmin ping --socket=/var/lib/mysql/mysql.sock 2>/dev/null; then
+    if docker exec ${PROJECT_NAME}-percona mysqladmin ping --socket=/var/lib/mysql/mysql.sock 2>/dev/null; then
         echo "✅ MySQL ready via socket"
         break
     fi
     sleep 2
 done
 # Use 'if' to prevent set -e from killing the script on failure
-if docker exec freegle-percona mysql --socket=/var/lib/mysql/mysql.sock -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null; then
+if docker exec ${PROJECT_NAME}-percona mysql --socket=/var/lib/mysql/mysql.sock -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null; then
     echo "✅ MySQL root password reset to 'iznik'"
 else
     echo "⚠️ Failed to reset MySQL root password - containers may not connect to DB"
@@ -554,7 +564,7 @@ echo ""
 echo "=========================================="
 echo "Starting all remaining containers..."
 echo "=========================================="
-update_status "starting" "Starting application containers..."
+update_status "starting_apps" "Starting application containers..."
 # Now that infrastructure is healthy, start everything else.
 # Docker Compose will see the infrastructure containers already running+healthy
 # and start the dependent application containers without timeout issues.
@@ -563,11 +573,11 @@ docker compose up -d
 echo "Configuring PHP-FPM for production load..."
 # Wait for API v1 container to be running
 sleep 5
-docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 /etc/init.d/php8.1-fpm restart
 echo "✅ PHP-FPM configured with increased worker pool"
 
 echo ""
@@ -576,7 +586,7 @@ sleep 10
 
 wait_for_container_health "reverse-proxy" 120 || {
     echo "❌ Traefik failed to start. Checking logs..."
-    docker logs freegle-traefik --tail 20
+    docker logs ${PROJECT_NAME}-traefik --tail 20
     exit 1
 }
 
@@ -618,10 +628,10 @@ if [ -z "$MYSQL_PASSWORD" ]; then
     MYSQL_PASSWORD="iznik"
 fi
 
-if docker exec freegle-percona mysql -uroot -p"${MYSQL_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
+if docker exec ${PROJECT_NAME}-percona mysql -uroot -p"${MYSQL_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
     echo "✅ Database verification successful!"
 
-    TABLE_COUNT=$(docker exec freegle-percona mysql -uroot -p"${MYSQL_PASSWORD}" iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
+    TABLE_COUNT=$(docker exec ${PROJECT_NAME}-percona mysql -uroot -p"${MYSQL_PASSWORD}" iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
     echo "Database contains ${TABLE_COUNT} tables"
 else
     echo "❌ Database verification failed!"

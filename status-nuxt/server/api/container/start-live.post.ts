@@ -4,10 +4,11 @@ import { getDockerComposeCommand } from '../../utils/docker'
 export default defineEventHandler(async () => {
   try {
     const DOCKER_COMPOSE = getDockerComposeCommand()
-    console.log('Starting freegle-dev-live container with dev-live profile...')
+    const prefix = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+    console.log(`Starting ${prefix}-dev-live container with dev-live profile...`)
 
     execSync(
-      `${DOCKER_COMPOSE} --profile dev-live up -d freegle-dev-live`,
+      `${DOCKER_COMPOSE} --profile dev-live up -d ${prefix}-dev-live`,
       { timeout: 120000, cwd: '/project' }
     )
 

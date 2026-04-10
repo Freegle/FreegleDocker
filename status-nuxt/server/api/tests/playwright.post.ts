@@ -63,7 +63,8 @@ export default defineEventHandler(async (event) => {
 async function runPlaywrightTests(testFile: string | null, testName: string | null) {
   try {
     // Check both prod containers are running
-    for (const container of ['freegle-prod-local', 'modtools-prod-local']) {
+    const pfx = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+    for (const container of [`${pfx}-prod-local`, `${pfx}-modtools-prod-local`]) {
       const check = execSync(
         `docker ps --filter "name=${container}" --format "{{.Status}}"`,
         { encoding: 'utf8', timeout: 5000 }
@@ -83,8 +84,8 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     setTestState('playwright', { message: 'Waiting for production containers to be ready...' })
 
     const prodContainers = [
-      { name: 'freegle-prod-local', port: 3003 },
-      { name: 'modtools-prod-local', port: 3001 },
+      { name: `${pfx}-prod-local`, port: 3003 },
+      { name: `${pfx}-modtools-prod-local`, port: 3001 },
     ]
 
     for (const { name, port } of prodContainers) {
@@ -119,7 +120,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     appendTestLogs('playwright', 'Restarting Playwright container...\n')
 
     try {
-      execSync('docker restart freegle-playwright', {
+      execSync(`docker restart ${pfx}-playwright`, {
         encoding: 'utf8',
         timeout: 30000,
       })
@@ -149,7 +150,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     setTestState('playwright', { message: 'Counting tests...' })
     try {
       const listOutput = execSync(
-        `docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
+        `docker exec ${pfx}-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
         { encoding: 'utf8', timeout: 60000 }
       )
       // Count lines that match test entries (lines with [chromium] marker)
@@ -175,7 +176,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
 
     // Run tests - NODE_PATH needed so require('@playwright/test') finds global install
     const testProcess = spawn('sh', ['-c', `
-      docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
+      docker exec ${pfx}-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
     `], { stdio: 'pipe' })
 
     testProcess.stdout.on('data', (data) => {

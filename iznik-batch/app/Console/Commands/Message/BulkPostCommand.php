@@ -30,6 +30,8 @@ class BulkPostCommand extends Command
         {--email= : Email address of the posting user}
         {--postcode= : Postcode to post from (e.g. "BN1 1AA")}
         {--group= : Group name to post to (auto-detected from postcode if omitted)}
+        {--cross-post-groups= : Comma-separated group names to also post to (with a "no takers yet" prefix)}
+        {--skip-primary-group : Only post to --cross-post-groups, not the primary group (for items already posted)}
         {--first : Only post the first item (for testing)}
         {--api-url= : Override the API base URL (default: from config)}
         {--dry-run : Show what would be posted without making changes}';
@@ -109,16 +111,30 @@ class BulkPostCommand extends Command
             return self::FAILURE;
         }
 
+        // Resolve cross-post groups.
+        $crossPostGroups = $this->resolveCrossPostGroups($this->option('cross-post-groups'), $group);
+        $skipPrimary = (bool) $this->option('skip-primary-group');
+
+        if ($skipPrimary && empty($crossPostGroups)) {
+            $this->error('--skip-primary-group requires --cross-post-groups to be specified.');
+
+            return self::FAILURE;
+        }
+
         // Show summary.
         $this->info("User:     {$user->fullname} (ID {$user->id})");
         $this->info("Postcode: {$location->name} (ID {$location->id})");
-        $this->info("Group:    {$group->nameshort} (ID {$group->id})");
+        $this->info("Group:    {$group->nameshort} (ID {$group->id})".($skipPrimary ? ' [SKIPPED]' : ''));
+        if (! empty($crossPostGroups)) {
+            $cpNames = implode(', ', array_map(fn ($g) => $g->nameshort, $crossPostGroups));
+            $this->info("X-post:   {$cpNames}");
+        }
         $this->info("Items:    ".count($items));
         $this->info("Dry run:  ".($dryRun ? 'YES' : 'NO'));
         $this->newLine();
 
         if ($dryRun) {
-            return $this->dryRun($items, $body, $folder);
+            return $this->dryRun($items, $body, $folder, $group, $crossPostGroups, $skipPrimary);
         }
 
         // Authenticate to Go API.
@@ -136,18 +152,36 @@ class BulkPostCommand extends Command
             $this->info('--first: posting only the first item.');
         }
 
+        // Build the cross-post body prefix once.
+        $primaryGroupName = $group->namedisplay ?: $group->nameshort;
+        $crossPostBody = "Posting here because no takers so far on {$primaryGroupName}.\n\n{$body}";
+
         foreach ($postItems as $i => $item) {
             $num = $i + 1;
             $this->info("[{$num}/".count($postItems)."] Posting: {$item['name']}");
 
-            $result = $this->postItem($item, $body, $folder, $location, $group);
+            // Upload photos once; reuse attachment IDs across all groups.
+            $attachmentIds = $this->uploadItemPhotos($item, $folder);
 
-            if ($result) {
-                $successCount++;
-                $this->info("  Created message ID {$result}");
-            } else {
-                $failCount++;
-                $this->error("  FAILED to post: {$item['name']}");
+            // Build list of groups to post to.
+            $targets = [];
+            if (! $skipPrimary) {
+                $targets[] = ['group' => $group, 'body' => $body];
+            }
+            foreach ($crossPostGroups as $cpGroup) {
+                $targets[] = ['group' => $cpGroup, 'body' => $crossPostBody];
+            }
+
+            foreach ($targets as $target) {
+                $msgId = $this->postItemToGroup($item, $target['body'], $location, $target['group'], $attachmentIds);
+
+                if ($msgId) {
+                    $successCount++;
+                    $this->info("  Created message ID {$msgId} on {$target['group']->nameshort}");
+                } else {
+                    $failCount++;
+                    $this->error("  FAILED to post: {$item['name']} on {$target['group']->nameshort}");
+                }
             }
         }
 
@@ -417,9 +451,19 @@ class BulkPostCommand extends Command
     /**
      * Show what would be posted without making changes.
      */
-    private function dryRun(array $items, string $body, string $folder): int
+    private function dryRun(array $items, string $body, string $folder, Group $primaryGroup, array $crossPostGroups, bool $skipPrimary): int
     {
         $this->info('=== DRY RUN — nothing will be posted ===');
+        $this->newLine();
+
+        $targets = [];
+        if (! $skipPrimary) {
+            $targets[] = $primaryGroup->nameshort;
+        }
+        foreach ($crossPostGroups as $g) {
+            $targets[] = $g->nameshort.' (cross-post)';
+        }
+        $this->info('Target groups: '.implode(', ', $targets));
         $this->newLine();
 
         $totalPhotos = 0;
@@ -446,7 +490,8 @@ class BulkPostCommand extends Command
         $this->info('Body text ('.strlen($body).' chars):');
         $this->line(substr($body, 0, 200).(strlen($body) > 200 ? '...' : ''));
         $this->newLine();
-        $this->info("Total: ".count($items)." posts, {$totalPhotos} photos");
+        $postCount = count($items) * count($targets);
+        $this->info("Total: ".count($items)." items × ".count($targets)." groups = {$postCount} posts, {$totalPhotos} photos per item");
         $this->info('All posts will go to PENDING for moderator review.');
 
         return self::SUCCESS;
@@ -486,23 +531,17 @@ class BulkPostCommand extends Command
     }
 
     /**
-     * Post a single item: upload photos, create message, publish, force to Pending.
+     * Upload photos for an item and return the attachment IDs.
+     * Called once per item; IDs are reused across cross-post groups.
      *
-     * @return int|null Message ID on success, null on failure
+     * @return int[]
      */
-    private function postItem(
-        array $item,
-        string $body,
-        string $folder,
-        Location $location,
-        Group $group
-    ): ?int {
-        // Upload photos and create attachment records.
+    private function uploadItemPhotos(array $item, string $folder): array
+    {
         $attachmentIds = [];
 
         foreach ($item['photos'] as $photo) {
-            $path = $folder.'/'.$photo;
-            $attachmentId = $this->uploadPhoto($path);
+            $attachmentId = $this->uploadPhoto($folder.'/'.$photo);
 
             if ($attachmentId === null) {
                 $this->warn("  Failed to upload photo: {$photo}");
@@ -513,7 +552,23 @@ class BulkPostCommand extends Command
             $attachmentIds[] = $attachmentId;
         }
 
-        // Create the message via PUT /message.
+        return $attachmentIds;
+    }
+
+    /**
+     * Create and publish a message for one item to one group.
+     * Photos are pre-uploaded; attachment IDs are passed in.
+     *
+     * @param  int[]  $attachmentIds
+     * @return int|null Message ID on success, null on failure
+     */
+    private function postItemToGroup(
+        array $item,
+        string $body,
+        Location $location,
+        Group $group,
+        array $attachmentIds
+    ): ?int {
         $subject = $this->buildSubject($item);
 
         $messageId = $this->api->createMessage([
@@ -548,6 +603,44 @@ class BulkPostCommand extends Command
         }
 
         return $messageId;
+    }
+
+    /**
+     * Resolve cross-post group names into Group models.
+     * Warns and skips any names that cannot be found or match the primary group.
+     *
+     * @return Group[]
+     */
+    private function resolveCrossPostGroups(?string $groupNames, Group $primaryGroup): array
+    {
+        if (! $groupNames) {
+            return [];
+        }
+
+        $groups = [];
+
+        foreach (array_filter(array_map('trim', explode(',', $groupNames))) as $name) {
+            if (strcasecmp($name, $primaryGroup->nameshort) === 0) {
+                $this->warn("Cross-post group '{$name}' is the same as the primary group — skipping.");
+
+                continue;
+            }
+
+            $group = Group::where('nameshort', $name)->first()
+                ?? Group::where('nameshort', 'LIKE', '%'.$name.'%')
+                    ->where('type', Group::TYPE_FREEGLE)
+                    ->first();
+
+            if (! $group) {
+                $this->warn("Cross-post group not found: {$name} — skipping.");
+
+                continue;
+            }
+
+            $groups[] = $group;
+        }
+
+        return $groups;
     }
 
     /**

@@ -13,19 +13,40 @@ class UpdateAIImageUsageCountsCommand extends Command
 
     public function handle(): int
     {
-        $updated = DB::update("
-            UPDATE ai_images ai
-            SET usage_count = (
-                SELECT COUNT(*)
-                FROM messages_attachments ma
-                WHERE ma.externaluid = ai.externaluid
-                  AND JSON_EXTRACT(ma.externalmods, '$.ai') = TRUE
-            )
-            WHERE ai.externaluid IS NOT NULL
-              AND ai.externaluid != ''
-        ");
+        // Process in batches to avoid deadlocking on 32k+ rows.
+        $batchSize = 500;
+        $lastId = 0;
+        $totalUpdated = 0;
 
-        $this->info("Updated usage counts for {$updated} AI images.");
+        do {
+            $ids = DB::table('ai_images')
+                ->where('id', '>', $lastId)
+                ->whereNotNull('externaluid')
+                ->where('externaluid', '!=', '')
+                ->orderBy('id')
+                ->limit($batchSize)
+                ->pluck('id');
+
+            if ($ids->isEmpty()) {
+                break;
+            }
+
+            DB::update("
+                UPDATE ai_images ai
+                SET usage_count = (
+                    SELECT COUNT(*)
+                    FROM messages_attachments ma
+                    WHERE ma.externaluid = ai.externaluid
+                      AND JSON_EXTRACT(ma.externalmods, '$.ai') = TRUE
+                )
+                WHERE ai.id IN (" . $ids->implode(',') . ")
+            ");
+
+            $totalUpdated += $ids->count();
+            $lastId = $ids->last();
+        } while ($ids->count() === $batchSize);
+
+        $this->info("Updated usage counts for {$totalUpdated} AI images.");
 
         return Command::SUCCESS;
     }

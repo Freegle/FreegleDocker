@@ -483,6 +483,191 @@ class BulkPostCommandTest extends TestCase
         $this->assertEquals(0, $result);
     }
 
+    public function test_cross_post_groups_shown_in_dry_run(): void
+    {
+        $this->writeCsv([['Sofa', 1, '']]);
+        $this->writeBody();
+
+        $primaryGroup = $this->app->make('test.group');
+        $crossGroup = $this->createTestGroup(['lat' => 50.83, 'lng' => -0.17]);
+
+        $result = $this->withoutMockingConsoleOutput()->artisan('messages:bulk-post', [
+            'folder'              => $this->folder,
+            '--email'             => $this->email,
+            '--postcode'          => 'BN1 1AA',
+            '--group'             => $primaryGroup->nameshort,
+            '--cross-post-groups' => $crossGroup->nameshort,
+            '--dry-run'           => true,
+        ]);
+
+        $output = \Artisan::output();
+        $this->assertStringContainsString($crossGroup->nameshort, $output);
+        $this->assertStringContainsString('cross-post', $output);
+        $this->assertStringContainsString('1 items × 2 groups = 2 posts', $output);
+        $this->assertEquals(0, $result);
+    }
+
+    public function test_skip_primary_group_dry_run_excludes_primary(): void
+    {
+        $this->writeCsv([['Sofa', 1, '']]);
+        $this->writeBody();
+
+        $primaryGroup = $this->app->make('test.group');
+        $crossGroup = $this->createTestGroup(['lat' => 50.83, 'lng' => -0.17]);
+
+        $result = $this->withoutMockingConsoleOutput()->artisan('messages:bulk-post', [
+            'folder'               => $this->folder,
+            '--email'              => $this->email,
+            '--postcode'           => 'BN1 1AA',
+            '--group'              => $primaryGroup->nameshort,
+            '--cross-post-groups'  => $crossGroup->nameshort,
+            '--skip-primary-group' => true,
+            '--dry-run'            => true,
+        ]);
+
+        $output = \Artisan::output();
+        $this->assertStringContainsString('[SKIPPED]', $output);
+        $this->assertStringContainsString('1 items × 1 groups = 1 posts', $output);
+        $this->assertEquals(0, $result);
+    }
+
+    public function test_skip_primary_group_without_cross_post_groups_fails(): void
+    {
+        $this->writeCsv([['Sofa', 1, '']]);
+        $this->writeBody();
+
+        $group = $this->app->make('test.group');
+
+        $this->artisan('messages:bulk-post', [
+            'folder'               => $this->folder,
+            '--email'              => $this->email,
+            '--postcode'           => 'BN1 1AA',
+            '--group'              => $group->nameshort,
+            '--skip-primary-group' => true,
+        ])
+            ->expectsOutputToContain('--skip-primary-group requires --cross-post-groups')
+            ->assertExitCode(1);
+    }
+
+    public function test_cross_posting_posts_to_each_group_with_modified_body(): void
+    {
+        $this->writeCsv([['Red Sofa', 1, '']]);
+        $this->writeBody('Original body text.');
+
+        $primaryGroup = $this->app->make('test.group');
+        $crossGroup = $this->createTestGroup(['lat' => 50.83, 'lng' => -0.17]);
+
+        FreegleApiClient::fake([
+            ['body' => ['ret' => 0, 'jwt' => 'test-jwt-token']],  // Auth
+            ['body' => ['ret' => 0, 'id' => 10001]],               // PUT /message — primary group
+            ['body' => ['ret' => 0]],                               // POST JoinAndPost — primary group
+            ['body' => ['ret' => 0, 'id' => 10002]],               // PUT /message — cross-post group
+            ['body' => ['ret' => 0]],                               // POST JoinAndPost — cross-post group
+        ]);
+
+        $this->artisan('messages:bulk-post', [
+            'folder'              => $this->folder,
+            '--email'             => $this->email,
+            '--postcode'          => 'BN1 1AA',
+            '--group'             => $primaryGroup->nameshort,
+            '--cross-post-groups' => $crossGroup->nameshort,
+        ])
+            ->expectsOutputToContain($crossGroup->nameshort)
+            ->expectsOutputToContain('2 posted, 0 failed')
+            ->assertExitCode(0);
+    }
+
+    public function test_skip_primary_posts_only_to_cross_post_groups(): void
+    {
+        $this->writeCsv([['Red Sofa', 1, '']]);
+        $this->writeBody('Original body text.');
+
+        $primaryGroup = $this->app->make('test.group');
+        $crossGroup = $this->createTestGroup(['lat' => 50.83, 'lng' => -0.17]);
+
+        FreegleApiClient::fake([
+            ['body' => ['ret' => 0, 'jwt' => 'test-jwt-token']],  // Auth
+            ['body' => ['ret' => 0, 'id' => 10002]],               // PUT /message — cross-post group only
+            ['body' => ['ret' => 0]],                               // POST JoinAndPost — cross-post group only
+        ]);
+
+        $this->artisan('messages:bulk-post', [
+            'folder'               => $this->folder,
+            '--email'              => $this->email,
+            '--postcode'           => 'BN1 1AA',
+            '--group'              => $primaryGroup->nameshort,
+            '--cross-post-groups'  => $crossGroup->nameshort,
+            '--skip-primary-group' => true,
+        ])
+            ->expectsOutputToContain('1 posted, 0 failed')
+            ->expectsOutputToContain($crossGroup->nameshort)
+            ->assertExitCode(0);
+    }
+
+    public function test_cross_post_warns_and_skips_unknown_group(): void
+    {
+        $this->writeCsv([['Sofa', 1, '']]);
+        $this->writeBody();
+
+        $group = $this->app->make('test.group');
+
+        $this->artisan('messages:bulk-post', [
+            'folder'             => $this->folder,
+            '--email'            => $this->email,
+            '--postcode'         => 'BN1 1AA',
+            '--group'            => $group->nameshort,
+            '--cross-post-groups' => 'NonexistentGroup_'.uniqid(),
+            '--dry-run'          => true,
+        ])
+            ->expectsOutputToContain('Cross-post group not found')
+            ->assertExitCode(0);
+    }
+
+    public function test_cross_post_warns_and_skips_when_same_as_primary(): void
+    {
+        $this->writeCsv([['Sofa', 1, '']]);
+        $this->writeBody();
+
+        $group = $this->app->make('test.group');
+
+        $this->artisan('messages:bulk-post', [
+            'folder'             => $this->folder,
+            '--email'            => $this->email,
+            '--postcode'         => 'BN1 1AA',
+            '--group'            => $group->nameshort,
+            '--cross-post-groups' => $group->nameshort,
+            '--dry-run'          => true,
+        ])
+            ->expectsOutputToContain('same as the primary group')
+            ->assertExitCode(0);
+    }
+
+    public function test_cross_post_falls_back_to_nameshort_when_namedisplay_empty(): void
+    {
+        $this->writeCsv([['Sofa', 1, '']]);
+        $this->writeBody('Original body.');
+
+        // Create a primary group with empty namedisplay; nameshort is auto-generated.
+        $primaryGroup = $this->createTestGroup(['namedisplay' => '']);
+        $crossGroup = $this->createTestGroup(['lat' => 50.83, 'lng' => -0.17]);
+
+        // Summary line must show nameshort (not blank) in the X-post prefix notice.
+        $result = $this->withoutMockingConsoleOutput()->artisan('messages:bulk-post', [
+            'folder'              => $this->folder,
+            '--email'             => $this->email,
+            '--postcode'          => 'BN1 1AA',
+            '--group'             => $primaryGroup->nameshort,
+            '--cross-post-groups' => $crossGroup->nameshort,
+            '--dry-run'           => true,
+        ]);
+
+        $output = \Artisan::output();
+        // Should show the nameshort in the group summary line, not a blank.
+        $this->assertStringContainsString($primaryGroup->nameshort, $output);
+        $this->assertStringNotContainsString('no takers so far on .', $output);
+        $this->assertEquals(0, $result);
+    }
+
     public function test_invalid_deadline_format_rejected(): void
     {
         $handle = fopen($this->folder.'/items.csv', 'w');

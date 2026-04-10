@@ -1,4 +1,4 @@
-export type TestType = 'go' | 'php' | 'laravel' | 'playwright'
+export type TestType = 'go' | 'php' | 'laravel' | 'vitest' | 'playwright'
 
 export type TestStatus = 'idle' | 'running' | 'completed' | 'failed'
 
@@ -51,6 +51,13 @@ export const testConfigs: Record<TestType, TestConfig> = {
     name: 'Laravel Batch Tests',
     description: 'Tests for batch processing (iznik-batch)',
     filterPlaceholder: 'Filter tests (e.g., EmailTest)',
+    hasReport: false,
+  },
+  vitest: {
+    type: 'vitest',
+    name: 'Vitest Unit Tests',
+    description: 'Unit tests for frontend components (iznik-nuxt3)',
+    filterPlaceholder: 'Filter tests (e.g., BaseAPI)',
     hasReport: false,
   },
   playwright: {
