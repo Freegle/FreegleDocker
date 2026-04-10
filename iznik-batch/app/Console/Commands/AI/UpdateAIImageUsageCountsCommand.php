@@ -13,38 +13,55 @@ class UpdateAIImageUsageCountsCommand extends Command
 
     public function handle(): int
     {
-        // Process in batches to avoid deadlocking on 32k+ rows.
+        // Step 1: Precompute all AI attachment counts into a temp table (one scan).
+        DB::statement('DROP TEMPORARY TABLE IF EXISTS tmp_ai_usage_counts');
+        DB::statement("
+            CREATE TEMPORARY TABLE tmp_ai_usage_counts (
+                externaluid VARCHAR(255) PRIMARY KEY,
+                cnt INT NOT NULL
+            ) AS
+            SELECT ma.externaluid, COUNT(*) AS cnt
+            FROM messages_attachments ma
+            WHERE JSON_EXTRACT(ma.externalmods, '$.ai') = TRUE
+              AND ma.externaluid IS NOT NULL
+              AND ma.externaluid != ''
+            GROUP BY ma.externaluid
+        ");
+
+        // Step 2: Apply counts in small batches of single-row UPDATEs
+        // to avoid deadlocking with concurrent writers.
         $batchSize = 500;
         $lastId = 0;
         $totalUpdated = 0;
 
         do {
-            $ids = DB::table('ai_images')
-                ->where('id', '>', $lastId)
-                ->whereNotNull('externaluid')
-                ->where('externaluid', '!=', '')
-                ->orderBy('id')
-                ->limit($batchSize)
-                ->pluck('id');
+            $rows = DB::select("
+                SELECT ai.id, COALESCE(t.cnt, 0) AS cnt
+                FROM ai_images ai
+                LEFT JOIN tmp_ai_usage_counts t ON t.externaluid = ai.externaluid
+                WHERE ai.id > ?
+                  AND ai.externaluid IS NOT NULL
+                  AND ai.externaluid != ''
+                ORDER BY ai.id
+                LIMIT ?
+            ", [$lastId, $batchSize]);
 
-            if ($ids->isEmpty()) {
+            if (empty($rows)) {
                 break;
             }
 
-            DB::update("
-                UPDATE ai_images ai
-                SET usage_count = (
-                    SELECT COUNT(*)
-                    FROM messages_attachments ma
-                    WHERE ma.externaluid = ai.externaluid
-                      AND JSON_EXTRACT(ma.externalmods, '$.ai') = TRUE
-                )
-                WHERE ai.id IN (" . $ids->implode(',') . ")
-            ");
+            foreach ($rows as $row) {
+                DB::update(
+                    'UPDATE ai_images SET usage_count = ? WHERE id = ?',
+                    [$row->cnt, $row->id]
+                );
+            }
 
-            $totalUpdated += $ids->count();
-            $lastId = $ids->last();
-        } while ($ids->count() === $batchSize);
+            $totalUpdated += count($rows);
+            $lastId = end($rows)->id;
+        } while (count($rows) === $batchSize);
+
+        DB::statement('DROP TEMPORARY TABLE IF EXISTS tmp_ai_usage_counts');
 
         $this->info("Updated usage counts for {$totalUpdated} AI images.");
 
