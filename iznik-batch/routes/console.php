@@ -112,7 +112,7 @@ Schedule::command('purge:messages')
     ->withoutOverlapping()
     ->runInBackground();
 
-Schedule::command('purge:sessions')
+Schedule::command('cleanup:sessions')
     ->dailyAt('03:00')
     ->withoutOverlapping()
     ->runInBackground();
