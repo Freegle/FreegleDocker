@@ -104,11 +104,18 @@ class GitSummaryService
         mkdir($tempDir);
 
         try {
+            // Embed GitHub token for private repos if available.
+            $cloneUrl = $repoUrl;
+            $token = config('freegle.git_summary.github_token');
+            if ($token && str_contains($repoUrl, 'github.com')) {
+                $cloneUrl = str_replace('https://github.com/', "https://{$token}@github.com/", $repoUrl);
+            }
+
             // Clone the repository.
             $cloneCmd = sprintf(
                 'git clone --single-branch --branch %s %s %s 2>&1',
                 escapeshellarg($branch),
-                escapeshellarg($repoUrl),
+                escapeshellarg($cloneUrl),
                 escapeshellarg($tempDir)
             );
             exec($cloneCmd, $output, $return);

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 
 class EmailTracking extends Model
@@ -81,17 +82,32 @@ class EmailTracking extends Model
             $groupId = null;
         }
 
-        return self::create([
-            'tracking_id' => self::generateTrackingId(),
-            'email_type' => $emailType,
-            'userid' => $userId,
-            'groupid' => $groupId,
-            'recipient_email' => $recipientEmail,
-            'subject' => $subject,
-            'metadata' => $metadata,
-            'sent_at' => now(),
-            'has_amp' => $hasAmp,
-        ]);
+        // Retry on deadlock — concurrent chat notification workers can deadlock
+        // on this INSERT. The email still gets sent; only the tracking row is lost
+        // without this retry.
+        $maxRetries = 3;
+        $attempt = 0;
+
+        while (true) {
+            try {
+                return self::create([
+                    'tracking_id' => self::generateTrackingId(),
+                    'email_type' => $emailType,
+                    'userid' => $userId,
+                    'groupid' => $groupId,
+                    'recipient_email' => $recipientEmail,
+                    'subject' => $subject,
+                    'metadata' => $metadata,
+                    'sent_at' => now(),
+                    'has_amp' => $hasAmp,
+                ]);
+            } catch (QueryException $e) {
+                if (++$attempt >= $maxRetries || $e->getCode() !== '40001') {
+                    throw $e;
+                }
+                usleep(50_000 * $attempt); // 50ms, 100ms backoff
+            }
+        }
     }
 
     /**
