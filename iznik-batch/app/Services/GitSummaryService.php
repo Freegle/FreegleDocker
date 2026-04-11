@@ -121,10 +121,14 @@ class GitSummaryService
             exec($cloneCmd, $output, $return);
 
             if ($return !== 0) {
+                $rawOutput = implode("\n", $output);
+                if ($token) {
+                    $rawOutput = str_replace($token, '***', $rawOutput);
+                }
                 Log::error('GitSummaryService: Failed to clone repository', [
                     'url' => $repoUrl,
                     'branch' => $branch,
-                    'output' => implode("\n", $output),
+                    'output' => $rawOutput,
                 ]);
                 return null;
             }

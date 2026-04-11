@@ -17,7 +17,7 @@ class UpdateAIImageUsageCountsCommand extends Command
         DB::statement('DROP TEMPORARY TABLE IF EXISTS tmp_ai_usage_counts');
         DB::statement("
             CREATE TEMPORARY TABLE tmp_ai_usage_counts (
-                externaluid VARCHAR(255) PRIMARY KEY,
+                externaluid VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
                 cnt INT NOT NULL
             ) AS
             SELECT ma.externaluid, COUNT(*) AS cnt
@@ -28,40 +28,48 @@ class UpdateAIImageUsageCountsCommand extends Command
             GROUP BY ma.externaluid
         ");
 
-        // Step 2: Apply counts in small batches of single-row UPDATEs
-        // to avoid deadlocking with concurrent writers.
+        // Step 2: Apply counts in batched JOIN updates to avoid deadlocking
+        // with concurrent writers while keeping round-trips low.
         $batchSize = 500;
         $lastId = 0;
         $totalUpdated = 0;
 
-        do {
-            $rows = DB::select("
-                SELECT ai.id, COALESCE(t.cnt, 0) AS cnt
-                FROM ai_images ai
-                LEFT JOIN tmp_ai_usage_counts t ON t.externaluid = ai.externaluid
-                WHERE ai.id > ?
-                  AND ai.externaluid IS NOT NULL
-                  AND ai.externaluid != ''
-                ORDER BY ai.id
-                LIMIT ?
-            ", [$lastId, $batchSize]);
+        try {
+            do {
+                // Find the upper bound of this batch.
+                $maxRow = DB::selectOne("
+                    SELECT MAX(id) AS max_id FROM (
+                        SELECT id FROM ai_images
+                        WHERE id > ?
+                          AND externaluid IS NOT NULL
+                          AND externaluid != ''
+                        ORDER BY id
+                        LIMIT ?
+                    ) batch
+                ", [$lastId, $batchSize]);
 
-            if (empty($rows)) {
-                break;
-            }
+                if (!$maxRow || !$maxRow->max_id) {
+                    break;
+                }
 
-            foreach ($rows as $row) {
-                DB::update(
-                    'UPDATE ai_images SET usage_count = ? WHERE id = ?',
-                    [$row->cnt, $row->id]
-                );
-            }
+                $batchMaxId = $maxRow->max_id;
 
-            $totalUpdated += count($rows);
-            $lastId = end($rows)->id;
-        } while (count($rows) === $batchSize);
+                // Batched JOIN update — one query per batch instead of per row.
+                $affected = DB::update("
+                    UPDATE ai_images ai
+                    LEFT JOIN tmp_ai_usage_counts t ON t.externaluid = ai.externaluid
+                    SET ai.usage_count = COALESCE(t.cnt, 0)
+                    WHERE ai.id > ? AND ai.id <= ?
+                      AND ai.externaluid IS NOT NULL
+                      AND ai.externaluid != ''
+                ", [$lastId, $batchMaxId]);
 
-        DB::statement('DROP TEMPORARY TABLE IF EXISTS tmp_ai_usage_counts');
+                $totalUpdated += $affected;
+                $lastId = $batchMaxId;
+            } while (true);
+        } finally {
+            DB::statement('DROP TEMPORARY TABLE IF EXISTS tmp_ai_usage_counts');
+        }
 
         $this->info("Updated usage counts for {$totalUpdated} AI images.");
 
