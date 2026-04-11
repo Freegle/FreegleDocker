@@ -2503,15 +2503,18 @@ jobs:
             # --- Go coverage ---
             echo ""
             echo "=== Go Coverage ==="
-            if docker cp freegle-apiv2:/app/coverage.out /tmp/go-coverage.out 2>/dev/null; then
+            # Copy coverage.out into iznik-server-go/ so gcov2lcov produces
+            # paths relative to the Go module root (matching repo structure).
+            GO_DIR="$PROJECT_ROOT/iznik-server-go"
+            if docker cp freegle-apiv2:/app/coverage.out "$GO_DIR/coverage.out" 2>/dev/null; then
               echo "✅ Found Go coverage file"
-              # Install gcov2lcov
               go install github.com/jandelgado/gcov2lcov@latest 2>/dev/null || true
               if command -v gcov2lcov > /dev/null; then
-                if gcov2lcov -infile=/tmp/go-coverage.out -outfile=/tmp/go-coverage.lcov 2>&1 && [ -s /tmp/go-coverage.lcov ]; then
+                cd "$GO_DIR"
+                if gcov2lcov -infile=coverage.out -outfile=coverage.lcov 2>&1 && [ -s coverage.lcov ]; then
                   cd "$PROJECT_ROOT"
                   export COVERALLS_FLAG_NAME="go"
-                  if cat /tmp/go-coverage.lcov | coveralls; then
+                  if cat "$GO_DIR/coverage.lcov" | coveralls; then
                     echo "✅ Go coverage uploaded"
                     UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
                   else
@@ -2523,6 +2526,7 @@ jobs:
               else
                 echo "⚠️ gcov2lcov not available"
               fi
+              rm -f "$GO_DIR/coverage.out" "$GO_DIR/coverage.lcov"
             else
               echo "⚠️ Go coverage file not found in container"
             fi
