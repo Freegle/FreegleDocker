@@ -254,4 +254,19 @@ class EmailTrackingModelTest extends TestCase
 
         $this->assertStringContainsString('s=80', $url);
     }
+
+    public function test_create_for_email_works_inside_transaction(): void
+    {
+        // createForEmail uses deadlock retry with TransactionPolicy::isDeadlock().
+        // It must work inside a transaction (e.g., admin mail sending) — unlike
+        // TransactionPolicy::bulk() which rejects transactions.
+        $email = $this->uniqueEmail('tracking-txn');
+
+        // DatabaseTransactions trait already wraps us in a transaction.
+        // If this throws "should not run inside a transaction", the fix is broken.
+        $tracking = EmailTracking::createForEmail('TxnTest', $email);
+
+        $this->assertNotNull($tracking->id);
+        $this->assertEquals('TxnTest', $tracking->email_type);
+    }
 }

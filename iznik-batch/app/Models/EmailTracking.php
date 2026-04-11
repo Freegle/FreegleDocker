@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Support\TransactionPolicy;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 
@@ -83,8 +84,10 @@ class EmailTracking extends Model
         }
 
         // Retry on deadlock — concurrent chat notification workers can deadlock
-        // on this INSERT. The email still gets sent; only the tracking row is lost
-        // without this retry.
+        // on this INSERT. Uses TransactionPolicy::isDeadlock() for robust detection
+        // (catches DeadlockException, SQLSTATE 40001, MySQL 1213, lock wait timeout).
+        // Cannot use TransactionPolicy::bulk() because this method may be called
+        // from within a transaction (e.g., admin mail sending).
         $maxRetries = 3;
         $attempt = 0;
 
@@ -102,10 +105,10 @@ class EmailTracking extends Model
                     'has_amp' => $hasAmp,
                 ]);
             } catch (QueryException $e) {
-                if (++$attempt >= $maxRetries || $e->getCode() !== '40001') {
+                if (++$attempt >= $maxRetries || !TransactionPolicy::isDeadlock($e)) {
                     throw $e;
                 }
-                usleep(50_000 * $attempt); // 50ms, 100ms backoff
+                usleep(50_000 * $attempt);
             }
         }
     }
