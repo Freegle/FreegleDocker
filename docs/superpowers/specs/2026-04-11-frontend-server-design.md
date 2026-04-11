@@ -235,12 +235,10 @@ Findings from inspecting bulk3 and app1-internal:
 - **Tile traffic**: ~50K requests/day. Currently no nginx caching layer on bulk3 — nginx just proxies to Apache/renderd on port 8080. Adding a cache layer in frontend-nginx is a new optimisation.
 - **Geocode traffic**: ~11K real requests/day after filtering out bot. Rate limiting is essential — added to bulk3 nginx as interim fix.
 
-### images.ilovefreegle.org (legacy)
-Some delivery requests still reference `images.ilovefreegle.org` URLs (e.g. `url=https://images.ilovefreegle.org/img_44020105.jpg`). This is served by PHP-FPM on app1-internal with rewrite rules mapping `/img_{id}.jpg` to `api/image.php?id={id}`. This legacy path needs to either:
-1. Continue running on app1-internal (it depends on PHP + database), or
-2. Be redirected at the applb/DNS level
+### images.ilovefreegle.org (legacy — negligible traffic)
+Traffic audit shows ~557 requests/day (vs ~100K/day for delivery) — 0.06% of image traffic. Mostly legacy links from emails, trashnothing fallback URLs, and wsrv.nl's own image fetcher. 67% have no referer. The `/img_*.jpg` requests mostly return 302 redirects already. The only meaningful case is `/defaultprofile.png` (~12 req/day, used as a fallback by trashnothing).
 
-It cannot move to the frontend server (no PHP/database). This should be documented as an explicit exclusion.
+**Recommendation**: Do not migrate the PHP image serving stack. Instead, configure applb to serve a static `/defaultprofile.png` and return 404 or redirect for everything else on `images.ilovefreegle.org`. The remaining traffic will decay naturally as cached links age out.
 
 ### uploads.ilovefreegle.org port 8080
 TuSD currently listens on port 8080 with no nginx proxy — applb routes directly. Old delivery URLs include `:8080` in the `url=` parameter. After migration, tusd is behind frontend-nginx on port 80. Either:
