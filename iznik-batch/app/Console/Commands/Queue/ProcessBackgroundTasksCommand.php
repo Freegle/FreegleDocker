@@ -185,6 +185,8 @@ class ProcessBackgroundTasksCommand extends Command
             'email_verify' => $this->handleEmailVerify($data, $spooler, $shouldSpool),
             'refer_to_support' => $this->handleReferToSupport($data, $spooler, $shouldSpool),
             'message_outcome' => $this->handleMessageOutcome($data),
+            'freebie_alerts_add' => $this->handleFreebieAlertsAdd($data),
+            'freebie_alerts_remove' => $this->handleFreebieAlertsRemove($data),
             'housekeeper_notify' => $this->handleHousekeeperNotify($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
@@ -1147,6 +1149,152 @@ class ProcessBackgroundTasksCommand extends Command
             'byuser' => $byUser,
             'groupid' => $groupId,
         ]);
+    }
+
+    /**
+     * Add a post to freebiealerts.app.
+     *
+     * V1 parity with FreebieAlerts::add() — only sends outstanding Offers with
+     * a location. TrashNothing messages are skipped (TN syncs directly).
+     */
+    protected function handleFreebieAlertsAdd(array $data): void
+    {
+        $msgId = (int) ($data['msgid'] ?? 0);
+        if ($msgId === 0) {
+            throw new \RuntimeException('freebie_alerts_add requires msgid');
+        }
+
+        $apiKey = config('freegle.freebie_alerts.api_key');
+        if (empty($apiKey)) {
+            Log::debug('Freebie Alerts API key not configured, skipping add', ['msgid' => $msgId]);
+            return;
+        }
+
+        // Only outstanding Offers (no outcome yet).
+        $msg = DB::table('messages')->where('id', $msgId)->first();
+        if (! $msg || $msg->type !== 'Offer') {
+            return;
+        }
+
+        $hasOutcome = DB::table('messages_outcomes')->where('msgid', $msgId)->exists();
+        if ($hasOutcome) {
+            return;
+        }
+
+        // Skip TrashNothing messages — TN syncs to freebiealerts directly.
+        if ($msg->sourceheader && str_starts_with($msg->sourceheader, 'TN-')) {
+            return;
+        }
+
+        $group = DB::table('messages_groups')
+            ->where('msgid', $msgId)
+            ->where('collection', 'Approved')
+            ->first();
+        if (! $group) {
+            return;
+        }
+
+        if (! $msg->lat || ! $msg->lng) {
+            return;
+        }
+
+        // Build image list from message attachments.
+        // Same pattern as digest emails: externalurl if set, otherwise {images.domain}/timg_{id}.jpg.
+        $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
+        $attachments = DB::table('messages_attachments')->where('msgid', $msgId)->get();
+        $images = $attachments->map(function ($att) use ($imagesDomain) {
+            return ! empty($att->externalurl)
+                ? $att->externalurl
+                : "{$imagesDomain}/timg_{$att->id}.jpg";
+        })->implode(',');
+
+        $body = $msg->textbody ?: 'No description';
+
+        $payload = [
+            'id' => $msgId,
+            'title' => $msg->subject,
+            'description' => $body,
+            'latitude' => $msg->lat,
+            'longitude' => $msg->lng,
+            'images' => $images,
+            'created_at' => $group->arrival,
+        ];
+
+        $apiUrl = config('freegle.freebie_alerts.api_url');
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'Content-type' => 'application/json',
+                'Key' => $apiKey,
+            ])->timeout(60)->post("{$apiUrl}/freegle/post/create", $payload);
+
+            if ($response->successful()) {
+                Log::info('Added post to Freebie Alerts', ['msgid' => $msgId]);
+            } else {
+                Log::warning('Freebie Alerts add failed', [
+                    'msgid' => $msgId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                if (app()->bound('sentry')) {
+                    app('sentry')->captureMessage("Freebie Alerts add failed for message {$msgId}: {$response->status()}");
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('Freebie Alerts add exception', [
+                'msgid' => $msgId,
+                'error' => $e->getMessage(),
+            ]);
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($e);
+            }
+        }
+    }
+
+    /**
+     * Remove a post from freebiealerts.app.
+     *
+     * V1 parity with FreebieAlerts::remove().
+     */
+    protected function handleFreebieAlertsRemove(array $data): void
+    {
+        $msgId = (int) ($data['msgid'] ?? 0);
+        if ($msgId === 0) {
+            throw new \RuntimeException('freebie_alerts_remove requires msgid');
+        }
+
+        $apiKey = config('freegle.freebie_alerts.api_key');
+        if (empty($apiKey)) {
+            Log::debug('Freebie Alerts API key not configured, skipping remove', ['msgid' => $msgId]);
+            return;
+        }
+
+        $apiUrl = config('freegle.freebie_alerts.api_url');
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'Content-type' => 'application/json',
+                'Key' => $apiKey,
+            ])->timeout(60)->post("{$apiUrl}/freegle/post/{$msgId}/delete");
+
+            if ($response->successful()) {
+                Log::info('Removed post from Freebie Alerts', ['msgid' => $msgId]);
+            } else {
+                Log::warning('Freebie Alerts remove failed', [
+                    'msgid' => $msgId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Freebie Alerts remove exception', [
+                'msgid' => $msgId,
+                'error' => $e->getMessage(),
+            ]);
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($e);
+            }
+        }
     }
 
     /**

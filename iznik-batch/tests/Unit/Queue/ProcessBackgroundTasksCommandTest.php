@@ -1732,6 +1732,234 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         });
     }
 
+    public function test_freebie_alerts_add_calls_api_for_offer(): void
+    {
+        $poster = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test sofa',
+            'textbody' => 'Free sofa, good condition',
+            'type' => 'Offer',
+            'lat' => 52.5,
+            'lng' => -1.8,
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+            'arrival' => now(),
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'test-key-123']);
+        config(['freegle.freebie_alerts.api_url' => 'https://api.freebiealerts.app']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'api.freebiealerts.app/freegle/post/create' => \Illuminate\Support\Facades\Http::response(['success' => true], 200),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/freegle/post/create')
+                && $request->header('Key')[0] === 'test-key-123';
+        });
+
+        $task = DB::table('background_tasks')->where('task_type', 'freebie_alerts_add')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_freebie_alerts_add_skips_wanted_messages(): void
+    {
+        $poster = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'WANTED: Test sofa',
+            'type' => 'Wanted',
+            'lat' => 52.5,
+            'lng' => -1.8,
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'test-key-123']);
+
+        \Illuminate\Support\Facades\Http::fake();
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // No HTTP call should be made for Wanted messages.
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public function test_freebie_alerts_add_skips_when_no_api_key(): void
+    {
+        $poster = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test sofa',
+            'type' => 'Offer',
+            'lat' => 52.5,
+            'lng' => -1.8,
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => '']);
+
+        \Illuminate\Support\Facades\Http::fake();
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        // No HTTP call when API key is empty.
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public function test_freebie_alerts_add_skips_messages_with_outcome(): void
+    {
+        $poster = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test sofa',
+            'type' => 'Offer',
+            'lat' => 52.5,
+            'lng' => -1.8,
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+        ]);
+        DB::table('messages_outcomes')->insert([
+            'msgid' => $msgId,
+            'outcome' => 'Taken',
+        ]);
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'test-key-123']);
+
+        \Illuminate\Support\Facades\Http::fake();
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public function test_freebie_alerts_remove_calls_api(): void
+    {
+        $msgId = 99999;
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_remove',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'test-key-123']);
+        config(['freegle.freebie_alerts.api_url' => 'https://api.freebiealerts.app']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            "api.freebiealerts.app/freegle/post/{$msgId}/delete" => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        \Illuminate\Support\Facades\Http::assertSent(function ($request) use ($msgId) {
+            return str_contains($request->url(), "/freegle/post/{$msgId}/delete")
+                && $request->header('Key')[0] === 'test-key-123';
+        });
+
+        $task = DB::table('background_tasks')->where('task_type', 'freebie_alerts_remove')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_freebie_alerts_remove_skips_when_no_api_key(): void
+    {
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_remove',
+            'data' => json_encode(['msgid' => 99999]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => '']);
+
+        \Illuminate\Support\Facades\Http::fake();
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
     /**
      * Custom assertion for string containment (PHPUnit 10+ compatible).
      */
