@@ -15,25 +15,26 @@ if (!is_dir($cronLogDir)) {
     mkdir($cronLogDir, 0755, true);
 }
 
-function cronLog(string $command): string
-{
-    $safe = str_replace([':', ' ', '/', '--'], ['_', '_', '_', '_'], $command);
+if (!function_exists('cronLog')) {
+    function cronLog(string $command): string
+    {
+        $safe = str_replace([':', ' ', '/', '--'], ['_', '_', '_', '_'], $command);
 
-    return storage_path('logs/cron/'.$safe.'.log');
+        return storage_path('logs/cron/'.$safe.'.log');
+    }
 }
 
 // =============================================================================
 // ACTIVE SCHEDULED COMMANDS
 // =============================================================================
 
-// Deployment watch - detect code updates and auto-refresh application.
-// Checks version.txt every minute; triggers deploy:refresh when version changes
-// and file is at least 5 minutes old (to ensure upload is complete).
-Schedule::command('deploy:watch')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->sendOutputTo(cronLog('deploy:watch'))
-    ->runInBackground();
+// Deployment watch - disabled (not used in Docker environment).
+// Was: detect code updates via version.txt and auto-refresh application.
+// Schedule::command('deploy:watch')
+//     ->everyMinute()
+//     ->withoutOverlapping()
+//     ->sendOutputTo(cronLog('deploy:watch'))
+//     ->runInBackground();
 
 // Welcome mail processing - check for pending welcome mails every minute.
 // Uses PreventsOverlapping trait for flock-based locking (released on process death).
