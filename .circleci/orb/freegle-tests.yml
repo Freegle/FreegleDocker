@@ -2508,10 +2508,13 @@ jobs:
             GO_DIR="$PROJECT_ROOT/iznik-server-go"
             if docker cp freegle-apiv2:/app/coverage.out "$GO_DIR/coverage.out" 2>/dev/null; then
               echo "✅ Found Go coverage file"
-              go install github.com/jandelgado/gcov2lcov@latest 2>/dev/null || true
-              if command -v gcov2lcov > /dev/null; then
-                cd "$GO_DIR"
-                if gcov2lcov -infile=coverage.out -outfile=coverage.lcov 2>&1 && [ -s coverage.lcov ]; then
+              # Convert inside the Go container where Go toolchain is available.
+              # gcov2lcov produces /app/ prefixed paths — we sed them to iznik-server-go/
+              if docker exec freegle-apiv2 sh -c 'cd /app && go install github.com/jandelgado/gcov2lcov@latest 2>/dev/null && ~/go/bin/gcov2lcov -infile=coverage.out -outfile=coverage.lcov' 2>&1; then
+                docker cp freegle-apiv2:/app/coverage.lcov "$GO_DIR/coverage.lcov" 2>/dev/null
+                # Fix paths: /app/foo.go -> iznik-server-go/foo.go
+                sed -i 's|^SF:/app/|SF:iznik-server-go/|' "$GO_DIR/coverage.lcov"
+                if [ -s "$GO_DIR/coverage.lcov" ]; then
                   cd "$PROJECT_ROOT"
                   export COVERALLS_FLAG_NAME="go"
                   if cat "$GO_DIR/coverage.lcov" | coveralls; then
@@ -2521,10 +2524,10 @@ jobs:
                     echo "⚠️ Go coverage upload failed (non-fatal)"
                   fi
                 else
-                  echo "⚠️ Failed to convert Go coverage to lcov"
+                  echo "⚠️ gcov2lcov produced empty output"
                 fi
               else
-                echo "⚠️ gcov2lcov not available"
+                echo "⚠️ Failed to convert Go coverage to lcov"
               fi
               rm -f "$GO_DIR/coverage.out" "$GO_DIR/coverage.lcov"
             else
@@ -2562,9 +2565,12 @@ jobs:
             fi
             if [ -n "$VITEST_LCOV" ]; then
               echo "✅ Found Vitest coverage at $VITEST_LCOV"
+              # Prefix paths with iznik-nuxt3/ to match repo structure
+              VITEST_LCOV_FIXED="/tmp/vitest-coverage-fixed.lcov"
+              sed 's|^SF:|SF:iznik-nuxt3/|' "$VITEST_LCOV" > "$VITEST_LCOV_FIXED"
               cd "$PROJECT_ROOT"
               export COVERALLS_FLAG_NAME="vitest"
-              if cat "$VITEST_LCOV" | coveralls; then
+              if cat "$VITEST_LCOV_FIXED" | coveralls; then
                 echo "✅ Vitest coverage uploaded"
                 UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
               else

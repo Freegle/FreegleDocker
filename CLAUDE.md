@@ -84,13 +84,24 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 **Active plan**: `plans/active/v1-to-v2-api-migration.md` - READ THIS ON EVERY RESUME/COMPACTION.
 
-### 2026-04-09 - Chat unseen V1 parity, expiry/spatial fixes, status page, Playwright ERR_ABORTED
-- **Chat unseen ACTIVELIM** (Go): Added 31-day date filter to unseen count queries in `chatroom.go`, matching V1's `countAllUnseenForUser()`. Stale old chats (2020-2022) no longer inflate the unread badge. Test: `TestUnseenCountExcludesOldMessages`. Committed `e8ffdbf`, pushed.
-- **Expired promised posts** (Go): Removed `m.Promised` from skip condition in `applyExpiry()` — promised messages now expire like all others (matches removed client-side `hasExpired()`). Test: `TestExpiredPromisedMessageExcludedFromActive`. Committed `19a5782`, pushed.
-- **Non-spatial messages** (Go): `markExpiredMessages()` now marks non-spatial, non-pending/rejected messages as `hasoutcome=true` — consistent between active=true and active=false. Test: `TestNonSpatialMessageMarkedOldInInactiveQuery`. Committed `9f4b03a`, pushed.
-- **Old posts toggle** (Nuxt): Fixed infinite scroll not resetting on toggle. Added `infiniteKey` ref with `:key` on InfiniteLoading to force remount. Tests added for emit, toggle, and remount. Committed `99e8465f`, pushed.
-- **Status page fixes** (status-nuxt): Go test total now counts `=== RUN` lines; Vitest runs `vitest list` upfront for accurate total (10MB maxBuffer for ~12K tests); summary parser reordered; TestRunner auto-collapses logs on completion; hook allows `docker cp`/`docker exec`. Committed `af013f60`, pushed.
-- **All 1256 Go tests pass**, all 10972 Vitest tests pass.
-- **CI pipelines 2930-2932**: All fail on Playwright only — different modtools tests each time (support, member-logs, chat-reply, member-review) with `ERR_ABORTED` / "Navigation interrupted by another navigation to /?noguard=true". Root cause: `loginViaModTools` sidebar check completes but redirect chain not fully settled; subsequent `page.goto()` gets interrupted.
-- **Fix in progress**: Added `waitForLoadState('load')` after sidebar check in `loginViaModTools` (`tests/e2e/utils/user.js`). Running ALL Playwright tests locally before pushing.
-- **Next**: Wait for full Playwright run to complete locally. Fix any additional failures. Push only after all pass.
+### 2026-04-09 - V1 parity fixes, status page, banned member improvements
+- **Go fixes** (all pushed): Chat unseen 31-day filter (`e8ffdbf`), expired promised posts (`19a5782`), non-spatial message marking (`9f4b03a`), chat completed snippets neutral language (`e619c2b`), `IsModOfUser()` checks `users_banned` table (`e619c2b`).
+- **Nuxt fixes** (all pushed): Old posts toggle infinite scroll reset (`99e8465f`), ChatMessageCompleted automated message removal (`975cf83`), MyMessage auto-open outcome modal (`975cf83`).
+- **Status page** (pushed): Go/Vitest test count accuracy (`af013f60`).
+- **Banned member view** (Nuxt, uncommitted): Simplified ModMember for banned users — hides settings, toggles, ModMemberButtons, ModRole. 9 new tests in ModMember.spec.js.
+- **Playwright CI**: ERR_ABORTED fix in `loginViaModTools` — added `waitForLoadState('load')`. Needs local validation before push.
+
+### 2026-04-10 - Session log cleanup
+- Pruned session log per 7-day rule. Answered GDPR question re banned users (data not exempted from removal; `users_banned` records are orphaned but not cleaned up by `User::forget()`).
+
+### 2026-04-11 - Coveralls coverage upload for build-and-test
+- **Root cause**: `build-and-test` job (master builds) never uploaded coverage to Coveralls.
+- **Fix round 1** (`ff100ebd`): Added unified coverage upload step. Orb `freegle/tests@1.1.173`.
+- **CI job 3348 results**: Vitest coverage uploaded (empty source_files), Go/Laravel/Playwright/PHP all failed.
+  - Go: Default 10m `go test` timeout exceeded with `-race -coverpkg ./...`. Fix: added `-timeout 30m`.
+  - Go coverage: gcov2lcov conversion failed — Go not installed on CI host. Fix: run gcov2lcov inside container, sed paths `/app/` → `iznik-server-go/`.
+  - Vitest: empty source_files — paths relative to iznik-nuxt3/ but coveralls ran from project root. Fix: sed prefix `iznik-nuxt3/` on lcov paths.
+  - Laravel: `cronLog()` redeclaration error — pre-existing issue (not coverage-related).
+  - PHP/Playwright: killed by cascading timeout.
+- **Local verification**: Go tests with coverage pass (1325✓, 0✗). gcov2lcov conversion verified locally with correct path mapping.
+- **Next**: Commit fixes, publish orb, push, rerun CI.

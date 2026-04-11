@@ -1,3 +1,5 @@
+[![Coverage Status](https://coveralls.io/repos/github/Freegle/FreegleDocker/badge.svg?branch=master)](https://coveralls.io/github/Freegle/FreegleDocker?branch=master)
+
 This is a top-level Docker Compose environment for a [Freegle](https://www.ilovefreegle.org) development system.  You should be able to start up a local development environment and make changes to each of the client/server components.
 
 <details>
