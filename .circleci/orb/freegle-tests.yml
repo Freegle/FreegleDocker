@@ -1430,16 +1430,16 @@ commands:
           command: |
             mkdir -p ~/artifacts
 
-            cat > ~/artifacts/ci-failure-diagnostics.txt <<DIAG_EOF
-            === CI FAILURE DIAGNOSTICS ===
-            Build: $CIRCLE_BUILD_NUM
-            Branch: $CIRCLE_BRANCH
-            Commit: $CIRCLE_SHA1
-            Job: $CIRCLE_JOB
-            Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-            === FAILED TEST SUITES ===
-            DIAG_EOF
+            {
+              echo "=== CI FAILURE DIAGNOSTICS ==="
+              echo "Build: $CIRCLE_BUILD_NUM"
+              echo "Branch: $CIRCLE_BRANCH"
+              echo "Commit: $CIRCLE_SHA1"
+              echo "Job: $CIRCLE_JOB"
+              echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              echo ""
+              echo "=== FAILED TEST SUITES ==="
+            } > ~/artifacts/ci-failure-diagnostics.txt
 
             # PHPUnit failures
             if [ -f ~/artifacts/phpunit/phpunit-output.log ]; then
