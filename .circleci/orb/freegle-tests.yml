@@ -2539,15 +2539,43 @@ jobs:
             echo "=== Laravel Coverage ==="
             if docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
               echo "✅ Found Laravel coverage file ($(stat -c%s /tmp/laravel-clover.xml 2>/dev/null || echo '?') bytes)"
-              # php-coveralls needs to run inside a container with the composer package
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" 2>/dev/null || true
-              docker cp /tmp/laravel-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
-              export COVERALLS_FLAG_NAME="laravel"
-              if docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} COVERALLS_PARALLEL=true COVERALLS_FLAG_NAME=laravel vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json" 2>&1; then
-                echo "✅ Laravel coverage uploaded"
-                UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
+              # Convert clover.xml to lcov format on the host (php-coveralls needs git
+              # which isn't available in containers). Use a simple Python conversion.
+              LARAVEL_LCOV="/tmp/laravel-coverage.lcov"
+              python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('/tmp/laravel-clover.xml')
+root = tree.getroot()
+project = root.find('.//project')
+if project is None:
+    exit(1)
+for f in project.iter('file'):
+    name = f.get('name', '')
+    # Map container paths to repo-relative paths
+    if '/var/www/html/' in name:
+        rel = 'iznik-batch/' + name.split('/var/www/html/')[-1]
+    else:
+        rel = name
+    print('SF:' + rel)
+    for line in f.iter('line'):
+        num = line.get('num')
+        count = line.get('count')
+        if num and count is not None:
+            print('DA:' + num + ',' + count)
+    print('end_of_record')
+" > "$LARAVEL_LCOV" 2>&1
+              if [ -s "$LARAVEL_LCOV" ]; then
+                echo "✅ Converted clover.xml to lcov ($(wc -l < "$LARAVEL_LCOV") lines)"
+                cd "$PROJECT_ROOT"
+                export COVERALLS_FLAG_NAME="laravel"
+                if cat "$LARAVEL_LCOV" | coveralls; then
+                  echo "✅ Laravel coverage uploaded"
+                  UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
+                else
+                  echo "⚠️ Laravel coverage upload failed (non-fatal)"
+                fi
               else
-                echo "⚠️ Laravel coverage upload failed (non-fatal)"
+                echo "⚠️ Clover to lcov conversion failed (non-fatal)"
               fi
             else
               echo "⚠️ Laravel coverage file not found"
@@ -2592,9 +2620,12 @@ jobs:
               echo "✅ Found Playwright coverage"
             fi
             if [ -n "$PLAYWRIGHT_LCOV" ]; then
+              # Prefix paths with iznik-nuxt3/ to match repo structure
+              PLAYWRIGHT_LCOV_FIXED="/tmp/playwright-coverage-fixed.lcov"
+              sed 's|^SF:|SF:iznik-nuxt3/|' "$PLAYWRIGHT_LCOV" > "$PLAYWRIGHT_LCOV_FIXED"
               cd "$PROJECT_ROOT"
               export COVERALLS_FLAG_NAME="playwright"
-              if cat "$PLAYWRIGHT_LCOV" | coveralls; then
+              if cat "$PLAYWRIGHT_LCOV_FIXED" | coveralls; then
                 echo "✅ Playwright coverage uploaded"
                 UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
               else
