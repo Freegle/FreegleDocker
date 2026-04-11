@@ -9,6 +9,19 @@ use Illuminate\Support\Facades\Schedule;
  * Commands are gradually being enabled as we migrate from iznik-server crontab.
  */
 
+// Helper to build a per-command log path for output capture.
+$cronLogDir = storage_path('logs/cron');
+if (!is_dir($cronLogDir)) {
+    mkdir($cronLogDir, 0755, true);
+}
+
+function cronLog(string $command): string
+{
+    $safe = str_replace([':', ' ', '/', '--'], ['_', '_', '_', '_'], $command);
+
+    return storage_path('logs/cron/'.$safe.'.log');
+}
+
 // =============================================================================
 // ACTIVE SCHEDULED COMMANDS
 // =============================================================================
@@ -19,6 +32,7 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('deploy:watch')
     ->everyMinute()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('deploy:watch'))
     ->runInBackground();
 
 // Welcome mail processing - check for pending welcome mails every minute.
@@ -27,6 +41,7 @@ Schedule::command('deploy:watch')
 // Uses --spool to write to file for resilient async processing.
 Schedule::command('mail:welcome:send --limit=100 --spool')
     ->everyMinute()
+    ->sendOutputTo(cronLog('mail:welcome:send'))
     ->runInBackground();
 
 // Chat notifications - run continuously with internal looping.
@@ -34,16 +49,19 @@ Schedule::command('mail:welcome:send --limit=100 --spool')
 // User2User notifications.
 Schedule::command('mail:chat:user2user --max-iterations=60 --spool')
     ->everyMinute()
+    ->sendOutputTo(cronLog('mail:chat:user2user'))
     ->runInBackground();
 
 // Mod2Mod notifications.
 Schedule::command('mail:chat:mod2mod --max-iterations=60 --spool')
     ->everyMinute()
+    ->sendOutputTo(cronLog('mail:chat:mod2mod'))
     ->runInBackground();
 
 // User2Mod notifications.
 Schedule::command('mail:chat:user2mod --max-iterations=60 --spool')
     ->everyMinute()
+    ->sendOutputTo(cronLog('mail:chat:user2mod'))
     ->runInBackground();
 
 // Fetch UK CPI inflation data from ONS - runs monthly.
@@ -52,6 +70,7 @@ Schedule::command('mail:chat:user2mod --max-iterations=60 --spool')
 Schedule::command('data:update-cpi')
     ->monthly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('data:update-cpi'))
     ->runInBackground();
 
 // Auto-approve pending messages after 48 hours.
@@ -59,6 +78,7 @@ Schedule::command('data:update-cpi')
 Schedule::command('messages:auto-approve')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('messages:auto-approve'))
     ->runInBackground();
 
 // Auto-repost messages based on group repost settings.
@@ -66,6 +86,7 @@ Schedule::command('messages:auto-approve')
 Schedule::command('messages:auto-repost')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('messages:auto-repost'))
     ->runInBackground();
 
 // Chase up messages with replies but no outcome.
@@ -73,6 +94,7 @@ Schedule::command('messages:auto-repost')
 Schedule::command('messages:chase-up')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('messages:chase-up'))
     ->runInBackground();
 
 // Deduplicate searches.
@@ -80,6 +102,7 @@ Schedule::command('messages:chase-up')
 Schedule::command('cleanup:search-duplicates')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('cleanup:search-duplicates'))
     ->runInBackground();
 
 // Deduplicate chat messages.
@@ -87,6 +110,7 @@ Schedule::command('cleanup:search-duplicates')
 Schedule::command('cleanup:chat-duplicates')
     ->everyTwoHours()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('cleanup:chat-duplicates'))
     ->runInBackground();
 
 // Clean up old sessions.
@@ -94,6 +118,7 @@ Schedule::command('cleanup:chat-duplicates')
 Schedule::command('cleanup:sessions')
     ->dailyAt('03:00')
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('cleanup:sessions'))
     ->runInBackground();
 
 // Process bounced emails — mark as invalid.
@@ -101,6 +126,15 @@ Schedule::command('cleanup:sessions')
 Schedule::command('mail:bounced')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('mail:bounced'))
+    ->runInBackground();
+
+// Email health monitor — alerts if incoming or outgoing email flow drops below
+// configurable thresholds during daytime hours.
+Schedule::command('monitor:email-health')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->sendOutputTo(cronLog('monitor:email-health'))
     ->runInBackground();
 
 // =============================================================================
@@ -255,18 +289,21 @@ Schedule::command('users:update-support-roles')
 // Runs continuously with internal looping. Handles push notifications and emails.
 Schedule::command('queue:background-tasks --max-iterations=60 --spool')
     ->everyMinute()
+    ->sendOutputTo(cronLog('queue:background-tasks'))
     ->runInBackground();
 
 // Clean up old sent emails - run daily.
 Schedule::command('mail:spool:process --cleanup --cleanup-days=7')
     ->dailyAt('04:00')
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('mail:spool:process'))
     ->runInBackground();
 
 // Clean up incoming email archives older than 48 hours.
 Schedule::command('mail:cleanup-archive')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('mail:cleanup-archive'))
     ->runInBackground();
 
 // =============================================================================
@@ -279,6 +316,7 @@ Schedule::command('mail:cleanup-archive')
 Schedule::command('mail:admin:copy')
     ->everyMinute()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('mail:admin:copy'))
     ->runInBackground();
 
 // Send approved admin emails to group members.
@@ -286,6 +324,7 @@ Schedule::command('mail:admin:copy')
 Schedule::command('mail:admin:send --spool')
     ->everyMinute()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('mail:admin:send'))
     ->runInBackground();
 
 // Chase moderators about pending suggested admins.
@@ -293,6 +332,7 @@ Schedule::command('mail:admin:send --spool')
 Schedule::command('mail:admin:chase')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('mail:admin:chase'))
     ->runInBackground();
 
 // =============================================================================
@@ -303,12 +343,14 @@ Schedule::command('mail:admin:chase')
 Schedule::command('ai:usage-counts:update')
     ->hourly()
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('ai:usage-counts:update'))
     ->runInBackground();
 
 // Daily digest of AI image review verdicts to geeks.
 Schedule::command('mail:ai-image-review:digest --spool')
     ->dailyAt('12:00')
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('mail:ai-image-review:digest'))
     ->runInBackground();
 
 // =============================================================================
@@ -320,6 +362,7 @@ Schedule::command('mail:ai-image-review:digest --spool')
 Schedule::command('data:git-summary')
     ->weeklyOn(3, '18:00')  // Wednesday at 6pm UTC
     ->withoutOverlapping()
+    ->sendOutputTo(cronLog('data:git-summary'))
     ->runInBackground();
 
 // Note: App release classification is now handled directly in CircleCI.
