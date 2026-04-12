@@ -127,10 +127,24 @@ cmd_worktree_create() {
     echo "  Directory: $worktree_dir"
     echo "  Branch:    $branch"
 
-    # Count existing worktrees BEFORE adding the new one (includes main repo as slot 0)
-    local slot
-    slot=$(git -C "$main_repo" worktree list --porcelain | grep -c '^worktree ' || true)
-    # slot = number of worktrees currently (main repo = 1, so first worktree gets slot 1)
+    # Find the next free slot by checking PORT_STATUS in each existing worktree's .env.
+    # This avoids reusing a slot after a worktree is removed (the old count-based approach
+    # would assign the same slot number to a new worktree if one had been deleted).
+    local max_slot=0
+    for wt in $(git -C "$main_repo" worktree list --porcelain | grep '^worktree ' | sed 's/^worktree //'); do
+        if [[ -f "$wt/.env" ]]; then
+            local wt_status_port
+            wt_status_port=$(grep -E '^PORT_STATUS=' "$wt/.env" 2>/dev/null | cut -d= -f2 || true)
+            if [[ -n "$wt_status_port" && "$wt_status_port" =~ ^[0-9]+$ ]]; then
+                # Base STATUS port is 8081. Slot = (port - 8081) / 9000
+                local wt_slot=$(( (wt_status_port - 8081) / 9000 ))
+                if (( wt_slot > max_slot )); then
+                    max_slot=$wt_slot
+                fi
+            fi
+        fi
+    done
+    local slot=$(( max_slot + 1 ))
 
     # Create the worktree
     git -C "$main_repo" worktree add "$worktree_dir" "$branch"
@@ -172,6 +186,9 @@ cmd_worktree_create() {
             port_defaults["$key"]="$val"
         fi
     done < <(grep -E '^PORT_[A-Z0-9_]+=[0-9]+$' "$main_repo/.env")
+
+    # Ensure .env ends with a newline before appending (prevents concatenation with last line)
+    [[ -f "$worktree_dir/.env" && -s "$worktree_dir/.env" ]] && sed -i -e '$a\' "$worktree_dir/.env"
 
     # Write all PORT_* with offset into worktree .env
     for key in "${!port_defaults[@]}"; do
