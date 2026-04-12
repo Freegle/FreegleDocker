@@ -36,9 +36,9 @@ class UpdateAIImageUsageCountsCommand extends Command
 
         try {
             do {
-                // Find the upper bound of this batch.
-                $maxRow = DB::selectOne("
-                    SELECT MAX(id) AS max_id FROM (
+                // Find the upper bound and count of this batch.
+                $batchInfo = DB::selectOne("
+                    SELECT MAX(id) AS max_id, COUNT(*) AS cnt FROM (
                         SELECT id FROM ai_images
                         WHERE id > ?
                           AND externaluid IS NOT NULL
@@ -48,14 +48,14 @@ class UpdateAIImageUsageCountsCommand extends Command
                     ) batch
                 ", [$lastId, $batchSize]);
 
-                if (!$maxRow || !$maxRow->max_id) {
+                if (!$batchInfo || !$batchInfo->max_id) {
                     break;
                 }
 
-                $batchMaxId = $maxRow->max_id;
+                $batchMaxId = $batchInfo->max_id;
 
                 // Batched JOIN update — one query per batch instead of per row.
-                $affected = DB::update("
+                DB::update("
                     UPDATE ai_images ai
                     LEFT JOIN tmp_ai_usage_counts t ON t.externaluid = ai.externaluid
                     SET ai.usage_count = COALESCE(t.cnt, 0)
@@ -64,7 +64,7 @@ class UpdateAIImageUsageCountsCommand extends Command
                       AND ai.externaluid != ''
                 ", [$lastId, $batchMaxId]);
 
-                $totalUpdated += $affected;
+                $totalUpdated += $batchInfo->cnt;
                 $lastId = $batchMaxId;
             } while (true);
         } finally {

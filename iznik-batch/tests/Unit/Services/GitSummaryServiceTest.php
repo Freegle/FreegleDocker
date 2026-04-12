@@ -30,6 +30,9 @@ class GitSummaryServiceTest extends TestCase
         Log::shouldReceive('info')->zeroOrMoreTimes();
         Log::shouldReceive('warning')->zeroOrMoreTimes();
 
+        // Must use a github.com URL to trigger token injection. git clone will
+        // fail (DNS/HTTP error) and include the URL in its error output — the
+        // token must be sanitised from that output regardless of failure mode.
         $result = $service->getRepositoryChanges(
             'https://github.com/Freegle/nonexistent-repo.git',
             'master',
@@ -45,7 +48,7 @@ class GitSummaryServiceTest extends TestCase
         // The token must NOT appear in the output.
         $this->assertStringNotContainsString('ghp_testtoken123', $loggedContext['output']);
 
-        // The redacted placeholder should be present.
+        // The redacted placeholder should be present (git includes the URL in its error).
         $this->assertStringContainsString('***', $loggedContext['output']);
     }
 
@@ -68,8 +71,10 @@ class GitSummaryServiceTest extends TestCase
         Log::shouldReceive('info')->zeroOrMoreTimes();
         Log::shouldReceive('warning')->zeroOrMoreTimes();
 
+        // file:// protocol — no network needed, and token must NOT be injected
+        // because this isn't a github.com URL.
         $result = $service->getRepositoryChanges(
-            'https://gitlab.com/some/repo.git',
+            'file:///tmp/nonexistent-repo-' . uniqid(),
             'master',
             time() - 3600
         );
