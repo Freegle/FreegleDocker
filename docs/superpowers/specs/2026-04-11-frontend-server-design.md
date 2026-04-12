@@ -254,6 +254,33 @@ After the frontend server takes over delivery and uploads, app1-internal retains
 
 The delivery nginx config and `/wsrv_cache` can be removed from app1-internal after cutover, freeing ~41GB (bringing disk usage from 74% to ~48%).
 
+## Graceful Degradation
+
+The frontend server is a single point of failure. During maintenance (patching, restarts), all four services go down simultaneously. The goal is **no Sentry floods and no "something went wrong" errors** — degraded visuals are acceptable.
+
+### Current frontend behaviour (from code audit)
+
+| Service down | What happens | Sentry? | User sees |
+|-------------|-------------|---------|-----------|
+| **Delivery** | `OurUploadedImage.vue` catches `@error`, hides image, shows placeholder | **Yes — `Sentry.captureMessage` per failed image** | Placeholders / hidden images |
+| **Uploads** | Uppy TUS upload fails | Likely (unhandled) | Upload error in modal |
+| **Tiles** | Leaflet shows blank white area | No | Blank map background |
+| **Geocoding** | Autocomplete returns no results, console.log only | No | Empty dropdown, postcode search still works (uses API) |
+
+Most of this is already graceful. Two problems need fixing:
+
+### Fix 1: Suppress Sentry flood from image failures (required)
+
+`OurUploadedImage.vue` (line ~160) calls `Sentry.captureMessage('Failed to fetch image ' + props.src)` for every broken image. During a maintenance window, every page load would fire dozens of Sentry events. This needs either:
+- **Rate-limiting**: Track recent failures and only report the first N per session
+- **Removal**: Image load failures aren't actionable errors — the placeholder behaviour is correct. Remove the Sentry call entirely and rely on delivery monitoring instead
+
+Recommended: remove the Sentry call. A delivery outage should be detected by infrastructure monitoring (applb health checks, uptime monitoring), not by individual image load failures in the browser.
+
+### Fix 2: Fallback tile URL (optional, low priority)
+
+Configure a fallback tile source in the Leaflet tile layer so maps show OSM public tiles instead of blank white during outages. This is cosmetic — blank maps don't generate errors — but improves the experience. Can be done later.
+
 ## Deferred
 
 - Photon update strategy (manual updates for now, can enable auto-update later)
