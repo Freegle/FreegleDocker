@@ -8,7 +8,7 @@ NODE_VERSION = "22"
 NPM_FLAGS = "--legacy-peer-deps"
 
 [build]
-command = "cd .. && npm install --legacy-peer-deps && npx nuxi prepare && cd modtools && npm install --legacy-peer-deps && npm run build"
+command = "npm install --prefix .. --legacy-peer-deps && npm run build"
 publish = "dist"
 
 # Return 404 for requests from old code. This avoids the function call, which costs.
