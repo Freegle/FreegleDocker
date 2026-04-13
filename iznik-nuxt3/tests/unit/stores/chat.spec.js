@@ -78,10 +78,6 @@ vi.mock('~/stores/user', () => ({
   }),
 }))
 
-vi.mock('#app', () => ({
-  useRoute: () => ({ path: '/chats', query: {} }),
-}))
-
 describe('chat store', () => {
   let useChatStore
 
