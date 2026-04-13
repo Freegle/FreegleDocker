@@ -2168,9 +2168,34 @@ type membershipsResponse struct {
 }
 
 // swagger:route PUT /memberships membership joinGroup
-// Join a group
+// Subscribe user to group
 //
-// Adds the authenticated user to a group
+// Adds a user to a group. Supports three auth modes:
+// (1) Partner key auth via query params for TN integration — no JWT needed.
+// (2) Mod-add-member: JWT auth where userid in body differs from authenticated user and caller is mod of the group.
+// (3) Self-join: JWT auth where userid matches authenticated user or is omitted.
+//
+// Parameters:
+//   + name: partner
+//     in: query
+//     description: Partner API key (alternative to JWT auth)
+//     required: false
+//     type: string
+//   + name: tnuserid
+//     in: query
+//     description: Trash Nothing user ID (partner auth only)
+//     required: false
+//     type: integer
+//   + name: email
+//     in: query
+//     description: User email address (partner auth only)
+//     required: false
+//     type: string
+//   + name: groupid
+//     in: query
+//     description: Group ID (partner auth only; JWT auth uses request body)
+//     required: false
+//     type: integer
 //
 // security:
 // - BearerAuth: []
@@ -2180,11 +2205,34 @@ type membershipsResponse struct {
 //	200: successResponse
 //	400: errorResponse
 //	401: errorResponse
+//	403: errorResponse
 
 // swagger:route DELETE /memberships membership leaveGroup
-// Leave a group
+// Unsubscribe user from group
 //
-// Removes the authenticated user from a group
+// Removes a user from a group. Supports JWT auth and partner key auth for TN integration.
+//
+// Parameters:
+//   + name: partner
+//     in: query
+//     description: Partner API key (alternative to JWT auth)
+//     required: false
+//     type: string
+//   + name: tnuserid
+//     in: query
+//     description: Trash Nothing user ID (partner auth only)
+//     required: false
+//     type: integer
+//   + name: email
+//     in: query
+//     description: User email address (partner auth only)
+//     required: false
+//     type: string
+//   + name: groupid
+//     in: query
+//     description: Group ID (partner auth only; JWT auth uses request body)
+//     required: false
+//     type: integer
 //
 // security:
 // - BearerAuth: []
@@ -2193,6 +2241,7 @@ type membershipsResponse struct {
 //
 //	200: successResponse
 //	401: errorResponse
+//	403: errorResponse
 
 // swagger:route PATCH /memberships membership updateMembership
 // Update membership settings
@@ -2284,6 +2333,45 @@ type membershipsResponse struct {
 // ============================================================================
 // Message
 // ============================================================================
+
+// swagger:route GET /messages message listPublicMessages
+// List messages
+//
+// Returns messages for a group with pagination. Response includes tnpostid (Trash Nothing post ID)
+// and expiresat (computed expiry date based on group settings) for each message.
+//
+// Parameters:
+//   + name: groupid
+//     in: query
+//     description: Group ID to list messages from
+//     required: false
+//     type: integer
+//   + name: collection
+//     in: query
+//     description: Message collection (Approved, Pending, Rejected, Spam)
+//     required: false
+//     type: string
+//   + name: limit
+//     in: query
+//     description: Max messages to return (1-100, default 20)
+//     required: false
+//     type: integer
+//   + name: context
+//     in: query
+//     description: Pagination cursor (JSON with Date and id)
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: listMessagesResponse
+
+// listMessagesResponse is the response for the message list endpoint
+// swagger:response listMessagesResponse
+type listMessagesResponse struct {
+	// in:body
+	Body message.ListMessagesResponse
+}
 
 // swagger:route GET /modtools/messages modtools listMessages
 // List messages

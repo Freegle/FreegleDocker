@@ -11,7 +11,7 @@
   ],
   "swagger": "2.0",
   "info": {
-    "description": "The Iznik API powers both the Freegle user-facing site (www.ilovefreegle.org) and ModTools, which provides moderation tools to Freegle volunteers. Endpoints are tagged by which client uses them.\n\nIf you are intending to make extensive use of this API, please contact us at geeks@ilovefreegle.org.",
+    "description": "The Iznik API powers both the Freegle user-facing site and ModTools (moderation tools for volunteers).",
     "title": "Iznik API.",
     "termsOfService": "https://www.ilovefreegle.org/terms",
     "contact": {
@@ -32,7 +32,7 @@
       "get": {
         "description": "Returns the best-performing variant for a test UID using epsilon-greedy bandit",
         "tags": [
-          "A/B Testing"
+          "abtest"
         ],
         "summary": "Get A/B test variant",
         "operationId": "getABTest",
@@ -54,7 +54,7 @@
       "post": {
         "description": "Records a shown or action event for a variant",
         "tags": [
-          "A/B Testing"
+          "abtest"
         ],
         "summary": "Track A/B test event",
         "operationId": "postABTest",
@@ -84,7 +84,7 @@
       "get": {
         "description": "Returns the most recent activity in groups",
         "tags": [
-          "Activity"
+          "message"
         ],
         "summary": "Get recent activity",
         "operationId": "getActivity",
@@ -106,7 +106,7 @@
         ],
         "description": "Returns all addresses for the authenticated user",
         "tags": [
-          "Addresses"
+          "address"
         ],
         "summary": "List addresses for user",
         "operationId": "listAddresses",
@@ -126,7 +126,7 @@
         ],
         "description": "Creates a new address for the authenticated user",
         "tags": [
-          "Addresses"
+          "address"
         ],
         "summary": "Create a new address",
         "operationId": "createAddress",
@@ -152,7 +152,7 @@
         ],
         "description": "Updates an address for the authenticated user",
         "tags": [
-          "Addresses"
+          "address"
         ],
         "summary": "Update an existing address",
         "operationId": "updateAddress",
@@ -173,7 +173,7 @@
       "get": {
         "description": "Returns a single address by ID",
         "tags": [
-          "Addresses"
+          "address"
         ],
         "summary": "Get address by ID",
         "operationId": "getAddress",
@@ -206,7 +206,7 @@
         ],
         "description": "Deletes an address by ID",
         "tags": [
-          "Addresses"
+          "address"
         ],
         "summary": "Delete an address",
         "operationId": "deleteAddress",
@@ -234,7 +234,7 @@
       "get": {
         "description": "Returns the last 5 chat messages for the earlier conversation section in AMP emails",
         "tags": [
-          "AMP Email"
+          "amp"
         ],
         "summary": "Get chat messages for AMP email",
         "operationId": "getAMPChatMessages",
@@ -286,7 +286,7 @@
       "post": {
         "description": "Submits an inline reply from AMP email using a one-time write token",
         "tags": [
-          "AMP Email"
+          "amp"
         ],
         "summary": "Post reply from AMP email",
         "operationId": "postAMPChatReply",
@@ -324,7 +324,7 @@
       "get": {
         "description": "Searches authorities by name",
         "tags": [
-          "Authorities"
+          "authority"
         ],
         "summary": "Search authorities",
         "operationId": "searchAuthorities",
@@ -354,7 +354,7 @@
       "get": {
         "description": "Returns a single authority by ID with polygon, centre, and overlapping groups",
         "tags": [
-          "Authorities"
+          "authority"
         ],
         "summary": "Get authority by ID",
         "operationId": "getAuthority",
@@ -382,7 +382,7 @@
       "get": {
         "description": "Returns messages for a specific authority",
         "tags": [
-          "Authorities"
+          "authority"
         ],
         "summary": "Get messages for authority",
         "operationId": "getAuthorityMessages",
@@ -407,7 +407,7 @@
       "get": {
         "description": "Returns message changes (deleted, edited, promised, reneged, outcomes, approved/reposted),\nuser changes, and ratings since a given time. Requires partner key authentication.",
         "tags": [
-          "Changes"
+          "changes"
         ],
         "summary": "Get changes since timestamp",
         "operationId": "getChanges",
@@ -450,7 +450,7 @@
         ],
         "description": "Returns all chats for the authenticated user",
         "tags": [
-          "Chat"
+          "chat"
         ],
         "summary": "List chats for user",
         "operationId": "listChats",
@@ -465,7 +465,7 @@
       "post": {
         "description": "Creates a new chat message from a LoveJunk user via partner key",
         "tags": [
-          "Chat"
+          "chat"
         ],
         "summary": "Create LoveJunk chat message",
         "operationId": "createChatMessageLoveJunk",
@@ -490,7 +490,7 @@
         ],
         "description": "Returns chat rooms wrapped in {chatrooms: [...]} for ModTools compatibility",
         "tags": [
-          "Chat"
+          "chat"
         ],
         "summary": "List chat rooms for moderator",
         "operationId": "listChatRoomsMT",
@@ -513,7 +513,7 @@
         ],
         "description": "Creates a new User2User chat room with another user, or returns existing one",
         "tags": [
-          "Chat"
+          "chat"
         ],
         "summary": "Open or create a chat room",
         "operationId": "createChatRoom",
@@ -553,7 +553,7 @@
         ],
         "description": "Returns a single chat by ID",
         "tags": [
-          "Chat"
+          "chat"
         ],
         "summary": "Get chat by ID",
         "operationId": "getChat",
@@ -588,7 +588,7 @@
         ],
         "description": "Returns all messages for a specific chat room",
         "tags": [
-          "Chat"
+          "chat"
         ],
         "summary": "Get chat messages",
         "operationId": "getChatMessages",
@@ -627,7 +627,7 @@
         ],
         "description": "Creates a new message in a chat room",
         "tags": [
-          "Chat"
+          "chat"
         ],
         "summary": "Create chat message",
         "operationId": "createChatMessage",
@@ -675,7 +675,7 @@
         ],
         "description": "Returns review queue messages or messages from a specific chat room",
         "tags": [
-          "Chat Messages"
+          "chat"
         ],
         "summary": "Get chat messages for review",
         "operationId": "getReviewChatMessages",
@@ -698,7 +698,7 @@
         ],
         "description": "Approve, reject, hold, release, or redact a chat message",
         "tags": [
-          "Chat Messages"
+          "chat"
         ],
         "summary": "Moderate chat message",
         "operationId": "postChatMessageModeration",
@@ -736,7 +736,7 @@
         ],
         "description": "Soft-deletes a chat message owned by the logged-in user",
         "tags": [
-          "Chat Messages"
+          "chat"
         ],
         "summary": "Delete chat message",
         "operationId": "deleteChatMessage",
@@ -769,7 +769,7 @@
         ],
         "description": "Updates a chat message (e.g. replyexpected flag)",
         "tags": [
-          "Chat Messages"
+          "chat"
         ],
         "summary": "Update chat message",
         "operationId": "patchChatMessage",
@@ -809,7 +809,7 @@
         ],
         "description": "Returns unseen count, single room, or list of chat rooms for moderator view",
         "tags": [
-          "Chat Rooms"
+          "chat"
         ],
         "summary": "Get chatrooms for moderator",
         "operationId": "getChatRoomsMT",
@@ -832,7 +832,7 @@
         ],
         "description": "Handles roster updates, nudge messages, and typing indicators for chat rooms",
         "tags": [
-          "Chat Rooms"
+          "chat"
         ],
         "summary": "Chatroom actions",
         "operationId": "postChatRoom",
@@ -865,7 +865,7 @@
       "post": {
         "description": "Accepts client-side log entries for distributed tracing",
         "tags": [
-          "Logging"
+          "logging"
         ],
         "summary": "Receive client logs",
         "operationId": "receiveClientLogs",
@@ -899,7 +899,7 @@
         ],
         "description": "Returns comments for moderated groups with pagination. Pass id for a single comment.",
         "tags": [
-          "Comments"
+          "comment"
         ],
         "summary": "List or get comments",
         "operationId": "getComments",
@@ -936,7 +936,7 @@
         ],
         "description": "Moderators can add comments to users in their groups",
         "tags": [
-          "Comments"
+          "comment"
         ],
         "summary": "Create a comment on a user",
         "operationId": "createComment",
@@ -962,7 +962,7 @@
         ],
         "description": "Moderators can edit comments on users in their groups",
         "tags": [
-          "Comments"
+          "comment"
         ],
         "summary": "Edit a comment",
         "operationId": "editComment",
@@ -990,7 +990,7 @@
         ],
         "description": "Moderators can delete comments on users in their groups",
         "tags": [
-          "Comments"
+          "comment"
         ],
         "summary": "Delete a comment",
         "operationId": "deleteComment",
@@ -1018,7 +1018,7 @@
       "get": {
         "description": "Returns all community events",
         "tags": [
-          "Community Events"
+          "communityevent"
         ],
         "summary": "List community events",
         "operationId": "listCommunityEvents",
@@ -1038,7 +1038,7 @@
         ],
         "description": "Creates a new community event",
         "tags": [
-          "Community Events"
+          "communityevent"
         ],
         "summary": "Create a community event",
         "operationId": "createCommunityEvent",
@@ -1064,7 +1064,7 @@
         ],
         "description": "Updates an existing community event",
         "tags": [
-          "Community Events"
+          "communityevent"
         ],
         "summary": "Update a community event",
         "operationId": "updateCommunityEvent",
@@ -1085,7 +1085,7 @@
       "get": {
         "description": "Returns all community events for a specific group",
         "tags": [
-          "Community Events"
+          "communityevent"
         ],
         "summary": "List community events for group",
         "operationId": "listCommunityEventsForGroup",
@@ -1110,7 +1110,7 @@
       "get": {
         "description": "Returns a single community event by ID",
         "tags": [
-          "Community Events"
+          "communityevent"
         ],
         "summary": "Get community event by ID",
         "operationId": "getCommunityEvent",
@@ -1143,7 +1143,7 @@
         ],
         "description": "Deletes a community event by ID",
         "tags": [
-          "Community Events"
+          "communityevent"
         ],
         "summary": "Delete a community event",
         "operationId": "deleteCommunityEvent",
@@ -1178,7 +1178,7 @@
         ],
         "description": "Updates admin configuration values (Support/Admin only)",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "Update admin config keys",
         "operationId": "patchAdminConfig",
@@ -1209,7 +1209,7 @@
         ],
         "description": "Returns all spam keywords (Support/Admin only)",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "List spam keywords",
         "operationId": "listSpamKeywords",
@@ -1235,7 +1235,7 @@
         ],
         "description": "Creates a new spam keyword (Support/Admin only)",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "Create spam keyword",
         "operationId": "createSpamKeyword",
@@ -1278,7 +1278,7 @@
         ],
         "description": "Deletes a spam keyword by ID (Support/Admin only)",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "Delete spam keyword",
         "operationId": "deleteSpamKeyword",
@@ -1322,7 +1322,7 @@
         ],
         "description": "Returns all worry words (Support/Admin only)",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "List worry words",
         "operationId": "listWorryWords",
@@ -1348,7 +1348,7 @@
         ],
         "description": "Creates a new worry word (Support/Admin only)",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "Create worry word",
         "operationId": "createWorryWord",
@@ -1391,7 +1391,7 @@
         ],
         "description": "Deletes a worry word by ID (Support/Admin only)",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "Delete worry word",
         "operationId": "deleteWorryWord",
@@ -1428,7 +1428,7 @@
       "get": {
         "description": "Returns configuration by key",
         "tags": [
-          "Configuration"
+          "config"
         ],
         "summary": "Get configuration",
         "operationId": "getConfig",
@@ -1452,7 +1452,7 @@
       "get": {
         "description": "Returns dashboard components for moderator/user dashboards",
         "tags": [
-          "Dashboard"
+          "dashboard"
         ],
         "summary": "Get dashboard data",
         "operationId": "getDashboard",
@@ -1481,7 +1481,7 @@
       "get": {
         "description": "Returns domain information",
         "tags": [
-          "Domains"
+          "domain"
         ],
         "summary": "Get domains",
         "operationId": "getDomains",
@@ -1503,7 +1503,7 @@
         ],
         "description": "Returns donation target and raised amounts for the current month",
         "tags": [
-          "Donations"
+          "donations"
         ],
         "summary": "Get donations",
         "operationId": "getDonations",
@@ -1531,7 +1531,7 @@
         ],
         "description": "Records an external bank transfer donation",
         "tags": [
-          "Donations"
+          "donations"
         ],
         "summary": "Record external donation",
         "operationId": "addDonation",
@@ -1552,7 +1552,7 @@
       "get": {
         "description": "Handles image loads for scroll depth tracking and redirects to original image",
         "tags": [
-          "Image Delivery"
+          "delivery"
         ],
         "summary": "Delivery image",
         "operationId": "deliveryImage",
@@ -1590,7 +1590,7 @@
       "get": {
         "description": "Returns 1x1 transparent GIF for email open tracking",
         "tags": [
-          "Image Delivery"
+          "delivery"
         ],
         "summary": "Delivery pixel",
         "operationId": "deliveryPixel",
@@ -1614,7 +1614,7 @@
       "get": {
         "description": "Handles link clicks from emails and redirects to destination URL",
         "tags": [
-          "Image Delivery"
+          "delivery"
         ],
         "summary": "Delivery redirect",
         "operationId": "deliveryRedirect",
@@ -1652,7 +1652,7 @@
         ],
         "description": "Returns the GDPR data export for the authenticated user",
         "tags": [
-          "Data Export"
+          "export"
         ],
         "summary": "Get GDPR data export",
         "operationId": "getExport",
@@ -1675,7 +1675,7 @@
         ],
         "description": "Initiates a GDPR data export for the authenticated user",
         "tags": [
-          "Data Export"
+          "export"
         ],
         "summary": "Request GDPR data export",
         "operationId": "postExport",
@@ -1700,7 +1700,7 @@
         ],
         "description": "Returns user's Gift Aid declaration. With all=true returns admin review list.",
         "tags": [
-          "Gift Aid"
+          "donations"
         ],
         "summary": "Get Gift Aid declaration",
         "operationId": "getGiftAid",
@@ -1723,7 +1723,7 @@
         ],
         "description": "Creates or updates the user's Gift Aid declaration",
         "tags": [
-          "Gift Aid"
+          "donations"
         ],
         "summary": "Set Gift Aid declaration",
         "operationId": "setGiftAid",
@@ -1749,7 +1749,7 @@
         ],
         "description": "Soft-deletes the user's Gift Aid declaration",
         "tags": [
-          "Gift Aid"
+          "donations"
         ],
         "summary": "Delete Gift Aid declaration",
         "operationId": "deleteGiftAid",
@@ -1772,7 +1772,7 @@
         ],
         "description": "Admin edits a Gift Aid record",
         "tags": [
-          "Gift Aid"
+          "donations"
         ],
         "summary": "Edit Gift Aid declaration (admin)",
         "operationId": "editGiftAid",
@@ -1796,7 +1796,7 @@
       "get": {
         "description": "Returns all groups",
         "tags": [
-          "Groups"
+          "group"
         ],
         "summary": "List groups",
         "operationId": "listGroups",
@@ -1816,7 +1816,7 @@
         ],
         "description": "Creates a new freegle group",
         "tags": [
-          "Groups"
+          "group"
         ],
         "summary": "Create a new group",
         "operationId": "createGroup",
@@ -1842,7 +1842,7 @@
         ],
         "description": "Updates group fields. Requires mod/owner role or admin/support.",
         "tags": [
-          "Groups"
+          "group"
         ],
         "summary": "Update group settings",
         "operationId": "patchGroup",
@@ -1873,7 +1873,7 @@
         ],
         "description": "Returns per-group work counts for moderators",
         "tags": [
-          "Groups"
+          "group"
         ],
         "summary": "Get group work counts",
         "operationId": "getGroupWork",
@@ -1891,7 +1891,7 @@
       "get": {
         "description": "Returns a single group by ID",
         "tags": [
-          "Groups"
+          "group"
         ],
         "summary": "Get group by ID",
         "operationId": "getGroup",
@@ -1919,7 +1919,7 @@
       "get": {
         "description": "Returns messages for a specific group",
         "tags": [
-          "Groups"
+          "group"
         ],
         "summary": "Get messages for group",
         "operationId": "getGroupMessages",
@@ -1944,7 +1944,7 @@
       "get": {
         "description": "Returns a cached AI-generated illustration for an item name. Returns ret=3 if not cached.",
         "tags": [
-          "Illustrations"
+          "misc"
         ],
         "summary": "Get AI illustration for item",
         "operationId": "getIllustration",
@@ -1975,7 +1975,7 @@
         ],
         "description": "Registers an externally-uploaded image (via Tus) or rotates an existing image",
         "tags": [
-          "Images"
+          "image"
         ],
         "summary": "Create or update image attachment",
         "operationId": "postImage",
@@ -2015,7 +2015,7 @@
         ],
         "description": "Returns all isochrones for the authenticated user",
         "tags": [
-          "Isochrones"
+          "isochrone"
         ],
         "summary": "List isochrones",
         "operationId": "listIsochrones",
@@ -2038,7 +2038,7 @@
         ],
         "description": "Creates a new isochrone for the authenticated user",
         "tags": [
-          "Isochrones"
+          "isochrone"
         ],
         "summary": "Create an isochrone",
         "operationId": "createIsochrone",
@@ -2064,7 +2064,7 @@
         ],
         "description": "Deletes an isochrone for the authenticated user",
         "tags": [
-          "Isochrones"
+          "isochrone"
         ],
         "summary": "Delete an isochrone",
         "operationId": "deleteIsochrone",
@@ -2087,7 +2087,7 @@
         ],
         "description": "Updates an existing isochrone",
         "tags": [
-          "Isochrones"
+          "isochrone"
         ],
         "summary": "Edit an isochrone",
         "operationId": "editIsochrone",
@@ -2115,7 +2115,7 @@
         ],
         "description": "Returns messages within the user's isochrone areas",
         "tags": [
-          "Isochrones"
+          "isochrone"
         ],
         "summary": "Get messages for isochrone",
         "operationId": "getIsochroneMessages",
@@ -2130,7 +2130,7 @@
       "get": {
         "description": "Returns all jobs",
         "tags": [
-          "Jobs"
+          "job"
         ],
         "summary": "List jobs",
         "operationId": "listJobs",
@@ -2143,7 +2143,7 @@
       "post": {
         "description": "Records when a user clicks on a job listing for analytics",
         "tags": [
-          "Jobs"
+          "job"
         ],
         "summary": "Record a job click",
         "operationId": "recordJobClick",
@@ -2170,7 +2170,7 @@
       "get": {
         "description": "Returns a single job by ID",
         "tags": [
-          "Jobs"
+          "job"
         ],
         "summary": "Get job by ID",
         "operationId": "getJob",
@@ -2198,7 +2198,7 @@
       "get": {
         "description": "Returns the timestamp of the latest message",
         "tags": [
-          "Messages"
+          "misc"
         ],
         "summary": "Get latest message timestamp",
         "operationId": "getLatestMessage",
@@ -2213,7 +2213,7 @@
       "get": {
         "description": "Returns location info for given coordinates",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Get location by latitude/longitude",
         "operationId": "getLocationByLatLng",
@@ -2244,7 +2244,7 @@
       "get": {
         "description": "Returns location suggestions for typeahead",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Location typeahead search",
         "operationId": "locationTypeahead",
@@ -2268,7 +2268,7 @@
       "get": {
         "description": "Returns a single location by ID",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Get location by ID",
         "operationId": "getLocation",
@@ -2296,7 +2296,7 @@
       "get": {
         "description": "Returns addresses for a specific location",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Get addresses for location",
         "operationId": "getLocationAddresses",
@@ -2321,7 +2321,7 @@
       "get": {
         "description": "Searches locations by lat/lng, typeahead, or bounding box",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Search locations",
         "operationId": "searchLocations",
@@ -2341,7 +2341,7 @@
         ],
         "description": "Creates a new location",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Create a location",
         "operationId": "createLocation",
@@ -2367,7 +2367,7 @@
         ],
         "description": "Marks a location as excluded",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Exclude a location",
         "operationId": "excludeLocation",
@@ -2393,7 +2393,7 @@
         ],
         "description": "Updates an existing location",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Update a location",
         "operationId": "updateLocation",
@@ -2421,7 +2421,7 @@
         ],
         "description": "Converts KML data to a location polygon",
         "tags": [
-          "Locations"
+          "location"
         ],
         "summary": "Convert KML to location",
         "operationId": "convertKML",
@@ -2439,7 +2439,7 @@
       "get": {
         "description": "Returns logo information",
         "tags": [
-          "Logos"
+          "misc"
         ],
         "summary": "Get logo",
         "operationId": "getLogo",
@@ -2461,7 +2461,7 @@
         ],
         "description": "Returns group memberships for the authenticated user or members of a group",
         "tags": [
-          "Memberships"
+          "membership"
         ],
         "summary": "Get memberships",
         "operationId": "getMemberships",
@@ -2482,12 +2482,38 @@
             ]
           }
         ],
-        "description": "Adds the authenticated user to a group",
+        "description": "Adds a user to a group. Supports three auth modes:\n(1) Partner key auth via query params for TN integration — no JWT needed.\n(2) Mod-add-member: JWT auth where userid in body differs from authenticated user and caller is mod of the group.\n(3) Self-join: JWT auth where userid matches authenticated user or is omitted.",
         "tags": [
-          "Memberships"
+          "membership"
         ],
-        "summary": "Join a group",
+        "summary": "Subscribe user to group",
         "operationId": "joinGroup",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Partner API key (alternative to JWT auth)",
+            "name": "partner",
+            "in": "query"
+          },
+          {
+            "type": "integer",
+            "description": "Trash Nothing user ID (partner auth only)",
+            "name": "tnuserid",
+            "in": "query"
+          },
+          {
+            "type": "string",
+            "description": "User email address (partner auth only)",
+            "name": "email",
+            "in": "query"
+          },
+          {
+            "type": "integer",
+            "description": "Group ID (partner auth only; JWT auth uses request body)",
+            "name": "groupid",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/responses/successResponse"
@@ -2496,6 +2522,9 @@
             "$ref": "#/responses/errorResponse"
           },
           "401": {
+            "$ref": "#/responses/errorResponse"
+          },
+          "403": {
             "$ref": "#/responses/errorResponse"
           }
         }
@@ -2510,7 +2539,7 @@
         ],
         "description": "Handles member moderation: approve, reject, ban, hold, spam, delete",
         "tags": [
-          "Memberships"
+          "membership"
         ],
         "summary": "Membership moderation actions",
         "operationId": "postMemberships",
@@ -2537,17 +2566,46 @@
             ]
           }
         ],
-        "description": "Removes the authenticated user from a group",
+        "description": "Removes a user from a group. Supports JWT auth and partner key auth for TN integration.",
         "tags": [
-          "Memberships"
+          "membership"
         ],
-        "summary": "Leave a group",
+        "summary": "Unsubscribe user from group",
         "operationId": "leaveGroup",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Partner API key (alternative to JWT auth)",
+            "name": "partner",
+            "in": "query"
+          },
+          {
+            "type": "integer",
+            "description": "Trash Nothing user ID (partner auth only)",
+            "name": "tnuserid",
+            "in": "query"
+          },
+          {
+            "type": "string",
+            "description": "User email address (partner auth only)",
+            "name": "email",
+            "in": "query"
+          },
+          {
+            "type": "integer",
+            "description": "Group ID (partner auth only; JWT auth uses request body)",
+            "name": "groupid",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/responses/successResponse"
           },
           "401": {
+            "$ref": "#/responses/errorResponse"
+          },
+          "403": {
             "$ref": "#/responses/errorResponse"
           }
         }
@@ -2562,7 +2620,7 @@
         ],
         "description": "Updates email frequency, events allowed, volunteering allowed",
         "tags": [
-          "Memberships"
+          "membership"
         ],
         "summary": "Update membership settings",
         "operationId": "updateMembership",
@@ -2590,7 +2648,7 @@
         ],
         "description": "Returns pending merge requests for moderator review",
         "tags": [
-          "User Merge"
+          "merge"
         ],
         "summary": "Get merge requests",
         "operationId": "getMerge",
@@ -2613,7 +2671,7 @@
         ],
         "description": "Creates a new merge request to combine two users",
         "tags": [
-          "User Merge"
+          "merge"
         ],
         "summary": "Create merge request",
         "operationId": "createMerge",
@@ -2639,7 +2697,7 @@
         ],
         "description": "Approves or rejects a merge request",
         "tags": [
-          "User Merge"
+          "merge"
         ],
         "summary": "Action merge request",
         "operationId": "postMerge",
@@ -2665,7 +2723,7 @@
         ],
         "description": "Deletes a merge request",
         "tags": [
-          "User Merge"
+          "merge"
         ],
         "summary": "Delete merge request",
         "operationId": "deleteMerge",
@@ -2690,7 +2748,7 @@
         ],
         "description": "Creates a new message (offer or wanted)",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Create message",
         "operationId": "putMessage",
@@ -2716,7 +2774,7 @@
         ],
         "description": "Handles message actions: Promise, Renege, OutcomeIntended, Outcome, AddBy, RemoveBy, View",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Message actions",
         "operationId": "postMessage",
@@ -2742,7 +2800,7 @@
         ],
         "description": "Updates message fields",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Update message",
         "operationId": "patchMessage",
@@ -2763,7 +2821,7 @@
       "get": {
         "description": "Returns count of messages by type",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Get message count",
         "operationId": "getMessageCount",
@@ -2778,7 +2836,7 @@
       "get": {
         "description": "Returns messages within geographic bounds",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Get messages in bounds",
         "operationId": "getMessagesInBounds",
@@ -2830,7 +2888,7 @@
         ],
         "description": "Returns messages for user's groups, optionally filtered by group ID",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Get messages by group",
         "operationId": "getMessagesByGroup",
@@ -2854,7 +2912,7 @@
       "get": {
         "description": "Searches messages by term",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Search messages",
         "operationId": "searchMessages",
@@ -2890,7 +2948,7 @@
       "get": {
         "description": "Returns messages by ID (comma separated)",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Get messages by ID",
         "operationId": "getMessages",
@@ -2924,7 +2982,7 @@
         ],
         "description": "Deletes a message by ID",
         "tags": [
-          "Messages"
+          "message"
         ],
         "summary": "Delete message",
         "operationId": "deleteMessage",
@@ -2951,6 +3009,47 @@
         }
       }
     },
+    "/messages": {
+      "get": {
+        "description": "Returns messages for a group with pagination. Response includes tnpostid (Trash Nothing post ID)\nand expiresat (computed expiry date based on group settings) for each message.",
+        "tags": [
+          "message"
+        ],
+        "summary": "List messages",
+        "operationId": "listPublicMessages",
+        "parameters": [
+          {
+            "type": "integer",
+            "description": "Group ID to list messages from",
+            "name": "groupid",
+            "in": "query"
+          },
+          {
+            "type": "string",
+            "description": "Message collection (Approved, Pending, Rejected, Spam)",
+            "name": "collection",
+            "in": "query"
+          },
+          {
+            "type": "integer",
+            "description": "Max messages to return (1-100, default 20)",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "type": "string",
+            "description": "Pagination cursor (JSON with Date and id)",
+            "name": "context",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/listMessagesResponse"
+          }
+        }
+      }
+    },
     "/microvolunteering": {
       "get": {
         "security": [
@@ -2962,7 +3061,7 @@
         ],
         "description": "Returns a microvolunteering challenge for the authenticated user",
         "tags": [
-          "Micro Volunteering"
+          "microvolunteering"
         ],
         "summary": "Get microvolunteering challenge",
         "operationId": "getMicrovolunteeringChallenge",
@@ -2985,7 +3084,7 @@
         ],
         "description": "Records the user's response to a micro-volunteering challenge",
         "tags": [
-          "Micro Volunteering"
+          "microvolunteering"
         ],
         "summary": "Submit micro-volunteering response",
         "operationId": "postMicrovolunteeringResponse",
@@ -3011,7 +3110,7 @@
         ],
         "description": "Allows a moderator to set feedback, score_positive, and score_negative on a microaction",
         "tags": [
-          "Micro Volunteering"
+          "microvolunteering"
         ],
         "summary": "Provide moderator feedback on microaction",
         "operationId": "patchMicrovolunteeringFeedback",
@@ -3051,7 +3150,7 @@
         ],
         "description": "Returns admin records for groups moderated by the authenticated user",
         "tags": [
-          "Admins"
+          "modtools"
         ],
         "summary": "List admins",
         "operationId": "listAdmins",
@@ -3074,7 +3173,7 @@
         ],
         "description": "Creates a new admin record (mod email)",
         "tags": [
-          "Admins"
+          "modtools"
         ],
         "summary": "Create admin record",
         "operationId": "postAdmin",
@@ -3100,7 +3199,7 @@
         ],
         "description": "Deletes an admin record",
         "tags": [
-          "Admins"
+          "modtools"
         ],
         "summary": "Delete admin record",
         "operationId": "deleteAdmin",
@@ -3123,7 +3222,7 @@
         ],
         "description": "Updates an existing admin record",
         "tags": [
-          "Admins"
+          "modtools"
         ],
         "summary": "Update admin record",
         "operationId": "patchAdmin",
@@ -3151,7 +3250,7 @@
         ],
         "description": "Returns a single admin record by ID",
         "tags": [
-          "Admins"
+          "modtools"
         ],
         "summary": "Get admin by ID",
         "operationId": "getAdmin",
@@ -3186,7 +3285,7 @@
         ],
         "description": "Returns all alerts (Admin/Support only)",
         "tags": [
-          "Alerts"
+          "modtools"
         ],
         "summary": "List all alerts",
         "operationId": "listAlerts",
@@ -3209,7 +3308,7 @@
         ],
         "description": "Creates a new alert (Admin/Support only)",
         "tags": [
-          "Alerts"
+          "modtools"
         ],
         "summary": "Create a new alert",
         "operationId": "createAlert",
@@ -3228,7 +3327,7 @@
       "post": {
         "description": "Records a click on an alert tracking entry (public access)",
         "tags": [
-          "Alerts"
+          "modtools"
         ],
         "summary": "Record alert click",
         "operationId": "recordAlert",
@@ -3243,7 +3342,7 @@
       "get": {
         "description": "Returns a single alert by ID (public access)",
         "tags": [
-          "Alerts"
+          "modtools"
         ],
         "summary": "Get alert by ID",
         "operationId": "getAlert",
@@ -3278,7 +3377,7 @@
         ],
         "description": "Returns aggregate email statistics for Support/Admin users",
         "tags": [
-          "Email Tracking"
+          "modtools"
         ],
         "summary": "Get email tracking statistics",
         "operationId": "getEmailStats",
@@ -3326,7 +3425,7 @@
         ],
         "description": "Returns statistics for each email type for comparison charts",
         "tags": [
-          "Email Tracking"
+          "modtools"
         ],
         "summary": "Get email statistics by email type",
         "operationId": "getEmailStatsByType",
@@ -3354,7 +3453,7 @@
         ],
         "description": "Returns the most clicked links, normalized to remove user-specific data",
         "tags": [
-          "Email Tracking"
+          "modtools"
         ],
         "summary": "Get top clicked links from emails",
         "operationId": "getTopClickedLinks",
@@ -3382,7 +3481,7 @@
         ],
         "description": "Returns daily sent/opened/clicked/bounced counts for date range",
         "tags": [
-          "Email Tracking"
+          "modtools"
         ],
         "summary": "Get daily email statistics for charting",
         "operationId": "getEmailTimeSeries",
@@ -3410,7 +3509,7 @@
         ],
         "description": "Returns email tracking records for a specific user (Support/Admin only)",
         "tags": [
-          "Email Tracking"
+          "modtools"
         ],
         "summary": "Get email tracking for a user",
         "operationId": "getUserEmails",
@@ -3448,7 +3547,7 @@
         ],
         "description": "Returns log entries for a user or group",
         "tags": [
-          "Logs"
+          "modtools"
         ],
         "summary": "Get logs",
         "operationId": "getLogs",
@@ -3466,7 +3565,7 @@
       "get": {
         "description": "Returns messages with moderation queue support",
         "tags": [
-          "Messages"
+          "modtools"
         ],
         "summary": "List messages",
         "operationId": "listMessages",
@@ -3488,7 +3587,7 @@
         ],
         "description": "Returns moderation configuration",
         "tags": [
-          "Mod Configuration"
+          "modtools"
         ],
         "summary": "Get moderation config",
         "operationId": "getModConfig",
@@ -3511,7 +3610,7 @@
         ],
         "description": "Creates a new moderation configuration",
         "tags": [
-          "Mod Configuration"
+          "modtools"
         ],
         "summary": "Create moderation config",
         "operationId": "createModConfig",
@@ -3537,7 +3636,7 @@
         ],
         "description": "Deletes a moderation configuration",
         "tags": [
-          "Mod Configuration"
+          "modtools"
         ],
         "summary": "Delete moderation config",
         "operationId": "deleteModConfig",
@@ -3560,7 +3659,7 @@
         ],
         "description": "Updates an existing moderation configuration",
         "tags": [
-          "Mod Configuration"
+          "modtools"
         ],
         "summary": "Update moderation config",
         "operationId": "patchModConfig",
@@ -3588,7 +3687,7 @@
         ],
         "description": "Returns list of reported spammers for moderator review",
         "tags": [
-          "Spammers"
+          "modtools"
         ],
         "summary": "Get spammers",
         "operationId": "getSpammers",
@@ -3611,7 +3710,7 @@
         ],
         "description": "Reports a user as a spammer",
         "tags": [
-          "Spammers"
+          "modtools"
         ],
         "summary": "Report spammer",
         "operationId": "postSpammer",
@@ -3637,7 +3736,7 @@
         ],
         "description": "Removes a spammer report",
         "tags": [
-          "Spammers"
+          "modtools"
         ],
         "summary": "Delete spammer report",
         "operationId": "deleteSpammer",
@@ -3660,7 +3759,7 @@
         ],
         "description": "Updates a spammer report",
         "tags": [
-          "Spammers"
+          "modtools"
         ],
         "summary": "Update spammer report",
         "operationId": "patchSpammer",
@@ -3681,7 +3780,7 @@
       "get": {
         "description": "Exports spammer data for partner integration (requires partner key)",
         "tags": [
-          "Spammers"
+          "modtools"
         ],
         "summary": "Export spammers",
         "operationId": "exportSpammers",
@@ -3706,7 +3805,7 @@
         ],
         "description": "Returns standard messages for moderation",
         "tags": [
-          "Standard Messages"
+          "modtools"
         ],
         "summary": "Get standard messages",
         "operationId": "getStdMsg",
@@ -3729,7 +3828,7 @@
         ],
         "description": "Creates a new standard message",
         "tags": [
-          "Standard Messages"
+          "modtools"
         ],
         "summary": "Create standard message",
         "operationId": "createStdMsg",
@@ -3755,7 +3854,7 @@
         ],
         "description": "Deletes a standard message",
         "tags": [
-          "Standard Messages"
+          "modtools"
         ],
         "summary": "Delete standard message",
         "operationId": "deleteStdMsg",
@@ -3778,7 +3877,7 @@
         ],
         "description": "Updates an existing standard message",
         "tags": [
-          "Standard Messages"
+          "modtools"
         ],
         "summary": "Update standard message",
         "operationId": "patchStdMsg",
@@ -3799,7 +3898,7 @@
       "get": {
         "description": "Returns newsfeed items",
         "tags": [
-          "Newsfeed"
+          "newsfeed"
         ],
         "summary": "Get newsfeed",
         "operationId": "getNewsfeed",
@@ -3819,7 +3918,7 @@
         ],
         "description": "Creates a new newsfeed post or performs actions (love, report, refer, etc.)",
         "tags": [
-          "Newsfeed"
+          "newsfeed"
         ],
         "summary": "Create or action newsfeed item",
         "operationId": "postNewsfeed",
@@ -3845,7 +3944,7 @@
         ],
         "description": "Edits an existing newsfeed post",
         "tags": [
-          "Newsfeed"
+          "newsfeed"
         ],
         "summary": "Edit newsfeed item",
         "operationId": "editNewsfeed",
@@ -3866,7 +3965,7 @@
       "get": {
         "description": "Returns a single newsfeed item by ID",
         "tags": [
-          "Newsfeed"
+          "newsfeed"
         ],
         "summary": "Get newsfeed item by ID",
         "operationId": "getNewsfeedItem",
@@ -3899,7 +3998,7 @@
         ],
         "description": "Deletes a newsfeed item by ID",
         "tags": [
-          "Newsfeed"
+          "newsfeed"
         ],
         "summary": "Delete newsfeed item",
         "operationId": "deleteNewsfeed",
@@ -3927,7 +4026,7 @@
       "get": {
         "description": "Returns count of newsfeed items",
         "tags": [
-          "Newsfeed"
+          "newsfeed"
         ],
         "summary": "Get newsfeed count",
         "operationId": "getNewsfeedCount",
@@ -3942,7 +4041,7 @@
       "get": {
         "description": "Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID",
         "tags": [
-          "Noticeboards"
+          "noticeboard"
         ],
         "summary": "List or get noticeboards",
         "operationId": "getNoticeboard",
@@ -3976,7 +4075,7 @@
         ],
         "description": "Creates a new noticeboard (requires lat/lng) or performs an action on existing one",
         "tags": [
-          "Noticeboards"
+          "noticeboard"
         ],
         "summary": "Create noticeboard or perform action",
         "operationId": "postNoticeboard",
@@ -4002,7 +4101,7 @@
         ],
         "description": "Updates noticeboard fields and optionally links photo",
         "tags": [
-          "Noticeboards"
+          "noticeboard"
         ],
         "summary": "Update noticeboard",
         "operationId": "patchNoticeboard",
@@ -4030,7 +4129,7 @@
         ],
         "description": "Deletes a noticeboard by ID. Requires mod/admin role.",
         "tags": [
-          "Noticeboards"
+          "noticeboard"
         ],
         "summary": "Delete noticeboard",
         "operationId": "deleteNoticeboard",
@@ -4068,7 +4167,7 @@
         ],
         "description": "Returns all notifications for the authenticated user",
         "tags": [
-          "Notifications"
+          "notification"
         ],
         "summary": "List notifications",
         "operationId": "listNotifications",
@@ -4093,7 +4192,7 @@
         ],
         "description": "Marks all notifications as seen for the user",
         "tags": [
-          "Notifications"
+          "notification"
         ],
         "summary": "Mark all notifications as seen",
         "operationId": "markAllNotificationsSeen",
@@ -4118,7 +4217,7 @@
         ],
         "description": "Returns count of unseen notifications",
         "tags": [
-          "Notifications"
+          "notification"
         ],
         "summary": "Get notification count",
         "operationId": "getNotificationCount",
@@ -4140,7 +4239,7 @@
         ],
         "description": "Marks a specific notification as seen",
         "tags": [
-          "Notifications"
+          "notification"
         ],
         "summary": "Mark notification as seen",
         "operationId": "markNotificationSeen",
@@ -4158,7 +4257,7 @@
       "get": {
         "description": "Returns online status information",
         "tags": [
-          "Status"
+          "misc"
         ],
         "summary": "Check online status",
         "operationId": "getOnline",
@@ -4178,9 +4277,9 @@
             ]
           }
         ],
-        "description": "Returns the current user session including user data, memberships, and settings",
+        "description": "Returns the current user session including user data, memberships, settings, deleted/forgotten timestamps",
         "tags": [
-          "Session"
+          "session"
         ],
         "summary": "Get current session",
         "operationId": "getSession",
@@ -4194,9 +4293,9 @@
         }
       },
       "post": {
-        "description": "Handles session actions: LostPassword, Unsubscribe",
+        "description": "Handles login (email/password, link key) and actions: LostPassword, Unsubscribe, Forget, Related.\nDeleted users can still log in to see the account recovery banner.",
         "tags": [
-          "Session"
+          "session"
         ],
         "summary": "Session actions",
         "operationId": "postSession",
@@ -4219,7 +4318,7 @@
         ],
         "description": "Logs out the current user by deleting their session",
         "tags": [
-          "Session"
+          "session"
         ],
         "summary": "Delete session (logout)",
         "operationId": "deleteSession",
@@ -4239,7 +4338,7 @@
         ],
         "description": "Updates user profile settings (name, about me, email, notifications, etc.)",
         "tags": [
-          "Session"
+          "session"
         ],
         "summary": "Update session",
         "operationId": "patchSession",
@@ -4260,7 +4359,7 @@
       "get": {
         "description": "Returns a single shortlink by ID or lists all shortlinks",
         "tags": [
-          "Shortlinks"
+          "shortlink"
         ],
         "summary": "Get shortlinks",
         "operationId": "getShortlink",
@@ -4294,7 +4393,7 @@
         ],
         "description": "Creates a new shortlink",
         "tags": [
-          "Shortlinks"
+          "shortlink"
         ],
         "summary": "Create a shortlink",
         "operationId": "createShortlink",
@@ -4315,7 +4414,7 @@
       "get": {
         "description": "Returns simulation run data for analysis",
         "tags": [
-          "Simulation"
+          "simulation"
         ],
         "summary": "Get simulation data",
         "operationId": "getSimulation",
@@ -4330,7 +4429,7 @@
       "post": {
         "description": "Records source tracking data for analytics",
         "tags": [
-          "Logging"
+          "misc"
         ],
         "summary": "Record source tracking",
         "operationId": "recordSource",
@@ -4357,7 +4456,7 @@
       "get": {
         "description": "Returns the system status from /tmp/iznik.status",
         "tags": [
-          "Status"
+          "status"
         ],
         "summary": "Get system status",
         "operationId": "getStatus",
@@ -4372,7 +4471,7 @@
       "get": {
         "description": "Returns all stories",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "List stories",
         "operationId": "listStories",
@@ -4392,7 +4491,7 @@
         ],
         "description": "Creates a new story",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Create a story",
         "operationId": "createStory",
@@ -4418,7 +4517,7 @@
         ],
         "description": "Handles story actions",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Story actions (Like/Unlike)",
         "operationId": "postStory",
@@ -4438,7 +4537,7 @@
         ],
         "description": "Updates a story, typically for moderation review",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Update a story (mod review)",
         "operationId": "updateStory",
@@ -4459,7 +4558,7 @@
       "get": {
         "description": "Returns stories for a specific group",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Get stories for group",
         "operationId": "getStoriesForGroup",
@@ -4491,7 +4590,7 @@
         ],
         "description": "Likes a story",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Like a story",
         "operationId": "likeStory",
@@ -4516,7 +4615,7 @@
         ],
         "description": "Removes a like from a story",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Unlike a story",
         "operationId": "unlikeStory",
@@ -4534,7 +4633,7 @@
       "get": {
         "description": "Returns a single story by ID",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Get story by ID",
         "operationId": "getStory",
@@ -4567,7 +4666,7 @@
         ],
         "description": "Deletes a story by ID",
         "tags": [
-          "Stories"
+          "story"
         ],
         "summary": "Delete a story",
         "operationId": "deleteStory",
@@ -4595,7 +4694,7 @@
       "post": {
         "description": "Creates a Stripe PaymentIntent for a one-time donation",
         "tags": [
-          "Donations"
+          "donations"
         ],
         "summary": "Create Stripe PaymentIntent",
         "operationId": "createStripeIntent",
@@ -4620,7 +4719,7 @@
         ],
         "description": "Creates a Stripe subscription for recurring monthly donation",
         "tags": [
-          "Donations"
+          "donations"
         ],
         "summary": "Create Stripe subscription",
         "operationId": "createStripeSubscription",
@@ -4645,7 +4744,7 @@
         ],
         "description": "Returns system logs (moderator only)",
         "tags": [
-          "System Logs"
+          "systemlogs"
         ],
         "summary": "Get system logs",
         "operationId": "getSystemLogs",
@@ -4673,7 +4772,7 @@
         ],
         "description": "Returns counts of logs grouped by subtype using Loki metric queries (moderator only)",
         "tags": [
-          "System Logs"
+          "systemlogs"
         ],
         "summary": "Get log counts by subtype",
         "operationId": "getSystemLogCounts",
@@ -4701,7 +4800,7 @@
         ],
         "description": "Returns team information",
         "tags": [
-          "Teams"
+          "team"
         ],
         "summary": "Get team",
         "operationId": "getTeam",
@@ -4724,7 +4823,7 @@
         ],
         "description": "Adds a member to a team",
         "tags": [
-          "Teams"
+          "team"
         ],
         "summary": "Create team member",
         "operationId": "createTeam",
@@ -4750,7 +4849,7 @@
         ],
         "description": "Removes a member from a team",
         "tags": [
-          "Teams"
+          "team"
         ],
         "summary": "Delete team member",
         "operationId": "deleteTeam",
@@ -4773,7 +4872,7 @@
         ],
         "description": "Updates a team member",
         "tags": [
-          "Teams"
+          "team"
         ],
         "summary": "Update team member",
         "operationId": "patchTeam",
@@ -4801,7 +4900,7 @@
         ],
         "description": "Returns handover arrangements for the authenticated user",
         "tags": [
-          "Trysts"
+          "tryst"
         ],
         "summary": "Get trysts",
         "operationId": "getTryst",
@@ -4824,7 +4923,7 @@
         ],
         "description": "Creates a new handover arrangement",
         "tags": [
-          "Trysts"
+          "tryst"
         ],
         "summary": "Create tryst",
         "operationId": "createTryst",
@@ -4850,7 +4949,7 @@
         ],
         "description": "Performs actions on a tryst (confirm, decline, etc.)",
         "tags": [
-          "Trysts"
+          "tryst"
         ],
         "summary": "Tryst actions",
         "operationId": "postTryst",
@@ -4876,7 +4975,7 @@
         ],
         "description": "Deletes a handover arrangement",
         "tags": [
-          "Trysts"
+          "tryst"
         ],
         "summary": "Delete tryst",
         "operationId": "deleteTryst",
@@ -4899,7 +4998,7 @@
         ],
         "description": "Updates a handover arrangement",
         "tags": [
-          "Trysts"
+          "tryst"
         ],
         "summary": "Update tryst",
         "operationId": "patchTryst",
@@ -4920,7 +5019,7 @@
       "put": {
         "description": "Creates a new user or signs up",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Create user",
         "operationId": "putUser",
@@ -4943,7 +5042,7 @@
         ],
         "description": "Handles user actions: Rate, RatingReviewed, AddEmail, RemoveEmail, Engaged",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "User actions",
         "operationId": "postUser",
@@ -4969,7 +5068,7 @@
         ],
         "description": "Deletes the authenticated user account",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Delete user",
         "operationId": "deleteUser",
@@ -4992,7 +5091,7 @@
         ],
         "description": "Updates user fields",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Update user",
         "operationId": "patchUser",
@@ -5020,7 +5119,7 @@
         ],
         "description": "Returns a user by email address",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Get user by email",
         "operationId": "getUserByEmail",
@@ -5054,7 +5153,7 @@
         ],
         "description": "Searches users by name or email (moderator only)",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Search users",
         "operationId": "searchUsers",
@@ -5079,7 +5178,7 @@
         ],
         "description": "Returns a single user by ID, or the current user if no ID",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Get user by ID",
         "operationId": "getUser",
@@ -5107,7 +5206,7 @@
       "get": {
         "description": "Returns messages created by a specific user",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Get messages for user",
         "operationId": "getUserMessages",
@@ -5138,7 +5237,7 @@
       "get": {
         "description": "Returns the public location for a specific user",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Get user's public location",
         "operationId": "getUserPublicLocation",
@@ -5170,7 +5269,7 @@
         ],
         "description": "Returns saved searches for a specific user",
         "tags": [
-          "Users"
+          "user"
         ],
         "summary": "Get searches for user",
         "operationId": "getUserSearches",
@@ -5202,7 +5301,7 @@
         ],
         "description": "Soft-deletes a user search (sets deleted=1)",
         "tags": [
-          "User Search"
+          "usersearch"
         ],
         "summary": "Delete a user search",
         "operationId": "deleteUserSearch",
@@ -5229,7 +5328,7 @@
       "get": {
         "description": "Returns items given/taken with locations and user icons for homepage map",
         "tags": [
-          "Visualisation"
+          "visualise"
         ],
         "summary": "Get visualisation data",
         "operationId": "getVisualise",
@@ -5280,7 +5379,7 @@
       "get": {
         "description": "Returns all volunteering opportunities",
         "tags": [
-          "Volunteering"
+          "volunteering"
         ],
         "summary": "List volunteering opportunities",
         "operationId": "listVolunteering",
@@ -5300,7 +5399,7 @@
         ],
         "description": "Creates a new volunteering opportunity",
         "tags": [
-          "Volunteering"
+          "volunteering"
         ],
         "summary": "Create volunteering opportunity",
         "operationId": "createVolunteering",
@@ -5326,7 +5425,7 @@
         ],
         "description": "Updates an existing volunteering opportunity",
         "tags": [
-          "Volunteering"
+          "volunteering"
         ],
         "summary": "Update volunteering opportunity",
         "operationId": "updateVolunteering",
@@ -5347,7 +5446,7 @@
       "get": {
         "description": "Returns volunteering opportunities for a specific group",
         "tags": [
-          "Volunteering"
+          "volunteering"
         ],
         "summary": "List volunteering opportunities for group",
         "operationId": "listVolunteeringForGroup",
@@ -5372,7 +5471,7 @@
       "get": {
         "description": "Returns a single volunteering opportunity by ID",
         "tags": [
-          "Volunteering"
+          "volunteering"
         ],
         "summary": "Get volunteering opportunity by ID",
         "operationId": "getVolunteering",
@@ -5405,7 +5504,7 @@
         ],
         "description": "Deletes a volunteering opportunity by ID",
         "tags": [
-          "Volunteering"
+          "volunteering"
         ],
         "summary": "Delete volunteering opportunity",
         "operationId": "deleteVolunteering",
@@ -5469,6 +5568,31 @@
       },
       "x-go-package": "github.com/freegle/iznik-server-go/abtest"
     },
+    "AIImageChallenge": {
+      "description": "AIImageChallenge represents an AI image to review",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "ID"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "URL"
+        },
+        "usage_count": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "UsageCount"
+        }
+      },
+      "x-go-package": "github.com/freegle/iznik-server-go/microvolunteering"
+    },
     "AMPChatMessage": {
       "description": "These fields are populated by enriching the base chat messages with user info.",
       "type": "object",
@@ -5521,6 +5645,10 @@
         "message": {
           "type": "string",
           "x-go-name": "Message"
+        },
+        "modnote": {
+          "type": "boolean",
+          "x-go-name": "Modnote"
         },
         "processingrequired": {
           "type": "boolean",
@@ -5981,6 +6109,9 @@
       "description": "Challenge represents a micro-volunteering challenge",
       "type": "object",
       "properties": {
+        "aiimage": {
+          "$ref": "#/definitions/AIImageChallenge"
+        },
         "msgid": {
           "type": "integer",
           "format": "uint64",
@@ -6127,6 +6258,10 @@
         "message": {
           "type": "string",
           "x-go-name": "Message"
+        },
+        "modnote": {
+          "type": "boolean",
+          "x-go-name": "Modnote"
         },
         "processingrequired": {
           "type": "boolean",
@@ -6762,6 +6897,10 @@
           "format": "uint64",
           "x-go-name": "Bannedby"
         },
+        "bouncing": {
+          "type": "boolean",
+          "x-go-name": "Bouncing"
+        },
         "collection": {
           "type": "string",
           "x-go-name": "Collection"
@@ -6806,6 +6945,10 @@
           "type": "integer",
           "format": "uint64",
           "x-go-name": "ID"
+        },
+        "lastmodmail": {
+          "type": "string",
+          "x-go-name": "Lastmodmail"
         },
         "lastname": {
           "type": "string",
@@ -6858,6 +7001,10 @@
           "format": "date-time",
           "x-go-name": "Deleted"
         },
+        "firstname": {
+          "type": "string",
+          "x-go-name": "Firstname"
+        },
         "fullname": {
           "type": "string",
           "x-go-name": "Fullname"
@@ -6874,6 +7021,10 @@
           "type": "integer",
           "format": "uint64",
           "x-go-name": "ID"
+        },
+        "lastname": {
+          "type": "string",
+          "x-go-name": "Lastname"
         },
         "period": {
           "type": "string",
@@ -7101,28 +7252,15 @@
           "x-go-name": "Tagline"
         },
         "tnkey": {
-          "description": "TN key fields (only populated when tnkey=true and user is moderator)",
-          "$ref": "#/definitions/TnKeyInfo",
-          "x-go-name": "Tnkey"
+          "$ref": "#/definitions/TnKeyInfo"
         },
         "type": {
           "type": "string",
           "x-go-name": "Type"
-        }
-      },
-      "x-go-package": "github.com/freegle/iznik-server-go/group"
-    },
-    "TnKeyInfo": {
-      "type": "object",
-      "title": "TnKeyInfo holds the TrashNothing key and settings URL.",
-      "properties": {
-        "key": {
-          "type": "string",
-          "x-go-name": "Key"
         },
-        "url": {
+        "welcomemail": {
           "type": "string",
-          "x-go-name": "Url"
+          "x-go-name": "Welcomemail"
         }
       },
       "x-go-package": "github.com/freegle/iznik-server-go/group"
@@ -7668,6 +7806,99 @@
       },
       "x-go-package": "github.com/freegle/iznik-server-go/misc"
     },
+    "ListMessageItem": {
+      "type": "object",
+      "properties": {
+        "arrival": {
+          "type": "string",
+          "format": "date-time",
+          "x-go-name": "Arrival"
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MessageAttachment"
+          },
+          "x-go-name": "Attachments"
+        },
+        "availableinitially": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "Availableinitially"
+        },
+        "availablenow": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "Availablenow"
+        },
+        "expiresat": {
+          "type": "string",
+          "format": "date-time",
+          "x-go-name": "Expiresat"
+        },
+        "fromuser": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "Fromuser"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MessageGroupInfo"
+          },
+          "x-go-name": "Groups"
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "ID"
+        },
+        "lat": {
+          "type": "number",
+          "format": "double",
+          "x-go-name": "Lat"
+        },
+        "lng": {
+          "type": "number",
+          "format": "double",
+          "x-go-name": "Lng"
+        },
+        "replycount": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Replycount"
+        },
+        "subject": {
+          "type": "string",
+          "x-go-name": "Subject"
+        },
+        "tnpostid": {
+          "type": "string",
+          "x-go-name": "Tnpostid"
+        },
+        "type": {
+          "type": "string",
+          "x-go-name": "Type"
+        }
+      },
+      "x-go-package": "github.com/freegle/iznik-server-go/message"
+    },
+    "ListMessagesResponse": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "$ref": "#/definitions/PaginationContext"
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ListMessageItem"
+          },
+          "x-go-name": "Messages"
+        }
+      },
+      "x-go-package": "github.com/freegle/iznik-server-go/message"
+    },
     "Location": {
       "type": "object",
       "properties": {
@@ -7963,6 +8194,11 @@
           },
           "x-go-name": "Edits"
         },
+        "expiresat": {
+          "type": "string",
+          "format": "date-time",
+          "x-go-name": "Expiresat"
+        },
         "fromaddr": {
           "type": "string",
           "x-go-name": "Fromaddr"
@@ -8095,6 +8331,10 @@
         "textbody": {
           "type": "string",
           "x-go-name": "Textbody"
+        },
+        "tnpostid": {
+          "type": "string",
+          "x-go-name": "Tnpostid"
         },
         "type": {
           "type": "string",
@@ -8245,6 +8485,26 @@
         }
       },
       "x-go-package": "iznik-server-go/message"
+    },
+    "MessageGroupInfo": {
+      "type": "object",
+      "properties": {
+        "arrival": {
+          "type": "string",
+          "format": "date-time",
+          "x-go-name": "Arrival"
+        },
+        "collection": {
+          "type": "string",
+          "x-go-name": "Collection"
+        },
+        "groupid": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "Groupid"
+        }
+      },
+      "x-go-package": "github.com/freegle/iznik-server-go/message"
     },
     "MessageOutcome": {
       "type": "object",
@@ -8846,6 +9106,21 @@
       },
       "x-go-package": "github.com/freegle/iznik-server-go/visualise"
     },
+    "PaginationContext": {
+      "type": "object",
+      "properties": {
+        "Date": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "ID"
+        }
+      },
+      "x-go-package": "github.com/freegle/iznik-server-go/message"
+    },
     "PatchChatMessageRequest": {
       "type": "object",
       "properties": {
@@ -8914,7 +9189,7 @@
       "x-go-package": "github.com/freegle/iznik-server-go/abtest"
     },
     "PostRequest": {
-      "description": "The operation is determined by which fields are present:\nexternaluid present \u2192 create new attachment\nid + rotate present \u2192 rotate existing attachment",
+      "description": "The operation is determined by which fields are present:\nexternaluid present → create new attachment\nid + rotate present → rotate existing attachment",
       "type": "object",
       "title": "PostRequest handles all POST /image operations.",
       "properties": {
@@ -9454,6 +9729,22 @@
       },
       "x-go-package": "github.com/freegle/iznik-server-go/team"
     },
+    "TnKeyInfo": {
+      "description": "The TN API returns {\"url\":\"...\",\"expires\":\"...\"} — we nest it under \"key\"\nin the group response to match what the V1 PHP API returned.",
+      "type": "object",
+      "title": "TnKeyInfo holds the TrashNothing settings URL, matching the V1 API shape.",
+      "properties": {
+        "expires": {
+          "type": "string",
+          "x-go-name": "Expires"
+        },
+        "url": {
+          "type": "string",
+          "x-go-name": "Url"
+        }
+      },
+      "x-go-package": "github.com/freegle/iznik-server-go/group"
+    },
     "Tryst": {
       "type": "object",
       "properties": {
@@ -9514,6 +9805,14 @@
           "type": "string",
           "format": "date-time",
           "x-go-name": "Added"
+        },
+        "bounceat": {
+          "type": "string",
+          "x-go-name": "Bounceat"
+        },
+        "bouncereason": {
+          "type": "string",
+          "x-go-name": "Bouncereason"
         },
         "bouncing": {
           "type": "boolean",
@@ -10609,6 +10908,12 @@
         "$ref": "#/definitions/LatestMessageResult"
       }
     },
+    "listMessagesResponse": {
+      "description": "listMessagesResponse is the response for the message list endpoint",
+      "schema": {
+        "$ref": "#/definitions/ListMessagesResponse"
+      }
+    },
     "locationResponse": {
       "description": "",
       "schema": {
@@ -10831,262 +11136,6 @@
     {
       "BearerAuth": [
         "[]"
-      ]
-    }
-  ],
-  "tags": [
-    {
-      "name": "A/B Testing"
-    },
-    {
-      "name": "AMP Email"
-    },
-    {
-      "name": "Activity"
-    },
-    {
-      "name": "Addresses"
-    },
-    {
-      "name": "Admins"
-    },
-    {
-      "name": "Alerts"
-    },
-    {
-      "name": "Authorities"
-    },
-    {
-      "name": "Changes"
-    },
-    {
-      "name": "Chat"
-    },
-    {
-      "name": "Chat Messages"
-    },
-    {
-      "name": "Chat Rooms"
-    },
-    {
-      "name": "Comments"
-    },
-    {
-      "name": "Community Events"
-    },
-    {
-      "name": "Configuration"
-    },
-    {
-      "name": "Dashboard"
-    },
-    {
-      "name": "Data Export"
-    },
-    {
-      "name": "Domains"
-    },
-    {
-      "name": "Donations"
-    },
-    {
-      "name": "Email Tracking"
-    },
-    {
-      "name": "Gift Aid"
-    },
-    {
-      "name": "Groups"
-    },
-    {
-      "name": "Illustrations"
-    },
-    {
-      "name": "Image Delivery"
-    },
-    {
-      "name": "Images"
-    },
-    {
-      "name": "Isochrones"
-    },
-    {
-      "name": "Jobs"
-    },
-    {
-      "name": "Locations"
-    },
-    {
-      "name": "Logging"
-    },
-    {
-      "name": "Logos"
-    },
-    {
-      "name": "Logs"
-    },
-    {
-      "name": "Memberships"
-    },
-    {
-      "name": "Messages"
-    },
-    {
-      "name": "Micro Volunteering"
-    },
-    {
-      "name": "Mod Configuration"
-    },
-    {
-      "name": "Newsfeed"
-    },
-    {
-      "name": "Noticeboards"
-    },
-    {
-      "name": "Notifications"
-    },
-    {
-      "name": "Session"
-    },
-    {
-      "name": "Shortlinks"
-    },
-    {
-      "name": "Simulation"
-    },
-    {
-      "name": "Spammers"
-    },
-    {
-      "name": "Standard Messages"
-    },
-    {
-      "name": "Status"
-    },
-    {
-      "name": "Stories"
-    },
-    {
-      "name": "System Logs"
-    },
-    {
-      "name": "Teams"
-    },
-    {
-      "name": "Trysts"
-    },
-    {
-      "name": "User Merge"
-    },
-    {
-      "name": "User Search"
-    },
-    {
-      "name": "Users"
-    },
-    {
-      "name": "Visualisation"
-    },
-    {
-      "name": "Volunteering"
-    }
-  ],
-  "x-tagGroups": [
-    {
-      "name": "Freegle",
-      "tags": [
-        "A/B Testing",
-        "AMP Email",
-        "Activity",
-        "Addresses",
-        "Authorities",
-        "Changes",
-        "Chat",
-        "Community Events",
-        "Configuration",
-        "Dashboard",
-        "Data Export",
-        "Donations",
-        "Gift Aid",
-        "Groups",
-        "Illustrations",
-        "Image Delivery",
-        "Images",
-        "Isochrones",
-        "Jobs",
-        "Locations",
-        "Logging",
-        "Logos",
-        "Memberships",
-        "Messages",
-        "Micro Volunteering",
-        "Newsfeed",
-        "Noticeboards",
-        "Notifications",
-        "Session",
-        "Shortlinks",
-        "Simulation",
-        "Status",
-        "Stories",
-        "System Logs",
-        "Teams",
-        "Trysts",
-        "User Search",
-        "Users",
-        "Visualisation",
-        "Volunteering"
-      ]
-    },
-    {
-      "name": "ModTools",
-      "tags": [
-        "Activity",
-        "Admins",
-        "Alerts",
-        "Changes",
-        "Chat",
-        "Chat Messages",
-        "Chat Rooms",
-        "Comments",
-        "Community Events",
-        "Configuration",
-        "Dashboard",
-        "Domains",
-        "Donations",
-        "Gift Aid",
-        "Groups",
-        "Illustrations",
-        "Image Delivery",
-        "Images",
-        "Logging",
-        "Logos",
-        "Logs",
-        "Memberships",
-        "Messages",
-        "Micro Volunteering",
-        "Mod Configuration",
-        "Newsfeed",
-        "Notifications",
-        "Session",
-        "Simulation",
-        "Spammers",
-        "Standard Messages",
-        "Status",
-        "Stories",
-        "System Logs",
-        "Teams",
-        "Trysts",
-        "User Merge",
-        "User Search",
-        "Users",
-        "Volunteering"
-      ]
-    },
-    {
-      "name": "Email",
-      "tags": [
-        "Email Tracking"
       ]
     }
   ]
