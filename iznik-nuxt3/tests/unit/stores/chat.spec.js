@@ -78,7 +78,9 @@ vi.mock('~/stores/user', () => ({
   }),
 }))
 
-import { useChatStore } from '~/stores/chat'
+// Import the REAL store directly — vitest.config.mts aliases ~/stores/chat
+// to a global mock for other tests. We need the actual implementation here.
+import { useChatStore } from '../../../stores/chat'
 
 describe('chat store', () => {
 
