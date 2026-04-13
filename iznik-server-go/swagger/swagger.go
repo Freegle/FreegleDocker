@@ -2512,7 +2512,25 @@ type messagesResponse struct {
 // swagger:route PATCH /message message patchMessage
 // Update message
 //
-// Updates message fields
+// Updates message fields. Supports partner authentication via query parameters
+// as an alternative to JWT auth.
+//
+// Parameters:
+//   + name: partner
+//     in: query
+//     description: Partner API key (alternative to JWT auth)
+//     required: false
+//     type: string
+//   + name: tnuserid
+//     in: query
+//     description: Trash Nothing user ID (partner auth only)
+//     required: false
+//     type: integer
+//   + name: email
+//     in: query
+//     description: User email (partner auth only, domain must match partner domain)
+//     required: false
+//     type: string
 //
 // security:
 // - BearerAuth: []
@@ -2522,6 +2540,7 @@ type messagesResponse struct {
 //	200: successResponse
 //	400: errorResponse
 //	401: errorResponse
+//	403: errorResponse
 
 // swagger:route PUT /message message putMessage
 // Create message

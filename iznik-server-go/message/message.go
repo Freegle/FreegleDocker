@@ -2063,6 +2063,40 @@ func handleJoinAndPost(c *fiber.Ctx, myid uint64, req PostMessageRequest) error 
 // @Router /api/message [patch]
 func PatchMessage(c *fiber.Ctx) error {
 	myid := user.WhoAmI(c)
+
+	// Partner auth: if partner query param is present, authenticate via partner key
+	// instead of JWT. The partner acts on behalf of the identified user.
+	partnerKey := c.Query("partner")
+	if partnerKey != "" {
+		db := database.DBConn
+		_, _, domain, err := user.ValidatePartnerKey(db, partnerKey)
+		if err != nil {
+			return fiber.NewError(fiber.StatusForbidden, "Invalid partner key")
+		}
+
+		email := c.Query("email")
+		tnuseridStr := c.Query("tnuserid")
+		var tnuserid uint64
+		if tnuseridStr != "" {
+			if v, err := strconv.ParseUint(tnuseridStr, 10, 64); err == nil {
+				tnuserid = v
+			}
+		}
+
+		// Validate email domain matches partner domain.
+		if email != "" {
+			parts := strings.SplitN(email, "@", 2)
+			if len(parts) != 2 || parts[1] != domain {
+				return fiber.NewError(fiber.StatusForbidden, "Email domain does not match partner domain")
+			}
+		}
+
+		myid = user.FindByTNIdOrEmail(db, tnuserid, email)
+		if myid == 0 {
+			return fiber.NewError(fiber.StatusForbidden, "User not found for partner")
+		}
+	}
+
 	if myid == 0 {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
 	}

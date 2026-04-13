@@ -5877,3 +5877,124 @@ func TestListMessagesExpiresat(t *testing.T) {
 	firstMsg := msgs[0].(map[string]interface{})
 	assert.NotNil(t, firstMsg["expiresat"], "expiresat should be present in list response")
 }
+
+// --- Partner auth PATCH /message tests ---
+
+func insertTestPartnerKeyMsg(t *testing.T, prefix string, domain string) string {
+	db := database.DBConn
+	key := prefix + "_key"
+	result := db.Exec("INSERT INTO partners_keys (partner, `key`, domain) VALUES (?, ?, ?)",
+		prefix+"_partner", key, domain)
+	if result.Error != nil {
+		t.Fatalf("ERROR: Failed to insert partner key: %v", result.Error)
+	}
+	return key
+}
+
+func TestPatchMessagePartnerAuth(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatch")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 44444, ownerID)
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+	key := insertTestPartnerKeyMsg(t, prefix, "test.com")
+
+	// Partner edits the message subject.
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Partner Updated Subject",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?partner=%s&tnuserid=44444&email=%s@test.com", key, prefix)
+	req := httptest.NewRequest("PATCH", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(0), result["ret"])
+
+	// Verify subject was updated.
+	var subject string
+	db.Raw("SELECT subject FROM messages WHERE id = ?", msgID).Scan(&subject)
+	assert.Equal(t, "Partner Updated Subject", subject)
+}
+
+func TestPatchMessagePartnerWrongDomain(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatchdom")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 55555, ownerID)
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+	key := insertTestPartnerKeyMsg(t, prefix, "partner.com")
+
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Should Not Work",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?partner=%s&tnuserid=55555&email=user@wrong.com", key)
+	req := httptest.NewRequest("PATCH", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestPatchMessagePartnerInvalidKey(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatchbad")
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Should Not Work",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest("PATCH", "/api/message?partner=bad_key&tnuserid=1&email=x@test.com", bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestPatchMessagePartnerNotOwner(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatchnotown")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	otherID := CreateTestUser(t, prefix+"_other", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 66666, otherID)
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+	key := insertTestPartnerKeyMsg(t, prefix, "test.com")
+
+	// Try to edit as a different user (not the message owner).
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Should Not Work",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?partner=%s&tnuserid=66666&email=%s@test.com", key, prefix+"_other")
+	req := httptest.NewRequest("PATCH", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}

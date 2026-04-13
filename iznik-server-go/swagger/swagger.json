@@ -2798,12 +2798,32 @@
             ]
           }
         ],
-        "description": "Updates message fields",
+        "description": "Updates message fields. Supports partner authentication via query parameters\nas an alternative to JWT auth.",
         "tags": [
           "message"
         ],
         "summary": "Update message",
         "operationId": "patchMessage",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Partner API key (alternative to JWT auth)",
+            "name": "partner",
+            "in": "query"
+          },
+          {
+            "type": "integer",
+            "description": "Trash Nothing user ID (partner auth only)",
+            "name": "tnuserid",
+            "in": "query"
+          },
+          {
+            "type": "string",
+            "description": "User email (partner auth only, domain must match partner domain)",
+            "name": "email",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/responses/successResponse"
@@ -2812,6 +2832,9 @@
             "$ref": "#/responses/errorResponse"
           },
           "401": {
+            "$ref": "#/responses/errorResponse"
+          },
+          "403": {
             "$ref": "#/responses/errorResponse"
           }
         }
