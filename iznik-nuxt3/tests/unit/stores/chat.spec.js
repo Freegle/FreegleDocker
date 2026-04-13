@@ -251,14 +251,14 @@ describe('chat store', () => {
     it('skips update when message count is unchanged and force is false', async () => {
       const store = useChatStore()
       store.config = {}
-      const existing = [{ id: 10 }]
-      store.messages[1] = existing
+      store.messages[1] = [{ id: 10 }]
       mockFetchMessages.mockResolvedValue([{ id: 10 }])
 
       await store.fetchMessages(1, false)
 
-      // Same reference — not replaced
-      expect(store.messages[1]).toBe(existing)
+      // Messages unchanged — listByChatMessageId should not be rebuilt
+      expect(store.messages[1]).toEqual([{ id: 10 }])
+      expect(store.listByChatMessageId[10]).toBeUndefined()
     })
 
     it('forces update when force is true even with same count', async () => {
@@ -270,7 +270,9 @@ describe('chat store', () => {
 
       await store.fetchMessages(1, true)
 
-      expect(store.messages[1]).toBe(newMessages)
+      expect(store.messages[1]).toEqual(newMessages)
+      // Force causes listByChatMessageId to be rebuilt
+      expect(store.listByChatMessageId[10]).toBeTruthy()
     })
   })
 
