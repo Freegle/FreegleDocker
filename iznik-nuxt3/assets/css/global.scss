@@ -523,9 +523,15 @@ form {
   }
 }
 
-// Cards: subtle shadow for depth
+// Cards: subtle shadow for depth, with hover lift
 .card {
   box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal, 200ms ease-in-out),
+              transform var(--transition-normal, 200ms ease-in-out);
+
+  &:hover {
+    box-shadow: var(--shadow-md);
+  }
 }
 
 // Modals: stronger shadow
@@ -533,9 +539,45 @@ form {
   box-shadow: var(--shadow-xl);
 }
 
-// Dropdowns: medium shadow
+// Dropdowns: medium shadow with entrance animation
 .dropdown-menu {
   box-shadow: var(--shadow-md);
+  animation: dropdown-enter 150ms ease-out;
+}
+
+@keyframes dropdown-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Links: smooth colour transitions
+a:not(.btn):not(.nav-link):not(.navbar-brand) {
+  transition: color var(--transition-fast, 150ms ease-in-out);
+}
+
+// Focus-visible ring for interactive elements
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 3px rgba(51, 136, 8, 0.25));
+}
+
+// Badge pulse for notification indicators
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.badge[class*="bg-"] {
+  transition: transform var(--transition-fast, 150ms ease-in-out);
 }
 
 .ourBack {

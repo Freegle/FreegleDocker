@@ -16,11 +16,12 @@ $color-warning: #e38d13;
 $color-header: #1d6607;
 $color-secondary: #00A1CB;
 
-// ── Green palette ───────────────────────────────────────────────────────────
+// ── Green palette (consolidated) ────────────────────────────────────────────
+// Three-tier system: dark (headings), primary (actions), light (backgrounds)
 $color-green-background: #61AE24;    // Navbar, brand background
 $color-green--light: #E6ffE6;        // Card header backgrounds
-$color-green--dark: #3B8070;         // Teal-green accents
-$color-green--darker: #008000;       // Outline-primary buttons
+$color-green--dark: $color-success;  // Consolidated: was #3B8070 teal, now matches primary
+$color-green--darker: $color-success; // Consolidated: was #008000, now matches primary
 $color-green--bg-gradient: #f0f7ed;  // Page background gradient
 
 // ── Gray palette ────────────────────────────────────────────────────────────

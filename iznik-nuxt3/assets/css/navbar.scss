@@ -32,22 +32,25 @@ $page-bottom-padding: calc(#{$navbar-bottom-height} + #{$navbar-bottom-post-over
 }
 
 .nuxt-link-active .nav-item__text {
-  border-bottom: 1px solid white;
-  padding-top: 2px;
+  border-bottom: 2px solid white;
+  padding-bottom: 1px;
 }
 
 /* Style the external nav-link class */
 :deep(.nav-link) {
-  padding-left: 2px !important;
-  padding-right: 2px !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
   padding-top: 0px !important;
   padding-bottom: 0px !important;
+  letter-spacing: 0.01em;
+  transition: opacity var(--transition-fast, 150ms ease-in-out);
 
   color: $color-white !important;
 
   &:hover,
   &:focus {
-    color: $color-white-opacity-75 !important;
+    opacity: 0.85;
+    color: $color-white !important;
   }
 }
 
@@ -116,8 +119,14 @@ nav .navbar li a.nuxt-link-active {
 }
 
 svg.fa-icon {
-  height: 32px;
-  margin-bottom: 0;
+  height: 28px;
+  margin-bottom: 2px;
+}
+
+.nav-item__text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .toggler {

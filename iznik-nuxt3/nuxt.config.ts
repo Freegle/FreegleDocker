@@ -568,6 +568,21 @@ export default defineNuxtConfig({
         lang: 'en',
       },
       title: "Freegle - Don't throw it away, give it away!",
+      link: [
+        {
+          rel: 'preconnect',
+          href: 'https://fonts.googleapis.com',
+        },
+        {
+          rel: 'preconnect',
+          href: 'https://fonts.gstatic.com',
+          crossorigin: '',
+        },
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap',
+        },
+      ],
       script: [
         {
           // This is a polyfill for Safari12.  Can't get it to work using modernPolyfills - needs to happen very

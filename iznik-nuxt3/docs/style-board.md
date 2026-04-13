@@ -12,7 +12,7 @@ The visual design system for the Freegle website. This document describes how th
 - Earthy greens for an environmental charity
 - WCAG 4.5:1 minimum contrast on all text
 - Subtle shadows for depth without harshness
-- Source Sans Pro — humanist, readable, friendly
+- Nunito — warm, rounded, community-friendly
 
 ---
 
@@ -67,7 +67,7 @@ Colors are defined in two layers:
 
 ## 2. Typography
 
-- **Font**: Source Sans Pro (Google Fonts) with system fallback
+- **Font**: Nunito (Google Fonts) with system fallback
 - **Base size**: 16px
 - **Headings**: Dark green (`$color-header: #1d6607`)
 - **Scale classes**: `.text--smallest` (0.6em) through `.text--largest` (2rem)

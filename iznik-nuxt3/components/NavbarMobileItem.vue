@@ -96,7 +96,9 @@ defineEmits(['click', 'mousedown'])
 .nav-icon {
   width: 24px !important;
   height: 24px !important;
-  color: var(--color-gray-600);
+  color: var(--color-gray-500);
+  transition: color var(--transition-fast, 150ms ease-in-out),
+    transform var(--transition-fast, 150ms ease-in-out);
 
   @include media-breakpoint-up(md) {
     width: 28px !important;
@@ -106,11 +108,13 @@ defineEmits(['click', 'mousedown'])
 
 .nav-label {
   font-size: 10px;
-  font-weight: 500;
-  color: var(--color-gray-600);
+  font-weight: 600;
+  color: var(--color-gray-500);
   line-height: 1;
   text-align: center;
   white-space: nowrap;
+  letter-spacing: 0.01em;
+  transition: color var(--transition-fast, 150ms ease-in-out);
 
   @include media-breakpoint-up(md) {
     font-size: 12px;
@@ -156,11 +160,19 @@ defineEmits(['click', 'mousedown'])
 .router-link-active {
   .nav-icon {
     color: $color-green-background;
+    transform: scale(1.08);
   }
 
   .nav-label {
     color: $color-green-background;
-    font-weight: 600;
+    font-weight: 700;
+  }
+}
+
+// Tap feedback
+.navbar-mobile-item:active {
+  .nav-icon {
+    transform: scale(0.92);
   }
 }
 </style>

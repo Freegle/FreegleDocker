@@ -60,4 +60,7 @@
   --transition-fast: 150ms ease-in-out;   // hover highlights, opacity
   --transition-normal: 200ms ease-in-out; // color, background, border
   --transition-slow: 300ms ease-in-out;   // transforms, layout shifts
+
+  // ── Focus ring ────────────────────────────────────────────────────
+  --focus-ring: 0 0 0 3px rgba(#{$color-success}, 0.25);
 }

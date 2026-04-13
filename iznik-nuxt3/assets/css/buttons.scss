@@ -15,6 +15,15 @@ button {
 .btn {
   font-weight: 500 !important;
   transition: all var(--transition-fast, 150ms ease-in-out);
+
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  &:focus-visible {
+    box-shadow: var(--focus-ring, 0 0 0 3px rgba(51, 136, 8, 0.25)) !important;
+    outline: none;
+  }
 }
 
 .btn-primary {
