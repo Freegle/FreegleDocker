@@ -3,9 +3,9 @@
 NODE_VERSION = "22"
 NPM_FLAGS = "--legacy-peer-deps"
 
-[build]
-command = "export NODE_OPTIONS=--max_old_space_size=6000 && npm run build"
-publish = "dist"
+# Build command and publish dir are set per-site in the Netlify UI/API
+# because Freegle and ModTools share this base directory but build differently.
+# netlify.toml command/publish would override per-site API settings.
 
 # Return 404 for requests from old code. This avoids the function call, which costs.
 [[redirects]]
