@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'iznik-batch/**'
 
 jobs:
   update-version:
@@ -22,8 +24,8 @@ jobs:
           COMMIT_SHORT=$(echo "$COMMIT_SHA" | cut -c1-7)
 
           # Read current version number or start at 1
-          if [ -f version.txt ]; then
-            CURRENT_VERSION=$(head -n1 version.txt | grep -oP '^\d+' || echo "0")
+          if [ -f iznik-batch/version.txt ]; then
+            CURRENT_VERSION=$(head -n1 iznik-batch/version.txt | grep -oP '^\d+' || echo "0")
           else
             CURRENT_VERSION=0
           fi
@@ -32,7 +34,7 @@ jobs:
           NEW_VERSION=$((CURRENT_VERSION + 1))
 
           # Write version file
-          cat > version.txt << EOF
+          cat > iznik-batch/version.txt << EOF
           ${NEW_VERSION}
           commit: ${COMMIT_SHORT}
           sha: ${COMMIT_SHA}
@@ -47,10 +49,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Only commit if there are changes
-          if git diff --quiet version.txt 2>/dev/null; then
-            echo "No changes to version.txt"
+          if git diff --quiet iznik-batch/version.txt 2>/dev/null; then
+            echo "No changes to iznik-batch/version.txt"
           else
-            git add version.txt
+            git add iznik-batch/version.txt
             git commit -m "Update version file [skip ci]"
             git push
           fi

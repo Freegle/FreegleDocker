@@ -149,10 +149,11 @@ cmd_worktree_create() {
     # Create the worktree
     git -C "$main_repo" worktree add "$worktree_dir" "$branch"
 
-    # Fix CRLF line endings in submodules (WSL/Windows git may convert LF→CRLF,
+    # Fix CRLF line endings in subtrees (WSL/Windows git may convert LF→CRLF,
     # breaking shell scripts like generate-swagger.sh inside containers)
-    git -C "$worktree_dir" submodule foreach --quiet \
-        'git config core.autocrlf false && git checkout -- .' 2>/dev/null || true
+    for dir in iznik-nuxt3 iznik-server-go iznik-server; do
+        git -C "$worktree_dir/$dir" config core.autocrlf false 2>/dev/null || true
+    done
 
     # Copy .env and configure for no ports
     if [[ -f "$main_repo/.env" ]]; then
