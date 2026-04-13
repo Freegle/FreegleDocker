@@ -1,8 +1,8 @@
-[![Coverage Status](https://coveralls.io/repos/github/Freegle/FreegleDocker/badge.svg?branch=master)](https://coveralls.io/github/Freegle/FreegleDocker?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/Freegle/Iznik/badge.svg?branch=master)](https://coveralls.io/github/Freegle/Iznik?branch=master)
 
 # Freegle Platform
 
-This is the monorepo for [Freegle](https://www.ilovefreegle.org), the UK's biggest free reuse network. It contains everything needed to run the platform locally for development.
+This is the monorepo for Iznik, the platform for [Freegle](https://www.ilovefreegle.org), an online reuse network.
 
 | Directory | What it is |
 |-----------|-----------|
@@ -19,7 +19,7 @@ This is the monorepo for [Freegle](https://www.ilovefreegle.org), the UK's bigge
 ## Installation
 
 ```bash
-git clone https://github.com/Freegle/FreegleDocker
+git clone https://github.com/Freegle/Iznik
 ```
 
 On Windows, Docker Desktop works but is unusably slow. We use WSL2 instead:
