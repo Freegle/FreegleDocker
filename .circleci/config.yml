@@ -1,10 +1,22 @@
 version: 2.1
 
+parameters:
+  run_manual_promote:
+    type: boolean
+    default: false
+    description: "Set to true to manually trigger promotion/submission workflow"
+  build_testflight:
+    type: boolean
+    default: false
+    description: "Set to true to build iOS and upload to TestFlight from current branch"
+
 orbs:
   freegle: freegle/tests@1
 
 workflows:
   version: 2
+
+  # Main test workflow — runs on all branches
   build-test:
     jobs:
       - freegle/build-and-test:
@@ -13,3 +25,89 @@ workflows:
               ignore:
                 - modtools
 
+  # Build Android debug APKs for non-production branches
+  build-android-apps:
+    jobs:
+      - freegle/build-android-dev:
+          filters:
+            branches:
+              ignore:
+                - production
+                - modtools
+      - freegle/build-android-debug:
+          filters:
+            branches:
+              ignore:
+                - production
+                - modtools
+
+  # Deploy apps when production branch is pushed
+  deploy-apps:
+    jobs:
+      - freegle/increment-version:
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/build-android:
+          requires:
+            - freegle/increment-version
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/build-ios:
+          requires:
+            - freegle/increment-version
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/check-hotfix-promote:
+          requires:
+            - freegle/build-android
+            - freegle/build-ios
+          filters:
+            branches:
+              only:
+                - production
+
+  # Weekly promotion — Wednesdays at 10pm UTC
+  weekly-promote-schedule:
+    triggers:
+      - schedule:
+          cron: "0 22 * * 3"
+          filters:
+            branches:
+              only:
+                - production
+    jobs:
+      - freegle/auto-promote-production
+      - freegle/auto-submit-ios
+      - freegle/auto-release-ios
+
+  # Manual promotion trigger
+  manual-promote-submit:
+    when: << pipeline.parameters.run_manual_promote >>
+    jobs:
+      - freegle/auto-promote-production:
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/auto-submit-ios:
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/auto-release-ios:
+          filters:
+            branches:
+              only:
+                - production
+
+  # Build iOS for TestFlight from any branch
+  testflight-branch:
+    when: << pipeline.parameters.build_testflight >>
+    jobs:
+      - freegle/build-ios-testflight
