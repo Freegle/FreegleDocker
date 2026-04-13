@@ -70,6 +70,49 @@ describe('member store', () => {
     })
   })
 
+  describe('fetchMembers - Spam collection stale entry cleanup', () => {
+    it('removes stale entry when refetch returns same user under different membership ID', async () => {
+      const store = useMemberStore()
+      store.config = {}
+
+      // Simulate existing entry keyed by membership 111 (the Wolves membership).
+      store.list[111] = {
+        id: 111,
+        userid: 456,
+        memberships: [
+          { id: 111, membershipid: 111, groupid: 789 },
+          { id: 222, membershipid: 222, groupid: 999 },
+        ],
+      }
+
+      // After ignore on group 789, refetch returns only the remaining membership.
+      // The API returns it as membership ID 222 (the first remaining row).
+      mockFetchMembers.mockResolvedValue({
+        members: [
+          {
+            id: 222,
+            userid: 456,
+            groupid: 999,
+            reviewrequestedat: '2026-04-13',
+            reviewreason: 'test',
+          },
+        ],
+        context: null,
+        ratings: [],
+      })
+
+      await store.fetchMembers({ collection: 'Spam' })
+
+      // Old entry under key 111 should be gone.
+      expect(store.list[111]).toBeUndefined()
+      // New entry under key 222 should exist with the remaining membership.
+      expect(store.list[222]).toBeTruthy()
+      expect(store.list[222].userid).toBe(456)
+      expect(store.list[222].memberships).toHaveLength(1)
+      expect(store.list[222].memberships[0].groupid).toBe(999)
+    })
+  })
+
   describe('fetchMembers - Related collection', () => {
     it('stores pairs and creates synthetic member entries', async () => {
       mockFetchMembers.mockResolvedValue({

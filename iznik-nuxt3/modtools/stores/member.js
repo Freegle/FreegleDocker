@@ -160,6 +160,18 @@ export const useMemberStore = defineStore({
             })
           })
           Object.values(byUser).forEach((member) => {
+            // Remove any stale entry for this userid keyed under a different
+            // membership ID (can happen after ReviewIgnore changes which
+            // membership row comes first from the API).
+            const staleKey = Object.keys(this.list).find(
+              (k) =>
+                parseInt(this.list[k].userid) === member.userid &&
+                k !== String(member.id)
+            )
+            if (staleKey) {
+              delete this.list[staleKey]
+            }
+
             member.rawindex = this.rawindex++
             this.list[member.id] = member
           })
