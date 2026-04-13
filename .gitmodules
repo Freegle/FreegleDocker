@@ -1,6 +1,3 @@
-[submodule "iznik-server"]
-	path = iznik-server
-	url = https://github.com/Freegle/iznik-server.git
 [submodule "iznik-server-go"]
 	path = iznik-server-go
 	url = https://github.com/Freegle/iznik-server-go.git
