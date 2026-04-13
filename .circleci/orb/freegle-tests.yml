@@ -1,8 +1,8 @@
 version: 2.1
 
 description: |
-  Shared commands and jobs for Freegle testing and app builds across repositories.
-  Used by FreegleDocker and submodule repos (iznik-server, iznik-server-go, iznik-nuxt3).
+  Shared commands and jobs for Freegle testing and app builds.
+  Used by FreegleDocker (monorepo with inline subtrees for iznik-server, iznik-server-go, iznik-nuxt3).
 
 executors:
   machine-executor:
@@ -297,162 +297,12 @@ commands:
             echo ""
             echo "✅ All containers verified"
 
-  clone-freegle-docker:
-    description: "Clone FreegleDocker and initialize submodules"
-    steps:
-      - run:
-          name: Clone FreegleDocker
-          command: |
-            BRANCH="$CIRCLE_BRANCH"
-
-            # If the PR branch exists in FreegleDocker, clone that branch so we
-            # pick up matching non-submodule changes (e.g. iznik-batch migrations).
-            if [ -n "$BRANCH" ] && [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
-              if git ls-remote --heads https://github.com/Freegle/FreegleDocker.git "$BRANCH" 2>/dev/null | grep -q "refs/heads/$BRANCH"; then
-                echo "✅ Found matching branch '$BRANCH' in FreegleDocker - cloning it"
-                git clone -b "$BRANCH" https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
-              else
-                echo "ℹ️  No branch '$BRANCH' in FreegleDocker - cloning master"
-                git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
-              fi
-            else
-              git clone https://github.com/Freegle/FreegleDocker.git ~/FreegleDocker
-            fi
-
-            cd "$HOME/FreegleDocker"
-            git submodule update --init --recursive --jobs 4
-
-            # Set COMPOSE_FILE based on whether ports overlay exists (backward compat with master)
-            if [ -f docker-compose.ports.yml ]; then
-              echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml"' >> $BASH_ENV
-              echo "✅ Using split compose files (docker-compose.yml + docker-compose.ports.yml)"
-            else
-              echo 'export COMPOSE_FILE="docker-compose.yml"' >> $BASH_ENV
-              echo "ℹ️  Using single docker-compose.yml (ports inline)"
-            fi
-
-            # ModTools is now built from iznik-nuxt3/modtools (same repo, different build)
-            echo "=== Verifying modtools directory ==="
-            ls -la iznik-nuxt3/modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
-          max_auto_reruns: 3
-          auto_rerun_delay: 10s
-
-  replace-submodule:
-    description: "Replace a submodule with PR code"
-    parameters:
-      submodule:
-        type: string
-        description: "Name of submodule directory (iznik-server, iznik-server-go, iznik-nuxt3)"
-      source:
-        type: string
-        default: "~/project"
-        description: "Path to PR code"
-    steps:
-      - run:
-          name: Replace << parameters.submodule >> with PR code
-          command: |
-            cd "$HOME/FreegleDocker"
-            rm -rf << parameters.submodule >>
-            cp -r << parameters.source >> << parameters.submodule >>
-
-  align-submodule-branches:
-    description: "Check out matching branches in other submodules when a PR branch exists in multiple repos"
-    parameters:
-      skip-submodule:
-        type: string
-        description: "Submodule already replaced by PR code (skip this one)"
-    steps:
-      - run:
-          name: Align submodule branches for cross-repo PRs
-          command: |
-            cd "$HOME/FreegleDocker"
-            BRANCH="$CIRCLE_BRANCH"
-
-            if [ -z "$BRANCH" ] || [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
-              echo "On default branch - no cross-repo alignment needed"
-              exit 0
-            fi
-
-            echo "🔍 Checking for branch '$BRANCH' in other submodule repos..."
-
-            SUBMODULES="iznik-nuxt3 iznik-server-go iznik-server"
-            ALIGNED=0
-            ALIGNED_LIST=""
-
-            for submodule in $SUBMODULES; do
-              if [ "$submodule" = "<< parameters.skip-submodule >>" ]; then
-                echo "⏭️  Skipping $submodule (already replaced with PR code)"
-                continue
-              fi
-
-              # Check if branch exists in remote
-              if git ls-remote --heads "https://github.com/Freegle/${submodule}.git" "$BRANCH" 2>/dev/null | grep -q "refs/heads/$BRANCH"; then
-                echo "✅ Found branch '$BRANCH' in $submodule - checking out..."
-                cd "$submodule"
-                git fetch origin "$BRANCH"
-                git checkout "origin/$BRANCH"
-                cd "$HOME/FreegleDocker"
-                ALIGNED=$((ALIGNED + 1))
-                ALIGNED_LIST="$ALIGNED_LIST $submodule"
-              else
-                echo "ℹ️  No branch '$BRANCH' in $submodule - using default"
-              fi
-            done
-
-            if [ "$ALIGNED" -gt 0 ]; then
-              echo "🔗 Aligned $ALIGNED submodule(s) to branch '$BRANCH'"
-              # Write marker so downstream steps know containers need rebuilding
-              echo "$ALIGNED_LIST" > /tmp/aligned-submodules.txt
-            else
-              echo "ℹ️  No matching branches found in other repos"
-            fi
-
-  rebuild-aligned-containers:
-    description: "Rebuild Docker containers for submodules that were aligned to feature branches"
-    steps:
-      - run:
-          name: Rebuild containers for aligned submodules
-          command: |
-            if [ ! -f /tmp/aligned-submodules.txt ]; then
-              echo "ℹ️  No submodules were aligned - no rebuild needed"
-              exit 0
-            fi
-
-            ALIGNED=$(cat /tmp/aligned-submodules.txt)
-            cd "$HOME/FreegleDocker"
-
-            for submodule in $ALIGNED; do
-              case "$submodule" in
-                iznik-server-go)
-                  echo "🔨 Rebuilding apiv2 container (iznik-server-go was aligned)..."
-                  docker-compose build apiv2
-                  echo "✅ apiv2 rebuilt"
-                  ;;
-                iznik-server)
-                  echo "🔨 Rebuilding apiv1 container (iznik-server was aligned)..."
-                  docker-compose build apiv1
-                  echo "✅ apiv1 rebuilt"
-                  ;;
-                *)
-                  echo "ℹ️  No container rebuild needed for $submodule"
-                  ;;
-              esac
-            done
-
-  build-submodule-container:
-    description: "Build the container for a replaced submodule"
-    parameters:
-      container:
-        type: string
-        description: "Container name to build (apiv2, apiv1, freegle-prod-local, etc.)"
-    steps:
-      - run:
-          name: Build << parameters.container >> container
-          command: |
-            cd "$HOME/FreegleDocker"
-            echo "🔨 Building << parameters.container >> container with updated code..."
-            docker-compose build << parameters.container >>
-            echo "✅ << parameters.container >> container built successfully"
+  # === Removed Commands (monorepo migration) ===
+  # clone-freegle-docker: Removed — no longer needed; monorepo checkout replaces submodule cloning
+  # replace-submodule: Removed — subtrees are inline; no submodule swapping needed
+  # align-submodule-branches: Removed — single repo; branch alignment is implicit
+  # rebuild-aligned-containers: Removed — no cross-repo branch alignment needed
+  # build-submodule-container: Removed — containers built from monorepo checkout
 
   start-services:
     description: "Create secrets and start Docker services"
@@ -695,6 +545,10 @@ commands:
       - run:
           name: Run Go tests and upload coverage
           command: |
+            if [ "$SKIP_GO" = "true" ]; then
+              echo "Skipping Go tests — no changes in iznik-server-go/"
+              exit 0
+            fi
             # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
             if [ -d "$HOME/FreegleDocker" ]; then
               cd "$HOME/FreegleDocker"
@@ -1071,6 +925,10 @@ commands:
       - run:
           name: Install Node.js 22 for Vitest
           command: |
+            if [ "$SKIP_VITEST" = "true" ]; then
+              echo "Skipping Node.js install — Vitest tests skipped (no changes in iznik-nuxt3/)"
+              exit 0
+            fi
             echo "📦 Installing Node.js 22..."
             curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
             sudo apt-get install -y nodejs
@@ -1078,6 +936,10 @@ commands:
       - run:
           name: Run Vitest unit tests
           command: |
+            if [ "$SKIP_VITEST" = "true" ]; then
+              echo "Skipping Vitest tests — no changes in iznik-nuxt3/"
+              exit 0
+            fi
             echo "🧪 << parameters.reason >>..."
 
             # Determine the iznik-nuxt3 directory
@@ -1129,6 +991,10 @@ commands:
       - run:
           name: Run Playwright tests and upload coverage
           command: |
+            if [ "$SKIP_PLAYWRIGHT" = "true" ]; then
+              echo "Skipping Playwright tests — no changes in iznik-nuxt3/"
+              exit 0
+            fi
             # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
             if [ -d "$HOME/FreegleDocker" ]; then
               cd "$HOME/FreegleDocker"
@@ -1256,6 +1122,10 @@ commands:
       - run:
           name: Run Laravel tests and upload coverage
           command: |
+            if [ "$SKIP_LARAVEL" = "true" ]; then
+              echo "Skipping Laravel tests — no changes in iznik-batch/"
+              exit 0
+            fi
             # Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
             if [ -d "$HOME/FreegleDocker" ]; then
               cd "$HOME/FreegleDocker"
@@ -1820,80 +1690,6 @@ commands:
             echo "✅ Google Play JSON Key validated successfully"
 
 jobs:
-  # === Submodule PR Test Jobs ===
-
-  php-tests:
-    executor: machine-executor
-    steps:
-      - checkout
-      - setup-dependencies
-      - clone-freegle-docker
-      - replace-submodule:
-          submodule: "iznik-server"
-      - align-submodule-branches:
-          skip-submodule: "iznik-server"
-      - rebuild-aligned-containers
-      - start-services
-      - wait-for-basic-services
-      - run-php-tests:
-          reason: "Running PHPUnit tests for PR"
-      # Coverage uploaded inline by status API
-      - collect-artifacts
-
-  go-tests:
-    executor: machine-executor
-    steps:
-      - checkout
-      - setup-dependencies
-      - clone-freegle-docker
-      - replace-submodule:
-          submodule: "iznik-server-go"
-      - align-submodule-branches:
-          skip-submodule: "iznik-server-go"
-      - build-submodule-container:
-          container: "apiv2"
-      - start-services
-      - wait-for-basic-services
-      - run-go-tests:
-          reason: "Running Go tests for PR"
-      # Coverage uploaded inline by status API
-      - collect-artifacts
-
-  playwright-tests:
-    executor: machine-executor
-    steps:
-      - checkout
-      - setup-dependencies
-      - clone-freegle-docker
-      - replace-submodule:
-          submodule: "iznik-nuxt3"
-      - align-submodule-branches:
-          skip-submodule: "iznik-nuxt3"
-      - rebuild-aligned-containers
-      # Force rebuild containers to pick up replaced submodule code.
-      # Without this, Docker Layer Caching reuses stale images from previous builds.
-      # apiv2 must also be rebuilt because DLC restores the old Go binary image
-      # and docker-compose up -d won't rebuild if the image already exists.
-      - run:
-          name: Rebuild containers with PR code (bypass DLC)
-          command: |
-            cd "$HOME/FreegleDocker"
-            echo "Force rebuilding containers to pick up PR code..."
-            docker-compose build --no-cache \
-              apiv2 freegle-prod-local modtools-prod-local playwright
-            echo "✅ Containers rebuilt with PR code"
-          no_output_timeout: 15m
-      # Run Vitest unit tests first (doesn't need Docker services)
-      - run-vitest-tests:
-          reason: "Running Vitest unit tests for PR"
-      - start-services
-      - wait-for-basic-services
-      - wait-for-prod-container
-      - run-playwright-tests:
-          reason: "Running Playwright tests for PR"
-      # Coverage uploaded inline by status API
-      - collect-artifacts
-
   # === FreegleDocker Main Build Job ===
 
   build-and-test:
@@ -1943,15 +1739,44 @@ jobs:
             fi
 
       - run:
-          name: Initialize and update git submodules
+          name: Verify monorepo subtree directories
           command: |
-            git submodule init
-            git submodule update --recursive --jobs 4
-            git submodule status
+            echo "=== Verifying subtree directories ==="
+            ls -d iznik-nuxt3/ iznik-server-go/ iznik-server/ iznik-batch/ || { echo "ERROR: subtree directories missing"; exit 1; }
 
             # ModTools is now built from iznik-nuxt3/modtools (same repo, different build)
             echo "=== Verifying modtools directory ==="
             ls -la iznik-nuxt3/modtools/Dockerfile* || echo "WARNING: modtools/Dockerfile files not found"
+
+      - run:
+          name: Determine changed paths
+          command: |
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "ALL")
+
+            SKIP_GO=true
+            SKIP_VITEST=true
+            SKIP_PLAYWRIGHT=true
+            SKIP_LARAVEL=true
+
+            if echo "$CHANGED" | grep -q '^iznik-server-go/'; then SKIP_GO=false; fi
+            if echo "$CHANGED" | grep -q '^iznik-nuxt3/'; then SKIP_VITEST=false; SKIP_PLAYWRIGHT=false; fi
+            if echo "$CHANGED" | grep -q '^iznik-batch/'; then SKIP_LARAVEL=false; fi
+
+            # Shared files → run everything
+            if echo "$CHANGED" | grep -qE '^(docker-compose|\.circleci|scripts/|testenv)'; then
+              SKIP_GO=false; SKIP_VITEST=false; SKIP_PLAYWRIGHT=false; SKIP_LARAVEL=false
+            fi
+
+            # Master branch always runs everything
+            if [ "$CIRCLE_BRANCH" = "master" ]; then
+              SKIP_GO=false; SKIP_VITEST=false; SKIP_PLAYWRIGHT=false; SKIP_LARAVEL=false
+            fi
+
+            echo "export SKIP_GO=$SKIP_GO" >> "$BASH_ENV"
+            echo "export SKIP_VITEST=$SKIP_VITEST" >> "$BASH_ENV"
+            echo "export SKIP_PLAYWRIGHT=$SKIP_PLAYWRIGHT" >> "$BASH_ENV"
+            echo "export SKIP_LARAVEL=$SKIP_LARAVEL" >> "$BASH_ENV"
+            echo "Path filter: GO=$SKIP_GO VITEST=$SKIP_VITEST PW=$SKIP_PLAYWRIGHT LARAVEL=$SKIP_LARAVEL"
 
       - setup-dependencies
 
@@ -2000,6 +1825,13 @@ jobs:
             # Start iznik-batch tests in background
             echo "🧪 Starting iznik-batch tests in background..."
             (
+              if [ "$SKIP_LARAVEL" = "true" ]; then
+                echo "Skipping Laravel tests — no changes in iznik-batch/"
+                echo "pass" > /tmp/laravel-result
+                echo "0" > /tmp/laravel-completed
+                echo "0" > /tmp/laravel-total
+                exit 0
+              fi
               # Trigger Laravel tests via status API
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/laravel)
               http_code="${response: -3}"
@@ -2056,6 +1888,13 @@ jobs:
             # Start Go tests in background
             echo "🧪 Starting Go tests in background..."
             (
+              if [ "$SKIP_GO" = "true" ]; then
+                echo "Skipping Go tests — no changes in iznik-server-go/"
+                echo "pass" > /tmp/go-result
+                echo "0" > /tmp/go-completed
+                echo "0" > /tmp/go-total
+                exit 0
+              fi
               # Trigger Go tests via status API
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:8081/api/tests/go?coverage=true")
               http_code="${response: -3}"
@@ -2176,6 +2015,13 @@ jobs:
             # Start Playwright tests in background
             echo "🎭 Starting Playwright tests in background..."
             (
+              if [ "$SKIP_PLAYWRIGHT" = "true" ]; then
+                echo "Skipping Playwright tests — no changes in iznik-nuxt3/"
+                echo "pass" > /tmp/playwright-result
+                echo "0" > /tmp/playwright-completed
+                echo "0" > /tmp/playwright-total
+                exit 0
+              fi
               # Trigger Playwright tests via status API
               response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
               http_code="${response: -3}"
@@ -2637,38 +2483,25 @@ jobs:
           name: Auto-merge master to production
           command: |
             if [ "$ALL_TESTS_PASSED" != "true" ]; then
-              echo "⏭️ Skipping auto-merge: not all tests passed"
+              echo "Skipping auto-merge: not all tests passed"
               exit 0
             fi
 
             if [ "$CIRCLE_BRANCH" != "master" ]; then
-              echo "⏭️ Skipping auto-merge: not on master branch"
+              echo "Skipping auto-merge: not on master branch"
               exit 0
             fi
 
-            echo "🔀 Auto-merging master to production in iznik-nuxt3..."
-
+            echo "Auto-merging master to production..."
             git config --global user.email "circleci@freegle.org"
             git config --global user.name "CircleCI Auto-merge"
-
-            cd iznik-nuxt3
-            git fetch origin master:master
             git fetch origin production:production
             git checkout production
-
             MASTER_COMMIT_MSG=$(git log master -1 --pretty=%B | head -n 1)
-
-            if git merge master -m "Auto-merge master to production after successful tests - Original commit: $MASTER_COMMIT_MSG"; then
-              if git push origin production; then
-                echo "🎉 Successfully pushed merged changes to production!"
-              else
-                echo "❌ Failed to push to production branch"
-                exit 1
-              fi
+            if git merge master -m "Auto-merge master to production - $MASTER_COMMIT_MSG"; then
+              git push origin production || { echo "Push failed"; exit 1; }
             else
-              echo "❌ Merge failed - conflicts detected"
-              git merge --abort
-              exit 1
+              echo "Merge conflicts"; git merge --abort; exit 1
             fi
 
   # === App Build Jobs ===
