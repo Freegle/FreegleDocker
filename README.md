@@ -7,15 +7,15 @@ This is a top-level Docker Compose environment for a [Freegle](https://www.ilove
 
 ## Installation
 
-This top-level repository has a number of [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) (see `.gitmodules` in project root).
+To clone this repository:
 
-To clone this repository and all submodules:
+`git clone https://github.com/freegle/FreegleDocker`
 
-`git clone --recurse-submodules https://github.com/freegle/FreegleDocker`
-
-If you cloned without the `--recurse-submodules` flag, you can initialize them with:
-
-`git submodule update --init --recursive`
+The following Freegle components are included as inline directories (not submodules):
+- `iznik-nuxt3` (User website aka FD - runs as both dev and prod containers)
+- `iznik-server` (legacy PHP API)
+- `iznik-server-go` (modern Go API)
+- `iznik-batch` (Laravel-based batch processing - **WIP**)
 
 On Windows, using Docker Desktop works but is unusably slow.  So we won't document that.  Instead we use WSL2, with some jiggery-pokery to get round issues with file syncing and WSL2. Here are instructions on the assumption that you have a JetBrains IDE (e.g. PhpStorm):
 1. Install a WSL2 distribution (Ubuntu recommended). If you already have a WSL installation, you may benefit from installing a dedicated freegle one `wsl --install --name freegle`
@@ -23,15 +23,6 @@ On Windows, using Docker Desktop works but is unusably slow.  So we won't docume
 3. [Install docker](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository)
 4. Use `wsl` to open a WSL2 terminal in the repository directory.
 5. Start the docker service: `sudo service docker start`
-
-This will clone the required Freegle repositories:
-- `iznik-nuxt3` (User website aka FD - runs as both dev and prod containers)
-- `iznik-nuxt3-modtools` (Moderator website aka ModTools)
-- `iznik-server` (legacy PHP API)
-- `iznik-server-go` (modern Go API)
-- `iznik-batch` (Laravel-based batch processing - **WIP**)
-
-Since these are git submodules, you can navigate into each subdirectory and work with them as independent git repositories - checking out different branches, making commits, etc.
 
 ### Windows
 
@@ -57,39 +48,6 @@ Add these to your hosts file:
 ### Linux
 
 Feel free to write this.
-
-### Git Hooks Setup
-
-This repository uses git hooks to ensure submodule commits are pushed before the parent repository. This prevents CircleCI build failures.
-
-**For Linux/WSL users:**
-```bash
-bash setup-hooks.sh
-```
-
-**For Windows users (Command Prompt):**
-```cmd
-setup-hooks.cmd
-```
-
-**For PhpStorm users on Windows:**
-
-If you're using PhpStorm on Windows, the git hooks may not work correctly by default. See [PHPSTORM-GIT-SETUP.md](PHPSTORM-GIT-SETUP.md) for detailed configuration instructions including:
-- Configuring PhpStorm to use Git Bash
-- Setting up automatic submodule push before parent push
-- Troubleshooting common git hook issues on Windows
-
-**Quick Push Command:**
-
-To push submodules and parent repository in one command:
-```bash
-bash push-with-submodules.sh
-```
-
-Or use the git command directly:
-```bash
-git submodule foreach 'git push' && git push
-```
 
 ## Configuration
 
@@ -301,69 +259,24 @@ We have the following tests, which can be run from the status page:
 
 # CircleCI Continuous Integration
 
-This repository includes CircleCI configuration that automatically monitors submodules and runs integration tests when changes are detected.
-
-## Automated Submodule Testing
-
-The system automatically:
-- **Monitors submodules** every 6 hours for updates
-- **Updates submodules** to latest commits on their default branches
-- **Runs full integration tests** using the complete Docker Compose stack
-- **Commits successful updates** back to the repository
-- **Responds to webhooks** from submodule repositories for immediate testing
+This repository includes CircleCI configuration that runs integration tests.
 
 ## Workflows
 
-### Scheduled Check: `scheduled-submodule-check`
-- **Schedule**: Every 6 hours (`0 */6 * * *`)
-- **Branch**: Only runs on `master`
-- **Process**:
-  1. Updates all submodules to latest commits
-  2. Starts complete Docker Compose environment (if changes detected)
-  3. Waits for all services to be ready
-  4. Runs Go API unit tests with coverage reporting
-  5. Runs Playwright end-to-end tests via status container
-  6. Collects test artifacts and logs
-  7. Commits updates if tests pass
-
-### Webhook Trigger: `webhook-triggered`
-- **Purpose**: Immediate testing when submodule repositories push changes
-- **Trigger**: API calls from submodule repository webhooks
-- **Behavior**: Forces testing regardless of detected changes
-- **Process**: Same as scheduled check but runs immediately on submodule changes
-
-### Manual/Push: `build-and-test`
+### `build-and-test`
 - **Trigger**: Push to `master` branch or manual pipeline trigger
-- **Purpose**: On-demand testing and validation
+- **Purpose**: Runs the full test suite (Go, PHP, Laravel, Playwright) using the complete Docker Compose stack
 
-## Webhook Integration
-
-The following submodules are pre-configured with GitHub Actions workflows that automatically trigger CircleCI builds in this repository when changes are pushed:
-
-- **iznik-nuxt3** - User website repository
-- **iznik-nuxt3-modtools** - ModTools repository  
-- **iznik-server** - Legacy PHP API repository
-- **iznik-server-go** - Modern Go API repository
-
-Each submodule contains `.github/workflows/trigger-parent-ci.yml` that triggers the FreegleDocker CircleCI pipeline on push to master/main branches.
-
-### Setup Required
-
-To activate webhook integration, add a `CIRCLECI_TOKEN` secret to each submodule repository:
-
-1. **Get CircleCI API Token** from CircleCI → Personal API Tokens
-2. **Add secret** to each submodule: Settings → Secrets and Variables → Actions
-3. **Secret name**: `CIRCLECI_TOKEN`
-4. **Secret value**: Your CircleCI API token
-
-Once configured, any push to master/main in the submodules will automatically trigger integration testing in this repository.
+### `scheduled-integration-test`
+- **Schedule**: Every 2 days
+- **Branch**: Only runs on `master`
+- **Purpose**: Regular automated integration testing
 
 ## Monitoring
 
 - **Build Artifacts**: Docker logs, test reports, and debugging info automatically collected
 - **Timeout Protection**: Builds timeout after appropriate intervals to prevent resource waste
 - **Resource Cleanup**: Docker resources are always cleaned up after completion
-- **Smart Testing**: Only runs tests when submodule changes are detected
 
 For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md).
 
@@ -379,7 +292,7 @@ For detailed setup instructions, see [`.circleci/README.md`](.circleci/README.md
 
 ## iznik-batch (Work in Progress)
 
-The `iznik-batch` submodule is a Laravel-based batch processing system intended to eventually replace the legacy PHP background jobs in `iznik-server`. It provides:
+The `iznik-batch` directory contains a Laravel-based batch processing system intended to eventually replace the legacy PHP background jobs in `iznik-server`. It provides:
 
 * Modern Laravel architecture for scheduled tasks and queue workers
 * Email digest generation and sending

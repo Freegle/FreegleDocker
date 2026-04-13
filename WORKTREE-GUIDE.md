@@ -19,7 +19,7 @@ cd /home/edward/FreegleDockerWSL
 ```
 
 This automatically:
-- Creates the git worktree and initialises submodules
+- Creates the git worktree
 - Sets a unique `COMPOSE_PROJECT_NAME` (e.g. `freegle-feature-x`)
 - Offsets **every** `PORT_*` value by `slot × 10000` (slot 1 → +10000, slot 2 → +20000…)
 - Starts all containers immediately

@@ -123,9 +123,7 @@ If you need more control, you can use individual commands:
 ### Test Commands
 - `freegle/setup-dependencies` - Install system dependencies and docker-compose
 - `freegle/start-docker-services` - Start Docker services with auto-retry
-- `freegle/clone-freegle-docker` - Clone and init FreegleDocker
-- `freegle/replace-submodule` - Replace submodule with PR code
-- `freegle/start-services` - Start Docker services (for submodule tests)
+- `freegle/start-services` - Start Docker services
 - `freegle/wait-for-basic-services` - Wait for API v1/v2
 - `freegle/wait-for-prod-container` - Wait for prod containers
 - `freegle/run-go-tests` - Run Go tests
@@ -170,4 +168,4 @@ The `upload-coverage` command supports Go, PHP, and Playwright coverage uploads 
 
 ## PR Comments
 
-When tests run in the submodule repo's CircleCI, results can be posted as PR comments because the workflow has access to the PR context.
+When tests run in CircleCI, results can be posted as PR comments because the workflow has access to the PR context.

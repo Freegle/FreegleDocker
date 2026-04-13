@@ -282,21 +282,29 @@ In the monorepo there's ONE CircleCI project. All env vars from both the Freegle
 | `SENTRY_DSN_APP_FD` | Sentry DSN for mobile app builds |
 | `ENABLE_DOCKER_CACHE` | Controls Docker layer caching |
 
-**From iznik-nuxt3 CircleCI project:**
+**From iznik-nuxt3 CircleCI project (19 secrets, all copied 2026-04-13):**
 
 | Secret | Purpose |
 |--------|---------|
-| `GOOGLE_PLAY_JSON_KEY` | Base64-encoded Google Play service account key for Fastlane |
-| `GOOGLE_SERVICES_JSON_BASE64` | Firebase google-services.json (base64) for push notifications |
-| `CURRENT_VERSION` | Auto-updated by CI after each Fastlane release |
-| `CIRCLECI_API_TOKEN` | Used to update `CURRENT_VERSION` via CircleCI API |
-| `NOTIFICATION_EMAIL` | Beta/production release notification recipient |
-
-**Shared (exists on both, consolidate to one):**
-
-| Secret | Purpose |
-|--------|---------|
-| `SENTRY_DSN_APP_FD` | Same value on both projects |
+| `ANDROID_KEYSTORE_BASE64` | Android signing keystore (base64) |
+| `ANDROID_KEYSTORE_PASSWORD` | Android keystore password |
+| `ANDROID_KEY_ALIAS` | Android signing key alias |
+| `ANDROID_KEY_PASSWORD` | Android signing key password |
+| `APP_STORE_CONNECT_API_KEY_ISSUER_ID` | Apple App Store Connect API issuer |
+| `APP_STORE_CONNECT_API_KEY_KEY` | Apple App Store Connect API key (base64) |
+| `APP_STORE_CONNECT_API_KEY_KEY_ID` | Apple App Store Connect key ID |
+| `CIRCLECI_API_TOKEN` | CircleCI PAT — used to update CURRENT_VERSION via API |
+| `CURRENT_VERSION` | Auto-updated after each Fastlane release (e.g. 100.0.287) |
+| `FASTLANE_APPLE_ID` | Apple ID for Fastlane |
+| `FASTLANE_TEAM_ID` | Apple Developer Team ID |
+| `GOOGLE_PLAY_JSON_KEY` | Google Play service account key (base64) |
+| `GOOGLE_SERVICES_JSON_BASE64` | Firebase google-services.json (base64) |
+| `GOOGLE_SERVICE_INFO_PLIST_BASE64` | iOS GoogleService-Info.plist (base64) |
+| `IOS_CERTIFICATE_PASSWORD` | iOS distribution certificate password |
+| `IOS_DISTRIBUTION_CERT` | iOS distribution certificate (base64) |
+| `IOS_PROVISIONING_PROFILE` | iOS provisioning profile (base64) |
+| `SENTRY_DSN_APP_FD` | Sentry DSN for mobile app |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe live publishable key |
 
 **Retired:**
 
@@ -304,30 +312,11 @@ In the monorepo there's ONE CircleCI project. All env vars from both the Freegle
 |--------|-----|
 | `FREEGLE_DOCKER_TOKEN` | Was used by sub-repos to trigger parent CI; no sub-repos in monorepo |
 
-**URL update required:** `increment-version` job calls `https://circleci.com/api/v2/project/gh/Freegle/iznik-nuxt3/envvar/CURRENT_VERSION` — change project slug to `gh/Freegle/iznik` (or `gh/Freegle/FreegleDocker` if rename hasn't happened yet).
+**URL update required:** `increment-version` job calls `https://circleci.com/api/v2/project/gh/Freegle/iznik-nuxt3/envvar/CURRENT_VERSION` — change project slug to `gh/Freegle/FreegleDocker` (then `gh/Freegle/iznik` after rename).
 
-### 2.8 Extract secrets from iznik-nuxt3 via SSH
+### 2.8 ~~Extract secrets from iznik-nuxt3 via SSH~~ DONE
 
-The 5 secrets on iznik-nuxt3's CircleCI project can't be read via the API (values are masked). Extract them by running a CI job with SSH:
-
-1. Trigger an SSH-enabled build on `Freegle/iznik-nuxt3`:
-   ```bash
-   curl -X POST "https://circleci.com/api/v2/project/gh/Freegle/iznik-nuxt3/pipeline" \
-     -H "Circle-Token: $CIRCLECI_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"branch":"master"}'
-   ```
-2. Rerun the job with SSH enabled via the API
-3. SSH in and extract: `env | grep -E 'GOOGLE_PLAY|GOOGLE_SERVICES|CURRENT_VERSION|CIRCLECI_API_TOKEN|NOTIFICATION_EMAIL'`
-4. Set each on the monorepo project:
-   ```bash
-   curl -X POST "https://circleci.com/api/v2/project/gh/Freegle/FreegleDocker/envvar" \
-     -H "Circle-Token: $CIRCLECI_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"name":"SECRET_NAME","value":"SECRET_VALUE"}'
-   ```
-
-This eliminates all manual secret copying. The `CIRCLECI_API_TOKEN` should also be tested — if it's a personal API token it works across projects; if project-scoped it needs regeneration (only manual step).
+All 19 secrets extracted via SSH into the `build-android` CircleCI job and set on the FreegleDocker CircleCI project via API. Completed 2026-04-13.
 
 ### 2.9 Human-only steps
 

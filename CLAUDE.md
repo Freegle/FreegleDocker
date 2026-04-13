@@ -51,7 +51,6 @@ Uses `docker-compose.override.yesterday.yml` (copy to `docker-compose.override.y
 
 ## CircleCI
 
-- Submodule webhooks: `trigger-parent-ci.yml` workflow + `FREEGLE_DOCKER_TOKEN` secret (PAT scoped to **Freegle org**, not personal). See `.circleci/README.md` for full docs.
 - Publish orb after changes: `source .env && ~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@1.x.x`
 - Check version: `~/.local/bin/circleci orb info freegle/tests`
 - **Docker build caching**: Controlled by `ENABLE_DOCKER_CACHE` env var in CircleCI. Bump version suffixes in orb YAML to invalidate cache. Set to `false` for immediate rollback.
@@ -73,7 +72,7 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 
 - When making app changes, update `README-APP.md`.
 - Never merge the whole `app-ci-fd` branch into master.
-- Plans go in `FreegleDocker/plans/`, never in submodules.
+- Plans go in `FreegleDocker/plans/`, never in subdirectory repos.
 - When switching branches, rebuild dev containers.
 - When making test changes, don't forget to update the orb.
 - **Browser Testing**: See `BROWSER-TESTING.md`.
@@ -112,7 +111,7 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **CI job 3359 RESULTS**: ALL tests passed (including Playwright — login.vue fix confirmed). ALL 4 coverage suites uploaded to Coveralls. Auto-merged to production. Coverage infrastructure complete.
 
 ### 2026-04-12 - ModTools auth simplification (flaky login fix)
-- **Branch**: `feature/modtools-auth-simplify` in iznik-nuxt3 submodule
+- **Branch**: `feature/modtools-auth-simplify` in iznik-nuxt3
 - **PR**: Freegle/iznik-nuxt3#236
 - **Root cause**: `authuser.global.ts` middleware creates multi-hop redirect chain that races with Playwright navigation
 - **Fix**: Removed middleware entirely — layout already handles auth inline via `fetchUser` + `LoginModal` (same as Freegle)
