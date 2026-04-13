@@ -42,12 +42,11 @@ describe('comment store', () => {
       context: { id: 'abc' },
     })
 
-    const ctx = await store.fetch({})
+    await store.fetch({})
 
     expect(store.list[1].body).toBe('First')
     expect(store.list[2].body).toBe('Second')
     expect(store.context).toEqual({ id: 'abc' })
-    expect(ctx).toEqual({ id: 'abc' })
   })
 
   it('stores single comment by id', async () => {

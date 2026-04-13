@@ -62,7 +62,7 @@ describe('stdmsg store', () => {
 
   it('delete calls API and refreshes config', async () => {
     const store = useStdmsgStore()
-    store.config = {}
+    store.init({})
 
     await store.delete({ id: 5, configid: 1 })
 
@@ -75,7 +75,7 @@ describe('stdmsg store', () => {
 
   it('update calls API and refreshes config', async () => {
     const store = useStdmsgStore()
-    store.config = {}
+    store.init({})
 
     await store.update({ id: 5, title: 'Updated', configid: 1 })
 
@@ -92,7 +92,7 @@ describe('stdmsg store', () => {
 
   it('add creates stdmsg and refreshes config', async () => {
     const store = useStdmsgStore()
-    store.config = {}
+    store.init({})
 
     const id = await store.add({ title: 'New', configid: 2 })
 
