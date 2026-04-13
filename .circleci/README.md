@@ -50,7 +50,7 @@ curl -X POST \
   -H "Circle-Token: YOUR_CIRCLECI_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"branch": "master"}' \
-  https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline
+  https://circleci.com/api/v2/project/github/Freegle/Iznik/pipeline
 ```
 
 ## Environment Variables
@@ -90,7 +90,7 @@ CIRCLECI_PAT=$(grep '^token:' ~/.circleci/cli.yml | awk '{print $2}')
 
 # 2. Find the latest pipeline
 curl -s -u "$CIRCLECI_PAT:" \
-  "https://circleci.com/api/v2/project/gh/Freegle/FreegleDocker/pipeline?branch=master" \
+  "https://circleci.com/api/v2/project/gh/Freegle/Iznik/pipeline?branch=master" \
   | python3 -c "import sys,json
 for p in json.load(sys.stdin).get('items',[])[:3]:
     print(f\"Pipeline: {p['id']} state: {p.get('state')}\")"
@@ -108,7 +108,7 @@ curl -s -X POST -u "$CIRCLECI_PAT:" -H "Content-Type: application/json" \
 
 # 5. Get SSH connection details from "Enable SSH" step output
 curl -s -u "$CIRCLECI_PAT:" \
-  "https://circleci.com/api/v1.1/project/github/Freegle/FreegleDocker/<JOB_NUMBER>/output/101/0" \
+  "https://circleci.com/api/v1.1/project/github/Freegle/Iznik/<JOB_NUMBER>/output/101/0" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['message'])"
 
 # 6. Connect

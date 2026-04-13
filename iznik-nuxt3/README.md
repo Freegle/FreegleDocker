@@ -4,7 +4,7 @@ Iznik is a platform for online reuse of unwanted items.  This is the front-end c
 
 The old version is [here](https://github.com/Freegle/iznik-nuxt).
 
-There is a Docker Compose development environment which can be used to run a complete standalone system; see [FreegleDocker](https://github.com/Freegle/FreegleDocker).
+There is a Docker Compose development environment which can be used to run a complete standalone system; see [Iznik](https://github.com/Freegle/Iznik).
 
 The development has been funded by [Freegle](https://www.ilovefreegle.org) for use in the UK,
 but it is an open source platform which can be used or adapted by others.  Other contributors very welcome,

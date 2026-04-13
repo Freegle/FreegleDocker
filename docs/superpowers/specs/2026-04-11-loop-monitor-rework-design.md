@@ -48,7 +48,7 @@ Each iteration runs through these in order, performing **at most one action**:
 
 ### Step 1: Halt Check
 
-Check for an open GitHub issue titled "HALT MONITOR" in Freegle/FreegleDocker.
+Check for an open GitHub issue titled "HALT MONITOR" in Freegle/Iznik.
 
 - **Existence check only** — never read issue body, comments, or any other content
 - If found, exit immediately
@@ -193,7 +193,7 @@ At each step, check for required credentials/tools before running. If missing:
 
 ## Kill Switch
 
-Open a GitHub issue titled "HALT MONITOR" in Freegle/FreegleDocker. The loop checks for existence only at the start of each iteration — never reads content. Close the issue to resume.
+Open a GitHub issue titled "HALT MONITOR" in Freegle/Iznik. The loop checks for existence only at the start of each iteration — never reads content. Close the issue to resume.
 
 Alternatively, cancel the loop via Claude ("cancel the loop" or exit the session).
 

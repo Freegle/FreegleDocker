@@ -124,20 +124,15 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **Fix** (commit `9c63e2ea`): Removed `page.evaluate` and `waitForAuthPersistence` between modal close and sidebar nav wait. Playwright locators auto-retry across navigations; `page.evaluate` does not.
 - **Local**: All 130 Playwright tests pass. CI run 4 in progress.
 
-### 2026-04-13 - Monorepo merge to master & Netlify setup (Phase 6.4)
-- Merged `monorepo-migration` into master (`55762579a`). Resolved submodule→directory conflict. Fixed empty files (ChatPopups.vue placeholder), unsafe LAST_INSERT_ID in social_auth.go.
-- Created and pushed `production` branch from master.
-- CI job #3394 (SSH rerun) in progress on master.
-- Netlify: Updated both sites (modtools-org, golden-caramel-d2c3a7) to deploy from `Freegle/FreegleDocker` production branch, base `iznik-nuxt3/`. Added FreegleDocker to Netlify GitHub App (installation_id 5455697). Builds triggered.
-- Worktree `micro-vol-ai` created at `/home/edward/FreegleDocker-micro-vol-ai` (port offset 27000).
-
-### 2026-04-13 - V2 Go API: TN partner auth, tnpostid, expiresat, mod-add-member
-- **New file**: `user/partner.go` — `ValidatePartnerKey`, `FindByTNIdOrEmail`, `CreatePartnerUser`, `FindPartnerByName`
-- **New file**: `test/partner_test.go` — 7 tests for partner helpers
-- **message/message.go**: Added `Tnpostid` (*string) and `Expiresat` (*time.Time) fields to Message struct. Added `computeExpiresat()` using group settings (maxagetoshow, repost intervals). Added `messages.tnpostid` to SQL SELECT.
-- **message/message_list.go**: Added `Tnpostid` and `Expiresat` to `ListMessageItem`, SQL SELECT, and per-message computation.
-- **membership/membership.go**: PUT — partner key auth path (query params: partner, tnuserid, email, groupid), auto-create user, mod-add-member support. DELETE — partner key auth path. Extracted `addMemberToGroup`, `putMembershipsPartner`, `deleteMembershipsPartner`.
-- **router/routes.go**: Updated swagger annotations with partner query params.
-- **test/membership_test.go**: 8 new tests (partner subscribe/auto-create/wrong-domain/invalid-key, partner unsubscribe/not-found/wrong-domain, mod-add-member).
-- **test/message_test.go**: 5 new tests (tnpostid present/null, expiresat, list tnpostid, list expiresat).
-- **All 1356 Go tests pass** (0 failed). Not yet committed or pushed.
+### 2026-04-13 - Monorepo migration complete (Phases 1-8)
+- All phases complete except Phase 8.8 (archive old repos — human-only).
+- Merged monorepo branch to master. Created production branch. Repo renamed to `Freegle/Iznik`.
+- Netlify: Both sites repointed. ModTools fixed with separate base dir (`iznik-nuxt3/modtools/`).
+- Mobile CI: Merged iznik-nuxt3 CircleCI workflows into monorepo. All 19 secrets copied. Orb `freegle/tests@1.1.176`.
+- Google login: Added `onGoogleLibraryLoad` retry for Firefox/Brave.
+- Phase 7: 18 issues transferred, 19 PRs migrated (branches recreated on monorepo).
+- README rewritten for monorepo. Sub-repo READMEs updated to redirect.
+- Go API: TN partner auth, tnpostid, expiresat, mod-add-member committed (`9df835715`). Partner auth on PATCH /message committed (`946c7ad02`). 1360 Go tests pass.
+- CI job #3485 (SSH) running on latest master commit.
+- 18 restored unit test files (address, communityevent, compose, config, isochrone, job, misc, mobile, newsfeed, noticeboard, notification, reply, shortlinks, stories, team, tryst, user, volunteering) — need commit.
+- **Remaining**: Archive old repos (human), verify CI #3485 passes, commit test files.

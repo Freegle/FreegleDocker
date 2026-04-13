@@ -2,7 +2,7 @@
 
 Iznik is a platform for online reuse of unwanted items.  This is the fast API server, written in Go.
 
-There is a Docker Compose development environment which can be used to run a complete standalone system; see [FreegleDocker](https://github.com/Freegle/FreegleDocker).
+There is a Docker Compose development environment which can be used to run a complete standalone system; see [Iznik](https://github.com/Freegle/Iznik).
 
 ## What this is for
 
@@ -16,7 +16,7 @@ The v2 API is functionally complete. Client migration (switching Nuxt3/ModTools 
 
 ## Testing
 
-**Note:** Go tests for this repository now run as part of the [FreegleDocker](https://github.com/Freegle/FreegleDocker) CircleCI pipeline for integration testing. This ensures tests run against the complete Docker Compose environment with all services available.
+**Note:** Go tests for this repository now run as part of the [Iznik](https://github.com/Freegle/Iznik) CircleCI pipeline for integration testing. This ensures tests run against the complete Docker Compose environment with all services available.
 
 The CircleCI configuration in this repository has been updated to skip local tests and redirect to the FreegleDocker pipeline. Coverage reporting still uploads to Coveralls from the FreegleDocker environment.
 
