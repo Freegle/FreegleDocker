@@ -82,6 +82,8 @@ type Message struct {
 	RawMessage       *string          `json:"message,omitempty" gorm:"column:message"`
 	Worry            []WorryMatch     `json:"worry,omitempty" gorm:"-"`
 	Postings         []MessagePosting `json:"postings,omitempty" gorm:"-"`
+	Tnpostid         *string          `json:"tnpostid"`
+	Expiresat        *time.Time       `json:"expiresat,omitempty" gorm:"-"`
 }
 
 // MessagePosting represents a posting history record from messages_postings.
@@ -115,6 +117,85 @@ type MessageEdit struct {
 	Newtext         *string    `json:"newtext"`
 	Reviewrequired  int        `json:"reviewrequired"`
 	Timestamp       *time.Time `json:"timestamp"`
+}
+
+// computeExpiresat calculates when a message expires based on group settings.
+// It checks maxagetoshow and repost settings for each group the message is on,
+// and returns the latest (most generous) expiry time.
+func computeExpiresat(db *gorm.DB, msgType string, messageGroups []MessageGroup) *time.Time {
+	if len(messageGroups) == 0 {
+		return nil
+	}
+
+	groupIDs := make([]uint64, len(messageGroups))
+	arrivalByGroup := make(map[uint64]time.Time)
+	for i, mg := range messageGroups {
+		groupIDs[i] = mg.Groupid
+		arrivalByGroup[mg.Groupid] = mg.Arrival
+	}
+
+	type groupSettings struct {
+		ID       uint64 `gorm:"column:id"`
+		Settings string `gorm:"column:settings"`
+	}
+	var groups []groupSettings
+	db.Raw("SELECT id, settings FROM `groups` WHERE id IN (?)", groupIDs).Scan(&groups)
+
+	var latest *time.Time
+
+	for _, g := range groups {
+		arrival, ok := arrivalByGroup[g.ID]
+		if !ok {
+			continue
+		}
+
+		// Default: 90 days.
+		maxAgeDays := 90
+
+		if g.Settings != "" {
+			var s map[string]interface{}
+			if err := json.Unmarshal([]byte(g.Settings), &s); err == nil {
+				// The key depends on message type.
+				settingsKey := "maxagetoshow"
+
+				if v, exists := s[settingsKey]; exists {
+					if fv, ok := v.(float64); ok && fv > 0 {
+						maxAgeDays = int(fv)
+					}
+				}
+
+				// Also check repost settings — the effective lifetime is
+				// max(maxagetoshow, reposts * (max+1) repost days).
+				repostKey := "reposts"
+				if msgType == "Wanted" {
+					repostKey = "wantedreposts"
+				}
+				if reposts, exists := s[repostKey]; exists {
+					if rMap, ok := reposts.(map[string]interface{}); ok {
+						maxRepost := 5 // default max reposts
+						repostDays := 3
+						if mx, ok := rMap["max"].(float64); ok {
+							maxRepost = int(mx)
+						}
+						if rd, ok := rMap["interval"].(float64); ok {
+							repostDays = int(rd)
+						}
+						repostLifetime := repostDays * (maxRepost + 1)
+						if repostLifetime > maxAgeDays {
+							maxAgeDays = repostLifetime
+						}
+					}
+				}
+			}
+		}
+
+		expires := arrival.Add(time.Duration(maxAgeDays) * 24 * time.Hour)
+		if latest == nil || expires.After(*latest) {
+			latest = &expires
+		}
+	}
+
+	return latest
 }
 
 func GetMessages(c *fiber.Ctx) error {
@@ -177,7 +258,7 @@ func GetMessagesByIds(myid uint64, ids []string) []Message {
 				}
 				err := db.Raw("SELECT messages.id, messages.arrival, messages.date, messages.fromuser, "+
 					"messages.subject, messages.type, textbody, lat, lng, availablenow, availableinitially, locationid,"+
-					"deliverypossible, deadline, heldby, messages.source, messages.sourceheader, messages.fromaddr, messages.fromip, messages.fromcountry, "+
+					"deliverypossible, deadline, heldby, messages.source, messages.sourceheader, messages.fromaddr, messages.fromip, messages.fromcountry, messages.tnpostid, "+
 					rawMessageField+
 					"CASE WHEN messages_likes.msgid IS NULL THEN 1 ELSE 0 END AS unseen FROM messages "+
 					"LEFT JOIN users ON users.id = messages.fromuser "+
@@ -299,6 +380,7 @@ func GetMessagesByIds(myid uint64, ids []string) []Message {
 			}
 
 			message.MessageGroups = messageGroups
+			message.Expiresat = computeExpiresat(db, message.Type, messageGroups)
 			message.MessageAttachments = messageAttachments
 			message.MessageReply = messageReply
 			message.MessageOutcomes = messageOutcomes

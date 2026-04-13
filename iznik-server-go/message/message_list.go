@@ -2,16 +2,17 @@ package message
 
 import (
 	"encoding/json"
-	"github.com/freegle/iznik-server-go/database"
-	"github.com/freegle/iznik-server-go/misc"
-	"github.com/freegle/iznik-server-go/user"
-	"github.com/freegle/iznik-server-go/utils"
-	"github.com/gofiber/fiber/v2"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/misc"
+	"github.com/freegle/iznik-server-go/user"
+	"github.com/freegle/iznik-server-go/utils"
+	"github.com/gofiber/fiber/v2"
 )
 
 // --- Message List types and handler ---
@@ -37,6 +38,8 @@ type ListMessageItem struct {
 	Lng                float64             `json:"lng"`
 	Availablenow       uint                `json:"availablenow"`
 	Availableinitially uint                `json:"availableinitially"`
+	Tnpostid           *string             `json:"tnpostid"`
+	Expiresat          *time.Time          `json:"expiresat,omitempty"`
 	Groups             []MessageGroupInfo  `json:"groups"`
 	Attachments        []MessageAttachment `json:"attachments,omitempty"`
 	Replycount         int                 `json:"replycount"`
@@ -236,7 +239,7 @@ func ListMessages(c *fiber.Ctx) error {
 			go func() {
 				defer wg.Done()
 				db.Raw("SELECT m.id, m.subject, m.type, m.fromuser, m.arrival, m.lat, m.lng, "+
-					"m.availablenow, m.availableinitially "+
+					"m.availablenow, m.availableinitially, m.tnpostid "+
 					"FROM messages m WHERE m.id = ?", msgID).Scan(&msg)
 			}()
 
@@ -261,6 +264,15 @@ func ListMessages(c *fiber.Ctx) error {
 
 			msg.Groups = groups
 			msg.Replycount = int(replycount)
+
+			// Compute expiresat from group settings.
+			if len(groups) > 0 {
+				mgs := make([]MessageGroup, len(groups))
+				for i, g := range groups {
+					mgs[i] = MessageGroup{Groupid: g.Groupid, Arrival: g.Arrival}
+				}
+				msg.Expiresat = computeExpiresat(db, msg.Type, mgs)
+			}
 
 			// Process attachment paths.
 			for i, a := range attachments {

@@ -123,3 +123,21 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **Root cause found**: `app.vue`'s `loginCount` watcher calls `reloadNuxtApp({ force: true })` after login. The `page.evaluate()` (backdrop cleanup) raced against this reload — locally it wins, in CI the reload destroys the context first.
 - **Fix** (commit `9c63e2ea`): Removed `page.evaluate` and `waitForAuthPersistence` between modal close and sidebar nav wait. Playwright locators auto-retry across navigations; `page.evaluate` does not.
 - **Local**: All 130 Playwright tests pass. CI run 4 in progress.
+
+### 2026-04-13 - Monorepo merge to master & Netlify setup (Phase 6.4)
+- Merged `monorepo-migration` into master (`55762579a`). Resolved submodule→directory conflict. Fixed empty files (ChatPopups.vue placeholder), unsafe LAST_INSERT_ID in social_auth.go.
+- Created and pushed `production` branch from master.
+- CI job #3394 (SSH rerun) in progress on master.
+- Netlify: Updated both sites (modtools-org, golden-caramel-d2c3a7) to deploy from `Freegle/FreegleDocker` production branch, base `iznik-nuxt3/`. Added FreegleDocker to Netlify GitHub App (installation_id 5455697). Builds triggered.
+- Worktree `micro-vol-ai` created at `/home/edward/FreegleDocker-micro-vol-ai` (port offset 27000).
+
+### 2026-04-13 - V2 Go API: TN partner auth, tnpostid, expiresat, mod-add-member
+- **New file**: `user/partner.go` — `ValidatePartnerKey`, `FindByTNIdOrEmail`, `CreatePartnerUser`, `FindPartnerByName`
+- **New file**: `test/partner_test.go` — 7 tests for partner helpers
+- **message/message.go**: Added `Tnpostid` (*string) and `Expiresat` (*time.Time) fields to Message struct. Added `computeExpiresat()` using group settings (maxagetoshow, repost intervals). Added `messages.tnpostid` to SQL SELECT.
+- **message/message_list.go**: Added `Tnpostid` and `Expiresat` to `ListMessageItem`, SQL SELECT, and per-message computation.
+- **membership/membership.go**: PUT — partner key auth path (query params: partner, tnuserid, email, groupid), auto-create user, mod-add-member support. DELETE — partner key auth path. Extracted `addMemberToGroup`, `putMembershipsPartner`, `deleteMembershipsPartner`.
+- **router/routes.go**: Updated swagger annotations with partner query params.
+- **test/membership_test.go**: 8 new tests (partner subscribe/auto-create/wrong-domain/invalid-key, partner unsubscribe/not-found/wrong-domain, mod-add-member).
+- **test/message_test.go**: 5 new tests (tnpostid present/null, expiresat, list tnpostid, list expiresat).
+- **All 1356 Go tests pass** (0 failed). Not yet committed or pushed.

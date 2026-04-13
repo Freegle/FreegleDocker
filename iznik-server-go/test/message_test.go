@@ -5750,3 +5750,130 @@ func TestPatchMessageEditReviewRequiredGroupModerated(t *testing.T) {
 	db.Raw("SELECT reviewrequired FROM messages_edits WHERE msgid = ? ORDER BY id DESC LIMIT 1", msgID).Scan(&reviewRequired)
 	assert.Equal(t, 1, reviewRequired, "Group-moderated edit of approved message should set reviewrequired=1")
 }
+
+// --- tnpostid and expiresat tests ---
+
+func TestGetMessageTnpostid(t *testing.T) {
+	prefix := uniquePrefix("msg_tnpostid")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	// Set tnpostid.
+	db.Exec("UPDATE messages SET tnpostid = ? WHERE id = ?", "tn-12345", msgID)
+
+	url := fmt.Sprintf("/api/message/%d?jwt=%s", msgID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, "tn-12345", result["tnpostid"])
+}
+
+func TestGetMessageTnpostidNull(t *testing.T) {
+	prefix := uniquePrefix("msg_tnpostidnull")
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	url := fmt.Sprintf("/api/message/%d?jwt=%s", msgID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Nil(t, result["tnpostid"])
+}
+
+func TestGetMessageExpiresat(t *testing.T) {
+	prefix := uniquePrefix("msg_expiresat")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	url := fmt.Sprintf("/api/message/%d?jwt=%s", msgID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.NotNil(t, result["expiresat"], "expiresat should be present")
+
+	// Verify it's a string (ISO 8601 format).
+	_, ok := result["expiresat"].(string)
+	assert.True(t, ok, "expiresat should be a string")
+
+	// Verify the arrival exists.
+	var arrival string
+	db.Raw("SELECT arrival FROM messages_groups WHERE msgid = ? LIMIT 1", msgID).Scan(&arrival)
+	assert.NotEmpty(t, arrival)
+}
+
+func TestListMessagesTnpostid(t *testing.T) {
+	prefix := uniquePrefix("msg_listtnpost")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	db.Exec("UPDATE messages SET tnpostid = ? WHERE id = ?", "tn-list-001", msgID)
+
+	url := fmt.Sprintf("/api/messages?groupid=%d&jwt=%s", groupID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	msgs := result["messages"].([]interface{})
+	assert.Greater(t, len(msgs), 0)
+
+	firstMsg := msgs[0].(map[string]interface{})
+	assert.Equal(t, "tn-list-001", firstMsg["tnpostid"])
+}
+
+func TestListMessagesExpiresat(t *testing.T) {
+	prefix := uniquePrefix("msg_listexpires")
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	url := fmt.Sprintf("/api/messages?groupid=%d&jwt=%s", groupID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	msgs := result["messages"].([]interface{})
+	assert.Greater(t, len(msgs), 0)
+
+	firstMsg := msgs[0].(map[string]interface{})
+	assert.NotNil(t, firstMsg["expiresat"], "expiresat should be present in list response")
+}

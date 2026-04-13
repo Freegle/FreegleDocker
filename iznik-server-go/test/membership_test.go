@@ -2709,3 +2709,197 @@ func TestGetMembershipsFilterModmails(t *testing.T) {
 	assert.NotNil(t, members[0]["lastmodmail"], "lastmodmail should be populated")
 	assert.NotNil(t, members[1]["lastmodmail"], "lastmodmail should be populated")
 }
+
+// --- Partner auth tests ---
+
+func insertTestPartnerKey(t *testing.T, prefix string, domain string) string {
+	db := database.DBConn
+	key := prefix + "_key"
+	result := db.Exec("INSERT INTO partners_keys (partner, `key`, domain) VALUES (?, ?, ?)",
+		prefix+"_partner", key, domain)
+	if result.Error != nil {
+		t.Fatalf("ERROR: Failed to insert partner key: %v", result.Error)
+	}
+	return key
+}
+
+func TestPutMembershipsPartnerSubscribe(t *testing.T) {
+	prefix := uniquePrefix("mem_partsub")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	email := prefix + "@test.com"
+	userID := CreateTestUser(t, prefix+"_user", "User")
+
+	// Set tnuserid on the user.
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 12345, userID)
+
+	key := insertTestPartnerKey(t, prefix, "test.com")
+
+	url := fmt.Sprintf("/api/memberships?partner=%s&tnuserid=12345&email=%s&groupid=%d", key, email, groupID)
+	req := httptest.NewRequest("PUT", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(0), result["ret"])
+	assert.Equal(t, "Success", result["status"])
+	assert.NotNil(t, result["fduserid"], "Should return fduserid")
+
+	// Verify membership.
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND groupid = ? AND collection = 'Approved'",
+		userID, groupID).Scan(&count)
+	assert.Equal(t, int64(1), count)
+}
+
+func TestPutMembershipsPartnerAutoCreate(t *testing.T) {
+	prefix := uniquePrefix("mem_partcreate")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	key := insertTestPartnerKey(t, prefix, "test.com")
+	email := prefix + "-gtest@test.com"
+
+	url := fmt.Sprintf("/api/memberships?partner=%s&tnuserid=99999&email=%s&groupid=%d", key, email, groupID)
+	req := httptest.NewRequest("PUT", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(0), result["ret"])
+	fduserid := result["fduserid"]
+	assert.NotNil(t, fduserid, "Should return fduserid for auto-created user")
+
+	// Verify user was created with tnuserid.
+	var tnuserid uint64
+	db.Raw("SELECT COALESCE(tnuserid, 0) FROM users WHERE id = ?", uint64(fduserid.(float64))).Scan(&tnuserid)
+	assert.Equal(t, uint64(99999), tnuserid)
+
+	// Verify membership.
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND groupid = ? AND collection = 'Approved'",
+		uint64(fduserid.(float64)), groupID).Scan(&count)
+	assert.Equal(t, int64(1), count)
+}
+
+func TestPutMembershipsPartnerWrongDomain(t *testing.T) {
+	prefix := uniquePrefix("mem_partdom")
+
+	groupID := CreateTestGroup(t, prefix)
+	key := insertTestPartnerKey(t, prefix, "partner.com")
+
+	url := fmt.Sprintf("/api/memberships?partner=%s&tnuserid=1&email=user@wrong.com&groupid=%d", key, groupID)
+	req := httptest.NewRequest("PUT", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestPutMembershipsPartnerInvalidKey(t *testing.T) {
+	prefix := uniquePrefix("mem_partbad")
+
+	groupID := CreateTestGroup(t, prefix)
+
+	url := fmt.Sprintf("/api/memberships?partner=invalid_key&tnuserid=1&email=user@test.com&groupid=%d", groupID)
+	req := httptest.NewRequest("PUT", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestDeleteMembershipsPartnerUnsubscribe(t *testing.T) {
+	prefix := uniquePrefix("mem_partunsub")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	CreateTestMembership(t, userID, groupID, "Member")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 54321, userID)
+
+	key := insertTestPartnerKey(t, prefix, "test.com")
+	email := prefix + "_user@test.com"
+
+	url := fmt.Sprintf("/api/memberships?partner=%s&tnuserid=54321&email=%s&groupid=%d", key, email, groupID)
+	req := httptest.NewRequest("DELETE", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(0), result["ret"])
+	assert.NotNil(t, result["fduserid"])
+
+	// Verify membership removed.
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND groupid = ?",
+		userID, groupID).Scan(&count)
+	assert.Equal(t, int64(0), count)
+}
+
+func TestDeleteMembershipsPartnerUserNotFound(t *testing.T) {
+	prefix := uniquePrefix("mem_partnotfound")
+
+	groupID := CreateTestGroup(t, prefix)
+	key := insertTestPartnerKey(t, prefix, "test.com")
+
+	url := fmt.Sprintf("/api/memberships?partner=%s&tnuserid=0&email=nonexistent@test.com&groupid=%d", key, groupID)
+	req := httptest.NewRequest("DELETE", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 404, resp.StatusCode)
+}
+
+func TestDeleteMembershipsPartnerWrongDomain(t *testing.T) {
+	prefix := uniquePrefix("mem_partdomdel")
+
+	groupID := CreateTestGroup(t, prefix)
+	key := insertTestPartnerKey(t, prefix, "partner.com")
+
+	url := fmt.Sprintf("/api/memberships?partner=%s&tnuserid=1&email=user@wrong.com&groupid=%d", key, groupID)
+	req := httptest.NewRequest("DELETE", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+// --- Mod-add-member tests ---
+
+func TestPutMembershipsModAddsMember(t *testing.T) {
+	prefix := uniquePrefix("mem_modadd")
+	db := database.DBConn
+
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	memberID := CreateTestUser(t, prefix+"_member", "User")
+	_, modToken := CreateTestSession(t, modID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, modID, groupID, "Owner")
+
+	body := map[string]interface{}{
+		"userid":  memberID,
+		"groupid": groupID,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/memberships?jwt=%s", modToken)
+	req := httptest.NewRequest("PUT", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(0), result["ret"])
+	assert.Equal(t, "Approved", result["addedto"])
+
+	// Verify membership exists.
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND groupid = ? AND collection = 'Approved'",
+		memberID, groupID).Scan(&count)
+	assert.Equal(t, int64(1), count)
+}
