@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-import { useAuthStore } from '~/stores/auth'
+// Import with .js extension to bypass vitest.config alias that maps
+// ~/stores/auth → tests/unit/mocks/auth-store.js (for component tests).
+// This test needs the real store implementation.
+import { useAuthStore } from '~/stores/auth.js'
 
 const mockLogin = vi.fn()
 const mockLogout = vi.fn()
