@@ -257,11 +257,18 @@ describe('auth store', () => {
   })
 
   describe('persistence config', () => {
-    it('does not persist loginCount', () => {
+    it('does not persist loginCount (verified via store source)', () => {
       // loginCount was removed from persistence to prevent SSR hydration
-      // race conditions with the app.vue watcher (see commit f8af3c7f)
-      const storeDef = useAuthStore.$persistedState
-      expect(storeDef).toBeDefined()
+      // race conditions with the app.vue watcher (see commit f8af3c7f).
+      // The persist.pick array in stores/auth.js should not include loginCount.
+      // We verify by reading the store definition file directly.
+      const fs = require('fs')
+      const path = require('path')
+      const storePath = path.resolve(__dirname, '../../../stores/auth.js')
+      const source = fs.readFileSync(storePath, 'utf8')
+      const pickMatch = source.match(/pick:\s*\[([^\]]+)\]/)
+      expect(pickMatch).toBeTruthy()
+      expect(pickMatch[1]).not.toContain('loginCount')
     })
   })
 })
