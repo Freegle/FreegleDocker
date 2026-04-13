@@ -104,4 +104,23 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
   - Laravel: `cronLog()` redeclaration error — pre-existing issue (not coverage-related).
   - PHP/Playwright: killed by cascading timeout.
 - **Local verification**: Go tests with coverage pass (1325✓, 0✗). gcov2lcov conversion verified locally with correct path mapping.
-- **Next**: Commit fixes, publish orb, push, rerun CI.
+- **Fix round 2** (`c2f87a5e`): Go timeout, gcov2lcov in container, Vitest path prefix. Orb `freegle/tests@1.1.174`.
+- **CI job 3350 results**: Go ✅, Laravel ✅, PHP ✅, Vitest coverage ✅ (source_files populated). Playwright ❌ (1/129 failed — navigation race in loginViaModTools). Playwright coverage empty source_files. Laravel coverage upload failed (php-coveralls needs git in container).
+- **Fix round 3** (`5cc3d931`): Split coverage upload into per-suite CI steps (2048-char limit). Laravel coverage: Python clover-to-lcov on host. Playwright coverage: sed path prefix. Playwright test: networkidle in loginViaModTools. Orb `freegle/tests@1.1.175`.
+- **CI job 3355 RESULTS**: ALL tests passed. ALL 4 coverage suites uploaded to Coveralls (Go ✅, Laravel ✅, Vitest ✅, Playwright ✅). Webhook sent. Auto-merged to production.
+- **Root cause Playwright login race**: `login.vue`'s `watch(me, redirectIfLoggedIn)` fires multiple times causing duplicate `router.push()`. Fixed with `hasRedirected` ref guard (`b35ce43d` / `8a15a2f4`). Reverted networkidle back to `waitForLoadState('load')`.
+- **CI job 3359 RESULTS**: ALL tests passed (including Playwright — login.vue fix confirmed). ALL 4 coverage suites uploaded to Coveralls. Auto-merged to production. Coverage infrastructure complete.
+
+### 2026-04-12 - ModTools auth simplification (flaky login fix)
+- **Branch**: `feature/modtools-auth-simplify` in iznik-nuxt3 submodule
+- **PR**: Freegle/iznik-nuxt3#236
+- **Root cause**: `authuser.global.ts` middleware creates multi-hop redirect chain that races with Playwright navigation
+- **Fix**: Removed middleware entirely — layout already handles auth inline via `fetchUser` + `LoginModal` (same as Freegle)
+- **Changes**: Deleted `authuser.global.ts`, simplified `login.vue` to u/k-only, added backdrop cleanup in `loginViaModTools()`, updated 5 test files
+- **Edits-flow fix**: V2 API for approve + `Number()` cast for Go integer types. Added Step 1b: approve message + set user MODERATED.
+- **Spammers fix**: Self-healing "release first" pattern for Hold/Confirm/Reject tests.
+- **Local**: All 31 ModTools Playwright tests pass. Lint clean.
+- **CI runs 1-3**: 10-12 modtools failures — all "Execution context destroyed" during `loginViaModTools`.
+- **Root cause found**: `app.vue`'s `loginCount` watcher calls `reloadNuxtApp({ force: true })` after login. The `page.evaluate()` (backdrop cleanup) raced against this reload — locally it wins, in CI the reload destroys the context first.
+- **Fix** (commit `9c63e2ea`): Removed `page.evaluate` and `waitForAuthPersistence` between modal close and sidebar nav wait. Playwright locators auto-retry across navigations; `page.evaluate` does not.
+- **Local**: All 130 Playwright tests pass. CI run 4 in progress.
