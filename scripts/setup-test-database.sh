@@ -4,7 +4,7 @@
 # Laravel migrations in iznik-batch are the authoritative schema definition.
 # Test databases are created by running migrations, then cloned via mysqldump.
 
-# Support both FreegleDocker (~/project) and submodule (~/FreegleDocker) paths
+# Support both CircleCI (~/project) and local (~/FreegleDocker) paths
 if [ -d "$HOME/FreegleDocker" ]; then
     cd "$HOME/FreegleDocker"
 fi

@@ -31,7 +31,7 @@ Creates a complete Freegle development instance:
 1. Downloads Ubuntu 24.04 rootfs (cached for reuse, ~340MB)
 2. Imports as a new WSL2 instance
 3. Installs all dependencies (Docker, Node.js 22, Chrome, Claude Code, etc.)
-4. Clones FreegleDocker with submodules
+4. Clones the FreegleDocker repository
 5. Parameterizes all host ports with the given offset
 6. Copies `.env` from your existing Ubuntu instance (or uses `.env.example`)
 
