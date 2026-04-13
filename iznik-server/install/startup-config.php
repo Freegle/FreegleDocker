@@ -81,8 +81,13 @@ set_config($conf, 'MAPBOX_TOKEN', getenv('MAPBOX_KEY') ?: null);
 // Numeric values
 set_config_int($conf, 'SMTP_PORT');
 
-// Enable Loki logging
-set_config_bool($conf, 'LOKI_ENABLED', true);
+// Enable Loki logging (respect LOKI_ENABLED env var — phpunit container sets it to false)
+$lokiEnv = getenv('LOKI_ENABLED');
+if ($lokiEnv !== false && strtolower($lokiEnv) === 'false') {
+    // Explicitly disabled — leave as FALSE (the config default)
+} else {
+    set_config_bool($conf, 'LOKI_ENABLED', true);
+}
 
 // Write updated config
 if (file_put_contents($conf_path, $conf) === false) {
