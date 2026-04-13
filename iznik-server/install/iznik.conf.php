@@ -193,7 +193,7 @@ define('LOVE_JUNK_API', 'https://staging-elmer.api-lovejunk.com/elmer/v1');
 define('LOVE_JUNK_SECRET', 'LOVE_JUNK_SECRET');
 
 define('IMAGE_DELIVERY', NULL);
-define('TUS_UPLOADER', getenv('TUS_UPLOADER') ?: "https://tusd.tusdemo.net/files/");
+define('TUS_UPLOADER', getenv('TUS_UPLOADER') ?: 'https://tusd.tusdemo.net/files/');
 
 # Loki logging - logs are written to JSON files that Alloy ships to Loki.
 define('LOKI_ENABLED', FALSE);

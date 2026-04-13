@@ -91,7 +91,6 @@ RUN grep -v "message_spatial.php" install/crontab | crontab -u root -
 RUN rm -rf /var/lib/apt/lists/*
 
 CMD /etc/init.d/ssh start \
-  # Set up the environment we need. Putting this here means it gets reset each time we start the container.
   && cp install/nginx.conf /etc/nginx/sites-available/default \
   && /etc/init.d/nginx start \
 	&& /etc/init.d/php8.1-fpm start \
@@ -104,33 +103,11 @@ CMD /etc/init.d/ssh start \
   && rm /tmp/current_crontab \
 	&& /etc/init.d/cron start \
 
-  && export LOVE_JUNK_API=`cat /run/secrets/LOVE_JUNK_API` \
-  && export LOVE_JUNK_SECRET=`cat /run/secrets/LOVE_JUNK_SECRET` \
-  && export PARTNER_KEY=`cat /run/secrets/PARTNER_KEY` \
-  && export PARTNER_NAME=`cat /run/secrets/PARTNER_NAME` \
-  && export IMAGE_DOMAIN=`cat /run/secrets/IMAGE_DOMAIN` \
-  && sed -ie "s@'LOVE_JUNK_API', '.*'@'LOVE_JUNK_API', '$LOVE_JUNK_API'@" /etc/iznik.conf \
-  && sed -ie "s@'LOVE_JUNK_SECRET', '.*'@'LOVE_JUNK_SECRET', '$LOVE_JUNK_SECRET'@" /etc/iznik.conf \
-  && sed -ie "s@'IMAGE_DOMAIN', '.*'@'IMAGE_DOMAIN', '$IMAGE_DOMAIN'@" /etc/iznik.conf \
-  # Update Google and Mapbox API keys from environment variables \
-  && sed -ie "s@'GOOGLE_CLIENT_ID', '.*'@'GOOGLE_CLIENT_ID', '$GOOGLE_CLIENT_ID'@" /etc/iznik.conf \
-  && sed -ie "s@'GOOGLE_CLIENT_SECRET', '.*'@'GOOGLE_CLIENT_SECRET', '$GOOGLE_CLIENT_SECRET'@" /etc/iznik.conf \
-  && sed -ie "s@'GOOGLE_PUSH_KEY', '.*'@'GOOGLE_PUSH_KEY', '$GOOGLE_PUSH_KEY'@" /etc/iznik.conf \
-  && sed -ie "s@'GOOGLE_VISION_KEY', '.*'@'GOOGLE_VISION_KEY', '$GOOGLE_VISION_KEY'@" /etc/iznik.conf \
-  && sed -ie "s@'GOOGLE_PERSPECTIVE_KEY', '.*'@'GOOGLE_PERSPECTIVE_KEY', '$GOOGLE_PERSPECTIVE_KEY'@" /etc/iznik.conf \
-  && sed -ie "s@'GOOGLE_GEMINI_API_KEY', '.*'@'GOOGLE_GEMINI_API_KEY', '$GOOGLE_GEMINI_API_KEY'@" /etc/iznik.conf \
-  && sed -ie "s@'GOOGLE_PROJECT', '.*'@'GOOGLE_PROJECT', '$GOOGLE_PROJECT'@" /etc/iznik.conf \
-  && sed -ie "s@'GOOGLE_APP_NAME', '.*'@'GOOGLE_APP_NAME', '$GOOGLE_APP_NAME'@" /etc/iznik.conf \
-  && sed -ie "s@'MAPBOX_TOKEN', '.*'@'MAPBOX_TOKEN', '$MAPBOX_KEY'@" /etc/iznik.conf \
-  && sed -ie "s@'SPAMD_HOST', '.*'@'SPAMD_HOST', '$SPAMD_HOST'@" /etc/iznik.conf \
-  && sed -ie "s@'TUS_UPLOADER', \".*\"@'TUS_UPLOADER', '$TUS_UPLOADER'@" /etc/iznik.conf \
-  && sed -ie "s@'IMAGE_DELIVERY', NULL@'IMAGE_DELIVERY', '$IMAGE_DELIVERY'@" /etc/iznik.conf \
-  && sed -ie "s@'SMTP_HOST', '.*'@'SMTP_HOST', '$SMTP_HOST'@" /etc/iznik.conf \
-  && sed -ie "s@'SMTP_PORT', [0-9]*@'SMTP_PORT', $SMTP_PORT@" /etc/iznik.conf \
-  && sed -ie "s@'LOKI_ENABLED', FALSE@'LOKI_ENABLED', TRUE@" /etc/iznik.conf \
-  && sed -ie "s@'LOKI_JSON_PATH', '.*'@'LOKI_JSON_PATH', '$LOKI_JSON_PATH'@" /etc/iznik.conf \
-  # Update database name from environment variable \
-  && sed -ie "s@'SQLDB', '.*'@'SQLDB', '$SQLDB'@" /etc/iznik.conf \
+  # Update config from environment variables (uses PHP, immune to shell/sed quoting issues)
+  && for s in LOVE_JUNK_API LOVE_JUNK_SECRET PARTNER_KEY PARTNER_NAME IMAGE_DOMAIN; do \
+       if [ -f "/run/secrets/$s" ]; then export "$s=$(cat /run/secrets/$s)"; fi; \
+     done \
+  && php install/startup-config.php \
 
   # Wait for database to be ready. All databases are created before containers start:
   # - iznik: by batch migrations (phase 1 of docker-compose up)
