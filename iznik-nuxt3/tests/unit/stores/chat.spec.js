@@ -78,14 +78,13 @@ vi.mock('~/stores/user', () => ({
   }),
 }))
 
-describe('chat store', () => {
-  let useChatStore
+import { useChatStore } from '~/stores/chat'
 
-  beforeEach(async () => {
+describe('chat store', () => {
+
+  beforeEach(() => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
-    const mod = await import('~/stores/chat')
-    useChatStore = mod.useChatStore
   })
 
   describe('clear', () => {
