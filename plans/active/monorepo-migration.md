@@ -326,63 +326,7 @@ After all CI work is done, only two tasks require GitHub admin access:
 
 ---
 
-## Phase 3: Update Netlify
-
-**Estimated time: 30 minutes**
-
-Two Netlify sites (a third unused apiv2 site has been deleted):
-
-### golden-caramel-d2c3a7 (Freegle)
-
-| Setting | Current | After |
-|---------|---------|-------|
-| Site ID | `75fa22f1-3d32-4474-a3fc-65afbd7f4f43` | unchanged |
-| Repo | `Freegle/iznik-nuxt3` | `Freegle/iznik` (via redirect from `Freegle/FreegleDocker`) |
-| Branch | `production` | `production` |
-| Base dir | (repo root) | `iznik-nuxt3/` |
-| Build cmd | `NODE_OPTIONS=--max-old-space-size=8196 npm run build` | unchanged |
-| Publish dir | `dist` | unchanged (relative to base) |
-
-Env vars (stay on site, no migration needed): `STRIPE_PUBLISHABLE_KEY`, `TZ`, `TRUSTPILOT_LINK`, `IZNIK_API_V2`, `NITRO_PRESET`, `SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES`, `COOKIEYES`, `PLAYWIRE_PUB_ID`, `USER_SITE`, `GTM_ID`, `IZNIK_API_V1`, `MATOMO_HOST`, `PLAYWIRE_WEBSITE_ID`, `SENTRY_AUTH_TOKEN`, `GOOGLE_ADSENSE_ID`.
-
-### modtools-org (ModTools)
-
-| Setting | Current | After |
-|---------|---------|-------|
-| Site ID | `516c2438-4185-40e5-b3eb-c5728368ed53` | unchanged |
-| Repo | `Freegle/iznik-nuxt3` | `Freegle/iznik` |
-| Branch | `production` | `production` |
-| Base dir | (repo root) | `iznik-nuxt3/` |
-| Build cmd | `export NODE_OPTIONS=--max_old_space_size=6000 && npx nuxi prepare && cd modtools && npm i && npm run build` | unchanged |
-| Publish dir | `modtools/dist` | unchanged (relative to base) |
-
-Env vars (stay on site): `COOKIEYES`, `DISCOURSE_API`, `DISCOURSE_APIKEY`, `MATOMO_HOST`, `NITRO_PRESET`, `SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES`, `STRIPE_PUBLISHABLE_KEY`, `TRUSTPILOT_LINK`, `SENTRY_AUTH_TOKEN`, `IZNIK_API_V2`, `PLAYWIRE_PUB_ID`, `USER_SITE`, `GOOGLE_ADSENSE_ID`, `GTM_ID`, `IZNIK_API_V1`, `PLAYWIRE_WEBSITE_ID`, `TZ`.
-
-### Cutover API calls
-
-Both sites need repo + base dir updated. The Netlify API `PATCH /sites/:id` handles this. Using the token stored for this migration:
-
-```bash
-# Freegle site
-curl -X PATCH "https://api.netlify.com/api/v1/sites/75fa22f1-3d32-4474-a3fc-65afbd7f4f43" \
-  -H "Authorization: Bearer $NETLIFY_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"repo":{"repo_url":"https://github.com/Freegle/iznik","repo_branch":"production","base_rel_dir":"iznik-nuxt3/"}}'
-
-# ModTools site
-curl -X PATCH "https://api.netlify.com/api/v1/sites/516c2438-4185-40e5-b3eb-c5728368ed53" \
-  -H "Authorization: Bearer $NETLIFY_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"repo":{"repo_url":"https://github.com/Freegle/iznik","repo_branch":"production","base_rel_dir":"iznik-nuxt3/"}}'
-```
-
-### Pre-cutover validation
-
-Create a temporary Netlify site pointed at `Freegle/FreegleDocker` branch `monorepo-migration`, base dir `iznik-nuxt3/`, to verify the build works before touching production sites.
-
----
-
-## Phase 4: Update Coveralls
+## Phase 3: Update Coveralls
 
 **Estimated time: 15 minutes**
 
@@ -390,7 +334,7 @@ Coverage uploads already use path-prefixed lcov files (fixed in the April 11 cov
 
 ---
 
-## Phase 5: Update Sentry
+## Phase 4: Update Sentry
 
 **Estimated time: 15 minutes**
 
@@ -398,7 +342,7 @@ Sentry source map uploads reference paths relative to the build output. Since th
 
 ---
 
-## Phase 6: Update GitHub Actions Workflows
+## Phase 5: Update GitHub Actions Workflows
 
 **Estimated time: 30 minutes**
 
@@ -435,26 +379,58 @@ GitHub only processes workflows in the repo root's `.github/workflows/`. After s
 
 ---
 
-## Phase 7: Local Dev Verification
+## Phase 6: Local Dev Verification
 
-**Estimated time: 1 hour**
+**Estimated time: 2 hours**
 
-Before merging, verify in a worktree:
+Before merging, verify the monorepo works end-to-end.
 
+### 6.1 Worktree test
+
+Create a worktree from the `monorepo-migration` branch to verify the full system comes up in an isolated environment:
+
+```bash
+./freegle worktree create mono-test
+```
+
+In the worktree, verify:
 - [ ] `docker-compose up -d` — all containers build and start
 - [ ] Go tests pass (via status API)
 - [ ] Vitest tests pass
 - [ ] Laravel tests pass
 - [ ] Playwright tests pass
-- [ ] `git log -- iznik-nuxt3/components/` shows original commit history
-- [ ] `git log -- iznik-server-go/microvolunteering/` shows original commit history
-- [ ] `git blame` works on files from each sub-repo
+- [ ] HMR works (edit a Vue component, see change in browser)
+- [ ] Go API rebuild works (edit a Go file, rebuild apiv2 container, verify change)
+
+Then clean up: `./freegle worktree remove mono-test`
+
+### 6.2 History verification
+
+- [ ] `git log -m --follow -- iznik-nuxt3/components/` shows original sub-repo commit history
+- [ ] `git log -m --follow -- iznik-server-go/microvolunteering/` shows original commit history
+- [ ] `git blame` works on files from each sub-repo (shows original authors/dates)
+
+### 6.3 CI dry run
+
+Push the `monorepo-migration` branch to origin and verify CI runs successfully:
+- [ ] Push branch (does NOT affect master or production)
+- [ ] CircleCI `build-test` workflow triggers and passes
+- [ ] Path-skip logic works (only relevant test suites run for the changed paths)
+- [ ] Coverage uploads succeed
+
+### 6.4 Netlify build test
+
+- [ ] Create a temporary Netlify site pointed at `Freegle/FreegleDocker` branch `monorepo-migration`, base dir `iznik-nuxt3/`
+- [ ] Verify the build completes successfully
+- [ ] Delete the temporary site
+
+### 6.5 Yesterday system
+
 - [ ] Yesterday system works (`docker-compose.override.yesterday.yml`)
-- [ ] Worktree system works (`./freegle worktree create test-mono`)
 
 ---
 
-## Phase 8: Migrate Open PRs and Issues
+## Phase 7: Migrate Open PRs and Issues
 
 **Estimated time: 1 hour**
 
@@ -490,7 +466,7 @@ Each transferred/created issue should note its origin (e.g. "Migrated from Freeg
 
 ---
 
-## Phase 9: Cutover
+## Phase 8: Cutover
 
 **Estimated time: 30 minutes**
 
@@ -499,7 +475,20 @@ Each transferred/created issue should note its origin (e.g. "Migrated from Freeg
 3. Verify CI passes (all test suites)
 4. Verify auto-merge to production works
 5. Rename repo: `Freegle/FreegleDocker` → `Freegle/iznik` (GitHub Settings → General → Repository name). GitHub creates an automatic redirect from the old URL.
-6. Repoint Netlify sites to `Freegle/iznik` with base dir `iznik-nuxt3/` (Phase 3 API calls)
+6. Repoint Netlify sites (two sites, same change):
+   ```bash
+   # Freegle site (golden-caramel-d2c3a7)
+   curl -X PATCH "https://api.netlify.com/api/v1/sites/75fa22f1-3d32-4474-a3fc-65afbd7f4f43" \
+     -H "Authorization: Bearer $NETLIFY_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"repo":{"repo_url":"https://github.com/Freegle/iznik","repo_branch":"production","base_rel_dir":"iznik-nuxt3/"}}'
+
+   # ModTools site (modtools-org)
+   curl -X PATCH "https://api.netlify.com/api/v1/sites/516c2438-4185-40e5-b3eb-c5728368ed53" \
+     -H "Authorization: Bearer $NETLIFY_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"repo":{"repo_url":"https://github.com/Freegle/iznik","repo_branch":"production","base_rel_dir":"iznik-nuxt3/"}}'
+   ```
 7. Verify Netlify deploys successfully for both Freegle and ModTools
 8. Archive old repos on GitHub (Settings → Archive):
    - `Freegle/iznik-nuxt3` → read-only
@@ -545,13 +534,12 @@ Each transferred/created issue should note its origin (e.g. "Migrated from Freeg
 |-------|------|
 | 1. Build monorepo branch | 1-2 hours |
 | 2. Rewrite CircleCI (incl. mobile build merge + secrets) | 3-4 hours |
-| 3. Update Netlify | 30 min |
-| 4. Update Coveralls | 15 min |
-| 5. Update Sentry | 15 min |
-| 6. Update GitHub Actions | 30 min |
-| 7. Local verification | 1 hour |
-| 8. Migrate PRs and issues | 1 hour |
-| 9. Cutover | 30 min |
+| 3. Update Coveralls | 15 min |
+| 4. Update Sentry | 15 min |
+| 5. Update GitHub Actions | 30 min |
+| 6. Local dev verification (worktree, containers, CI) | 2 hours |
+| 7. Migrate PRs and issues | 1 hour |
+| 8. Cutover (incl. Netlify repoint) | 30 min |
 | **Total** | **8-10 hours** |
 
 All phases executed by Claude. Human-only: repo rename and archiving (Phase 9, steps 5 + 8).
