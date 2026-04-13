@@ -1006,9 +1006,84 @@ type PutMembershipsRequest struct {
 }
 
 // PutMemberships handles PUT /memberships - user joins a group.
-// FD sends: {userid, groupid, manual}
-// Only self-join is supported here (userid must match authenticated user).
+// Supports two auth modes:
+// 1. Partner key (query param): partner=KEY&tnuserid=ID&email=EMAIL — for TN integration
+// 2. JWT auth: standard self-join (userid must match authenticated user)
 func PutMemberships(c *fiber.Ctx) error {
+	db := database.DBConn
+
+	// --- Partner auth path ---
+	partnerKey := c.Query("partner", "")
+	if partnerKey != "" {
+		_, _, domain, err := user.ValidatePartnerKey(db, partnerKey)
+		if err != nil {
+			return fiber.NewError(fiber.StatusForbidden, "Invalid partner key")
+		}
+
+		var req PutMembershipsRequest
+		if err := c.BodyParser(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+		}
+		if req.Groupid == 0 {
+			return fiber.NewError(fiber.StatusBadRequest, "groupid is required")
+		}
+
+		// Check group exists.
+		var groupExists int64
+		db.Raw("SELECT COUNT(*) FROM `groups` WHERE id = ?", req.Groupid).Scan(&groupExists)
+		if groupExists == 0 {
+			return fiber.NewError(fiber.StatusNotFound, "Group not found")
+		}
+
+		email := c.Query("email", "")
+		tnuseridStr := c.Query("tnuserid", "0")
+		tnuserid, _ := strconv.ParseUint(tnuseridStr, 10, 64)
+
+		// Validate email domain matches partner domain.
+		if !strings.Contains(email, "@"+domain) {
+			return fiber.NewError(fiber.StatusForbidden, "Permission denied")
+		}
+
+		// Look up user by tnuserid, then email.
+		uid := user.FindByTNIdOrEmail(db, tnuserid, email)
+
+		// Auto-create if not found.
+		if uid == 0 {
+			var createErr error
+			uid, createErr = user.CreatePartnerUser(db, tnuserid, email)
+			if createErr != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, "Failed to create user")
+			}
+		} else {
+			// Ensure this email is on the user (V1 calls addEmail).
+			db.Exec("INSERT IGNORE INTO users_emails (userid, email) VALUES (?, ?)", uid, email)
+		}
+
+		// Check if banned — return failure matching V1 behavior.
+		var bannedCount int64
+		db.Raw("SELECT COUNT(*) FROM users_banned WHERE userid = ? AND groupid = ?", uid, req.Groupid).Scan(&bannedCount)
+		if bannedCount > 0 {
+			return c.JSON(fiber.Map{"ret": 4, "status": "Failed - likely ban"})
+		}
+
+		// Check if already a member.
+		var existingRole string
+		db.Raw("SELECT role FROM memberships WHERE userid = ? AND groupid = ?", uid, req.Groupid).Scan(&existingRole)
+		if existingRole != "" {
+			return c.JSON(fiber.Map{"ret": 0, "status": "Success", "fduserid": uid})
+		}
+
+		// Insert membership as approved.
+		result := db.Exec("INSERT INTO memberships (userid, groupid, role, collection) VALUES (?, ?, ?, ?)",
+			uid, req.Groupid, utils.ROLE_MEMBER, utils.COLLECTION_APPROVED)
+		if result.RowsAffected > 0 {
+			logMembershipAction(log.LOG_TYPE_GROUP, log.LOG_SUBTYPE_JOINED, req.Groupid, uid, uid, "")
+		}
+
+		return c.JSON(fiber.Map{"ret": 0, "status": "Success", "fduserid": uid})
+	}
+
+	// --- JWT auth path (existing behavior, unchanged) ---
 	myid := user.WhoAmI(c)
 	if myid == 0 {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
@@ -1023,19 +1098,14 @@ func PutMemberships(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "groupid is required")
 	}
 
-	// Default userid to the authenticated user if not provided.
 	userid := req.Userid
 	if userid == 0 {
 		userid = myid
 	}
 
-	// FD only does self-join. Non-self joins require moderator permissions which
-	// are not yet supported here.
 	if userid != myid {
 		return fiber.NewError(fiber.StatusForbidden, "Cannot add another user")
 	}
-
-	db := database.DBConn
 
 	// Check the group exists.
 	var groupExists int64
@@ -1044,35 +1114,26 @@ func PutMemberships(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "Group not found")
 	}
 
-	// Check if already a member.
 	var existingRole string
 	db.Raw("SELECT role FROM memberships WHERE userid = ? AND groupid = ?",
 		userid, req.Groupid).Scan(&existingRole)
-
 	if existingRole != "" {
-		// Already a member - just return success (joining shouldn't demote).
 		return c.JSON(fiber.Map{"ret": 0, "status": "Success", "addedto": "Approved"})
 	}
 
-	// Check if banned. V1 stores bans in users_banned only (memberships row is deleted on ban).
 	var bannedCount int64
 	db.Raw("SELECT COUNT(*) FROM users_banned WHERE userid = ? AND groupid = ?",
 		userid, req.Groupid).Scan(&bannedCount)
 	if bannedCount > 0 {
-		// Banned members cannot rejoin without a moderator explicitly unbanning them.
-		// Return silent success (same as the existing-member path) to avoid revealing ban status.
 		return c.JSON(fiber.Map{"ret": 0, "status": "Success", "addedto": utils.COLLECTION_APPROVED})
 	}
 
-	// Get an email ID for the user.
 	var emailid uint64
 	db.Raw("SELECT id FROM users_emails WHERE userid = ? ORDER BY preferred DESC, id ASC LIMIT 1",
 		userid).Scan(&emailid)
 
-	// Insert membership as approved member.
 	result := db.Exec("INSERT INTO memberships (userid, groupid, role, collection) VALUES (?, ?, ?, ?)",
 		userid, req.Groupid, utils.ROLE_MEMBER, utils.COLLECTION_APPROVED)
-
 	if result.RowsAffected > 0 {
 		logMembershipAction(log.LOG_TYPE_GROUP, log.LOG_SUBTYPE_JOINED, req.Groupid, userid, userid, "")
 	}

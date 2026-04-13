@@ -68,6 +68,20 @@ Logs on `localhost:3100`. Use `-G` with `--data-urlencode` for queries. Timestam
 
 Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See `SENTRY-INTEGRATION.md`.
 
+## Running Tests
+
+**Always use the status container API** (port 8081) to run tests. Never use `docker exec` directly.
+
+| Suite | Trigger | Check status |
+|-------|---------|-------------|
+| Go | `curl -s -X POST http://localhost:8081/api/tests/go` | `curl -s http://localhost:8081/api/tests/go/status` |
+| Laravel | `curl -s -X POST http://localhost:8081/api/tests/laravel` | `curl -s http://localhost:8081/api/tests/laravel/status` |
+| PHP | `curl -s -X POST http://localhost:8081/api/tests/php` | `curl -s http://localhost:8081/api/tests/php/status` |
+| Vitest | `curl -s -X POST http://localhost:8081/api/tests/vitest` | `curl -s http://localhost:8081/api/tests/vitest/status` |
+| Playwright | `curl -s -X POST http://localhost:8081/api/tests/playwright` | `curl -s http://localhost:8081/api/tests/playwright/status` |
+
+Go, PHP, and Laravel are not installed on the WSL host — they only exist inside containers.
+
 ## Miscellaneous
 
 - When making app changes, update `README-APP.md`.
@@ -123,3 +137,24 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **Root cause found**: `app.vue`'s `loginCount` watcher calls `reloadNuxtApp({ force: true })` after login. The `page.evaluate()` (backdrop cleanup) raced against this reload — locally it wins, in CI the reload destroys the context first.
 - **Fix** (commit `9c63e2ea`): Removed `page.evaluate` and `waitForAuthPersistence` between modal close and sidebar nav wait. Playwright locators auto-retry across navigations; `page.evaluate` does not.
 - **Local**: All 130 Playwright tests pass. CI run 4 in progress.
+
+### 2026-04-13 - Monorepo migration CI dry run (Phase 6.3)
+- **Branch**: `monorepo-migration`
+- **apiv1 crash** (previous session): sed config substitution broke on CI env vars with special chars. Fixed by replacing all 20 sed commands with `iznik-server/install/startup-config.php` using PHP preg_replace. Committed `a2db6fb12`.
+- **CI run 1** (job #3387, SSH debug): apiv1 healthy, all containers up. Vitest failed — 24/24 auth.spec.js tests with `TypeError: store.init is not a function`.
+  - **Root cause**: vitest.config.mts aliases `~/stores/auth` → `tests/unit/mocks/auth-store.js` (for component tests). auth.spec.js imported from `~/stores/auth` and got the mock.
+  - **Fix** (`381d7d12`): Import with `.js` extension (`~/stores/auth.js`) to bypass exact-match alias.
+- **CI run 2** (job #3388): 23/24 auth tests pass. 1 remaining: `persistence config > does not persist loginCount` — `useAuthStore.$persistedState` is undefined because the persistence plugin isn't registered in test env.
+  - **Fix** (`32aff54f`): Read store source file directly to verify `loginCount` not in `persist.pick` array.
+- **CI run 3** (pipeline #3022): PHP tests failed — `testRelated` and `testRelatedWork`. Root cause: startup-config.php always enabled Loki, but phpunit container needs it disabled. Fix: respect `LOKI_ENABLED=false` env var (`771a7095`).
+- **CI run 4** (pipeline #3023, job #3392): ALL tests passed. Phase 6.3 complete.
+
+### 2026-04-13 - Monorepo merge to master & Netlify setup (Phase 6.4)
+- Merged `monorepo-migration` into master (`55762579a`). Resolved submodule→directory conflict. Fixed empty files (ChatPopups.vue placeholder), unsafe LAST_INSERT_ID in social_auth.go.
+- Created and pushed `production` branch from master.
+- Netlify: Updated both sites to deploy from `Freegle/FreegleDocker` production branch.
+- **Netlify fix** (`38f47cff3`): ModTools was deploying Freegle site. Root cause: SITE_NAME conditional in shared netlify.toml didn't work. Fix: separate base directories — Freegle at `iznik-nuxt3/`, ModTools at `iznik-nuxt3/modtools/`. Each reads its own `netlify.toml`. Both sites verified: modtools.org shows `<title>ModTools</title>`, ilovefreegle.org shows Freegle.
+- **Google login resilience** (`38f47cff3`): LoginModal.installGoogleSDK() now hooks `window.onGoogleLibraryLoad` to retry when GSI loads late (Firefox/Brave).
+- **Mobile CI migration** (`276c006ca`): Added `working_directory: ~/project/iznik-nuxt3` + `checkout: path: ~/project` to all mobile orb jobs. Added 3 missing jobs (build-android-dev, check-hotfix-promote, build-ios-testflight). Wired up all mobile workflows in config.yml. Fixed API URLs from `Freegle/iznik-nuxt3` to `Freegle/FreegleDocker`. Orb `freegle/tests@1.1.176`.
+- CI pipeline #3038 running: build-test (SSH rerun) + build-android-apps (first monorepo mobile build test).
+- **Remaining**: Phase 7 (migrate 18 PRs + 14 issues from sub-repos), Phase 8 (cutover: repo rename + archive — human steps).

@@ -139,7 +139,10 @@ When adding new API endpoints:
 
 ## Testing Considerations
 
-- Never run tests when in a WSL environment.
+- **Always run tests via the status container API**, never via `docker exec` or direct `go test`.
+- Trigger: `curl -s -X POST http://localhost:8081/api/tests/go`
+- Check status: `curl -s http://localhost:8081/api/tests/go/status`
+- Go is not installed on the WSL host — it only exists inside containers.
 
 ## Database Schema
 

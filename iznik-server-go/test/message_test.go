@@ -5750,3 +5750,152 @@ func TestPatchMessageEditReviewRequiredGroupModerated(t *testing.T) {
 	db.Raw("SELECT reviewrequired FROM messages_edits WHERE msgid = ? ORDER BY id DESC LIMIT 1", msgID).Scan(&reviewRequired)
 	assert.Equal(t, 1, reviewRequired, "Group-moderated edit of approved message should set reviewrequired=1")
 }
+
+// =============================================================================
+// tnpostid and expiresat Tests
+// =============================================================================
+
+func TestGetMessageTnpostid(t *testing.T) {
+	// Verify that GET /message/:id returns tnpostid when set.
+	prefix := uniquePrefix("tnpostid")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer Chair", 55.9533, -3.1883)
+
+	// Set tnpostid directly in DB.
+	tnid := "tn-post-12345"
+	db.Exec("UPDATE messages SET tnpostid = ? WHERE id = ?", tnid, msgID)
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/message/%d", msgID), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result message.Message
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, msgID, result.ID)
+	assert.NotNil(t, result.Tnpostid, "tnpostid should be present")
+	assert.Equal(t, tnid, *result.Tnpostid)
+}
+
+func TestGetMessageTnpostidNull(t *testing.T) {
+	// Verify that GET /message/:id returns null tnpostid when not set.
+	prefix := uniquePrefix("tnpostid_null")
+
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer Table", 55.9533, -3.1883)
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/message/%d", msgID), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result message.Message
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, msgID, result.ID)
+	assert.Nil(t, result.Tnpostid, "tnpostid should be nil when not set")
+}
+
+func TestGetMessageExpiresat(t *testing.T) {
+	// Verify that GET /message/:id returns a computed expiresat field.
+	prefix := uniquePrefix("expiresat")
+
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer Lamp", 55.9533, -3.1883)
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/message/%d", msgID), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result message.Message
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, msgID, result.ID)
+	assert.NotNil(t, result.Expiresat, "expiresat should be computed")
+
+	// Default expiry is max(maxagetoshow=90, repostDays*(max+1)=3*11=33) = 90 days from arrival.
+	expectedExpiry := result.Arrival.AddDate(0, 0, 90)
+	// Allow 1 second tolerance for rounding.
+	diff := result.Expiresat.Sub(expectedExpiry)
+	if diff < 0 {
+		diff = -diff
+	}
+	assert.Less(t, diff, 2*time.Second, "expiresat should be ~90 days from arrival")
+}
+
+func TestListMessagesTnpostid(t *testing.T) {
+	// Verify that GET /messages returns tnpostid in list items.
+	prefix := uniquePrefix("lstmsg_tn")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer Desk", 55.9533, -3.1883)
+
+	tnid := "tn-list-99999"
+	db.Exec("UPDATE messages SET tnpostid = ? WHERE id = ?", tnid, msgID)
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/messages?groupid=%d&collection=Approved", groupID), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result message.ListMessagesResponse
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	found := false
+	for _, m := range result.Messages {
+		if m.ID == msgID {
+			found = true
+			assert.NotNil(t, m.Tnpostid, "tnpostid should be present in list response")
+			assert.Equal(t, tnid, *m.Tnpostid)
+			break
+		}
+	}
+	assert.True(t, found, "Should find the message in the list")
+}
+
+func TestListMessagesExpiresat(t *testing.T) {
+	// Verify that GET /messages returns expiresat in list items.
+	prefix := uniquePrefix("lstmsg_exp")
+
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer Shelf", 55.9533, -3.1883)
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/messages?groupid=%d&collection=Approved", groupID), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result message.ListMessagesResponse
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	found := false
+	for _, m := range result.Messages {
+		if m.ID == msgID {
+			found = true
+			assert.NotNil(t, m.Expiresat, "expiresat should be computed in list response")
+			// Should be ~90 days from the group arrival.
+			if len(m.Groups) > 0 {
+				expectedExpiry := m.Groups[0].Arrival.AddDate(0, 0, 90)
+				diff := m.Expiresat.Sub(expectedExpiry)
+				if diff < 0 {
+					diff = -diff
+				}
+				assert.Less(t, diff, 2*time.Second, "expiresat should be ~90 days from group arrival")
+			}
+			break
+		}
+	}
+	assert.True(t, found, "Should find the message in the list")
+}

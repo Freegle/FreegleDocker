@@ -1,11 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-// Import with .js extension to bypass vitest.config alias that maps
-// ~/stores/auth → tests/unit/mocks/auth-store.js (for component tests).
-// This test needs the real store implementation.
-import { useAuthStore } from '~/stores/auth.js'
-
 const mockLogin = vi.fn()
 const mockLogout = vi.fn()
 const mockFetchv2 = vi.fn()
@@ -63,17 +58,21 @@ vi.mock('~/stores/misc', () => ({
 }))
 
 describe('auth store', () => {
-  let store
+  let useAuthStore
 
-  beforeEach(() => {
-    setActivePinia(createPinia())
+  beforeEach(async () => {
     vi.clearAllMocks()
-    store = useAuthStore()
-    store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
+    setActivePinia(createPinia())
+    // Dynamic import bypasses the vitest.config.mts alias that maps
+    // ~/stores/auth → tests/unit/mocks/auth-store.js for component tests.
+    const mod = await import('../../../stores/auth')
+    useAuthStore = mod.useAuthStore
   })
 
   describe('initial state', () => {
     it('starts with no user and loginCount 0', () => {
+      const store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
       expect(store.user).toBeNull()
       expect(store.loginCount).toBe(0)
       expect(store.loginStateKnown).toBe(false)
@@ -82,6 +81,8 @@ describe('auth store', () => {
     })
 
     it('starts with empty auth credentials', () => {
+      const store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
       expect(store.auth.jwt).toBeNull()
       expect(store.auth.persistent).toBeNull()
     })
@@ -89,6 +90,8 @@ describe('auth store', () => {
 
   describe('setAuth', () => {
     it('stores jwt and persistent token', () => {
+      const store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
       store.setAuth('test-jwt', 'test-persistent')
       expect(store.auth.jwt).toBe('test-jwt')
       expect(store.auth.persistent).toBe('test-persistent')
@@ -96,6 +99,13 @@ describe('auth store', () => {
   })
 
   describe('setUser', () => {
+    let store
+
+    beforeEach(() => {
+      store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
+    })
+
     it('sets user and marks loggedInEver', () => {
       store.setUser({ id: 1, displayname: 'Test' })
       expect(store.user.id).toBe(1)
@@ -137,6 +147,13 @@ describe('auth store', () => {
   })
 
   describe('addRelatedUser', () => {
+    let store
+
+    beforeEach(() => {
+      store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
+    })
+
     it('adds user id to userlist', async () => {
       await store.addRelatedUser(42)
       expect(store.userlist).toContain(42)
@@ -177,6 +194,8 @@ describe('auth store', () => {
 
   describe('clearRelated', () => {
     it('empties the userlist', async () => {
+      const store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
       await store.addRelatedUser(1)
       store.clearRelated()
       expect(store.userlist).toHaveLength(0)
@@ -184,6 +203,13 @@ describe('auth store', () => {
   })
 
   describe('login', () => {
+    let store
+
+    beforeEach(() => {
+      store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
+    })
+
     it('sets auth tokens and increments loginCount', async () => {
       mockLogin.mockResolvedValue({ jwt: 'new-jwt', persistent: 'new-p' })
       mockFetchv2.mockResolvedValue({ me: { id: 1 }, groups: [] })
@@ -218,6 +244,9 @@ describe('auth store', () => {
 
   describe('logout', () => {
     it('resets user but preserves loginCount and loggedInEver', async () => {
+      const store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
+
       mockLogin.mockResolvedValue({ jwt: 'jwt', persistent: 'p' })
       mockFetchv2.mockResolvedValue({ me: { id: 1 }, groups: [] })
       await store.login({ email: 'a@b.com', password: 'x' })
@@ -235,6 +264,13 @@ describe('auth store', () => {
   })
 
   describe('lostPassword', () => {
+    let store
+
+    beforeEach(() => {
+      store = useAuthStore()
+      store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
+    })
+
     it('returns worked=true on success', async () => {
       mockLostPassword.mockResolvedValue({})
       const result = await store.lostPassword('test@test.com')
@@ -257,18 +293,21 @@ describe('auth store', () => {
   })
 
   describe('persistence config', () => {
-    it('does not persist loginCount (verified via store source)', () => {
-      // loginCount was removed from persistence to prevent SSR hydration
-      // race conditions with the app.vue watcher (see commit f8af3c7f).
-      // The persist.pick array in stores/auth.js should not include loginCount.
-      // We verify by reading the store definition file directly.
-      const fs = require('fs')
-      const path = require('path')
-      const storePath = path.resolve(__dirname, '../../../stores/auth.js')
-      const source = fs.readFileSync(storePath, 'utf8')
-      const pickMatch = source.match(/pick:\s*\[([^\]]+)\]/)
-      expect(pickMatch).toBeTruthy()
-      expect(pickMatch[1]).not.toContain('loginCount')
+    it('does not persist loginCount (verified via store source)', async () => {
+      // The persist.pick list is consumed at defineStore() time and not
+      // exposed on the store instance or function. Read the source instead.
+      const fs = await import('node:fs')
+      const path = await import('node:path')
+      const src = fs.readFileSync(
+        path.resolve(__dirname, '../../../stores/auth.js'),
+        'utf8'
+      )
+      const pickMatch = src.match(/pick:\s*\[([^\]]+)\]/)
+      expect(pickMatch).not.toBeNull()
+      const pickList = pickMatch[1]
+      expect(pickList).not.toContain('loginCount')
+      expect(pickList).toContain('auth')
+      expect(pickList).toContain('loggedInEver')
     })
   })
 })

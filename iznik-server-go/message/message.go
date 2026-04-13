@@ -76,8 +76,10 @@ type Message struct {
 	Fromcountry      *string    `json:"fromcountry"`
 	Repostat           *time.Time          `json:"repostat"`
 	Canrepost        bool       `json:"canrepost"`
+	Tnpostid         *string    `json:"tnpostid"`
 	Deliverypossible bool       `json:"deliverypossible"`
 	Deadline         *time.Time `json:"deadline"`
+	Expiresat        *time.Time `json:"expiresat,omitempty" gorm:"-"`
 	Edits            []MessageEdit    `json:"edits,omitempty" gorm:"-"`
 	RawMessage       *string          `json:"message,omitempty" gorm:"column:message"`
 	Worry            []WorryMatch     `json:"worry,omitempty" gorm:"-"`
@@ -177,6 +179,7 @@ func GetMessagesByIds(myid uint64, ids []string) []Message {
 				}
 				err := db.Raw("SELECT messages.id, messages.arrival, messages.date, messages.fromuser, "+
 					"messages.subject, messages.type, textbody, lat, lng, availablenow, availableinitially, locationid,"+
+					"messages.tnpostid, "+
 					"deliverypossible, deadline, heldby, messages.source, messages.sourceheader, messages.fromaddr, messages.fromip, messages.fromcountry, "+
 					rawMessageField+
 					"CASE WHEN messages_likes.msgid IS NULL THEN 1 ELSE 0 END AS unseen FROM messages "+
@@ -313,6 +316,15 @@ func GetMessagesByIds(myid uint64, ids []string) []Message {
 			if found && (len(messageGroups) > 0 || isMod) {
 				message.Replycount = len(message.MessageReply)
 				message.MessageURL = "https://" + os.Getenv("USER_SITE") + "/message/" + strconv.FormatUint(message.ID, 10)
+
+				// Compute expiresat from group arrivals and settings.
+				gids := make([]uint64, len(messageGroups))
+				garrivals := make(map[uint64]time.Time, len(messageGroups))
+				for i, mg := range messageGroups {
+					gids[i] = mg.Groupid
+					garrivals[mg.Groupid] = mg.Arrival
+				}
+				message.Expiresat = computeExpiresat(db, message.Type, gids, garrivals)
 
 				// Populate location with precise coords and nearby groups (mod-only).
 				// The top-level lat/lng are blurred below for privacy; the location
@@ -728,6 +740,69 @@ func GetMessagesForUser(c *fiber.Ctx) error {
 	}
 
 	return fiber.NewError(fiber.StatusNotFound, "User not found")
+}
+
+// computeExpiresat calculates the expiry timestamp for a message based on its
+// group arrival time, type, and group settings (matching the V1 PHP logic).
+func computeExpiresat(db *gorm.DB, msgType string, groupIDs []uint64, groupArrivals map[uint64]time.Time) *time.Time {
+	if len(groupIDs) == 0 {
+		return nil
+	}
+
+	// Fetch group settings.
+	type groupRow struct {
+		ID       uint64  `gorm:"column:id"`
+		Settings *string `gorm:"column:settings"`
+	}
+	var groups []groupRow
+	db.Raw("SELECT id, settings FROM `groups` WHERE id IN (?)", groupIDs).Scan(&groups)
+
+	// Find the latest expiry across all groups (a message may be on multiple groups).
+	var latest time.Time
+	for _, g := range groups {
+		var s groupSettings
+		if g.Settings != nil {
+			json.Unmarshal([]byte(*g.Settings), &s)
+		}
+
+		maxAgeToShow := defaultMaxAgeToShow
+		if s.MaxAgeToShow != nil {
+			maxAgeToShow = *s.MaxAgeToShow
+		}
+
+		repostDays := defaultRepostOffer
+		repostMax := defaultRepostMax
+		if s.Reposts != nil {
+			if msgType == utils.OFFER {
+				repostDays = s.Reposts.Offer
+			} else {
+				repostDays = s.Reposts.Wanted
+			}
+			repostMax = s.Reposts.Max
+		} else if msgType == utils.WANTED {
+			repostDays = defaultRepostWanted
+		}
+
+		maxReposts := repostDays * (repostMax + 1)
+		expireTime := maxAgeToShow
+		if maxReposts > expireTime {
+			expireTime = maxReposts
+		}
+
+		arrival, ok := groupArrivals[g.ID]
+		if !ok {
+			continue
+		}
+		expires := arrival.AddDate(0, 0, expireTime)
+		if expires.After(latest) {
+			latest = expires
+		}
+	}
+
+	if latest.IsZero() {
+		return nil
+	}
+	return &latest
 }
 
 const (

@@ -7,6 +7,7 @@ import (
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 	"os"
 	"strconv"
 	"strings"
@@ -37,9 +38,11 @@ type ListMessageItem struct {
 	Lng                float64             `json:"lng"`
 	Availablenow       uint                `json:"availablenow"`
 	Availableinitially uint                `json:"availableinitially"`
+	Tnpostid           *string             `json:"tnpostid"`
 	Groups             []MessageGroupInfo  `json:"groups"`
 	Attachments        []MessageAttachment `json:"attachments,omitempty"`
 	Replycount         int                 `json:"replycount"`
+	Expiresat          *time.Time          `json:"expiresat,omitempty" gorm:"-"`
 }
 
 type ListMessagesResponse struct {
@@ -236,7 +239,7 @@ func ListMessages(c *fiber.Ctx) error {
 			go func() {
 				defer wg.Done()
 				db.Raw("SELECT m.id, m.subject, m.type, m.fromuser, m.arrival, m.lat, m.lng, "+
-					"m.availablenow, m.availableinitially "+
+					"m.availablenow, m.availableinitially, m.tnpostid "+
 					"FROM messages m WHERE m.id = ?", msgID).Scan(&msg)
 			}()
 
@@ -298,6 +301,11 @@ func ListMessages(c *fiber.Ctx) error {
 		}
 	}
 
+	// Compute expiresat for all messages in one batch query.
+	if len(filtered) > 0 {
+		computeExpiresatBatch(db, filtered)
+	}
+
 	// Build pagination context from the last message.
 	var respCtx *PaginationContext
 	if len(filtered) > 0 && len(filtered) == limit {
@@ -312,6 +320,84 @@ func ListMessages(c *fiber.Ctx) error {
 		Messages: filtered,
 		Context:  respCtx,
 	})
+}
+
+// computeExpiresatBatch populates Expiresat on a slice of ListMessageItem using
+// a single query for all group settings.
+func computeExpiresatBatch(db *gorm.DB, msgs []ListMessageItem) {
+	// Collect unique group IDs.
+	groupIDSet := map[uint64]bool{}
+	for _, m := range msgs {
+		for _, g := range m.Groups {
+			groupIDSet[g.Groupid] = true
+		}
+	}
+	if len(groupIDSet) == 0 {
+		return
+	}
+
+	ids := make([]uint64, 0, len(groupIDSet))
+	for id := range groupIDSet {
+		ids = append(ids, id)
+	}
+
+	type groupRow struct {
+		ID       uint64  `gorm:"column:id"`
+		Settings *string `gorm:"column:settings"`
+	}
+	var groups []groupRow
+	db.Raw("SELECT id, settings FROM `groups` WHERE id IN (?)", ids).Scan(&groups)
+
+	settingsMap := map[uint64]groupSettings{}
+	for _, g := range groups {
+		var s groupSettings
+		if g.Settings != nil {
+			json.Unmarshal([]byte(*g.Settings), &s)
+		}
+		settingsMap[g.ID] = s
+	}
+
+	for i := range msgs {
+		m := &msgs[i]
+		var latest time.Time
+
+		for _, g := range m.Groups {
+			s := settingsMap[g.Groupid]
+
+			maxAgeToShow := defaultMaxAgeToShow
+			if s.MaxAgeToShow != nil {
+				maxAgeToShow = *s.MaxAgeToShow
+			}
+
+			repostDays := defaultRepostOffer
+			repostMax := defaultRepostMax
+			if s.Reposts != nil {
+				if m.Type == utils.OFFER {
+					repostDays = s.Reposts.Offer
+				} else {
+					repostDays = s.Reposts.Wanted
+				}
+				repostMax = s.Reposts.Max
+			} else if m.Type == utils.WANTED {
+				repostDays = defaultRepostWanted
+			}
+
+			maxReposts := repostDays * (repostMax + 1)
+			expireTime := maxAgeToShow
+			if maxReposts > expireTime {
+				expireTime = maxReposts
+			}
+
+			expires := g.Arrival.AddDate(0, 0, expireTime)
+			if expires.After(latest) {
+				latest = expires
+			}
+		}
+
+		if !latest.IsZero() {
+			m.Expiresat = &latest
+		}
+	}
 }
 
 // ListMessagesMT handles GET /modtools/messages — returns message IDs only
