@@ -912,14 +912,23 @@ export default defineNuxtConfig({
               hasLoggedInBefore = authData.loggedInEver || !!authData.auth?.persistent;
             } catch(e) {}
 
+            console.log('GSI: postCookieYes reached, hasLoggedInBefore=' + hasLoggedInBefore, 'time=' + performance.now().toFixed(0) + 'ms');
+
             if (hasLoggedInBefore) {
+              console.log('GSI: loading immediately (returning user)');
               loadScript('https://accounts.google.com/gsi/client');
             } else {
               // Defer GSI until browser is idle or 5s, whichever comes first
-              var loadGSI = function() { loadScript('https://accounts.google.com/gsi/client'); };
+              var gsiScheduledAt = performance.now();
+              var loadGSI = function() {
+                console.log('GSI: deferred load fired after ' + (performance.now() - gsiScheduledAt).toFixed(0) + 'ms');
+                loadScript('https://accounts.google.com/gsi/client');
+              };
               if ('requestIdleCallback' in window) {
+                console.log('GSI: scheduling via requestIdleCallback (timeout 5000ms)');
                 requestIdleCallback(loadGSI, { timeout: 5000 });
               } else {
+                console.log('GSI: scheduling via setTimeout (5000ms)');
                 setTimeout(loadGSI, 5000);
               }
             }
