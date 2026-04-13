@@ -785,7 +785,6 @@ function installGoogleSDK() {
     window.google.accounts.id
   ) {
     console.log('Install google SDK')
-    // Google client library should be loaded by default.vue.
     window.google.accounts.id.initialize({
       client_id: clientId.value,
       callback: handleGoogleCredentialsResponse,
@@ -797,7 +796,12 @@ function installGoogleSDK() {
       { theme: 'outline', size: 'large' }
     )
   } else {
-    console.log('Google not yet fully loaded')
+    console.log('Google not yet fully loaded, will retry when GSI loads')
+    const prev = window.onGoogleLibraryLoad
+    window.onGoogleLibraryLoad = function () {
+      if (prev) prev()
+      installGoogleSDK()
+    }
   }
 }
 

@@ -1,15 +1,14 @@
 # ModTools Netlify configuration
-# This file is used by the dedicated ModTools Netlify site
-# Both Freegle and ModTools deploy from the production branch
-# Base directory is iznik-nuxt3/modtools — paths are relative to that
+# Base directory on Netlify is iznik-nuxt3/modtools — all paths relative to that
+# Parent Nuxt app (iznik-nuxt3/) must be installed first since modtools extends it
 
 [build.environment]
 NODE_VERSION = "22"
 NPM_FLAGS = "--legacy-peer-deps"
 
 [build]
-command = "export NODE_OPTIONS=--max_old_space_size=6000 && npx nuxi prepare && cd modtools && npm i && npm run build"
-publish = "modtools/dist"
+command = "export NODE_OPTIONS=--max_old_space_size=6000 && cd .. && npm ci --legacy-peer-deps && npx nuxi prepare && cd modtools && npm run build"
+publish = "dist"
 
 # Return 404 for requests from old code. This avoids the function call, which costs.
 [[redirects]]

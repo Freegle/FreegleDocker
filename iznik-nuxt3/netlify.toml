@@ -3,9 +3,8 @@
 NODE_VERSION = "22"
 NPM_FLAGS = "--legacy-peer-deps"
 
-# Both Freegle and ModTools share this base. SITE_NAME distinguishes them.
 [build]
-command = "export NODE_OPTIONS=--max_old_space_size=6000 && if [ \"$SITE_NAME\" = \"modtools-org\" ]; then npx nuxi prepare && cd modtools && npm i && npm run build && cd .. && ln -sfn modtools/dist dist; else npm run build; fi"
+command = "export NODE_OPTIONS=--max_old_space_size=6000 && npm run build"
 publish = "dist"
 
 # Return 404 for requests from old code. This avoids the function call, which costs.
