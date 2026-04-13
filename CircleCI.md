@@ -1,10 +1,10 @@
 # CircleCI Continuous Integration
 
-This document explains how continuous integration works across the Freegle ecosystem using CircleCI.
+This document explains how continuous integration works for the Freegle monorepo using CircleCI.
 
 ## Overview
 
-The Freegle project uses a **shared CircleCI orb** (`freegle/tests`) that provides reusable CI/CD jobs and commands. Each repository references this orb to run the appropriate tests.
+The Freegle monorepo uses a **shared CircleCI orb** (`freegle/tests`) that provides reusable CI/CD jobs and commands. The orb is defined in `.circleci/orb/freegle-tests.yml`.
 
 ### Why This Architecture?
 
@@ -13,65 +13,17 @@ The Freegle project uses a **shared CircleCI orb** (`freegle/tests`) that provid
 - **Resource Efficiency**: One comprehensive test environment vs. multiple isolated ones
 - **Realistic Testing**: Tests against production-like Docker Compose stack
 - **Consistency**: All components tested together with same configuration
-- **Prevents Live System Contamination**: Playwright tests run in controlled environment
+- **Path-Based Skipping**: Only relevant test suites run when changes are limited to one component
 
-## Repository Responsibilities
+## Test Suites
 
-| Repository | Local CI | Integration Testing | Playwright Tests | Mobile App Builds |
-|------------|----------|-------------------|------------------|-------------------|
-| **FreegleDocker** | ✅ Full integration testing | ✅ Coordinates all testing | ✅ Runs all E2E tests | ❌ N/A |
-| **iznik-server-go** | ✅ Go unit tests | ➡️ Triggers FreegleDocker | ❌ None (runs in FreegleDocker) | ❌ N/A |
-| **iznik-server** | ✅ PHP unit tests | ➡️ Triggers FreegleDocker | ❌ None (runs in FreegleDocker) | ❌ N/A |
-| **iznik-nuxt3** (master) | ❌ No local tests | ➡️ Triggers FreegleDocker | ➡️ Tests run in FreegleDocker | ❌ N/A |
-| **iznik-nuxt3** (app-ci-fd) | ✅ Android app builds | ❌ No integration tests | ❌ No Playwright tests | ✅ Fastlane + Google Play |
-| **iznik-nuxt3-modtools** | ❌ No local tests | ➡️ Triggers FreegleDocker | ➡️ Tests run in FreegleDocker | ❌ N/A |
-
-## Workflow Architecture
-
-### 1. Change Detection & Triggering
-
-```mermaid
-graph LR
-    A[Developer pushes to submodule] --> B[GitHub Actions webhook]
-    B --> C[Triggers FreegleDocker CircleCI]
-    C --> D[Full integration testing]
-```
-
-Each submodule contains `.github/workflows/trigger-parent-ci.yml` that automatically triggers FreegleDocker testing when changes are pushed.
-
-### 2. Integration Testing Process
-
-**FreegleDocker CircleCI Pipeline:**
-
-1. **Submodule Update**: Updates all submodules to latest commits
-2. **Environment Setup**: Builds complete Docker Compose stack
-3. **Service Readiness**: Waits for all services to be healthy
-4. **Integration Testing**: Currently runs Playwright end-to-end tests (Go/PHP unit tests may be added in future)
-5. **Result Processing**: Commits successful updates or reports failures
-
-### 3. Test Types by Component
-
-**Go API Server (iznik-server-go):**
-- Uses `freegle/go-tests` job from orb
-- Go unit tests with race detection and coverage
-- Tests run in FreegleDocker Docker environment
-- Coverage uploaded to Coveralls
-
-**PHP API Server (iznik-server):**
-- Uses `freegle/php-tests` job from orb
-- PHPUnit tests with MySQL, Redis
-- GeoIP database caching for MailRouterTest
-- Tests run in FreegleDocker Docker environment
-- Coverage uploaded to Coveralls
-
-**User Website (iznik-nuxt3):**
-- Uses `freegle/playwright-tests` job from orb
-- Full Playwright E2E test suite
-- Tests run against production build in FreegleDocker
-
-**ModTools Website (iznik-nuxt3-modtools):**
-- Uses `freegle/playwright-tests` job from orb
-- ModTools functionality tested in FreegleDocker
+| Component | Directory | Test Type | Coverage |
+|-----------|-----------|-----------|----------|
+| **Go API** | `iznik-server-go/` | Go unit tests with race detection | Coveralls |
+| **PHP API** | `iznik-server/` | PHPUnit with MySQL, Redis | Coveralls |
+| **Laravel Batch** | `iznik-batch/` | Laravel PHPUnit tests | Coveralls |
+| **Frontend** | `iznik-nuxt3/` | Vitest unit tests | Coveralls |
+| **E2E** | `iznik-nuxt3/` | Playwright end-to-end tests | Coveralls |
 
 ## Freegle Tests Orb
 
@@ -81,10 +33,7 @@ The shared CircleCI orb is defined in `.circleci/orb/freegle-tests.yml` and publ
 
 | Job | Description |
 |-----|-------------|
-| `freegle/build-and-test` | Full test suite (Go + PHP + Playwright) |
-| `freegle/php-tests` | PHPUnit tests only |
-| `freegle/go-tests` | Go tests only |
-| `freegle/playwright-tests` | Playwright E2E tests only |
+| `freegle/build-and-test` | Full test suite (Go + PHP + Laravel + Vitest + Playwright) |
 
 ### Publishing Orb Updates
 
@@ -99,7 +48,7 @@ docker run --rm -v $(pwd)/.circleci/orb:/orb circleci/circleci-cli:alpine orb pu
 
 ### Unified Test Environment
 
-The orb uses `testenv.php` from FreegleDocker root to set up test data. This unified file handles:
+The orb uses `testenv.php` from the repo root to set up test data. This unified file handles:
 - Test groups, locations, and users
 - Reference data (PAF addresses, weights, engage_mails, jobs)
 - Community events, volunteering opportunities
@@ -109,27 +58,21 @@ See `.circleci/orb/README.md` for full documentation.
 
 ## CircleCI Workflows
 
-### Scheduled Testing
-```yaml
-scheduled-submodule-check:
-  schedule: "0 0,6,12,18 * * *"  # Every 6 hours
-  branch: master
-  purpose: Regular automated submodule updates
-```
-
 ### Push-Triggered Testing
 ```yaml
-build-and-test:
-  triggers: Push to master or manual trigger
-  purpose: Test integration on direct changes
+build-test:
+  triggers: Push to any branch
+  purpose: Full integration testing
 ```
 
-### Webhook-Triggered Testing
-```yaml
-webhook-triggered:
-  triggers: API calls from submodule repositories  
-  purpose: Immediate testing when submodules change
-```
+On non-master branches, path-based skipping avoids running unrelated test suites:
+- Changes only in `iznik-server-go/` → only Go tests run
+- Changes only in `iznik-nuxt3/` → only Vitest + Playwright tests run
+- Changes only in `iznik-batch/` → only Laravel tests run
+- On `master`, all test suites always run
+
+### Auto-Merge to Production
+When all tests pass on `master`, the branch is automatically merged to `production` (which triggers Netlify deploys).
 
 ## Environment Variables
 
@@ -150,53 +93,17 @@ MAXMIND_ACCOUNT=your_maxmind_account
 MAXMIND_KEY=your_maxmind_key
 ```
 
-### Optional Branch Overrides
-```bash
-IZNIK_SERVER_BRANCH=master
-IZNIK_SERVER_GO_BRANCH=master  
-IZNIK_NUXT3_BRANCH=master
-IZNIK_NUXT3_MODTOOLS_BRANCH=master
-```
-
-## Webhook Setup
-
-Each submodule repository requires a `CIRCLECI_TOKEN` secret:
-
-1. **Get CircleCI API Token**: CircleCI → Personal API Tokens
-2. **Add to each submodule**: Settings → Secrets and Variables → Actions
-3. **Secret name**: `CIRCLECI_TOKEN`
-4. **Secret value**: Your CircleCI API token
-
-### Webhook Status
-
-| Repository | Webhook Configured | Triggers On | Purpose |
-|------------|-------------------|-------------|---------|
-| iznik-nuxt3 | ✅ `.github/workflows/trigger-parent-ci.yml` | `master`, `main` | Trigger FreegleDocker integration tests |
-| iznik-nuxt3-modtools | ✅ `.github/workflows/trigger-parent-ci.yml` | `master`, `main` | Trigger FreegleDocker integration tests |
-| iznik-server | ✅ `.github/workflows/trigger-parent-ci.yml` | `master`, `main` | Trigger FreegleDocker integration tests |
-| iznik-server-go | ✅ `.github/workflows/trigger-parent-ci.yml` | `master`, `main` | Trigger FreegleDocker integration tests |
-
-**Note**: The `app-ci-fd` branch in iznik-nuxt3 does NOT trigger FreegleDocker tests. It runs independent Android app builds.
-
 ---
 
-## Android App Automation (iznik-nuxt3)
+## Android App Automation
 
-The Freegle Direct mobile app uses a **separate CI/CD pipeline** on the `app-ci-fd` branch to automate Android app builds and deployment to Google Play.
+The Freegle Direct mobile app builds are triggered from the `production` branch.
 
-### Why Separate from Integration Testing?
-
-- **Different Purpose**: App builds vs integration testing
-- **Different Technology**: Capacitor/Android vs Docker Compose
-- **Different Artifacts**: APK/AAB files vs test reports
-- **Different Deployment**: Google Play Console vs production servers
-- **No Interference**: App releases don't trigger full integration test suite
-
-### App Build Pipeline (app-ci-fd branch only)
+### App Build Pipeline
 
 ```mermaid
 graph LR
-    A[Push to app-ci-fd] --> B[CircleCI detects change]
+    A[Push to production] --> B[CircleCI detects change]
     B --> C[Build Nuxt with ISAPP=true]
     C --> D[Sync Capacitor to Android]
     D --> E[Fastlane builds AAB]
@@ -212,9 +119,9 @@ graph LR
 6. Build Android App Bundle (AAB) with auto-incrementing version code
 7. Upload to Google Play Console Internal Testing track
 
-### Environment Variables (iznik-nuxt3 CircleCI)
+### Environment Variables (for Android Builds)
 
-**Required for Android Builds:**
+**Required:**
 ```bash
 GOOGLE_PLAY_JSON_KEY=base64_encoded_service_account_json
 ```
@@ -223,14 +130,14 @@ This should be the base64-encoded Google Play service account JSON key with "Rel
 
 ### Version Management
 
-Version numbers are managed in `VERSION.txt` at the root of iznik-nuxt3:
+Version numbers are managed in `iznik-nuxt3/VERSION.txt`:
 - **Version Name**: Read from `VERSION.txt` (e.g., "3.2.0")
 - **Version Code**: Auto-incremented from latest Google Play Internal track
 
 ### Deployment Tracks
 
 **Internal Testing** (Automated):
-- Triggered automatically on push to `app-ci-fd`
+- Triggered automatically on push to `production`
 - Uploaded via Fastlane
 - Available to internal testers immediately
 
@@ -240,27 +147,6 @@ Version numbers are managed in `VERSION.txt` at the root of iznik-nuxt3:
   bundle exec fastlane android promote_beta       # Internal → Beta
   bundle exec fastlane android promote_production # Beta → Production
   ```
-
-### Branch Isolation
-
-| Branch | CircleCI Config | Triggers | Purpose |
-|--------|----------------|----------|---------|
-| `master` | ❌ None | ✅ GitHub Actions → FreegleDocker | Web integration testing |
-| `app-ci-fd` | ✅ `.circleci/config.yml` | ✅ Direct CircleCI | Android app builds |
-
-**Complete isolation ensures:**
-- App releases don't trigger full test suite
-- Web changes don't trigger app builds
-- Independent CircleCI projects
-- No resource conflicts
-
-### Related Documentation
-
-- [Mobile App Documentation](iznik-nuxt3/README-APP.md)
-- [App Release Plan](plans/app-releases.md)
-- [Capacitor Configuration](iznik-nuxt3/capacitor.config.ts)
-
----
 
 ## Manual Testing
 
@@ -298,11 +184,6 @@ Each CircleCI build collects:
 - Access Playwright HTML reports via artifacts
 - Check specific test failure patterns
 - Review console errors and network issues
-
-**Webhook Failures:**
-- Verify `CIRCLECI_TOKEN` is properly configured
-- Check GitHub Actions workflow execution
-- Validate API response in Actions logs
 
 ## Related Documentation
 

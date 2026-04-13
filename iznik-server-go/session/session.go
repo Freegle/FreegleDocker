@@ -1,0 +1,1665 @@
+package session
+
+import (
+	"crypto/subtle"
+	"encoding/json"
+	"fmt"
+	"io"
+	stdlog "log"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/freegle/iznik-server-go/auth"
+	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/housekeeper"
+	"github.com/freegle/iznik-server-go/queue"
+	"github.com/freegle/iznik-server-go/user"
+	"github.com/freegle/iznik-server-go/utils"
+	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v4"
+)
+
+// fetchDiscourseStats fetches notification and topic counts from the Discourse API.
+// Returns nil if Discourse is not configured or the API call fails.
+func fetchDiscourseStats(myid uint64) fiber.Map {
+	discourseAPI := os.Getenv("DISCOURSE_API")
+	discourseKey := os.Getenv("DISCOURSE_APIKEY")
+	if discourseAPI == "" || discourseKey == "" {
+		return nil
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	// Look up the user's Discourse username by external ID.
+	req, err := http.NewRequest("GET", discourseAPI+"/users/by-external/"+strconv.FormatUint(myid, 10)+".json", nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Api-Key", discourseKey)
+	req.Header.Set("Api-Username", "system")
+
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	var userResp struct {
+		User struct {
+			Username string `json:"username"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &userResp); err != nil || userResp.User.Username == "" {
+		return nil
+	}
+
+	username := userResp.User.Username
+
+	// Fetch counts in parallel.
+	var notifications, newtopics, unreadtopics int64
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		req, err := http.NewRequest("GET", discourseAPI+"/session/current.json", nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("Api-Key", discourseKey)
+		req.Header.Set("Api-Username", username)
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode != 200 {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			return
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var sr struct {
+			CurrentUser struct {
+				UnreadNotifications int64 `json:"unread_notifications"`
+			} `json:"current_user"`
+		}
+		_ = json.Unmarshal(body, &sr)
+		notifications = sr.CurrentUser.UnreadNotifications
+	}()
+
+	go func() {
+		defer wg.Done()
+		req, err := http.NewRequest("GET", discourseAPI+"/new.json", nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("Api-Key", discourseKey)
+		req.Header.Set("Api-Username", username)
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode != 200 {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			return
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var tr struct {
+			TopicList struct {
+				Topics []interface{} `json:"topics"`
+			} `json:"topic_list"`
+		}
+		_ = json.Unmarshal(body, &tr)
+		newtopics = int64(len(tr.TopicList.Topics))
+	}()
+
+	go func() {
+		defer wg.Done()
+		req, err := http.NewRequest("GET", discourseAPI+"/unread.json", nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("Api-Key", discourseKey)
+		req.Header.Set("Api-Username", username)
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode != 200 {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			return
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var tr struct {
+			TopicList struct {
+				Topics []interface{} `json:"topics"`
+			} `json:"topic_list"`
+		}
+		_ = json.Unmarshal(body, &tr)
+		unreadtopics = int64(len(tr.TopicList.Topics))
+	}()
+
+	wg.Wait()
+
+	return fiber.Map{
+		"notifications": notifications,
+		"newtopics":     newtopics,
+		"unreadtopics":  unreadtopics,
+		"timestamp":     time.Now().Unix(),
+	}
+}
+
+// FlexUint64 is an alias for utils.FlexUint64 for backward compatibility.
+type FlexUint64 = utils.FlexUint64
+
+// FlexBool accepts JSON booleans, integers (0/1), and strings ("true","false","0","1").
+type FlexBool bool
+
+func (f *FlexBool) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), "\"")
+	switch strings.ToLower(s) {
+	case "true", "1":
+		*f = true
+	default:
+		*f = false
+	}
+	return nil
+}
+
+func (f FlexBool) Bool() bool {
+	return bool(f)
+}
+
+// PostSessionRequest covers all fields used across session POST actions.
+type PostSessionRequest struct {
+	Action        string     `json:"action"`
+	Email         string     `json:"email"`
+	Password      string     `json:"password"`
+	U             FlexUint64 `json:"u"`
+	K             string     `json:"k"`
+	Userlist      []uint64   `json:"userlist"`
+	Partner       string     `json:"partner"`
+	ID            uint64     `json:"id"`
+	GoogleLogin   bool       `json:"googlelogin"`
+	GoogleJWT     string     `json:"googlejwt"`
+	Mobile        bool       `json:"mobile"`
+	FBLogin       FlexBool   `json:"fblogin"`
+	FBAccessToken string     `json:"fbaccesstoken"`
+	FBLimited     FlexBool   `json:"fblimited"`
+}
+
+// PostSession dispatches session write actions.
+//
+// @Summary Session actions (LostPassword, Unsubscribe, Login, Forget, Related)
+// @Tags session
+// @Router /session [post]
+func PostSession(c *fiber.Ctx) error {
+	var req PostSessionRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	switch req.Action {
+	case "LostPassword":
+		return handleLostPassword(c, req.Email)
+	case "Unsubscribe":
+		return handleUnsubscribe(c, req.Email)
+	case "Forget":
+		return handleForget(c, req.Partner, req.ID)
+	case "Related":
+		return handleRelated(c, req.Userlist)
+	default:
+		// No action means login attempt.
+		if req.GoogleLogin && req.GoogleJWT != "" {
+			return handleGoogleLogin(c, req.GoogleJWT)
+		}
+		if req.FBLogin.Bool() && req.FBAccessToken != "" {
+			if req.FBLimited.Bool() {
+				return handleFacebookLimitedLogin(c, req.FBAccessToken)
+			}
+			return handleFacebookLogin(c, req.FBAccessToken)
+		}
+		if req.Email != "" && req.Password != "" {
+			return handleEmailPasswordLogin(c, req.Email, req.Password)
+		}
+		if uint64(req.U) > 0 && req.K != "" {
+			return handleLinkLogin(c, uint64(req.U), req.K)
+		}
+
+		// If we get here with a non-empty action we don't recognise, error.
+		if req.Action != "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Unsupported action")
+		}
+
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+	}
+}
+
+// handleLostPassword finds the user by email and queues a forgot-password email.
+func handleLostPassword(c *fiber.Ctx, email string) error {
+	if email == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "Email parameter required")
+	}
+
+	db := database.DBConn
+
+	// Find user by email. Deleted users can still use forgot-password so they
+	// can recover their account.
+	var userID uint64
+	db.Raw("SELECT users.id FROM users "+
+		"INNER JOIN users_emails ON users_emails.userid = users.id "+
+		"WHERE users_emails.email = ? "+
+		"LIMIT 1", email).Scan(&userID)
+
+	if userID == 0 {
+		// Return ret=2 for unknown email.
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"ret":    2,
+			"status": "We don't know that email address.",
+		})
+	}
+
+	// Get or create the auto-login key for this user.
+	key, err := getOrCreateLoginKey(userID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate login key")
+	}
+
+	// Build the auto-login URL: /settings?u={id}&k={key}&src=forgotpass
+	userSite := os.Getenv("USER_SITE")
+	resetURL := fmt.Sprintf("https://%s/settings?u=%d&k=%s&src=forgotpass", userSite, userID, key)
+
+	// Get user's preferred email for sending.
+	var preferredEmail string
+	db.Raw("SELECT email FROM users_emails WHERE userid = ? ORDER BY preferred DESC, id ASC LIMIT 1", userID).Scan(&preferredEmail)
+
+	if preferredEmail == "" {
+		preferredEmail = email
+	}
+
+	// Queue the forgot-password email.
+	if err := queue.QueueTask(queue.TaskEmailForgotPassword, map[string]interface{}{
+		"user_id":   userID,
+		"email":     preferredEmail,
+		"reset_url": resetURL,
+	}); err != nil {
+		stdlog.Printf("Failed to queue forgot-password email for user %d: %v", userID, err)
+	}
+
+	return c.JSON(fiber.Map{
+		"ret":    0,
+		"status": "Success",
+	})
+}
+
+// handleUnsubscribe finds the user by email and queues an unsubscribe confirmation email.
+func handleUnsubscribe(c *fiber.Ctx, email string) error {
+	if email == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "Email parameter required")
+	}
+
+	db := database.DBConn
+
+	// Find user by email. Deleted users can still unsubscribe.
+	var userID uint64
+	db.Raw("SELECT users.id FROM users "+
+		"INNER JOIN users_emails ON users_emails.userid = users.id "+
+		"WHERE users_emails.email = ? "+
+		"LIMIT 1", email).Scan(&userID)
+
+	if userID == 0 {
+		// Return success even for unknown emails to prevent email enumeration.
+		return c.JSON(fiber.Map{
+			"ret":       0,
+			"status":    "Success",
+			"emailsent": true,
+		})
+	}
+
+	// Get or create the auto-login key.
+	key, err := getOrCreateLoginKey(userID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to generate login key")
+	}
+
+	// Build the unsubscribe URL: /unsubscribe/{id}?u={id}&k={key}&confirm=1
+	userSite := os.Getenv("USER_SITE")
+	unsubURL := fmt.Sprintf("https://%s/unsubscribe/%d?u=%d&k=%s&confirm=1", userSite, userID, userID, key)
+
+	// Get user's preferred email.
+	var preferredEmail string
+	db.Raw("SELECT email FROM users_emails WHERE userid = ? ORDER BY preferred DESC, id ASC LIMIT 1", userID).Scan(&preferredEmail)
+
+	if preferredEmail == "" {
+		preferredEmail = email
+	}
+
+	// Queue the unsubscribe confirmation email.
+	if err := queue.QueueTask(queue.TaskEmailUnsubscribe, map[string]interface{}{
+		"user_id":    userID,
+		"email":      preferredEmail,
+		"unsub_url":  unsubURL,
+	}); err != nil {
+		stdlog.Printf("Failed to queue unsubscribe email for user %d: %v", userID, err)
+	}
+
+	return c.JSON(fiber.Map{
+		"ret":       0,
+		"status":    "Success",
+		"emailsent": true,
+	})
+}
+
+// getOrCreateLoginKey retrieves or creates a 32-char hex auto-login key
+// stored in users_logins with type='Link'.
+func getOrCreateLoginKey(userID uint64) (string, error) {
+	db := database.DBConn
+
+	// Check for existing key.
+	var existingKey string
+	db.Raw("SELECT credentials FROM users_logins WHERE userid = ? AND type = ? LIMIT 1", userID, utils.LOGIN_TYPE_LINK).Scan(&existingKey)
+
+	if existingKey != "" {
+		return existingKey, nil
+	}
+
+	// Generate a new 32-char hex key (16 random bytes → 32 hex chars).
+	newKey := utils.RandomHex(16)
+
+	// Insert the login key. Use uid=userid as a unique identifier.
+	db.Exec("INSERT INTO users_logins (userid, type, uid, credentials) VALUES (?, ?, ?, ?)",
+		userID, utils.LOGIN_TYPE_LINK, fmt.Sprintf("%d", userID), newKey)
+
+	return newKey, nil
+}
+
+// Delegated to auth package to break circular dependency with user package.
+
+// handleEmailPasswordLogin authenticates via email and sha1-hashed password.
+func handleEmailPasswordLogin(c *fiber.Ctx, email string, password string) error {
+	db := database.DBConn
+
+	// Find user by email. Deleted users can still log in so they see the
+	// "restore your account" banner.
+	var userID uint64
+	db.Raw("SELECT u.id FROM users u "+
+		"JOIN users_emails ue ON ue.userid = u.id "+
+		"WHERE ue.email = ? "+
+		"LIMIT 1", email).Scan(&userID)
+
+	if userID == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"ret":    2,
+			"status": "We don't know that email address.",
+		})
+	}
+
+	if !auth.VerifyPassword(userID, password) {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"ret":    3,
+			"status": "The password is wrong.",
+		})
+	}
+
+	persistent, jwtString, err := auth.CreateSessionAndJWT(userID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create session")
+	}
+
+	return c.JSON(fiber.Map{
+		"ret":        0,
+		"status":     "Success",
+		"persistent": persistent,
+		"jwt":        jwtString,
+	})
+}
+
+// handleLinkLogin authenticates via userid + link key.
+func handleLinkLogin(c *fiber.Ctx, uid uint64, key string) error {
+	db := database.DBConn
+
+	// Verify the user exists. Deleted users can still log in so they see the
+	// "restore your account" banner.
+	var exists uint64
+	db.Raw("SELECT id FROM users WHERE id = ? LIMIT 1", uid).Scan(&exists)
+
+	if exists == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"ret":    2,
+			"status": "Unknown user.",
+		})
+	}
+
+	// Verify the link key.
+	var storedKey string
+	db.Raw("SELECT credentials FROM users_logins WHERE userid = ? AND type = ? LIMIT 1", uid, utils.LOGIN_TYPE_LINK).Scan(&storedKey)
+
+	if storedKey == "" || subtle.ConstantTimeCompare([]byte(storedKey), []byte(key)) != 1 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"ret":    3,
+			"status": "Invalid key.",
+		})
+	}
+
+	persistent, jwtString, err := auth.CreateSessionAndJWT(uid)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create session")
+	}
+
+	return c.JSON(fiber.Map{
+		"ret":        0,
+		"status":     "Success",
+		"persistent": persistent,
+		"jwt":        jwtString,
+	})
+}
+
+// handleForget puts a user into "limbo" — soft-deleted but recoverable for ~14 days.
+// Supports two flows: partner-authenticated (for integrated services) and self-service.
+func handleForget(c *fiber.Ctx, partner string, targetID uint64) error {
+	db := database.DBConn
+
+	if partner != "" {
+		// Partner flow: a partner service can delete users it manages.
+		var partnerID uint64
+		db.Raw("SELECT id FROM partners_keys WHERE `key` = ?", partner).Scan(&partnerID)
+
+		if partnerID == 0 {
+			return fiber.NewError(fiber.StatusForbidden, "Invalid partner key")
+		}
+
+		if targetID == 0 {
+			return fiber.NewError(fiber.StatusBadRequest, "id is required for partner forget")
+		}
+
+		// Only allow for users linked via partner (ljuserid set).
+		var ljuserid *uint64
+		db.Raw("SELECT ljuserid FROM users WHERE id = ?", targetID).Scan(&ljuserid)
+
+		if ljuserid == nil || *ljuserid == 0 {
+			return fiber.NewError(fiber.StatusBadRequest, "User is not partner-linked")
+		}
+
+		db.Exec("UPDATE users SET deleted = NOW() WHERE id = ?", targetID)
+
+		// GDPR erasure: blank personal data from all messages posted by this user (V1 parity).
+		db.Exec("UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE fromuser = ?", targetID)
+		db.Exec("UPDATE messages_groups SET deleted = 1 WHERE msgid IN (SELECT id FROM messages WHERE fromuser = ?)", targetID)
+
+		return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
+	}
+
+	// Self-service flow: logged-in user deletes their own account.
+	myid := user.WhoAmI(c)
+	if myid == 0 {
+		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
+	}
+
+	// Moderators must demote themselves first to avoid accidental deletion.
+	var modRole string
+	db.Raw("SELECT role FROM memberships WHERE userid = ? AND role IN (?, ?) LIMIT 1", myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER).Scan(&modRole)
+
+	if modRole != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"ret":    2,
+			"status": "Please demote yourself to a member first",
+		})
+	}
+
+	// Spammers cannot delete their own accounts (prevents evasion of tracking).
+	var spammerCount int64
+	db.Raw("SELECT COUNT(*) FROM spam_users WHERE userid = ? AND collection IN (?, ?)", myid, utils.SPAM_COLLECTION_SPAMMER, utils.SPAM_COLLECTION_PENDING_ADD).Scan(&spammerCount)
+
+	if spammerCount > 0 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"ret":    3,
+			"status": "We can't do this.",
+		})
+	}
+
+	// Signal the auth middleware to skip the post-handler session check.
+	c.Locals("skipPostAuthCheck", true)
+
+	// Soft-delete: user can recover by logging back in within ~14 days.
+	db.Exec("UPDATE users SET deleted = NOW() WHERE id = ?", myid)
+
+	// GDPR erasure: blank personal data from all messages posted by this user (V1 parity).
+	db.Exec("UPDATE messages SET fromip = NULL, message = NULL, envelopefrom = NULL, fromname = NULL, fromaddr = NULL, messageid = NULL, textbody = NULL, htmlbody = NULL, deleted = NOW() WHERE fromuser = ?", myid)
+	db.Exec("UPDATE messages_groups SET deleted = 1 WHERE msgid IN (SELECT id FROM messages WHERE fromuser = ?)", myid)
+
+	// Destroy session so the user is logged out.
+	db.Exec("DELETE FROM sessions WHERE userid = ?", myid)
+
+	return c.JSON(fiber.Map{
+		"ret":    0,
+		"status": "Success",
+	})
+}
+
+// handleRelated records related users.
+func handleRelated(c *fiber.Ctx, userlist []uint64) error {
+	myid := user.WhoAmI(c)
+	if myid == 0 {
+		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
+	}
+
+	db := database.DBConn
+
+	// Insert related records for each pair.
+	for _, otherID := range userlist {
+		if otherID != myid && otherID > 0 {
+			db.Exec("INSERT IGNORE INTO users_related (user1, user2) VALUES (?, ?)", myid, otherID)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"ret":    0,
+		"status": "Success",
+	})
+}
+
+// isActiveModForGroup checks the membership settings JSON to determine if the
+// moderator is actively moderating this group. Defaults to active=1, then checks
+// the 'active' key in the JSON settings, falling back to the legacy 'showmessages' key.
+func isActiveModForGroup(settingsJSON *string) bool {
+	if settingsJSON == nil || *settingsJSON == "" {
+		return true // default to active when no settings are present
+	}
+	var settings map[string]interface{}
+	if err := json.Unmarshal([]byte(*settingsJSON), &settings); err != nil {
+		return true
+	}
+	if active, ok := settings["active"]; ok {
+		switch v := active.(type) {
+		case bool:
+			return v
+		case float64:
+			return v != 0
+		}
+	}
+	// Fallback to legacy showmessages flag (default true if absent).
+	if sm, ok := settings["showmessages"]; ok {
+		switch v := sm.(type) {
+		case bool:
+			return v
+		case float64:
+			return v != 0
+		}
+	}
+	return true
+}
+
+// GetSession returns current session info for the logged-in user.
+//
+// @Summary Get current session
+// @Tags session
+// @Router /session [get]
+func GetSession(c *fiber.Ctx) error {
+	// Reject obsolete app versions.
+	appversion := c.Query("appversion")
+	if appversion != "" && strings.HasPrefix(appversion, "2") {
+		return c.JSON(fiber.Map{
+			"ret":    123,
+			"status": "App is out of date",
+		})
+	}
+
+	myid := user.WhoAmI(c)
+	if myid == 0 {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"ret":    1,
+			"status": "Not logged in",
+		})
+	}
+
+	db := database.DBConn
+
+	// Record app/web version in users_builddates.
+	// Throttled client-side via lastversiontime; we just insert/update.
+	webversion := c.Query("webversion")
+	if webversion != "" || appversion != "" {
+		db.Exec("INSERT INTO users_builddates (userid, webversion, appversion) VALUES (?, ?, ?) "+
+			"ON DUPLICATE KEY UPDATE timestamp = NOW(), webversion = ?, appversion = ?",
+			myid, webversion, appversion, webversion, appversion)
+	}
+
+	// Parallel fetches for user data.
+	type UserRow struct {
+		ID            uint64          `json:"id"`
+		Fullname      *string         `json:"fullname"`
+		Firstname     *string         `json:"firstname"`
+		Lastname      *string         `json:"lastname"`
+		Systemrole    string          `json:"systemrole"`
+		Settings      json.RawMessage `json:"settings"`
+		Lastaccess    *time.Time      `json:"lastaccess"`
+		Added         *time.Time      `json:"added"`
+		Lastlocation  *uint64         `json:"lastlocation"`
+		Onholidaytill *string         `json:"onholidaytill"`
+		Source        *string         `json:"source"`
+		Deleted       *time.Time      `json:"deleted"`
+		Forgotten     *time.Time      `json:"forgotten"`
+		Trustlevel       *string         `json:"trustlevel"`
+		Permissions      *string         `json:"permissions"`
+		Marketingconsent bool            `json:"marketingconsent"`
+		Bouncing         int             `json:"bouncing"`
+	}
+
+	type EmailRow struct {
+		ID        uint64     `json:"id"`
+		Email     string     `json:"email"`
+		Preferred int        `json:"preferred"`
+		Validated *time.Time `json:"validated"`
+		Ourdomain int        `json:"ourdomain"`
+	}
+
+	type MembershipRow struct {
+		Groupid             uint64  `json:"groupid"`
+		Role                string  `json:"role"`
+		Emailfrequency      int     `json:"emailfrequency"`
+		Eventsallowed       int     `json:"eventsallowed"`
+		Volunteeringallowed int     `json:"volunteeringallowed"`
+		Configid            *uint64 `json:"configid"`
+		Active              int     `json:"active"`  // 1=active mod, 0=backup mod
+		Type                string  `json:"-"`        // Used server-side for moderator detection, not returned to client
+		Settings            *string `json:"-"`        // Per-group membership settings JSON, used to determine active/inactive
+	}
+
+	type LocationRow struct {
+		Name string  `json:"name"`
+		Lat  float64 `json:"lat"`
+		Lng  float64 `json:"lng"`
+	}
+
+
+	type SessionRow struct {
+		ID     uint64 `json:"id"`
+		Series string `json:"series"`
+		Token  string `json:"token"`
+	}
+
+	type AboutmeRow struct {
+		Text      string    `json:"text"`
+		Timestamp time.Time `json:"timestamp"`
+	}
+
+	var wg sync.WaitGroup
+	var userRow UserRow
+	var emails []EmailRow
+	var memberships []MembershipRow
+	var sessionRow SessionRow
+	var aboutme AboutmeRow
+
+	type supporterRow struct {
+		Supporter   bool       `json:"supporter" gorm:"column:supporter"`
+		Donated     *time.Time `json:"donated" gorm:"column:donated"`
+		DonatedType *string    `json:"donatedtype" gorm:"column:donatedtype"`
+	}
+	var supporterInfo supporterRow
+
+	wg.Add(6)
+	go func() {
+		defer wg.Done()
+		db.Raw("SELECT id, fullname, firstname, lastname, systemrole, settings, lastaccess, added, lastlocation, onholidaytill, source, deleted, forgotten, trustlevel, permissions, marketingconsent, bouncing FROM users WHERE id = ?", myid).Scan(&userRow)
+	}()
+	go func() {
+		defer wg.Done()
+		db.Raw("SELECT id, email, preferred, validated FROM users_emails WHERE userid = ? ORDER BY preferred DESC", myid).Scan(&emails)
+	}()
+	go func() {
+		defer wg.Done()
+		db.Raw("SELECT m.groupid, m.role, m.emailfrequency, m.eventsallowed, m.volunteeringallowed, m.configid, g.type, m.settings "+
+			"FROM memberships m JOIN `groups` g ON g.id = m.groupid "+
+			"WHERE m.userid = ? AND m.collection = ? ORDER BY LOWER(CASE WHEN g.namefull IS NOT NULL THEN g.namefull ELSE g.nameshort END)", myid, utils.COLLECTION_APPROVED).Scan(&memberships)
+	}()
+	go func() {
+		defer wg.Done()
+		db.Raw("SELECT id, series, token FROM sessions WHERE userid = ? LIMIT 1", myid).Scan(&sessionRow)
+	}()
+	go func() {
+		defer wg.Done()
+		db.Raw("SELECT text, timestamp FROM users_aboutme WHERE userid = ? ORDER BY timestamp DESC LIMIT 1", myid).Scan(&aboutme)
+	}()
+	go func() {
+		defer wg.Done()
+		start := time.Now().AddDate(0, 0, -utils.SUPPORTER_PERIOD).Format("2006-01-02")
+		db.Raw("SELECT (CASE WHEN "+
+			"((users.systemrole != ? OR "+
+			"EXISTS(SELECT id FROM users_donations WHERE userid = ? AND users_donations.timestamp >= ?) OR "+
+			"EXISTS(SELECT id FROM microactions WHERE userid = ? AND microactions.timestamp >= ?)) AND "+
+			"(CASE WHEN JSON_EXTRACT(users.settings, '$.hidesupporter') IS NULL THEN 0 ELSE JSON_EXTRACT(users.settings, '$.hidesupporter') END) = 0) "+
+			"THEN 1 ELSE 0 END) AS supporter, "+
+			"(SELECT MAX(timestamp) FROM users_donations WHERE userid = ?) AS donated, "+
+			"(SELECT type FROM users_donations WHERE userid = ? ORDER BY timestamp DESC LIMIT 1) AS donatedtype "+
+			"FROM users WHERE users.id = ?",
+			utils.SYSTEMROLE_USER, myid, start, myid, start, myid, myid, myid).Scan(&supporterInfo)
+	}()
+	wg.Wait()
+
+	// Compute ourdomain flag for each email so the client can filter internal addresses.
+	for i := range emails {
+		emails[i].Ourdomain = utils.OurDomain(emails[i].Email)
+	}
+
+	// Populate the Active field on each membership from the settings JSON.
+	for i := range memberships {
+		if isActiveModForGroup(memberships[i].Settings) {
+			memberships[i].Active = 1
+		} else {
+			memberships[i].Active = 0
+		}
+	}
+
+	// Compute work counts and discourse stats for moderators (depends on memberships).
+	var work fiber.Map
+	var discourse fiber.Map
+
+	// Collect group IDs where user is a moderator or owner, split by active/inactive.
+	// The memberships.settings JSON 'active' flag determines if a mod is actively
+	// moderating a group. Inactive groups' work counts show as blue (info) badges instead
+	// of red (danger) badges. Default is active.
+	var modGroupIDs, activeGroupIDs, inactiveGroupIDs []uint64
+	isFreegleMod := false
+	for _, m := range memberships {
+		if m.Role == utils.ROLE_OWNER || m.Role == utils.ROLE_MODERATOR {
+			modGroupIDs = append(modGroupIDs, m.Groupid)
+			if m.Active == 1 {
+				activeGroupIDs = append(activeGroupIDs, m.Groupid)
+			} else {
+				inactiveGroupIDs = append(inactiveGroupIDs, m.Groupid)
+			}
+			if m.Type == utils.GROUP_TYPE_FREEGLE {
+				isFreegleMod = true
+			}
+		}
+	}
+
+	// Start discourse fetch in parallel with work counts (only for Freegle moderators).
+	var discourseWg sync.WaitGroup
+	if isFreegleMod {
+		discourseWg.Add(1)
+		go func() {
+			defer discourseWg.Done()
+			discourse = fetchDiscourseStats(myid)
+		}()
+	}
+
+	if len(modGroupIDs) > 0 {
+		// Work counts are split by active/inactive group status.
+		// Active groups → primary fields (red/danger badges in UI).
+		// Inactive groups → "other" fields (blue/info badges in UI).
+		// Counts that only appear for active groups: spam, pendingevents, pendingvolunteering,
+		// pendingadmins, editreview, happiness, relatedmembers.
+		// Counts split by active/inactive: pending/pendingother, spammembers/spammembersother,
+		// chatreview/chatreviewother.
+		var pending, pendingother, spam int64
+		var pendingmembers, spammembers, spammembersother int64
+		var pendingevents, pendingadmins, editreview int64
+		var pendingvolunteering, spammerpendingadd, spammerpendingremove, stories int64
+		var chatreview, chatreviewother, newsletterstories, giftaid, happiness, relatedmembers int64
+		var housekeeping, cronjobs int64
+		var emailin, emailout int64
+
+		var wg2 sync.WaitGroup
+
+		// --- Pending messages: active groups split by held, inactive all → pendingother ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				// Unheld pending in active groups → pending (red).
+				db.Raw("SELECT COUNT(*) FROM messages_groups mg "+
+					"INNER JOIN messages m ON m.id = mg.msgid "+
+					"INNER JOIN users u ON u.id = m.fromuser "+
+					"WHERE mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 "+
+					"AND m.deleted IS NULL AND u.deleted IS NULL AND m.heldby IS NULL",
+					activeGroupIDs, utils.COLLECTION_PENDING).Scan(&pending)
+				// Held pending in active groups → pendingother (blue).
+				var heldActive int64
+				db.Raw("SELECT COUNT(*) FROM messages_groups mg "+
+					"INNER JOIN messages m ON m.id = mg.msgid "+
+					"INNER JOIN users u ON u.id = m.fromuser "+
+					"WHERE mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 "+
+					"AND m.deleted IS NULL AND u.deleted IS NULL AND m.heldby IS NOT NULL",
+					activeGroupIDs, utils.COLLECTION_PENDING).Scan(&heldActive)
+				pendingother += heldActive
+			}
+			if len(inactiveGroupIDs) > 0 {
+				// All pending in inactive groups → pendingother (blue).
+				var inact int64
+				db.Raw("SELECT COUNT(*) FROM messages_groups mg "+
+					"INNER JOIN messages m ON m.id = mg.msgid "+
+					"INNER JOIN users u ON u.id = m.fromuser "+
+					"WHERE mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 "+
+					"AND m.deleted IS NULL AND u.deleted IS NULL",
+					inactiveGroupIDs, utils.COLLECTION_PENDING).Scan(&inact)
+				pendingother += inact
+			}
+		}()
+
+		// --- Spam messages (only for active groups) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				db.Raw("SELECT COUNT(*) FROM messages_groups mg "+
+					"INNER JOIN messages m ON m.id = mg.msgid "+
+					"INNER JOIN users u ON u.id = m.fromuser "+
+					"WHERE mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 AND m.deleted IS NULL AND u.deleted IS NULL",
+					activeGroupIDs, utils.COLLECTION_SPAM).Scan(&spam)
+			}
+		}()
+
+		// --- Pending members (all groups, no active/inactive split) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			db.Raw("SELECT COUNT(*) FROM memberships WHERE groupid IN ? AND collection = ?",
+				modGroupIDs, utils.COLLECTION_PENDING).Scan(&pendingmembers)
+		}()
+
+		// --- Spam members: active split by held, inactive all → spammembersother ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				// Unheld spam members in active groups → spammembers (red).
+				db.Raw("SELECT COUNT(*) FROM memberships "+
+					"WHERE groupid IN ? AND (reviewrequestedat IS NOT NULL AND "+
+					"(reviewedat IS NULL OR DATE(reviewedat) < DATE_SUB(NOW(), INTERVAL 31 DAY))) "+
+					"AND heldby IS NULL",
+					activeGroupIDs).Scan(&spammembers)
+				// Held spam members in active groups → spammembersother (blue).
+				var heldActive int64
+				db.Raw("SELECT COUNT(*) FROM memberships "+
+					"WHERE groupid IN ? AND (reviewrequestedat IS NOT NULL AND "+
+					"(reviewedat IS NULL OR DATE(reviewedat) < DATE_SUB(NOW(), INTERVAL 31 DAY))) "+
+					"AND heldby IS NOT NULL",
+					activeGroupIDs).Scan(&heldActive)
+				spammembersother += heldActive
+			}
+			if len(inactiveGroupIDs) > 0 {
+				// All spam members in inactive groups → spammembersother (blue).
+				var inact int64
+				db.Raw("SELECT COUNT(*) FROM memberships "+
+					"WHERE groupid IN ? AND (reviewrequestedat IS NOT NULL AND "+
+					"(reviewedat IS NULL OR DATE(reviewedat) < DATE_SUB(NOW(), INTERVAL 31 DAY)))",
+					inactiveGroupIDs).Scan(&inact)
+				spammembersother += inact
+			}
+		}()
+
+		// --- Pending community events (only active groups) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				db.Raw("SELECT COUNT(DISTINCT ce.id) FROM communityevents ce "+
+					"INNER JOIN communityevents_groups ceg ON ceg.eventid = ce.id "+
+					"INNER JOIN communityevents_dates ced ON ced.eventid = ce.id "+
+					"WHERE ceg.groupid IN ? AND ce.pending = 1 AND ce.deleted = 0 AND ced.end >= NOW()",
+					activeGroupIDs).Scan(&pendingevents)
+			}
+		}()
+
+		// --- Pending admin applications (only active groups) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				db.Raw("SELECT COUNT(*) FROM admins WHERE groupid IN ? AND complete IS NULL AND pending = 1 AND heldby IS NULL",
+					activeGroupIDs).Scan(&pendingadmins)
+			}
+		}()
+
+		// --- Edit reviews (only active groups) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				db.Raw("SELECT COUNT(DISTINCT me.msgid) FROM messages_edits me "+
+					"INNER JOIN messages_groups mg ON mg.msgid = me.msgid AND mg.deleted = 0 "+
+					"WHERE mg.groupid IN ? AND me.reviewrequired = 1 AND me.approvedat IS NULL AND me.revertedat IS NULL AND me.timestamp > DATE_SUB(NOW(), INTERVAL 7 DAY)",
+					activeGroupIDs).Scan(&editreview)
+			}
+		}()
+
+		// --- Pending volunteering (only active groups) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				db.Raw("SELECT COUNT(DISTINCT v.id) FROM volunteering v "+
+					"INNER JOIN volunteering_groups vg ON vg.volunteeringid = v.id "+
+					"LEFT JOIN volunteering_dates vd ON vd.volunteeringid = v.id "+
+					"WHERE vg.groupid IN ? AND v.pending = 1 AND v.deleted = 0 AND v.expired = 0 AND (vd.end IS NULL OR vd.end >= NOW())",
+					activeGroupIDs).Scan(&pendingvolunteering)
+			}
+		}()
+
+		// --- Stories (active groups only — must match the listing query in story.go) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				storyCutoff := time.Now().AddDate(0, 0, -31).Format("2006-01-02")
+				db.Raw("SELECT COUNT(DISTINCT us.id) FROM users_stories us "+
+					"INNER JOIN memberships m ON m.userid = us.userid "+
+					"INNER JOIN users ON users.id = us.userid "+
+					"WHERE m.groupid IN ? AND m.collection = ? "+
+					"AND us.date > ? AND us.reviewed = 0 "+
+					"AND users.deleted IS NULL",
+					activeGroupIDs, utils.COLLECTION_APPROVED, storyCutoff).Scan(&stories)
+			}
+		}()
+
+		// --- Spammer pending counts (system-wide, Admin/Support only) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if userRow.Systemrole == utils.SYSTEMROLE_ADMIN || userRow.Systemrole == utils.SYSTEMROLE_SUPPORT {
+				db.Raw("SELECT COUNT(*) FROM spam_users WHERE collection = ?", utils.SPAM_COLLECTION_PENDING_ADD).Scan(&spammerpendingadd)
+				db.Raw("SELECT COUNT(*) FROM spam_users WHERE collection = ?", utils.SPAM_COLLECTION_PENDING_REMOVE).Scan(&spammerpendingremove)
+			}
+		}()
+
+		// --- Chat review: RECIPIENT matching + active/inactive split ---
+		// Review counts are based on the RECIPIENT's group membership (not either participant).
+		// Active groups: not-held -> chatreview, held -> chatreviewother.
+		// Inactive groups: all -> chatreviewother.
+		//
+		// The chat review SQL uses CASE WHEN to find the recipient:
+		//   CASE WHEN cm.userid = cr.user1 THEN cr.user2 ELSE cr.user1 END
+		// Primary: recipient IS a member of a Freegle group.
+		// Secondary: recipient is NOT a member → use sender's group instead.
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			chatCutoff := time.Now().AddDate(0, 0, -utils.CHAT_ACTIVE_LIMIT).Format("2006-01-02")
+
+			// Helper SQL for recipient-based chat review counting.
+			// Count chat messages pending review. Must match the logic in
+			// chatmessage_review.go getReviewQueue() so the sidebar count
+			// equals the number of displayed messages.
+			chatReviewSQL := func(groupIDs []uint64, heldFilter string) int64 {
+				if len(groupIDs) == 0 {
+					return 0
+				}
+				var count int64
+				db.Raw("SELECT COUNT(DISTINCT cm.id) FROM chat_messages cm "+
+					"INNER JOIN chat_rooms cr ON cr.id = cm.chatid "+
+					"INNER JOIN users ON users.id = cm.userid AND users.deleted IS NULL "+
+					"LEFT JOIN chat_messages_held cmh ON cmh.msgid = cm.id "+
+					"WHERE cm.reviewrequired = 1 AND cm.reviewrejected = 0 "+
+					"AND cm.date >= ? "+heldFilter+" "+
+					"AND ("+
+					// User2Mod: chat belongs to one of the mod's groups.
+					"  (cr.chattype = ? AND cr.groupid IN ?) "+
+					"  OR "+
+					// User2User case 1: recipient (other user) is in mod's groups.
+					"  (cr.chattype = ? AND "+
+					"    EXISTS (SELECT 1 FROM memberships m "+
+					"      INNER JOIN `groups` g ON m.groupid = g.id AND g.type = ? "+
+					"      WHERE m.userid = (CASE WHEN cm.userid = cr.user1 THEN cr.user2 ELSE cr.user1 END) AND m.groupid IN ?)) "+
+					"  OR "+
+					// User2User case 2: recipient has no Freegle memberships, sender in mod's groups.
+					"  (cr.chattype = ? AND "+
+					"    NOT EXISTS (SELECT 1 FROM memberships m "+
+					"      INNER JOIN `groups` g ON m.groupid = g.id AND g.type = ? "+
+					"      WHERE m.userid = (CASE WHEN cm.userid = cr.user1 THEN cr.user2 ELSE cr.user1 END)) "+
+					"    AND EXISTS (SELECT 1 FROM memberships m "+
+					"      INNER JOIN `groups` g ON m.groupid = g.id AND g.type = ? "+
+					"      WHERE m.userid = cm.userid AND m.groupid IN ?))"+
+					")",
+					chatCutoff, utils.CHAT_TYPE_USER2MOD, groupIDs,
+					utils.CHAT_TYPE_USER2USER, utils.GROUP_TYPE_FREEGLE, groupIDs,
+					utils.CHAT_TYPE_USER2USER, utils.GROUP_TYPE_FREEGLE, utils.GROUP_TYPE_FREEGLE, groupIDs).Scan(&count)
+				return count
+			}
+
+			// Active groups: not held → chatreview (red), held → chatreviewother (blue).
+			chatreview = chatReviewSQL(activeGroupIDs, "AND cmh.userid IS NULL")
+			chatreviewother = chatReviewSQL(activeGroupIDs, "AND cmh.userid IS NOT NULL")
+			// Inactive groups: all → chatreviewother (blue).
+			chatreviewother += chatReviewSQL(inactiveGroupIDs, "AND cmh.userid IS NULL")
+			chatreviewother += chatReviewSQL(inactiveGroupIDs, "AND cmh.userid IS NOT NULL")
+
+			// Wider chat review: unheld messages from groups with widerchatreview=1
+			// that are NOT already counted in the base queries above.
+			// These go into chatreviewother (blue badge).
+			if user.HasWiderReview(myid) {
+				allModGroupIDs := append(activeGroupIDs, inactiveGroupIDs...)
+				var widerCount int64
+				widerQuery := "SELECT COUNT(DISTINCT cm.id) FROM chat_messages cm " +
+					"INNER JOIN chat_rooms cr ON cr.id = cm.chatid " +
+					"INNER JOIN users ON users.id = cm.userid AND users.deleted IS NULL " +
+					"LEFT JOIN chat_messages_held cmh ON cmh.msgid = cm.id " +
+					"INNER JOIN memberships m ON m.userid = (CASE WHEN cm.userid = cr.user1 THEN cr.user2 ELSE cr.user1 END) " +
+					"INNER JOIN `groups` g ON m.groupid = g.id AND g.type = '" + utils.GROUP_TYPE_FREEGLE + "' " +
+					"WHERE cm.reviewrequired = 1 AND cm.reviewrejected = 0 " +
+					"AND cm.date >= ? AND cmh.id IS NULL " +
+					"AND JSON_EXTRACT(g.settings, '$.widerchatreview') = 1 " +
+					"AND (cm.reportreason IS NULL OR cm.reportreason != 'User')"
+
+				if len(allModGroupIDs) > 0 {
+					// Exclude messages where the recipient has ANY membership in
+					// the mod's own groups (those are already counted in the base
+					// chatreview/chatreviewother). We use NOT EXISTS rather than
+					// AND m.groupid NOT IN because a recipient may be on both a
+					// mod's group AND a separate wider-review group; the simple
+					// NOT IN only filters the mod-group JOIN row while still
+					// counting the wider-group JOIN row, causing double-counting.
+					recipientExpr := "(CASE WHEN cm.userid = cr.user1 THEN cr.user2 ELSE cr.user1 END)"
+					widerQuery += " AND NOT EXISTS (SELECT 1 FROM memberships m2 WHERE m2.userid = " + recipientExpr + " AND m2.groupid IN (?))"
+					db.Raw(widerQuery, chatCutoff, allModGroupIDs).Scan(&widerCount)
+				} else {
+					db.Raw(widerQuery, chatCutoff).Scan(&widerCount)
+				}
+
+				chatreviewother += widerCount
+			}
+		}()
+
+		// --- Newsletter stories (global, no group scope) ---
+		// Only visible to users with Newsletter permission — prevents phantom task counts for regular mods.
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if auth.HasPermission(myid, auth.PERM_NEWSLETTER) {
+				db.Raw("SELECT COUNT(*) FROM users_stories "+
+					"INNER JOIN users ON users.id = users_stories.userid AND users.deleted IS NULL "+
+					"WHERE reviewed = 1 AND public = 1 AND newsletterreviewed = 0").Scan(&newsletterstories)
+			}
+		}()
+
+		// --- Gift aid (global) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			db.Raw("SELECT COUNT(*) FROM giftaid WHERE reviewed IS NULL AND deleted IS NULL AND period != 'Declined'").Scan(&giftaid)
+		}()
+
+		// --- Happiness (only active groups) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				hapCutoff := time.Now().AddDate(0, 0, -utils.CHAT_ACTIVE_LIMIT).Format("2006-01-02")
+				db.Raw("SELECT COUNT(DISTINCT mo.id) FROM messages_outcomes mo "+
+					"INNER JOIN messages_groups mg ON mg.msgid = mo.msgid "+
+					"WHERE mo.timestamp >= ? AND mg.arrival >= ? "+
+					"AND mg.groupid IN ? "+
+					"AND mo.comments IS NOT NULL "+
+					"AND mo.comments != 'Sorry, this is no longer available.' "+
+					"AND mo.comments != 'Thanks, this has now been taken.' "+
+					"AND mo.comments != 'Thanks, I''m no longer looking for this.' "+
+					"AND mo.comments != 'Sorry, this has now been taken.' "+
+					"AND mo.comments != 'Thanks for the interest, but this has now been taken.' "+
+					"AND mo.comments != 'Thanks, these have now been taken.' "+
+					"AND mo.comments != 'Thanks, this has now been received.' "+
+					"AND mo.comments != 'Withdrawn on user unsubscribe' "+
+					"AND mo.comments != 'Auto-Expired' "+
+					"AND (mo.happiness = 'Happy' OR mo.happiness IS NULL) "+
+					"AND mo.reviewed = 0",
+					hapCutoff, hapCutoff, activeGroupIDs).Scan(&happiness)
+			}
+		}()
+
+		// --- Related members (only active groups) ---
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			if len(activeGroupIDs) > 0 {
+				db.Raw("SELECT COUNT(*) FROM ("+
+					"SELECT ur.user1 FROM users_related ur "+
+					"INNER JOIN memberships m ON m.userid = ur.user1 "+
+					"INNER JOIN users u1 ON ur.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = ? "+
+					"INNER JOIN users u2 ON ur.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = ? "+
+					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? "+
+					"UNION "+
+					"SELECT ur.user1 FROM users_related ur "+
+					"INNER JOIN memberships m ON m.userid = ur.user2 "+
+					"INNER JOIN users u1 ON ur.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = ? "+
+					"INNER JOIN users u2 ON ur.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = ? "+
+					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? "+
+					") t", utils.SYSTEMROLE_USER, utils.SYSTEMROLE_USER, activeGroupIDs, utils.SYSTEMROLE_USER, utils.SYSTEMROLE_USER, activeGroupIDs).Scan(&relatedmembers)
+			}
+		}()
+
+		// --- Housekeeping tasks: overdue or failed (admin/support) ---
+		if userRow.Systemrole == utils.SYSTEMROLE_ADMIN || userRow.Systemrole == utils.SYSTEMROLE_SUPPORT {
+			wg2.Add(1)
+			go func() {
+				defer wg2.Done()
+				db.Raw(`SELECT COUNT(*) FROM housekeeper_tasks
+					WHERE enabled = 1 AND placeholder = 0 AND (
+						last_status = 'failure'
+						OR last_run_at IS NULL
+						OR last_run_at < DATE_SUB(NOW(), INTERVAL interval_hours HOUR)
+					)`).Scan(&housekeeping)
+			}()
+
+			// --- Cron jobs: failures + never-run jobs (admin-only) ---
+			wg2.Add(1)
+			go func() {
+				defer wg2.Done()
+				var failures int64
+				db.Raw(`SELECT COUNT(*) FROM cron_job_status
+					WHERE last_exit_code IS NOT NULL AND last_exit_code != 0`).Scan(&failures)
+
+				var runCount int64
+				db.Raw(`SELECT COUNT(*) FROM cron_job_status`).Scan(&runCount)
+
+				activeCount := int64(housekeeper.ActiveCronJobCount())
+				neverRun := activeCount - runCount
+				if neverRun < 0 {
+					neverRun = 0
+				}
+
+				cronjobs = failures + neverRun
+			}()
+
+			// --- Email health: incoming and outgoing alerts (admin/support) ---
+			// Only flag during daytime hours (07:00-22:00 UTC).
+			nowHour := time.Now().Hour()
+			if nowHour >= 7 && nowHour < 22 {
+				wg2.Add(1)
+				go func() {
+					defer wg2.Done()
+					// Incoming: alert if zero platform=0 chat messages in last 2 hours.
+					var inCount int64
+					db.Raw(`SELECT COUNT(*) FROM chat_messages
+						WHERE platform = 0 AND date >= DATE_SUB(NOW(), INTERVAL 2 HOUR)`).Scan(&inCount)
+					if inCount == 0 {
+						emailin = 1
+					}
+				}()
+
+				wg2.Add(1)
+				go func() {
+					defer wg2.Done()
+					// Outgoing: alert if fewer than 10 emails sent in last hour.
+					var outCount int64
+					db.Raw(`SELECT COUNT(*) FROM email_tracking
+						WHERE sent_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`).Scan(&outCount)
+					if outCount < 10 {
+						emailout = 1
+					}
+				}()
+			}
+		}
+
+		wg2.Wait()
+
+		// Total only includes actionable work items (primary/red badge counts),
+		// not informational ones (other/blue badge counts like chatreviewother, happiness, giftaid, pendingother).
+		total := pending + spam + pendingmembers + spammembers + pendingevents +
+			pendingadmins + editreview + pendingvolunteering + stories +
+			spammerpendingadd + spammerpendingremove +
+			chatreview + newsletterstories + relatedmembers + housekeeping + cronjobs +
+			emailin + emailout
+
+		work = fiber.Map{
+			"pending":              pending,
+			"pendingother":         pendingother,
+			"spam":                 spam,
+			"pendingmembers":       pendingmembers,
+			"spammembers":          spammembers,
+			"spammembersother":     spammembersother,
+			"pendingevents":        pendingevents,
+			"pendingadmins":        pendingadmins,
+			"editreview":           editreview,
+			"pendingvolunteering":  pendingvolunteering,
+			"stories":             stories,
+			"spammerpendingadd":    spammerpendingadd,
+			"spammerpendingremove": spammerpendingremove,
+			"chatreview":          chatreview,
+			"chatreviewother":     chatreviewother,
+			"newsletterstories":   newsletterstories,
+			"giftaid":             giftaid,
+			"happiness":           happiness,
+			"relatedmembers":      relatedmembers,
+			"housekeeping":        housekeeping,
+			"cronjobs":            cronjobs,
+			"emailin":             emailin,
+			"emailout":            emailout,
+			"total":               total,
+		}
+	}
+
+	// Wait for discourse fetch to complete.
+	discourseWg.Wait()
+
+	// Fetch location if available (depends on userRow).
+	var loc *LocationRow
+	if userRow.Lastlocation != nil && *userRow.Lastlocation > 0 {
+		var locRow LocationRow
+		db.Raw("SELECT name, lat, lng FROM locations WHERE id = ?", *userRow.Lastlocation).Scan(&locRow)
+		if locRow.Name != "" {
+			loc = &locRow
+		}
+	}
+
+	// Fetch profile using the same logic as user.GetUserById — GetProfileRecord
+	// fetches the raw DB row, then ProfileSetPath computes path/paththumb URLs
+	// that the frontend expects (me.profile.path, me.profile.paththumb).
+	var profile *user.UserProfile
+	profileRecord := user.GetProfileRecord(myid)
+	if profileRecord.Profileid > 0 && profileRecord.Useprofile {
+		var p user.UserProfile
+		user.ProfileSetPath(profileRecord.Profileid, profileRecord.Url, profileRecord.Externaluid, profileRecord.Externalmods, profileRecord.Archived, &p)
+		profile = &p
+	}
+
+	// Build JWT from session.
+	var jwtString string
+	if sessionRow.ID > 0 {
+		jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"id":        strconv.FormatUint(myid, 10),
+			"sessionid": strconv.FormatUint(sessionRow.ID, 10),
+			"exp":       time.Now().Unix() + 30*24*60*60,
+		})
+		secret := os.Getenv("JWT_SECRET")
+		var jwtErr error
+		jwtString, jwtErr = jwtToken.SignedString([]byte(secret))
+		if jwtErr != nil {
+			stdlog.Printf("Failed to sign JWT for user %d: %v", myid, jwtErr)
+		}
+	}
+
+	// Build persistent token.
+	var persistent interface{}
+	if sessionRow.ID > 0 {
+		persistent = fiber.Map{
+			"id":     sessionRow.ID,
+			"series": sessionRow.Series,
+			"token":  sessionRow.Token,
+			"userid": myid,
+		}
+	}
+
+	// Compute displayname from fullname/firstname/lastname (matching GetUserById logic).
+	displayname := ""
+	if userRow.Fullname != nil && *userRow.Fullname != "" {
+		displayname = *userRow.Fullname
+	} else {
+		if userRow.Firstname != nil {
+			displayname = *userRow.Firstname
+			if userRow.Lastname != nil {
+				displayname += " " + *userRow.Lastname
+			}
+		} else if userRow.Lastname != nil {
+			displayname = *userRow.Lastname
+		}
+	}
+	displayname = utils.TidyName(displayname)
+
+	// Invent a name from email when no usable name is set.
+	if displayname == "A freegler" {
+		displayname = user.InventName(db, myid)
+	}
+
+	// Build the me object.
+	me := fiber.Map{
+		"id":               userRow.ID,
+		"displayname":      displayname,
+		"fullname":         userRow.Fullname,
+		"firstname":        userRow.Firstname,
+		"lastname":         userRow.Lastname,
+		"systemrole":       userRow.Systemrole,
+		"settings":         userRow.Settings,
+		"lastaccess":       userRow.Lastaccess,
+		"added":            userRow.Added,
+		"source":           userRow.Source,
+		"deleted":          userRow.Deleted,
+		"forgotten":        userRow.Forgotten,
+		"trustlevel":       userRow.Trustlevel,
+		"marketingconsent": userRow.Marketingconsent,
+		"bouncing":         userRow.Bouncing,
+		"aboutme":          aboutme,
+		"supporter":        supporterInfo.Supporter,
+		"donated":          supporterInfo.Donated,
+		"donatedtype":      supporterInfo.DonatedType,
+	}
+
+	if userRow.Onholidaytill != nil {
+		me["onholidaytill"] = *userRow.Onholidaytill
+	}
+
+	if loc != nil {
+		me["city"] = loc.Name
+		me["lat"] = loc.Lat
+		me["lng"] = loc.Lng
+	}
+
+	if profile != nil {
+		me["profile"] = profile
+	}
+
+	// Parse permissions from comma-separated string into array.
+	if userRow.Permissions != nil && *userRow.Permissions != "" {
+		perms := strings.Split(*userRow.Permissions, ",")
+		for i := range perms {
+			perms[i] = strings.TrimSpace(perms[i])
+		}
+		me["permissions"] = perms
+	}
+
+	if emails == nil {
+		emails = make([]EmailRow, 0)
+	}
+
+	// Add primary email to the me object (first non-internal-domain email).
+	for _, email := range emails {
+		if utils.OurDomain(email.Email) == 0 {
+			me["email"] = email.Email
+			break
+		}
+	}
+
+	if memberships == nil {
+		memberships = make([]MembershipRow, 0)
+	}
+
+	resp := fiber.Map{
+		"ret":        0,
+		"status":     "Success",
+		"me":         me,
+		"groups":     memberships,
+		"emails":     emails,
+		"persistent": persistent,
+		"jwt":        jwtString,
+	}
+
+	if work != nil {
+		resp["work"] = work
+	}
+
+	if discourse != nil {
+		resp["discourse"] = discourse
+	}
+
+	return c.JSON(resp)
+}
+
+// PatchSession updates session/user settings for the logged-in user.
+//
+// @Summary Update session/user settings
+// @Tags session
+// @Router /session [patch]
+func PatchSession(c *fiber.Ctx) error {
+	myid := user.WhoAmI(c)
+	if myid == 0 {
+		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
+	}
+
+	type PatchNotifications struct {
+		Push *json.RawMessage `json:"push,omitempty"`
+	}
+
+	type PatchRequest struct {
+		Displayname        *string             `json:"displayname,omitempty"`
+		Firstname          *string             `json:"firstname,omitempty"`
+		Lastname           *string             `json:"lastname,omitempty"`
+		Settings           *json.RawMessage    `json:"settings,omitempty"`
+		Password           *string             `json:"password,omitempty"`
+		Onholidaytill      *string             `json:"onholidaytill,omitempty"`
+		Relevantallowed    *int                `json:"relevantallowed,omitempty"`
+		Newslettersallowed *int                `json:"newslettersallowed,omitempty"`
+		Aboutme            *string             `json:"aboutme,omitempty"`
+		Notifications      *PatchNotifications `json:"notifications,omitempty"`
+		Email              *string             `json:"email,omitempty"`
+		Source             *string             `json:"source,omitempty"`
+		Deleted            json.RawMessage     `json:"deleted,omitempty"`
+		Marketingconsent   *bool               `json:"marketingconsent,omitempty"`
+		Key                *string             `json:"key,omitempty"`
+	}
+
+	var req PatchRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	db := database.DBConn
+
+	// Handle email confirmation via validatekey. This is a standalone operation
+	// that confirms ownership of an email address. Ported from PHP
+	// User::confirmEmail() in iznik-server/include/user/User.php.
+	if req.Key != nil && *req.Key != "" {
+		type EmailRecord struct {
+			ID     uint64 `gorm:"column:id"`
+			UserID uint64 `gorm:"column:userid"`
+			Email  string `gorm:"column:email"`
+		}
+
+		var emails []EmailRecord
+		db.Raw("SELECT id, userid, email FROM users_emails WHERE validatekey = ?", *req.Key).Scan(&emails)
+
+		if len(emails) == 0 {
+			return c.JSON(fiber.Map{
+				"ret":    11,
+				"status": "Validation key not found",
+			})
+		}
+
+		for _, mail := range emails {
+			if mail.UserID != 0 && mail.UserID != myid {
+				// Email belongs to another user — merge their account into ours.
+				// Move references from the other user to this user.
+				var wg2 sync.WaitGroup
+				wg2.Add(5)
+
+				go func() {
+					defer wg2.Done()
+					db.Exec("UPDATE messages SET fromuser = ? WHERE fromuser = ?", myid, mail.UserID)
+				}()
+				go func() {
+					defer wg2.Done()
+					db.Exec("UPDATE chat_rooms SET user1 = ? WHERE user1 = ?", myid, mail.UserID)
+				}()
+				go func() {
+					defer wg2.Done()
+					db.Exec("UPDATE chat_rooms SET user2 = ? WHERE user2 = ?", myid, mail.UserID)
+				}()
+				go func() {
+					defer wg2.Done()
+					db.Exec("UPDATE chat_messages SET userid = ? WHERE userid = ?", myid, mail.UserID)
+				}()
+				go func() {
+					defer wg2.Done()
+					db.Exec("UPDATE users_emails SET userid = ? WHERE userid = ?", myid, mail.UserID)
+				}()
+				wg2.Wait()
+
+				db.Exec("UPDATE IGNORE memberships SET userid = ? WHERE userid = ?", myid, mail.UserID)
+				db.Exec("DELETE FROM memberships WHERE userid = ?", mail.UserID)
+				db.Exec("UPDATE users SET deleted = NOW() WHERE id = ?", mail.UserID)
+
+				stdlog.Printf("Merged user %d into %d during email verify of %s", mail.UserID, myid, mail.Email)
+			}
+
+			// Clear all preferred flags for this user, then set the confirmed email as preferred.
+			db.Exec("UPDATE users_emails SET preferred = 0 WHERE userid = ?", myid)
+			db.Exec("UPDATE users_emails SET userid = ?, preferred = 1, validated = NOW(), validatekey = NULL WHERE id = ?", myid, mail.ID)
+		}
+
+		return c.JSON(fiber.Map{
+			"ret":    0,
+			"status": "Success",
+		})
+	}
+
+	// Build a single UPDATE for all users table fields to avoid race conditions
+	// between concurrent goroutines writing conflicting values to the same row.
+	// For example, displayname sets firstname=NULL while a concurrent firstname
+	// goroutine sets firstname to a value — the outcome was non-deterministic.
+	var setClauses []string
+	var setArgs []interface{}
+
+	if req.Displayname != nil {
+		setClauses = append(setClauses, "fullname = ?")
+		setArgs = append(setArgs, *req.Displayname)
+		// Clear first/last unless explicitly provided in the same request.
+		if req.Firstname == nil {
+			setClauses = append(setClauses, "firstname = NULL")
+		}
+		if req.Lastname == nil {
+			setClauses = append(setClauses, "lastname = NULL")
+		}
+	}
+
+	if req.Firstname != nil {
+		setClauses = append(setClauses, "firstname = ?")
+		setArgs = append(setArgs, *req.Firstname)
+	}
+
+	if req.Lastname != nil {
+		setClauses = append(setClauses, "lastname = ?")
+		setArgs = append(setArgs, *req.Lastname)
+	}
+
+	if req.Settings != nil {
+		settingsJSON := user.ProcessSettingsUpdate([]byte(*req.Settings), myid, &setClauses, &setArgs)
+		setClauses = append(setClauses, "settings = ?")
+		setArgs = append(setArgs, string(settingsJSON))
+	}
+
+	if req.Onholidaytill != nil {
+		setClauses = append(setClauses, "onholidaytill = ?")
+		setArgs = append(setArgs, *req.Onholidaytill)
+	}
+
+	if req.Relevantallowed != nil {
+		setClauses = append(setClauses, "relevantallowed = ?")
+		setArgs = append(setArgs, *req.Relevantallowed)
+	}
+
+	if req.Newslettersallowed != nil {
+		setClauses = append(setClauses, "newslettersallowed = ?")
+		setArgs = append(setArgs, *req.Newslettersallowed)
+	}
+
+	if req.Source != nil {
+		setClauses = append(setClauses, "source = ?")
+		setArgs = append(setArgs, *req.Source)
+	}
+
+	if string(req.Deleted) == "null" {
+		setClauses = append(setClauses, "deleted = NULL")
+	}
+
+	if req.Marketingconsent != nil {
+		mc := 0
+		if *req.Marketingconsent {
+			mc = 1
+		}
+		setClauses = append(setClauses, "marketingconsent = ?")
+		setArgs = append(setArgs, mc)
+	}
+
+	// Execute single users table UPDATE if there are any changes.
+	if len(setClauses) > 0 {
+		setArgs = append(setArgs, myid)
+		if result := db.Exec("UPDATE users SET "+strings.Join(setClauses, ", ")+" WHERE id = ?", setArgs...); result.Error != nil {
+			stdlog.Printf("Failed to update user %d: %v", myid, result.Error)
+		}
+	}
+
+	// Run non-users-table operations in parallel (different tables, no conflicts).
+	var wg sync.WaitGroup
+
+	if req.Password != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			salt := auth.GetPasswordSalt()
+			hashed := auth.HashPassword(*req.Password, salt)
+			uid := strconv.FormatUint(myid, 10)
+			db.Exec("INSERT INTO users_logins (userid, type, uid, credentials, salt) VALUES (?, ?, ?, ?, ?) "+
+				"ON DUPLICATE KEY UPDATE credentials = ?, salt = ?",
+				myid, utils.LOGIN_TYPE_NATIVE, uid, hashed, salt, hashed, salt)
+		}()
+	}
+
+	if req.Aboutme != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			db.Exec("INSERT INTO users_aboutme (userid, text, timestamp) VALUES (?, ?, NOW())", myid, *req.Aboutme)
+		}()
+	}
+
+	if req.Notifications != nil && req.Notifications.Push != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			type PushSub struct {
+				Type         string `json:"type"`
+				Subscription string `json:"subscription"`
+			}
+			var pushSub PushSub
+			if err := json.Unmarshal(*req.Notifications.Push, &pushSub); err == nil && pushSub.Type != "" {
+				db.Exec("INSERT INTO users_push_notifications (userid, type, subscription) VALUES (?, ?, ?) "+
+					"ON DUPLICATE KEY UPDATE subscription = ?",
+					myid, pushSub.Type, pushSub.Subscription, pushSub.Subscription)
+			}
+		}()
+	}
+
+	if req.Email != nil && *req.Email != "" {
+		// Queue verification email. Return ret=10 so the frontend shows the
+		// "check your mailbox" modal.
+		wg.Wait()
+
+		if err := queue.QueueTask(queue.TaskEmailVerify, map[string]interface{}{
+			"user_id": myid,
+			"email":   strings.TrimSpace(*req.Email),
+		}); err != nil {
+			stdlog.Printf("Failed to queue email verify for user %d: %v", myid, err)
+		}
+
+		return c.JSON(fiber.Map{
+			"ret":    10,
+			"status": "We've sent a verification mail; please check your mailbox.",
+		})
+	}
+
+	wg.Wait()
+
+	return c.JSON(fiber.Map{
+		"ret":    0,
+		"status": "Success",
+	})
+}
+
+// DeleteSession logs the user out by destroying their session.
+//
+// @Summary Logout
+// @Tags session
+// @Router /session [delete]
+func DeleteSession(c *fiber.Ctx) error {
+	myid := user.WhoAmI(c)
+
+	// Signal the auth middleware to skip the post-handler session check.
+	// Without this, there's a race condition: the middleware's goroutine checks
+	// that the session exists in DB, but the handler deletes the session before
+	// the goroutine completes, causing a spurious 401.
+	c.Locals("skipPostAuthCheck", true)
+
+	if myid > 0 {
+		db := database.DBConn
+		db.Exec("DELETE FROM sessions WHERE userid = ?", myid)
+	}
+
+	return c.JSON(fiber.Map{
+		"ret":    0,
+		"status": "Success",
+	})
+}

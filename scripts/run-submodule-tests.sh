@@ -1,10 +1,10 @@
 #!/bin/bash
-# Run tests for a specific submodule using the FreegleDocker environment
+# Run tests for a specific component using the FreegleDocker environment
 # Usage: ./scripts/run-submodule-tests.sh <php|go|playwright> <path-to-pr-code>
 #
 # This script mirrors the build-and-test flow in .circleci/config.yml
 # The only differences are:
-#   a) We replace the submodule with PR code
+#   a) We replace the component directory with PR code
 #   b) We only run the relevant test type
 
 set -e
@@ -20,16 +20,16 @@ fi
 echo "=== Running $TEST_TYPE tests ==="
 echo "PR code path: $PR_CODE_PATH"
 
-# Determine which submodule to replace
+# Determine which directory to replace
 case $TEST_TYPE in
     php)
-        SUBMODULE_DIR="iznik-server"
+        COMPONENT_DIR="iznik-server"
         ;;
     go)
-        SUBMODULE_DIR="iznik-server-go"
+        COMPONENT_DIR="iznik-server-go"
         ;;
     playwright)
-        SUBMODULE_DIR="iznik-nuxt3"
+        COMPONENT_DIR="iznik-nuxt3"
         ;;
     *)
         echo "Unknown test type: $TEST_TYPE (use 'php', 'go', or 'playwright')"
@@ -37,10 +37,10 @@ case $TEST_TYPE in
         ;;
 esac
 
-# Replace submodule with PR code
-echo "Replacing $SUBMODULE_DIR with PR code..."
-rm -rf "$SUBMODULE_DIR"
-cp -r "$PR_CODE_PATH" "$SUBMODULE_DIR"
+# Replace component with PR code
+echo "Replacing $COMPONENT_DIR with PR code..."
+rm -rf "$COMPONENT_DIR"
+cp -r "$PR_CODE_PATH" "$COMPONENT_DIR"
 
 # === start-services (from .circleci/config.yml) ===
 # Create secrets files
