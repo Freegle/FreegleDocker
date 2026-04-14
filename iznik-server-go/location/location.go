@@ -758,10 +758,14 @@ func UpdateLocation(c *fiber.Ctx) error {
 		}
 
 		// Update ourgeometry (the human-edited override), not geometry (which is from OSM).
-		db.Exec(
+		result := db.Exec(
 			fmt.Sprintf("UPDATE locations SET `type` = 'Polygon', ourgeometry = ST_GeomFromText(?, %d) WHERE id = ?", utils.SRID),
 			*req.Polygon, req.ID,
 		)
+
+		if result.Error != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to update geometry")
+		}
 
 		// Update the spatial index table.
 		db.Exec(
