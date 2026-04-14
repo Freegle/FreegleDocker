@@ -1756,6 +1756,12 @@ jobs:
           name: Fix file ownership before checkout
           command: |
             # Docker creates files with root ownership that git checkout can't overwrite
+            # On self-hosted runner, also clean up leftover Docker containers/volumes
+            if [ "${SELF_HOSTED_RUNNER:-false}" = "true" ]; then
+              echo "Self-hosted runner: cleaning up previous Docker resources..."
+              docker compose down --volumes --remove-orphans 2>/dev/null || true
+              sudo rm -rf logs data test-results ssl/certs status/data 2>/dev/null || true
+            fi
             echo "Fixing file ownership..."
             sudo chown -R $(id -u):$(id -g) . 2>/dev/null || true
             echo "Ownership fixed"
