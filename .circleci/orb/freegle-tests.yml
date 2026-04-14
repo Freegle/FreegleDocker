@@ -204,7 +204,10 @@ commands:
 
             # Clean up any existing containers first
             docker-compose down --remove-orphans || true
-            docker system prune -f || true
+            # Only prune on cloud — self-hosted runner needs layer cache for fast builds
+            if [ "${SELF_HOSTED_RUNNER:-}" != "true" ]; then
+              docker system prune -f || true
+            fi
 
             # Fix memory overcommit for Redis
             sudo sysctl vm.overcommit_memory=1
