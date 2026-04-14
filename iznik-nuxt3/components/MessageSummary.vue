@@ -256,7 +256,7 @@ function expand(e) {
   position: relative;
   overflow: hidden;
   box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.05));
-  border-radius: var(--radius-md, 0.375rem);
+  border-radius: var(--radius-lg, 0.75rem);
   cursor: pointer;
   background: $color-white;
   display: flex;
@@ -409,7 +409,7 @@ function expand(e) {
   right: 0;
   width: 100%;
   height: auto;
-  padding: 2rem 0.5rem 0.5rem;
+  padding: 2.5rem 0.75rem 0.75rem;
   background: linear-gradient(
     to top,
     rgba(0, 0, 0, 0.9) 0%,
@@ -464,7 +464,7 @@ function expand(e) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   opacity: 0.9;
 }
 
@@ -491,9 +491,9 @@ function expand(e) {
 .title-subject {
   display: block;
   width: 100%;
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1.2;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -635,7 +635,7 @@ function expand(e) {
   display: flex;
   align-items: center;
   gap: 1rem;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--color-gray-600);
   margin-top: auto;
 }

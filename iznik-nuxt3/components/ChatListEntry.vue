@@ -125,7 +125,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 14px 12px;
   cursor: pointer;
   transition: background-color var(--transition-fast);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);

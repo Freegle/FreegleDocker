@@ -32,14 +32,14 @@ $page-bottom-padding: calc(#{$navbar-bottom-height} + #{$navbar-bottom-post-over
 }
 
 .nuxt-link-active .nav-item__text {
-  border-bottom: 2px solid white;
-  padding-bottom: 1px;
+  border-bottom: 3px solid white;
+  padding-bottom: 0;
 }
 
 /* Style the external nav-link class */
 :deep(.nav-link) {
-  padding-left: 6px !important;
-  padding-right: 6px !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
   padding-top: 0px !important;
   padding-bottom: 0px !important;
   letter-spacing: 0.01em;
@@ -119,12 +119,17 @@ nav .navbar li a.nuxt-link-active {
 }
 
 svg.fa-icon {
-  height: 28px;
-  margin-bottom: 2px;
+  height: 32px;
+  margin-bottom: 0;
+}
+
+// Desktop navbar — larger icons and labels for readability
+#navbar_large svg.fa-icon {
+  height: 36px;
 }
 
 .nav-item__text {
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }

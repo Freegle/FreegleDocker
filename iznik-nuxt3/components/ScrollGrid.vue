@@ -161,12 +161,12 @@ function loadMore($state) {
 .twocolumn {
   display: flex;
   flex-direction: column;
-  margin-bottom: 5px;
+  margin-bottom: 10px;
 
   @media only screen and (min-width: 360px) {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-column-gap: 5px;
+    grid-column-gap: 10px;
     align-items: stretch;
   }
 }
@@ -174,7 +174,7 @@ function loadMore($state) {
 .onecolumn {
   display: flex;
   flex-direction: column;
-  margin-bottom: 5px;
+  margin-bottom: 10px;
   min-width: 0;
   overflow: hidden;
 
