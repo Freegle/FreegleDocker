@@ -136,16 +136,25 @@
                     </span>
                   </div>
                   <div class="group-row">
-                    <nuxt-link
-                      v-if="messageGroup"
-                      :to="'/explore/' + messageGroup.nameshort"
-                      class="group-link"
-                      @click.stop
+                    <template
+                      v-for="(mg, idx) in messageGroups"
+                      :key="mg.id"
                     >
-                      {{ messageGroup.namedisplay }}
-                    </nuxt-link>
+                      <nuxt-link
+                        :to="'/explore/' + mg.nameshort"
+                        class="group-link"
+                        @click.stop
+                      >
+                        {{ mg.namedisplay }}
+                      </nuxt-link>
+                      <span
+                        v-if="idx < messageGroups.length - 1"
+                        class="group-time-separator"
+                        >,</span
+                      >
+                    </template>
                     <span
-                      v-if="messageGroup && timeAgoExpanded"
+                      v-if="messageGroups.length && timeAgoExpanded"
                       class="group-time-separator"
                       >·</span
                     >
@@ -193,15 +202,24 @@
                       <v-icon icon="map-marker-alt" class="me-1" />
                       <span>{{ message.area }}</span>
                     </template>
-                    <template v-if="messageGroup">
+                    <template v-if="messageGroups.length">
                       <span v-if="message.area" class="desktop-sep">·</span>
-                      <nuxt-link
-                        :to="'/explore/' + messageGroup.nameshort"
-                        class="desktop-group-link"
-                        @click.stop
+                      <template
+                        v-for="(mg, idx) in messageGroups"
+                        :key="mg.id"
                       >
-                        {{ messageGroup.namedisplay }}
-                      </nuxt-link>
+                        <nuxt-link
+                          :to="'/explore/' + mg.nameshort"
+                          class="desktop-group-link"
+                          @click.stop
+                        >
+                          {{ mg.namedisplay }}
+                        </nuxt-link>
+                        <span
+                          v-if="idx < messageGroups.length - 1"
+                          >,
+                        </span>
+                      </template>
                     </template>
                     <template v-if="timeAgoExpanded">
                       <span class="desktop-sep">·</span>
@@ -791,12 +809,17 @@ const canrepostatago = computed(() => {
   return message.value?.canrepostat ? timeago(message.value.canrepostat) : null
 })
 
-const messageGroup = computed(() => {
+const messageGroups = computed(() => {
   if (message.value?.groups?.length) {
-    const groupId = message.value.groups[0].groupid
-    return groupStore?.get(groupId)
+    return message.value.groups
+      .map((g) => groupStore?.get(g.groupid))
+      .filter(Boolean)
   }
-  return null
+  return []
+})
+
+const messageGroup = computed(() => {
+  return messageGroups.value.length ? messageGroups.value[0] : null
 })
 
 // Methods
@@ -824,7 +847,7 @@ const visibilityChanged = async (isVisible) => {
 
     // Fetch group info for display
     if (msg?.groups?.length) {
-      groupStore.fetch(msg.groups[0].groupid)
+      msg.groups.forEach((g) => groupStore.fetch(g.groupid))
     }
   }
 }
