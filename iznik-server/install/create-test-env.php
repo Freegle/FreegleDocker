@@ -252,6 +252,9 @@ function findOrCreateMessage($dbhr, $dbhm, $subject, $gid, $groupName, $approver
             }
         }
 
+        # Ensure lat/lng/locationid are set (may be missing from earlier test runs).
+        $dbhm->preExec("UPDATE messages SET lat = ?, lng = ?, locationid = ? WHERE id = ? AND (lat IS NULL OR lng IS NULL OR locationid IS NULL)", [$lat, $lng, $pcid, $id]);
+
         error_log("Message '$subject' already exists (ID: $id)");
         return $id;
     }
