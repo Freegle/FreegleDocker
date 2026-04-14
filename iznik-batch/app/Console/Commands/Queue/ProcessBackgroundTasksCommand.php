@@ -15,6 +15,7 @@ use App\Models\ChatRoom;
 use App\Models\User;
 use App\Services\EmailSpoolerService;
 use App\Services\HousekeeperService;
+use App\Services\PostcodeRemapService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
@@ -188,6 +189,7 @@ class ProcessBackgroundTasksCommand extends Command
             'freebie_alerts_add' => $this->handleFreebieAlertsAdd($data),
             'freebie_alerts_remove' => $this->handleFreebieAlertsRemove($data),
             'housekeeper_notify' => $this->handleHousekeeperNotify($data),
+            'remap_postcodes' => $this->handleRemapPostcodes($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -1313,5 +1315,22 @@ class ProcessBackgroundTasksCommand extends Command
         }
 
         return $local[0] . str_repeat('*', strlen($local) - 1) . '@' . $domain;
+    }
+
+    /**
+     * Remap postcodes to their nearest area after a location geometry change.
+     */
+    protected function handleRemapPostcodes(array $data): void
+    {
+        $locationId = isset($data['location_id']) ? (int) $data['location_id'] : NULL;
+        $polygon = $data['polygon'] ?? NULL;
+
+        $service = app(PostcodeRemapService::class);
+        $updated = $service->remapPostcodes($locationId, $polygon);
+
+        Log::info('Remapped postcodes', [
+            'location_id' => $locationId,
+            'updated' => $updated,
+        ]);
     }
 }
