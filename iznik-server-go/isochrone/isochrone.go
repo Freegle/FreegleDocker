@@ -3,12 +3,14 @@ package isochrone
 import (
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 type Isochrones struct {
@@ -47,6 +49,10 @@ func ListIsochrones(c *fiber.Ctx) error {
 
 	db.Raw("SELECT isochrones_users.id, isochroneid, userid, timestamp, nickname, locationid, transport, minutes, ST_AsText(polygon) AS polygon FROM isochrones_users INNER JOIN isochrones ON isochrones_users.isochroneid = isochrones.id WHERE isochrones_users.userid = ?", myid).Scan(&isochrones)
 
+	// Self-heal: if any isochrone has a POINT polygon (broken V2 creation), replace it
+	// with a real Mapbox polygon.
+	isochrones = healPointIsochrones(db, isochrones, myid)
+
 	if len(isochrones) == 0 {
 		// Auto-create a default isochrone using the user's last known location
 		// when none exist.
@@ -54,24 +60,7 @@ func ListIsochrones(c *fiber.Ctx) error {
 		db.Raw("SELECT lastlocation FROM users WHERE id = ? AND lastlocation IS NOT NULL", myid).Scan(&locationid)
 
 		if locationid > 0 {
-			// Find or create isochrone with default params (Walk, 15 minutes).
-			var isoID uint64
-			db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = 'Walk' AND minutes = 15",
-				locationid).Scan(&isoID)
-
-			if isoID == 0 {
-				// Use the location's own geometry as placeholder polygon.
-				// For postcodes this is a real POLYGON; background job replaces with actual isochrone contour.
-				result := db.Exec("INSERT INTO isochrones (locationid, transport, minutes, polygon) "+
-					"SELECT ?, 'Walk', 15, geometry FROM locations WHERE id = ?",
-					locationid, locationid)
-				if result.Error != nil {
-					log.Printf("Failed to auto-create isochrone for user %d location %d: %v", myid, locationid, result.Error)
-					return c.JSON(isochrones)
-				}
-				db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = 'Walk' AND minutes = 15 ORDER BY id DESC LIMIT 1",
-					locationid).Scan(&isoID)
-			}
+			isoID := ensureIsochroneExists(locationid, "Walk", 15)
 
 			if isoID > 0 {
 				// Link user to isochrone.
@@ -89,6 +78,110 @@ func ListIsochrones(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(isochrones)
+}
+
+// ensureIsochroneExists finds or creates an isochrone with a real polygon from Mapbox.
+// Returns the isochrone ID, or 0 on failure.
+func ensureIsochroneExists(locationid uint64, transport string, minutes int) uint64 {
+	db := database.DBConn
+
+	// Check for existing isochrone with a real polygon (not a POINT).
+	var isoID uint64
+	db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = ? AND minutes = ? AND ST_GeometryType(polygon) != 'POINT' ORDER BY id DESC LIMIT 1",
+		locationid, transport, minutes).Scan(&isoID)
+
+	if isoID > 0 {
+		return isoID
+	}
+
+	// Get lat/lng from the location.
+	var loc struct {
+		Lat float64
+		Lng float64
+	}
+	db.Raw("SELECT lat, lng FROM locations WHERE id = ?", locationid).Scan(&loc)
+
+	if loc.Lat == 0 && loc.Lng == 0 {
+		log.Printf("Location %d has no lat/lng", locationid)
+		return 0
+	}
+
+	// Fetch real isochrone polygon from Mapbox.
+	wkt := FetchIsochroneWKT(transport, loc.Lng, loc.Lat, minutes)
+
+	if wkt != "" {
+		// Check if there's an existing POINT isochrone with the same key — update it
+		// rather than INSERT IGNORE (which would silently skip due to unique key).
+		var existingPointID uint64
+		db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = ? AND minutes = ? AND source = 'Mapbox' AND ST_GeometryType(polygon) = 'POINT' ORDER BY id DESC LIMIT 1",
+			locationid, transport, minutes).Scan(&existingPointID)
+
+		if existingPointID > 0 {
+			// Update the existing broken POINT isochrone with the real polygon.
+			log.Printf("Updating POINT isochrone %d with real Mapbox polygon for location %d", existingPointID, locationid)
+			db.Exec("UPDATE isochrones SET polygon = "+
+				"CASE WHEN ST_SIMPLIFY(ST_GeomFromText(?, ?), 0.01) IS NULL THEN ST_GeomFromText(?, ?) ELSE ST_SIMPLIFY(ST_GeomFromText(?, ?), 0.01) END "+
+				"WHERE id = ?",
+				wkt, utils.SRID, wkt, utils.SRID, wkt, utils.SRID, existingPointID)
+			return existingPointID
+		}
+
+		// No existing row — insert fresh.
+		result := db.Exec("INSERT IGNORE INTO isochrones (locationid, transport, minutes, source, polygon) VALUES (?, ?, ?, 'Mapbox', "+
+			"CASE WHEN ST_SIMPLIFY(ST_GeomFromText(?, ?), 0.01) IS NULL THEN ST_GeomFromText(?, ?) ELSE ST_SIMPLIFY(ST_GeomFromText(?, ?), 0.01) END)",
+			locationid, transport, minutes, wkt, utils.SRID, wkt, utils.SRID, wkt, utils.SRID)
+		if result.Error != nil {
+			log.Printf("Failed to insert isochrone with Mapbox polygon for location %d: %v", locationid, result.Error)
+			return 0
+		}
+	} else {
+		// Mapbox unavailable — fall back to location geometry as placeholder.
+		log.Printf("Mapbox fetch failed for location %d, using location geometry as fallback", locationid)
+		result := db.Exec("INSERT IGNORE INTO isochrones (locationid, transport, minutes, polygon) "+
+			"SELECT ?, ?, ?, COALESCE(geometry, ST_GeomFromText(CONCAT('POINT(', lng, ' ', lat, ')'), ?)) FROM locations WHERE id = ?",
+			locationid, transport, minutes, utils.SRID, locationid)
+		if result.Error != nil {
+			log.Printf("Failed to create fallback isochrone for location %d: %v", locationid, result.Error)
+			return 0
+		}
+	}
+
+	db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = ? AND minutes = ? ORDER BY id DESC LIMIT 1",
+		locationid, transport, minutes).Scan(&isoID)
+
+	return isoID
+}
+
+// healPointIsochrones checks if any of the user's isochrones have POINT geometry
+// (from broken V2 creation) and replaces them with real Mapbox polygons.
+func healPointIsochrones(db *gorm.DB, isochrones []Isochrones, myid uint64) []Isochrones {
+	needsRefetch := false
+
+	for _, iso := range isochrones {
+		if strings.HasPrefix(iso.Polygon, "POINT") {
+			// This isochrone has broken POINT geometry. Create a proper one.
+			transport := iso.Transport
+			if transport == "" {
+				transport = "Walk"
+			}
+			newIsoID := ensureIsochroneExists(iso.Locationid, transport, iso.Minutes)
+			if newIsoID > 0 {
+				needsRefetch = true
+				if newIsoID != iso.Isochroneid {
+					// Point user to the new proper isochrone.
+					db.Exec("UPDATE isochrones_users SET isochroneid = ? WHERE id = ?", newIsoID, iso.ID)
+				}
+			}
+		}
+	}
+
+	if needsRefetch {
+		var refreshed []Isochrones
+		db.Raw("SELECT isochrones_users.id, isochroneid, userid, timestamp, nickname, locationid, transport, minutes, ST_AsText(polygon) AS polygon FROM isochrones_users INNER JOIN isochrones ON isochrones_users.isochroneid = isochrones.id WHERE isochrones_users.userid = ?", myid).Scan(&refreshed)
+		return refreshed
+	}
+
+	return isochrones
 }
 
 const minMinutes = 5
@@ -161,22 +254,10 @@ func CreateIsochrone(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "Location not found")
 	}
 
-	// Find existing isochrone or create one (without polygon - background job fills it).
-	var isoID uint64
-	db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = ? AND minutes = ?",
-		req.Locationid, req.Transport, req.Minutes).Scan(&isoID)
-
+	// Find or create isochrone with real polygon from Mapbox.
+	isoID := ensureIsochroneExists(uint64(req.Locationid), req.Transport, int(req.Minutes))
 	if isoID == 0 {
-		// Use the location's own geometry as placeholder polygon.
-		result := db.Exec("INSERT INTO isochrones (locationid, transport, minutes, polygon) "+
-			"SELECT ?, ?, ?, geometry FROM locations WHERE id = ?",
-			req.Locationid, req.Transport, req.Minutes, req.Locationid)
-		if result.Error != nil {
-			log.Printf("Failed to create isochrone for location %d: %v", req.Locationid, result.Error)
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to create isochrone")
-		}
-		db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = ? AND minutes = ? ORDER BY id DESC LIMIT 1",
-			req.Locationid, req.Transport, req.Minutes).Scan(&isoID)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create isochrone")
 	}
 
 	// Link user to isochrone (upsert).
@@ -274,23 +355,10 @@ func EditIsochrone(c *fiber.Ctx) error {
 		req.Transport = "Walk" // Ultimate fallback for NULL transport in DB.
 	}
 
-	// Find or create isochrone with new params.
-	var isoID uint64
-	db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = ? AND minutes = ?",
-		current.Locationid, req.Transport, req.Minutes).Scan(&isoID)
-
+	// Find or create isochrone with new params and real polygon from Mapbox.
+	isoID := ensureIsochroneExists(current.Locationid, req.Transport, int(req.Minutes))
 	if isoID == 0 {
-		// Use the location's own geometry as placeholder polygon.
-		// Fall back to a point geometry if the location has no geometry data.
-		result := db.Exec("INSERT INTO isochrones (locationid, transport, minutes, polygon) "+
-			"SELECT ?, ?, ?, COALESCE(geometry, ST_GeomFromText('POINT(0 0)', 3857)) FROM locations WHERE id = ?",
-			current.Locationid, req.Transport, req.Minutes, current.Locationid)
-		if result.Error != nil {
-			log.Printf("Failed to create isochrone for edit: %v", result.Error)
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to create isochrone")
-		}
-		db.Raw("SELECT id FROM isochrones WHERE locationid = ? AND transport = ? AND minutes = ? ORDER BY id DESC LIMIT 1",
-			current.Locationid, req.Transport, req.Minutes).Scan(&isoID)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create isochrone")
 	}
 
 	// Update the link to point to the new isochrone.

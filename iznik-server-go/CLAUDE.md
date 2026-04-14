@@ -139,7 +139,12 @@ When adding new API endpoints:
 
 ## Testing Considerations
 
-- Never run tests when in a WSL environment.
+- Never run tests directly via `go test`, `docker exec`, or similar in WSL. Instead, use the status container API:
+  - Run Go tests: `curl -s -X POST http://localhost:8081/api/tests/go`
+  - Run Laravel tests: `curl -s -X POST http://localhost:8081/api/tests/laravel`
+  - Run Vitest tests: `curl -s -X POST http://localhost:8081/api/tests/vitest`
+  - Run Playwright tests: `curl -s -X POST http://localhost:8081/api/tests/playwright`
+  - Check status: `curl -s http://localhost:8081/api/tests/<suite>/status`
 
 ## Database Schema
 
