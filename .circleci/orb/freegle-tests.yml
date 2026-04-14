@@ -204,6 +204,16 @@ commands:
 
             # Clean up any existing containers first
             docker-compose down --remove-orphans || true
+            # On self-hosted runner, also clean up containers from old CI runs that used
+            # COMPOSE_PROJECT_NAME=freegle (before we switched to freegle-ci)
+            if [ "${SELF_HOSTED_RUNNER:-}" = "true" ]; then
+              old_containers=$(docker ps -aq --filter "label=com.docker.compose.project=freegle" --filter "label=com.docker.compose.project.working_dir=/home/circleci/workdir" 2>/dev/null)
+              if [ -n "$old_containers" ]; then
+                echo "Cleaning up old CI containers (project=freegle, workdir=/home/circleci/workdir)..."
+                docker stop $old_containers 2>/dev/null || true
+                docker rm $old_containers 2>/dev/null || true
+              fi
+            fi
             # Only prune on cloud — self-hosted runner needs layer cache for fast builds
             if [ "${SELF_HOSTED_RUNNER:-}" != "true" ]; then
               docker system prune -f || true
