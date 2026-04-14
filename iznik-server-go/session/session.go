@@ -1411,8 +1411,8 @@ func PatchSession(c *fiber.Ctx) error {
 		Settings           *json.RawMessage    `json:"settings,omitempty"`
 		Password           *string             `json:"password,omitempty"`
 		Onholidaytill      *string             `json:"onholidaytill,omitempty"`
-		Relevantallowed    *int                `json:"relevantallowed,omitempty"`
-		Newslettersallowed *int                `json:"newslettersallowed,omitempty"`
+		Relevantallowed    *utils.FlexInt      `json:"relevantallowed,omitempty"`
+		Newslettersallowed *utils.FlexInt      `json:"newslettersallowed,omitempty"`
 		Aboutme            *string             `json:"aboutme,omitempty"`
 		Notifications      *PatchNotifications `json:"notifications,omitempty"`
 		Email              *string             `json:"email,omitempty"`
@@ -1538,12 +1538,12 @@ func PatchSession(c *fiber.Ctx) error {
 
 	if req.Relevantallowed != nil {
 		setClauses = append(setClauses, "relevantallowed = ?")
-		setArgs = append(setArgs, *req.Relevantallowed)
+		setArgs = append(setArgs, int(*req.Relevantallowed))
 	}
 
 	if req.Newslettersallowed != nil {
 		setClauses = append(setClauses, "newslettersallowed = ?")
-		setArgs = append(setArgs, *req.Newslettersallowed)
+		setArgs = append(setArgs, int(*req.Newslettersallowed))
 	}
 
 	if req.Source != nil {
