@@ -16,16 +16,18 @@ type MessageChange struct {
 }
 
 type UserChange struct {
-	ID          uint64 `json:"id"`
-	LastUpdated string `json:"lastupdated"`
+	ID          uint64  `json:"id"`
+	LastUpdated *string `json:"lastupdated" gorm:"column:lastupdated"`
 }
 
 type Rating struct {
-	Rater     uint64 `json:"rater"`
-	Ratee     uint64 `json:"ratee"`
-	Rating    string `json:"rating"`
-	Timestamp string `json:"timestamp"`
-	Visible   int    `json:"visible"`
+	ID         uint64  `json:"id"`
+	Rater      uint64  `json:"rater"`
+	Ratee      uint64  `json:"ratee"`
+	Rating     string  `json:"rating"`
+	Timestamp  string  `json:"timestamp"`
+	Visible    int     `json:"visible"`
+	TnRatingID *uint64 `json:"tn_rating_id"`
 }
 
 // ChangesData contains the three collections of changes.
@@ -113,12 +115,12 @@ func GetChanges(c *fiber.Ctx) error {
 
 	go func() {
 		defer wg.Done()
-		db.Raw("SELECT id, lastupdated FROM users WHERE lastupdated >= ?", mysqlTime).Scan(&users)
+		db.Raw("SELECT id, lastupdated FROM users WHERE lastupdated IS NOT NULL AND lastupdated >= ?", mysqlTime).Scan(&users)
 	}()
 
 	go func() {
 		defer wg.Done()
-		db.Raw("SELECT rater, ratee, rating, timestamp, visible FROM ratings WHERE timestamp >= ? AND visible = 1", mysqlTime).Scan(&ratings)
+		db.Raw("SELECT id, rater, ratee, rating, timestamp, visible, tn_rating_id FROM ratings WHERE timestamp >= ? AND visible = 1", mysqlTime).Scan(&ratings)
 	}()
 
 	wg.Wait()
@@ -128,7 +130,10 @@ func GetChanges(c *fiber.Ctx) error {
 		messages[i].Timestamp = formatISO(messages[i].Timestamp)
 	}
 	for i := range users {
-		users[i].LastUpdated = formatISO(users[i].LastUpdated)
+		if users[i].LastUpdated != nil {
+			formatted := formatISO(*users[i].LastUpdated)
+			users[i].LastUpdated = &formatted
+		}
 	}
 	for i := range ratings {
 		ratings[i].Timestamp = formatISO(ratings[i].Timestamp)

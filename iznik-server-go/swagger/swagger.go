@@ -12,7 +12,7 @@
 //
 // License: GPL v2 https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html
 //
-// Schemes: http, https
+// Schemes: https
 // Host: api.ilovefreegle.org
 // BasePath: /api
 // Consumes:
