@@ -25,6 +25,7 @@ executors:
       COMPOSE_DOCKER_CLI_BUILD: 1
       COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
       COMPOSE_PROJECT_NAME: freegle-ci
+      SELF_HOSTED_RUNNER: "true"
       # Port offsets (+9000) to avoid conflicts with any local dev stack
       PORT_TRAEFIK_HTTP: 9080
       PORT_TRAEFIK_API: 17192
@@ -71,6 +72,10 @@ commands:
       - run:
           name: Kill stale apt processes
           command: |
+            if [ "$SELF_HOSTED_RUNNER" = "true" ]; then
+              echo "Self-hosted runner — skipping apt cleanup (not needed)"
+              exit 0
+            fi
             # Kill any stale unattended-upgrade processes that may block apt
             sudo pkill -9 unattended-upgrade 2>/dev/null || true
             sudo pkill -9 apt 2>/dev/null || true
@@ -85,6 +90,17 @@ commands:
       - run:
           name: Install system dependencies
           command: |
+            if [ "$SELF_HOSTED_RUNNER" = "true" ]; then
+              echo "Self-hosted runner — verifying pre-installed dependencies"
+              docker --version
+              docker-compose --version || docker compose version
+              jq --version
+              curl --version | head -1
+              echo "Current memory:"
+              free -h
+              exit 0
+            fi
+
             # Try to create swap file - may fail on self-hosted runners (that's OK)
             echo "Attempting swap file creation..."
             if sudo fallocate -l 8G /swapfile 2>/dev/null && \
