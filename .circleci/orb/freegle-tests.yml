@@ -2418,6 +2418,7 @@ jobs:
             else echo "export SKIP_COVERAGE=true" >> $BASH_ENV; fi
             echo "export COVERALLS_SERVICE_NAME=circleci" >> $BASH_ENV
             echo "export COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM}" >> $BASH_ENV
+            echo "export COVERALLS_SERVICE_NUMBER=${CIRCLE_BUILD_NUM}" >> $BASH_ENV
             echo "export COVERALLS_PARALLEL=true" >> $BASH_ENV
             echo "export COV_UPLOADS=0" >> $BASH_ENV
 
