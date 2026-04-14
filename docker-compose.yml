@@ -1179,8 +1179,8 @@ services:
       - ./iznik-nuxt3:/app/src:ro
       - ./iznik-nuxt3:/host-playwright-config:ro
     environment:
-      - TEST_BASE_URL=http://freegle-prod-local.localhost
-      - TEST_MODTOOLS_BASE_URL=http://modtools-prod-local.localhost
+      - TEST_BASE_URL=http://freegle-prod-local.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TEST_MODTOOLS_BASE_URL=http://modtools-prod-local.localhost:${PORT_TRAEFIK_HTTP:-80}
       - NODE_ENV=test
       - NODE_OPTIONS=--max-old-space-size=8192
       - CI=false
