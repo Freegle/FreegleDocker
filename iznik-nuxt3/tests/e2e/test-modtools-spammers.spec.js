@@ -14,6 +14,7 @@ const { timeouts, environment } = require('./config')
 const { loginViaModTools } = require('./utils/user')
 
 const MODTOOLS_URL = environment.modtoolsBaseUrl
+const API_V2 = environment.apiV2BaseUrl
 
 // Dismiss Vue/Bootstrap modals that may overlay the page.
 async function dismissAllModals(page) {
@@ -67,7 +68,7 @@ test.describe('ModTools Spammer List', () => {
     if (jwt && testEnv.spammers) {
       for (const sid of testEnv.spammers) {
         await page.request
-          .patch('http://apiv2.localhost/api/modtools/spammers', {
+          .patch(`${API_V2}/modtools/spammers`, {
             data: { id: sid, collection: 'PendingAdd', heldby: null },
             headers: { Authorization: jwt },
           })
@@ -226,7 +227,7 @@ test.describe('ModTools Spammer List', () => {
     })
     if (jwt && spamId1) {
       await page.request
-        .patch('http://apiv2.localhost/api/modtools/spammers', {
+        .patch(`${API_V2}/modtools/spammers`, {
           data: { id: spamId1, collection: 'PendingAdd', heldby: null },
           headers: { Authorization: jwt },
         })
@@ -288,7 +289,7 @@ test.describe('ModTools Spammer List', () => {
     if (jwt && testEnv.spammers) {
       for (const sid of testEnv.spammers) {
         await page.request
-          .patch('http://apiv2.localhost/api/modtools/spammers', {
+          .patch(`${API_V2}/modtools/spammers`, {
             data: { id: sid, collection: 'PendingAdd', heldby: null },
             headers: { Authorization: jwt },
           })

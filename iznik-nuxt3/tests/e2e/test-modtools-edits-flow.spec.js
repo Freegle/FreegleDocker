@@ -13,6 +13,7 @@ const { timeouts, environment } = require('./config')
 const { loginViaModTools } = require('./utils/user')
 
 const MODTOOLS_URL = environment.modtoolsBaseUrl
+const API_V2 = environment.apiV2BaseUrl
 
 async function dismissAllModals(page) {
   await page.evaluate(() => {
@@ -63,7 +64,7 @@ test.describe('ModTools Edits Flow', () => {
 
     // Login as mod to get JWT via V2 API
     const loginResp = await page.request.post(
-      'http://apiv2.localhost/api/session',
+      `${API_V2}/session`,
       {
         data: { email: modEmail, password: 'freegle' },
       }
@@ -75,7 +76,7 @@ test.describe('ModTools Edits Flow', () => {
 
     // Approve the message via V2 API (same endpoint the frontend uses)
     const approveResp = await page.request.post(
-      'http://apiv2.localhost/api/message',
+      `${API_V2}/message`,
       {
         data: {
           action: 'Approve',
@@ -90,7 +91,7 @@ test.describe('ModTools Edits Flow', () => {
 
     // Get the message to find the poster's user ID via V2 API
     const msgResp = await page.request.get(
-      `http://apiv2.localhost/api/message/${posted.id}`,
+      `${API_V2}/message/${posted.id}`,
       {
         headers: { Authorization: modJwt },
       }
@@ -102,7 +103,7 @@ test.describe('ModTools Edits Flow', () => {
 
     // Set the poster's posting status to MODERATED on this group
     const memberResp = await page.request.patch(
-      `http://apiv2.localhost/api/memberships`,
+      `${API_V2}/memberships`,
       {
         data: {
           userid: Number(fromUserId),
