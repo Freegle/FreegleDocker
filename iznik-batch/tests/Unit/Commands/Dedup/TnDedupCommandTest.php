@@ -10,7 +10,7 @@ class TnDedupCommandTest extends TestCase
     private function createTnTestGroup(string $name): int
     {
         DB::statement(
-            "INSERT INTO `groups` (nameshort, type, publish, polyindex) VALUES (?, 'Freegle', 1, ST_GeomFromText('POINT(0 0)'))",
+            "INSERT INTO `groups` (nameshort, type, publish, polyindex) VALUES (?, 'Freegle', 1, ST_GeomFromText('POINT(0 0)', 3857))",
             [$name]
         );
 
