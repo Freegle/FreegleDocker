@@ -9396,6 +9396,11 @@
     "Rating": {
       "type": "object",
       "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "ID"
+        },
         "ratee": {
           "type": "integer",
           "format": "uint64",
@@ -9413,6 +9418,12 @@
         "timestamp": {
           "type": "string",
           "x-go-name": "Timestamp"
+        },
+        "tn_rating_id": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "TnRatingID",
+          "x-nullable": true
         },
         "visible": {
           "type": "integer",
@@ -10058,7 +10069,8 @@
         },
         "lastupdated": {
           "type": "string",
-          "x-go-name": "LastUpdated"
+          "x-go-name": "LastUpdated",
+          "x-nullable": true
         }
       },
       "x-go-package": "github.com/freegle/iznik-server-go/changes"

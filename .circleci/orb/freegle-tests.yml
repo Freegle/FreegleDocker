@@ -2663,6 +2663,7 @@ jobs:
       - run:
           name: Build Nuxt App (Debug)
           command: |
+            export NODE_OPTIONS="--max-old-space-size=3584"
             export ISAPP=true
             export APP_ENV=development
             export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
@@ -2792,6 +2793,7 @@ jobs:
       - run:
           name: Build Nuxt App
           command: |
+            export NODE_OPTIONS="--max-old-space-size=3584"
             export ISAPP=true
             export APP_ENV=production
             export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
@@ -2926,6 +2928,7 @@ jobs:
       - run:
           name: Build Nuxt App
           command: |
+            export NODE_OPTIONS="--max-old-space-size=3584"
             export ISAPP=true
             export APP_ENV=production
             export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
@@ -3316,6 +3319,7 @@ jobs:
       - run:
           name: Build Nuxt App
           command: |
+            export NODE_OPTIONS="--max-old-space-size=3584"
             export ISAPP=true
             export APP_ENV=production
             export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
