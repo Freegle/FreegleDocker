@@ -24,7 +24,7 @@ executors:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
       COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
-      COMPOSE_PROJECT_NAME: freegle-ci
+      COMPOSE_PROJECT_NAME: freegle
       SELF_HOSTED_RUNNER: "true"
       # Port offsets (+9000) to avoid conflicts with any local dev stack
       PORT_TRAEFIK_HTTP: 9080
