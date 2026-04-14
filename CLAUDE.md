@@ -55,6 +55,7 @@ Uses `docker-compose.override.yesterday.yml` (copy to `docker-compose.override.y
 - Check version: `~/.local/bin/circleci orb info freegle/tests`
 - **Docker build caching**: Controlled by `ENABLE_DOCKER_CACHE` env var in CircleCI. Bump version suffixes in orb YAML to invalidate cache. Set to `false` for immediate rollback.
 - **Auto-merge**: When all tests pass on master, auto-merges to production branch in iznik-nuxt3.
+- **Self-hosted runner**: Runs in a separate WSL2 distro (`circleci-runner`), NOT in the main dev WSL. Never create worktrees for runner work.
 
 ## Batch Production Container
 
