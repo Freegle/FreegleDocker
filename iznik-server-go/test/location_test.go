@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/location"
@@ -139,9 +140,18 @@ func TestCreateLocation(t *testing.T) {
 	json2.Unmarshal(rsp(resp), &result)
 	assert.Greater(t, result["id"], float64(0))
 
-	// Cleanup
+	locID := int(result["id"].(float64))
+
+	// Verify a remap_postcodes background task was queued.
+	time.Sleep(100 * time.Millisecond)
 	db := database.DBConn
-	db.Exec("DELETE FROM locations WHERE id = ?", int(result["id"].(float64)))
+	var taskCount int64
+	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	assert.Greater(t, taskCount, int64(0), "remap_postcodes task should be queued after location create")
+
+	// Cleanup
+	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
+	db.Exec("DELETE FROM locations WHERE id = ?", locID)
 }
 
 func TestCreateLocationNotAdmin(t *testing.T) {
@@ -207,6 +217,14 @@ func TestUpdateLocation(t *testing.T) {
 	db.Raw("SELECT lat, lng FROM locations WHERE id = ?", locID).Scan(&centroid)
 	assert.NotZero(t, centroid.Lat, "lat should be set from centroid")
 	assert.NotZero(t, centroid.Lng, "lng should be set from centroid")
+
+	// Verify a remap_postcodes background task was queued (async, so brief wait).
+	time.Sleep(100 * time.Millisecond)
+	var taskCount int64
+	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	assert.Greater(t, taskCount, int64(0), "remap_postcodes task should be queued after geometry update")
+	// Cleanup the task.
+	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
 
 	// Update name.
 	newName := "Updated " + prefix

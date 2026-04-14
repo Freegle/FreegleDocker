@@ -12,6 +12,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/queue"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
 	geo "github.com/kellydunn/golang-geo"
@@ -709,6 +710,14 @@ func CreateLocation(c *fiber.Ctx) error {
 		id = uint64(lastID)
 	}
 
+	// Queue postcode remapping for the new area.
+	if id > 0 {
+		go queue.QueueTask(queue.TaskRemapPostcodes, map[string]interface{}{
+			"location_id": id,
+			"polygon":     req.Polygon,
+		})
+	}
+
 	return c.JSON(fiber.Map{"id": id})
 }
 
@@ -757,6 +766,26 @@ func UpdateLocation(c *fiber.Ctx) error {
 			req.Polygon = &simplified
 		}
 
+		// Capture old geometry and compute union with new for remap scope (matching V1).
+		// If old and new intersect, remap the union (covers both). If separate, remap both.
+		type OldGeom struct {
+			OldGeometry *string
+			Unioned     *string
+		}
+		var oldGeom OldGeom
+		db.Raw(fmt.Sprintf(`SELECT
+			ST_AsText(CASE WHEN ourgeometry IS NOT NULL THEN ourgeometry ELSE geometry END) AS old_geometry,
+			CASE WHEN ST_Intersects(
+				CASE WHEN ourgeometry IS NOT NULL THEN ourgeometry ELSE geometry END,
+				ST_GeomFromText(?, %d))
+			THEN ST_AsText(ST_UNION(
+				CASE WHEN ourgeometry IS NOT NULL THEN ourgeometry ELSE geometry END,
+				ST_GeomFromText(?, %d)))
+			ELSE NULL
+			END AS unioned
+			FROM locations WHERE id = ?`, utils.SRID, utils.SRID),
+			*req.Polygon, *req.Polygon, req.ID).Scan(&oldGeom)
+
 		// Update ourgeometry (the human-edited override), not geometry (which is from OSM).
 		result := db.Exec(
 			fmt.Sprintf("UPDATE locations SET `type` = 'Polygon', ourgeometry = ST_GeomFromText(?, %d) WHERE id = ?", utils.SRID),
@@ -775,6 +804,28 @@ func UpdateLocation(c *fiber.Ctx) error {
 
 		// Update cached centroid and max dimensions.
 		db.Exec("UPDATE locations SET maxdimension = GetMaxDimension(ourgeometry), lat = ST_Y(ST_Centroid(ourgeometry)), lng = ST_X(ST_Centroid(ourgeometry)) WHERE id = ?", req.ID)
+
+		// Queue postcode remapping. Matching V1: remap the union if geometries overlap,
+		// or remap both old and new separately if they don't.
+		if oldGeom.Unioned != nil {
+			// Old and new overlap — remap the union (single task).
+			go queue.QueueTask(queue.TaskRemapPostcodes, map[string]interface{}{
+				"location_id": req.ID,
+				"polygon":     *oldGeom.Unioned,
+			})
+		} else {
+			// Completely separate — remap both old and new areas.
+			if oldGeom.OldGeometry != nil {
+				go queue.QueueTask(queue.TaskRemapPostcodes, map[string]interface{}{
+					"location_id": req.ID,
+					"polygon":     *oldGeom.OldGeometry,
+				})
+			}
+			go queue.QueueTask(queue.TaskRemapPostcodes, map[string]interface{}{
+				"location_id": req.ID,
+				"polygon":     *req.Polygon,
+			})
+		}
 	}
 
 	if req.Name != nil && *req.Name != "" {
