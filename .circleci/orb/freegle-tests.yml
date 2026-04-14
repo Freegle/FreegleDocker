@@ -304,12 +304,17 @@ commands:
 
             echo "=== Creating test databases (before application containers start) ==="
             # Find and run setup-test-database.sh
-            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+            if [ -f "./scripts/setup-test-database.sh" ]; then
+              bash "./scripts/setup-test-database.sh"
+            elif [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
               bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
             elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
               bash "$HOME/project/scripts/setup-test-database.sh"
             else
               echo "❌ setup-test-database.sh not found!"
+              echo "CWD: $(pwd)"
+              echo "HOME: $HOME"
+              ls -la scripts/ 2>/dev/null || echo "No scripts/ directory in CWD"
               exit 1
             fi
 
@@ -423,12 +428,15 @@ commands:
             done
 
             echo "=== Creating test databases ==="
-            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+            if [ -f "./scripts/setup-test-database.sh" ]; then
+              bash "./scripts/setup-test-database.sh"
+            elif [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
               bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
             elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
               bash "$HOME/project/scripts/setup-test-database.sh"
             else
               echo "❌ setup-test-database.sh not found!"
+              echo "CWD: $(pwd)"
               exit 1
             fi
 
@@ -955,15 +963,15 @@ commands:
           command: |
             # Find the script in either FreegleDocker clone or project checkout
             # Use bash explicitly to avoid permission issues on feature branches
-            if [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
+            if [ -f "./scripts/setup-test-database.sh" ]; then
+              bash "./scripts/setup-test-database.sh"
+            elif [ -f "$HOME/FreegleDocker/scripts/setup-test-database.sh" ]; then
               bash "$HOME/FreegleDocker/scripts/setup-test-database.sh"
             elif [ -f "$HOME/project/scripts/setup-test-database.sh" ]; then
               bash "$HOME/project/scripts/setup-test-database.sh"
             else
               echo "❌ setup-test-database.sh not found!"
-              echo "Checked: $HOME/FreegleDocker/scripts/ and $HOME/project/scripts/"
-              ls -la "$HOME/FreegleDocker/scripts/" 2>/dev/null || echo "$HOME/FreegleDocker/scripts/ not found"
-              ls -la "$HOME/project/scripts/" 2>/dev/null || echo "$HOME/project/scripts/ not found"
+              echo "CWD: $(pwd)"
               exit 1
             fi
 
@@ -995,12 +1003,15 @@ commands:
             echo "🧪 << parameters.reason >>..."
 
             # Determine the iznik-nuxt3 directory
-            if [ -d "$HOME/FreegleDocker/iznik-nuxt3" ]; then
+            if [ -d "./iznik-nuxt3" ]; then
+              NUXT_DIR="./iznik-nuxt3"
+            elif [ -d "$HOME/FreegleDocker/iznik-nuxt3" ]; then
               NUXT_DIR="$HOME/FreegleDocker/iznik-nuxt3"
             elif [ -d "$HOME/project/iznik-nuxt3" ]; then
               NUXT_DIR="$HOME/project/iznik-nuxt3"
             else
               echo "❌ Could not find iznik-nuxt3 directory"
+              echo "CWD: $(pwd)"
               exit 1
             fi
 
@@ -2433,6 +2444,7 @@ jobs:
             [ "${SKIP_COVERAGE:-}" = "true" ] && exit 0
             echo "=== Vitest Coverage ==="
             VL=""
+            [ -f "./iznik-nuxt3/coverage/lcov.info" ] && VL="./iznik-nuxt3/coverage/lcov.info"
             [ -f "$HOME/FreegleDocker/iznik-nuxt3/coverage/lcov.info" ] && VL="$HOME/FreegleDocker/iznik-nuxt3/coverage/lcov.info"
             [ -f "$HOME/project/iznik-nuxt3/coverage/lcov.info" ] && VL="$HOME/project/iznik-nuxt3/coverage/lcov.info"
             [ -z "$VL" ] && echo "⚠️ Not found" && exit 0
