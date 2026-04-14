@@ -31,7 +31,8 @@ module.exports = defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: parseInt(process.env.PW_WORKERS || '11'), // CI sets PW_WORKERS=5 to reduce CPU load
+  // Self-hosted runner has more resources; cloud CI needs fewer workers to avoid flakiness
+  workers: process.env.SELF_HOSTED_RUNNER === 'true' ? 11 : 6,
   maxFailures: 0,
   reporter: [
     ['list'],

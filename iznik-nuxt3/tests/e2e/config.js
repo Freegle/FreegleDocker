@@ -64,6 +64,8 @@ const environment = {
   modtoolsBaseUrl:
     process.env.TEST_MODTOOLS_BASE_URL ||
     'http://modtools-prod-local.localhost',
+  apiV2BaseUrl:
+    process.env.TEST_API_V2_BASE_URL || 'http://apiv2.localhost/api',
 
   unmodded_email: process.env.TEST_EMAIL_UNMODDED || 'test@test.com',
   unmodded_password: process.env.TEST_EMAIL_UNMODDED_PASSWORD || 'freegle',

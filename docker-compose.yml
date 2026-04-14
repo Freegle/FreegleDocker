@@ -329,7 +329,7 @@ services:
           - tusd.localhost
     ports:
       - "${PORT_TUSD:-1080}:8080"
-    command: -hooks-http=http://freegle-apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/ -cors-allow-headers=baggage,sentry-trace
+    command: -hooks-http=http://apiv1:80/api/image -hooks-enabled-events=pre-create,post-finish -base-path=/tus/ -cors-allow-headers=baggage,sentry-trace
     depends_on:
       reverse-proxy:
         condition: service_healthy
@@ -531,7 +531,7 @@ services:
       - SPAMD_HOST=spamassassin-app
       - SPAMD_PORT=783
       - SMTP_HOST=mailpit
-      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - TUS_UPLOADER=http://tusd:8080/tus
       - SMTP_PORT=1025
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
@@ -624,7 +624,7 @@ services:
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
       - LOKI_ENABLED=false
-      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - TUS_UPLOADER=http://tusd:8080/tus
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
     volumes:
       - geoip_data:/var/lib/GeoIP
@@ -678,7 +678,7 @@ services:
       - MYSQL_USER=root
       - MYSQL_PASSWORD=${MYSQL_PRODUCTION_ROOT_PASSWORD:-iznik}
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - TUS_UPLOADER=http://tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
@@ -750,7 +750,7 @@ services:
       - MYSQL_USER=${LIVE_DB_USER:-root}
       - MYSQL_PASSWORD=${LIVE_DB_PASSWORD:-}
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
-      - TUS_UPLOADER=http://freegle-tusd:8080/tus
+      - TUS_UPLOADER=http://tusd:8080/tus
       - PARTNER_KEY_FILE=/run/secrets/PARTNER_KEY
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
@@ -823,8 +823,8 @@ services:
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
       - USER_SITE=http://freegle-dev-local.localhost:${PORT_FREEGLE_DEV_LOCAL:-3002}
-      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
-      - TUSD_URL=http://freegle-tusd:8080
+      - IMAGE_BASE_URL=http://tusd:8080/tus
+      - TUSD_URL=http://tusd:8080
       - NITRO_PRESET=node-server
       - NUXT_NITRO_PRERENDER_ROUTES=false
       - NUXT_DEV_MODE=true
@@ -947,8 +947,8 @@ services:
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
       - USER_SITE=http://freegle-prod-local.localhost:${PORT_FREEGLE_PROD_LOCAL:-3012}
-      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
-      - TUSD_URL=http://freegle-tusd:8080
+      - IMAGE_BASE_URL=http://tusd:8080/tus
+      - TUSD_URL=http://tusd:8080
       - NITRO_PRESET=node-server
       - NUXT_NITRO_PRERENDER_ROUTES=false
       - NUXT_DEV_MODE=false
@@ -1011,8 +1011,8 @@ services:
       - IZNIK_API_V2=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
-      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
-      - TUSD_URL=http://freegle-tusd:8080
+      - IMAGE_BASE_URL=http://tusd:8080/tus
+      - TUSD_URL=http://tusd:8080
       - USER_SITE=http://modtools-dev-local.localhost:${PORT_MODTOOLS_DEV_LOCAL:-3003}
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
@@ -1134,8 +1134,8 @@ services:
       - IZNIK_API_V2=${PROD_MT_API_V2:-http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api}
       - IMAGE_DELIVERY=http://delivery.localhost:${PORT_TRAEFIK_HTTP:-80}
       - TUS_UPLOADER=http://tusd.localhost:${PORT_TRAEFIK_HTTP:-80}/tus/
-      - IMAGE_BASE_URL=http://freegle-tusd:8080/tus
-      - TUSD_URL=http://freegle-tusd:8080
+      - IMAGE_BASE_URL=http://tusd:8080/tus
+      - TUSD_URL=http://tusd:8080
       - USER_SITE=http://modtools-prod-local.localhost:${PORT_MODTOOLS_PROD_LOCAL:-3013}
       - OSM_TILE=https://tiles.ilovefreegle.org/tile/{z}/{x}/{y}.png
       - NITRO_PRESET=node-server
@@ -1181,14 +1181,17 @@ services:
       - ./iznik-nuxt3:/app/src:ro
       - ./iznik-nuxt3:/host-playwright-config:ro
     environment:
-      - TEST_BASE_URL=http://freegle-prod-local.localhost
-      - TEST_MODTOOLS_BASE_URL=http://modtools-prod-local.localhost
+      - TEST_BASE_URL=http://freegle-prod-local.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TEST_MODTOOLS_BASE_URL=http://modtools-prod-local.localhost:${PORT_TRAEFIK_HTTP:-80}
+      - TEST_API_V2_BASE_URL=http://apiv2.localhost:${PORT_TRAEFIK_HTTP:-80}/api
       - NODE_ENV=test
       - NODE_OPTIONS=--max-old-space-size=8192
       - CI=false
       - PW_WORKERS=${PW_WORKERS:-11}
       - ENABLE_MONOCART_REPORTER=true
       - COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN:-}
+      - STATUS_API_URL=http://localhost:${PORT_STATUS:-8081}
+      - SELF_HOSTED_RUNNER=${SELF_HOSTED_RUNNER:-}
     depends_on:
       freegle-prod-local:
         condition: service_started
@@ -1537,7 +1540,7 @@ services:
       - "${PORT_MCP_SANITIZER:-8084}:8080"
     environment:
       - PORT=8080
-      - PSEUDONYMIZER_URL=http://freegle-mcp-pseudonymizer:8080
+      - PSEUDONYMIZER_URL=http://mcp-pseudonymizer:8080
     depends_on:
       mcp-pseudonymizer:
         condition: service_healthy
@@ -1566,7 +1569,7 @@ services:
       - default
     environment:
       - PORT=8080
-      - PSEUDONYMIZER_URL=http://freegle-mcp-pseudonymizer:8080
+      - PSEUDONYMIZER_URL=http://mcp-pseudonymizer:8080
     depends_on:
       mcp-pseudonymizer:
         condition: service_healthy
@@ -1597,7 +1600,7 @@ services:
       - DATA_DIR=/data
       - AUDIT_LOG_DIR=/var/log/mcp-audit
       # Database access for pseudonymized SQL queries
-      - DB_HOST=freegle-percona
+      - DB_HOST=percona
       - DB_PORT=3306
       - DB_USER=root
       - DB_PASSWORD=iznik

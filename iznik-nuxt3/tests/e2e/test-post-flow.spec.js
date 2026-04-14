@@ -156,7 +156,7 @@ test.describe('Post flow tests', () => {
     // Start waiting for network response before clicking send - note no await yet
     const sendMessageResponse = page.waitForResponse(
       async (response) =>
-        response.url().startsWith('http://apiv2.localhost/api/chat') &&
+        response.url().includes('/api/chat') &&
         response.status() === 200 &&
         response.request().method() === 'POST' &&
         (await response.request().postDataJSON()).message === replyMessage
