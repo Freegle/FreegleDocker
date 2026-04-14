@@ -3758,6 +3758,37 @@ func TestPostMessageOutcomeNoHappiness(t *testing.T) {
 	assert.Equal(t, "Taken", dbOutcome)
 }
 
+func TestPostMessageOutcomeHappyNoComment(t *testing.T) {
+	// Rating without comment should store NULL comments, not empty string.
+	// This ensures the feedback badge only counts outcomes with real comments.
+	prefix := uniquePrefix("msgw_out_nocomm")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" offer item", 52.5, -1.8)
+
+	body := map[string]interface{}{
+		"id":        msgID,
+		"action":    "Outcome",
+		"outcome":   "Taken",
+		"happiness": "Happy",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?jwt=%s", token)
+	req := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// comments should be NULL, not empty string.
+	var dbComments *string
+	db.Raw("SELECT comments FROM messages_outcomes WHERE msgid = ?", msgID).Scan(&dbComments)
+	assert.Nil(t, dbComments, "comments should be NULL when no comment provided")
+}
+
 func TestPostMessageEmptyBody(t *testing.T) {
 	prefix := uniquePrefix("msgw_empty")
 	userID := CreateTestUser(t, prefix+"_user", "User")

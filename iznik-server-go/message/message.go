@@ -3036,9 +3036,9 @@ func handleOutcome(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	if req.Happiness != nil {
 		happiness = *req.Happiness
 	}
-	comment := ""
-	if req.Comment != nil {
-		comment = *req.Comment
+	var comment *string
+	if req.Comment != nil && *req.Comment != "" {
+		comment = req.Comment
 	}
 
 	if happiness != "" {
