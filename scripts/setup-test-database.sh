@@ -30,6 +30,12 @@ for container in freegle-apiv1 freegle-percona freegle-batch; do
 done
 
 # 1. Create database and run Laravel migrations (single source of truth)
+# On self-hosted runner, drop and recreate the database to clear stale test data
+# from previous CI runs. Cloud CI always starts fresh.
+if [ "${SELF_HOSTED_RUNNER:-}" = "true" ]; then
+  echo "Self-hosted runner: dropping iznik database to ensure clean state..."
+  docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik -e 'DROP DATABASE IF EXISTS iznik;'"
+fi
 echo "Creating iznik database and running Laravel migrations..."
 docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik -e 'CREATE DATABASE IF NOT EXISTS iznik;'"
 docker exec freegle-batch php artisan migrate --force --no-interaction 2>&1
