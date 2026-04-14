@@ -187,7 +187,7 @@
                   >
                 </b-button>
                 <SpinButton
-                  v-if="message.groups[0].collection === 'Approved'"
+                  v-if="contextGroup?.collection === 'Approved'"
                   class="mt-2"
                   variant="white"
                   icon-name="reply"
@@ -247,6 +247,7 @@
                   </p>
                   <ModMessageButton
                     :messageid="message.id"
+                    :groupid="groupid"
                     variant="warning"
                     icon="play"
                     release
@@ -418,7 +419,7 @@
                 :message="message"
                 :userid="fromUserId"
                 modinfo
-                :groupid="message.groups[0].groupid"
+                :groupid="groupid"
               />
               <div v-else-if="fromUserId && !fromUser">
                 <Spinner :size="20" />
@@ -516,7 +517,7 @@
             <ModMemberActions
               v-if="showActions && message.groups && message.groups.length"
               :userid="fromUserId"
-              :groupid="message.groups[0].groupid"
+              :groupid="groupid"
               @commentadded="updateComments"
             />
           </b-col>
@@ -526,14 +527,14 @@
           class="mt-1"
         >
           <b-alert
-            v-if="message.groups[0].collection === 'Pending'"
+            v-if="contextGroup?.collection === 'Pending'"
             variant="info"
             show
           >
             <v-icon icon="info-circle" /> Post now in <em>Pending</em>.
           </b-alert>
           <b-alert
-            v-if="message.groups[0].collection === 'Approved'"
+            v-if="contextGroup?.collection === 'Approved'"
             variant="info"
             show
           >
@@ -577,6 +578,7 @@
             !editing
           "
           :messageid="message.id"
+          :groupid="groupid"
           :modconfigid="configid"
           :editreview="editreview"
           :cantpost="membership && membership.ourpostingstatus === 'PROHIBITED'"
@@ -676,6 +678,11 @@ const props = defineProps({
     required: false,
     default: null,
   },
+  contextGroupid: {
+    type: Number,
+    required: false,
+    default: null,
+  },
 })
 
 const emit = defineEmits(['destroy'])
@@ -751,23 +758,25 @@ const historyGroups = reactive({})
 const editmessage = ref(false)
 
 const groupid = computed(() => {
-  // moved from mixins/keywords
-  let ret = 0
+  // Use contextual groupid prop if provided (multi-group support),
+  // otherwise fall back to first group.
+  if (props.contextGroupid) return props.contextGroupid
 
   if (message.value && message.value.groups && message.value.groups.length) {
-    ret = message.value.groups[0].groupid
+    return message.value.groups[0].groupid
   }
-  return ret
+  return 0
 })
 
 const messageGroup = computed(() => {
-  let ret = null
+  return groupid.value || null
+})
 
-  if (message.value && message.value.groups && message.value.groups.length) {
-    ret = message.value.groups[0].groupid
-  }
-
-  return ret
+// Get the group info for the contextual group (multi-group support).
+const contextGroup = computed(() => {
+  if (!message.value?.groups?.length) return null
+  const gid = parseInt(groupid.value)
+  return message.value.groups.find((g) => parseInt(g.groupid) === gid) || message.value.groups[0]
 })
 
 const messageHistory = computed(() => {
