@@ -239,7 +239,14 @@ commands:
             for attempt in $(seq 1 $MAX_RETRIES); do
               echo "Build attempt $attempt of $MAX_RETRIES..."
 
-              if docker-compose build --no-cache \
+              # Self-hosted runner has persistent Docker layer cache — use it
+              CACHE_FLAG="--no-cache"
+              if [ "${SELF_HOSTED_RUNNER:-}" = "true" ]; then
+                CACHE_FLAG=""
+                echo "Self-hosted runner: using Docker layer cache"
+              fi
+
+              if docker-compose build $CACHE_FLAG \
                 apiv1 apiv1-phpunit apiv2 \
                 freegle-prod-local modtools-prod-local \
                 playwright status batch; then
@@ -2390,8 +2397,9 @@ jobs:
               echo "export SKIP_COVERAGE=true" >> $BASH_ENV
               exit 0
             fi
-            npm install -g coveralls 2>/dev/null
-            if [ -d ~/project/.git ]; then echo "export COV_ROOT=~/project" >> $BASH_ENV
+            npm install -g coveralls 2>/dev/null || sudo npm install -g coveralls 2>/dev/null || true
+            if [ -d ./.git ]; then echo "export COV_ROOT=$(pwd)" >> $BASH_ENV
+            elif [ -d ~/project/.git ]; then echo "export COV_ROOT=~/project" >> $BASH_ENV
             elif [ -d ~/FreegleDocker/.git ]; then echo "export COV_ROOT=~/FreegleDocker" >> $BASH_ENV
             else echo "export SKIP_COVERAGE=true" >> $BASH_ENV; fi
             echo "export COVERALLS_SERVICE_NAME=circleci" >> $BASH_ENV
