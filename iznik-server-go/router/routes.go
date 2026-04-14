@@ -1350,35 +1350,6 @@ func SetupRoutes(app *fiber.App) {
 		// @Success 200
 		rg.Post("/stripeipn", donations.StripeIPN)
 
-		// PayPal IPN — called by PayPal when donations are received.
-		// @Router /donateipn [post]
-		// @Summary Handle PayPal IPN
-		// @Description Processes PayPal donation notifications, records donations, handles gift aid
-		// @Tags donations
-		// @Accept application/x-www-form-urlencoded
-		// @Produce json
-		// @Success 200
-		rg.Post("/donateipn", donations.PayPalIPN)
-
-		// Discourse SSO — validates moderator session and redirects to Discourse with signed SSO response.
-		// @Router /discourse_sso [get]
-		// @Summary Discourse SSO login
-		// @Description Validates moderator session and redirects to Discourse with signed SSO response
-		// @Tags sso
-		// @Param sso query string true "Base64-encoded SSO payload"
-		// @Param sig query string true "HMAC-SHA256 signature"
-		// @Success 302
-		rg.Get("/discourse_sso", sso.DiscourseSSO)
-
-		// Forum SSO — validates user session and redirects to Forum with signed SSO response.
-		// @Router /forum_sso [get]
-		// @Summary Forum SSO login
-		// @Description Validates user session and redirects to Forum with signed SSO response
-		// @Tags sso
-		// @Param sso query string true "Base64-encoded SSO payload"
-		// @Param sig query string true "HMAC-SHA256 signature"
-		// @Success 302
-		rg.Get("/forum_sso", sso.ForumSSO)
 
 		// Gift Aid
 		// @Router /giftaid [get]
@@ -1740,6 +1711,28 @@ func SetupRoutes(app *fiber.App) {
 	// @Param name query string false "Shortlink name"
 	// @Success 302
 	app.Get("/shortlink", shortlink.RedirectShortlink)
+
+	// PayPal IPN — called by PayPal when donations are received.
+	// V1 equivalent: http/donateipn.php
+	// @Router /donateipn [post]
+	// @Summary Handle PayPal IPN
+	// @Description Processes PayPal donation notifications, records donations, handles gift aid
+	// @Tags donations
+	// @Accept application/x-www-form-urlencoded
+	// @Produce json
+	// @Success 200
+	app.Post("/donateipn", donations.PayPalIPN)
+
+	// Discourse SSO — validates moderator session and redirects to Discourse with signed SSO response.
+	// V1 equivalent: http/discourse_sso.php
+	// @Router /discourse_sso [get]
+	// @Summary Discourse SSO login
+	// @Description Validates moderator session and redirects to Discourse with signed SSO response
+	// @Tags sso
+	// @Param sso query string true "Base64-encoded SSO payload"
+	// @Param sig query string true "HMAC-SHA256 signature"
+	// @Success 302
+	app.Get("/discourse_sso", sso.DiscourseSSO)
 
 	// These endpoints support AMP for Email dynamic content and inline actions.
 	// See: https://amp.dev/documentation/guides-and-tutorials/learn/cors-in-email

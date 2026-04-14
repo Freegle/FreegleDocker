@@ -59,7 +59,7 @@ func TestDiscourseSSO_ValidFlow(t *testing.T) {
 	// Build SSO request.
 	ssoPayload, sig := makeDiscourseSSO("test_nonce_"+prefix, testDiscourseSecret)
 
-	req := httptest.NewRequest("GET", fmt.Sprintf("/api/discourse_sso?sso=%s&sig=%s",
+	req := httptest.NewRequest("GET", fmt.Sprintf("/discourse_sso?sso=%s&sig=%s",
 		url.QueryEscape(ssoPayload), url.QueryEscape(sig)), nil)
 	req.Header.Set("Cookie", "Iznik-Discourse-SSO="+url.QueryEscape(string(cookieData)))
 
@@ -92,7 +92,7 @@ func TestDiscourseSSO_InvalidSignature(t *testing.T) {
 	ssoPayload, _ := makeDiscourseSSO("test_nonce", testDiscourseSecret)
 
 	// Use a wrong signature.
-	req := httptest.NewRequest("GET", fmt.Sprintf("/api/discourse_sso?sso=%s&sig=invalidsig",
+	req := httptest.NewRequest("GET", fmt.Sprintf("/discourse_sso?sso=%s&sig=invalidsig",
 		url.QueryEscape(ssoPayload)), nil)
 
 	resp, err := getApp().Test(req)
@@ -106,7 +106,7 @@ func TestDiscourseSSO_MissingCookie(t *testing.T) {
 
 	ssoPayload, sig := makeDiscourseSSO("test_nonce", testDiscourseSecret)
 
-	req := httptest.NewRequest("GET", fmt.Sprintf("/api/discourse_sso?sso=%s&sig=%s",
+	req := httptest.NewRequest("GET", fmt.Sprintf("/discourse_sso?sso=%s&sig=%s",
 		url.QueryEscape(ssoPayload), url.QueryEscape(sig)), nil)
 
 	resp, err := getApp().Test(req)

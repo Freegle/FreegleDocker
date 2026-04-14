@@ -37,7 +37,7 @@ func TestPayPalIPN_ValidCharge(t *testing.T) {
 		"payment_date": "2026-01-15 10:30:00",
 	})
 
-	req := httptest.NewRequest("POST", "/api/donateipn", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/donateipn", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := getApp().Test(req)
 	assert.NoError(t, err)
@@ -93,7 +93,7 @@ func TestPayPalIPN_MatchByEmail(t *testing.T) {
 		"payment_date": "2026-01-15 10:30:00",
 	})
 
-	req := httptest.NewRequest("POST", "/api/donateipn", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/donateipn", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := getApp().Test(req)
 	assert.NoError(t, err)
@@ -123,7 +123,7 @@ func TestPayPalIPN_UnmatchedUser(t *testing.T) {
 		"payment_date": "2026-01-15 10:30:00",
 	})
 
-	req := httptest.NewRequest("POST", "/api/donateipn", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/donateipn", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := getApp().Test(req)
 	assert.NoError(t, err)
@@ -162,7 +162,7 @@ func TestPayPalIPN_ExcludedPayer(t *testing.T) {
 		"payment_date": "2026-01-15 10:30:00",
 	})
 
-	req := httptest.NewRequest("POST", "/api/donateipn", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/donateipn", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := getApp().Test(req)
 	assert.NoError(t, err)
@@ -201,7 +201,7 @@ func TestPayPalIPN_RecurringVsOneOff(t *testing.T) {
 		"payment_date": "2026-01-15 10:30:00",
 	})
 
-	req := httptest.NewRequest("POST", "/api/donateipn", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/donateipn", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := getApp().Test(req)
 	assert.NoError(t, err)
@@ -231,7 +231,7 @@ func TestPayPalIPN_NoMcGross(t *testing.T) {
 		"txn_type":    "web_accept",
 	})
 
-	req := httptest.NewRequest("POST", "/api/donateipn", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/donateipn", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := getApp().Test(req)
 	assert.NoError(t, err)
