@@ -1423,12 +1423,22 @@ func handleApprove(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 		}
 	}
 
-	// Release any hold.
-	db.Exec("UPDATE messages SET heldby = NULL WHERE id = ?", req.ID)
+	// Release per-group hold.
+	db.Exec("UPDATE messages_groups SET heldby = NULL WHERE msgid = ? AND groupid = ?", req.ID, groupid)
 
-	// Mark as ham if it was flagged as spam.
+	// Check if still held on any group — if not, clear messages.heldby for backwards compat.
+	var stillHeldCount int64
+	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid = ? AND heldby IS NOT NULL", req.ID).Scan(&stillHeldCount)
+	if stillHeldCount == 0 {
+		db.Exec("UPDATE messages SET heldby = NULL WHERE id = ?", req.ID)
+	}
+
+	// Mark as ham if it was flagged as spam (check per-group first, fall back to messages table).
 	var spamtype *string
-	db.Raw("SELECT spamtype FROM messages WHERE id = ?", req.ID).Scan(&spamtype)
+	db.Raw("SELECT spamtype FROM messages_groups WHERE msgid = ? AND groupid = ? AND spamtype IS NOT NULL", req.ID, groupid).Scan(&spamtype)
+	if spamtype == nil {
+		db.Raw("SELECT spamtype FROM messages WHERE id = ?", req.ID).Scan(&spamtype)
+	}
 	if spamtype != nil && *spamtype != "" {
 		db.Exec("REPLACE INTO messages_spamham (msgid, spamham) VALUES (?, 'Ham')", req.ID)
 	}
@@ -1541,11 +1551,18 @@ func handleDeleteMessage(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	}
 	groupid := ctx.Groupid
 
-	if result := db.Exec("DELETE FROM messages_groups WHERE msgid = ?", req.ID); result.Error != nil {
-		log.Printf("Failed to delete messages_groups for message %d: %v", req.ID, result.Error)
+	// Per-group delete: remove only the specified group's row.
+	if result := db.Exec("DELETE FROM messages_groups WHERE msgid = ? AND groupid = ?", req.ID, groupid); result.Error != nil {
+		log.Printf("Failed to delete messages_groups for message %d group %d: %v", req.ID, groupid, result.Error)
 	}
-	if result := db.Exec("UPDATE messages SET deleted = NOW(), messageid = NULL WHERE id = ?", req.ID); result.Error != nil {
-		log.Printf("Failed to soft-delete message %d: %v", req.ID, result.Error)
+
+	// If no groups remain, soft-delete the message itself.
+	var remainingGroups int64
+	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid = ?", req.ID).Scan(&remainingGroups)
+	if remainingGroups == 0 {
+		if result := db.Exec("UPDATE messages SET deleted = NOW(), messageid = NULL WHERE id = ?", req.ID); result.Error != nil {
+			log.Printf("Failed to soft-delete message %d: %v", req.ID, result.Error)
+		}
 	}
 
 	subject := ""
@@ -1581,22 +1598,35 @@ func handleDeleteMessage(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 func handleSpam(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	db := database.DBConn
 
-	if !isModForMessage(db, myid, req.ID) {
+	ctx := getMessageModContext(db, myid, req.ID)
+	if ctx == nil {
 		return fiber.NewError(fiber.StatusForbidden, "Not a moderator for this message")
+	}
+
+	// Determine which group to spam on.
+	groupid := ctx.Groupid
+	if req.Groupid != nil && *req.Groupid > 0 {
+		groupid = *req.Groupid
 	}
 
 	// Record for spam training.
 	db.Exec("REPLACE INTO messages_spamham (msgid, spamham) VALUES (?, ?)", req.ID, utils.COLLECTION_SPAM)
 
-	// Delete the message (spam action always deletes).
-	db.Exec("UPDATE messages_groups SET deleted = 1 WHERE msgid = ?", req.ID)
-	db.Exec("UPDATE messages SET deleted = NOW() WHERE id = ?", req.ID)
+	// Per-group spam: soft-delete only the specified group's row.
+	db.Exec("UPDATE messages_groups SET deleted = 1 WHERE msgid = ? AND groupid = ?", req.ID, groupid)
 
-	// Remove from freebiealerts.app — post is no longer available.
-	if err := queue.QueueTask(queue.TaskFreebieAlertsRemove, map[string]interface{}{
-		"msgid": req.ID,
-	}); err != nil {
-		log.Printf("Failed to queue freebie alerts remove for message %d: %v", req.ID, err)
+	// If no non-deleted groups remain, soft-delete the message itself.
+	var remainingGroups int64
+	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid = ? AND deleted = 0", req.ID).Scan(&remainingGroups)
+	if remainingGroups == 0 {
+		db.Exec("UPDATE messages SET deleted = NOW() WHERE id = ?", req.ID)
+
+		// Remove from freebiealerts.app — post is no longer available on any group.
+		if err := queue.QueueTask(queue.TaskFreebieAlertsRemove, map[string]interface{}{
+			"msgid": req.ID,
+		}); err != nil {
+			log.Printf("Failed to queue freebie alerts remove for message %d: %v", req.ID, err)
+		}
 	}
 
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
@@ -1611,6 +1641,16 @@ func handleHold(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 		return fiber.NewError(fiber.StatusForbidden, "Not a moderator for this message")
 	}
 
+	// Determine which group to hold on.
+	groupid := ctx.Groupid
+	if req.Groupid != nil && *req.Groupid > 0 {
+		groupid = *req.Groupid
+	}
+
+	// Per-group hold: set heldby on the specific messages_groups row.
+	db.Exec("UPDATE messages_groups SET heldby = ? WHERE msgid = ? AND groupid = ?", myid, req.ID, groupid)
+
+	// Also update messages.heldby for backwards compatibility during migration.
 	db.Exec("UPDATE messages SET heldby = ? WHERE id = ?", myid, req.ID)
 
 	logAndNotifyMods(db, flog.LOG_SUBTYPE_HOLD, ctx, myid, req.ID, 0, "")
@@ -1627,17 +1667,21 @@ func handleBackToPending(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 		return fiber.NewError(fiber.StatusForbidden, "Not a moderator for this message")
 	}
 
-	// Hold the message for re-review (hold before moving to Pending).
+	// Determine which group to act on.
+	groupid := ctx.Groupid
+	if req.Groupid != nil && *req.Groupid > 0 {
+		groupid = *req.Groupid
+	}
+
+	// Per-group hold for re-review.
+	db.Exec("UPDATE messages_groups SET heldby = ? WHERE msgid = ? AND groupid = ?", myid, req.ID, groupid)
+
+	// Also update messages.heldby for backwards compatibility.
 	db.Exec("UPDATE messages SET heldby = ? WHERE id = ?", myid, req.ID)
 
-	// Move from Approved back to Pending. If groupid is specified, only for that group (cross-post support).
-	if req.Groupid != nil && *req.Groupid > 0 {
-		db.Exec("UPDATE messages_groups SET collection = ?, approvedby = NULL, approvedat = NULL WHERE msgid = ? AND groupid = ? AND collection = ?",
-			utils.COLLECTION_PENDING, req.ID, *req.Groupid, utils.COLLECTION_APPROVED)
-	} else {
-		db.Exec("UPDATE messages_groups SET collection = ?, approvedby = NULL, approvedat = NULL WHERE msgid = ? AND collection = ?",
-			utils.COLLECTION_PENDING, req.ID, utils.COLLECTION_APPROVED)
-	}
+	// Move from Approved back to Pending for the specified group.
+	db.Exec("UPDATE messages_groups SET collection = ?, approvedby = NULL, approvedat = NULL WHERE msgid = ? AND groupid = ? AND collection = ?",
+		utils.COLLECTION_PENDING, req.ID, groupid, utils.COLLECTION_APPROVED)
 
 	// Log and notify moderators.
 	logAndNotifyMods(db, flog.LOG_SUBTYPE_HOLD, ctx, myid, req.ID, 0, "Back to pending")
@@ -1654,7 +1698,21 @@ func handleRelease(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 		return fiber.NewError(fiber.StatusForbidden, "Not a moderator for this message")
 	}
 
-	db.Exec("UPDATE messages SET heldby = NULL WHERE id = ?", req.ID)
+	// Determine which group to release on.
+	groupid := ctx.Groupid
+	if req.Groupid != nil && *req.Groupid > 0 {
+		groupid = *req.Groupid
+	}
+
+	// Per-group release.
+	db.Exec("UPDATE messages_groups SET heldby = NULL WHERE msgid = ? AND groupid = ?", req.ID, groupid)
+
+	// Check if still held on any group — if not, clear messages.heldby for backwards compat.
+	var stillHeldCount int64
+	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid = ? AND heldby IS NOT NULL", req.ID).Scan(&stillHeldCount)
+	if stillHeldCount == 0 {
+		db.Exec("UPDATE messages SET heldby = NULL WHERE id = ?", req.ID)
+	}
 
 	logAndNotifyMods(db, flog.LOG_SUBTYPE_RELEASE, ctx, myid, req.ID, 0, "")
 

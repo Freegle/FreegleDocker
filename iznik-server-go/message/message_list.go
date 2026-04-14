@@ -21,6 +21,7 @@ type MessageGroupInfo struct {
 	Groupid    uint64    `json:"groupid"`
 	Collection string    `json:"collection"`
 	Arrival    time.Time `json:"arrival"`
+	Heldby     *uint64   `json:"heldby,omitempty"`
 }
 
 type PaginationContext struct {
@@ -245,7 +246,7 @@ func ListMessages(c *fiber.Ctx) error {
 
 			go func() {
 				defer wg.Done()
-				db.Raw("SELECT groupid, collection, arrival FROM messages_groups WHERE msgid = ? AND deleted = 0", msgID).Scan(&groups)
+				db.Raw("SELECT groupid, collection, arrival, heldby FROM messages_groups WHERE msgid = ? AND deleted = 0", msgID).Scan(&groups)
 			}()
 
 			go func() {
