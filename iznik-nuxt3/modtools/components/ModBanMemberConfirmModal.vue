@@ -8,9 +8,6 @@
       no-stacking
     >
       <template #default>
-        <NoticeMessage v-if="homefail" variant="danger" class="mb-2">
-          TO DO: Get code working to check if this group is user's home group
-        </NoticeMessage>
         <NoticeMessage v-if="homeGroup" variant="danger" class="mb-2">
           <p>
             You are banning this member on their home group. This should be an
@@ -70,7 +67,6 @@ const modGroupStore = useModGroupStore()
 const userStore = useUserStore()
 const { modal, show, hide } = useOurModal()
 
-const homefail = ref(false)
 const homeGroup = ref(false)
 const reason = ref(null)
 
@@ -85,22 +81,16 @@ function ban() {
 }
 
 onMounted(() => {
-  const area = group.value.poly || group.value.polyofficial
+  const area = group.value?.poly || group.value?.polyofficial
   if (area) {
-    console.log('Area', area)
-
     try {
       const wkt = new Wkt.Wkt()
-      console.log('Area2')
       wkt.read(area)
-      console.log('Area3', wkt.type)
       const obj = wkt.toObject()
-      console.log('Area4')
       const bounds = obj.getBounds()
-      console.log('Bounds', bounds, user.value)
 
-      const lat = user.value.settings?.mylocation?.lat
-      const lng = user.value.settings?.mylocation?.lng
+      const lat = user.value?.settings?.mylocation?.lat
+      const lng = user.value?.settings?.mylocation?.lng
 
       if (
         (lat || lng) &&
@@ -109,8 +99,7 @@ onMounted(() => {
         homeGroup.value = true
       }
     } catch (e) {
-      homefail.value = true
-      console.error(e)
+      // If geometry parsing fails, fall through to generic warning.
     }
   }
 })
