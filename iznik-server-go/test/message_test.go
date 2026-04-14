@@ -266,7 +266,7 @@ func TestExpiredMessageWithRecentChatKeptActive(t *testing.T) {
 	// Create a chat room between the two users and a recent chat message
 	// referencing the old message.
 	var chatID uint64
-	db.Raw("INSERT INTO chat_rooms (user1, user2, chattype, latestmessage) VALUES (?, ?, 'User2User', NOW())", userID, otherID)
+	db.Exec("INSERT INTO chat_rooms (user1, user2, chattype, latestmessage) VALUES (?, ?, 'User2User', NOW())", userID, otherID)
 	db.Raw("SELECT id FROM chat_rooms WHERE user1 = ? AND user2 = ? AND chattype = 'User2User'", userID, otherID).Scan(&chatID)
 	db.Exec("INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, date, processingsuccessful, reviewrequired, reviewrejected) VALUES (?, ?, 'Is this still available?', 'Default', ?, NOW(), 1, 0, 0)",
 		chatID, otherID, msgID)
