@@ -650,7 +650,7 @@ HAVING logincount > 0
     }
 
     private function getHappinessFilter() {
-        return " AND messages_outcomes.comments IS NOT NULL
+        return " AND messages_outcomes.comments IS NOT NULL AND messages_outcomes.comments != ''
               AND messages_outcomes.comments != 'Sorry, this is no longer available.'
               AND messages_outcomes.comments != 'Thanks, this has now been taken.'
               AND messages_outcomes.comments != 'Thanks, I\'m no longer looking for this.' 

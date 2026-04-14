@@ -307,7 +307,7 @@ func GetGroupWork(c *fiber.Ctx) error {
 			"INNER JOIN messages_groups mg ON mg.msgid = mo.msgid "+
 			"WHERE mo.timestamp >= ? AND mg.arrival >= ? "+
 			"AND mg.groupid IN ? "+
-			"AND mo.comments IS NOT NULL "+
+			"AND mo.comments IS NOT NULL AND mo.comments != '' "+
 			"AND mo.comments != 'Sorry, this is no longer available.' "+
 			"AND mo.comments != 'Thanks, this has now been taken.' "+
 			"AND mo.comments != 'Thanks, I''m no longer looking for this.' "+
