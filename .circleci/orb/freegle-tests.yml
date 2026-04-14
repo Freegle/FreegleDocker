@@ -24,7 +24,7 @@ executors:
       DOCKER_BUILDKIT: 1
       COMPOSE_DOCKER_CLI_BUILD: 1
       COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
-      COMPOSE_PROJECT_NAME: freegle
+      COMPOSE_PROJECT_NAME: freegle-ci
       SELF_HOSTED_RUNNER: "true"
       # Port offsets (+9000) to avoid conflicts with any local dev stack
       PORT_TRAEFIK_HTTP: 9080
@@ -284,14 +284,14 @@ commands:
 
             echo "Waiting for percona to be healthy..."
             for i in $(seq 1 60); do
-              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-percona 2>/dev/null || echo "unknown")
+              health=$(docker inspect --format='{{.State.Health.Status}}' ${COMPOSE_PROJECT_NAME:-freegle}-percona 2>/dev/null || echo "unknown")
               if [ "$health" = "healthy" ]; then
                 echo "✅ Percona is healthy"
                 break
               fi
               if [ "$i" -eq 60 ]; then
                 echo "❌ Percona did not become healthy within 2 minutes"
-                docker logs freegle-percona --tail 20 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-percona --tail 20 2>&1 || true
                 exit 1
               fi
               sleep 2
@@ -299,14 +299,14 @@ commands:
 
             echo "Waiting for batch container to be healthy (running migrations)..."
             for i in $(seq 1 120); do
-              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "unknown")
+              health=$(docker inspect --format='{{.State.Health.Status}}' ${COMPOSE_PROJECT_NAME:-freegle}-batch 2>/dev/null || echo "unknown")
               if [ "$health" = "healthy" ]; then
                 echo "✅ Batch is healthy (migrations complete)"
                 break
               fi
               if [ "$i" -eq 120 ]; then
                 echo "❌ Batch did not become healthy within 4 minutes"
-                docker logs freegle-batch --tail 30 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-batch --tail 30 2>&1 || true
                 exit 1
               fi
               sleep 2
@@ -341,7 +341,7 @@ commands:
             echo ""
             echo "=== Verifying container names ==="
             # Containers needed for CI tests (dev containers excluded as they're not used in tests)
-            ALL_CONTAINERS="freegle-traefik freegle-percona freegle-postgres freegle-phpmyadmin freegle-mailpit freegle-beanstalkd freegle-spamassassin freegle-redis freegle-delivery freegle-tusd freegle-status freegle-host-scripts freegle-apiv1 freegle-apiv1-phpunit freegle-apiv2 freegle-batch freegle-prod-local freegle-modtools-prod-local freegle-playwright"
+            ALL_CONTAINERS="${COMPOSE_PROJECT_NAME:-freegle}-traefik ${COMPOSE_PROJECT_NAME:-freegle}-percona ${COMPOSE_PROJECT_NAME:-freegle}-postgres ${COMPOSE_PROJECT_NAME:-freegle}-phpmyadmin ${COMPOSE_PROJECT_NAME:-freegle}-mailpit ${COMPOSE_PROJECT_NAME:-freegle}-beanstalkd ${COMPOSE_PROJECT_NAME:-freegle}-spamassassin ${COMPOSE_PROJECT_NAME:-freegle}-redis ${COMPOSE_PROJECT_NAME:-freegle}-delivery ${COMPOSE_PROJECT_NAME:-freegle}-tusd ${COMPOSE_PROJECT_NAME:-freegle}-status ${COMPOSE_PROJECT_NAME:-freegle}-host-scripts ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit ${COMPOSE_PROJECT_NAME:-freegle}-apiv2 ${COMPOSE_PROJECT_NAME:-freegle}-batch ${COMPOSE_PROJECT_NAME:-freegle}-prod-local ${COMPOSE_PROJECT_NAME:-freegle}-modtools-prod-local ${COMPOSE_PROJECT_NAME:-freegle}-playwright"
             MISSING=""
             for container in $ALL_CONTAINERS; do
               if docker inspect "$container" >/dev/null 2>&1; then
@@ -409,14 +409,14 @@ commands:
 
             echo "Waiting for percona to be healthy..."
             for i in $(seq 1 60); do
-              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-percona 2>/dev/null || echo "unknown")
+              health=$(docker inspect --format='{{.State.Health.Status}}' ${COMPOSE_PROJECT_NAME:-freegle}-percona 2>/dev/null || echo "unknown")
               if [ "$health" = "healthy" ]; then
                 echo "✅ Percona is healthy"
                 break
               fi
               if [ "$i" -eq 60 ]; then
                 echo "❌ Percona did not become healthy within 2 minutes"
-                docker logs freegle-percona --tail 20 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-percona --tail 20 2>&1 || true
                 exit 1
               fi
               sleep 2
@@ -424,14 +424,14 @@ commands:
 
             echo "Waiting for batch container to be healthy (migrations)..."
             for i in $(seq 1 120); do
-              health=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "unknown")
+              health=$(docker inspect --format='{{.State.Health.Status}}' ${COMPOSE_PROJECT_NAME:-freegle}-batch 2>/dev/null || echo "unknown")
               if [ "$health" = "healthy" ]; then
                 echo "✅ Batch is healthy (migrations complete)"
                 break
               fi
               if [ "$i" -eq 120 ]; then
                 echo "❌ Batch did not become healthy within 4 minutes"
-                docker logs freegle-batch --tail 30 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-batch --tail 30 2>&1 || true
                 exit 1
               fi
               sleep 2
@@ -487,16 +487,16 @@ commands:
                 docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null || true
                 echo ""
                 echo "=== Status container logs (last 30) ==="
-                docker logs freegle-status --tail 30 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-status --tail 30 2>&1 || true
                 echo ""
                 echo "=== API v1 container logs (last 30) ==="
-                docker logs freegle-apiv1-phpunit --tail 30 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit --tail 30 2>&1 || true
                 echo ""
                 echo "=== API v2 container logs (last 30) ==="
-                docker logs freegle-apiv2 --tail 30 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-apiv2 --tail 30 2>&1 || true
                 echo ""
                 echo "=== Batch container logs (last 30) ==="
-                docker logs freegle-batch --tail 30 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-batch --tail 30 2>&1 || true
                 exit 1
               fi
 
@@ -556,17 +556,17 @@ commands:
                 echo "ModTools HTTP ready: $modtools_http_ready"
                 echo ""
                 echo "=== Freegle container logs ==="
-                docker logs freegle-prod-local --tail 50 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-prod-local --tail 50 2>&1 || true
                 echo ""
                 echo "=== ModTools container logs ==="
-                docker logs freegle-modtools-prod-local --tail 50 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-modtools-prod-local --tail 50 2>&1 || true
                 exit 1
               fi
 
               # Check Docker status first (to see if containers are running)
               health_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/status/all 2>/dev/null || echo '{}')
-              freegle_prod_status=$(echo "$health_response" | jq -r '.["freegle-prod-local"].status // "unknown"')
-              modtools_prod_status=$(echo "$health_response" | jq -r '.["freegle-modtools-prod-local"].status // "unknown"')
+              freegle_prod_status=$(echo "$health_response" | jq -r ".\"${COMPOSE_PROJECT_NAME:-freegle}-prod-local\".status // \"unknown\"")
+              modtools_prod_status=$(echo "$health_response" | jq -r ".\"${COMPOSE_PROJECT_NAME:-freegle}-modtools-prod-local\".status // \"unknown\"")
 
               # Also make actual HTTP requests to verify servers are responding
               # This is needed because Docker status is "running" during npm build
@@ -595,7 +595,7 @@ commands:
                 # Show container logs periodically to track build progress
                 if [ $((elapsed % 60)) -lt 15 ]; then
                   echo "--- FD Production container recent output ---"
-                  docker logs freegle-prod-local --tail 3 2>&1 || true
+                  docker logs ${COMPOSE_PROJECT_NAME:-freegle}-prod-local --tail 3 2>&1 || true
                 fi
 
                 sleep 15
@@ -683,7 +683,7 @@ commands:
             fi
 
             # Copy coverage file from container
-            if docker cp freegle-apiv2:/app/coverage.out iznik-server-go/coverage.out 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv2:/app/coverage.out iznik-server-go/coverage.out 2>/dev/null; then
               echo "✅ Found Go coverage file"
 
               # Install gcov2lcov
@@ -753,9 +753,9 @@ commands:
             # Copy to the dedicated PHPUnit test container since that's where tests run
             if [ -f ~/geoip-cache/GeoLite2-Country.mmdb ]; then
               echo "📍 Restoring GeoIP database from cache..."
-              docker exec freegle-apiv1-phpunit mkdir -p /var/lib/GeoIP
-              docker cp ~/geoip-cache/GeoLite2-Country.mmdb freegle-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-Country.mmdb
-              docker cp ~/geoip-cache/GeoLite2-City.mmdb freegle-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-City.mmdb 2>/dev/null || true
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit mkdir -p /var/lib/GeoIP
+              docker cp ~/geoip-cache/GeoLite2-Country.mmdb ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-Country.mmdb
+              docker cp ~/geoip-cache/GeoLite2-City.mmdb ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-City.mmdb 2>/dev/null || true
               echo "✅ GeoIP database restored from cache"
             else
               echo "⚠️ No GeoIP cache found - container will attempt download"
@@ -767,10 +767,10 @@ commands:
             # Database schema set up by setup-test-database step (Laravel migrations)
             # Just verify the database is accessible
             echo "Verifying database connection..."
-            docker exec freegle-apiv1 sh -c "mysql -h percona -u root -piznik -e 'SELECT 1 FROM iznik.groups LIMIT 1'" || {
+            docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 sh -c "mysql -h percona -u root -piznik -e 'SELECT 1 FROM iznik.groups LIMIT 1'" || {
               echo "Database not ready after setup-test-database - this should not happen"
-              echo "Check that freegle-batch migrations ran successfully"
-              docker logs freegle-batch --tail 30 2>&1 || true
+              echo "Check that ${COMPOSE_PROJECT_NAME:-freegle}-batch migrations ran successfully"
+              docker logs ${COMPOSE_PROJECT_NAME:-freegle}-batch --tail 30 2>&1 || true
               exit 1
             }
 
@@ -822,8 +822,8 @@ commands:
                 # Show the failure details from the PHPUnit debug log
                 echo ""
                 echo "Extracting failure details from PHPUnit output..."
-                # Use the dedicated PHPUnit test container (freegle-apiv1-phpunit)
-                docker exec freegle-apiv1-phpunit sh -c '
+                # Use the dedicated PHPUnit test container (${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit)
+                docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit sh -c '
                   if [ -f /tmp/phpunit-debug.log ]; then
                     echo "=== TEST FAILURES ==="
                     grep "##teamcity\[testFailed" /tmp/phpunit-debug.log | head -10 | while read -r line; do
@@ -859,10 +859,10 @@ commands:
 
             # Copy coverage file from container
             COVERAGE_FOUND=false
-            if docker cp freegle-apiv1-phpunit:/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
               COVERAGE_FOUND=true
               echo "✅ Found PHP coverage at /var/www/iznik/test/ut/php/clover.xml"
-            elif docker cp freegle-apiv1-phpunit:/tmp/phpunit-coverage.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+            elif docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/tmp/phpunit-coverage.xml /tmp/phpunit-clover.xml 2>/dev/null; then
               COVERAGE_FOUND=true
               echo "✅ Found PHP coverage at /tmp/phpunit-coverage.xml"
             fi
@@ -875,11 +875,11 @@ commands:
                 echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
                 npm install -g coveralls
-                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
+                docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
 
                 # Copy coverage file to container and upload
-                docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
-                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
+                docker cp /tmp/phpunit-clover.xml ${COMPOSE_PROJECT_NAME:-freegle}-apiv1:/var/www/iznik/clover.xml
+                docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
 
                 if [ $? -eq 0 ]; then
                   echo "✅ PHP coverage uploaded successfully"
@@ -899,10 +899,10 @@ commands:
           command: |
             # Copy GeoIP database from container for caching (if it exists)
             mkdir -p ~/geoip-cache
-            docker cp freegle-apiv1:/var/lib/GeoIP/GeoLite2-Country.mmdb ~/geoip-cache/GeoLite2-Country.mmdb 2>/dev/null && \
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1:/var/lib/GeoIP/GeoLite2-Country.mmdb ~/geoip-cache/GeoLite2-Country.mmdb 2>/dev/null && \
               echo "✅ GeoIP Country database saved for caching" || \
               echo "⚠️ GeoIP Country database not available to cache"
-            docker cp freegle-apiv1:/var/lib/GeoIP/GeoLite2-City.mmdb ~/geoip-cache/GeoLite2-City.mmdb 2>/dev/null && \
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1:/var/lib/GeoIP/GeoLite2-City.mmdb ~/geoip-cache/GeoLite2-City.mmdb 2>/dev/null && \
               echo "✅ GeoIP City database saved for caching" || \
               echo "⚠️ GeoIP City database not available to cache"
       - save_cache:
@@ -920,8 +920,8 @@ commands:
             TIMEOUT=300
             ELAPSED=0
             while [ $ELAPSED -lt $TIMEOUT ]; do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' freegle-batch 2>/dev/null || echo "not_found")
-              RUNNING=$(docker inspect --format='{{.State.Running}}' freegle-batch 2>/dev/null || echo "false")
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' ${COMPOSE_PROJECT_NAME:-freegle}-batch 2>/dev/null || echo "not_found")
+              RUNNING=$(docker inspect --format='{{.State.Running}}' ${COMPOSE_PROJECT_NAME:-freegle}-batch 2>/dev/null || echo "false")
 
               if [ "$STATUS" = "healthy" ]; then
                 echo "✅ Batch container is healthy!"
@@ -929,7 +929,7 @@ commands:
               elif [ "$RUNNING" = "false" ]; then
                 echo "❌ Batch container is not running!"
                 echo "Container logs:"
-                docker logs freegle-batch --tail 50 2>&1 || true
+                docker logs ${COMPOSE_PROJECT_NAME:-freegle}-batch --tail 50 2>&1 || true
                 exit 1
               fi
 
@@ -941,7 +941,7 @@ commands:
             if [ $ELAPSED -ge $TIMEOUT ]; then
               echo "❌ Timeout waiting for batch container to be healthy"
               echo "Container logs:"
-              docker logs freegle-batch --tail 50 2>&1 || true
+              docker logs ${COMPOSE_PROJECT_NAME:-freegle}-batch --tail 50 2>&1 || true
               exit 1
             fi
 
@@ -951,7 +951,7 @@ commands:
             MIGRATION_TIMEOUT=120
             MIGRATION_ELAPSED=0
             while [ $MIGRATION_ELAPSED -lt $MIGRATION_TIMEOUT ]; do
-              if docker exec freegle-batch test -f /tmp/laravel-ready 2>/dev/null; then
+              if docker exec ${COMPOSE_PROJECT_NAME:-freegle}-batch test -f /tmp/laravel-ready 2>/dev/null; then
                 echo "✅ Laravel ready marker found - migrations complete"
                 exit 0
               fi
@@ -962,7 +962,7 @@ commands:
             done
 
             echo "❌ Timeout waiting for migrations to complete"
-            docker logs freegle-batch --tail 30 2>&1 || true
+            docker logs ${COMPOSE_PROJECT_NAME:-freegle}-batch --tail 30 2>&1 || true
             exit 1
 
   setup-test-database:
@@ -1145,10 +1145,10 @@ commands:
 
             # Copy coverage file from playwright container (check multiple paths)
             LCOV_PATH=""
-            if docker cp freegle-playwright:/app/monocart-report/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/monocart-report/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
               LCOV_PATH="/tmp/playwright-coverage.lcov"
               echo "✅ Found Playwright coverage at /app/monocart-report/coverage/lcov.info"
-            elif docker cp freegle-playwright:/app/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+            elif docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
               LCOV_PATH="/tmp/playwright-coverage.lcov"
               echo "✅ Found Playwright coverage at /app/coverage/lcov.info"
             fi
@@ -1180,7 +1180,7 @@ commands:
             else
               echo "❌ Playwright coverage file not found"
               echo "Checking container for coverage files..."
-              docker exec freegle-playwright find /app -name "*.lcov" -o -name "lcov.info" -o -name "coverage*" 2>/dev/null | head -20 || true
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-playwright find /app -name "*.lcov" -o -name "lcov.info" -o -name "coverage*" 2>/dev/null | head -20 || true
               exit 1
             fi
           no_output_timeout: 50m
@@ -1263,7 +1263,7 @@ commands:
             fi
 
             # Copy coverage file from container
-            if docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
               echo "✅ Found Laravel coverage file ($(stat -f%z /tmp/laravel-clover.xml 2>/dev/null || stat -c%s /tmp/laravel-clover.xml) bytes)"
 
               # Check for Coveralls outage before uploading
@@ -1273,11 +1273,11 @@ commands:
                 echo "⚠️ Coveralls has an active outage (see https://status.coveralls.io) - skipping upload"
               else
                 npm install -g coveralls
-                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
+                docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev" || echo "php-coveralls install warning"
 
                 # Copy coverage file to container and upload
-                docker cp /tmp/laravel-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
-                docker exec freegle-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
+                docker cp /tmp/laravel-clover.xml ${COMPOSE_PROJECT_NAME:-freegle}-apiv1:/var/www/iznik/clover.xml
+                docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "cd /var/www/iznik && COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN} COVERALLS_SERVICE_NAME=circleci COVERALLS_SERVICE_JOB_ID=${CIRCLE_BUILD_NUM} vendor/bin/php-coveralls -v --coverage_clover=clover.xml --json_path=/tmp/coveralls.json"
 
                 if [ $? -eq 0 ]; then
                   echo "✅ Laravel coverage uploaded successfully"
@@ -1317,34 +1317,34 @@ commands:
 
             # Collect PHPUnit test output files
             mkdir -p ~/artifacts/phpunit
-            docker cp freegle-apiv1-phpunit:/tmp/phpunit-output.log ~/artifacts/phpunit/ 2>/dev/null || true
-            docker cp freegle-apiv1-phpunit:/tmp/phpunit-debug.log ~/artifacts/phpunit/ 2>/dev/null || true
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/tmp/phpunit-output.log ~/artifacts/phpunit/ 2>/dev/null || true
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/tmp/phpunit-debug.log ~/artifacts/phpunit/ 2>/dev/null || true
 
             # Collect Laravel (batch) test output and monitoring logs
             mkdir -p ~/artifacts/laravel
-            docker cp freegle-status:/tmp/laravel-bootstrap-cache-monitor.log ~/artifacts/laravel/ 2>/dev/null || true
-            docker cp freegle-batch:/tmp/bootstrap-cache-monitor.log ~/artifacts/laravel/inotify-raw.log 2>/dev/null || true
-            docker cp freegle-batch:/tmp/laravel-coverage.xml ~/artifacts/laravel/ 2>/dev/null || true
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-status:/tmp/laravel-bootstrap-cache-monitor.log ~/artifacts/laravel/ 2>/dev/null || true
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-batch:/tmp/bootstrap-cache-monitor.log ~/artifacts/laravel/inotify-raw.log 2>/dev/null || true
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-batch:/tmp/laravel-coverage.xml ~/artifacts/laravel/ 2>/dev/null || true
 
             # Collect Go test coverage
             mkdir -p ~/artifacts/go
-            docker cp freegle-apiv2:/app/coverage.out ~/artifacts/go/ 2>/dev/null || true
-            docker cp freegle-apiv2:/app/coverage.html ~/artifacts/go/ 2>/dev/null || true
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv2:/app/coverage.out ~/artifacts/go/ 2>/dev/null || true
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv2:/app/coverage.html ~/artifacts/go/ 2>/dev/null || true
 
             # Collect Playwright test artifacts
             # Copy the entire playwright-report folder to artifacts root so HTML can find its data/ subfolder
             echo "=== Collecting Playwright artifacts ==="
 
             # Check if container is running
-            if docker ps --format '{{.Names}}' | grep -q '^freegle-playwright$'; then
+            if docker ps --format '{{.Names}}' | grep -q '^${COMPOSE_PROJECT_NAME:-freegle}-playwright$'; then
               echo "✓ Playwright container is running"
 
               # List what's in the playwright-report directory
               echo "Contents of /app/playwright-report:"
-              docker exec freegle-playwright ls -la /app/playwright-report 2>&1 || echo "  (directory not accessible)"
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-playwright ls -la /app/playwright-report 2>&1 || echo "  (directory not accessible)"
 
               # Copy playwright-report
-              if docker cp freegle-playwright:/app/playwright-report ~/artifacts/ 2>&1; then
+              if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/playwright-report ~/artifacts/ 2>&1; then
                 echo "✓ Copied playwright-report"
                 ls -la ~/artifacts/playwright-report/ 2>&1 | head -10
               else
@@ -1352,7 +1352,7 @@ commands:
               fi
 
               # Copy test-results
-              if docker cp freegle-playwright:/app/test-results ~/artifacts/ 2>&1; then
+              if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/test-results ~/artifacts/ 2>&1; then
                 echo "✓ Copied test-results"
               else
                 echo "✗ Failed to copy test-results"
@@ -1392,8 +1392,8 @@ commands:
             fi
 
             # Go test failures
-            if docker ps --format '{{.Names}}' | grep -q freegle-apiv2; then
-              GO_RESULT=$(docker exec freegle-apiv2 cat /tmp/go-test-output.log 2>/dev/null || true)
+            if docker ps --format '{{.Names}}' | grep -q ${COMPOSE_PROJECT_NAME:-freegle}-apiv2; then
+              GO_RESULT=$(docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv2 cat /tmp/go-test-output.log 2>/dev/null || true)
               if echo "$GO_RESULT" | grep -qE 'FAIL|panic'; then
                 echo "--- Go Tests ---" >> ~/artifacts/ci-failure-diagnostics.txt
                 echo "$GO_RESULT" | grep -E 'FAIL|panic|--- FAIL' | tail -30 >> ~/artifacts/ci-failure-diagnostics.txt
@@ -1403,7 +1403,7 @@ commands:
 
             # Laravel test failures
             if [ -f ~/artifacts/laravel/laravel-coverage.xml ]; then
-              LARAVEL_RESULT=$(docker exec freegle-batch cat /tmp/laravel-test-output.log 2>/dev/null || true)
+              LARAVEL_RESULT=$(docker exec ${COMPOSE_PROJECT_NAME:-freegle}-batch cat /tmp/laravel-test-output.log 2>/dev/null || true)
               if echo "$LARAVEL_RESULT" | grep -qE 'FAIL|Error'; then
                 echo "--- Laravel Tests ---" >> ~/artifacts/ci-failure-diagnostics.txt
                 echo "$LARAVEL_RESULT" | grep -E 'FAIL|Error' | tail -20 >> ~/artifacts/ci-failure-diagnostics.txt
@@ -1492,7 +1492,7 @@ commands:
             echo "Docker-compose services:"
             docker-compose ps || echo "docker-compose ps failed"
             # Use fixed container name from docker-compose.yml
-            if docker cp freegle-apiv2:/app/coverage.out iznik-server-go/coverage.out 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv2:/app/coverage.out iznik-server-go/coverage.out 2>/dev/null; then
               echo "Found Go coverage..."
               go install github.com/jandelgado/gcov2lcov@latest || true
               if command -v gcov2lcov > /dev/null; then
@@ -1539,11 +1539,11 @@ commands:
             COVERAGE_FOUND=false
 
             # Try the standard test path first (used by PR tests)
-            if docker cp freegle-apiv1-phpunit:/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/var/www/iznik/test/ut/php/clover.xml /tmp/phpunit-clover.xml 2>/dev/null; then
               COVERAGE_FOUND=true
               echo "Found PHP coverage at /var/www/iznik/test/ut/php/clover.xml"
             # Also try /tmp/phpunit-coverage.xml (used by status service when running via API)
-            elif docker cp freegle-apiv1-phpunit:/tmp/phpunit-coverage.xml /tmp/phpunit-clover.xml 2>/dev/null; then
+            elif docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/tmp/phpunit-coverage.xml /tmp/phpunit-clover.xml 2>/dev/null; then
               COVERAGE_FOUND=true
               echo "Found PHP coverage at /tmp/phpunit-coverage.xml"
             fi
@@ -1552,18 +1552,18 @@ commands:
               echo "Processing PHP coverage..."
 
               # Install php-coveralls in the container using composer.phar
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev 2>&1" || true
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "cd /var/www/iznik && php composer.phar require php-coveralls/php-coveralls --dev 2>&1" || true
 
               # Copy coverage file to container
-              docker cp /tmp/phpunit-clover.xml freegle-apiv1:/var/www/iznik/clover.xml
+              docker cp /tmp/phpunit-clover.xml ${COMPOSE_PROJECT_NAME:-freegle}-apiv1:/var/www/iznik/clover.xml
 
               # Create coveralls config in container with writable json_path
-              docker exec freegle-apiv1 bash -c "echo 'coverage_clover: clover.xml' > /var/www/iznik/.coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> /var/www/iznik/.coveralls.yml && echo 'service_name: circleci' >> /var/www/iznik/.coveralls.yml"
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "echo 'coverage_clover: clover.xml' > /var/www/iznik/.coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> /var/www/iznik/.coveralls.yml && echo 'service_name: circleci' >> /var/www/iznik/.coveralls.yml"
 
               # Initialize a minimal git repo in container for php-coveralls (it needs git info)
               # The submodule's .git file points to a path not mounted in container
               # Must create an initial commit so there's a branch for collectBranch()
-              docker exec freegle-apiv1 bash -c "cd /var/www/iznik && rm -f .git && git init && git config user.email 'ci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/Iznik.git && git commit --allow-empty -m 'CI initial commit' && git branch -M $CIRCLE_BRANCH"
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "cd /var/www/iznik && rm -f .git && git init && git config user.email 'ci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/Iznik.git && git commit --allow-empty -m 'CI initial commit' && git branch -M $CIRCLE_BRANCH"
 
               # Run php-coveralls from within the container (which has PHP)
               # All coverage now goes to the monorepo Coveralls project
@@ -1576,7 +1576,7 @@ commands:
                 -e CI_BUILD_NUMBER="$CIRCLE_BUILD_NUM" \
                 -e CI_BUILD_URL="$CIRCLE_BUILD_URL" \
                 -e CI_NAME="circleci" \
-                freegle-apiv1 bash -c "cd /var/www/iznik && php composer/vendor/bin/php-coveralls -v --config .coveralls.yml --exclude-no-stmt 2>&1"; then
+                ${COMPOSE_PROJECT_NAME:-freegle}-apiv1 bash -c "cd /var/www/iznik && php composer/vendor/bin/php-coveralls -v --config .coveralls.yml --exclude-no-stmt 2>&1"; then
                 echo "✅ PHP coverage uploaded"
                 echo "PHP_UPLOADED=true" >> $BASH_ENV
               else
@@ -1597,9 +1597,9 @@ commands:
             fi
             # Use fixed container name from docker-compose.yml
             LCOV_PATH=""
-            if docker cp freegle-playwright:/app/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
               LCOV_PATH="/tmp/playwright-coverage.lcov"
-            elif docker cp freegle-playwright:/app/monocart-report/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
+            elif docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/monocart-report/coverage/lcov.info /tmp/playwright-coverage.lcov 2>/dev/null; then
               LCOV_PATH="/tmp/playwright-coverage.lcov"
             fi
             if [ -n "$LCOV_PATH" ]; then
@@ -1640,26 +1640,26 @@ commands:
             fi
 
             # Copy Laravel coverage from batch container
-            if docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
+            if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-batch:/tmp/laravel-coverage.xml /tmp/laravel-clover.xml 2>/dev/null; then
               echo "Found Laravel coverage..."
 
               # Run php-coveralls from inside the batch container which has PHP
               # Copy the coverage file and run coveralls from there
-              docker cp /tmp/laravel-clover.xml freegle-batch:/var/www/html/clover.xml
+              docker cp /tmp/laravel-clover.xml ${COMPOSE_PROJECT_NAME:-freegle}-batch:/var/www/html/clover.xml
 
               # Create coveralls config in container
-              docker exec freegle-batch bash -c "cd /var/www/html && echo 'coverage_clover: clover.xml' > .coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> .coveralls.yml && echo 'service_name: circleci' >> .coveralls.yml"
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-batch bash -c "cd /var/www/html && echo 'coverage_clover: clover.xml' > .coveralls.yml && echo 'json_path: /tmp/coveralls-upload.json' >> .coveralls.yml && echo 'service_name: circleci' >> .coveralls.yml"
 
               # Install php-coveralls in the batch container
               echo "Installing php-coveralls in batch container..."
-              if ! docker exec freegle-batch composer require php-coveralls/php-coveralls --dev 2>&1; then
+              if ! docker exec ${COMPOSE_PROJECT_NAME:-freegle}-batch composer require php-coveralls/php-coveralls --dev 2>&1; then
                 echo "❌ Could not install php-coveralls in batch container"
                 exit 1
               fi
 
               # Initialize git repo in container (php-coveralls needs it for git info including remotes)
               echo "Initializing git repo in container for php-coveralls..."
-              docker exec freegle-batch bash -c "cd /var/www/html && git config --global --add safe.directory /var/www/html && git init && git config user.email 'circleci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/Iznik.git && git add -A && git commit -m 'CI commit' --allow-empty" 2>/dev/null || true
+              docker exec ${COMPOSE_PROJECT_NAME:-freegle}-batch bash -c "cd /var/www/html && git config --global --add safe.directory /var/www/html && git init && git config user.email 'circleci@freegle.org' && git config user.name 'CircleCI' && git remote add origin https://github.com/Freegle/Iznik.git && git add -A && git commit -m 'CI commit' --allow-empty" 2>/dev/null || true
 
               # Run php-coveralls from within the container
               # Note: Uses main COVERALLS_REPO_TOKEN since iznik-batch is part of FreegleDocker
@@ -1669,12 +1669,12 @@ commands:
                  -e CI_BUILD_NUMBER="$CIRCLE_BUILD_NUM" \
                  -e CI_BRANCH="$CIRCLE_BRANCH" \
                  -e CI_COMMIT_ID="$CIRCLE_SHA1" \
-                 freegle-batch bash -c "cd /var/www/html && vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
+                 ${COMPOSE_PROJECT_NAME:-freegle}-batch bash -c "cd /var/www/html && vendor/bin/php-coveralls -v --config .coveralls.yml 2>&1"; then
                 echo "✅ Laravel coverage uploaded"
                 echo "LARAVEL_UPLOADED=true" >> $BASH_ENV
               else
                 echo "❌ Laravel coverage upload failed"
-                docker exec freegle-batch ls -la /var/www/html/vendor/bin/ 2>&1 || true
+                docker exec ${COMPOSE_PROJECT_NAME:-freegle}-batch ls -la /var/www/html/vendor/bin/ 2>&1 || true
                 exit 1
               fi
             else
@@ -2037,9 +2037,9 @@ jobs:
               # Restore GeoIP database from cache if available
               if [ -f ~/geoip-cache/GeoLite2-Country.mmdb ]; then
                 echo "📍 Restoring GeoIP database from cache..."
-                docker exec freegle-apiv1-phpunit mkdir -p /var/lib/GeoIP
-                docker cp ~/geoip-cache/GeoLite2-Country.mmdb freegle-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-Country.mmdb
-                docker cp ~/geoip-cache/GeoLite2-City.mmdb freegle-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-City.mmdb 2>/dev/null || true
+                docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit mkdir -p /var/lib/GeoIP
+                docker cp ~/geoip-cache/GeoLite2-Country.mmdb ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-Country.mmdb
+                docker cp ~/geoip-cache/GeoLite2-City.mmdb ${COMPOSE_PROJECT_NAME:-freegle}-apiv1-phpunit:/var/lib/GeoIP/GeoLite2-City.mmdb 2>/dev/null || true
               fi
 
               # Trigger PHPUnit tests via API
@@ -2417,10 +2417,10 @@ jobs:
             [ "${SKIP_COVERAGE:-}" = "true" ] && exit 0
             echo "=== Go Coverage ==="
             GO_DIR="$COV_ROOT/iznik-server-go"
-            docker cp freegle-apiv2:/app/coverage.out "$GO_DIR/coverage.out" 2>/dev/null || { echo "⚠️ Not found"; exit 0; }
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv2:/app/coverage.out "$GO_DIR/coverage.out" 2>/dev/null || { echo "⚠️ Not found"; exit 0; }
             echo "✅ Found Go coverage"
-            docker exec freegle-apiv2 sh -c 'cd /app && go install github.com/jandelgado/gcov2lcov@latest 2>/dev/null && ~/go/bin/gcov2lcov -infile=coverage.out -outfile=coverage.lcov' 2>&1 || { echo "⚠️ Convert failed"; exit 0; }
-            docker cp freegle-apiv2:/app/coverage.lcov "$GO_DIR/coverage.lcov" 2>/dev/null
+            docker exec ${COMPOSE_PROJECT_NAME:-freegle}-apiv2 sh -c 'cd /app && go install github.com/jandelgado/gcov2lcov@latest 2>/dev/null && ~/go/bin/gcov2lcov -infile=coverage.out -outfile=coverage.lcov' 2>&1 || { echo "⚠️ Convert failed"; exit 0; }
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-apiv2:/app/coverage.lcov "$GO_DIR/coverage.lcov" 2>/dev/null
             sed -i 's|^SF:/app/|SF:iznik-server-go/|' "$GO_DIR/coverage.lcov"
             cd "$COV_ROOT" && export COVERALLS_FLAG_NAME="go"
             cat "$GO_DIR/coverage.lcov" | coveralls && echo "✅ Uploaded" && echo "export COV_UPLOADS=$((COV_UPLOADS + 1))" >> $BASH_ENV || echo "⚠️ Upload failed"
@@ -2432,7 +2432,7 @@ jobs:
           command: |
             [ "${SKIP_COVERAGE:-}" = "true" ] && exit 0
             echo "=== Laravel Coverage ==="
-            docker cp freegle-batch:/tmp/laravel-coverage.xml /tmp/lc.xml 2>/dev/null || { echo "⚠️ Not found"; exit 0; }
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-batch:/tmp/laravel-coverage.xml /tmp/lc.xml 2>/dev/null || { echo "⚠️ Not found"; exit 0; }
             echo "✅ Found Laravel coverage"
             python3 -c "
             import xml.etree.ElementTree as ET, sys
@@ -2471,8 +2471,8 @@ jobs:
             [ "${SKIP_COVERAGE:-}" = "true" ] && exit 0
             echo "=== Playwright Coverage ==="
             PL=""
-            docker cp freegle-playwright:/app/monocart-report/coverage/lcov.info /tmp/pl.lcov 2>/dev/null && PL="/tmp/pl.lcov" && echo "✅ Found (monocart)"
-            [ -z "$PL" ] && docker cp freegle-playwright:/app/coverage/lcov.info /tmp/pl.lcov 2>/dev/null && PL="/tmp/pl.lcov" && echo "✅ Found"
+            docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/monocart-report/coverage/lcov.info /tmp/pl.lcov 2>/dev/null && PL="/tmp/pl.lcov" && echo "✅ Found (monocart)"
+            [ -z "$PL" ] && docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/coverage/lcov.info /tmp/pl.lcov 2>/dev/null && PL="/tmp/pl.lcov" && echo "✅ Found"
             [ -z "$PL" ] && echo "⚠️ Not found" && exit 0
             sed 's|^SF:|SF:iznik-nuxt3/|' "$PL" > /tmp/pl-fixed.lcov
             cd "$COV_ROOT" && export COVERALLS_FLAG_NAME="playwright"
