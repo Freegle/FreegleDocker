@@ -124,15 +124,29 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **Fix** (commit `9c63e2ea`): Removed `page.evaluate` and `waitForAuthPersistence` between modal close and sidebar nav wait. Playwright locators auto-retry across navigations; `page.evaluate` does not.
 - **Local**: All 130 Playwright tests pass. CI run 4 in progress.
 
+### 2026-04-13 - Reply-to-Chat UX redesign
+- **Worktree**: `FreegleDocker-reply-to-chat`, branch `feature/reply-to-chat`
+- **Design**: On mobile/tablet (below lg breakpoint), Reply button navigates to `/chats/reply?replyto=MSG_ID` showing a chat-style reply pane. Desktop keeps inline reply section so users see post details alongside.
+- **New components**: `ChatReplyPane.vue` (chat-styled reply form), `pages/chats/reply.vue` (page)
+- **Modified**: `MessageExpanded.vue` (expandReply checks breakpoint), `MessageExpanded.spec.js` (updated test for breakpoint-aware behavior)
+- **Playwright tests**: `test-reply-to-chat.spec.js` — mobile reply, tablet reply, desktop inline preserved, back button, WANTED message (no collection time)
+- **Committed**: `00934688f`. Not pushed yet. Needs user review and push.
+- **Pre-existing failures**: PostMessage/PostMessageTablet placeholder tests (4 tests) — not related to this change.
+
 ### 2026-04-13 - Monorepo migration complete (Phases 1-8)
 - All phases complete except Phase 8.8 (archive old repos — human-only).
 - Merged monorepo branch to master. Created production branch. Repo renamed to `Freegle/Iznik`.
 - Netlify: Both sites repointed. ModTools fixed with separate base dir (`iznik-nuxt3/modtools/`).
-- Mobile CI: Merged iznik-nuxt3 CircleCI workflows into monorepo. All 19 secrets copied. Orb `freegle/tests@1.1.176`.
+- Mobile CI: Merged iznik-nuxt3 CircleCI workflows into monorepo. Orb `freegle/tests@1.1.178`.
+- **Secrets fix**: Original 19-secret copy truncated 20 values by 1 char. Re-extracted via SSH on old project job, all 19 now match. Orb coverage token unified to `COVERALLS_REPO_TOKEN`.
+- **Coveralls**: New token (`...0fRa`) set for `Freegle/Iznik`. Old `COVERALLS_REPO_TOKEN_IZNIK_SERVER` still exists (unused by unified section).
 - Google login: Added `onGoogleLibraryLoad` retry for Firefox/Brave.
 - Phase 7: 18 issues transferred, 19 PRs migrated (branches recreated on monorepo).
 - README rewritten for monorepo. Sub-repo READMEs updated to redirect.
 - Go API: TN partner auth, tnpostid, expiresat, mod-add-member committed (`9df835715`). Partner auth on PATCH /message committed (`946c7ad02`). 1360 Go tests pass.
-- CI job #3485 (SSH) running on latest master commit.
-- 18 restored unit test files (address, communityevent, compose, config, isochrone, job, misc, mobile, newsfeed, noticeboard, notification, reply, shortlinks, stories, team, tryst, user, volunteering) — need commit.
-- **Remaining**: Archive old repos (human), verify CI #3485 passes, commit test files.
+- Commit `a6702445f` pushed: repo rename refs, 18 restored test files, orb 1.1.178 coverage token fix.
+- CI job #3492 (build-test): ALL tests passed, ALL 4 coverage suites uploaded. Auto-merged to production.
+- CI job #3501 (build-test SSH): ALL tests passed, ALL 4 coverage suites uploaded, auto-merged to production. ✅
+- Deploy-apps (jobs 3502/3503): ALL 4 jobs passed (increment-version, build-ios, build-android, check-hotfix-promote). ✅
+- **Monorepo CI fully verified**: build-test ✅, deploy-apps ✅, Coveralls ✅, auto-merge ✅.
+- **Remaining**: Archive old repos (human-only).
