@@ -1292,9 +1292,9 @@ type PatchMembershipsRequest struct {
 	Groupid             uint64           `json:"groupid"`
 	Role                *string          `json:"role"`
 	Settings            *json.RawMessage `json:"settings"`
-	Emailfrequency      *int             `json:"emailfrequency"`
-	Eventsallowed       *int             `json:"eventsallowed"`
-	Volunteeringallowed *int             `json:"volunteeringallowed"`
+	Emailfrequency      *utils.FlexInt   `json:"emailfrequency"`
+	Eventsallowed       *utils.FlexInt   `json:"eventsallowed"`
+	Volunteeringallowed *utils.FlexInt   `json:"volunteeringallowed"`
 	OurPostingStatus    *string          `json:"ourPostingStatus"`
 }
 
@@ -1347,19 +1347,19 @@ func PatchMemberships(c *fiber.Ctx) error {
 	// Update whichever settings were provided.
 	if req.Emailfrequency != nil {
 		db.Exec("UPDATE memberships SET emailfrequency = ? WHERE userid = ? AND groupid = ?",
-			*req.Emailfrequency, userid, req.Groupid)
+			int(*req.Emailfrequency), userid, req.Groupid)
 		logMembershipAction(log.LOG_TYPE_USER, log.LOG_SUBTYPE_OUR_EMAIL_FREQUENCY, req.Groupid, userid, myid,
-			fmt.Sprintf("emailfrequency=%d", *req.Emailfrequency))
+			fmt.Sprintf("emailfrequency=%d", int(*req.Emailfrequency)))
 	}
 
 	if req.Eventsallowed != nil {
 		db.Exec("UPDATE memberships SET eventsallowed = ? WHERE userid = ? AND groupid = ?",
-			*req.Eventsallowed, userid, req.Groupid)
+			int(*req.Eventsallowed), userid, req.Groupid)
 	}
 
 	if req.Volunteeringallowed != nil {
 		db.Exec("UPDATE memberships SET volunteeringallowed = ? WHERE userid = ? AND groupid = ?",
-			*req.Volunteeringallowed, userid, req.Groupid)
+			int(*req.Volunteeringallowed), userid, req.Groupid)
 	}
 
 	if req.Settings != nil {

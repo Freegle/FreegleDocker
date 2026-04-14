@@ -1628,8 +1628,8 @@ type UserPatchRequest struct {
 	Displayname         *string          `json:"displayname,omitempty"`
 	Settings            *json.RawMessage `json:"settings,omitempty"`
 	Onholidaytill       *string          `json:"onholidaytill,omitempty"`
-	Relevantallowed     *int             `json:"relevantallowed,omitempty"`
-	Newslettersallowed  *int             `json:"newslettersallowed,omitempty"`
+	Relevantallowed     *utils.FlexInt   `json:"relevantallowed,omitempty"`
+	Newslettersallowed  *utils.FlexInt   `json:"newslettersallowed,omitempty"`
 	Aboutme             *string          `json:"aboutme,omitempty"`
 	Newsfeedmodstatus   *string          `json:"newsfeedmodstatus,omitempty"`
 	Email               *string          `json:"email,omitempty"`
@@ -1956,11 +1956,11 @@ func PatchUser(c *fiber.Ctx) error {
 	}
 
 	if req.Relevantallowed != nil {
-		db.Exec("UPDATE users SET relevantallowed = ? WHERE id = ?", *req.Relevantallowed, targetID)
+		db.Exec("UPDATE users SET relevantallowed = ? WHERE id = ?", int(*req.Relevantallowed), targetID)
 	}
 
 	if req.Newslettersallowed != nil {
-		db.Exec("UPDATE users SET newslettersallowed = ? WHERE id = ?", *req.Newslettersallowed, targetID)
+		db.Exec("UPDATE users SET newslettersallowed = ? WHERE id = ?", int(*req.Newslettersallowed), targetID)
 	}
 
 	if req.Aboutme != nil {

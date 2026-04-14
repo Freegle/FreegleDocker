@@ -435,26 +435,32 @@ func TestPatchMembershipsSettings(t *testing.T) {
 }
 
 // TestPatchMembershipsStringEmailFrequency verifies that sending emailfrequency
-// as a JSON string (as Vue select elements emit) returns 400 because Go's
-// json.Unmarshal cannot coerce a string into *int.  This reproduces the Sentry
-// bug where NewUserInfo.vue sent the raw select value without parseInt.
+// as a JSON string (as HTML select elements emit) succeeds — FlexInt handles
+// both string and numeric JSON values.
 func TestPatchMembershipsStringEmailFrequency(t *testing.T) {
 	prefix := uniquePrefix("mem_sef")
+	db := database.DBConn
 
 	userID := CreateTestUser(t, prefix+"_user", "User")
 	_, token := CreateTestSession(t, userID)
 	groupID := CreateTestGroup(t, prefix)
 	CreateTestMembership(t, userID, groupID, "Member")
 
-	// Send emailfrequency as a string instead of a number — this is exactly
-	// what the frontend was doing before the fix.
-	rawJSON := fmt.Sprintf(`{"userid":%d,"groupid":%d,"emailfrequency":"-1"}`, userID, groupID)
+	// Send emailfrequency as a string "0" (the "Never" value) — this is
+	// exactly what the frontend sends from an HTML <select>.
+	rawJSON := fmt.Sprintf(`{"userid":%d,"groupid":%d,"emailfrequency":"0"}`, userID, groupID)
 	url := fmt.Sprintf("/api/memberships?jwt=%s", token)
 	req := httptest.NewRequest("PATCH", url, bytes.NewBufferString(rawJSON))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := getApp().Test(req)
 	assert.NoError(t, err)
-	assert.Equal(t, 400, resp.StatusCode, "String emailfrequency should fail body parsing")
+	assert.Equal(t, 200, resp.StatusCode, "String emailfrequency should succeed via FlexInt")
+
+	// Verify the value was actually persisted.
+	var freq int
+	db.Raw("SELECT emailfrequency FROM memberships WHERE userid = ? AND groupid = ?",
+		userID, groupID).Scan(&freq)
+	assert.Equal(t, 0, freq, "emailfrequency should be 0 (Never)")
 }
 
 func TestPatchMembershipsEventsAllowed(t *testing.T) {
