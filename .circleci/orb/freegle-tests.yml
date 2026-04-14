@@ -2662,6 +2662,8 @@ jobs:
           command: |
             export ISAPP=true
             export APP_ENV=development
+            export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+            export IMAGE_DELIVERY=https://delivery.ilovefreegle.org
             echo "🔧 Building debug version for master branch"
             npm run generate
       - run:
@@ -2789,6 +2791,8 @@ jobs:
           command: |
             export ISAPP=true
             export APP_ENV=production
+            export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+            export IMAGE_DELIVERY=https://delivery.ilovefreegle.org
             if [ -n "$SENTRY_DSN_APP_FD" ]; then
               export SENTRY_DSN="$SENTRY_DSN_APP_FD"
               echo "✅ Using app-specific Sentry DSN for error tracking"
@@ -2921,6 +2925,8 @@ jobs:
           command: |
             export ISAPP=true
             export APP_ENV=production
+            export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+            export IMAGE_DELIVERY=https://delivery.ilovefreegle.org
             if [ -n "$SENTRY_DSN_APP_FD" ]; then
               export SENTRY_DSN="$SENTRY_DSN_APP_FD"
               echo "✅ Using app-specific Sentry DSN for error tracking"
@@ -3309,6 +3315,8 @@ jobs:
           command: |
             export ISAPP=true
             export APP_ENV=production
+            export TUS_UPLOADER=https://uploads.ilovefreegle.org:8080
+            export IMAGE_DELIVERY=https://delivery.ilovefreegle.org
             if [ -n "$SENTRY_DSN_APP_FD" ]; then
               export SENTRY_DSN="$SENTRY_DSN_APP_FD"
             fi
