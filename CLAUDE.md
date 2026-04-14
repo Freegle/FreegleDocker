@@ -150,3 +150,28 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - Deploy-apps (jobs 3502/3503): ALL 4 jobs passed (increment-version, build-ios, build-android, check-hotfix-promote). ✅
 - **Monorepo CI fully verified**: build-test ✅, deploy-apps ✅, Coveralls ✅, auto-merge ✅.
 - **Remaining**: Archive old repos (human-only).
+
+### 2026-04-14 - Self-hosted CircleCI runner (in progress)
+- **Branch**: `feature/circleci-self-hosted-runner` in worktree `FreegleDocker-circleci-runner`
+- **Runner distro**: `circleci-runner` (separate WSL2 distro)
+- **Runner config**: `/opt/circleci-runner/circleci-runner-config.yaml` — `cleanup_working_directory: false`, `max_run_time: 2h`
+- **Boot script**: `/opt/circleci-runner/start.sh` — uses `exec sudo` to keep boot process as PID 1
+- **Keepalive**: Two persistent `wsl.exe -d circleci-runner` sessions from main distro prevent WSL idle termination
+- **Orb versions published**: 1.1.182 (COMPOSE_PROJECT_NAME fix), 1.1.183 (Docker cleanup), 1.1.184 (path fix)
+- **Key fixes applied**:
+  1. `COMPOSE_PROJECT_NAME=freegle` (not `freegle-ci`) — matches 88 hardcoded container refs in orb
+  2. `cleanup_working_directory: false` + Docker cleanup in orb pre-checkout step (gated by `SELF_HOSTED_RUNNER` env var)
+  3. `./scripts/setup-test-database.sh` as first path check (CWD-relative works on both cloud and self-hosted)
+  4. Same for `./iznik-nuxt3` and coverage paths
+  5. Installed `sysstat` for resource monitor step
+- **Commits**: `a1b533337` (compose name), `316a1a222` (docker cleanup), `072d85f44` (path fix)
+- **CI pipeline 3122, job 3687**: Running on self-hosted runner. Build containers step in progress (~30 min with `--no-cache`). All prior steps pass.
+- **Next steps when resuming**:
+  1. Check job 3687 status: `CIRCLE_TOKEN=$(grep -oP 'token: \K.*' ~/.circleci/cli.yml) && curl -sf -H "Circle-Token: $CIRCLE_TOKEN" "https://circleci.com/api/v1.1/project/github/Freegle/Iznik/3687?circle-token=$CIRCLE_TOKEN" | jq '[.steps[] | {name: .name, status: .actions[0].status}]'`
+  2. If failed, get output and fix next issue
+  3. Before running: restart runner distro and keepalive sessions:
+     - `wsl.exe -d circleci-runner -- echo started`
+     - `nohup wsl.exe -d circleci-runner -- bash -c 'while true; do sleep 60; done' > /dev/null 2>&1 &`
+     - `nohup wsl.exe -d circleci-runner -- bash -c 'while true; do sleep 300; done' > /dev/null 2>&1 &`
+  4. Future optimization: remove `--no-cache` for self-hosted runner (Docker layer cache is local)
+  5. Make keepalive persistent across reboots
