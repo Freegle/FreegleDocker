@@ -75,6 +75,9 @@
     "patches": {
       "janu-software/facebook-php-sdk": {
         "Hack HTTP to HTTPS for haproxy redirect": "patches/redirect_behind_haproxy.diff"
+      },
+      "swiftmailer/swiftmailer": {
+        "Skip corrupt spool files instead of orphaning .sending files": "patches/swiftmailer_filespool_corrupt.diff"
       }
     }
   }
