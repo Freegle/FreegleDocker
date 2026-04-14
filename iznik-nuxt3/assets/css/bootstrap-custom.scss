@@ -1,6 +1,9 @@
 // We customise Bootstrap.
 @import '_color-vars.scss';
 
+$font-family-sans-serif: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+  Roboto, 'Helvetica Neue', Arial, sans-serif;
+
 $primary: #338808;
 $secondary: #6c757d;
 $info: #17a2b8;
