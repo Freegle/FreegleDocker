@@ -1653,6 +1653,8 @@ func handleHold(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	// Also update messages.heldby for backwards compatibility during migration.
 	db.Exec("UPDATE messages SET heldby = ? WHERE id = ?", myid, req.ID)
 
+	// Log to the specific group we acted on, not the primary group.
+	ctx.Groupid = groupid
 	logAndNotifyMods(db, flog.LOG_SUBTYPE_HOLD, ctx, myid, req.ID, 0, "")
 
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
@@ -1683,7 +1685,8 @@ func handleBackToPending(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	db.Exec("UPDATE messages_groups SET collection = ?, approvedby = NULL, approvedat = NULL WHERE msgid = ? AND groupid = ? AND collection = ?",
 		utils.COLLECTION_PENDING, req.ID, groupid, utils.COLLECTION_APPROVED)
 
-	// Log and notify moderators.
+	// Log to the specific group we acted on, not the primary group.
+	ctx.Groupid = groupid
 	logAndNotifyMods(db, flog.LOG_SUBTYPE_HOLD, ctx, myid, req.ID, 0, "Back to pending")
 
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
@@ -1714,6 +1717,8 @@ func handleRelease(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 		db.Exec("UPDATE messages SET heldby = NULL WHERE id = ?", req.ID)
 	}
 
+	// Log to the specific group we acted on, not the primary group.
+	ctx.Groupid = groupid
 	logAndNotifyMods(db, flog.LOG_SUBTYPE_RELEASE, ctx, myid, req.ID, 0, "")
 
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})

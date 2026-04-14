@@ -708,11 +708,11 @@ export const useMessageStore = defineStore({
       return state.byUserList[userid] || []
     },
     getByGroup: (state) => (groupid) => {
-      // ModTools
+      // ModTools — match any group in the message's groups array (multi-group support).
+      const gid = parseInt(groupid)
       const ret = Object.values(state.list).filter((message) => {
-        return (
-          message.groups.length > 0 &&
-          parseInt(message.groups[0].groupid) === parseInt(groupid)
+        return message.groups.some(
+          (g) => parseInt(g.groupid) === gid
         )
       })
       return ret

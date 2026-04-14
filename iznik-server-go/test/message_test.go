@@ -6382,3 +6382,82 @@ func TestPostMessageBackToPendingPerGroup(t *testing.T) {
 	db.Raw("SELECT heldby FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupB).Scan(&heldbyB)
 	assert.Nil(t, heldbyB)
 }
+
+func TestPostMessageHoldPerGroupLogsCorrectGroup(t *testing.T) {
+	prefix := uniquePrefix("hold_log")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	groupB := CreateTestGroup(t, prefix+"_b")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, posterID, groupB, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	CreateTestMembership(t, modID, groupB, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	// Create a message on both groups (groupA is primary since it's first).
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Pending', 0)", msgID, groupB)
+
+	// Hold on group B (NOT the primary group).
+	body := map[string]interface{}{
+		"id":      msgID,
+		"action":  "Hold",
+		"groupid": groupB,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?jwt=%s", modToken)
+	req := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// The log entry should record groupB, not groupA (the primary group).
+	var logGroupid uint64
+	db.Raw("SELECT groupid FROM logs WHERE msgid = ? AND type = 'Message' AND subtype = 'Hold' AND byuser = ? ORDER BY id DESC LIMIT 1",
+		msgID, modID).Scan(&logGroupid)
+	assert.Equal(t, groupB, logGroupid, "Log should record the target group, not the primary group")
+}
+
+func TestListMessagesMultiGroupNoDuplicates(t *testing.T) {
+	prefix := uniquePrefix("list_dedup")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	groupB := CreateTestGroup(t, prefix+"_b")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, posterID, groupB, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	CreateTestMembership(t, modID, groupB, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	// Create a message on both groups as Pending.
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Pending', 0)", msgID, groupB)
+
+	// List Pending messages across all groups (no groupid filter).
+	url := fmt.Sprintf("/api/messages?collection=Pending&jwt=%s", modToken)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	msgs := result["messages"].([]interface{})
+
+	// Count how many times our msgID appears — should be exactly 1.
+	count := 0
+	for _, m := range msgs {
+		mm := m.(map[string]interface{})
+		if uint64(mm["id"].(float64)) == msgID {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "Multi-group message should appear exactly once in list")
+}

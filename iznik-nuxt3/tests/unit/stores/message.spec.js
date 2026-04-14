@@ -309,3 +309,43 @@ describe('message store - searchMT()', () => {
     expect(store.fetchMT).not.toHaveBeenCalled()
   })
 })
+
+describe('getByGroup', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('returns messages matching any group in the groups array', () => {
+    const store = useMessageStore()
+
+    // Manually populate the store's list with test data.
+    store.list = {
+      1: { id: 1, subject: 'Sofa', groups: [{ groupid: 10 }, { groupid: 20 }] },
+      2: { id: 2, subject: 'Chair', groups: [{ groupid: 20 }] },
+      3: { id: 3, subject: 'Table', groups: [{ groupid: 30 }] },
+    }
+
+    // Group 20 should match messages 1 and 2.
+    const result = store.getByGroup(20)
+    expect(result).toHaveLength(2)
+    expect(result.map((m) => m.id).sort()).toEqual([1, 2])
+  })
+
+  it('returns empty array when no messages match the group', () => {
+    const store = useMessageStore()
+    store.list = {
+      1: { id: 1, subject: 'Sofa', groups: [{ groupid: 10 }] },
+    }
+
+    expect(store.getByGroup(99)).toHaveLength(0)
+  })
+
+  it('handles messages with empty groups array', () => {
+    const store = useMessageStore()
+    store.list = {
+      1: { id: 1, subject: 'Sofa', groups: [] },
+    }
+
+    expect(store.getByGroup(10)).toHaveLength(0)
+  })
+})
