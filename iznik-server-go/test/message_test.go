@@ -249,6 +249,47 @@ func TestExpiredPromisedMessageExcludedFromActive(t *testing.T) {
 	assert.False(t, found, "Expired promised message should NOT appear in active query")
 }
 
+func TestExpiredMessageWithRecentChatKeptActive(t *testing.T) {
+	// An old message past expiry age should remain active if there's recent
+	// chat activity referencing it (ongoing conversation).
+	db := database.DBConn
+	prefix := uniquePrefix("exprchat")
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	otherID := CreateTestUser(t, prefix, "Other")
+	CreateTestMembership(t, userID, groupID, "Member")
+	_, token := CreateTestSession(t, userID)
+
+	// Old message (200 days) — would normally expire.
+	msgID := CreateTestMessageWithArrival(t, userID, groupID, "OFFER: "+prefix+" chat item", 55.9533, -3.1883, 200)
+
+	// Create a chat room between the two users and a recent chat message
+	// referencing the old message.
+	var chatID uint64
+	db.Exec("INSERT INTO chat_rooms (user1, user2, chattype, latestmessage) VALUES (?, ?, 'User2User', NOW())", userID, otherID)
+	db.Raw("SELECT id FROM chat_rooms WHERE user1 = ? AND user2 = ? AND chattype = 'User2User'", userID, otherID).Scan(&chatID)
+	db.Exec("INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, date, processingsuccessful, reviewrequired, reviewrejected) VALUES (?, ?, 'Is this still available?', 'Default', ?, NOW(), 1, 0, 0)",
+		chatID, otherID, msgID)
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM chat_messages WHERE chatid = ?", chatID)
+		db.Exec("DELETE FROM chat_rooms WHERE id = ?", chatID)
+	})
+
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/user/"+fmt.Sprint(userID)+"/message?active=true&jwt="+token, nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var msgs []message.MessageSummary
+	json2.Unmarshal(rsp(resp), &msgs)
+
+	found := false
+	for _, m := range msgs {
+		if m.ID == msgID {
+			found = true
+		}
+	}
+	assert.True(t, found, "Old message with recent chat should remain active")
+}
+
 func TestNonSpatialMessageMarkedOldInInactiveQuery(t *testing.T) {
 	// Messages without a spatial entry (not publicly visible) should be marked
 	// hasoutcome=true in the active=false response so the client's old/active
