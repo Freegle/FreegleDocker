@@ -48,7 +48,15 @@ class PostcodeRemapService
         // Ensure PostgreSQL schema exists and sync location data.
         $this->ensurePostgresSchema();
 
-        if ($locationId) {
+        if ($polygon) {
+            // Sync all locations within the polygon scope to PostgreSQL.
+            // This is critical: the location_id in the task is the location that was edited,
+            // but other locations within the polygon (e.g. newly created areas) may also need
+            // syncing. V1 synced the edited location inline in setGeometry() before calling
+            // remapPostcodes(), and relied on a nightly cron for everything else. We do better
+            // by syncing all locations in the affected area.
+            $this->syncLocationsInPolygon($polygon);
+        } elseif ($locationId) {
             $this->syncSingleLocation($locationId);
         } else {
             $this->syncAllLocations();
@@ -225,6 +233,52 @@ class PostcodeRemapService
                  location = EXCLUDED.location",
             [$loc->id, $loc->name, $loc->type, $loc->geom, $this->srid, $loc->geom, $this->srid]
         );
+    }
+
+    /**
+     * Sync all non-postcode polygon locations within a WKT polygon to PostgreSQL.
+     *
+     * When a location is created or its geometry is changed, the remap task carries
+     * the polygon scope. We need to sync all locations intersecting that scope —
+     * not just the edited location — because newly created or recently modified
+     * locations in the area may not yet be in PostgreSQL.
+     */
+    private function syncLocationsInPolygon(string $polygon): void
+    {
+        $locations = DB::select("
+            SELECT locations.id, locations.name, locations.type,
+                   ST_AsText(CASE WHEN ourgeometry IS NOT NULL THEN ourgeometry ELSE ls.geometry END) AS geom
+            FROM locations_spatial ls
+            INNER JOIN locations ON ls.locationid = locations.id
+            LEFT JOIN locations_excluded le ON locations.id = le.locationid
+            WHERE le.locationid IS NULL
+            AND ST_Intersects(ls.geometry, ST_GeomFromText(?, {$this->srid}))
+            AND ST_Dimension(CASE WHEN ourgeometry IS NOT NULL THEN ourgeometry ELSE ls.geometry END) = 2
+            AND locations.type != 'Postcode'
+        ", [$polygon]);
+
+        $synced = 0;
+
+        foreach ($locations as $loc) {
+            if (! $loc->geom) {
+                continue;
+            }
+
+            DB::connection('pgsql')->statement(
+                "INSERT INTO locations (locationid, name, type, area, location)
+                 VALUES (?, ?, ?, ST_Area(ST_GeomFromText(?, ?)), ST_GeomFromText(?, ?))
+                 ON CONFLICT (locationid) DO UPDATE SET
+                     name = EXCLUDED.name,
+                     type = EXCLUDED.type,
+                     area = EXCLUDED.area,
+                     location = EXCLUDED.location",
+                [$loc->id, $loc->name, $loc->type, $loc->geom, $this->srid, $loc->geom, $this->srid]
+            );
+
+            $synced++;
+        }
+
+        Log::info("PostcodeRemapService: synced {$synced} locations in polygon scope to PostgreSQL");
     }
 
     /**
