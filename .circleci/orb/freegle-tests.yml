@@ -16,6 +16,42 @@ executors:
       COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
       COMPOSE_PROJECT_NAME: freegle
 
+  machine-executor-local:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: freegle/circleci-docker-runner
+    environment:
+      DOCKER_BUILDKIT: 1
+      COMPOSE_DOCKER_CLI_BUILD: 1
+      COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
+      COMPOSE_PROJECT_NAME: freegle-ci
+      # Port offsets (+9000) to avoid conflicts with any local dev stack
+      PORT_TRAEFIK_HTTP: 9080
+      PORT_TRAEFIK_API: 17192
+      PORT_TRAEFIK_DASHBOARD: 17080
+      PORT_PHPMYADMIN: 17086
+      PORT_MAILPIT_WEB: 17025
+      PORT_MAILPIT_SMTP: 10025
+      PORT_SPAMASSASSIN: 9783
+      PORT_RSPAMD: 20334
+      PORT_TUSD: 10080
+      PORT_STATUS: 17081
+      PORT_AI_SUPPORT: 17083
+      PORT_APIV1_SSH: 10023
+      PORT_APIV1_HTTP: 9083
+      PORT_APIV1_HTTP2: 17181
+      PORT_APIV2: 17193
+      PORT_APIV2_LIVE: 17194
+      PORT_FREEGLE_DEV_LOCAL: 12002
+      PORT_FREEGLE_DEV_LIVE: 12005
+      PORT_FREEGLE_PROD_LOCAL: 12012
+      PORT_MODTOOLS_DEV_LOCAL: 12003
+      PORT_MODTOOLS_DEV_LIVE: 12006
+      PORT_MODTOOLS_PROD_LOCAL: 12013
+      PORT_LOKI: 12100
+      PORT_POSTFIX_SMTP: 9025
+      PORT_MCP_SANITIZER: 17084
+
   android-executor:
     docker:
       - image: cimg/android:2025.10-node
@@ -411,7 +447,7 @@ commands:
                 echo "❌ Timeout waiting for API services after 10 minutes"
                 echo ""
                 echo "=== Final status API response ==="
-                curl -s http://localhost:8081/api/status/all 2>/dev/null | jq . || echo "(status service not responding)"
+                curl -s http://localhost:${PORT_STATUS:-8081}/api/status/all 2>/dev/null | jq . || echo "(status service not responding)"
                 echo ""
                 echo "=== Docker container health ==="
                 docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null || true
@@ -431,11 +467,11 @@ commands:
               fi
 
               # Check if status service is responding
-              if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
+              if curl -f -s http://localhost:${PORT_STATUS:-8081} > /dev/null 2>&1; then
                 echo "✅ Status service is responding!"
 
                 # Get health status from status service
-                health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
+                health_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/status/all 2>/dev/null || echo '{}')
 
                 # Check if API v1 and v2 are healthy
                 apiv1_status=$(echo "$health_response" | jq -r '.apiv1.status // "unknown"')
@@ -494,7 +530,7 @@ commands:
               fi
 
               # Check Docker status first (to see if containers are running)
-              health_response=$(curl -s http://localhost:8081/api/status/all 2>/dev/null || echo '{}')
+              health_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/status/all 2>/dev/null || echo '{}')
               freegle_prod_status=$(echo "$health_response" | jq -r '.["freegle-prod-local"].status // "unknown"')
               modtools_prod_status=$(echo "$health_response" | jq -r '.["freegle-modtools-prod-local"].status // "unknown"')
 
@@ -556,7 +592,7 @@ commands:
             echo "🧪 << parameters.reason >>..."
 
             # Trigger tests via API with coverage enabled
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:8081/api/tests/go?coverage=true")
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:${PORT_STATUS:-8081}/api/tests/go?coverage=true")
             http_code="${response: -3}"
 
             if [ "$http_code" -ne "200" ]; then
@@ -582,7 +618,7 @@ commands:
               fi
 
               sleep 5
-              status_response=$(curl -s http://localhost:8081/api/tests/go/status || echo '{"status":"error"}')
+              status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/go/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
               message=$(echo "$status_response" | jq -r '.message // "No message"')
               passed=$(echo "$status_response" | jq -r '.progress.passed // 0')
@@ -705,7 +741,7 @@ commands:
             }
 
             # Trigger tests via API
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:${PORT_STATUS:-8081}/api/tests/php)
             http_code="${response: -3}"
 
             if [ "$http_code" -ne "200" ]; then
@@ -731,7 +767,7 @@ commands:
               fi
 
               sleep 10
-              status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
+              status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/php/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
               message=$(echo "$status_response" | jq -r '.message // "No message"')
 
@@ -1002,7 +1038,7 @@ commands:
             echo "🎭 << parameters.reason >>..."
 
             # Trigger tests via API
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:${PORT_STATUS:-8081}/api/tests/playwright)
             http_code="${response: -3}"
 
             if [ "$http_code" -ne "200" ]; then
@@ -1029,7 +1065,7 @@ commands:
 
               sleep 10
 
-              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+              status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/playwright/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
               message=$(echo "$status_response" | jq -r '.message // "No message"')
               completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
@@ -1133,7 +1169,7 @@ commands:
             echo "🧪 << parameters.reason >>..."
 
             # Trigger tests via API
-            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:8081/api/tests/laravel")
+            response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:${PORT_STATUS:-8081}/api/tests/laravel")
             http_code="${response: -3}"
 
             if [ "$http_code" -ne "200" ]; then
@@ -1159,7 +1195,7 @@ commands:
               fi
 
               sleep 5
-              status_response=$(curl -s http://localhost:8081/api/tests/laravel/status || echo '{"status":"error"}')
+              status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/laravel/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
               message=$(echo "$status_response" | jq -r '.message // "No message"')
               passed=$(echo "$status_response" | jq -r '.progress.passed // 0')
@@ -1693,7 +1729,11 @@ jobs:
   # === FreegleDocker Main Build Job ===
 
   build-and-test:
-    executor: machine-executor
+    parameters:
+      use-executor:
+        type: executor
+        default: machine-executor
+    executor: << parameters.use-executor >>
     steps:
       # Fix ownership of root-owned files BEFORE checkout so git can write
       - run:
@@ -1812,7 +1852,7 @@ jobs:
               echo "⏰ WATCHDOG: ${WATCHDOG_TIMEOUT_MINUTES}-minute timeout reached!"
               echo "timeout" > /tmp/watchdog-triggered
               # Kill all background test processes
-              pkill -f "curl.*localhost:8081/api/tests" 2>/dev/null || true
+              pkill -f "curl.*localhost:${PORT_STATUS:-8081}/api/tests" 2>/dev/null || true
               # Signal the main process to check the marker
               kill -USR1 $$ 2>/dev/null || true
             ) &
@@ -1833,7 +1873,7 @@ jobs:
                 exit 0
               fi
               # Trigger Laravel tests via status API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/laravel)
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:${PORT_STATUS:-8081}/api/tests/laravel)
               http_code="${response: -3}"
 
               if [ "$http_code" = "409" ]; then
@@ -1854,7 +1894,7 @@ jobs:
               # Poll for Laravel completion
               while true; do
                 sleep 10
-                status_response=$(curl -s http://localhost:8081/api/tests/laravel/status || echo '{"status":"error"}')
+                status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/laravel/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
 
                 # Extract progress for display
@@ -1896,7 +1936,7 @@ jobs:
                 exit 0
               fi
               # Trigger Go tests via status API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:8081/api/tests/go?coverage=true")
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" "http://localhost:${PORT_STATUS:-8081}/api/tests/go?coverage=true")
               http_code="${response: -3}"
 
               if [ "$http_code" = "409" ]; then
@@ -1917,7 +1957,7 @@ jobs:
               # Poll for Go completion
               while true; do
                 sleep 10
-                status_response=$(curl -s http://localhost:8081/api/tests/go/status || echo '{"status":"error"}')
+                status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/go/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
 
                 # Extract progress for display
@@ -1960,7 +2000,7 @@ jobs:
               fi
 
               # Trigger PHPUnit tests via API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/php)
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:${PORT_STATUS:-8081}/api/tests/php)
               http_code="${response: -3}"
 
               if [ "$http_code" = "409" ]; then
@@ -1981,7 +2021,7 @@ jobs:
               # Poll for PHPUnit completion
               while true; do
                 sleep 10
-                status_response=$(curl -s http://localhost:8081/api/tests/php/status || echo '{"status":"error"}')
+                status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/php/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
                 # Extract progress counts for display
                 completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
@@ -2023,7 +2063,7 @@ jobs:
                 exit 0
               fi
               # Trigger Playwright tests via status API
-              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:8081/api/tests/playwright)
+              response=$(curl -s -w "%{http_code}" -X POST -H "Content-Type: application/json" http://localhost:${PORT_STATUS:-8081}/api/tests/playwright)
               http_code="${response: -3}"
 
               if [ "$http_code" = "409" ]; then
@@ -2045,7 +2085,7 @@ jobs:
               # Poll for completion
               while true; do
                 sleep 10
-                status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+                status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/playwright/status || echo '{"status":"error"}')
                 status=$(echo "$status_response" | jq -r '.status // "unknown"')
                 completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
                 total=$(echo "$status_response" | jq -r '.progress.total // 0')
@@ -2107,7 +2147,7 @@ jobs:
 
               sleep 10
 
-              status_response=$(curl -s http://localhost:8081/api/tests/playwright/status || echo '{"status":"error"}')
+              status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/playwright/status || echo '{"status":"error"}')
               status=$(echo "$status_response" | jq -r '.status // "unknown"')
               completed=$(echo "$status_response" | jq -r '.progress.completed // 0')
               total=$(echo "$status_response" | jq -r '.progress.total // 0')
@@ -2209,7 +2249,7 @@ jobs:
                 result=$(cat /tmp/${test_type}-result 2>/dev/null || echo "unknown")
                 if [ "$result" = "running" ] || [ "$result" = "unknown" ]; then
                   echo "📋 Fetching final logs for $test_type..."
-                  status_response=$(curl -s http://localhost:8081/api/tests/${test_type}/status || echo '{}')
+                  status_response=$(curl -s http://localhost:${PORT_STATUS:-8081}/api/tests/${test_type}/status || echo '{}')
                   echo "" >> "$outfile"
                   echo "=== Test killed by fail-fast ===" >> "$outfile"
                   echo "$status_response" | jq -r '.logs // "No logs available"' >> "$outfile" 2>/dev/null || true

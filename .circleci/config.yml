@@ -1,5 +1,7 @@
 version: 2.1
 
+setup: true
+
 parameters:
   run_manual_promote:
     type: boolean
@@ -11,103 +13,49 @@ parameters:
     description: "Set to true to build iOS and upload to TestFlight from current branch"
 
 orbs:
-  freegle: freegle/tests@1
+  continuation: circleci/continuation@2
+
+jobs:
+  check-runner:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Check self-hosted runner availability
+          command: |
+            # Query CircleCI runner API to see if our self-hosted runner is online
+            # Uses CIRCLE_TOKEN (project env var — personal API token) for runner API auth
+            RUNNER_AVAILABLE=false
+
+            if [ -n "$CIRCLE_TOKEN" ]; then
+              echo "Checking for online runners in freegle/circleci-docker-runner..."
+              RESPONSE=$(curl -sf --retry 2 --retry-delay 3 \
+                -H "Circle-Token: ${CIRCLE_TOKEN}" \
+                "https://runner.circleci.com/api/v3/runner?resource-class=freegle/circleci-docker-runner" 2>/dev/null) || true
+
+              if [ -n "$RESPONSE" ]; then
+                ONLINE_COUNT=$(echo "$RESPONSE" | jq '[.items[] | select(.resource_class=="freegle/circleci-docker-runner")] | length' 2>/dev/null) || ONLINE_COUNT=0
+                echo "Found ${ONLINE_COUNT} runner(s)"
+                if [ "$ONLINE_COUNT" -gt "0" ]; then
+                  RUNNER_AVAILABLE=true
+                fi
+              else
+                echo "Runner API check failed or returned empty response — falling back to cloud"
+              fi
+            else
+              echo "CIRCLE_TOKEN not set — falling back to cloud"
+            fi
+
+            echo "Runner available: ${RUNNER_AVAILABLE}"
+            echo "{\"use_self_hosted\": ${RUNNER_AVAILABLE}, \"run_manual_promote\": << pipeline.parameters.run_manual_promote >>, \"build_testflight\": << pipeline.parameters.build_testflight >>}" > /tmp/pipeline-params.json
+            cat /tmp/pipeline-params.json
+      - continuation/continue:
+          configuration_path: .circleci/continue-config.yml
+          parameters: /tmp/pipeline-params.json
 
 workflows:
-  version: 2
-
-  # Main test workflow — runs on all branches
-  build-test:
+  setup:
     jobs:
-      - freegle/build-and-test:
-          filters:
-            branches:
-              ignore:
-                - modtools
-
-  # Build Android debug APKs for non-production branches
-  build-android-apps:
-    jobs:
-      - freegle/build-android-dev:
-          filters:
-            branches:
-              ignore:
-                - production
-                - modtools
-      - freegle/build-android-debug:
-          filters:
-            branches:
-              ignore:
-                - production
-                - modtools
-
-  # Deploy apps when production branch is pushed
-  deploy-apps:
-    jobs:
-      - freegle/increment-version:
-          filters:
-            branches:
-              only:
-                - production
-      - freegle/build-android:
-          requires:
-            - freegle/increment-version
-          filters:
-            branches:
-              only:
-                - production
-      - freegle/build-ios:
-          requires:
-            - freegle/increment-version
-          filters:
-            branches:
-              only:
-                - production
-      - freegle/check-hotfix-promote:
-          requires:
-            - freegle/build-android
-            - freegle/build-ios
-          filters:
-            branches:
-              only:
-                - production
-
-  # Weekly promotion — Wednesdays at 10pm UTC
-  weekly-promote-schedule:
-    triggers:
-      - schedule:
-          cron: "0 22 * * 3"
-          filters:
-            branches:
-              only:
-                - production
-    jobs:
-      - freegle/auto-promote-production
-      - freegle/auto-submit-ios
-      - freegle/auto-release-ios
-
-  # Manual promotion trigger
-  manual-promote-submit:
-    when: << pipeline.parameters.run_manual_promote >>
-    jobs:
-      - freegle/auto-promote-production:
-          filters:
-            branches:
-              only:
-                - production
-      - freegle/auto-submit-ios:
-          filters:
-            branches:
-              only:
-                - production
-      - freegle/auto-release-ios:
-          filters:
-            branches:
-              only:
-                - production
-
-  # Build iOS for TestFlight from any branch
-  testflight-branch:
-    when: << pipeline.parameters.build_testflight >>
-    jobs:
-      - freegle/build-ios-testflight
+      - check-runner
