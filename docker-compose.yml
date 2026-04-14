@@ -1186,6 +1186,7 @@ services:
       - NODE_ENV=test
       - NODE_OPTIONS=--max-old-space-size=8192
       - CI=false
+      - PW_WORKERS=${PW_WORKERS:-11}
       - ENABLE_MONOCART_REPORTER=true
       - COVERALLS_REPO_TOKEN=${COVERALLS_REPO_TOKEN:-}
     depends_on:

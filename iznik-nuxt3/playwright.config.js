@@ -31,7 +31,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: 11, // Parallel workers for test isolation validation
+  workers: parseInt(process.env.PW_WORKERS || '11'), // CI sets PW_WORKERS=5 to reduce CPU load
   maxFailures: 0,
   reporter: [
     ['list'],
