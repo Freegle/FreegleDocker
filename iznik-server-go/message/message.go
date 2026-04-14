@@ -924,9 +924,9 @@ func applyExpiry(db *gorm.DB, msgs []MessageSummary) []int {
 		Latest   *time.Time `gorm:"column:latest"`
 	}
 	var chatResults []chatLatest
-	db.Raw("SELECT chat_rooms.refmsgid, MAX(latestmessage) AS latest "+
+	db.Raw("SELECT chat_messages.refmsgid, MAX(latestmessage) AS latest "+
 		"FROM chat_rooms INNER JOIN chat_messages ON chat_rooms.id = chat_messages.chatid "+
-		"WHERE refmsgid IN (?) GROUP BY chat_rooms.refmsgid", candidateIDs).Scan(&chatResults)
+		"WHERE chat_messages.refmsgid IN (?) GROUP BY chat_messages.refmsgid", candidateIDs).Scan(&chatResults)
 
 	recentChat := map[uint64]bool{}
 	for _, cr := range chatResults {
