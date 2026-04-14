@@ -87,6 +87,7 @@ const {
 // Local state (formerly data())
 const chosengroupid = ref(0)
 const bump = ref(0)
+const searchmode = ref('keyword')
 const urlOverride = ref(false)
 const loaded = ref(false)
 const highlightMsgId = ref(null)
@@ -168,6 +169,9 @@ onMounted(() => {
   if (route?.params && 'term' in route.params && route.params.term) {
     messageTerm.value = route.params.term
   }
+  if (route.query.searchmode) {
+    searchmode.value = route.query.searchmode
+  }
   if (messageTerm.value) {
     // Clear existing messages and reset state for fresh search.
     // Without this, the store may have old messages that get shown
@@ -225,7 +229,16 @@ async function loadMore($state) {
 
     let params
 
-    if (messageTerm.value) {
+    if (messageTerm.value && searchmode.value === 'vector') {
+      // Vector search uses the V2 search API via searchMT
+      await messageStore.searchMT({
+        term: messageTerm.value,
+        groupid: groupid.value,
+        searchmode: 'vector',
+      })
+      $state.complete()
+      return
+    } else if (messageTerm.value) {
       params = {
         subaction: 'searchall',
         search: messageTerm.value,

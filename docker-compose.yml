@@ -430,6 +430,25 @@ services:
       retries: 3
       start_period: 30s
 
+  embedding-sidecar:
+    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-embedding-sidecar
+    profiles:
+      - backend
+    networks:
+      - default
+    build:
+      context: ./docker/embedding-sidecar
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3200/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    environment:
+      - PORT=3200
+      - HF_CACHE_DIR=/app/model-cache
+
   host-scripts:
     image: alpine:latest
     container_name: ${COMPOSE_PROJECT_NAME:-freegle}-host-scripts
@@ -671,6 +690,9 @@ services:
       reverse-proxy:
         condition: service_healthy
         required: false
+      embedding-sidecar:
+        condition: service_healthy
+        required: false
     restart: "no"
     environment:
       - MYSQL_HOST=percona
@@ -690,6 +712,7 @@ services:
       - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
       - TNKEY=${TNKEY:-}
       - MAPBOX_KEY=${MAPBOX_KEY:-}
+      - EMBEDDING_SIDECAR_URL=http://embedding-sidecar:3200
     volumes:
       - apiv2_logs:/var/log/freegle
     healthcheck:
