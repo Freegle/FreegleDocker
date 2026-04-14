@@ -135,6 +135,16 @@
               Possibly should be on {{ homegroup }}
               <span v-if="!homegroupontn"> but group not on TN </span>
             </div>
+            <div
+              v-if="otherGroups.length > 0"
+              class="small text-muted"
+            >
+              Also on:
+              <span
+                v-for="(g, idx) in otherGroups"
+                :key="g.groupid"
+              >{{ groupStore.get(g.groupid)?.namedisplay || 'Group ' + g.groupid }}<span v-if="idx < otherGroups.length - 1">, </span></span>
+            </div>
             <ModMessageDuplicate
               v-for="(duplicate, index) in duplicates"
               :key="'duplicate-' + duplicate.id + '-' + index"
@@ -622,6 +632,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import Highlighter from 'vue-highlight-words'
 
 import { useAuthStore } from '~/stores/auth'
+import { useGroupStore } from '~/stores/group'
 import { useLocationStore } from '~/stores/location'
 import { useMessageStore } from '~/stores/message'
 import { useUserStore } from '~/stores/user'
@@ -688,6 +699,7 @@ const props = defineProps({
 const emit = defineEmits(['destroy'])
 
 const authStore = useAuthStore()
+const groupStore = useGroupStore()
 const locationStore = useLocationStore()
 const memberStore = useMemberStore()
 const messageStore = useMessageStore()
@@ -777,6 +789,13 @@ const contextGroup = computed(() => {
   if (!message.value?.groups?.length) return null
   const gid = parseInt(groupid.value)
   return message.value.groups.find((g) => parseInt(g.groupid) === gid) || message.value.groups[0]
+})
+
+// Other groups this message is on (for multi-group indicator).
+const otherGroups = computed(() => {
+  if (!message.value?.groups) return []
+  const gid = parseInt(groupid.value)
+  return message.value.groups.filter((g) => parseInt(g.groupid) !== gid)
 })
 
 const messageHistory = computed(() => {
