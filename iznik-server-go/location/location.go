@@ -741,10 +741,40 @@ func UpdateLocation(c *fiber.Ctx) error {
 	db := database.DBConn
 
 	if req.Polygon != nil && *req.Polygon != "" {
-		db.Exec(
-			fmt.Sprintf("UPDATE locations SET geometry = ST_GeomFromText(?, %d) WHERE id = ?", utils.SRID),
+		// Validate geometry first.
+		var valid bool
+		db.Raw(fmt.Sprintf("SELECT ST_IsValid(ST_GeomFromText(?, %d)) AS valid", utils.SRID), *req.Polygon).Scan(&valid)
+
+		if !valid {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid geometry")
+		}
+
+		// Simplify the polygon to reduce complexity, matching V1 behaviour.
+		var simplified string
+		db.Raw(fmt.Sprintf("SELECT ST_AsText(ST_Simplify(ST_GeomFromText(?, %d), 0.001)) AS simplified", utils.SRID), *req.Polygon).Scan(&simplified)
+
+		if simplified != "" {
+			req.Polygon = &simplified
+		}
+
+		// Update ourgeometry (the human-edited override), not geometry (which is from OSM).
+		result := db.Exec(
+			fmt.Sprintf("UPDATE locations SET `type` = 'Polygon', ourgeometry = ST_GeomFromText(?, %d) WHERE id = ?", utils.SRID),
 			*req.Polygon, req.ID,
 		)
+
+		if result.Error != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to update geometry")
+		}
+
+		// Update the spatial index table.
+		db.Exec(
+			fmt.Sprintf("REPLACE INTO locations_spatial (locationid, geometry) VALUES (?, ST_GeomFromText(?, %d))", utils.SRID),
+			req.ID, *req.Polygon,
+		)
+
+		// Update cached centroid and max dimensions.
+		db.Exec("UPDATE locations SET maxdimension = GetMaxDimension(ourgeometry), lat = ST_Y(ST_Centroid(ourgeometry)), lng = ST_X(ST_Centroid(ourgeometry)) WHERE id = ?", req.ID)
 	}
 
 	if req.Name != nil && *req.Name != "" {
@@ -752,7 +782,7 @@ func UpdateLocation(c *fiber.Ctx) error {
 		db.Exec("UPDATE locations SET name = ?, canon = ? WHERE id = ?", *req.Name, canon, req.ID)
 	}
 
-	return c.JSON(fiber.Map{"success": true})
+	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
 
 type ExcludeLocationRequest struct {
