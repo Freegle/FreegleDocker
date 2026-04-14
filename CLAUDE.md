@@ -200,6 +200,17 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **Self-hosted runner fully working**: 130/130 Playwright, Go, Laravel, Vitest, PHP all pass. Coveralls uploads. Auto-merge.
 - **Coveralls**: Uploads work from feature branch but don't show on main Coveralls page (shows master only)
 
+### 2026-04-14 - Bug fixes batch (CI promote, spamignore, TN member, feedback badge, /changes, swagger)
+- **CI manual-promote fix** (`f6763c266`): "Conflicting pipeline parameters" — skip runner check for promote/testflight, only pass `use_self_hosted` in continuation. Cherry-picked to production (`8b1d34853`). All 3 promote jobs succeeded.
+- **Spamignore** (`f9e380950`): ModMemberButton "Ignore" was a no-op — wired up to `memberStore.spamignore()`. 67/67 Vitest pass.
+- **TN member number** (`60175c409`): ModMessageUserInfo fallback shows `user.id` when membership missing. 39/39 Vitest pass.
+- **Feedback badge** (`41bd6a036`): Store NULL for empty outcome comments (`*string` in Go), exclude empty strings in happiness filter (Go + PHP). 1365/1365 Go tests pass.
+- **/changes endpoint** (`ad109c584`): User `lastupdated` was empty string (NULL→string scan), ratings missing `id`/`tn_rating_id`. Fixed with `*string` + `gorm:"column:lastupdated"` tag, added fields to Rating struct/query. Swagger HTTPS-only. 1367/1367 Go tests pass.
+- **Bulletin frequency "Never"** (`81cc432be`): PATCH /memberships returned 400 for string emailfrequency. HTML `<select>` emits `"0"` not `0`. Changed `*int` to `*utils.FlexInt` for emailfrequency, eventsallowed, volunteeringallowed (membership), relevantallowed, newslettersallowed (session + user). 1368/1368 Go tests pass. Posted on Discourse #9582.
+- **chat_rooms.refmsgid** (`554fe8ae8`): Column doesn't exist — changed to chat_messages.refmsgid. Test added.
+- **CI OOM** (`e65fd6ac7`): NODE_OPTIONS max-old-space-size=3584 for Nuxt generate. Orb 1.1.195.
+- **Discourse posts**: Notified Jo (member number fix), Neville (feedback badge fix), Dee (bulletin fix).
+
 ### 2026-04-14 - Isochrone fix + Postcode remapping V2 migration
 - **Isochrone fix** (pushed `c8bd26502`): Browse page only showed own posts because Go API stored POINT instead of Mapbox POLYGON. Added `mapbox.go`, `ensureIsochroneExists()`, self-healing `healPointIsochrones()`. CI pipeline 3126 running.
 - **Postcode remapping** (in progress): V1 `Location::remapPostcodes()` uses PostgreSQL KNN — missing from V2.
