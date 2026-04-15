@@ -24,7 +24,8 @@ class NotifyUser2UserCommand extends Command
                             {--since=4 : How many hours back to look for messages}
                             {--force : Force sending even for already mailed messages}
                             {--max-iterations=120 : Maximum iterations before exiting}
-                            {--spool : Spool emails instead of sending directly}';
+                            {--spool : Spool emails instead of sending directly}
+                            {--dry-run : Show what would be sent without actually sending}';
 
     /**
      * The console command description.
@@ -59,6 +60,11 @@ class NotifyUser2UserCommand extends Command
         $forceAll = (bool) $this->option('force');
         $maxIterations = (int) $this->option('max-iterations');
         $spool = (bool) $this->option('spool');
+        $dryRun = (bool) $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no emails will be sent.');
+        }
 
         // Inject spooler if spooling is enabled.
         if ($spool) {
@@ -93,7 +99,8 @@ class NotifyUser2UserCommand extends Command
                 $chatId,
                 $delay,
                 $sinceHours,
-                $forceAll
+                $forceAll,
+                $dryRun
             );
 
             $totalNotified += $count;

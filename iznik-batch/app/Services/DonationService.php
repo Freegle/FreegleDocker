@@ -38,7 +38,7 @@ class DonationService
     /**
      * Send thank you emails to recent donors who haven't been thanked.
      */
-    public function thankDonors(): array
+    public function thankDonors(bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -63,8 +63,10 @@ class DonationService
                     continue;
                 }
 
-                Mail::send(new DonationThankYou($user));
-                $this->markAsThanked($donor->userid);
+                if (!$dryRun) {
+                    Mail::send(new DonationThankYou($user));
+                    $this->markAsThanked($donor->userid);
+                }
 
                 $stats['emails_sent']++;
                 $stats['processed']++;
@@ -122,7 +124,7 @@ class DonationService
     /**
      * Ask users for donations after they've received items.
      */
-    public function askForDonations(): array
+    public function askForDonations(bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -160,8 +162,10 @@ class DonationService
                 $recentMessage = $this->getRecentReceivedMessage($recipient->userid);
 
                 if ($recentMessage) {
-                    Mail::send(new AskForDonation($user, $recentMessage->subject));
-                    $this->recordAsk($recipient->userid);
+                    if (!$dryRun) {
+                        Mail::send(new AskForDonation($user, $recentMessage->subject));
+                        $this->recordAsk($recipient->userid);
+                    }
                     $stats['emails_sent']++;
                 }
 
@@ -247,7 +251,7 @@ class DonationService
      *
      * Migrated from iznik-server/scripts/cron/donations_ads_target.php
      */
-    public function updateAdsTarget(): array
+    public function updateAdsTarget(bool $dryRun = false): array
     {
         $targetMax = DB::table('config')
             ->where('key', 'ads_off_target_max')
@@ -274,15 +278,17 @@ class DonationService
             $remaining = 0;
         }
 
-        DB::table('config')->updateOrInsert(
-            ['key' => 'ads_off_target'],
-            ['value' => $remaining]
-        );
+        if (!$dryRun) {
+            DB::table('config')->updateOrInsert(
+                ['key' => 'ads_off_target'],
+                ['value' => $remaining]
+            );
 
-        DB::table('config')->updateOrInsert(
-            ['key' => 'ads_enabled'],
-            ['value' => $remaining > 0 ? 1 : 0]
-        );
+            DB::table('config')->updateOrInsert(
+                ['key' => 'ads_enabled'],
+                ['value' => $remaining > 0 ? 1 : 0]
+            );
+        }
 
         return [
             'target_max' => $targetMax,

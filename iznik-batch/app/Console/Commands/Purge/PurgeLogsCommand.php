@@ -12,7 +12,8 @@ class PurgeLogsCommand extends Command
 {
     use GracefulShutdown, LogsBatchJob;
 
-    protected $signature = 'purge:logs';
+    protected $signature = 'purge:logs
+                            {--dry-run : Show what would be purged without actually deleting}';
 
     protected $description = 'Purge old log entries from various tables';
 
@@ -20,11 +21,17 @@ class PurgeLogsCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        return $this->runWithLogging(function () use ($purgeService) {
-            Log::info('Starting log purge');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        return $this->runWithLogging(function () use ($purgeService, $dryRun) {
+            Log::info('Starting log purge', ['dry_run' => $dryRun]);
             $this->info('Purging log data...');
 
-            $results = $purgeService->purgeAllLogs();
+            $results = $purgeService->purgeAllLogs($dryRun);
 
             $this->newLine();
             $this->info('Log purge complete.');

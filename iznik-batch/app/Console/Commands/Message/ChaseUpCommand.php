@@ -27,6 +27,20 @@ class ChaseUpCommand extends Command
         }
 
         Log::info('Starting chase-up processing', ['dry_run' => $dryRun]);
+
+        // V1: chaseup.php calls these three operations before the main chaseUp().
+        $this->info('Tidying dull outcome comments...');
+        $tidied = $service->tidyOutcomes($dryRun);
+        $this->info("  Tidied {$tidied} outcomes");
+
+        $this->info('Processing intended outcomes...');
+        $intended = $service->processIntendedOutcomes($dryRun);
+        $this->info("  Processed {$intended} intended outcomes");
+
+        $this->info('Notifying about languishing posts...');
+        $languishing = $service->notifyLanguishing($dryRun);
+        $this->info("  Found {$languishing} languishing posts");
+
         $this->info('Processing messages for chase-up...');
 
         $stats = $service->process($dryRun);
