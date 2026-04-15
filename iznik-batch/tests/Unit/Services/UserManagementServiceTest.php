@@ -212,6 +212,25 @@ class UserManagementServiceTest extends TestCase
         $this->assertEquals("Deleted User #{$user->id}", $user->fullname);
     }
 
+    public function test_forget_inactive_users_skips_already_forgotten(): void
+    {
+        // Create user who meets all inactive criteria but is already forgotten.
+        $user = User::create([
+            'firstname' => NULL,
+            'lastname' => NULL,
+            'fullname' => 'Deleted User #12345',
+            'added' => now()->subYears(2),
+            'lastaccess' => now()->subMonths(7),
+            'systemrole' => 'User',
+            'forgotten' => now()->subDays(30),
+        ]);
+
+        $count = $this->service->forgetInactiveUsers();
+
+        // Already-forgotten user should NOT be re-processed.
+        $this->assertEquals(0, $count);
+    }
+
     public function test_forget_inactive_users_skips_with_memberships(): void
     {
         $user = User::create([
