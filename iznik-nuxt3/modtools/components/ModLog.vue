@@ -77,7 +77,6 @@
               <span
                 v-if="
                   logMessage.groups &&
-                  logMessage.groups &&
                   logMessage.groups.some(
                     (g) => g.collection === 'Pending'
                   )

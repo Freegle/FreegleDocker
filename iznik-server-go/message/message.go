@@ -1423,8 +1423,12 @@ func handleApprove(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 		}
 	}
 
-	// Release per-group hold.
-	db.Exec("UPDATE messages_groups SET heldby = NULL WHERE msgid = ? AND groupid = ?", req.ID, groupid)
+	// Release hold — per-group if a specific group was targeted, all groups if approving globally.
+	if req.Groupid != nil && *req.Groupid > 0 {
+		db.Exec("UPDATE messages_groups SET heldby = NULL WHERE msgid = ? AND groupid = ?", req.ID, groupid)
+	} else {
+		db.Exec("UPDATE messages_groups SET heldby = NULL WHERE msgid = ?", req.ID)
+	}
 
 	// Check if still held on any group — if not, clear messages.heldby for backwards compat.
 	var stillHeldCount int64
@@ -1556,12 +1560,19 @@ func handleDeleteMessage(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 		log.Printf("Failed to delete messages_groups for message %d group %d: %v", req.ID, groupid, result.Error)
 	}
 
-	// If no groups remain, soft-delete the message itself.
+	// If no non-deleted groups remain, soft-delete the message itself.
 	var remainingGroups int64
-	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid = ?", req.ID).Scan(&remainingGroups)
+	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid = ? AND deleted = 0", req.ID).Scan(&remainingGroups)
 	if remainingGroups == 0 {
 		if result := db.Exec("UPDATE messages SET deleted = NOW(), messageid = NULL WHERE id = ?", req.ID); result.Error != nil {
 			log.Printf("Failed to soft-delete message %d: %v", req.ID, result.Error)
+		}
+
+		// Remove from freebiealerts.app — post is no longer available on any group.
+		if err := queue.QueueTask(queue.TaskFreebieAlertsRemove, map[string]interface{}{
+			"msgid": req.ID,
+		}); err != nil {
+			log.Printf("Failed to queue freebie alerts remove for message %d: %v", req.ID, err)
 		}
 	}
 
@@ -1583,13 +1594,6 @@ func handleDeleteMessage(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	// Always queue (even when no stdmsg) so the batch processor can create the log.
 	db.Exec("INSERT INTO background_tasks (task_type, data) VALUES (?, JSON_OBJECT('msgid', ?, 'groupid', ?, 'byuser', ?, 'subject', ?, 'body', ?, 'stdmsgid', ?, 'action', ?))",
 		"email_message_rejected", req.ID, groupid, myid, subject, body, stdmsgid, "Delete Approved Message")
-
-	// Remove from freebiealerts.app — post is no longer available.
-	if err := queue.QueueTask(queue.TaskFreebieAlertsRemove, map[string]interface{}{
-		"msgid": req.ID,
-	}); err != nil {
-		log.Printf("Failed to queue freebie alerts remove for message %d: %v", req.ID, err)
-	}
 
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
