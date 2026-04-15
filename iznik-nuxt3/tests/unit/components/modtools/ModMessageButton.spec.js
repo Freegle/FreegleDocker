@@ -256,7 +256,6 @@ describe('ModMessageButton', () => {
       await wrapper.vm.click()
       expect(mockMessageStore.hold).toHaveBeenCalledWith({
         id: 555,
-        groupid: 456,
       })
     })
 
@@ -273,7 +272,6 @@ describe('ModMessageButton', () => {
       await wrapper.vm.click()
       expect(mockMessageStore.release).toHaveBeenCalledWith({
         id: 666,
-        groupid: 456,
       })
     })
 
