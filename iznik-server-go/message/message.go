@@ -82,6 +82,8 @@ type Message struct {
 	RawMessage       *string          `json:"message,omitempty" gorm:"column:message"`
 	Worry            []WorryMatch     `json:"worry,omitempty" gorm:"-"`
 	Postings         []MessagePosting `json:"postings,omitempty" gorm:"-"`
+	Tnpostid         *string          `json:"tnpostid"`
+	Expiresat        *time.Time       `json:"expiresat,omitempty" gorm:"-"`
 }
 
 // MessagePosting represents a posting history record from messages_postings.
@@ -115,6 +117,85 @@ type MessageEdit struct {
 	Newtext         *string    `json:"newtext"`
 	Reviewrequired  int        `json:"reviewrequired"`
 	Timestamp       *time.Time `json:"timestamp"`
+}
+
+// computeExpiresat calculates when a message expires based on group settings.
+// It checks maxagetoshow and repost settings for each group the message is on,
+// and returns the latest (most generous) expiry time.
+func computeExpiresat(db *gorm.DB, msgType string, messageGroups []MessageGroup) *time.Time {
+	if len(messageGroups) == 0 {
+		return nil
+	}
+
+	groupIDs := make([]uint64, len(messageGroups))
+	arrivalByGroup := make(map[uint64]time.Time)
+	for i, mg := range messageGroups {
+		groupIDs[i] = mg.Groupid
+		arrivalByGroup[mg.Groupid] = mg.Arrival
+	}
+
+	type groupSettings struct {
+		ID       uint64 `gorm:"column:id"`
+		Settings string `gorm:"column:settings"`
+	}
+	var groups []groupSettings
+	db.Raw("SELECT id, settings FROM `groups` WHERE id IN (?)", groupIDs).Scan(&groups)
+
+	var latest *time.Time
+
+	for _, g := range groups {
+		arrival, ok := arrivalByGroup[g.ID]
+		if !ok {
+			continue
+		}
+
+		// Default: 90 days.
+		maxAgeDays := 90
+
+		if g.Settings != "" {
+			var s map[string]interface{}
+			if err := json.Unmarshal([]byte(g.Settings), &s); err == nil {
+				// The key depends on message type.
+				settingsKey := "maxagetoshow"
+
+				if v, exists := s[settingsKey]; exists {
+					if fv, ok := v.(float64); ok && fv > 0 {
+						maxAgeDays = int(fv)
+					}
+				}
+
+				// Also check repost settings — the effective lifetime is
+				// max(maxagetoshow, reposts * (max+1) repost days).
+				repostKey := "reposts"
+				if msgType == "Wanted" {
+					repostKey = "wantedreposts"
+				}
+				if reposts, exists := s[repostKey]; exists {
+					if rMap, ok := reposts.(map[string]interface{}); ok {
+						maxRepost := 5 // default max reposts
+						repostDays := 3
+						if mx, ok := rMap["max"].(float64); ok {
+							maxRepost = int(mx)
+						}
+						if rd, ok := rMap["interval"].(float64); ok {
+							repostDays = int(rd)
+						}
+						repostLifetime := repostDays * (maxRepost + 1)
+						if repostLifetime > maxAgeDays {
+							maxAgeDays = repostLifetime
+						}
+					}
+				}
+			}
+		}
+
+		expires := arrival.Add(time.Duration(maxAgeDays) * 24 * time.Hour)
+		if latest == nil || expires.After(*latest) {
+			latest = &expires
+		}
+	}
+
+	return latest
 }
 
 func GetMessages(c *fiber.Ctx) error {
@@ -177,7 +258,7 @@ func GetMessagesByIds(myid uint64, ids []string) []Message {
 				}
 				err := db.Raw("SELECT messages.id, messages.arrival, messages.date, messages.fromuser, "+
 					"messages.subject, messages.type, textbody, lat, lng, availablenow, availableinitially, locationid,"+
-					"deliverypossible, deadline, heldby, messages.source, messages.sourceheader, messages.fromaddr, messages.fromip, messages.fromcountry, "+
+					"deliverypossible, deadline, heldby, messages.source, messages.sourceheader, messages.fromaddr, messages.fromip, messages.fromcountry, messages.tnpostid, "+
 					rawMessageField+
 					"CASE WHEN messages_likes.msgid IS NULL THEN 1 ELSE 0 END AS unseen FROM messages "+
 					"LEFT JOIN users ON users.id = messages.fromuser "+
@@ -299,6 +380,7 @@ func GetMessagesByIds(myid uint64, ids []string) []Message {
 			}
 
 			message.MessageGroups = messageGroups
+			message.Expiresat = computeExpiresat(db, message.Type, messageGroups)
 			message.MessageAttachments = messageAttachments
 			message.MessageReply = messageReply
 			message.MessageOutcomes = messageOutcomes
@@ -842,9 +924,9 @@ func applyExpiry(db *gorm.DB, msgs []MessageSummary) []int {
 		Latest   *time.Time `gorm:"column:latest"`
 	}
 	var chatResults []chatLatest
-	db.Raw("SELECT chat_rooms.refmsgid, MAX(latestmessage) AS latest "+
+	db.Raw("SELECT chat_messages.refmsgid, MAX(latestmessage) AS latest "+
 		"FROM chat_rooms INNER JOIN chat_messages ON chat_rooms.id = chat_messages.chatid "+
-		"WHERE refmsgid IN (?) GROUP BY chat_rooms.refmsgid", candidateIDs).Scan(&chatResults)
+		"WHERE chat_messages.refmsgid IN (?) GROUP BY chat_messages.refmsgid", candidateIDs).Scan(&chatResults)
 
 	recentChat := map[uint64]bool{}
 	for _, cr := range chatResults {
@@ -1981,6 +2063,40 @@ func handleJoinAndPost(c *fiber.Ctx, myid uint64, req PostMessageRequest) error 
 // @Router /api/message [patch]
 func PatchMessage(c *fiber.Ctx) error {
 	myid := user.WhoAmI(c)
+
+	// Partner auth: if partner query param is present, authenticate via partner key
+	// instead of JWT. The partner acts on behalf of the identified user.
+	partnerKey := c.Query("partner")
+	if partnerKey != "" {
+		db := database.DBConn
+		_, _, domain, err := user.ValidatePartnerKey(db, partnerKey)
+		if err != nil {
+			return fiber.NewError(fiber.StatusForbidden, "Invalid partner key")
+		}
+
+		email := c.Query("email")
+		tnuseridStr := c.Query("tnuserid")
+		var tnuserid uint64
+		if tnuseridStr != "" {
+			if v, err := strconv.ParseUint(tnuseridStr, 10, 64); err == nil {
+				tnuserid = v
+			}
+		}
+
+		// Validate email domain matches partner domain.
+		if email != "" {
+			parts := strings.SplitN(email, "@", 2)
+			if len(parts) != 2 || parts[1] != domain {
+				return fiber.NewError(fiber.StatusForbidden, "Email domain does not match partner domain")
+			}
+		}
+
+		myid = user.FindByTNIdOrEmail(db, tnuserid, email)
+		if myid == 0 {
+			return fiber.NewError(fiber.StatusForbidden, "User not found for partner")
+		}
+	}
+
 	if myid == 0 {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
 	}
@@ -2920,9 +3036,9 @@ func handleOutcome(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	if req.Happiness != nil {
 		happiness = *req.Happiness
 	}
-	comment := ""
-	if req.Comment != nil {
-		comment = *req.Comment
+	var comment *string
+	if req.Comment != nil && *req.Comment != "" {
+		comment = req.Comment
 	}
 
 	if happiness != "" {

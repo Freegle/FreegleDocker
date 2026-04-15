@@ -177,6 +177,95 @@ func TestChangesRatings(t *testing.T) {
 	assert.True(t, found, "Expected rating in changes")
 }
 
+func TestChangesUserLastUpdatedNotEmpty(t *testing.T) {
+	// User changes must have a real date in lastupdated, not an empty string.
+	prefix := uniquePrefix("changes_usr")
+	db := database.DBConn
+
+	partnerKey := prefix + "_key"
+	db.Exec("INSERT INTO partners_keys (partner, `key`) VALUES (?, ?)", prefix+"_partner", partnerKey)
+	defer db.Exec("DELETE FROM partners_keys WHERE partner = ?", prefix+"_partner")
+
+	userID := CreateTestUser(t, prefix, "User")
+	defer db.Exec("DELETE FROM users WHERE id = ?", userID)
+
+	// Set lastupdated to NOW so it appears in results.
+	db.Exec("UPDATE users SET lastupdated = NOW() WHERE id = ?", userID)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/changes?partner=%s", partnerKey), nil)
+	resp, err := getApp().Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json2.Unmarshal(rsp(resp), &result)
+
+	changes := result["changes"].(map[string]interface{})
+	users := changes["users"].([]interface{})
+
+	found := false
+	for _, u := range users {
+		user := u.(map[string]interface{})
+		if uint64(user["id"].(float64)) == userID {
+			lu := user["lastupdated"].(string)
+			assert.NotEmpty(t, lu, "lastupdated should not be empty")
+			assert.Contains(t, lu, "T", "lastupdated should be ISO8601 format")
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected user in changes")
+}
+
+func TestChangesRatingHasIdAndTnRatingId(t *testing.T) {
+	// Ratings must include id and tn_rating_id fields.
+	prefix := uniquePrefix("changes_rid")
+	db := database.DBConn
+
+	partnerKey := prefix + "_key"
+	db.Exec("INSERT INTO partners_keys (partner, `key`) VALUES (?, ?)", prefix+"_partner", partnerKey)
+	defer db.Exec("DELETE FROM partners_keys WHERE partner = ?", prefix+"_partner")
+
+	raterID := CreateTestUser(t, prefix+"_rater", "User")
+	defer db.Exec("DELETE FROM users WHERE id = ?", raterID)
+
+	rateeID := CreateTestUser(t, prefix+"_ratee", "User")
+	defer db.Exec("DELETE FROM users WHERE id = ?", rateeID)
+
+	db.Exec("INSERT INTO ratings (rater, ratee, rating, timestamp, visible, tn_rating_id) VALUES (?, ?, 'Up', NOW(), 1, 12345)", raterID, rateeID)
+	defer db.Exec("DELETE FROM ratings WHERE rater = ? AND ratee = ?", raterID, rateeID)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/changes?partner=%s", partnerKey), nil)
+	resp, err := getApp().Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json2.Unmarshal(rsp(resp), &result)
+
+	changes := result["changes"].(map[string]interface{})
+	ratings := changes["ratings"].([]interface{})
+
+	found := false
+	for _, r := range ratings {
+		rating := r.(map[string]interface{})
+		if uint64(rating["rater"].(float64)) == raterID {
+			// id must be present and non-zero.
+			id, ok := rating["id"]
+			assert.True(t, ok, "rating must have id field")
+			assert.Greater(t, id.(float64), float64(0), "rating id must be > 0")
+
+			// tn_rating_id must be present.
+			tnid, ok := rating["tn_rating_id"]
+			assert.True(t, ok, "rating must have tn_rating_id field")
+			assert.Equal(t, float64(12345), tnid.(float64))
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected rating in changes")
+}
+
 func TestChangesInvalidSince(t *testing.T) {
 	prefix := uniquePrefix("changes_bad")
 	db := database.DBConn

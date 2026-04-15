@@ -11,6 +11,7 @@ const { timeouts, environment } = require('./config')
 const { loginViaModTools } = require('./utils/user')
 
 const MODTOOLS_URL = environment.modtoolsBaseUrl
+const API_V2 = environment.apiV2BaseUrl
 
 test.describe('ModTools move message', () => {
   test('moving a message between groups should not cause turl error', async ({
@@ -35,11 +36,11 @@ test.describe('ModTools move message', () => {
       // Approve without groupid — approves on whichever group it's on.
       // Go router: rg.Post("/message", PostMessage) handles all action-based
       // mod operations (Approve, Reject, etc.).  Must use POST, not PATCH.
-      // Must call the Go API at http://apiv2.localhost directly (Playwright's
-      // page.request runs in Node.js context that can reach Docker services).
+      // Must call the Go API directly (Playwright's page.request runs in
+      // Node.js context that can reach Docker services).
       // Authorization is a raw JWT string — no "Bearer " prefix.
       await page.request
-        .post('http://apiv2.localhost/api/message', {
+        .post(`${API_V2}/message`, {
           data: { id: msgId, action: 'Approve' },
           headers: { Authorization: jwt },
         })

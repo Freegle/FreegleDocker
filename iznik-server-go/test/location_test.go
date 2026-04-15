@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/location"
@@ -139,9 +140,18 @@ func TestCreateLocation(t *testing.T) {
 	json2.Unmarshal(rsp(resp), &result)
 	assert.Greater(t, result["id"], float64(0))
 
-	// Cleanup
+	locID := int(result["id"].(float64))
+
+	// Verify a remap_postcodes background task was queued.
+	time.Sleep(100 * time.Millisecond)
 	db := database.DBConn
-	db.Exec("DELETE FROM locations WHERE id = ?", int(result["id"].(float64)))
+	var taskCount int64
+	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	assert.Greater(t, taskCount, int64(0), "remap_postcodes task should be queued after location create")
+
+	// Cleanup
+	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
+	db.Exec("DELETE FROM locations WHERE id = ?", locID)
 }
 
 func TestCreateLocationNotAdmin(t *testing.T) {
@@ -187,7 +197,34 @@ func TestUpdateLocation(t *testing.T) {
 
 	var result map[string]interface{}
 	json2.Unmarshal(rsp(resp), &result)
-	assert.Equal(t, true, result["success"])
+	assert.Equal(t, float64(0), result["ret"])
+
+	// Verify ourgeometry was set (not geometry — ourgeometry is the human-edited override).
+	var ourgeom string
+	db.Raw("SELECT ST_AsText(ourgeometry) FROM locations WHERE id = ?", locID).Scan(&ourgeom)
+	assert.NotEmpty(t, ourgeom, "ourgeometry should be set after PATCH")
+
+	// Verify locations_spatial was updated.
+	var spatialCount int64
+	db.Raw("SELECT COUNT(*) FROM locations_spatial WHERE locationid = ?", locID).Scan(&spatialCount)
+	assert.Equal(t, int64(1), spatialCount, "locations_spatial should have an entry")
+
+	// Verify centroid lat/lng were updated.
+	var centroid struct {
+		Lat float64
+		Lng float64
+	}
+	db.Raw("SELECT lat, lng FROM locations WHERE id = ?", locID).Scan(&centroid)
+	assert.NotZero(t, centroid.Lat, "lat should be set from centroid")
+	assert.NotZero(t, centroid.Lng, "lng should be set from centroid")
+
+	// Verify a remap_postcodes background task was queued (async, so brief wait).
+	time.Sleep(100 * time.Millisecond)
+	var taskCount int64
+	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	assert.Greater(t, taskCount, int64(0), "remap_postcodes task should be queued after geometry update")
+	// Cleanup the task.
+	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
 
 	// Update name.
 	newName := "Updated " + prefix
@@ -206,6 +243,30 @@ func TestUpdateLocation(t *testing.T) {
 	var canon string
 	db.Raw("SELECT canon FROM locations WHERE id = ?", locID).Scan(&canon)
 	assert.Equal(t, "updated "+prefix, canon)
+
+	// Cleanup
+	db.Exec("DELETE FROM locations_spatial WHERE locationid = ?", locID)
+	db.Exec("DELETE FROM locations WHERE id = ?", locID)
+}
+
+func TestUpdateLocationInvalidGeometry(t *testing.T) {
+	prefix := uniquePrefix("locwr_invgeo")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	_, adminToken := CreateTestSession(t, adminID)
+
+	db := database.DBConn
+	db.Exec("INSERT INTO locations (name, type, canon, popularity) VALUES (?, 'Polygon', ?, 0)",
+		"InvalidGeoTest "+prefix, "invalidgeotest "+prefix)
+	var locID uint64
+	db.Raw("SELECT id FROM locations WHERE name = ? ORDER BY id DESC LIMIT 1", "InvalidGeoTest "+prefix).Scan(&locID)
+	assert.Greater(t, locID, uint64(0))
+
+	// Try with invalid polygon (self-intersecting).
+	body := fmt.Sprintf(`{"id":%d,"polygon":"POLYGON((0 0, 1 1, 1 0, 0 1, 0 0))"}`, locID)
+	req := httptest.NewRequest("PATCH", "/api/locations?jwt="+adminToken, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(req)
+	assert.Equal(t, 400, resp.StatusCode)
 
 	// Cleanup
 	db.Exec("DELETE FROM locations WHERE id = ?", locID)

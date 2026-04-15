@@ -588,3 +588,55 @@ func TestGetGroupWork_SortedByGroupid(t *testing.T) {
 		assert.Less(t, result[i-1].Groupid, result[i].Groupid)
 	}
 }
+
+func TestGetGroupWork_HappinessExcludesEmptyComments(t *testing.T) {
+	// Ratings without comments (empty string) should not count in the happiness badge.
+	prefix := uniquePrefix("gwhapempty")
+	db := database.DBConn
+	groupID := CreateTestGroup(t, prefix)
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	_, token := CreateTestSession(t, modID)
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" offer item", 52.5, -1.8)
+
+	// Insert outcome with empty-string comment (simulating a rating-only click).
+	db.Exec("INSERT INTO messages_outcomes (msgid, outcome, happiness, comments, reviewed) VALUES (?, 'Taken', 'Happy', '', 0)", msgID)
+
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/group/work?jwt="+token, nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result []group.GroupWork
+	json2.Unmarshal(rsp(resp), &result)
+
+	var found *group.GroupWork
+	for i := range result {
+		if result[i].Groupid == groupID {
+			found = &result[i]
+			break
+		}
+	}
+	assert.NotNil(t, found)
+	assert.Equal(t, int64(0), found.Happiness, "Empty-string comments should not count in happiness badge")
+
+	// Now insert one with a real comment — it should count.
+	msgID2 := CreateTestMessage(t, userID, groupID, prefix+" offer item2", 52.5, -1.8)
+	db.Exec("INSERT INTO messages_outcomes (msgid, outcome, happiness, comments, reviewed) VALUES (?, 'Taken', 'Happy', 'Great!', 0)", msgID2)
+
+	resp2, _ := getApp().Test(httptest.NewRequest("GET", "/api/group/work?jwt="+token, nil))
+	assert.Equal(t, 200, resp2.StatusCode)
+
+	var result2 []group.GroupWork
+	json2.Unmarshal(rsp(resp2), &result2)
+
+	var found2 *group.GroupWork
+	for i := range result2 {
+		if result2[i].Groupid == groupID {
+			found2 = &result2[i]
+			break
+		}
+	}
+	assert.NotNil(t, found2)
+	assert.Equal(t, int64(1), found2.Happiness, "Real comments should count in happiness badge")
+}

@@ -302,7 +302,10 @@ async function click(callback) {
     } else if (props.spamhold) {
       await spamHold()
     } else if (props.spamignore) {
-      // spamIgnore - not implemented in original
+      await memberStore.spamignore({
+        userid: props.userid,
+        groupid: props.groupid,
+      })
     } else if (props.release) {
       console.log('Release')
       await releaseIt()

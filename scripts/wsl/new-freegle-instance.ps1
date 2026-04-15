@@ -154,9 +154,9 @@ if ($LASTEXITCODE -ne 0) {
 # Set default user for the instance
 wsl -d $Name -- bash -c "echo -e '[user]\ndefault=$Username' >> /etc/wsl.conf"
 
-# Clone FreegleDocker repo
-Write-Host "Cloning FreegleDocker repository..." -ForegroundColor Green
-wsl -d $Name -u $Username -- bash -c "cd ~ && git clone https://github.com/Freegle/FreegleDocker.git FreegleDockerWSL 2>&1"
+# Clone Iznik repo
+Write-Host "Cloning Iznik repository..." -ForegroundColor Green
+wsl -d $Name -u $Username -- bash -c "cd ~ && git clone https://github.com/Freegle/Iznik.git FreegleDockerWSL 2>&1"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: Git clone may have had issues. Check output above." -ForegroundColor Yellow
 }

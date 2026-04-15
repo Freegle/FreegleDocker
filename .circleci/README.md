@@ -50,7 +50,7 @@ curl -X POST \
   -H "Circle-Token: YOUR_CIRCLECI_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"branch": "master"}' \
-  https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline
+  https://circleci.com/api/v2/project/github/Freegle/Iznik/pipeline
 ```
 
 ## Environment Variables
@@ -90,7 +90,7 @@ CIRCLECI_PAT=$(grep '^token:' ~/.circleci/cli.yml | awk '{print $2}')
 
 # 2. Find the latest pipeline
 curl -s -u "$CIRCLECI_PAT:" \
-  "https://circleci.com/api/v2/project/gh/Freegle/FreegleDocker/pipeline?branch=master" \
+  "https://circleci.com/api/v2/project/gh/Freegle/Iznik/pipeline?branch=master" \
   | python3 -c "import sys,json
 for p in json.load(sys.stdin).get('items',[])[:3]:
     print(f\"Pipeline: {p['id']} state: {p.get('state')}\")"
@@ -108,7 +108,7 @@ curl -s -X POST -u "$CIRCLECI_PAT:" -H "Content-Type: application/json" \
 
 # 5. Get SSH connection details from "Enable SSH" step output
 curl -s -u "$CIRCLECI_PAT:" \
-  "https://circleci.com/api/v1.1/project/github/Freegle/FreegleDocker/<JOB_NUMBER>/output/101/0" \
+  "https://circleci.com/api/v1.1/project/github/Freegle/Iznik/<JOB_NUMBER>/output/101/0" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['message'])"
 
 # 6. Connect
@@ -167,51 +167,85 @@ for i in {1..60}; do  # 60 attempts = 10 minutes max
 
 ## Self-Hosted Runner
 
-Builds run on a dedicated self-hosted runner for faster execution and to avoid CircleCI cloud timeouts.
+The `build-and-test` job can run on a self-hosted CircleCI runner for significantly faster builds. A setup workflow checks runner availability and routes automatically — if the runner is online, tests run locally; if not, they fall back to CircleCI cloud.
 
-### Runner Configuration
+### How It Works
 
-- **Resource class**: `freegle/circleci-docker-runner`
-- **Machine type**: Dedicated Linux server with Docker
-- **Runner software**: CircleCI Machine Runner 3.x
+1. **Setup workflow** (`config.yml`): A lightweight cloud job checks the CircleCI runner API for online runners in `freegle/circleci-docker-runner`
+2. **Continuation** (`continue-config.yml`): Routes to `build-test-local` (self-hosted) or `build-test-cloud` depending on availability
+3. **Other workflows** (`build-android-apps`, `deploy-apps`, etc.) always run on CircleCI cloud regardless
+
+### Speed Comparison (Cloud vs Local)
+
+| Step | Cloud | Local | Improvement |
+|------|-------|-------|-------------|
+| Build containers | ~8 min | <1 min (cached) | ~7 min saved |
+| Wait for prod containers | ~5.5 min | 0s | 5.5 min saved |
+| Vitest | ~6 min | ~3.5 min | 42% faster |
+| Parallel tests (Go/Laravel/Playwright) | ~21 min | ~3.5 min | 6x faster |
+| **Total** | **~42 min** | **~10 min** | **~75% faster** |
+
+The local runner benefits from: Docker layer cache (persistent between runs), faster disk I/O, more CPU cores, and no VM startup overhead.
 
 ### Runner Setup
 
-The runner is installed directly on the host machine (not in Docker) to avoid permission issues:
+The runner runs in a dedicated WSL2 distro called `circleci-runner`, separate from the main development distro.
 
-```bash
-# Runner binary location
-/opt/circleci/circleci-runner
-
-# Configuration file
-/etc/circleci-runner/circleci-runner-config.yaml
-
-# Systemd service
-sudo systemctl status circleci-runner
+**Runner location and config:**
+```
+/opt/circleci-runner/circleci-runner          # Binary
+/opt/circleci-runner/circleci-runner-config.yaml  # Config
+/opt/circleci-runner/start.sh                 # Boot script
 ```
 
-### Prerequisites on Runner Machine
+**Key config settings:**
+- `resource_class: freegle/circleci-docker-runner`
+- `cleanup_working_directory: false` (preserves Docker cache between runs)
+- `max_run_time: 2h`
 
+**Prerequisites in the runner distro:**
 - Docker and docker-compose
-- Git (configured with HTTPS for GitHub: `git config --global url."https://github.com/".insteadOf "git@github.com:"`)
-- curl, jq
-- Passwordless sudo for circleci user
+- Git
+- curl, jq, sysstat
+- Node.js 22 (for Vitest)
+- Passwordless sudo for `circleci` user
 
-### Custom Runner Docker Image
+### Starting the Runner
 
-For containerized runner deployments, a custom Dockerfile is available at `circleci-runner/Dockerfile` with all required tools pre-installed.
+The runner distro starts automatically on Windows boot via a script in the Windows Startup folder (`start-wsl-on-boot.bat`). It also starts keepalive sessions to prevent WSL idle termination.
+
+To start manually:
+```bash
+# From the main WSL distro
+wsl.exe -d circleci-runner -- echo started
+# Start keepalive sessions
+nohup wsl.exe -d circleci-runner -- bash -c 'while true; do sleep 60; done' > /dev/null 2>&1 &
+nohup wsl.exe -d circleci-runner -- bash -c 'while true; do sleep 300; done' > /dev/null 2>&1 &
+```
+
+### Orb Compatibility
+
+The orb (`freegle/tests`) detects the self-hosted runner via `SELF_HOSTED_RUNNER` env var and adjusts behaviour:
+- **Docker cache**: Uses layer cache on self-hosted (skips `--no-cache`), forces rebuild on cloud
+- **Docker cleanup**: Pre-checkout step cleans up containers/volumes from previous runs (self-hosted only)
+- **Path resolution**: All scripts use CWD-relative paths first (`./scripts/`, `./iznik-nuxt3/`) for runner compatibility, with fallbacks to `~/project/` (cloud) and `~/FreegleDocker/`
 
 ### Troubleshooting
 
 ```bash
-# Check runner status
-sudo systemctl status circleci-runner
+# Check runner is running
+wsl.exe -d circleci-runner -- ps aux | grep circleci-runner
 
-# View runner logs
-sudo journalctl -u circleci-runner -f
+# Check runner logs
+wsl.exe -d circleci-runner -- cat /opt/circleci-runner/logs/*.log | tail -50
 
-# Restart runner
-sudo systemctl restart circleci-runner
+# Check Docker containers in runner
+wsl.exe -d circleci-runner -- docker ps
+
+# Restart the runner
+wsl.exe -d circleci-runner -- sudo kill -9 $(wsl.exe -d circleci-runner -- pgrep circleci-runner)
+wsl.exe -t circleci-runner
+wsl.exe -d circleci-runner -- echo restarted
 ```
 
 ## Security Considerations

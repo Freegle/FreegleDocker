@@ -249,6 +249,47 @@ func TestExpiredPromisedMessageExcludedFromActive(t *testing.T) {
 	assert.False(t, found, "Expired promised message should NOT appear in active query")
 }
 
+func TestExpiredMessageWithRecentChatKeptActive(t *testing.T) {
+	// An old message past expiry age should remain active if there's recent
+	// chat activity referencing it (ongoing conversation).
+	db := database.DBConn
+	prefix := uniquePrefix("exprchat")
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	otherID := CreateTestUser(t, prefix, "Other")
+	CreateTestMembership(t, userID, groupID, "Member")
+	_, token := CreateTestSession(t, userID)
+
+	// Old message (200 days) — would normally expire.
+	msgID := CreateTestMessageWithArrival(t, userID, groupID, "OFFER: "+prefix+" chat item", 55.9533, -3.1883, 200)
+
+	// Create a chat room between the two users and a recent chat message
+	// referencing the old message.
+	var chatID uint64
+	db.Exec("INSERT INTO chat_rooms (user1, user2, chattype, latestmessage) VALUES (?, ?, 'User2User', NOW())", userID, otherID)
+	db.Raw("SELECT id FROM chat_rooms WHERE user1 = ? AND user2 = ? AND chattype = 'User2User'", userID, otherID).Scan(&chatID)
+	db.Exec("INSERT INTO chat_messages (chatid, userid, message, type, refmsgid, date, processingsuccessful, reviewrequired, reviewrejected) VALUES (?, ?, 'Is this still available?', 'Default', ?, NOW(), 1, 0, 0)",
+		chatID, otherID, msgID)
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM chat_messages WHERE chatid = ?", chatID)
+		db.Exec("DELETE FROM chat_rooms WHERE id = ?", chatID)
+	})
+
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/user/"+fmt.Sprint(userID)+"/message?active=true&jwt="+token, nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var msgs []message.MessageSummary
+	json2.Unmarshal(rsp(resp), &msgs)
+
+	found := false
+	for _, m := range msgs {
+		if m.ID == msgID {
+			found = true
+		}
+	}
+	assert.True(t, found, "Old message with recent chat should remain active")
+}
+
 func TestNonSpatialMessageMarkedOldInInactiveQuery(t *testing.T) {
 	// Messages without a spatial entry (not publicly visible) should be marked
 	// hasoutcome=true in the active=false response so the client's old/active
@@ -3758,6 +3799,37 @@ func TestPostMessageOutcomeNoHappiness(t *testing.T) {
 	assert.Equal(t, "Taken", dbOutcome)
 }
 
+func TestPostMessageOutcomeHappyNoComment(t *testing.T) {
+	// Rating without comment should store NULL comments, not empty string.
+	// This ensures the feedback badge only counts outcomes with real comments.
+	prefix := uniquePrefix("msgw_out_nocomm")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" offer item", 52.5, -1.8)
+
+	body := map[string]interface{}{
+		"id":        msgID,
+		"action":    "Outcome",
+		"outcome":   "Taken",
+		"happiness": "Happy",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?jwt=%s", token)
+	req := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// comments should be NULL, not empty string.
+	var dbComments *string
+	db.Raw("SELECT comments FROM messages_outcomes WHERE msgid = ?", msgID).Scan(&dbComments)
+	assert.Nil(t, dbComments, "comments should be NULL when no comment provided")
+}
+
 func TestPostMessageEmptyBody(t *testing.T) {
 	prefix := uniquePrefix("msgw_empty")
 	userID := CreateTestUser(t, prefix+"_user", "User")
@@ -5749,4 +5821,252 @@ func TestPatchMessageEditReviewRequiredGroupModerated(t *testing.T) {
 	var reviewRequired int
 	db.Raw("SELECT reviewrequired FROM messages_edits WHERE msgid = ? ORDER BY id DESC LIMIT 1", msgID).Scan(&reviewRequired)
 	assert.Equal(t, 1, reviewRequired, "Group-moderated edit of approved message should set reviewrequired=1")
+}
+
+// --- tnpostid and expiresat tests ---
+
+func TestGetMessageTnpostid(t *testing.T) {
+	prefix := uniquePrefix("msg_tnpostid")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	// Set tnpostid.
+	db.Exec("UPDATE messages SET tnpostid = ? WHERE id = ?", "tn-12345", msgID)
+
+	url := fmt.Sprintf("/api/message/%d?jwt=%s", msgID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, "tn-12345", result["tnpostid"])
+}
+
+func TestGetMessageTnpostidNull(t *testing.T) {
+	prefix := uniquePrefix("msg_tnpostidnull")
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	url := fmt.Sprintf("/api/message/%d?jwt=%s", msgID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Nil(t, result["tnpostid"])
+}
+
+func TestGetMessageExpiresat(t *testing.T) {
+	prefix := uniquePrefix("msg_expiresat")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	url := fmt.Sprintf("/api/message/%d?jwt=%s", msgID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.NotNil(t, result["expiresat"], "expiresat should be present")
+
+	// Verify it's a string (ISO 8601 format).
+	_, ok := result["expiresat"].(string)
+	assert.True(t, ok, "expiresat should be a string")
+
+	// Verify the arrival exists.
+	var arrival string
+	db.Raw("SELECT arrival FROM messages_groups WHERE msgid = ? LIMIT 1", msgID).Scan(&arrival)
+	assert.NotEmpty(t, arrival)
+}
+
+func TestListMessagesTnpostid(t *testing.T) {
+	prefix := uniquePrefix("msg_listtnpost")
+	db := database.DBConn
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	msgID := CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	db.Exec("UPDATE messages SET tnpostid = ? WHERE id = ?", "tn-list-001", msgID)
+
+	url := fmt.Sprintf("/api/messages?groupid=%d&jwt=%s", groupID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	msgs := result["messages"].([]interface{})
+	assert.Greater(t, len(msgs), 0)
+
+	firstMsg := msgs[0].(map[string]interface{})
+	assert.Equal(t, "tn-list-001", firstMsg["tnpostid"])
+}
+
+func TestListMessagesExpiresat(t *testing.T) {
+	prefix := uniquePrefix("msg_listexpires")
+
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	_, token := CreateTestSession(t, userID)
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Member")
+	CreateTestMessage(t, userID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	url := fmt.Sprintf("/api/messages?groupid=%d&jwt=%s", groupID, token)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	msgs := result["messages"].([]interface{})
+	assert.Greater(t, len(msgs), 0)
+
+	firstMsg := msgs[0].(map[string]interface{})
+	assert.NotNil(t, firstMsg["expiresat"], "expiresat should be present in list response")
+}
+
+// --- Partner auth PATCH /message tests ---
+
+func insertTestPartnerKeyMsg(t *testing.T, prefix string, domain string) string {
+	db := database.DBConn
+	key := prefix + "_key"
+	result := db.Exec("INSERT INTO partners_keys (partner, `key`, domain) VALUES (?, ?, ?)",
+		prefix+"_partner", key, domain)
+	if result.Error != nil {
+		t.Fatalf("ERROR: Failed to insert partner key: %v", result.Error)
+	}
+	return key
+}
+
+func TestPatchMessagePartnerAuth(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatch")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 44444, ownerID)
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+	key := insertTestPartnerKeyMsg(t, prefix, "test.com")
+
+	// Partner edits the message subject.
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Partner Updated Subject",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?partner=%s&tnuserid=44444&email=%s@test.com", key, prefix)
+	req := httptest.NewRequest("PATCH", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(0), result["ret"])
+
+	// Verify subject was updated.
+	var subject string
+	db.Raw("SELECT subject FROM messages WHERE id = ?", msgID).Scan(&subject)
+	assert.Equal(t, "Partner Updated Subject", subject)
+}
+
+func TestPatchMessagePartnerWrongDomain(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatchdom")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 55555, ownerID)
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+	key := insertTestPartnerKeyMsg(t, prefix, "partner.com")
+
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Should Not Work",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?partner=%s&tnuserid=55555&email=user@wrong.com", key)
+	req := httptest.NewRequest("PATCH", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestPatchMessagePartnerInvalidKey(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatchbad")
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Should Not Work",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest("PATCH", "/api/message?partner=bad_key&tnuserid=1&email=x@test.com", bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestPatchMessagePartnerNotOwner(t *testing.T) {
+	prefix := uniquePrefix("msg_partpatchnotown")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	otherID := CreateTestUser(t, prefix+"_other", "User")
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 66666, otherID)
+
+	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", 55.9533, -3.1883)
+	key := insertTestPartnerKeyMsg(t, prefix, "test.com")
+
+	// Try to edit as a different user (not the message owner).
+	body := map[string]interface{}{
+		"id":      msgID,
+		"subject": "Should Not Work",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?partner=%s&tnuserid=66666&email=%s@test.com", key, prefix+"_other")
+	req := httptest.NewRequest("PATCH", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
 }

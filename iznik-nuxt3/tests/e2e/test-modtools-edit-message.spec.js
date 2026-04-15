@@ -8,7 +8,8 @@ const { test, expect } = require('./fixtures')
 const { timeouts } = require('./config')
 const { loginViaModTools } = require('./utils/user')
 
-const MODTOOLS_URL = 'http://modtools-prod-local.localhost'
+const { environment } = require('./config')
+const MODTOOLS_URL = environment.modtoolsBaseUrl
 
 async function dismissAllModals(page) {
   // Dismiss modals and wait for backdrop to be fully removed.

@@ -7,6 +7,7 @@ const mockMemberStore = {
   delete: vi.fn(),
   reviewHold: vi.fn(),
   reviewRelease: vi.fn(),
+  spamignore: vi.fn(),
 }
 
 const mockSpammerStore = {
@@ -325,13 +326,15 @@ describe('ModMemberButton', () => {
   })
 
   describe('spamignore action', () => {
-    it('does nothing for spamignore (not implemented)', async () => {
+    it('calls memberStore.spamignore with userid and groupid', async () => {
       const wrapper = mountComponent({ spamignore: true })
       await wrapper.find('button').trigger('click')
       await flushPromises()
-      // Should emit pressed but no store calls
       expect(wrapper.emitted('pressed')).toBeTruthy()
-      expect(mockSpammerStore.confirm).not.toHaveBeenCalled()
+      expect(mockMemberStore.spamignore).toHaveBeenCalledWith({
+        userid: 456,
+        groupid: 789,
+      })
     })
   })
 

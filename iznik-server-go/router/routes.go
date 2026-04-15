@@ -1576,23 +1576,31 @@ func SetupRoutes(app *fiber.App) {
 
 		// Memberships
 		// @Router /memberships [put]
-		// @Summary Join a group
-		// @Description Adds the authenticated user to a group
+		// @Summary Subscribe user to group
+		// @Description Adds a user to a group. Supports JWT auth (self-join or mod-add-member) and partner key auth (TN integration).
 		// @Tags membership
 		// @Accept json
 		// @Produce json
+		// @Param partner query string false "Partner API key (alternative to JWT auth)"
+		// @Param tnuserid query integer false "Trash Nothing user ID (partner auth only)"
+		// @Param email query string false "User email address (partner auth only)"
+		// @Param groupid query integer false "Group ID (partner auth only; JWT auth uses body)"
 		// @Security BearerAuth
-		// @Success 200 {object} fiber.Map
+		// @Success 200 {object} fiber.Map "Returns ret, status, addedto, and fduserid (partner auth)"
 		rg.Put("/memberships", membership.PutMemberships)
 
 		// @Router /memberships [delete]
-		// @Summary Leave a group
-		// @Description Removes the authenticated user from a group
+		// @Summary Unsubscribe user from group
+		// @Description Removes a user from a group. Supports JWT auth and partner key auth (TN integration).
 		// @Tags membership
 		// @Accept json
 		// @Produce json
+		// @Param partner query string false "Partner API key (alternative to JWT auth)"
+		// @Param tnuserid query integer false "Trash Nothing user ID (partner auth only)"
+		// @Param email query string false "User email address (partner auth only)"
+		// @Param groupid query integer false "Group ID (partner auth only; JWT auth uses body)"
 		// @Security BearerAuth
-		// @Success 200 {object} fiber.Map
+		// @Success 200 {object} fiber.Map "Returns ret, status, and fduserid (partner auth)"
 		rg.Delete("/memberships", membership.DeleteMemberships)
 
 		// @Router /memberships [patch]
