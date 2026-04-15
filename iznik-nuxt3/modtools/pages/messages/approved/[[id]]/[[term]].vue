@@ -19,6 +19,14 @@
       />
       <span v-else class="mt-2"> Select a community to search messages. </span>
       <ModtoolsViewControl misckey="modtoolsMessagesApprovedSummary" />
+      <b-form-checkbox
+        v-model="vectorSearchEnabled"
+        switch
+        size="sm"
+        class="mt-2 ms-2"
+      >
+        Semantic search
+      </b-form-checkbox>
     </div>
     <div>
       <NoticeMessage v-if="loaded && !messages.length && !busy" class="mt-2">
@@ -87,7 +95,8 @@ const {
 // Local state (formerly data())
 const chosengroupid = ref(0)
 const bump = ref(0)
-const searchmode = ref('keyword')
+const vectorSearchEnabled = ref(true)
+const searchmode = computed(() => vectorSearchEnabled.value ? 'vector' : 'keyword')
 const urlOverride = ref(false)
 const loaded = ref(false)
 const highlightMsgId = ref(null)
@@ -170,7 +179,7 @@ onMounted(() => {
     messageTerm.value = route.params.term
   }
   if (route.query.searchmode) {
-    searchmode.value = route.query.searchmode
+    vectorSearchEnabled.value = route.query.searchmode === 'vector'
   }
   if (messageTerm.value) {
     // Clear existing messages and reset state for fresh search.
