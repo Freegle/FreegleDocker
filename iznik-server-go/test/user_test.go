@@ -2918,6 +2918,61 @@ func TestPublicLocation_ResponseStructure(t *testing.T) {
 	assert.True(t, hasGroupname, "Response should have 'groupname' field")
 }
 
+func TestPublicLocation_MostRecentMembership(t *testing.T) {
+	// V1 parity: public location uses the most recently added membership,
+	// regardless of role. Moderators commonly moderate their own local group.
+	prefix := uniquePrefix("publocrecent")
+	db := database.DBConn
+
+	// Create a moderator user who will view the target user's profile.
+	modUserID := CreateTestUser(t, prefix+"_mod", "User")
+
+	// Create the target user with no mylocation setting and no lastlocation.
+	db.Exec("INSERT INTO users (firstname, lastname, fullname, systemrole, lastlocation, settings) "+
+		"VALUES ('Test', ?, ?, 'User', NULL, NULL)", prefix, "Test User "+prefix)
+	var targetUserID uint64
+	db.Raw("SELECT id FROM users WHERE fullname = ? ORDER BY id DESC LIMIT 1", "Test User "+prefix).Scan(&targetUserID)
+	require.Greater(t, targetUserID, uint64(0))
+
+	// Create two groups.
+	olderGroupID := CreateTestGroup(t, prefix+"_older")
+	newerGroupID := CreateTestGroup(t, prefix+"_newer")
+
+	// Set distinct full names so we can tell which is returned.
+	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Older Town Freegle", olderGroupID)
+	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Newer Town Freegle", newerGroupID)
+
+	// Make the viewing user a moderator of both groups so they have permission.
+	CreateTestMembership(t, modUserID, olderGroupID, "Moderator")
+	CreateTestMembership(t, modUserID, newerGroupID, "Moderator")
+
+	// Add target user to the older group first, then the newer group.
+	// Explicitly set `added` timestamps 1 second apart because MySQL TIMESTAMP
+	// has only second precision — both inserts in the same second would make
+	// ORDER BY m.added DESC non-deterministic.
+	CreateTestMembership(t, targetUserID, olderGroupID, "Member")
+	CreateTestMembership(t, targetUserID, newerGroupID, "Moderator")
+	db.Exec("UPDATE memberships SET added = DATE_SUB(added, INTERVAL 1 SECOND) WHERE userid = ? AND groupid = ?",
+		targetUserID, olderGroupID)
+
+	// Fetch the target user via modtools endpoint.
+	_, token := CreateTestSession(t, modUserID)
+	resp, _ := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/user/%d?modtools=true&jwt=%s", targetUserID, token), nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json2.Unmarshal(rsp(resp), &result)
+
+	// The publiclocation is nested under info.publiclocation.
+	info, ok := result["info"].(map[string]interface{})
+	require.True(t, ok, "Expected info in modtools user response")
+	pubLoc, ok := info["publiclocation"].(map[string]interface{})
+	require.True(t, ok, "Expected publiclocation in info")
+	assert.Equal(t, "Newer Town Freegle", pubLoc["groupname"],
+		"Public location should use the most recently added membership")
+}
+
 // =============================================================================
 // Tests for GET /api/user/{id}/search
 // =============================================================================
