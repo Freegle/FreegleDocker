@@ -466,6 +466,33 @@ export const useMessageStore = defineStore({
     },
     // ModTools-specific methods below
     async searchMT(params) {
+      if (params.searchmode === 'vector') {
+        // Use V2 vector search endpoint directly
+        const results = await api(this.config).message.search({
+          search: params.term,
+          messagetype: 'All',
+          groupids: params.groupid ? String(params.groupid) : undefined,
+          searchmode: 'vector',
+        })
+
+        if (!results || results.length === 0) return
+
+        await Promise.all(
+          results.map(async (r) => {
+            try {
+              const message = await this.fetchMT({ id: r.id || r.msgid })
+              if (message) {
+                this.list[message.id] = message
+              }
+            } catch (e) {
+              console.log('Failed to fetch message', r.id, e?.message)
+            }
+          })
+        )
+        return
+      }
+
+      // Existing keyword search path
       const data = await api(this.config).message.fetchMessages({
         subaction: 'searchall',
         search: params.term,

@@ -355,6 +355,17 @@ Schedule::command('mail:ai-image-review:digest --spool')
     ->runInBackground();
 
 // =============================================================================
+// VECTOR SEARCH EMBEDDINGS
+// =============================================================================
+
+// Generate vector embeddings for new messages (for semantic search).
+Schedule::command('embeddings:generate')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->sendOutputTo(cronLog('embeddings:generate'))
+    ->runInBackground();
+
+// =============================================================================
 // GIT SUMMARY
 // =============================================================================
 

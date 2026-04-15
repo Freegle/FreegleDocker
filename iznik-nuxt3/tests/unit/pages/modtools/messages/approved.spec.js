@@ -52,6 +52,7 @@ const mockMessageStore = {
   list: {},
   context: null,
   fetchMessagesMT: vi.fn().mockResolvedValue([]),
+  searchMT: vi.fn().mockResolvedValue(undefined),
   clearContext: vi.fn(),
   clear: vi.fn(),
 }
@@ -152,6 +153,10 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
             template: '<img />',
             props: ['src', 'alt', 'lazy'],
           },
+          'b-form-checkbox': {
+            template: '<label><input type="checkbox" /><slot /></label>',
+            props: ['modelValue', 'switch', 'size'],
+          },
           'infinite-loading': {
             template:
               '<div class="infinite-loading"><slot name="spinner" /></div>',
@@ -226,6 +231,13 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
       const wrapper = mountComponent()
       await wrapper.vm.$nextTick()
       expect(wrapper.text()).toContain('Select a community to search messages')
+    })
+
+    it('renders semantic search toggle defaulting to on', async () => {
+      const wrapper = mountComponent()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.text()).toContain('Semantic search')
+      expect(wrapper.vm.vectorSearchEnabled).toBe(true)
     })
   })
 
@@ -400,12 +412,34 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
         expect(mockMessageStore.fetchMessagesMT).toHaveBeenCalled()
       })
 
-      it('uses messageTerm params when searching by message', async () => {
+      it('uses vector search by default when searching by message', async () => {
         // Set route params so mounted() sets the values we need
         mockRouteParams.value = { id: '123', term: 'test search' }
         mockMessages.value = []
         mockShow.value = 0
         const wrapper = mountComponent()
+        await wrapper.vm.$nextTick()
+        mockMessageStore.searchMT.mockClear()
+        const mockState = { loaded: vi.fn(), complete: vi.fn() }
+        await wrapper.vm.loadMore(mockState)
+        expect(mockMessageStore.searchMT).toHaveBeenCalledWith(
+          expect.objectContaining({
+            term: 'test search',
+            groupid: 123,
+            searchmode: 'vector',
+          })
+        )
+        expect(mockState.complete).toHaveBeenCalled()
+      })
+
+      it('uses keyword search when vector toggle is off', async () => {
+        mockRouteParams.value = { id: '123', term: 'test search' }
+        mockMessages.value = []
+        mockShow.value = 0
+        const wrapper = mountComponent()
+        await wrapper.vm.$nextTick()
+        // Disable vector search
+        wrapper.vm.vectorSearchEnabled = false
         await wrapper.vm.$nextTick()
         mockMessageStore.fetchMessagesMT.mockClear()
         const mockState = { loaded: vi.fn(), complete: vi.fn() }
