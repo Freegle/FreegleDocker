@@ -462,22 +462,35 @@ class User extends Model
                     # Make sure no other email is flagged as primary
                     UserEmail::where('userid', $this->id)
                         ->where('id', '!=', $rc)
-                        ->update(['preferred' => 0]);
+                        ->where('preferred', '!=', 0)
+                        ->get()
+                        ->each(function ($other) {
+                            $other->preferred = 0;
+                            $other->save();
+                        });
                 }
             } else {
                 $rc = $emails[0]->id;
 
                 if ($changeprimary && $primary != $emails[0]->preferred) {
                     # Change in status.
-                    UserEmail::where('id', $rc)
-                        ->update(['preferred' => $primary]);
+                    $existing = UserEmail::find($rc);
+                    if ($existing) {
+                        $existing->preferred = $primary;
+                        $existing->save();
+                    }
                 }
 
                 if ($primary) {
                     # Make sure no other email is flagged as primary
                     UserEmail::where('userid', $this->id)
                         ->where('id', '!=', $rc)
-                        ->update(['preferred' => 0]);
+                        ->where('preferred', '!=', 0)
+                        ->get()
+                        ->each(function ($other) {
+                            $other->preferred = 0;
+                            $other->save();
+                        });
 
                     # If we've set an email we might no longer be bouncing.
                     $this->unbounce($rc);
@@ -497,11 +510,18 @@ class User extends Model
     {
         if ($emailid) {
             BounceEmail::where('emailid', $emailid)
-                ->update(['reset' => 1]);
+                ->where('reset', '!=', 1)
+                ->get()
+                ->each(function ($bounce) {
+                    $bounce->reset = 1;
+                    $bounce->save();
+                });
         }
 
-        User::where('id', $this->id)
-            ->update(['bouncing' => 0]);
+        if ($this->bouncing != 0) {
+            $this->bouncing = 0;
+            $this->save();
+        }
     }
 
     public function assignUserToToDonation(string $email, int $userid): void
@@ -511,8 +531,7 @@ class User extends Model
         if (strlen($email)) {
             # We might have donations made via PayPal using this email address which we can now link to this user.  Do
             # SELECT first to avoid this having to replicate in the cluster.
-            $donations = UserDonation::select('id')
-                ->where('Payer', $email)
+            $donations = UserDonation::where('Payer', $email)
                 ->whereNull('userid')
                 ->get();
 
@@ -520,8 +539,8 @@ class User extends Model
                 // Check if user exists before updating to avoid foreign key constraint violations
                 $userExists = User::where('id', $userid)->exists();
                 if ($userExists) {
-                    UserDonation::where('id', $donation->id)
-                        ->update(['userid' => $userid]);
+                    $donation->userid = $userid;
+                    $donation->save();
                 }
             }
         }
