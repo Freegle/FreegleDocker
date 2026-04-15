@@ -624,10 +624,11 @@ describe('ModMessageButtons', () => {
 
   describe('groupid prop passthrough', () => {
     it('passes groupid to all child ModMessageButton components', () => {
-      // Update the stub to also accept groupid prop
+      // Update the stub to also accept groupid prop and have a name for findAllComponents
       const stubs = {
         ...commonStubs,
         ModMessageButton: {
+          name: 'ModMessageButton',
           ...commonStubs.ModMessageButton,
           props: [...commonStubs.ModMessageButton.props, 'groupid'],
         },
@@ -656,6 +657,7 @@ describe('ModMessageButtons', () => {
       const stubs = {
         ...commonStubs,
         ModMessageButton: {
+          name: 'ModMessageButton',
           ...commonStubs.ModMessageButton,
           props: [...commonStubs.ModMessageButton.props, 'groupid'],
         },
