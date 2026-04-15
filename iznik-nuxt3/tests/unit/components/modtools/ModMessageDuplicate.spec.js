@@ -196,7 +196,7 @@ describe('ModMessageDuplicate', () => {
           }
         )
         expect(wrapper.vm.duplicateLink).toBe(
-          '/messages/pending?groupid=456&msgid=123'
+          '/messages/pending/456/123'
         )
       })
 
@@ -209,7 +209,7 @@ describe('ModMessageDuplicate', () => {
           }
         )
         expect(wrapper.vm.duplicateLink).toBe(
-          '/messages/approved?groupid=456&msgid=123'
+          '/messages/approved/456/123'
         )
       })
 
@@ -223,7 +223,7 @@ describe('ModMessageDuplicate', () => {
           }
         )
         expect(wrapper.vm.duplicateLink).toBe(
-          '/messages/pending?groupid=111&msgid=999'
+          '/messages/pending/111/999'
         )
       })
     })
@@ -240,7 +240,7 @@ describe('ModMessageDuplicate', () => {
       )
       const link = wrapper.find('a')
       expect(link.attributes('href')).toBe(
-        '/messages/pending?groupid=456&msgid=123'
+        '/messages/pending/456/123'
       )
     })
 
@@ -254,7 +254,7 @@ describe('ModMessageDuplicate', () => {
       )
       const link = wrapper.find('a')
       expect(link.attributes('href')).toBe(
-        '/messages/approved?groupid=456&msgid=123'
+        '/messages/approved/456/123'
       )
     })
   })

@@ -2918,11 +2918,10 @@ func TestPublicLocation_ResponseStructure(t *testing.T) {
 	assert.True(t, hasGroupname, "Response should have 'groupname' field")
 }
 
-func TestPublicLocation_PrefersMemberOverModerator(t *testing.T) {
-	// Bug: when a user is a Member of group A and a Moderator (caretaker) of group B
-	// added more recently, the profile should show group A's name (where they live),
-	// not group B (which they just manage).
-	prefix := uniquePrefix("publocpref")
+func TestPublicLocation_MostRecentMembership(t *testing.T) {
+	// V1 parity: public location uses the most recently added membership,
+	// regardless of role. Moderators commonly moderate their own local group.
+	prefix := uniquePrefix("publocrecent")
 	db := database.DBConn
 
 	// Create a moderator user who will view the target user's profile.
@@ -2936,21 +2935,25 @@ func TestPublicLocation_PrefersMemberOverModerator(t *testing.T) {
 	require.Greater(t, targetUserID, uint64(0))
 
 	// Create two groups.
-	memberGroupID := CreateTestGroup(t, prefix+"_member")
-	modGroupID := CreateTestGroup(t, prefix+"_mod2")
+	olderGroupID := CreateTestGroup(t, prefix+"_older")
+	newerGroupID := CreateTestGroup(t, prefix+"_newer")
 
 	// Set distinct full names so we can tell which is returned.
-	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Member Town Freegle", memberGroupID)
-	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Caretaker Town Freegle", modGroupID)
+	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Older Town Freegle", olderGroupID)
+	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Newer Town Freegle", newerGroupID)
 
 	// Make the viewing user a moderator of both groups so they have permission.
-	CreateTestMembership(t, modUserID, memberGroupID, "Moderator")
-	CreateTestMembership(t, modUserID, modGroupID, "Moderator")
+	CreateTestMembership(t, modUserID, olderGroupID, "Moderator")
+	CreateTestMembership(t, modUserID, newerGroupID, "Moderator")
 
-	// Add target user as Member of one group (where they live).
-	CreateTestMembership(t, targetUserID, memberGroupID, "Member")
-	// Add target user as Moderator of the other (caretaker — they don't live there).
-	CreateTestMembership(t, targetUserID, modGroupID, "Moderator")
+	// Add target user to the older group first, then the newer group.
+	// Explicitly set `added` timestamps 1 second apart because MySQL TIMESTAMP
+	// has only second precision — both inserts in the same second would make
+	// ORDER BY m.added DESC non-deterministic.
+	CreateTestMembership(t, targetUserID, olderGroupID, "Member")
+	CreateTestMembership(t, targetUserID, newerGroupID, "Moderator")
+	db.Exec("UPDATE memberships SET added = DATE_SUB(added, INTERVAL 1 SECOND) WHERE userid = ? AND groupid = ?",
+		targetUserID, olderGroupID)
 
 	// Fetch the target user via modtools endpoint.
 	_, token := CreateTestSession(t, modUserID)
@@ -2966,8 +2969,8 @@ func TestPublicLocation_PrefersMemberOverModerator(t *testing.T) {
 	require.True(t, ok, "Expected info in modtools user response")
 	pubLoc, ok := info["publiclocation"].(map[string]interface{})
 	require.True(t, ok, "Expected publiclocation in info")
-	assert.Equal(t, "Member Town Freegle", pubLoc["groupname"],
-		"Public location should prefer Member role group over Moderator role group")
+	assert.Equal(t, "Newer Town Freegle", pubLoc["groupname"],
+		"Public location should use the most recently added membership")
 }
 
 // =============================================================================
