@@ -15,6 +15,9 @@ const (
 	// TaskEmailChitchatReport sends a report email to ChitChat support when a newsfeed post is reported.
 	TaskEmailChitchatReport = "email_chitchat_report"
 
+	// TaskEmailCharitySignup sends a notification email to partnerships@ilovefreegle.org when a charity signs up.
+	TaskEmailCharitySignup = "email_charity_signup"
+
 	// TaskEmailDonateExternal sends a notification email to info@ilovefreegle.org when an external donation is recorded.
 	TaskEmailDonateExternal = "email_donate_external"
 
