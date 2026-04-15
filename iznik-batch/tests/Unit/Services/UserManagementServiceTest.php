@@ -53,100 +53,14 @@ class UserManagementServiceTest extends TestCase
         $this->assertEquals(0, $stats['marked_invalid']);
     }
 
-    public function test_retention_stats_counts_active_users(): void
+    public function test_cleanup_users_returns_all_stats(): void
     {
-        // Create active user.
-        $activeUser = User::create([
-            'firstname' => 'Active',
-            'lastname' => 'User',
-            'fullname' => 'Active User',
-            'added' => now()->subDays(60),
-            'lastaccess' => now()->subDays(5),
-        ]);
+        $stats = $this->service->cleanupUsers();
 
-        // Create inactive user.
-        $inactiveUser = User::create([
-            'firstname' => 'Inactive',
-            'lastname' => 'User',
-            'fullname' => 'Inactive User',
-            'added' => now()->subDays(120),
-            'lastaccess' => now()->subDays(100),
-        ]);
-
-        $stats = $this->service->updateRetentionStats();
-
-        $this->assertGreaterThanOrEqual(1, $stats['active_users_30d']);
-        $this->assertArrayHasKey('active_users_90d', $stats);
-        $this->assertArrayHasKey('new_users_30d', $stats);
-        $this->assertArrayHasKey('churned_users', $stats);
-    }
-
-    public function test_retention_stats_counts_new_users(): void
-    {
-        // Create new user.
-        User::create([
-            'firstname' => 'New',
-            'lastname' => 'User',
-            'fullname' => 'New User',
-            'added' => now()->subDays(5),
-            'lastaccess' => now(),
-        ]);
-
-        $stats = $this->service->updateRetentionStats();
-
-        $this->assertGreaterThanOrEqual(1, $stats['new_users_30d']);
-    }
-
-    public function test_cleanup_inactive_users_anonymizes_old_users(): void
-    {
-        // Create old inactive user.
-        $oldUser = User::create([
-            'firstname' => 'Old',
-            'lastname' => 'Inactive',
-            'fullname' => 'Old Inactive User',
-            'added' => now()->subYears(5),
-            'lastaccess' => now()->subYears(4),
-        ]);
-
-        UserEmail::create([
-            'userid' => $oldUser->id,
-            'email' => $this->uniqueEmail('old'),
-            'preferred' => 1,
-            'added' => now()->subYears(5),
-        ]);
-
-        $cleaned = $this->service->cleanupInactiveUsers(3);
-
-        $this->assertEquals(1, $cleaned);
-
-        // Verify user is anonymized.
-        $oldUser->refresh();
-        $this->assertEquals('Deleted', $oldUser->firstname);
-        $this->assertNotNull($oldUser->deleted);
-
-        // Verify email is removed.
-        $this->assertDatabaseMissing('users_emails', ['userid' => $oldUser->id]);
-    }
-
-    public function test_cleanup_inactive_users_ignores_recent_users(): void
-    {
-        // Create recent user.
-        $recentUser = User::create([
-            'firstname' => 'Recent',
-            'lastname' => 'User',
-            'fullname' => 'Recent User',
-            'added' => now()->subYears(1),
-            'lastaccess' => now()->subMonths(6),
-        ]);
-
-        $cleaned = $this->service->cleanupInactiveUsers(3);
-
-        $this->assertEquals(0, $cleaned);
-
-        // Verify user is not anonymized.
-        $recentUser->refresh();
-        $this->assertEquals('Recent', $recentUser->firstname);
-        $this->assertNull($recentUser->deleted);
+        $this->assertArrayHasKey('yahoo_users_deleted', $stats);
+        $this->assertArrayHasKey('inactive_users_forgotten', $stats);
+        $this->assertArrayHasKey('gdpr_forgets_processed', $stats);
+        $this->assertArrayHasKey('forgotten_users_deleted', $stats);
     }
 
     public function test_merge_duplicates_with_no_duplicates(): void
@@ -192,36 +106,30 @@ class UserManagementServiceTest extends TestCase
         $this->assertIsInt($count);
     }
 
-    public function test_cleanup_inactive_users_with_no_inactive(): void
+    public function test_cleanup_users_dry_run_does_not_modify(): void
     {
-        // Create recent user.
-        User::create([
-            'firstname' => 'Recent',
+        // Create a user with a Yahoo Groups email.
+        $user = User::create([
+            'firstname' => 'Yahoo',
             'lastname' => 'User',
-            'fullname' => 'Recent User',
-            'added' => now(),
-            'lastaccess' => now(),
+            'fullname' => 'Yahoo User',
+            'added' => now()->subYears(2),
+            'lastaccess' => now()->subYears(1),
         ]);
 
-        $cleaned = $this->service->cleanupInactiveUsers(3);
-
-        $this->assertEquals(0, $cleaned);
-    }
-
-    public function test_retention_stats_counts_churned_users(): void
-    {
-        // Create churned user (active 90-180 days ago but not since).
-        User::create([
-            'firstname' => 'Churned',
-            'lastname' => 'User',
-            'fullname' => 'Churned User',
-            'added' => now()->subDays(200),
-            'lastaccess' => now()->subDays(100),
+        DB::table('users_emails')->insert([
+            'userid' => $user->id,
+            'email' => 'testgroup@yahoogroups.com',
+            'added' => now()->subYears(2),
         ]);
 
-        $stats = $this->service->updateRetentionStats();
+        $stats = $this->service->cleanupUsers(TRUE);
 
-        $this->assertGreaterThanOrEqual(1, $stats['churned_users']);
+        // Should count the Yahoo user but not delete it.
+        $this->assertGreaterThanOrEqual(1, $stats['yahoo_users_deleted']);
+
+        // User should still exist.
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
     }
 
     public function test_update_kudos_with_active_user(): void
@@ -230,35 +138,23 @@ class UserManagementServiceTest extends TestCase
         $user = $this->createTestUser();
         $this->createMembership($user, $group);
 
-        // Create a message from the user.
-        $message = $this->createTestMessage($user, $group);
+        // Set lastaccess to recent so user is selected.
+        $user->update(['lastaccess' => now()]);
 
-        // Create a successful outcome.
-        \App\Models\MessageOutcome::create([
-            'msgid' => $message->id,
-            'outcome' => 'Taken',
-            'timestamp' => now(),
-        ]);
-
-        // Add messages_by record for received items.
-        DB::table('messages_by')->insert([
-            'userid' => $user->id,
-            'msgid' => $message->id,
-            'timestamp' => now(),
-        ]);
-
-        // Add positive rating.
-        DB::table('ratings')->insert([
-            'rater' => $this->createTestUser()->id,
-            'ratee' => $user->id,
-            'rating' => 'Up',
-            'timestamp' => now(),
-        ]);
+        // Create a message from the user (gives 1 distinct month of posts).
+        $this->createTestMessage($user, $group);
 
         $count = $this->service->updateKudos();
 
         // The method should run and return an integer.
         $this->assertIsInt($count);
+        $this->assertGreaterThanOrEqual(1, $count);
+
+        // Check users_kudos table was populated.
+        $kudosRow = DB::table('users_kudos')->where('userid', $user->id)->first();
+        $this->assertNotNull($kudosRow);
+        $this->assertGreaterThanOrEqual(1, $kudosRow->posts);
+        $this->assertEquals($kudosRow->posts, $kudosRow->kudos);
     }
 
     public function test_process_bounced_emails_with_no_bounced(): void
@@ -269,14 +165,195 @@ class UserManagementServiceTest extends TestCase
         $this->assertEquals(0, $stats['marked_invalid']);
     }
 
-    public function test_retention_stats_with_no_users(): void
-    {
-        $stats = $this->service->updateRetentionStats();
 
-        $this->assertArrayHasKey('active_users_30d', $stats);
-        $this->assertArrayHasKey('active_users_90d', $stats);
-        $this->assertArrayHasKey('new_users_30d', $stats);
-        $this->assertArrayHasKey('churned_users', $stats);
+    public function test_delete_yahoo_groups_users(): void
+    {
+        $user = User::create([
+            'firstname' => 'Yahoo',
+            'lastname' => 'User',
+            'fullname' => 'Yahoo User',
+            'added' => now()->subYears(2),
+            'lastaccess' => now()->subYears(1),
+        ]);
+
+        DB::table('users_emails')->insert([
+            'userid' => $user->id,
+            'email' => 'testgroup@yahoogroups.com',
+            'added' => now()->subYears(2),
+        ]);
+
+        $count = $this->service->deleteYahooGroupsUsers();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+    }
+
+    public function test_forget_inactive_users(): void
+    {
+        // Create user meeting all inactive criteria: no memberships, no spammer record,
+        // no mod notes, last access > 6 months, systemrole = User, not deleted.
+        $user = User::create([
+            'firstname' => 'Inactive',
+            'lastname' => 'User',
+            'fullname' => 'Inactive User',
+            'added' => now()->subYears(2),
+            'lastaccess' => now()->subMonths(7),
+            'systemrole' => 'User',
+        ]);
+
+        $count = $this->service->forgetInactiveUsers();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+
+        // User should be forgotten (personal data wiped).
+        $user->refresh();
+        $this->assertNotNull($user->forgotten);
+        $this->assertNull($user->firstname);
+        $this->assertEquals("Deleted User #{$user->id}", $user->fullname);
+    }
+
+    public function test_forget_inactive_users_skips_with_memberships(): void
+    {
+        $user = User::create([
+            'firstname' => 'Member',
+            'lastname' => 'User',
+            'fullname' => 'Member User',
+            'added' => now()->subYears(2),
+            'lastaccess' => now()->subMonths(7),
+            'systemrole' => 'User',
+        ]);
+
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+
+        $count = $this->service->forgetInactiveUsers();
+
+        // User should NOT be forgotten because they have memberships.
+        $user->refresh();
+        $this->assertNull($user->forgotten);
+        $this->assertEquals('Member', $user->firstname);
+    }
+
+    public function test_process_forgets_after_grace_period(): void
+    {
+        // Create a user who was soft-deleted > 14 days ago but not yet forgotten.
+        $user = User::create([
+            'firstname' => 'Grace',
+            'lastname' => 'Period',
+            'fullname' => 'Grace Period',
+            'added' => now()->subYears(1),
+            'lastaccess' => now()->subMonths(2),
+            'deleted' => now()->subDays(15),
+        ]);
+
+        $count = $this->service->processForgets();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+
+        // User should now be forgotten.
+        $user->refresh();
+        $this->assertNotNull($user->forgotten);
+        $this->assertNull($user->firstname);
+    }
+
+    public function test_process_forgets_skips_recent_deletes(): void
+    {
+        // Create a user who was soft-deleted only 5 days ago.
+        $user = User::create([
+            'firstname' => 'Recent',
+            'lastname' => 'Delete',
+            'fullname' => 'Recent Delete',
+            'added' => now()->subYears(1),
+            'lastaccess' => now()->subMonths(2),
+            'deleted' => now()->subDays(5),
+        ]);
+
+        $count = $this->service->processForgets();
+
+        // Should not have processed this user (within 14-day grace period).
+        $user->refresh();
+        $this->assertNull($user->forgotten);
+        $this->assertEquals('Recent', $user->firstname);
+    }
+
+    public function test_forget_user_wipes_personal_data(): void
+    {
+        $user = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group);
+        $message = $this->createTestMessage($user, $group);
+
+        $this->service->forgetUser($user->id, 'Test reason');
+
+        // User personal fields should be wiped.
+        $user->refresh();
+        $this->assertNull($user->firstname);
+        $this->assertNull($user->lastname);
+        $this->assertEquals("Deleted User #{$user->id}", $user->fullname);
+        $this->assertNull($user->settings);
+        $this->assertNotNull($user->forgotten);
+
+        // Non-internal emails should be deleted.
+        $this->assertDatabaseMissing('users_emails', [
+            'userid' => $user->id,
+            'email' => 'test' . $user->id . '@test.com',
+        ]);
+
+        // Message content should be wiped.
+        $msg = DB::table('messages')->where('id', $message->id)->first();
+        $this->assertNull($msg->textbody);
+        $this->assertNull($msg->htmlbody);
+        $this->assertNotNull($msg->deleted);
+
+        // Memberships should be removed.
+        $this->assertDatabaseMissing('memberships', ['userid' => $user->id]);
+
+        // Log entry should exist.
+        $this->assertDatabaseHas('logs', [
+            'user' => $user->id,
+            'type' => 'User',
+            'subtype' => 'Deleted',
+            'text' => 'Test reason',
+        ]);
+    }
+
+    public function test_delete_fully_forgotten_users(): void
+    {
+        // Create a forgotten user with no messages.
+        $user = User::create([
+            'firstname' => NULL,
+            'lastname' => NULL,
+            'fullname' => 'Deleted User #999',
+            'added' => now()->subYears(2),
+            'lastaccess' => now()->subYears(1),
+            'forgotten' => now()->subDays(30),
+        ]);
+
+        $count = $this->service->deleteFullyForgottenUsers();
+
+        $this->assertGreaterThanOrEqual(1, $count);
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+    }
+
+    public function test_delete_fully_forgotten_users_keeps_users_with_messages(): void
+    {
+        // Create a forgotten user who still has messages.
+        $user = User::create([
+            'firstname' => NULL,
+            'lastname' => NULL,
+            'fullname' => 'Deleted User #998',
+            'added' => now()->subYears(2),
+            'lastaccess' => now()->subYears(1),
+            'forgotten' => now()->subDays(30),
+        ]);
+
+        $group = $this->createTestGroup();
+        $this->createTestMessage($user, $group);
+
+        $count = $this->service->deleteFullyForgottenUsers();
+
+        // User should NOT be deleted because they still have messages.
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
     }
 
     public function test_calculate_kudos_via_reflection(): void
@@ -285,30 +362,20 @@ class UserManagementServiceTest extends TestCase
         $group = $this->createTestGroup();
         $this->createMembership($user, $group);
 
-        // Create items for kudos calculation.
-        $message = $this->createTestMessage($user, $group);
+        // Create a message from the user (gives 1 distinct month of posts).
+        $this->createTestMessage($user, $group);
 
-        // Create outcome - items given.
-        \App\Models\MessageOutcome::create([
-            'msgid' => $message->id,
-            'outcome' => 'Taken',
-            'timestamp' => now(),
+        // Create a chat message (gives 1 distinct month of chats).
+        // First create a chat room.
+        $chatId = DB::table('chat_rooms')->insertGetId([
+            'chattype' => 'User2User',
         ]);
-
-        // Create messages_by record - items received.
-        DB::table('messages_by')->insert([
+        DB::table('chat_messages')->insert([
+            'chatid' => $chatId,
             'userid' => $user->id,
-            'msgid' => $message->id,
-            'timestamp' => now(),
-        ]);
-
-        // Create positive rating.
-        $rater = $this->createTestUser();
-        DB::table('ratings')->insert([
-            'rater' => $rater->id,
-            'ratee' => $user->id,
-            'rating' => 'Up',
-            'timestamp' => now(),
+            'date' => now(),
+            'message' => 'Test chat message',
+            'type' => 'Default',
         ]);
 
         // Use reflection to test protected method.
@@ -316,10 +383,21 @@ class UserManagementServiceTest extends TestCase
         $method = $reflection->getMethod('calculateKudos');
         $method->setAccessible(true);
 
-        $kudos = $method->invoke($this->service, $user);
+        $kudos = $method->invoke($this->service, $user->id);
 
-        // Should have kudos: 10 (for given) + 5 (for received) + 3 (for rating) = 18 (may be less due to tenure rounding).
-        $this->assertGreaterThanOrEqual(17, $kudos);
+        // Returns array with V1-style components.
+        $this->assertIsArray($kudos);
+        $this->assertArrayHasKey('posts', $kudos);
+        $this->assertArrayHasKey('chats', $kudos);
+        $this->assertArrayHasKey('newsfeed', $kudos);
+        $this->assertArrayHasKey('events', $kudos);
+        $this->assertArrayHasKey('vols', $kudos);
+        $this->assertArrayHasKey('facebook', $kudos);
+        $this->assertArrayHasKey('platform', $kudos);
+
+        // Should have 1 month of posts and 1 month of chats.
+        $this->assertEquals(1, $kudos['posts']);
+        $this->assertEquals(1, $kudos['chats']);
     }
 
     public function test_calculate_kudos_with_no_activity(): void
@@ -337,10 +415,17 @@ class UserManagementServiceTest extends TestCase
         $method = $reflection->getMethod('calculateKudos');
         $method->setAccessible(true);
 
-        $kudos = $method->invoke($this->service, $user);
+        $kudos = $method->invoke($this->service, $user->id);
 
-        // New user with no activity should have 0 kudos.
-        $this->assertEquals(0, $kudos);
+        // New user with no activity should have all zeros.
+        $this->assertIsArray($kudos);
+        $this->assertEquals(0, $kudos['posts']);
+        $this->assertEquals(0, $kudos['chats']);
+        $this->assertEquals(0, $kudos['newsfeed']);
+        $this->assertEquals(0, $kudos['events']);
+        $this->assertEquals(0, $kudos['vols']);
+        $this->assertFalse($kudos['facebook']);
+        $this->assertFalse($kudos['platform']);
     }
 
     public function test_merge_users_for_email_with_single_user(): void

@@ -299,6 +299,9 @@ var cronJobs = []CronJob{
 	{Command: "ai:usage-counts:update", Name: "AI Usage Counts", Description: "Updates usage counts for AI-generated images across posts", Schedule: "Hourly", IntervalMinutes: 60, Category: "AI & Analytics", Active: true},
 	{Command: "mail:ai-image-review:digest", Name: "AI Image Review Digest", Description: "Sends daily digest of AI image review verdicts to geeks", Schedule: "Daily at 12pm", IntervalMinutes: 1440, Category: "AI & Analytics", Active: true},
 	{Command: "data:git-summary", Name: "Git Summary", Description: "Sends AI-powered summary of weekly code changes to Discourse", Schedule: "Weekly (Wed 6pm)", IntervalMinutes: 10080, Category: "AI & Analytics", Active: true},
+
+	// User Cleanup (disabled — dry-run first before enabling)
+	{Command: "users:cleanup", Name: "User Cleanup", Description: "Cleans up Yahoo Groups users, inactive users, GDPR forgets, and fully forgotten users", Schedule: "Weekly (Sun 6am)", IntervalMinutes: 10080, Category: "User Management", Active: false},
 }
 
 // ActiveCronJobCount returns the number of active cron jobs in the static registry.
