@@ -403,6 +403,7 @@ class UserManagementService
               AND users.lastaccess < ?
               AND users.systemrole = ?
               AND users.deleted IS NULL
+              AND users.forgotten IS NULL
         ", [$sixMonthsAgo, 'User']);
 
         $count = 0;
