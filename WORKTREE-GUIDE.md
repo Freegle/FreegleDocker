@@ -11,126 +11,107 @@ This guide explains how to run multiple isolated FreegleDocker instances on the 
 
 ### 1. Create a worktree
 
+Always use the `./freegle` CLI — do **not** use `git worktree add` directly:
+
 ```bash
 cd /home/edward/FreegleDockerWSL
-git worktree add ../FreegleDockerWSL-feature feature/my-branch
-cd ../FreegleDockerWSL-feature
-git submodule update --init --recursive
+./freegle worktree create feature-x
 ```
 
-### 2. Configure the instance
+This automatically:
+- Creates the git worktree
+- Sets a unique `COMPOSE_PROJECT_NAME` (e.g. `freegle-feature-x`)
+- Offsets **every** `PORT_*` value by `slot × 10000` (slot 1 → +10000, slot 2 → +20000…)
+- Starts all containers immediately
 
-Copy your `.env` and change the project name and all ports:
+> **Why port offsets?** All port bindings live in `docker-compose.yml` for backwards
+> compatibility with single-file installs, so changing `COMPOSE_FILE` alone doesn't
+> prevent conflicts. Port offsets let both instances run simultaneously without clashing.
+
+After creation, the CLI prints the URLs for the new instance, e.g.:
+```
+Status:  http://localhost:18081
+Traefik: http://freegle-dev-live.localhost:10080
+```
+
+### 2. Restart containers (if needed)
+
+Containers are started automatically. To restart:
 
 ```bash
-cp ../FreegleDockerWSL/.env .env
-```
-
-Edit `.env` — change these values:
-
-```env
-COMPOSE_PROJECT_NAME=freegle2
-
-# Every port must be different from the default instance.
-PORT_TRAEFIK_HTTP=9080
-PORT_TRAEFIK_API=9192
-PORT_TRAEFIK_DASHBOARD=9880
-PORT_STATUS=9081
-PORT_APIV1_SSH=2023
-PORT_APIV1_HTTP=9083
-PORT_APIV1_HTTP2=9181
-PORT_APIV2=9193
-PORT_APIV2_LIVE=9194
-PORT_FREEGLE_DEV_LOCAL=4002
-PORT_FREEGLE_DEV_LIVE=4005
-PORT_FREEGLE_PROD_LOCAL=4012
-PORT_MODTOOLS_DEV_LOCAL=4003
-PORT_MODTOOLS_DEV_LIVE=4006
-PORT_MODTOOLS_PROD_LOCAL=4013
-PORT_MAILPIT_WEB=9025
-PORT_MAILPIT_SMTP=2025
-PORT_SPAMASSASSIN=9783
-PORT_RSPAMD=12335
-PORT_TUSD=2080
-PORT_AI_SUPPORT=9883
-PORT_LOKI=4100
-PORT_PHPMYADMIN=9086
-PORT_POSTFIX=9025
-PORT_MCP_SANITIZER=9084
-
-# Loki volume must be unique per instance
-LOKI_VOLUME=freegle2-loki-data
-```
-
-### 3. Start the instance
-
-```bash
+cd /home/edward/FreegleDocker-feature-x
 docker-compose up -d
 ```
 
-This creates containers named `freegle2-*` with their own database volume, network, and ports.
+### 3. Check status
 
-### 4. Verify
+```bash
+./freegle status
+```
 
-- Status page: `http://localhost:9081`
-- The status page shows the project name and branch in the header
+Shows each worktree, its branch, container count, and URL.
+
+### 4. Remove a worktree
+
+```bash
+./freegle worktree remove feature-x
+```
+
+This stops containers, removes volumes, and removes the git worktree.
 
 ## How Isolation Works
 
-| Resource | Default Instance | Worktree Instance |
-|----------|-----------------|-------------------|
-| Container names | `freegle-traefik` | `freegle2-traefik` |
-| Database volume | `freegle_freegle_db` | `freegle2_freegle_db` |
-| Loki volume | `loki-data` | `freegle2-loki-data` |
-| HTTP port | 80 | 9080 |
-| Status page | 8081 | 9081 |
-| API v2 | 8193 | 9193 |
-| Mailpit | 8025 | 9025 |
+| Resource | Primary | Worktree (slot 1) |
+|----------|---------|-------------------|
+| Container names | `freegle-traefik` | `freegle-feature-x-traefik` |
+| Database volume | `freegle_freegle_db` | `freegle-feature-x_freegle_db` |
+| HTTP port | 80 | 10080 |
+| Status page | 8081 | 18081 |
+| API v2 | 8193 | 18193 |
+| Mailpit | 8025 | 18025 |
 
 ### What's automatically isolated
 
 - **Container names**: All use `${COMPOSE_PROJECT_NAME}-` prefix
+- **Ports**: Each slot gets a unique +N×10000 offset applied to all `PORT_*` values
 - **Database**: Docker Compose auto-prefixes named volumes with the project name
-- **Docker network**: Each project gets its own `freegle2_default` network
-- **Traefik routing**: Each traefik instance only manages containers from its own project (via `com.docker.compose.project` label constraint)
+- **Docker network**: Each project gets its own network
+- **Traefik routing**: Each traefik instance only manages its own project's containers
 
-### What needs manual configuration
+## Browser Testing with Chrome MCP
 
-- **Ports**: You must set every `PORT_*` variable to avoid clashes
-- **Loki volume**: Set `LOKI_VOLUME` to a unique name (the default `loki-data` is shared)
+When using Chrome MCP in a worktree session, use `isolatedContext` to prevent tab
+conflicts with other Claude sessions that may also be using Chrome MCP:
 
-## Stopping and Cleaning Up
-
-```bash
-# Stop the worktree instance
-cd /home/edward/FreegleDockerWSL-feature
-docker-compose down
-
-# Remove volumes too (deletes the database)
-docker-compose down -v
-
-# Remove the worktree
-cd /home/edward/FreegleDockerWSL
-git worktree remove ../FreegleDockerWSL-feature
+```js
+// Open a tab isolated to this worktree's session
+mcp__chrome-devtools__new_page({
+  url: "http://freegle-dev-live.localhost:10080/chitchat",
+  isolatedContext: "feature-x"
+})
 ```
 
-Note: `git worktree remove` may fail if the worktree contains submodules. In that case, manually delete the directory and run `git worktree prune`.
+Without `isolatedContext`, all Claude sessions share the same Chrome tabs and will
+fight for control.
 
 ## Running Tests
 
 Each instance has its own status container with test runners. Tests run against that instance's own containers and database:
 
-- **Go tests**: `curl -X POST http://localhost:9081/api/tests/go`
-- **Laravel tests**: `curl -X POST http://localhost:9081/api/tests/laravel`
-- **Vitest**: `curl -X POST http://localhost:9081/api/tests/vitest`
-- **Playwright**: `curl -X POST http://localhost:9081/api/tests/playwright`
+- **Go tests**: `curl -X POST http://localhost:18081/api/tests/go`
+- **Laravel tests**: `curl -X POST http://localhost:18081/api/tests/laravel`
+- **Vitest**: `curl -X POST http://localhost:18081/api/tests/vitest`
+- **Playwright**: `curl -X POST http://localhost:18081/api/tests/playwright`
 
-Replace `9081` with the worktree's `PORT_STATUS` value.
+Replace `18081` with the worktree's actual `PORT_STATUS` value (shown by `./freegle status`).
 
 ## Troubleshooting
 
 ### Port conflict on startup
-Check which ports are already in use:
+
+Port conflicts should not happen with the CLI-created worktrees (port offsets prevent this).
+If you see one, check which ports are in use:
+
 ```bash
 docker ps --format '{{.Ports}}' | grep -oP '0\.0\.0\.0:\d+' | sort | uniq -d
 ```
@@ -144,12 +125,12 @@ git rm --cached -r . && git reset --hard HEAD
 ```
 
 ### Container name clash
-If you see "container name already in use", check that all `container_name` entries in `docker-compose.yml` use the `${COMPOSE_PROJECT_NAME:-freegle}-` prefix. The modtools containers were fixed in the port isolation PR.
+If you see "container name already in use", check that all `container_name` entries in `docker-compose.yml` use the `${COMPOSE_PROJECT_NAME:-freegle}-` prefix.
 
 ### Loki crash loop
 If loki keeps restarting with "segments are not sequential", clear its WAL:
 ```bash
-docker stop freegle2-loki
-docker run --rm -v freegle2-loki-data:/loki alpine sh -c 'rm -rf /loki/wal/*'
-docker start freegle2-loki
+docker stop freegle-feature-x-loki
+docker run --rm -v freegle-feature-x-loki-data:/loki alpine sh -c 'rm -rf /loki/wal/*'
+docker start freegle-feature-x-loki
 ```

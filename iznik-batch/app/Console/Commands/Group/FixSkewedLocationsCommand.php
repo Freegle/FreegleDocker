@@ -12,7 +12,8 @@ class FixSkewedLocationsCommand extends Command
 {
     use GracefulShutdown, LogsBatchJob;
 
-    protected $signature = 'locations:fix-skewed';
+    protected $signature = 'locations:fix-skewed
+                            {--dry-run : Show what would be fixed without actually updating}';
 
     protected $description = 'Fix locations where latitude and longitude are swapped';
 
@@ -20,10 +21,16 @@ class FixSkewedLocationsCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        return $this->runWithLogging(function () use ($service) {
-            Log::info('Starting skewed locations fix');
+        $dryRun = $this->option('dry-run');
 
-            $stats = $service->fixSkewedLocations();
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        return $this->runWithLogging(function () use ($service, $dryRun) {
+            Log::info('Starting skewed locations fix', ['dry_run' => $dryRun]);
+
+            $stats = $service->fixSkewedLocations($dryRun);
 
             $this->info("Fixed {$stats['locations_fixed']} locations, {$stats['messages_fixed']} messages.");
             Log::info('Skewed locations fix complete', $stats);

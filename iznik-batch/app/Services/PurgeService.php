@@ -24,9 +24,16 @@ class PurgeService
     /**
      * Purge spam chat messages older than specified days.
      */
-    public function purgeSpamChatMessages(int $daysOld = 7): int
+    public function purgeSpamChatMessages(int $daysOld = 7, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return ChatMessage::where('date', '<', $cutoff)
+                ->where('reviewrejected', 1)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -48,8 +55,15 @@ class PurgeService
     /**
      * Purge empty chat rooms (no messages).
      */
-    public function purgeEmptyChatRooms(): int
+    public function purgeEmptyChatRooms(bool $dryRun = false): int
     {
+        if ($dryRun) {
+            return ChatRoom::leftJoin('chat_messages', 'chat_rooms.id', '=', 'chat_messages.chatid')
+                ->whereNull('chat_messages.chatid')
+                ->whereIn('chat_rooms.chattype', [ChatRoom::TYPE_USER2USER, ChatRoom::TYPE_USER2MOD])
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -78,8 +92,12 @@ class PurgeService
     /**
      * Purge orphaned chat images.
      */
-    public function purgeOrphanedChatImages(): int
+    public function purgeOrphanedChatImages(bool $dryRun = false): int
     {
+        if ($dryRun) {
+            return ChatImage::whereNull('chatmsgid')->count();
+        }
+
         $total = 0;
 
         do {
@@ -100,9 +118,16 @@ class PurgeService
     /**
      * Purge old messages_history (spam checking data).
      */
-    public function purgeOldMessagesHistory(int $daysOld = 90): int
+    public function purgeOldMessagesHistory(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return DB::table('messages_history')
+                ->where('arrival', '<', $cutoff)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -124,9 +149,16 @@ class PurgeService
     /**
      * Purge old pending messages.
      */
-    public function purgePendingMessages(int $daysOld = 90): int
+    public function purgePendingMessages(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return MessageGroup::where('collection', MessageGroup::COLLECTION_PENDING)
+                ->where('arrival', '<', $cutoff)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -153,9 +185,16 @@ class PurgeService
     /**
      * Purge old draft messages.
      */
-    public function purgeOldDrafts(int $daysOld = 90): int
+    public function purgeOldDrafts(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return DB::table('messages_drafts')
+                ->where('timestamp', '<', $cutoff)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -182,9 +221,17 @@ class PurgeService
     /**
      * Purge messages from non-Freegle groups.
      */
-    public function purgeNonFreegleMessages(int $daysOld = 90): int
+    public function purgeNonFreegleMessages(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return MessageGroup::join('groups', 'messages_groups.groupid', '=', 'groups.id')
+                ->where('messages_groups.arrival', '<=', $cutoff)
+                ->where('groups.type', '!=', 'Freegle')
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -212,10 +259,18 @@ class PurgeService
     /**
      * Purge soft-deleted messages after retention period.
      */
-    public function purgeDeletedMessages(int $retentionDays = 2): int
+    public function purgeDeletedMessages(int $retentionDays = 2, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($retentionDays);
         $earliestDate = now()->subDays(90);
+
+        if ($dryRun) {
+            return Message::where('date', '>=', $earliestDate)
+                ->whereNotNull('deleted')
+                ->where('deleted', '<=', $cutoff)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -238,9 +293,21 @@ class PurgeService
     /**
      * Purge stranded messages (not on any groups, no chat refs, no drafts).
      */
-    public function purgeStrandedMessages(int $daysOld = 2): int
+    public function purgeStrandedMessages(int $daysOld = 2, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return Message::leftJoin('messages_groups', 'messages_groups.msgid', '=', 'messages.id')
+                ->leftJoin('chat_messages', 'chat_messages.refmsgid', '=', 'messages.id')
+                ->leftJoin('messages_drafts', 'messages_drafts.msgid', '=', 'messages.id')
+                ->where('messages.arrival', '<=', $cutoff)
+                ->whereNull('messages_groups.msgid')
+                ->whereNull('chat_messages.refmsgid')
+                ->whereNull('messages_drafts.msgid')
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -272,10 +339,18 @@ class PurgeService
     /**
      * Purge HTML body from old messages to save space.
      */
-    public function purgeHtmlBody(int $daysOld = 2): int
+    public function purgeHtmlBody(int $daysOld = 2, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
         $earliestDate = now()->subDays(90);
+
+        if ($dryRun) {
+            return Message::where('arrival', '>=', $earliestDate)
+                ->where('arrival', '<=', $cutoff)
+                ->whereNotNull('htmlbody')
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -296,24 +371,71 @@ class PurgeService
     }
 
     /**
+     * Purge message source (raw email) from 30-60 day old messages.
+     *
+     * V1: purge_messages.php NULLs out messages.message for messages
+     * between 30-60 days old. We don't need the full raw email source
+     * after that period — the text body is preserved separately.
+     */
+    public function purgeMessageSource(bool $dryRun = false): int
+    {
+        $start = now()->subDays(30)->startOfDay();
+        $end = now()->subDays(60)->startOfDay();
+        $total = 0;
+
+        if ($dryRun) {
+            return Message::where('arrival', '>=', $end)
+                ->where('arrival', '<=', $start)
+                ->whereNotNull('message')
+                ->whereRaw('LENGTH(message) > 0')
+                ->count();
+        }
+
+        do {
+            $updated = $this->retryOnDeadlock(fn () => Message::where('arrival', '>=', $end)
+                ->where('arrival', '<=', $start)
+                ->whereNotNull('message')
+                ->whereRaw('LENGTH(message) > 0')
+                ->limit($this->chunkSize)
+                ->update(['message' => null]));
+
+            $total += $updated;
+
+            if ($total % $this->logInterval === 0 && $total > 0) {
+                Log::info("Purged message source from {$total} messages");
+            }
+        } while ($updated > 0);
+
+        return $total;
+    }
+
+    /**
      * Purge unvalidated email addresses.
      */
-    public function purgeUnvalidatedEmails(int $daysOld = 7): int
+    public function purgeUnvalidatedEmails(int $daysOld = 7, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
 
-        return DB::table('users_emails')
+        $query = DB::table('users_emails')
             ->whereNull('userid')
-            ->where('added', '<', $cutoff)
-            ->delete();
+            ->where('added', '<', $cutoff);
+
+        return $dryRun ? $query->count() : $query->delete();
     }
 
     /**
      * Purge old users_nearby data.
      */
-    public function purgeUsersNearby(int $daysOld = 90): int
+    public function purgeUsersNearby(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return DB::table('users_nearby')
+                ->where('timestamp', '<=', $cutoff)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -335,7 +457,7 @@ class PurgeService
     /**
      * Purge old isochrones not linked to users.
      */
-    public function purgeOrphanedIsochrones(): int
+    public function purgeOrphanedIsochrones(bool $dryRun = false): int
     {
         $orphanedIds = DB::table('isochrones')
             ->leftJoin('isochrones_users', 'isochrones_users.isochroneid', '=', 'isochrones.id')
@@ -343,6 +465,10 @@ class PurgeService
             ->pluck('isochrones.id');
 
         $count = $orphanedIds->count();
+
+        if ($dryRun) {
+            return $count;
+        }
 
         if ($count > 0) {
             DB::table('isochrones')->whereIn('id', $orphanedIds)->delete();
@@ -355,16 +481,29 @@ class PurgeService
     /**
      * Purge completed admin records.
      */
-    public function purgeCompletedAdmins(int $daysOld = 90): int
+    public function purgeCompletedAdmins(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
-        $total = 0;
 
         $adminIds = DB::table('admins')
             ->join('admins_users', 'admins_users.adminid', '=', 'admins.id')
             ->where('complete', '<=', $cutoff)
             ->distinct()
             ->pluck('admins.id');
+
+        if ($dryRun) {
+            $total = 0;
+
+            foreach ($adminIds as $adminId) {
+                $total += DB::table('admins_users')
+                    ->where('adminid', $adminId)
+                    ->count();
+            }
+
+            return $total;
+        }
+
+        $total = 0;
 
         foreach ($adminIds as $adminId) {
             do {
@@ -388,9 +527,14 @@ class PurgeService
      * Deletes tracking records older than the specified retention period.
      * Associated clicks and images are deleted via cascade.
      */
-    public function purgeEmailTracking(int $daysOld = 90): int
+    public function purgeEmailTracking(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
+
+        if ($dryRun) {
+            return EmailTracking::where('sent_at', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -413,9 +557,14 @@ class PurgeService
      *
      * Migrated from purge_logs.php
      */
-    public function purgeOldLikes(int $daysOld = 365): int
+    public function purgeOldLikes(int $daysOld = 365, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('messages_likes')->where('timestamp', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -432,9 +581,16 @@ class PurgeService
     /**
      * Purge old login/logout logs (older than 1 year).
      */
-    public function purgeLoginLogoutLogs(int $daysOld = 365): int
+    public function purgeLoginLogoutLogs(int $daysOld = 365, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs')->where('type', 'User')->where(function ($q) {
+                $q->where('subtype', 'Login')->orWhere('subtype', 'Logout');
+            })->where('timestamp', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -451,9 +607,14 @@ class PurgeService
     /**
      * Purge user deletion logs (older than 31 days).
      */
-    public function purgeUserDeletionLogs(int $daysOld = 31): int
+    public function purgeUserDeletionLogs(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs')->where('type', 'User')->where('subtype', 'Deleted')->where('timestamp', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -470,9 +631,14 @@ class PurgeService
     /**
      * Purge user creation logs (older than 31 days).
      */
-    public function purgeUserCreationLogs(int $daysOld = 31): int
+    public function purgeUserCreationLogs(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs')->where('type', 'User')->where('subtype', 'Created')->where('timestamp', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -489,9 +655,16 @@ class PurgeService
     /**
      * Purge logs with no subtype (older than 31 days).
      */
-    public function purgeBlankSubtypeLogs(int $daysOld = 31): int
+    public function purgeBlankSubtypeLogs(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs')->where(function ($q) {
+                $q->where('type', 'User')->orWhere('type', 'Group');
+            })->where('subtype', '')->where('timestamp', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -508,9 +681,14 @@ class PurgeService
     /**
      * Purge bounce logs (older than 90 days).
      */
-    public function purgeBounceLogs(int $daysOld = 90): int
+    public function purgeBounceLogs(int $daysOld = 90, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs')->where('type', 'User')->where('subtype', 'Bounce')->where('timestamp', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -527,9 +705,14 @@ class PurgeService
     /**
      * Purge old bounce emails (older than 31 days).
      */
-    public function purgeOldBounceEmails(int $daysOld = 31): int
+    public function purgeOldBounceEmails(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('bounces_emails')->where('date', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -546,10 +729,18 @@ class PurgeService
     /**
      * Purge old email logs (older than 25 hours or in the future).
      */
-    public function purgeEmailLogs(): int
+    public function purgeEmailLogs(bool $dryRun = false): int
     {
         $cutoff = now()->subHours(25);
         $future = now()->startOfDay()->addDay();
+
+        if ($dryRun) {
+            return DB::table('logs_emails')
+                ->where('timestamp', '<', $cutoff)
+                ->orWhere('timestamp', '>', $future)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -566,14 +757,28 @@ class PurgeService
     /**
      * Purge logs for non-Freegle groups (older than 31 days).
      */
-    public function purgeNonFreegleGroupLogs(int $daysOld = 31): int
+    public function purgeNonFreegleGroupLogs(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
-        $total = 0;
 
         $groups = DB::table('groups')
             ->where('type', '!=', 'Freegle')
             ->pluck('id');
+
+        if ($dryRun) {
+            $total = 0;
+
+            foreach ($groups as $groupId) {
+                $total += DB::table('logs')
+                    ->where('timestamp', '<', $cutoff)
+                    ->where('groupid', $groupId)
+                    ->count();
+            }
+
+            return $total;
+        }
+
+        $total = 0;
 
         foreach ($groups as $groupId) {
             do {
@@ -591,16 +796,21 @@ class PurgeService
     /**
      * Purge logs for messages that no longer exist (30-60 days old).
      */
-    public function purgeOrphanedMessageLogs(): int
+    public function purgeOrphanedMessageLogs(bool $dryRun = false): int
     {
         $start = now()->subDays(30)->startOfDay();
         $end = now()->subDays(60)->startOfDay();
-        $total = 0;
 
         $logs = DB::select(
             "SELECT logs.id FROM logs LEFT JOIN messages ON messages.id = logs.msgid WHERE logs.msgid IS NOT NULL AND messages.id IS NULL AND logs.timestamp >= ? AND logs.timestamp < ?",
             [$end, $start]
         );
+
+        if ($dryRun) {
+            return count($logs);
+        }
+
+        $total = 0;
 
         foreach ($logs as $log) {
             DB::delete("DELETE FROM logs WHERE id = ?", [$log->id]);
@@ -613,9 +823,14 @@ class PurgeService
     /**
      * Purge source logs (older than 1 year).
      */
-    public function purgeSrcLogs(int $daysOld = 365): int
+    public function purgeSrcLogs(int $daysOld = 365, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs_src')->where('date', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -632,9 +847,14 @@ class PurgeService
     /**
      * Purge JS error logs (older than 30 days).
      */
-    public function purgeJsErrorLogs(int $daysOld = 30): int
+    public function purgeJsErrorLogs(int $daysOld = 30, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs_errors')->where('date', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -651,9 +871,14 @@ class PurgeService
     /**
      * Purge plugin logs (older than 1 day).
      */
-    public function purgePluginLogs(int $daysOld = 1): int
+    public function purgePluginLogs(int $daysOld = 1, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('logs')->where('timestamp', '<', $cutoff)->where('type', 'Plugin')->count();
+        }
+
         $total = 0;
 
         do {
@@ -670,9 +895,14 @@ class PurgeService
     /**
      * Purge SQL logs (older than 4 hours).
      */
-    public function purgeSqlLogs(int $hoursOld = 4): int
+    public function purgeSqlLogs(int $hoursOld = 4, bool $dryRun = false): int
     {
         $cutoff = now()->subHours($hoursOld);
+
+        if ($dryRun) {
+            return DB::table('logs_sql')->where('date', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -689,9 +919,14 @@ class PurgeService
     /**
      * Purge old user activity logs (older than 2 years).
      */
-    public function purgeUserActivityLogs(int $daysOld = 730): int
+    public function purgeUserActivityLogs(int $daysOld = 730, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('users_active')->where('timestamp', '<', $cutoff)->count();
+        }
+
         $total = 0;
 
         do {
@@ -708,9 +943,19 @@ class PurgeService
     /**
      * Purge logs for users that no longer exist (older than 30 days).
      */
-    public function purgeOrphanedUserLogs(int $daysOld = 30): int
+    public function purgeOrphanedUserLogs(int $daysOld = 30, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            $logs = DB::select(
+                "SELECT COUNT(*) as cnt FROM logs LEFT JOIN users ON users.id = logs.user WHERE `timestamp` < ? AND logs.user IS NOT NULL AND users.id IS NULL",
+                [$cutoff]
+            );
+
+            return $logs[0]->cnt;
+        }
+
         $total = 0;
 
         do {
@@ -733,26 +978,26 @@ class PurgeService
      *
      * Migrated from iznik-server/scripts/cron/purge_logs.php
      */
-    public function purgeAllLogs(): array
+    public function purgeAllLogs(bool $dryRun = false): array
     {
         $results = [];
 
-        $results['old_likes'] = $this->purgeOldLikes();
-        $results['login_logout_logs'] = $this->purgeLoginLogoutLogs();
-        $results['user_deletion_logs'] = $this->purgeUserDeletionLogs();
-        $results['user_creation_logs'] = $this->purgeUserCreationLogs();
-        $results['blank_subtype_logs'] = $this->purgeBlankSubtypeLogs();
-        $results['bounce_logs'] = $this->purgeBounceLogs();
-        $results['old_bounce_emails'] = $this->purgeOldBounceEmails();
-        $results['email_logs'] = $this->purgeEmailLogs();
-        $results['non_freegle_group_logs'] = $this->purgeNonFreegleGroupLogs();
-        $results['orphaned_message_logs'] = $this->purgeOrphanedMessageLogs();
-        $results['src_logs'] = $this->purgeSrcLogs();
-        $results['js_error_logs'] = $this->purgeJsErrorLogs();
-        $results['plugin_logs'] = $this->purgePluginLogs();
-        $results['sql_logs'] = $this->purgeSqlLogs();
-        $results['user_activity_logs'] = $this->purgeUserActivityLogs();
-        $results['orphaned_user_logs'] = $this->purgeOrphanedUserLogs();
+        $results['old_likes'] = $this->purgeOldLikes(dryRun: $dryRun);
+        $results['login_logout_logs'] = $this->purgeLoginLogoutLogs(dryRun: $dryRun);
+        $results['user_deletion_logs'] = $this->purgeUserDeletionLogs(dryRun: $dryRun);
+        $results['user_creation_logs'] = $this->purgeUserCreationLogs(dryRun: $dryRun);
+        $results['blank_subtype_logs'] = $this->purgeBlankSubtypeLogs(dryRun: $dryRun);
+        $results['bounce_logs'] = $this->purgeBounceLogs(dryRun: $dryRun);
+        $results['old_bounce_emails'] = $this->purgeOldBounceEmails(dryRun: $dryRun);
+        $results['email_logs'] = $this->purgeEmailLogs(dryRun: $dryRun);
+        $results['non_freegle_group_logs'] = $this->purgeNonFreegleGroupLogs(dryRun: $dryRun);
+        $results['orphaned_message_logs'] = $this->purgeOrphanedMessageLogs(dryRun: $dryRun);
+        $results['src_logs'] = $this->purgeSrcLogs(dryRun: $dryRun);
+        $results['js_error_logs'] = $this->purgeJsErrorLogs(dryRun: $dryRun);
+        $results['plugin_logs'] = $this->purgePluginLogs(dryRun: $dryRun);
+        $results['sql_logs'] = $this->purgeSqlLogs(dryRun: $dryRun);
+        $results['user_activity_logs'] = $this->purgeUserActivityLogs(dryRun: $dryRun);
+        $results['orphaned_user_logs'] = $this->purgeOrphanedUserLogs(dryRun: $dryRun);
 
         return $results;
     }
@@ -765,9 +1010,16 @@ class PurgeService
      *
      * Migrated from purge_sessions.php
      */
-    public function purgeSessions(int $daysOld = 31): int
+    public function purgeSessions(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
+
+        if ($dryRun) {
+            return DB::table('sessions')
+                ->where('lastactive', '<', $cutoff)
+                ->count();
+        }
+
         $total = 0;
 
         do {
@@ -793,14 +1045,15 @@ class PurgeService
      *
      * Migrated from purge_sessions.php
      */
-    public function purgeOldLoginLinks(int $daysOld = 31): int
+    public function purgeOldLoginLinks(int $daysOld = 31, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld)->startOfDay();
 
-        return DB::table('users_logins')
+        $query = DB::table('users_logins')
             ->where('lastaccess', '<', $cutoff)
-            ->where('type', 'Link')
-            ->delete();
+            ->where('type', 'Link');
+
+        return $dryRun ? $query->count() : $query->delete();
     }
 
     /**
@@ -811,27 +1064,31 @@ class PurgeService
      *
      * Migrated from searchdups.php
      */
-    public function deduplicateSearchHistory(int $daysBack = 2): int
+    public function deduplicateSearchHistory(int $daysBack = 2, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysBack)->startOfDay();
         $deleted = 0;
 
         $searches = DB::table('search_history')
             ->where('date', '>', $cutoff)
+            ->orderBy('userid')
             ->orderBy('groups')
             ->orderBy('id')
-            ->get(['id', 'term', 'locationid', 'groups']);
+            ->get(['id', 'userid', 'term', 'locationid', 'groups']);
 
         $last = null;
 
         foreach ($searches as $search) {
             if ($last !== null) {
-                $isDuplicate = $search->term === $last->term
+                $isDuplicate = $search->userid === $last->userid
+                    && $search->term === $last->term
                     && $search->locationid === $last->locationid
                     && $search->groups === $last->groups;
 
                 if ($isDuplicate) {
-                    DB::table('search_history')->where('id', $search->id)->delete();
+                    if (! $dryRun) {
+                        DB::table('search_history')->where('id', $search->id)->delete();
+                    }
                     $deleted++;
                 }
             }
@@ -850,7 +1107,7 @@ class PurgeService
      *
      * Migrated from chatdups.php
      */
-    public function deduplicateChatMessages(int $daysBack = 3): int
+    public function deduplicateChatMessages(int $daysBack = 3, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysBack)->startOfDay();
         $deleted = 0;
@@ -867,20 +1124,25 @@ class PurgeService
                 ->where('date', '>', $cutoff)
                 ->where('chatid', $chat->chatid)
                 ->orderBy('id')
-                ->get(['id', 'message', 'refmsgid']);
+                ->get(['id', 'userid', 'type', 'message', 'refmsgid', 'refchatid', 'imageid', 'scheduleid']);
 
-            $lastMessage = null;
-            $lastRefmsgid = null;
+            $last = null;
 
             foreach ($messages as $msg) {
-                if ($lastMessage !== null
-                    && $lastMessage === $msg->message
-                    && $lastRefmsgid === $msg->refmsgid) {
-                    DB::table('chat_messages')->where('id', $msg->id)->delete();
+                if ($last !== null
+                    && $last->userid === $msg->userid
+                    && $last->type === $msg->type
+                    && $last->message === $msg->message
+                    && $last->refmsgid === $msg->refmsgid
+                    && $last->refchatid === $msg->refchatid
+                    && $last->imageid === $msg->imageid
+                    && $last->scheduleid === $msg->scheduleid) {
+                    if (! $dryRun) {
+                        DB::table('chat_messages')->where('id', $msg->id)->delete();
+                    }
                     $deleted++;
                 } else {
-                    $lastMessage = $msg->message;
-                    $lastRefmsgid = $msg->refmsgid;
+                    $last = $msg;
                 }
             }
         }
@@ -891,27 +1153,27 @@ class PurgeService
     /**
      * Run all purge operations.
      */
-    public function runAll(): array
+    public function runAll(bool $dryRun = false): array
     {
         $results = [];
 
-        $results['spam_chat_messages'] = $this->purgeSpamChatMessages();
-        $results['empty_chat_rooms'] = $this->purgeEmptyChatRooms();
-        $results['orphaned_chat_images'] = $this->purgeOrphanedChatImages();
-        $results['messages_history'] = $this->purgeOldMessagesHistory();
-        $results['pending_messages'] = $this->purgePendingMessages();
-        $results['old_drafts'] = $this->purgeOldDrafts();
-        $results['non_freegle_messages'] = $this->purgeNonFreegleMessages();
-        $results['deleted_messages'] = $this->purgeDeletedMessages();
-        $results['stranded_messages'] = $this->purgeStrandedMessages();
-        $results['html_body'] = $this->purgeHtmlBody();
-        $results['unvalidated_emails'] = $this->purgeUnvalidatedEmails();
-        $results['users_nearby'] = $this->purgeUsersNearby();
-        $results['orphaned_isochrones'] = $this->purgeOrphanedIsochrones();
-        $results['completed_admins'] = $this->purgeCompletedAdmins();
-        $results['email_tracking'] = $this->purgeEmailTracking();
-        $results['sessions'] = $this->purgeSessions();
-        $results['login_links'] = $this->purgeOldLoginLinks();
+        $results['spam_chat_messages'] = $this->purgeSpamChatMessages(dryRun: $dryRun);
+        $results['empty_chat_rooms'] = $this->purgeEmptyChatRooms(dryRun: $dryRun);
+        $results['orphaned_chat_images'] = $this->purgeOrphanedChatImages(dryRun: $dryRun);
+        $results['messages_history'] = $this->purgeOldMessagesHistory(dryRun: $dryRun);
+        $results['pending_messages'] = $this->purgePendingMessages(dryRun: $dryRun);
+        $results['old_drafts'] = $this->purgeOldDrafts(dryRun: $dryRun);
+        $results['non_freegle_messages'] = $this->purgeNonFreegleMessages(dryRun: $dryRun);
+        $results['deleted_messages'] = $this->purgeDeletedMessages(dryRun: $dryRun);
+        $results['stranded_messages'] = $this->purgeStrandedMessages(dryRun: $dryRun);
+        $results['html_body'] = $this->purgeHtmlBody(dryRun: $dryRun);
+        $results['unvalidated_emails'] = $this->purgeUnvalidatedEmails(dryRun: $dryRun);
+        $results['users_nearby'] = $this->purgeUsersNearby(dryRun: $dryRun);
+        $results['orphaned_isochrones'] = $this->purgeOrphanedIsochrones(dryRun: $dryRun);
+        $results['completed_admins'] = $this->purgeCompletedAdmins(dryRun: $dryRun);
+        $results['email_tracking'] = $this->purgeEmailTracking(dryRun: $dryRun);
+        $results['sessions'] = $this->purgeSessions(dryRun: $dryRun);
+        $results['login_links'] = $this->purgeOldLoginLinks(dryRun: $dryRun);
 
         return $results;
     }

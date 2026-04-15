@@ -3,12 +3,16 @@
 namespace App\Mail\Admin;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
+use App\Mail\Traits\TrackableEmail;
 use App\Models\User;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
 class ChaseAdminMail extends MjmlMailable
 {
+    use TrackableEmail;
+    use LoggableEmail;
     public ?User $user;
 
     public string $adminSubject;
@@ -46,6 +50,15 @@ class ChaseAdminMail extends MjmlMailable
         $this->adminId = $adminId;
         $this->modToolsUrl = config('freegle.sites.mod', 'https://modtools.org') . '/admins';
         $this->pendingTimeText = $this->formatPendingTime($pendingHours);
+
+        $this->initTracking(
+            'ChaseAdmin',
+            $user?->email_preferred ?? '',
+            $user?->id,
+            null,
+            $this->getSubject(),
+            ['admin_id' => $adminId, 'group' => $groupName]
+        );
     }
 
     protected function getRecipientUserId(): ?int
@@ -67,13 +80,13 @@ class ChaseAdminMail extends MjmlMailable
 
         $result = $this
             ->subject($this->getSubject())
-            ->mjmlView('emails.mjml.admin.chase', $data, 'emails.text.admin.chase');
+            ->mjmlView('emails.mjml.admin.chase', array_merge($data, $this->getTrackingData()), 'emails.text.admin.chase');
 
         if ($this->user) {
             $result->to($this->user->email_preferred, $this->user->fullname);
         }
 
-        return $result;
+        return $result->applyLogging('ChaseAdmin');
     }
 
     public function envelope(): Envelope

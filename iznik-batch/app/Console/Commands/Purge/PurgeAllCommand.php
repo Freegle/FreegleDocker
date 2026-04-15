@@ -14,7 +14,8 @@ class PurgeAllCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'purge:all';
+    protected $signature = 'purge:all
+                            {--dry-run : Show what would be purged without actually deleting}';
 
     /**
      * The console command description.
@@ -28,11 +29,17 @@ class PurgeAllCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        Log::info('Starting complete purge');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        Log::info('Starting complete purge', ['dry_run' => $dryRun]);
         $this->info('Running all purge operations...');
         $this->newLine();
 
-        $results = $purgeService->runAll();
+        $results = $purgeService->runAll($dryRun);
 
         $this->info('All purge operations complete.');
         $this->newLine();

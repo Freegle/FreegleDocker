@@ -37,6 +37,9 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | Command | Description |
 |---------|-------------|
 | `messages:process-expired` | Process expired messages |
+| `messages:auto-approve` | Auto-approve pending messages after 48h |
+| `messages:auto-repost` | Auto-repost messages based on group settings |
+| `messages:chase-up` | Chase up messages with replies but no outcome |
 | `purge:all` | Run all purge operations |
 | `purge:messages` | Purge old messages |
 | `purge:chats` | Purge old chat rooms |
@@ -44,6 +47,9 @@ All email-related commands use the `mail:` prefix. Other batch commands use desc
 | `users:retention-stats` | Generate retention statistics |
 | `data:update-cpi` | Update CPI data |
 | `data:git-summary` | Generate git summary |
+| `purge:sessions` | Purge old sessions and login links |
+| `cleanup:search-duplicates` | Remove duplicate consecutive searches |
+| `cleanup:chat-duplicates` | Remove duplicate consecutive chat messages |
 | `data:classify-app-release` | Classify app release versions |
 | `groups:update-counts` | Update group member/moderator counts |
 | `chats:update-counts` | Update chat message counts, reopen closed User2Mod |
@@ -167,6 +173,9 @@ These have code implemented but the scheduler entry is commented out in `routes/
 | `donations_thank.php` | `mail:donations:thank` | - | Donation thank-you emails |
 | `bounce.php` | `mail:bounced` | - | Bounced email handling |
 | `messages_expired.php` | `messages:process-expired` | - | Deadline expiry handling |
+| `autoapprove.php` | `messages:auto-approve` | - | Auto-approve pending messages after 48h |
+| `autorepost.php` | `messages:auto-repost` | - | Auto-repost messages based on group settings |
+| `chaseup.php` | `messages:chase-up` | - | Chase up messages with replies but no outcome |
 | `purge_messages.php` | `purge:messages` | - | Message purging |
 | `purge_chats.php` | `purge:chats` | - | Chat purging |
 | `users_kudos.php` | `users:update-kudos` | - | User kudos |
@@ -253,10 +262,10 @@ These original scripts need to be migrated to Laravel artisan commands:
 | `mod_notifs.php` | Every 60 min | Medium | Moderator notifications |
 | ~~`supporttools.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Support tools~~ — **Migrated: `users:update-support-roles`** |
 | ~~`membercounts.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Member counts~~ — **Migrated: `groups:update-counts`** |
-| `autorepost.php` | Every 60 min | Medium | Auto-repost messages |
-| `chaseup.php` | Every 60 min | Medium | Message chase-up |
+| ~~`autorepost.php`~~ | ~~Every 60 min~~ | ~~Medium~~ | ~~Auto-repost messages~~ — **Migrated: `messages:auto-repost`** |
+| ~~`chaseup.php`~~ | ~~Every 60 min~~ | ~~Medium~~ | ~~Message chase-up~~ — **Migrated: `messages:chase-up`** |
 | ~~`searchdups.php`~~ | ~~Every 60 min~~ | ~~Low~~ | ~~Search duplicates~~ — **Migrated: `cleanup:search-duplicates`** |
-| `autoapprove.php` | Every 60 min | Medium | Auto-approve messages |
+| ~~`autoapprove.php`~~ | ~~Every 60 min~~ | ~~Medium~~ | ~~Auto-approve messages~~ — **Migrated: `messages:auto-approve`** |
 | `bounce_users.php` | Every 60 min | Medium | User bounce processing |
 | ~~`chatdups.php`~~ | ~~Every 120 min~~ | ~~Low~~ | ~~Chat duplicates~~ — **Migrated: `cleanup:chat-duplicates`** |
 

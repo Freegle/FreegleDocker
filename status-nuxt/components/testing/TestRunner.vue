@@ -40,6 +40,12 @@ const handleRun = () => {
   showLogs.value = true
 }
 
+watch(() => state.value.status, (newStatus, oldStatus) => {
+  if (oldStatus === 'running' && (newStatus === 'completed' || newStatus === 'failed')) {
+    showLogs.value = false
+  }
+})
+
 const openReport = () => {
   if (state.value.reportUrl) {
     window.open(state.value.reportUrl, '_blank')

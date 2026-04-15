@@ -108,4 +108,130 @@ class GiftAidModelTest extends TestCase
         $this->assertEquals('Declined', GiftAid::PERIOD_DECLINED);
         $this->assertEquals('Past4YearsAndFuture', GiftAid::PERIOD_PAST4_YEARS_AND_FUTURE);
     }
+
+    public function test_get_firstname_uses_dedicated_column_when_set(): void
+    {
+        $user = $this->createTestUser();
+        $giftAid = GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'John Smith',
+            'homeaddress' => '1 Test St',
+            'firstname' => 'Jon',
+            'lastname' => 'Smyth',
+        ]);
+
+        $this->assertEquals('Jon', $giftAid->getFirstname());
+        $this->assertEquals('Smyth', $giftAid->getLastname());
+    }
+
+    public function test_get_firstname_falls_back_to_splitting_fullname(): void
+    {
+        $user = $this->createTestUser();
+        $giftAid = GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'Jane Doe',
+            'homeaddress' => '1 Test St',
+        ]);
+
+        $this->assertEquals('Jane', $giftAid->getFirstname());
+        $this->assertEquals('Doe', $giftAid->getLastname());
+    }
+
+    public function test_get_firstname_with_multiple_word_lastname(): void
+    {
+        $user = $this->createTestUser();
+        $giftAid = GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'Maria Garcia Lopez',
+            'homeaddress' => '1 Test St',
+        ]);
+
+        $this->assertEquals('Maria', $giftAid->getFirstname());
+        $this->assertEquals('Garcia Lopez', $giftAid->getLastname());
+    }
+
+    public function test_get_firstname_with_single_name(): void
+    {
+        $user = $this->createTestUser();
+        $giftAid = GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'Sukarno',
+            'homeaddress' => '1 Test St',
+        ]);
+
+        $this->assertEquals('Sukarno', $giftAid->getFirstname());
+        $this->assertEquals('', $giftAid->getLastname());
+    }
+
+    public function test_has_valid_name_split_with_dedicated_columns(): void
+    {
+        $user = $this->createTestUser();
+        $giftAid = GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'Sukarno',
+            'homeaddress' => '1 Test St',
+            'firstname' => 'Sukarno',
+            'lastname' => 'Sukarno',
+        ]);
+
+        $this->assertTrue($giftAid->hasValidNameSplit());
+    }
+
+    public function test_has_valid_name_split_with_spaced_fullname(): void
+    {
+        $user = $this->createTestUser();
+        $giftAid = GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'John Smith',
+            'homeaddress' => '1 Test St',
+        ]);
+
+        $this->assertTrue($giftAid->hasValidNameSplit());
+    }
+
+    public function test_has_valid_name_split_false_for_single_word_fullname_no_columns(): void
+    {
+        $user = $this->createTestUser();
+        $giftAid = GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'Sukarno',
+            'homeaddress' => '1 Test St',
+        ]);
+
+        $this->assertFalse($giftAid->hasValidNameSplit());
+    }
+
+    public function test_firstname_lastname_stored_in_database(): void
+    {
+        $user = $this->createTestUser();
+        GiftAid::create([
+            'userid' => $user->id,
+            'period' => GiftAid::PERIOD_FUTURE,
+            'timestamp' => now(),
+            'fullname' => 'John Smith',
+            'homeaddress' => '1 Test St',
+            'firstname' => 'John',
+            'lastname' => 'Smith',
+        ]);
+
+        $this->assertDatabaseHas('giftaid', [
+            'userid' => $user->id,
+            'firstname' => 'John',
+            'lastname' => 'Smith',
+        ]);
+    }
 }

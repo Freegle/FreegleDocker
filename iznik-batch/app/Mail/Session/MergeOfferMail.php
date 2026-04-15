@@ -3,6 +3,8 @@
 namespace App\Mail\Session;
 
 use App\Mail\MjmlMailable;
+use App\Mail\Traits\LoggableEmail;
+use App\Mail\Traits\TrackableEmail;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
@@ -13,6 +15,9 @@ use Illuminate\Mail\Mailables\Envelope;
  */
 class MergeOfferMail extends MjmlMailable
 {
+    use TrackableEmail;
+    use LoggableEmail;
+
     public function __construct(
         public readonly int $recipientUserId,
         public readonly string $recipientName,
@@ -24,6 +29,14 @@ class MergeOfferMail extends MjmlMailable
         public readonly string $mergeUrl,
     ) {
         parent::__construct();
+
+        $this->initTracking(
+            'MergeOffer',
+            $this->recipientEmail,
+            $this->recipientUserId,
+            null,
+            $this->getSubject()
+        );
     }
 
     public function envelope(): Envelope
@@ -46,14 +59,15 @@ class MergeOfferMail extends MjmlMailable
     {
         return $this->mjmlView(
             'emails.mjml.session.merge-offer',
-            [
+            array_merge([
                 'name1' => $this->name1,
                 'email1' => $this->email1,
                 'name2' => $this->name2,
                 'email2' => $this->email2,
                 'mergeUrl' => $this->mergeUrl,
-            ]
-        )->to($this->recipientEmail);
+            ], $this->getTrackingData())
+        )->to($this->recipientEmail)
+            ->applyLogging('MergeOffer');
     }
 
     protected function getRecipientUserId(): ?int

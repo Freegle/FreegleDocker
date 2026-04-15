@@ -1,26 +1,16 @@
 <mjml>
-    <mj-head>
-        <mj-attributes>
-            <mj-all font-family="Arial, sans-serif" />
-            <mj-text font-size="14px" color="#333333" line-height="1.5" />
-            <mj-button background-color="#5cb85c" color="#ffffff" font-size="14px" />
-        </mj-attributes>
-        <mj-style inline="inline">
-            a { color: #5cb85c; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-        </mj-style>
-        <mj-title>Thank you for your donation!</mj-title>
-    </mj-head>
+    @include('emails.mjml.partials.head', ['preview' => 'Thank you for your donation!'])
+
     <mj-body background-color="#f4f4f4">
         @include('emails.mjml.components.header')
 
         <mj-section background-color="#ffffff" padding="20px">
             <mj-column>
-                <mj-text font-size="24px" font-weight="bold" color="#5cb85c" align="center">
+                <mj-text font-size="24px" font-weight="bold" mj-class="text-success" align="center">
                     Thank You!
                 </mj-text>
                 <mj-text>
-                    Hi {{ $user->displayname ?? 'there' }},
+                    Dear {{ $user->displayname ?? 'there' }},
                 </mj-text>
                 <mj-text>
                     Thank you so much for your generous donation to Freegle. Your support helps us keep the platform running and enables millions of items to find new homes instead of going to landfill.
@@ -45,7 +35,7 @@
 
         <mj-section background-color="#ffffff" padding="20px">
             <mj-column>
-                <mj-button href="{{ $continueUrl }}">
+                <mj-button href="{{ $continueUrl }}" mj-class="btn-success" border-radius="3px">
                     Continue Freegling
                 </mj-button>
             </mj-column>
@@ -59,10 +49,14 @@
             </mj-column>
         </mj-section>
 
-        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
-
-        @if(isset($trackingPixelMjml))
-        {!! $trackingPixelMjml !!}
+        @if(!empty($trackingPixelMjml))
+        <mj-section padding="0">
+            <mj-column>
+                {!! $trackingPixelMjml !!}
+            </mj-column>
+        </mj-section>
         @endif
+
+        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
     </mj-body>
 </mjml>

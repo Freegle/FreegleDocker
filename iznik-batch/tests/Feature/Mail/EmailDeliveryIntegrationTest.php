@@ -75,6 +75,7 @@ class EmailDeliveryIntegrationTest extends TestCase
 
     /**
      * Extract a URL matching a path pattern from email HTML/text body.
+     * Also checks inside base64-encoded tracking redirect URLs (/e/d/r/...?url=BASE64).
      */
     protected function extractUrlByPath(string $body, string $pathPattern): ?string
     {
@@ -86,6 +87,19 @@ class EmailDeliveryIntegrationTest extends TestCase
         // Try plain text URL.
         if (preg_match('/(https?:\/\/[^\s]*' . $pathPattern . '[^\s<]*)/', $body, $matches)) {
             return $matches[1];
+        }
+
+        // Try tracking redirect URLs: href contains /e/d/r/...?url=BASE64
+        if (preg_match_all('/href=["\']([^"\']*\/e\/d\/r\/[^"\']*)["\']/', $body, $hrefMatches)) {
+            foreach ($hrefMatches[1] as $trackedHref) {
+                $decoded = html_entity_decode($trackedHref);
+                if (preg_match('/[?&]url=([^&"\' ]+)/', $decoded, $urlParam)) {
+                    $destination = base64_decode($urlParam[1]);
+                    if ($destination && preg_match('/' . $pathPattern . '/', $destination)) {
+                        return $destination;
+                    }
+                }
+            }
         }
 
         return NULL;
@@ -170,7 +184,7 @@ class EmailDeliveryIntegrationTest extends TestCase
 
         // Verify extend URL.
         $extendUrl = $this->extractUrlByPath($body, '\/mypost\/\d+\/extend');
-        $this->assertNotNull($extendUrl, 'Email should contain an extend URL');
+        $this->assertNotNull($extendUrl, 'Email should contain an extend URL. Body (first 2000 chars): ' . substr($body, 0, 2000));
         $this->assertStringContainsString((string) $message->id, $extendUrl);
 
         // Verify completed URL.
