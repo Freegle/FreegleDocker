@@ -55,9 +55,6 @@ func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 		}
 
 		hybridScore := vr.Score + keywordScore*keywordBoostWeight
-		if hybridScore > 1.0 {
-			hybridScore = 1.0
-		}
 
 		lat, lng := utils.Blur(vr.Lat, vr.Lng, utils.BLUR_USER)
 
