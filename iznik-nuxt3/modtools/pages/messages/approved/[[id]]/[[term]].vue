@@ -19,6 +19,14 @@
       />
       <span v-else class="mt-2"> Select a community to search messages. </span>
       <ModtoolsViewControl misckey="modtoolsMessagesApprovedSummary" />
+      <b-form-checkbox
+        v-model="vectorSearchEnabled"
+        switch
+        size="sm"
+        class="mt-2 ms-2"
+      >
+        Semantic search
+      </b-form-checkbox>
     </div>
     <div>
       <NoticeMessage v-if="loaded && !messages.length && !busy" class="mt-2">
@@ -87,6 +95,8 @@ const {
 // Local state (formerly data())
 const chosengroupid = ref(0)
 const bump = ref(0)
+const vectorSearchEnabled = ref(true)
+const searchmode = computed(() => vectorSearchEnabled.value ? 'vector' : 'keyword')
 const urlOverride = ref(false)
 const loaded = ref(false)
 const highlightMsgId = ref(null)
@@ -168,6 +178,9 @@ onMounted(() => {
   if (route?.params && 'term' in route.params && route.params.term) {
     messageTerm.value = route.params.term
   }
+  if (route.query.searchmode) {
+    vectorSearchEnabled.value = route.query.searchmode === 'vector'
+  }
   if (messageTerm.value) {
     // Clear existing messages and reset state for fresh search.
     // Without this, the store may have old messages that get shown
@@ -225,7 +238,16 @@ async function loadMore($state) {
 
     let params
 
-    if (messageTerm.value) {
+    if (messageTerm.value && searchmode.value === 'vector') {
+      // Vector search uses the V2 search API via searchMT
+      await messageStore.searchMT({
+        term: messageTerm.value,
+        groupid: groupid.value,
+        searchmode: 'vector',
+      })
+      $state.complete()
+      return
+    } else if (messageTerm.value) {
       params = {
         subaction: 'searchall',
         search: messageTerm.value,
