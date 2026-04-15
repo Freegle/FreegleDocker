@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Queue;
 
 use App\Console\Concerns\PreventsOverlapping;
+use App\Mail\Charity\CharitySignupMail;
 use App\Mail\Chat\ReferToSupportMail;
 use App\Mail\Donation\DonateExternalMail;
 use App\Mail\Newsfeed\ChitchatReportMail;
@@ -175,6 +176,7 @@ class ProcessBackgroundTasksCommand extends Command
         match ($taskType) {
             'push_notify_group_mods' => $this->handlePushNotifyGroupMods($data, $pushService),
             'email_chitchat_report' => $this->handleEmailChitchatReport($data, $spooler, $shouldSpool),
+            'email_charity_signup' => $this->handleEmailCharitySignup($data, $spooler, $shouldSpool),
             'email_donate_external' => $this->handleEmailDonateExternal($data, $spooler, $shouldSpool),
             'email_forgot_password' => $this->handleEmailForgotPassword($data, $spooler, $shouldSpool),
             'email_unsubscribe' => $this->handleEmailUnsubscribe($data, $spooler, $shouldSpool),
@@ -276,6 +278,41 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Sent external donation email', [
             'user_id' => $data['user_id'],
             'amount' => $data['amount'],
+        ]);
+    }
+
+    /**
+     * Send a charity partner signup notification to the partnerships team.
+     */
+    protected function handleEmailCharitySignup(
+        array $data,
+        EmailSpoolerService $spooler,
+        bool $shouldSpool
+    ): void {
+        if (empty($data['orgname']) || empty($data['contactemail'])) {
+            throw new \RuntimeException('email_charity_signup requires orgname and contactemail');
+        }
+
+        $mail = new CharitySignupMail(
+            charityId: (int) $data['charity_id'],
+            orgName: $data['orgname'],
+            orgType: $data['orgtype'] ?? 'registered',
+            charityNumber: $data['charitynumber'] ?? null,
+            contactEmail: $data['contactemail'],
+            contactName: $data['contactname'] ?? null,
+            website: $data['website'] ?? null,
+            description: $data['description'] ?? null,
+        );
+
+        if ($shouldSpool) {
+            $spooler->spool($mail, config('freegle.mail.partnerships_addr'));
+        } else {
+            Mail::send($mail);
+        }
+
+        Log::info('Sent charity signup notification', [
+            'charity_id' => $data['charity_id'],
+            'orgname' => $data['orgname'],
         ]);
     }
 

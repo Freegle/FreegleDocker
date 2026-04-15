@@ -60,6 +60,8 @@ return [
         'support_addr' => env('FREEGLE_SUPPORT_ADDR', 'support@ilovefreegle.org'),
         // ChitChat support - receives newsfeed report emails.
         'chitchat_support_addr' => env('FREEGLE_CHITCHAT_SUPPORT_ADDR', 'support@ilovefreegle.org'),
+        // Partnerships address for charity partner signups.
+        'partnerships_addr' => env('FREEGLE_PARTNERSHIPS_ADDR', 'partnerships@ilovefreegle.org'),
         // Info address for donation notifications and general admin emails.
         'info_addr' => env('FREEGLE_INFO_ADDR', 'info@ilovefreegle.org'),
         // CC address for donation notification emails (legacy logging).

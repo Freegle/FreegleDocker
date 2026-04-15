@@ -13,6 +13,7 @@ import AdminsAPI from './AdminsAPI.js'
 import AlertAPI from './AlertAPI.js'
 import AuthorityAPI from './AuthorityAPI.js'
 import BanditAPI from './BanditAPI.js'
+import CharityAPI from './CharityAPI.js'
 import ChatAPI from './ChatAPI.js'
 import CommentAPI from './CommentAPI.js'
 import CommunityEventAPI from './CommunityEventAPI.js'
@@ -60,6 +61,7 @@ export default (config) => {
     alert: new AlertAPI(options),
     authority: new AuthorityAPI(options),
     bandit: new BanditAPI(options),
+    charity: new CharityAPI(options),
     chat: new ChatAPI(options),
     comment: new CommentAPI(options),
     communityevent: new CommunityEventAPI(options),
