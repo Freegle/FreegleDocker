@@ -1896,6 +1896,14 @@ jobs:
             mkdir -p ~/test-output
             TESTS_KILLED_EARLY=false
 
+            # === INITIALIZE RESULT FILES ===
+            # On self-hosted runner (cleanup_working_directory: false), stale /tmp files
+            # from previous runs persist. Initialize all result files to prevent false results.
+            for f in laravel go php playwright; do
+              echo "pending" > /tmp/${f}-result
+            done
+            rm -f /tmp/watchdog-triggered /tmp/watchdog-pid
+
             # === WATCHDOG TIMEOUT ===
             # Start a watchdog that will force-stop tests after 48 minutes
             # This leaves ~12 minutes for artifact collection before CircleCI's 60-min hard limit
@@ -2317,13 +2325,16 @@ jobs:
             PHP_RESULT=$(cat /tmp/php-result 2>/dev/null || echo "fail")
             PLAYWRIGHT_RESULT=$(cat /tmp/playwright-result 2>/dev/null || echo "fail")
 
-            # Handle killed tests
-            if [ "$TESTS_KILLED_EARLY" = "true" ]; then
-              [ "$LARAVEL_RESULT" = "running" ] && LARAVEL_RESULT="killed"
-              [ "$GO_RESULT" = "running" ] && GO_RESULT="killed"
-              [ "$PHP_RESULT" = "running" ] && PHP_RESULT="killed"
-              [ "$PLAYWRIGHT_RESULT" = "running" ] && PLAYWRIGHT_RESULT="killed"
-            fi
+            # Handle killed or never-started tests
+            for varname in LARAVEL_RESULT GO_RESULT PHP_RESULT PLAYWRIGHT_RESULT; do
+              val="${!varname}"
+              if [ "$TESTS_KILLED_EARLY" = "true" ] && [ "$val" = "running" ]; then
+                eval "$varname=killed"
+              elif [ "$val" = "pending" ]; then
+                echo "⚠️ $varname was never started (still 'pending')"
+                eval "$varname=fail"
+              fi
+            done
 
             echo ""
             echo "=== Parallel Test Results ==="
