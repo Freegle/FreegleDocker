@@ -372,6 +372,17 @@ func CreateChatMessage(c *fiber.Ctx) error {
 		db.Exec("UPDATE chat_images SET chatmsgid = ? WHERE id = ?;", newid, *payload.Imageid)
 	}
 
+	// If anyone has closed this chat, reopen it so it reappears in their list.
+	// Blocked chats are left as-is.  Only applies to User2User and User2Mod chats.
+	result := db.Exec("UPDATE chat_roster SET status = ? WHERE chatid = ? AND status = ? "+
+		"AND EXISTS (SELECT 1 FROM chat_rooms WHERE id = ? AND chattype IN (?, ?))",
+		utils.CHAT_STATUS_OFFLINE, id, utils.CHAT_STATUS_CLOSED,
+		id, utils.CHAT_TYPE_USER2USER, utils.CHAT_TYPE_USER2MOD)
+
+	if result.Error != nil {
+		stdlog.Printf("Failed to reopen closed chat roster for chat %d: %v", id, result.Error)
+	}
+
 	ret := struct {
 		Id int64 `json:"id"`
 	}{}
