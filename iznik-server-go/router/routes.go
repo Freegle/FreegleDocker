@@ -29,6 +29,7 @@ import (
 	"github.com/freegle/iznik-server-go/amp"
 	"github.com/freegle/iznik-server-go/authority"
 	"github.com/freegle/iznik-server-go/changes"
+	"github.com/freegle/iznik-server-go/charity"
 	"github.com/freegle/iznik-server-go/chat"
 	"github.com/freegle/iznik-server-go/clientlog"
 	"github.com/freegle/iznik-server-go/comment"
@@ -380,6 +381,15 @@ func SetupRoutes(app *fiber.App) {
 		// @Success 200 {object} map[string]interface{}
 		// @Failure 403 {object} fiber.Error "Invalid partner key"
 		rg.Get("/changes", changes.GetChanges)
+
+		// Charity Partner signup
+		// @Router /charities [post]
+		// @Summary Register a charity partner
+		// @Tags charities
+		// @Accept json
+		// @Produce json
+		// @Success 200 {object} map[string]interface{}
+		rg.Post("/charities", charity.CreateCharity)
 
 		// Client Logging
 		// @Router /clientlog [post]

@@ -40,6 +40,13 @@
             <v-icon icon="arrow-down" class="me-2" />
             Register your organisation
           </a>
+          <p class="hero-giveaway-notice">
+            You can also
+            <nuxt-link no-prefetch to="/give">
+              give away things you don't need any more
+            </nuxt-link>
+            &mdash; it's free, quick, and helps your local community.
+          </p>
         </div>
 
         <!-- Benefits -->
@@ -272,6 +279,29 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label" for="contact-email">
+                Contact email
+              </label>
+              <b-form-input
+                id="contact-email"
+                v-model="form.contactEmail"
+                type="email"
+                placeholder="e.g. info@yourorg.org.uk"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="contact-name">
+                Contact name
+              </label>
+              <b-form-input
+                id="contact-name"
+                v-model="form.contactName"
+                placeholder="e.g. Jane Smith"
+              />
+            </div>
+
+            <div class="form-group">
               <label class="form-label"> Organisation logo </label>
               <div class="logo-upload">
                 <v-icon icon="camera" class="logo-upload-icon" />
@@ -297,17 +327,30 @@
             </div>
 
             <div class="form-actions">
-              <b-button variant="primary" size="lg" disabled class="submit-btn">
-                <v-icon icon="clock" class="me-1" />
-                Coming soon
+              <b-button
+                v-if="!submitted"
+                variant="primary"
+                size="lg"
+                :disabled="!canSubmit || submitting"
+                class="submit-btn"
+                @click="submitForm"
+              >
+                <v-icon
+                  v-if="submitting"
+                  icon="sync"
+                  class="me-1 fa-spin"
+                />
+                <v-icon v-else icon="heart" class="me-1" />
+                {{ submitting ? 'Submitting...' : 'Register your organisation' }}
               </b-button>
-              <p class="coming-soon-text">
-                Charity Partner registration will be available soon. In the
-                meantime, please
-                <a href="mailto:partnerships@ilovefreegle.org"
-                  >contact our partnerships team</a
-                >.
-              </p>
+              <div v-if="submitted" class="submit-success">
+                <v-icon icon="check-circle" class="me-1" />
+                Thanks! We've received your registration and will be in touch
+                soon at {{ form.contactEmail }}.
+              </div>
+              <div v-if="submitError" class="submit-error">
+                {{ submitError }}
+              </div>
             </div>
           </div>
         </div>
@@ -327,9 +370,10 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { buildHead } from '~/composables/useBuildHead'
+import api from '~/api'
 import CharityBadge from '~/components/CharityBadge.vue'
 
 const runtimeConfig = useRuntimeConfig()
@@ -352,7 +396,43 @@ const form = reactive({
   website: '',
   social: '',
   description: '',
+  contactEmail: '',
+  contactName: '',
 })
+
+const submitting = ref(false)
+const submitted = ref(false)
+const submitError = ref(null)
+
+const canSubmit = computed(() => {
+  return form.orgName.trim() && form.contactEmail.trim() && form.orgType
+})
+
+async function submitForm() {
+  submitting.value = true
+  submitError.value = null
+
+  try {
+    await api(runtimeConfig).charity.signup({
+      orgname: form.orgName,
+      orgtype: form.orgType,
+      charitynumber: form.charityNumber || null,
+      orgdetails: form.orgDetails || null,
+      website: form.website || null,
+      social: form.social || null,
+      description: form.description || null,
+      contactemail: form.contactEmail,
+      contactname: form.contactName || null,
+    })
+
+    submitted.value = true
+  } catch (e) {
+    submitError.value =
+      'Sorry, something went wrong. Please try again or email partnerships@ilovefreegle.org directly.'
+  } finally {
+    submitting.value = false
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -722,13 +802,38 @@ $charity-blue-light: #eff6ff;
   min-width: 200px;
 }
 
-.coming-soon-text {
-  font-size: 0.85rem;
-  color: var(--color-gray-600);
+.submit-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  background: #f0fdf4;
+  border: 1px solid $color-success;
+  border-radius: 8px;
+  color: $color-success;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.submit-error {
   margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #fef2f2;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.hero-giveaway-notice {
+  font-size: 0.9rem;
+  color: var(--color-gray-600);
+  margin-top: 1.25rem;
+  margin-bottom: 0;
 
   a {
     color: $charity-blue;
+    font-weight: 600;
   }
 }
 
