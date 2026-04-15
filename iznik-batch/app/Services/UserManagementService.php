@@ -123,7 +123,6 @@ class UserManagementService
     /**
      * Suspend mail for users with excessive bounces.
      *
-     * Matches V1 Bounce::suspendMail() behavior:
      * - If a user has >= PERM_THRESHOLD (3) permanent bounces on their preferred email, set bouncing = 1
      * - If a user has >= ALL_THRESHOLD (50) total bounces on their preferred email, set bouncing = 1
      * - Only suspends if the bouncing email matches the user's preferred/primary email
@@ -259,7 +258,6 @@ class UserManagementService
     /**
      * Update user kudos based on their activity.
      *
-     * Matches V1 iznik-server/scripts/cron/users_kudos.php + User::updateKudos().
      * Selects users with lastaccess > 2 days ago, calculates kudos per user,
      * and writes to users_kudos table via REPLACE INTO.
      */
@@ -291,7 +289,6 @@ class UserManagementService
     /**
      * Update kudos for a single user.
      *
-     * Matches V1 User::updateKudos(). Only updates if:
      * - No existing kudos record, OR
      * - Existing record is more than 24 hours old.
      *
@@ -343,7 +340,6 @@ class UserManagementService
     /**
      * Calculate kudos components for a user.
      *
-     * Matches V1 User::updateKudos() logic exactly:
      * - Distinct months with posts (messages table, last 365 days)
      * - Distinct months with chats (chat_messages table, last 365 days)
      * - Distinct months with newsfeed posts (newsfeed table, last 365 days)
@@ -414,56 +410,31 @@ class UserManagementService
     }
 
     /**
-     * Update user retention statistics and perform cleanup.
+     * Clean up inactive and deleted users.
      *
-     * Migrated from iznik-server/scripts/cron/users_retention.php which calls:
-     *   - User::userRetention() — deletes Yahoo Groups users, forgets inactive users,
-     *     hard-deletes fully forgotten users with no messages
-     *   - User::processForgets() — GDPR forget for users deleted > 14 days ago
+     * Steps:
+     *   1. Delete legacy Yahoo Groups users
+     *   2. Forget inactive users (no memberships, no activity in 6 months, no logs in 90 days)
+     *   3. Process GDPR forgets (users deleted > 14 days ago)
+     *   4. Hard-delete fully forgotten users with no remaining messages
      *
      * @param  bool  $dryRun  If true, count what would be affected but don't modify data.
      */
-    public function updateRetentionStats(bool $dryRun = FALSE): array
+    public function cleanupUsers(bool $dryRun = FALSE): array
     {
         $stats = [
-            'active_users_30d' => 0,
-            'active_users_90d' => 0,
-            'new_users_30d' => 0,
-            'churned_users' => 0,
             'yahoo_users_deleted' => 0,
             'inactive_users_forgotten' => 0,
             'gdpr_forgets_processed' => 0,
             'forgotten_users_deleted' => 0,
         ];
 
-        // Active in last 30 days.
-        $stats['active_users_30d'] = User::where('lastaccess', '>=', now()->subDays(30))
-            ->whereNull('deleted')
-            ->count();
-
-        // Active in last 90 days.
-        $stats['active_users_90d'] = User::where('lastaccess', '>=', now()->subDays(90))
-            ->whereNull('deleted')
-            ->count();
-
-        // New users in last 30 days.
-        $stats['new_users_30d'] = User::where('added', '>=', now()->subDays(30))
-            ->whereNull('deleted')
-            ->count();
-
-        // Churned (active 90-180 days ago but not since).
-        $stats['churned_users'] = User::where('lastaccess', '<', now()->subDays(90))
-            ->where('lastaccess', '>=', now()->subDays(180))
-            ->whereNull('deleted')
-            ->count();
-
-        // Destructive cleanup operations (from V1 userRetention + processForgets).
         $stats['yahoo_users_deleted'] = $this->deleteYahooGroupsUsers($dryRun);
         $stats['inactive_users_forgotten'] = $this->forgetInactiveUsers($dryRun);
         $stats['gdpr_forgets_processed'] = $this->processForgets($dryRun);
         $stats['forgotten_users_deleted'] = $this->deleteFullyForgottenUsers($dryRun);
 
-        Log::info('User retention stats updated', $stats);
+        Log::info('User cleanup completed', $stats);
 
         return $stats;
     }
@@ -472,7 +443,6 @@ class UserManagementService
      * Delete users with @yahoogroups.com emails.
      *
      * These are legacy Yahoo Groups users that no longer serve a purpose.
-     * Matches V1 User::userRetention() Yahoo cleanup block.
      */
     public function deleteYahooGroupsUsers(bool $dryRun = FALSE): int
     {
@@ -510,7 +480,6 @@ class UserManagementService
      * - systemrole = 'User'
      * - Not already deleted
      *
-     * Matches V1 User::userRetention() inactive user block.
      */
     public function forgetInactiveUsers(bool $dryRun = FALSE): int
     {
@@ -562,7 +531,6 @@ class UserManagementService
      * Process GDPR forgets: users with deleted timestamp > 14 days ago
      * who haven't been forgotten yet.
      *
-     * Matches V1 User::processForgets().
      */
     public function processForgets(bool $dryRun = FALSE): int
     {
@@ -589,7 +557,6 @@ class UserManagementService
     /**
      * Wipe a user's personal data for GDPR right to be forgotten.
      *
-     * Matches V1 User::forget() — clears name, settings, yahooid;
      * deletes non-internal emails, logins, community events, volunteering,
      * newsfeed, stories, searches, about me, ratings, addresses, images,
      * promises, sessions; nullifies message content; removes group memberships;
@@ -700,7 +667,6 @@ class UserManagementService
      * These users have been forgotten (personal data wiped) and have no messages
      * left as a placeholder — they can be safely hard-deleted.
      *
-     * Matches V1 User::userRetention() final cleanup block.
      */
     public function deleteFullyForgottenUsers(bool $dryRun = FALSE): int
     {
@@ -743,7 +709,6 @@ class UserManagementService
      * Finds users whose lastaccess is more than 10 minutes behind their latest
      * chat message or membership join, and updates accordingly.
      *
-     * Migrated from iznik-server/scripts/cron/lastaccess.php
      */
     public function updateLastAccess(bool $dryRun = false): array
     {
@@ -810,7 +775,6 @@ class UserManagementService
      * Removes the role from users who no longer qualify (downgrading to Moderator).
      * Never touches Admin users.
      *
-     * Migrated from iznik-server/scripts/cron/supporttools.php
      */
     public function updateSupportRoles(bool $dryRun = false): array
     {
@@ -879,7 +843,6 @@ class UserManagementService
      *
      * Uses the same regex as iznik-server Message::EMAIL_REGEXP.
      *
-     * Migrated from iznik-server/scripts/cron/email_validate.php
      */
     public function validateEmails(bool $dryRun = false): array
     {
@@ -922,7 +885,6 @@ class UserManagementService
      *
      * This prevents frivolous ratings from users who haven't actually interacted.
      *
-     * Migrated from iznik-server User::ratingVisibility()
      */
     public function updateRatingVisibility(string $since = '1 hour ago', bool $dryRun = false): array
     {
@@ -1006,35 +968,4 @@ class UserManagementService
     /**
      * Clean up inactive user data for GDPR compliance.
      */
-    public function cleanupInactiveUsers(int $yearsInactive = 3, bool $dryRun = false): int
-    {
-        $cutoff = now()->subYears($yearsInactive);
-        $cleaned = 0;
-
-        $inactiveUsers = User::where('lastaccess', '<', $cutoff)
-            ->whereNull('deleted')
-            ->limit($this->chunkSize)
-            ->get();
-
-        foreach ($inactiveUsers as $user) {
-            if (!$dryRun) {
-                // Anonymize rather than delete.
-                $user->update([
-                    'firstname' => 'Deleted',
-                    'lastname' => 'User',
-                    'fullname' => 'Deleted User',
-                    'deleted' => now(),
-                ]);
-
-                // Remove email addresses.
-                UserEmail::where('userid', $user->id)->delete();
-            }
-
-            $cleaned++;
-        }
-
-        Log::info("Cleaned up {$cleaned} inactive users");
-
-        return $cleaned;
-    }
 }

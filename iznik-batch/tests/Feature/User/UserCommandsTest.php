@@ -39,42 +39,27 @@ class UserCommandsTest extends TestCase
             ->assertExitCode(0);
     }
 
-    public function test_retention_stats_command_runs_successfully(): void
+    public function test_cleanup_command_runs_successfully(): void
     {
-        $this->artisan('users:retention-stats')
+        $this->artisan('users:cleanup')
             ->assertExitCode(0);
     }
 
-    public function test_retention_stats_displays_table(): void
+    public function test_cleanup_displays_table(): void
     {
-        $this->artisan('users:retention-stats')
-            ->expectsOutputToContain('Calculating user retention statistics')
-            ->expectsOutputToContain('Active users (30 days)')
-            ->expectsOutputToContain('Active users (90 days)')
-            ->expectsOutputToContain('New users (30 days)')
-            ->expectsOutputToContain('Churned users (90-180 days)')
+        $this->artisan('users:cleanup')
+            ->expectsOutputToContain('Running user cleanup')
+            ->expectsOutputToContain('Delete Yahoo Groups users')
+            ->expectsOutputToContain('Forget inactive users')
+            ->expectsOutputToContain('Process GDPR forgets')
+            ->expectsOutputToContain('Delete fully forgotten users')
             ->assertExitCode(0);
     }
 
-    public function test_retention_stats_with_active_users(): void
+    public function test_cleanup_dry_run(): void
     {
-        // Create recently active user.
-        $user = User::create([
-            'firstname' => 'Active',
-            'lastname' => 'User',
-            'fullname' => 'Active User',
-            'added' => now()->subDays(60),
-            'lastaccess' => now()->subDays(5),
-        ]);
-
-        UserEmail::create([
-            'userid' => $user->id,
-            'email' => $this->uniqueEmail('active'),
-            'preferred' => 1,
-            'added' => now(),
-        ]);
-
-        $this->artisan('users:retention-stats')
+        $this->artisan('users:cleanup --dry-run')
+            ->expectsOutputToContain('DRY RUN')
             ->assertExitCode(0);
     }
 

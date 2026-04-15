@@ -245,7 +245,7 @@ Schedule::command('users:update-kudos')
     ->withoutOverlapping()
     ->runInBackground();
 
-Schedule::command('users:retention-stats')
+Schedule::command('users:cleanup')
     ->weekly()
     ->sundays()
     ->at('06:00')
