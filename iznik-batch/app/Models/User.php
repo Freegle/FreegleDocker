@@ -426,10 +426,11 @@ class User extends Model
 
         $groupDomain = config('freegle.group_domain');
 
-        if (stripos($email, '-owner@yahoogroups.co') !== FALSE ||
+        if (
+            stripos($email, '-owner@yahoogroups.co') !== FALSE ||
             stripos($email, "-volunteers@{$groupDomain}") !== FALSE ||
-            stripos($email, "-auto@{$groupDomain}") !== FALSE)
-        {
+            stripos($email, "-auto@{$groupDomain}") !== FALSE
+        ) {
             # We don't allow people to add Yahoo owner addresses as the address of an individual user, or
             # the volunteer addresses.
             $rc = NULL;
@@ -1085,8 +1086,8 @@ class User extends Model
 
             // --- Merge chat rooms ---
             $rooms = ChatRoom::where(function ($q) use ($id2) {
-                    $q->where('user1', $id2)->orWhere('user2', $id2);
-                })
+                $q->where('user1', $id2)->orWhere('user2', $id2);
+            })
                 ->whereIn('chattype', [ChatRoom::TYPE_USER2MOD, ChatRoom::TYPE_USER2USER])
                 ->get();
 
@@ -1100,12 +1101,12 @@ class User extends Model
                 } elseif ($room->chattype === ChatRoom::TYPE_USER2USER) {
                     $other = ($room->user1 == $id2) ? $room->user2 : $room->user1;
                     $existing = ChatRoom::where(function ($q) use ($id1, $other) {
-                            $q->where(function ($q2) use ($id1, $other) {
-                                $q2->where('user1', $id1)->where('user2', $other);
-                            })->orWhere(function ($q2) use ($id1, $other) {
-                                $q2->where('user2', $id1)->where('user1', $other);
-                            });
-                        })
+                        $q->where(function ($q2) use ($id1, $other) {
+                            $q2->where('user1', $id1)->where('user2', $other);
+                        })->orWhere(function ($q2) use ($id1, $other) {
+                            $q2->where('user2', $id1)->where('user1', $other);
+                        });
+                    })
                         ->first();
                 }
 
@@ -1298,13 +1299,12 @@ class User extends Model
     public function forget(string $reason): void
     {
         // --- Clear personal attributes ---
-        User::where('id', $this->id)->update([
-            'firstname' => NULL,
-            'lastname' => NULL,
-            'fullname' => 'Deleted User #' . $this->id,
-            'settings' => NULL,
-            'yahooid' => NULL,
-        ]);
+        $this->firstname = NULL;
+        $this->lastname = NULL;
+        $this->fullname = 'Deleted User #' . $this->id;
+        $this->settings = NULL;
+        $this->yahooid = NULL;
+        $this->save();
 
         // --- Delete external emails (keep internal Freegle addresses) ---
         foreach ($this->emails()->get() as $email) {
@@ -1314,7 +1314,7 @@ class User extends Model
         }
 
         // --- Delete all login credentials ---
-        UserLogin::where('userid', $this->id)->delete();
+        UserLogin::where('userid', $this->id)->get()->each->delete();
 
         // --- Clear message content and withdraw messages without an outcome ---
         $msgIds = Message::where('fromuser', $this->id)
@@ -1322,43 +1322,51 @@ class User extends Model
             ->pluck('id');
 
         foreach ($msgIds as $msgId) {
-            Message::where('id', $msgId)->update([
-                'fromip' => NULL,
-                'message' => NULL,
-                'envelopefrom' => NULL,
-                'fromname' => NULL,
-                'fromaddr' => NULL,
-                'messageid' => NULL,
-                'textbody' => NULL,
-                'htmlbody' => NULL,
-                'deleted' => now(),
-            ]);
+            // Update the field of the message
+            $message = Message::find($msgId);
+            $message->fromip = NULL;
+            $message->message = NULL;
+            $message->envelopefrom = NULL;
+            $message->fromname = NULL;
+            $message->fromaddr = NULL;
+            $message->messageid = NULL;
+            $message->textbody = NULL;
+            $message->htmlbody = NULL;
+            $message->deleted = now();
+            $message->save();
 
-            MessageGroup::where('msgid', $msgId)->update(['deleted' => 1]);
+            // Mark the message group as deleted
+            $messageGroup = MessageGroup::find($msgId);
+            $messageGroup->deleted = 1;
+            $messageGroup->save();
 
             // Clear any outcome comments that might contain personal data.
-            MessageOutcome::where('msgid', $msgId)->update(['comments' => NULL]);
-
-            $m = Message::find($msgId);
+            foreach ($message->outcomes()->get() as $messageOutcome) {
+                $messageOutcome->comments = NULL;
+                $messageOutcome->save();
+            }
 
             // Withdraw if no outcome has been recorded yet.
-            if (!$m->hasOutcome()) {
-                $m->withdraw('Withdrawn on user unsubscribe', NULL);
+            if (!$message->hasOutcome()) {
+                $message->withdraw('Withdrawn on user unsubscribe', NULL);
             }
         }
 
         // --- Clear chat message content ---
-        ChatMessage::where('userid', $this->id)->update(['message' => NULL]);
+        foreach ($this->chatMessages()->get() as $chatMessage) {
+            $chatMessage->message = NULL;
+            $chatMessage->save();
+        }
 
         // --- Delete user-generated content ---
-        CommunityEvent::where('userid', $this->id)->delete();
-        Volunteering::where('userid', $this->id)->delete();
-        Newsfeed::where('userid', $this->id)->delete();
-        UserStory::where('userid', $this->id)->delete();
-        UserSearch::where('userid', $this->id)->delete();
-        UserAboutMe::where('userid', $this->id)->delete();
-        Rating::where('rater', $this->id)->delete();
-        Rating::where('ratee', $this->id)->delete();
+        CommunityEvent::where('userid', $this->id)->get()->each->delete();
+        Volunteering::where('userid', $this->id)->get()->each->delete();
+        Newsfeed::where('userid', $this->id)->get()->each->delete();
+        UserStory::where('userid', $this->id)->get()->each->delete();
+        UserSearch::where('userid', $this->id)->get()->each->delete();
+        UserAboutMe::where('userid', $this->id)->get()->each->delete();
+        Rating::where('rater', $this->id)->get()->each->delete();
+        Rating::where('ratee', $this->id)->get()->each->delete();
 
         // --- Remove all group memberships ---
         $groupIds = collect($this->getMembershipList())->pluck('id');
@@ -1367,29 +1375,28 @@ class User extends Model
         }
 
         // --- Delete postal addresses and profile images ---
-        UserAddress::where('userid', $this->id)->delete();
-        UserImage::where('userid', $this->id)->delete();
+        UserAddress::where('userid', $this->id)->get()->each->delete();
+        UserImage::where('userid', $this->id)->get()->each->delete();
 
         // --- Delete message promises ---
-        MessagePromise::where('userid', $this->id)->delete();
+        MessagePromise::where('userid', $this->id)->get()->each->delete();
 
         // --- Mark user as forgotten ---
-        User::where('id', $this->id)->update([
-            'forgotten' => now(),
-            'tnuserid' => NULL,
-        ]);
+        $this->forgotten = now();
+        $this->tnuserid = NULL;
+        $this->save();
 
         // --- Delete sessions ---
-        UserSession::where('userid', $this->id)->delete();
+        UserSession::where('userid', $this->id)->get()->each->delete();
 
         // --- Log the deletion ---
-        Log::insert([
-            'timestamp' => now(),
-            'type' => 'User',
-            'subtype' => 'Deleted',
-            'user' => $this->id,
-            'text' => $reason,
-        ]);
+        $log = new Log();
+        $log->timestamp = now();
+        $log->type = 'User';
+        $log->subtype = 'Deleted';
+        $log->user = $this->id;
+        $log->text = $reason;
+        $log->save();
     }
 
     /**
@@ -1430,11 +1437,11 @@ class User extends Model
 
         if ($ban) {
             // Record the ban.
-            UserBanned::insertOrIgnore([
-                'userid' => $this->id,
-                'groupid' => $groupId,
-                'byuser' => $byUserId,
-            ]);
+            $userBanned = new UserBanned();
+            $userBanned->userid = $this->id;
+            $userBanned->groupid = $groupId;
+            $userBanned->byuser = $byUserId;
+            $userBanned->save();
 
             // Withdraw active Offer/Wanted messages on this group that have no outcome yet.
             $msgIds = MessageGroup::join('messages', 'messages_groups.msgid', '=', 'messages.id')
@@ -1459,15 +1466,15 @@ class User extends Model
             ?->delete();
 
         if ($deleted || $ban) {
-            Log::insert([
-                'timestamp' => now(),
-                'type' => 'Group',
-                'subtype' => 'Left',
-                'user' => $this->id,
-                'byuser' => $byUserId,
-                'groupid' => $groupId,
-                'text' => $spam ? 'Autoremoved spammer' : ($ban ? 'via ban' : NULL),
-            ]);
+            $log = new Log();
+            $log->timestamp = now();
+            $log->type = 'Group';
+            $log->subtype = 'Left';
+            $log->user = $this->id;
+            $log->byuser = $byUserId;
+            $log->groupid = $groupId;
+            $log->text = $spam ? 'Autoremoved spammer' : ($ban ? 'via ban' : NULL);
+            $log->save();
         }
 
         return $deleted > 0 || $ban;
@@ -1643,8 +1650,8 @@ class User extends Model
             'memberships.ourPostingStatus',
             DB::raw("CASE WHEN groups.namefull IS NOT NULL THEN groups.namefull ELSE groups.nameshort END AS namedisplay"),
         ])
-        ->orderByRaw('LOWER(namedisplay) ASC')
-        ->get();
+            ->orderByRaw('LOWER(namedisplay) ASC')
+            ->get();
 
         $ret = [];
         $getWorkIds = [];

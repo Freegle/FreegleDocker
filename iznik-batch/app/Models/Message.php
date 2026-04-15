@@ -134,22 +134,80 @@ class Message extends Model
      */
     public const TYPE_KEYWORDS = [
         self::TYPE_OFFER => [
-            'ofer', 'offr', 'offrer', 'ffered', 'offfered', 'offrered', 'offered', 'offeer', 'cynnig', 'offred',
-            'offer', 'offering', 'reoffer', 're offer', 're-offer', 'reoffered', 're offered', 're-offered',
-            'offfer', 'offeed', 'available',
+            'ofer',
+            'offr',
+            'offrer',
+            'ffered',
+            'offfered',
+            'offrered',
+            'offered',
+            'offeer',
+            'cynnig',
+            'offred',
+            'offer',
+            'offering',
+            'reoffer',
+            're offer',
+            're-offer',
+            'reoffered',
+            're offered',
+            're-offered',
+            'offfer',
+            'offeed',
+            'available',
         ],
         self::TYPE_TAKEN => [
-            'collected', 'take', 'stc', 'gone', 'withdrawn', 'ta ke n', 'promised',
-            'cymeryd', 'cymerwyd', 'takln', 'taken', 'cymryd',
+            'collected',
+            'take',
+            'stc',
+            'gone',
+            'withdrawn',
+            'ta ke n',
+            'promised',
+            'cymeryd',
+            'cymerwyd',
+            'takln',
+            'taken',
+            'cymryd',
         ],
         self::TYPE_WANTED => [
-            'wnted', 'requested', 'rquested', 'request', 'would like', 'want',
-            'anted', 'wated', 'need', 'needed', 'wamted', 'require', 'required', 'watnted', 'wented',
-            'sought', 'seeking', 'eisiau', 'wedi eisiau', 'eisiau', 'wnated', 'wanted', 'looking', 'waned',
+            'wnted',
+            'requested',
+            'rquested',
+            'request',
+            'would like',
+            'want',
+            'anted',
+            'wated',
+            'need',
+            'needed',
+            'wamted',
+            'require',
+            'required',
+            'watnted',
+            'wented',
+            'sought',
+            'seeking',
+            'eisiau',
+            'wedi eisiau',
+            'eisiau',
+            'wnated',
+            'wanted',
+            'looking',
+            'waned',
         ],
         self::TYPE_RECEIVED => [
-            'recieved', 'reiceved', 'receved', 'rcd', 'rec\'d', 'recevied',
-            'receive', 'derbynewid', 'derbyniwyd', 'received', 'recivered',
+            'recieved',
+            'reiceved',
+            'receved',
+            'rcd',
+            'rec\'d',
+            'recevied',
+            'receive',
+            'derbynewid',
+            'derbyniwyd',
+            'received',
+            'recivered',
         ],
         self::TYPE_ADMIN => ['admin', 'sn'],
     ];
@@ -338,17 +396,19 @@ class Message extends Model
         if (strlen($comment)) {
             $dull = FALSE;
 
-            foreach ([
-                'Sorry, this is no longer available.',
-                'Thanks, this has now been taken.',
-                "Thanks, I'm no longer looking for this.",
-                'Sorry, this has now been taken.',
-                'Thanks for the interest, but this has now been taken.',
-                'Thanks, these have now been taken.',
-                'Thanks, this has now been received.',
-                'Sorry, this is no longer available',
-                'Withdrawn on user unsubscribe',
-            ] as $bland) {
+            foreach (
+                [
+                    'Sorry, this is no longer available.',
+                    'Thanks, this has now been taken.',
+                    "Thanks, I'm no longer looking for this.",
+                    'Sorry, this has now been taken.',
+                    'Thanks for the interest, but this has now been taken.',
+                    'Thanks, these have now been taken.',
+                    'Thanks, this has now been received.',
+                    'Sorry, this is no longer available',
+                    'Withdrawn on user unsubscribe',
+                ] as $bland
+            ) {
                 if (strcmp($comment, $bland) === 0) {
                     $dull = TRUE;
                 }
@@ -377,23 +437,23 @@ class Message extends Model
     {
         $intcomment = $this->interestingComment($comment);
 
-        MessageOutcomeIntended::where('msgid', $this->id)->delete();
+        MessageOutcomeIntended::where('msgid', $this->id)->get()->each->delete();
 
-        MessageOutcome::create([
-            'msgid' => $this->id,
-            'outcome' => self::OUTCOME_WITHDRAWN,
-            'happiness' => $happiness,
-            'comments' => $intcomment,
-        ]);
+        $messageOutcome = new MessageOutcome();
+        $messageOutcome->msgid = $this->id;
+        $messageOutcome->outcome = self::OUTCOME_WITHDRAWN;
+        $messageOutcome->happiness = $happiness;
+        $messageOutcome->comments = $intcomment;
+        $messageOutcome->save();
 
-        Log::create([
-            'timestamp' => now(),
-            'type' => 'Message',
-            'subtype' => 'Outcome',
-            'msgid' => $this->id,
-            'user' => $this->fromuser,
-            'byuser' => $byUserId,
-            'text' => $intcomment ? "Withdrawn: $comment" : 'Withdrawn',
-        ]);
+        $log = new Log();
+        $log->timestamp = now();
+        $log->type = 'Message';
+        $log->subtype = 'Outcome';
+        $log->msgid = $this->id;
+        $log->user = $this->fromuser;
+        $log->byuser = $byUserId;
+        $log->text = $intcomment ? "Withdrawn: $comment" : 'Withdrawn';
+        $log->save();
     }
 }
