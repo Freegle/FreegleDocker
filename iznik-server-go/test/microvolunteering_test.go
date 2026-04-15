@@ -243,8 +243,9 @@ func TestGetMicrovolunteering_CheckMessageApproved(t *testing.T) {
 
 	// Should return check message challenge with the approved message
 	assert.Equal(t, microvolunteering.ChallengeCheckMessage, result.Type)
-	assert.NotNil(t, result.Msgid)
-	assert.Equal(t, msgID, *result.Msgid)
+	if assert.NotNil(t, result.Msgid, "Msgid should not be nil — microvolunteering returned wrong challenge type or no message") {
+		assert.Equal(t, msgID, *result.Msgid)
+	}
 }
 
 func TestGetMicrovolunteering_PhotoRotateChallenge(t *testing.T) {
