@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Helpers\MailHelper;
 use App\Mail\Message\AutoRepostWarning;
+use App\Mail\Traits\FeatureFlags;
 use App\Models\Group;
 use App\Models\Message;
 use App\Models\MessageGroup;
@@ -14,6 +15,9 @@ use Illuminate\Support\Facades\Mail;
 
 class AutoRepostService
 {
+    use FeatureFlags;
+
+    public const EMAIL_TYPE = 'AutoRepost';
     /**
      * Only consider messages from the last N days.
      * V1: $mindate = 90 days ago (Message::EXPIRE_TIME).
@@ -60,6 +64,11 @@ class AutoRepostService
             'skipped' => 0,
             'errors' => 0,
         ];
+
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            Log::info('AutoRepost emails disabled via FREEGLE_MAIL_ENABLED_TYPES');
+            return $stats;
+        }
 
         $mindate = now()->subDays(self::LOOKBACK_DAYS)->format('Y-m-d');
 

@@ -15,7 +15,8 @@ class PurgeChatsCommand extends Command
      * The name and signature of the console command.
      */
     protected $signature = 'purge:chats
-                            {--spam-days=7 : Days to keep spam chat messages}';
+                            {--spam-days=7 : Days to keep spam chat messages}
+                            {--dry-run : Show what would be purged without actually deleting}';
 
     /**
      * The console command description.
@@ -29,7 +30,13 @@ class PurgeChatsCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        Log::info('Starting chat purge');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        Log::info('Starting chat purge', ['dry_run' => $dryRun]);
         $this->info('Purging chat data...');
 
         $results = [];
@@ -37,7 +44,7 @@ class PurgeChatsCommand extends Command
         // Purge spam messages.
         $this->line('Purging spam chat messages...');
         $spamDays = (int) $this->option('spam-days');
-        $results['spam_messages'] = $purgeService->purgeSpamChatMessages($spamDays);
+        $results['spam_messages'] = $purgeService->purgeSpamChatMessages($spamDays, $dryRun);
         $this->info("  Purged {$results['spam_messages']} spam messages");
 
         if ($this->shouldAbort()) {
@@ -47,7 +54,7 @@ class PurgeChatsCommand extends Command
 
         // Purge empty chat rooms.
         $this->line('Purging empty chat rooms...');
-        $results['empty_rooms'] = $purgeService->purgeEmptyChatRooms();
+        $results['empty_rooms'] = $purgeService->purgeEmptyChatRooms($dryRun);
         $this->info("  Purged {$results['empty_rooms']} empty rooms");
 
         if ($this->shouldAbort()) {
@@ -57,7 +64,7 @@ class PurgeChatsCommand extends Command
 
         // Purge orphaned images.
         $this->line('Purging orphaned chat images...');
-        $results['orphaned_images'] = $purgeService->purgeOrphanedChatImages();
+        $results['orphaned_images'] = $purgeService->purgeOrphanedChatImages($dryRun);
         $this->info("  Purged {$results['orphaned_images']} orphaned images");
 
         $this->newLine();

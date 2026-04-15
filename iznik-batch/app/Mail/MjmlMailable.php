@@ -284,6 +284,45 @@ abstract class MjmlMailable extends Mailable
         if ($userId !== null) {
             $headers->addTextHeader('X-Freegle-User-Id', (string) $userId);
         }
+
+        // RFC 8058 List-Unsubscribe headers for Gmail/Yahoo deliverability.
+        // These headers enable one-click unsubscribe in email clients and are
+        // required by Gmail and Yahoo for bulk senders.
+        $this->addListUnsubscribeHeaders($message);
+    }
+
+    /**
+     * Add RFC 8058 List-Unsubscribe and List-Unsubscribe-Post headers.
+     *
+     * Only added when we know the recipient user ID, so the unsubscribe URL
+     * can target the correct account. Uses both a mailto: address and an HTTPS
+     * URL for maximum compatibility. List-Unsubscribe-Post enables one-click
+     * unsubscribe without opening a browser.
+     *
+     * These headers are required by Gmail and Yahoo for bulk senders.
+     */
+    protected function addListUnsubscribeHeaders(Email $message): void
+    {
+        $userId = $this->getRecipientUserId();
+
+        if ($userId === null) {
+            return;
+        }
+
+        $headers = $message->getHeaders();
+
+        $unsubscribeEmail = config('freegle.mail.noreply_addr', 'noreply@ilovefreegle.org');
+        $userSite = config('freegle.sites.user', 'https://www.ilovefreegle.org');
+        $unsubscribeUrl = "{$userSite}/unsubscribe/{$userId}";
+
+        // List-Unsubscribe: RFC 2369 — mailto: and https: URLs.
+        $headers->addTextHeader(
+            'List-Unsubscribe',
+            "<mailto:{$unsubscribeEmail}?subject=unsubscribe>, <{$unsubscribeUrl}>"
+        );
+
+        // List-Unsubscribe-Post: RFC 8058 — enables one-click unsubscribe.
+        $headers->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
     }
 
     /**
