@@ -9,6 +9,11 @@ import (
 
 const keywordBoostWeight = 0.3
 
+// MinVectorScore is the minimum cosine similarity to include a result.
+// nomic-embed-text-v1.5 normalized dot products: random/noise scores ~0.50,
+// tangential matches ~0.60, genuine semantic matches 0.70+, exact 0.75+.
+const MinVectorScore = 0.65
+
 // VectorSearch performs semantic search with hybrid keyword scoring.
 func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 	nelat, nelng, swlat, swlng float32) ([]SearchResult, error) {
@@ -32,6 +37,11 @@ func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 	scored := make([]scoredResult, 0, len(vecResults))
 
 	for _, vr := range vecResults {
+		// Skip results below the minimum similarity threshold
+		if vr.Score < MinVectorScore {
+			continue
+		}
+
 		var keywordScore float32
 		if len(queryWords) > 0 {
 			subjectLower := strings.ToLower(vr.Subject)
@@ -45,6 +55,9 @@ func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 		}
 
 		hybridScore := vr.Score + keywordScore*keywordBoostWeight
+		if hybridScore > 1.0 {
+			hybridScore = 1.0
+		}
 
 		lat, lng := utils.Blur(vr.Lat, vr.Lng, utils.BLUR_USER)
 

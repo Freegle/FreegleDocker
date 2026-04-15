@@ -95,7 +95,7 @@ const {
 // Local state (formerly data())
 const chosengroupid = ref(0)
 const bump = ref(0)
-const vectorSearchEnabled = ref(true)
+const vectorSearchEnabled = ref(false)
 const searchmode = computed(() => vectorSearchEnabled.value ? 'vector' : 'keyword')
 const urlOverride = ref(false)
 const loaded = ref(false)
@@ -209,6 +209,15 @@ function searchedMessage(term) {
   }
 }
 
+watch(vectorSearchEnabled, () => {
+  show.value = 0
+  context.value = null
+  modMessages.listingIds.value = new Set()
+  modMessages.listingIdOrder.value = []
+  messageStore.clear()
+  bump.value++
+})
+
 function searchedMember(term) {
   show.value = 0
   messageTerm.value = null
@@ -240,11 +249,16 @@ async function loadMore($state) {
 
     if (messageTerm.value && searchmode.value === 'vector') {
       // Vector search uses the V2 search API via searchMT
-      await messageStore.searchMT({
+      const ids = await messageStore.searchMT({
         term: messageTerm.value,
         groupid: groupid.value,
         searchmode: 'vector',
       })
+      if (ids) {
+        ids.forEach((id) => modMessages.listingIds.value.add(id))
+        modMessages.listingIdOrder.value = ids
+      }
+      show.value = messages.value.length
       $state.complete()
       return
     } else if (messageTerm.value) {

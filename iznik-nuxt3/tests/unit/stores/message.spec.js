@@ -164,19 +164,18 @@ describe('message store - searchMT()', () => {
   it('calls V2 search API with vector searchmode', async () => {
     useAuthStore.mockReturnValue({ user: { id: 1 } })
     mockSearch.mockResolvedValue([
-      { id: 101, msgid: 101 },
-      { id: 102, msgid: 102 },
+      { id: 101, msgid: 101, matchedon: { type: 'Vector', word: 'sofa' } },
+      { id: 102, msgid: 102, matchedon: { type: 'Vector', word: 'sofa' } },
     ])
 
     const store = useMessageStore()
     // Mock fetchMT to avoid real API calls
     store.fetchMT = vi.fn().mockImplementation(({ id }) => {
       const msg = { id, subject: 'Test' }
-      store.list[id] = msg
       return msg
     })
 
-    await store.searchMT({
+    const ids = await store.searchMT({
       term: 'sofa',
       groupid: 123,
       searchmode: 'vector',
@@ -191,6 +190,31 @@ describe('message store - searchMT()', () => {
     expect(store.fetchMT).toHaveBeenCalledTimes(2)
     expect(store.list[101]).toBeDefined()
     expect(store.list[102]).toBeDefined()
+    expect(store.list[101].matchedon).toEqual({ type: 'Vector', word: 'sofa' })
+    expect(store.list[102].matchedon).toEqual({ type: 'Vector', word: 'sofa' })
+    expect(ids).toEqual(expect.arrayContaining([101, 102]))
+  })
+
+  it('preserves score order from API response', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockSearch.mockResolvedValue([
+      { id: 301, matchedon: { type: 'Vector', word: 'sofa' } },
+      { id: 302, matchedon: { type: 'Vector', word: 'sofa' } },
+      { id: 303, matchedon: { type: 'Vector', word: 'sofa' } },
+    ])
+
+    const store = useMessageStore()
+    store.fetchMT = vi.fn().mockImplementation(({ id }) => {
+      return { id, subject: 'Test' }
+    })
+
+    const ids = await store.searchMT({
+      term: 'sofa',
+      searchmode: 'vector',
+    })
+
+    // Order should match API response order (score-ranked)
+    expect(ids).toEqual([301, 302, 303])
   })
 
   it('handles empty vector search results', async () => {
@@ -200,13 +224,14 @@ describe('message store - searchMT()', () => {
     const store = useMessageStore()
     store.fetchMT = vi.fn()
 
-    await store.searchMT({
+    const ids = await store.searchMT({
       term: 'nonexistent',
       searchmode: 'vector',
     })
 
     expect(mockSearch).toHaveBeenCalled()
     expect(store.fetchMT).not.toHaveBeenCalled()
+    expect(ids).toEqual([])
   })
 
   it('handles null vector search results', async () => {
@@ -216,12 +241,13 @@ describe('message store - searchMT()', () => {
     const store = useMessageStore()
     store.fetchMT = vi.fn()
 
-    await store.searchMT({
+    const ids = await store.searchMT({
       term: 'nonexistent',
       searchmode: 'vector',
     })
 
     expect(store.fetchMT).not.toHaveBeenCalled()
+    expect(ids).toEqual([])
   })
 
   it('omits groupids when no groupid provided', async () => {
@@ -257,7 +283,7 @@ describe('message store - searchMT()', () => {
       return msg
     })
 
-    await store.searchMT({
+    const ids = await store.searchMT({
       term: 'chair',
       groupid: 100,
       searchmode: 'vector',
@@ -266,6 +292,7 @@ describe('message store - searchMT()', () => {
     // First result failed but second should still be in list
     expect(store.list[201]).toBeUndefined()
     expect(store.list[202]).toBeDefined()
+    expect(ids).toEqual([202])
   })
 
   it('uses keyword search when searchmode is not vector', async () => {
