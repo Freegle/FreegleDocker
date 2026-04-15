@@ -7,14 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/getsentry/sentry-go"
+	"gorm.io/gorm"
 	logger2 "gorm.io/gorm/logger"
 	"gorm.io/gorm/utils"
 	"log"
 	"time"
 )
 
-// ErrRecordNotFound record not found error
-var ErrRecordNotFound = errors.New("record not found")
+// ErrRecordNotFound uses GORM's sentinel so errors.Is() matches correctly.
+var ErrRecordNotFound = gorm.ErrRecordNotFound
 
 // Config logger config
 type Config struct {
