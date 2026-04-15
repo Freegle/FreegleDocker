@@ -220,7 +220,7 @@ const team = [
     name: 'Cat Fletcher',
     role: 'Co-Founder & Media',
     photo: '/partnerships/cat-fletcher.jpg',
-    bio: 'Award-winning waste-prevention activist, researcher and practitioner. Cat co-founded Freegle in 2009 and leads all publicity. A driving force behind the multi-award-winning Waste House at the University of Brighton, she runs Planet Brighton environmental hub and advises councils, the NHS and corporates on reuse and circular economy.',
+    bio: 'Award-winning waste-prevention activist, researcher and practitioner. Cat co-founded Freegle in 2009 and leads all publicity. A driving force behind the multi-award-winning Waste House at the University of Brighton, she has run the Brighton Freegle Free Shop since 2021, runs Planet Brighton environmental hub and advises councils, the NHS and corporates on reuse and circular economy.',
     freegleStory:
       'After my house accidentally burnt down, I was able to get a new wardrobe and all the essentials I needed literally the next day — thanks to the kindness of freeglers.',
     linkedin: 'https://www.linkedin.com/in/cat-fletcher-uk/',
