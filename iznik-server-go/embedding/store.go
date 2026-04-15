@@ -53,6 +53,9 @@ func StartRefresh(interval time.Duration) {
 // Load reads all embeddings + spatial metadata from DB.
 func (s *Store) Load() error {
 	db := database.DBConn
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
 
 	type row struct {
 		Msgid     uint64    `gorm:"column:msgid"`
@@ -175,17 +178,21 @@ func (s *Store) Search(query []float32, limit int, msgtype string, groupids []ui
 		results = append(results, scored{idx: i, score: dot})
 	}
 
-	// Partial sort: find top-K
-	if len(results) > limit {
-		for i := 0; i < limit && i < len(results); i++ {
-			maxIdx := i
-			for j := i + 1; j < len(results); j++ {
-				if results[j].score > results[maxIdx].score {
-					maxIdx = j
-				}
+	// Sort top-K by score descending (selection sort — fine for N < 1000)
+	n := len(results)
+	if n > limit {
+		n = limit
+	}
+	for i := 0; i < n; i++ {
+		maxIdx := i
+		for j := i + 1; j < len(results); j++ {
+			if results[j].score > results[maxIdx].score {
+				maxIdx = j
 			}
-			results[i], results[maxIdx] = results[maxIdx], results[i]
 		}
+		results[i], results[maxIdx] = results[maxIdx], results[i]
+	}
+	if len(results) > limit {
 		results = results[:limit]
 	}
 

@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@huggingface/transformers": "^3.0.0"
+    "@huggingface/transformers": "^3.3.0"
   }
 }

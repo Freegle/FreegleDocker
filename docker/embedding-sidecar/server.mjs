@@ -28,7 +28,14 @@ const server = createServer(async (req, res) => {
   }
 
   let body = '';
-  for await (const chunk of req) body += chunk;
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > 100_000) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Request too large' }));
+      return;
+    }
+  }
 
   try {
     const { texts } = JSON.parse(body);

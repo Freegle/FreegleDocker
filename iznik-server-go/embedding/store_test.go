@@ -72,6 +72,34 @@ func TestStoreSearch(t *testing.T) {
 	assert.Equal(t, uint64(1), results[0].Msgid) // sofa
 }
 
+func TestStoreSearchSortOrder(t *testing.T) {
+	// Verify results are sorted by score even when count <= limit
+	s := &Store{}
+
+	vec1 := makeVec(1.0)
+	vec2 := makeVec(5.0) // very different from vec1
+	vec3 := makeVec(1.01) // similar to vec1
+
+	s.entries = []Entry{
+		{Msgid: 1, Groupid: 100, Msgtype: "Offer", Subject: "A", Vec: vec2}, // low similarity to vec1
+		{Msgid: 2, Groupid: 100, Msgtype: "Offer", Subject: "B", Vec: vec3}, // high similarity
+		{Msgid: 3, Groupid: 100, Msgtype: "Offer", Subject: "C", Vec: vec1}, // exact match
+	}
+
+	// Request limit=10 (more than 3 entries) — all results returned, must still be sorted
+	results := s.Search(vec1[:], 10, "", nil, 0, 0, 0, 0)
+	assert.Len(t, results, 3)
+	// Exact match (msgid 3) should be first
+	assert.Equal(t, uint64(3), results[0].Msgid)
+	// Similar (msgid 2) should be second
+	assert.Equal(t, uint64(2), results[1].Msgid)
+	// Different (msgid 1) should be last
+	assert.Equal(t, uint64(1), results[2].Msgid)
+	// Scores should be descending
+	assert.Greater(t, results[0].Score, results[1].Score)
+	assert.Greater(t, results[1].Score, results[2].Score)
+}
+
 func TestStoreCount(t *testing.T) {
 	s := &Store{}
 	assert.Equal(t, 0, s.Count())
