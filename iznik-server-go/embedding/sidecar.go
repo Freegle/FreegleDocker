@@ -30,6 +30,14 @@ type embedResponse struct {
 
 var client = &http.Client{Timeout: 10 * time.Second}
 
+// SetSidecarURL overrides the sidecar URL (for testing).
+func SetSidecarURL(url string) {
+	if url == "" {
+		url = "http://embedding-sidecar:3200"
+	}
+	sidecarURL = url
+}
+
 // EmbedQuery calls the sidecar to embed a single search query.
 // Returns a normalized float32 slice of length EmbeddingDim.
 func EmbedQuery(text string) ([]float32, error) {

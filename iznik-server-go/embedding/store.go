@@ -214,6 +214,13 @@ func (s *Store) Search(query []float32, limit int, msgtype string, groupids []ui
 	return out
 }
 
+// SetEntries replaces the store entries (for testing).
+func (s *Store) SetEntries(entries []Entry) {
+	s.mu.Lock()
+	s.entries = entries
+	s.mu.Unlock()
+}
+
 // Count returns the number of loaded embeddings.
 func (s *Store) Count() int {
 	s.mu.RLock()
