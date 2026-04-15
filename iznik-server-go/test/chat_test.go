@@ -3396,3 +3396,124 @@ func TestUnseenCountExcludesOldMessages(t *testing.T) {
 	db.Exec("DELETE FROM chat_roster WHERE chatid = ?", chatID)
 	db.Exec("DELETE FROM chat_rooms WHERE id = ?", chatID)
 }
+
+func TestCreateChatMessageReopensClosedChat(t *testing.T) {
+	// V1 parity: when a message is sent to a chat where the other user has
+	// status=Closed in chat_roster, the status should be reopened to Offline.
+	// Blocked status should NOT be changed.
+	prefix := uniquePrefix("chatreopn")
+	db := database.DBConn
+
+	user1ID := CreateTestUser(t, prefix+"_u1", "Member")
+	_, user1Token := CreateTestSession(t, user1ID)
+	user2ID := CreateTestUser(t, prefix+"_u2", "Member")
+
+	// Create a User2User chat.
+	chatID := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
+
+	// User2 closes the chat.
+	db.Exec("INSERT INTO chat_roster (chatid, userid, status, date) VALUES (?, ?, ?, NOW()) "+
+		"ON DUPLICATE KEY UPDATE status = VALUES(status)",
+		chatID, user2ID, utils.CHAT_STATUS_CLOSED)
+
+	// Verify it's closed.
+	var statusBefore string
+	db.Raw("SELECT status FROM chat_roster WHERE chatid = ? AND userid = ?", chatID, user2ID).Scan(&statusBefore)
+	assert.Equal(t, utils.CHAT_STATUS_CLOSED, statusBefore)
+
+	// User1 sends a message — should reopen user2's closed roster entry.
+	var payload chat.ChatMessage
+	payload.Message = "Hello, are you there?"
+	s, _ := json2.Marshal(payload)
+	request := httptest.NewRequest("POST", "/api/chat/"+fmt.Sprint(chatID)+"/message?jwt="+user1Token, bytes.NewBuffer(s))
+	request.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(request)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// User2's roster status should now be Offline (reopened), not Closed.
+	var statusAfter string
+	db.Raw("SELECT status FROM chat_roster WHERE chatid = ? AND userid = ?", chatID, user2ID).Scan(&statusAfter)
+	assert.Equal(t, utils.CHAT_STATUS_OFFLINE, statusAfter, "Closed chat should be reopened to Offline when a message is sent")
+
+	// Clean up.
+	db.Exec("DELETE FROM chat_messages WHERE chatid = ?", chatID)
+	db.Exec("DELETE FROM chat_roster WHERE chatid = ?", chatID)
+	db.Exec("DELETE FROM chat_rooms WHERE id = ?", chatID)
+}
+
+func TestCreateChatMessageDoesNotReopenBlockedChat(t *testing.T) {
+	// Blocked chats should NOT be reopened when a message is sent.
+	prefix := uniquePrefix("chatblkd")
+	db := database.DBConn
+
+	user1ID := CreateTestUser(t, prefix+"_u1", "Member")
+	_, user1Token := CreateTestSession(t, user1ID)
+	user2ID := CreateTestUser(t, prefix+"_u2", "Member")
+
+	// Create a User2User chat.
+	chatID := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
+
+	// User2 blocks the chat.
+	db.Exec("INSERT INTO chat_roster (chatid, userid, status, date) VALUES (?, ?, ?, NOW()) "+
+		"ON DUPLICATE KEY UPDATE status = VALUES(status)",
+		chatID, user2ID, utils.CHAT_STATUS_BLOCKED)
+
+	// User1 sends a message.
+	var payload chat.ChatMessage
+	payload.Message = "Hello?"
+	s, _ := json2.Marshal(payload)
+	request := httptest.NewRequest("POST", "/api/chat/"+fmt.Sprint(chatID)+"/message?jwt="+user1Token, bytes.NewBuffer(s))
+	request.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(request)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// User2's roster status should still be Blocked.
+	var statusAfter string
+	db.Raw("SELECT status FROM chat_roster WHERE chatid = ? AND userid = ?", chatID, user2ID).Scan(&statusAfter)
+	assert.Equal(t, utils.CHAT_STATUS_BLOCKED, statusAfter, "Blocked chat should NOT be reopened")
+
+	// Clean up.
+	db.Exec("DELETE FROM chat_messages WHERE chatid = ?", chatID)
+	db.Exec("DELETE FROM chat_roster WHERE chatid = ?", chatID)
+	db.Exec("DELETE FROM chat_rooms WHERE id = ?", chatID)
+}
+
+func TestCreateChatMessageReopensClosedUser2ModChat(t *testing.T) {
+	// Same reopen behavior should apply to User2Mod chats.
+	prefix := uniquePrefix("chatreomod")
+	db := database.DBConn
+
+	modUserID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, modUserID, groupID, "Moderator")
+	_, modToken := CreateTestSession(t, modUserID)
+
+	userID := CreateTestUser(t, prefix+"_usr", "Member")
+
+	// Create a User2Mod chat.
+	chatID := CreateTestChatRoom(t, userID, nil, &groupID, "User2Mod")
+
+	// User closes the chat.
+	db.Exec("INSERT INTO chat_roster (chatid, userid, status, date) VALUES (?, ?, ?, NOW()) "+
+		"ON DUPLICATE KEY UPDATE status = VALUES(status)",
+		chatID, userID, utils.CHAT_STATUS_CLOSED)
+
+	// Mod sends a message — should reopen user's closed roster entry.
+	var payload chat.ChatMessage
+	payload.Message = "Following up on your query"
+	s, _ := json2.Marshal(payload)
+	request := httptest.NewRequest("POST", "/api/chat/"+fmt.Sprint(chatID)+"/message?jwt="+modToken, bytes.NewBuffer(s))
+	request.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(request)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// User's roster status should now be Offline (reopened).
+	var statusAfter string
+	db.Raw("SELECT status FROM chat_roster WHERE chatid = ? AND userid = ?", chatID, userID).Scan(&statusAfter)
+	assert.Equal(t, utils.CHAT_STATUS_OFFLINE, statusAfter, "Closed User2Mod chat should be reopened to Offline")
+
+	// Clean up.
+	db.Exec("DELETE FROM chat_messages WHERE chatid = ?", chatID)
+	db.Exec("DELETE FROM chat_roster WHERE chatid = ?", chatID)
+	db.Exec("DELETE FROM chat_rooms WHERE id = ?", chatID)
+}
