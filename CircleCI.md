@@ -151,7 +151,7 @@ Version numbers are managed in `iznik-nuxt3/VERSION.txt`:
 ## Manual Testing
 
 ### Via CircleCI UI
-1. Go to [CircleCI FreegleDocker Project](https://app.circleci.com/pipelines/github/Freegle/FreegleDocker)
+1. Go to [CircleCI FreegleDocker Project](https://app.circleci.com/pipelines/github/Freegle/Iznik)
 2. Click "Trigger Pipeline"
 3. Select branch and parameters
 
@@ -161,7 +161,7 @@ curl -X POST \
   -H "Circle-Token: YOUR_CIRCLECI_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"branch": "master"}' \
-  https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline
+  https://circleci.com/api/v2/project/github/Freegle/Iznik/pipeline
 ```
 
 ## Monitoring & Debugging

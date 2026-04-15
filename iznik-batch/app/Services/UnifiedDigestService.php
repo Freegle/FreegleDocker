@@ -41,7 +41,7 @@ class UnifiedDigestService
      * @param int|null $userId Specific user ID to process (for testing)
      * @return array Statistics about the operation
      */
-    public function sendDigests(string $mode, ?int $userId = null): array
+    public function sendDigests(string $mode, ?int $userId = null, ?int $limit = null, bool $dryRun = false): array
     {
         $stats = [
             'users_processed' => 0,
@@ -59,9 +59,13 @@ class UnifiedDigestService
 
         $users = $this->getUsersForDigest($mode, $userId);
 
+        if ($limit) {
+            $users = $users->take($limit);
+        }
+
         foreach ($users as $user) {
             try {
-                $result = $this->sendDigestToUser($user, $mode);
+                $result = $this->sendDigestToUser($user, $mode, $dryRun);
 
                 if ($result === 'sent') {
                     $stats['emails_sent']++;
@@ -135,7 +139,7 @@ class UnifiedDigestService
      * @param string $mode
      * @return string 'sent', 'no_posts', or 'skipped'
      */
-    protected function sendDigestToUser(User $user, string $mode): string
+    protected function sendDigestToUser(User $user, string $mode, bool $dryRun = false): string
     {
         $email = $user->email_preferred;
 
@@ -167,11 +171,13 @@ class UnifiedDigestService
         // Get deduplicated sponsors for the user's groups.
         $sponsors = $this->getSponsorsForUser($user);
 
-        // Send the email.
-        Mail::send(new UnifiedDigest($user, $deduplicatedPosts, $mode, $sponsors));
+        if (!$dryRun) {
+            // Send the email.
+            Mail::send(new UnifiedDigest($user, $deduplicatedPosts, $mode, $sponsors));
 
-        // Update tracker.
-        $this->updateDigestTracker($digestTracker, $posts);
+            // Update tracker.
+            $this->updateDigestTracker($digestTracker, $posts);
+        }
 
         return 'sent';
     }

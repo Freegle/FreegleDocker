@@ -58,7 +58,7 @@ jobs:
             -H "Circle-Token: ${CIRCLECI_TOKEN}" \
             -H "Content-Type: application/json" \
             -d '{"branch":"app-ci-fd"}' \
-            "https://circleci.com/api/v2/project/gh/Freegle/FreegleDocker/pipeline"
+            "https://circleci.com/api/v2/project/gh/Freegle/Iznik/pipeline"
 
       - name: Send merge failure notification
         if: steps.merge.outcome == 'failure'

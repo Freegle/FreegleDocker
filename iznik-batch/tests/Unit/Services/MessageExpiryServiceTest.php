@@ -17,6 +17,8 @@ class MessageExpiryServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Ensure feature flag is enabled for tests.
+        config(['freegle.mail.enabled_types' => config('freegle.mail.enabled_types') . ',MessageExpiry']);
         $this->service = new MessageExpiryService();
     }
 

@@ -54,6 +54,10 @@
       <!-- eslint-disable-next-line -->
       <v-icon icon="hashtag" class="text-muted" scale="0.8" />{{ user.id }}
     </span>
+    <span v-else-if="modinfo && user" class="ms-2 order-1 order-sm-1 small">
+      <!-- eslint-disable-next-line -->
+      <v-icon icon="hashtag" class="text-muted" scale="0.8" />{{ user.id }}
+    </span>
     <ModModeration
       v-if="modinfo && membership"
       :userid="userid"

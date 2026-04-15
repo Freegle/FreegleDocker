@@ -55,6 +55,7 @@ Uses `docker-compose.override.yesterday.yml` (copy to `docker-compose.override.y
 - Check version: `~/.local/bin/circleci orb info freegle/tests`
 - **Docker build caching**: Controlled by `ENABLE_DOCKER_CACHE` env var in CircleCI. Bump version suffixes in orb YAML to invalidate cache. Set to `false` for immediate rollback.
 - **Auto-merge**: When all tests pass on master, auto-merges to production branch in iznik-nuxt3.
+- **Self-hosted runner**: Runs in a separate WSL2 distro (`circleci-runner`), NOT in the main dev WSL. Never create worktrees for runner work.
 
 ## Batch Production Container
 
@@ -123,3 +124,98 @@ Status container has Sentry integration. Set `SENTRY_AUTH_TOKEN` in `.env`. See 
 - **Root cause found**: `app.vue`'s `loginCount` watcher calls `reloadNuxtApp({ force: true })` after login. The `page.evaluate()` (backdrop cleanup) raced against this reload — locally it wins, in CI the reload destroys the context first.
 - **Fix** (commit `9c63e2ea`): Removed `page.evaluate` and `waitForAuthPersistence` between modal close and sidebar nav wait. Playwright locators auto-retry across navigations; `page.evaluate` does not.
 - **Local**: All 130 Playwright tests pass. CI run 4 in progress.
+
+### 2026-04-13 - Reply-to-Chat UX redesign
+- **Worktree**: `FreegleDocker-reply-to-chat`, branch `feature/reply-to-chat`
+- **Design**: On mobile/tablet (below lg breakpoint), Reply button navigates to `/chats/reply?replyto=MSG_ID` showing a chat-style reply pane. Desktop keeps inline reply section so users see post details alongside.
+- **New components**: `ChatReplyPane.vue` (chat-styled reply form), `pages/chats/reply.vue` (page)
+- **Modified**: `MessageExpanded.vue` (expandReply checks breakpoint), `MessageExpanded.spec.js` (updated test for breakpoint-aware behavior)
+- **Playwright tests**: `test-reply-to-chat.spec.js` — mobile reply, tablet reply, desktop inline preserved, back button, WANTED message (no collection time)
+- **Committed**: `00934688f`. Not pushed yet. Needs user review and push.
+- **Pre-existing failures**: PostMessage/PostMessageTablet placeholder tests (4 tests) — not related to this change.
+
+### 2026-04-13 - Monorepo migration complete (Phases 1-8)
+- All phases complete except Phase 8.8 (archive old repos — human-only).
+- Merged monorepo branch to master. Created production branch. Repo renamed to `Freegle/Iznik`.
+- Netlify: Both sites repointed. ModTools fixed with separate base dir (`iznik-nuxt3/modtools/`).
+- Mobile CI: Merged iznik-nuxt3 CircleCI workflows into monorepo. Orb `freegle/tests@1.1.178`.
+- **Secrets fix**: Original 19-secret copy truncated 20 values by 1 char. Re-extracted via SSH on old project job, all 19 now match. Orb coverage token unified to `COVERALLS_REPO_TOKEN`.
+- **Coveralls**: New token (`...0fRa`) set for `Freegle/Iznik`. Old `COVERALLS_REPO_TOKEN_IZNIK_SERVER` still exists (unused by unified section).
+- Google login: Added `onGoogleLibraryLoad` retry for Firefox/Brave.
+- Phase 7: 18 issues transferred, 19 PRs migrated (branches recreated on monorepo).
+- README rewritten for monorepo. Sub-repo READMEs updated to redirect.
+- Go API: TN partner auth, tnpostid, expiresat, mod-add-member committed (`9df835715`). Partner auth on PATCH /message committed (`946c7ad02`). 1360 Go tests pass.
+- Commit `a6702445f` pushed: repo rename refs, 18 restored test files, orb 1.1.178 coverage token fix.
+- CI job #3492 (build-test): ALL tests passed, ALL 4 coverage suites uploaded. Auto-merged to production.
+- CI job #3501 (build-test SSH): ALL tests passed, ALL 4 coverage suites uploaded, auto-merged to production. ✅
+- Deploy-apps (jobs 3502/3503): ALL 4 jobs passed (increment-version, build-ios, build-android, check-hotfix-promote). ✅
+- **Monorepo CI fully verified**: build-test ✅, deploy-apps ✅, Coveralls ✅, auto-merge ✅.
+- **Remaining**: Archive old repos (human-only).
+
+### 2026-04-14 - Self-hosted CircleCI runner (in progress)
+- **Branch**: `feature/circleci-self-hosted-runner` in worktree `FreegleDocker-circleci-runner`
+- **Runner distro**: `circleci-runner` (separate WSL2 distro)
+- **Runner config**: `/opt/circleci-runner/circleci-runner-config.yaml` — `cleanup_working_directory: false`, `max_run_time: 2h`
+- **Boot script**: `/opt/circleci-runner/start.sh` — uses `exec sudo` to keep boot process as PID 1
+- **Keepalive**: Two persistent `wsl.exe -d circleci-runner` sessions from main distro prevent WSL idle termination
+- **Orb versions published**: 1.1.182 (COMPOSE_PROJECT_NAME fix), 1.1.183 (Docker cleanup), 1.1.184 (path fix)
+- **Key fixes applied**:
+  1. `COMPOSE_PROJECT_NAME=freegle` (not `freegle-ci`) — matches 88 hardcoded container refs in orb
+  2. `cleanup_working_directory: false` + Docker cleanup in orb pre-checkout step (gated by `SELF_HOSTED_RUNNER` env var)
+  3. `./scripts/setup-test-database.sh` as first path check (CWD-relative works on both cloud and self-hosted)
+  4. Same for `./iznik-nuxt3` and coverage paths
+  5. Installed `sysstat` for resource monitor step
+- **Orb versions**: 1.1.182–1.1.187 (compose name, docker cleanup, path fix, cache, skip prune, pipefail)
+- **Key fixes applied** (8 total):
+  1. `COMPOSE_PROJECT_NAME=freegle` — matches 88 hardcoded container refs in orb
+  2. `cleanup_working_directory: false` + Docker cleanup gated by `SELF_HOSTED_RUNNER`
+  3. CWD-relative paths for setup-test-database.sh and coverage
+  4. Docker layer cache (skip `--no-cache` on self-hosted)
+  5. Skip `docker system prune` on self-hosted (preserves layer cache)
+  6. `set +o pipefail` in Evaluate step (SIGPIPE from grep|head)
+  7. `STATUS_API_URL` env var in Playwright container (`2ac4c8fcc`) — PORT_STATUS=17081 on runner vs 8081 on main
+  8. Drop/recreate `iznik` DB on self-hosted runner (`183ae0661`) — stale test data from persistent volumes
+- **Speed**: Build 109-149s (cached) vs 497s (cloud). Vitest 204-216s. Parallel 377-398s. Total ~12 min vs ~42 min cloud.
+- **Job 3707**: 121/130 Playwright passed (5 failed: wrong STATUS_API_URL port)
+- **Job 3714**: 128/130 passed (2 failed: stale DB state — edits-flow timeout, repost-group-change stale group ID)
+- **Job 3723**: Same 2 Playwright failures (repost-group-change 55 vs 69615). Fresh DB still wrong because both dev and CI shared same Percona container (`freegle-percona`).
+- **Root cause**: `COMPOSE_PROJECT_NAME=freegle` on both dev and CI → same Docker containers. CI reads main instance's DB.
+- **Fix** (orb 1.1.188, `c79c5ebf1`): Changed CI to `COMPOSE_PROJECT_NAME=freegle-ci`. Replaced all 106 hardcoded `freegle-<container>` refs with `${COMPOSE_PROJECT_NAME:-freegle}-<container>`.
+- **Job 3727**: "Build containers" failed — port conflict. Old `freegle-*` CI containers still running.
+- **Fix** (orb 1.1.189, `d3e1ceb94`): Added old container cleanup by Docker labels. Made `setup-test-database.sh` use `$COMPOSE_PROJECT_NAME` prefix.
+- **Job 3731** (pipeline 3133): Build 274s, Vitest 202s ✅, Go ✅, Laravel ✅. Playwright 126/130 passed, 4 failed. PHP killed by fail-fast.
+  - **Root cause**: Playwright container uses host networking. `TEST_BASE_URL` was `http://freegle-prod-local.localhost` (port 80 = dev Traefik). CI Traefik is on port 9080. Browser loaded dev Nuxt app → dev API → dev DB (group 69615).
+  - **Fix** (`61a5230a4`): `TEST_BASE_URL=http://freegle-prod-local.localhost:${PORT_TRAEFIK_HTTP:-80}` and same for `TEST_MODTOOLS_BASE_URL`. Fixed hardcoded modtools URL in `test-modtools-edit-message.spec.js`.
+- **Job 3738** (pipeline 3135): ALL test suites passed (Vitest ✅, Go ✅, Laravel ✅, parallel 359s ✅), but Evaluate step failed.
+  - **Root cause**: 97/130 Playwright tests failed from `CRITICAL CONSOLE ERROR: 404 at /200w`. CI Nuxt SSR rendered `<img srcset=" 200w, 400w">` (empty image URLs).
+  - **Deep root cause**: `docker-compose.yml` env vars used hardcoded `freegle-tusd` hostname for inter-container DNS. With `COMPOSE_PROJECT_NAME=freegle-ci`, the CI tusd container is `freegle-ci-tusd` on a separate Docker network — `freegle-tusd` doesn't resolve. Tusd uploads fail silently during `create-test-env.php`, leaving all 64 attachments with `externaluid='freegletusd-'` (empty UUID). NuxtPicture generates empty srcset URLs → browser tries to load `/200w` → 404 → critical console error.
+  - **Fix** (`f67192c09`): Replaced all hardcoded `freegle-<service>` hostnames in docker-compose.yml env vars with Docker Compose service names (`tusd`, `apiv1`, `percona`, `mcp-pseudonymizer`). Service names resolve within any project network. Container names in `docker ps` unchanged.
+- **Job 3742** (pipeline 3136): 128/130 Playwright passed, 2 failed. Service name fix resolved 97→2 failures.
+  - **test-post-flow:60**: `waitForResponse` hardcoded `http://apiv2.localhost/api/chat` (port 80). CI browser sends to `:9080` → predicate never matches → timeout.
+  - **test-modtools-edits-flow:33**: `page.request.post('http://apiv2.localhost/api/session')` hits dev API on port 80 → creates data in dev DB → CI browser on port 9080 can't find it.
+  - **Fix** (`8440818df`): Added `TEST_API_V2_BASE_URL` env var to Playwright container, `apiV2BaseUrl` to config.js, replaced all 7 hardcoded `http://apiv2.localhost/api/...` refs in 4 test files with configurable URL.
+- **Pipeline 3138**: Errored — orb 1.1.190 (published from master) lacks `use-executor` parameter that feature branch's continue-config requires. Fixed by publishing orb 1.1.191 from this branch.
+- **Pipeline 3139** (job 3750): **ALL TESTS PASSED.** ALL 4 coverage suites uploaded. Auto-merged to production. 130/130 Playwright tests green.
+  - Build 243s, Vitest 210s, Parallel 406s, Total ~16.5 min on self-hosted runner.
+- **Self-hosted runner fully working**: 130/130 Playwright, Go, Laravel, Vitest, PHP all pass. Coveralls uploads. Auto-merge.
+- **Coveralls**: Uploads work from feature branch but don't show on main Coveralls page (shows master only)
+
+### 2026-04-14 - Bug fixes batch (CI promote, spamignore, TN member, feedback badge, /changes, swagger)
+- **CI manual-promote fix** (`f6763c266`): "Conflicting pipeline parameters" — skip runner check for promote/testflight, only pass `use_self_hosted` in continuation. Cherry-picked to production (`8b1d34853`). All 3 promote jobs succeeded.
+- **Spamignore** (`f9e380950`): ModMemberButton "Ignore" was a no-op — wired up to `memberStore.spamignore()`. 67/67 Vitest pass.
+- **TN member number** (`60175c409`): ModMessageUserInfo fallback shows `user.id` when membership missing. 39/39 Vitest pass.
+- **Feedback badge** (`41bd6a036`): Store NULL for empty outcome comments (`*string` in Go), exclude empty strings in happiness filter (Go + PHP). 1365/1365 Go tests pass.
+- **/changes endpoint** (`ad109c584`): User `lastupdated` was empty string (NULL→string scan), ratings missing `id`/`tn_rating_id`. Fixed with `*string` + `gorm:"column:lastupdated"` tag, added fields to Rating struct/query. Swagger HTTPS-only. 1367/1367 Go tests pass.
+- **Bulletin frequency "Never"** (`81cc432be`): PATCH /memberships returned 400 for string emailfrequency. HTML `<select>` emits `"0"` not `0`. Changed `*int` to `*utils.FlexInt` for emailfrequency, eventsallowed, volunteeringallowed (membership), relevantallowed, newslettersallowed (session + user). 1368/1368 Go tests pass. Posted on Discourse #9582.
+- **chat_rooms.refmsgid** (`554fe8ae8`): Column doesn't exist — changed to chat_messages.refmsgid. Test added.
+- **CI OOM** (`e65fd6ac7`): NODE_OPTIONS max-old-space-size=3584 for Nuxt generate. Orb 1.1.195.
+- **Discourse posts**: Notified Jo (member number fix), Neville (feedback badge fix), Dee (bulletin fix).
+
+### 2026-04-14 - Isochrone fix + Postcode remapping V2 migration
+- **Isochrone fix** (pushed `c8bd26502`): Browse page only showed own posts because Go API stored POINT instead of Mapbox POLYGON. Added `mapbox.go`, `ensureIsochroneExists()`, self-healing `healPointIsochrones()`. CI pipeline 3126 running.
+- **Postcode remapping** (in progress): V1 `Location::remapPostcodes()` uses PostgreSQL KNN — missing from V2.
+  - Go: Added `TaskRemapPostcodes` to queue, fired from `CreateLocation`/`UpdateLocation` with location_id + polygon
+  - Laravel: `PostcodeRemapService` — syncs MySQL polygon locations to PostgreSQL, runs PostGIS KNN to find nearest area for each postcode
+  - Docker: Added `pdo_pgsql` to batch Dockerfile, `PGSQL_*` env vars to batch dev + batch-prod, postgres dependency
+  - Tests: Go test checks background_task queued; Laravel test checks PostgreSQL KNN + task dispatch
+  - Go tests running, Laravel tests running

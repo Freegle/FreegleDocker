@@ -35,6 +35,9 @@ const (
 
 	// TaskFreebieAlertsRemove removes a post from freebiealerts.app when it's taken/received.
 	TaskFreebieAlertsRemove = "freebie_alerts_remove"
+
+	// TaskRemapPostcodes triggers postcode-to-area remapping after a location geometry change.
+	TaskRemapPostcodes = "remap_postcodes"
 )
 
 // QueueTask inserts a task into the background_tasks table for async processing by iznik-batch.

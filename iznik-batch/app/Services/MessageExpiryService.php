@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\Message\DeadlineReached;
+use App\Mail\Traits\FeatureFlags;
 use App\Models\Message;
 use App\Models\MessageGroup;
 use App\Models\MessageOutcome;
@@ -14,6 +15,9 @@ use Illuminate\Support\Facades\Mail;
 
 class MessageExpiryService
 {
+    use FeatureFlags;
+
+    public const EMAIL_TYPE = 'MessageExpiry';
     /**
      * Default number of days to look back for messages.
      */
@@ -29,6 +33,11 @@ class MessageExpiryService
             'emails_sent' => 0,
             'errors' => 0,
         ];
+
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            Log::info('MessageExpiry emails disabled via FREEGLE_MAIL_ENABLED_TYPES');
+            return $stats;
+        }
 
         $messages = $this->getMessagesWithExpiredDeadline();
 

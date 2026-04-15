@@ -260,6 +260,16 @@ describe('ModMessageUserInfo', () => {
       expect(wrapper.find('.mod-moderation').exists()).toBe(false)
       expect(wrapper.find('.mod-memberships').exists()).toBe(false)
     })
+
+    it('shows user id even without membership (e.g. TN partner member)', () => {
+      const wrapper = mountComponent(
+        { modinfo: true, groupid: 999 },
+        { memberships: [] }
+      )
+      // No membership match for groupid 999, but member number should still show
+      expect(wrapper.text()).toContain('123')
+      expect(wrapper.findAll('i.hashtag').length).toBeGreaterThan(0)
+    })
   })
 
   describe('computed properties', () => {

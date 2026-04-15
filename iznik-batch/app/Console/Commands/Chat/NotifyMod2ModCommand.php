@@ -30,7 +30,8 @@ class NotifyMod2ModCommand extends Command
                             {--force : Force sending even for already mailed messages}
                             {--once : Run once and exit (for manual testing)}
                             {--max-iterations=120 : Maximum iterations before exiting}
-                            {--spool : Spool emails instead of sending directly}';
+                            {--spool : Spool emails instead of sending directly}
+                            {--dry-run : Show what would be sent without actually sending}';
 
     /**
      * The console command description.
@@ -66,6 +67,11 @@ class NotifyMod2ModCommand extends Command
         $runOnce = (bool) $this->option('once');
         $maxIterations = $runOnce ? 1 : (int) $this->option('max-iterations');
         $spool = (bool) $this->option('spool');
+        $dryRun = (bool) $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no emails will be sent.');
+        }
 
         // Inject spooler if spooling is enabled.
         if ($spool) {
@@ -104,7 +110,8 @@ class NotifyMod2ModCommand extends Command
                 $chatId,
                 $delay,
                 $sinceHours,
-                $forceAll
+                $forceAll,
+                $dryRun
             );
 
             $totalNotified += $count;

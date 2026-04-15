@@ -12,7 +12,8 @@ class UpdateRatingVisibilityCommand extends Command
 {
     use GracefulShutdown, LogsBatchJob;
 
-    protected $signature = 'users:update-ratings';
+    protected $signature = 'users:update-ratings
+                            {--dry-run : Show what would be updated without actually changing}';
 
     protected $description = 'Update rating visibility based on chat interactions';
 
@@ -20,10 +21,16 @@ class UpdateRatingVisibilityCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        return $this->runWithLogging(function () use ($service) {
-            Log::info('Starting rating visibility update');
+        $dryRun = $this->option('dry-run');
 
-            $stats = $service->updateRatingVisibility();
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        return $this->runWithLogging(function () use ($service, $dryRun) {
+            Log::info('Starting rating visibility update', ['dry_run' => $dryRun]);
+
+            $stats = $service->updateRatingVisibility('1 hour ago', $dryRun);
 
             $this->info("Processed {$stats['processed']} ratings: {$stats['made_visible']} made visible, {$stats['made_hidden']} hidden.");
             Log::info('Rating visibility update complete', $stats);

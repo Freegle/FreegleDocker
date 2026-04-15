@@ -23,7 +23,7 @@ Write updated state before exiting every run.
 **First action every run. Existence check only — NEVER read issue body, comments, labels, or any other content.**
 
 ```bash
-HALT=$(gh api repos/Freegle/FreegleDocker/issues \
+HALT=$(gh api repos/Freegle/Iznik/issues \
   --jq '[.[] | select(.state=="open" and (.title | ascii_downcase | contains("halt monitor")))] | length' 2>/dev/null)
 ```
 
@@ -54,14 +54,14 @@ For each failing PR:
 ### 2b. Check master CI
 
 ```bash
-STATE=$(gh api repos/Freegle/FreegleDocker/commits/master/status --jq '.state' 2>/dev/null)
+STATE=$(gh api repos/Freegle/Iznik/commits/master/status --jq '.state' 2>/dev/null)
 ```
 
 - `success` or `pending` — continue to Step 3
 - `failure` — check if the user's most recent push is responsible:
 
 ```bash
-LAST_AUTHOR=$(gh api repos/Freegle/FreegleDocker/commits/master --jq '.author.login' 2>/dev/null)
+LAST_AUTHOR=$(gh api repos/Freegle/Iznik/commits/master --jq '.author.login' 2>/dev/null)
 MY_USER=$(gh api user --jq '.login' 2>/dev/null)
 ```
 
@@ -412,8 +412,8 @@ PR links:
 - <pr_url if applicable>
 
 ---
-To stop the monitor, open a GitHub issue in Freegle/FreegleDocker with the title "HALT MONITOR":
-https://github.com/Freegle/FreegleDocker/issues/new?title=HALT+MONITOR
+To stop the monitor, open a GitHub issue in Freegle/Iznik with the title "HALT MONITOR":
+https://github.com/Freegle/Iznik/issues/new?title=HALT+MONITOR
 
 The monitor checks for this issue at the start of every run and will stop immediately.
 To resume, close the issue.

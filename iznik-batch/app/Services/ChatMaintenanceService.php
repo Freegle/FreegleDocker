@@ -14,7 +14,7 @@ class ChatMaintenanceService
      *
      * Migrated from iznik-server/scripts/cron/chat_latestmessage.php
      */
-    public function updateMessageCounts(): array
+    public function updateMessageCounts(bool $dryRun = false): array
     {
         $stats = [
             'rooms_updated' => 0,
@@ -30,7 +30,7 @@ class ChatMaintenanceService
             ->pluck('chatid');
 
         foreach ($chatIds as $chatId) {
-            $this->updateRoomCounts($chatId);
+            $this->updateRoomCounts($chatId, $dryRun);
             $stats['rooms_updated']++;
 
             if ($stats['rooms_updated'] % 1000 === 0) {
@@ -39,7 +39,7 @@ class ChatMaintenanceService
         }
 
         // Reopen closed User2Mod chats with unseen messages from mods.
-        $stats['rooms_reopened'] = $this->reopenClosedUser2ModChats($since);
+        $stats['rooms_reopened'] = $this->reopenClosedUser2ModChats($since, $dryRun);
 
         return $stats;
     }
@@ -49,7 +49,7 @@ class ChatMaintenanceService
      *
      * Replicates ChatRoom::updateMessageCounts() from iznik-server.
      */
-    protected function updateRoomCounts(int $chatId): void
+    protected function updateRoomCounts(int $chatId, bool $dryRun = false): void
     {
         // Count valid vs invalid messages.
         // Valid = reviewrequired=0 AND reviewrejected=0 AND processingsuccessful=1
@@ -80,7 +80,7 @@ class ChatMaintenanceService
             ->where('chatid', $chatId)
             ->max('date');
 
-        if ($maxDate) {
+        if ($maxDate && !$dryRun) {
             DB::table('chat_rooms')
                 ->where('id', $chatId)
                 ->update([
@@ -96,7 +96,7 @@ class ChatMaintenanceService
      *
      * This ensures messages from moderators are seen by users who closed their chat.
      */
-    protected function reopenClosedUser2ModChats(string $since): int
+    protected function reopenClosedUser2ModChats(string $since, bool $dryRun = false): int
     {
         $chats = DB::table('chat_rooms')
             ->join('chat_roster', 'chat_roster.chatid', '=', 'chat_rooms.id')
@@ -109,11 +109,13 @@ class ChatMaintenanceService
             ->distinct()
             ->get();
 
-        foreach ($chats as $chat) {
-            DB::table('chat_roster')
-                ->where('chatid', $chat->id)
-                ->where('userid', $chat->user1)
-                ->update(['status' => ChatRoster::STATUS_AWAY]);
+        if (!$dryRun) {
+            foreach ($chats as $chat) {
+                DB::table('chat_roster')
+                    ->where('chatid', $chat->id)
+                    ->where('userid', $chat->user1)
+                    ->update(['status' => ChatRoster::STATUS_AWAY]);
+            }
         }
 
         if ($chats->count() > 0) {

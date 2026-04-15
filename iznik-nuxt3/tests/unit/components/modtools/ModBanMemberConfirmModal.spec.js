@@ -160,6 +160,38 @@ describe('ModBanMemberConfirmModal', () => {
     })
   })
 
+  describe('home group detection', () => {
+    it('shows generic warning when geometry parsing fails', () => {
+      mockModGroupStore.get.mockReturnValue({
+        id: 456,
+        name: 'Test Group',
+        poly: 'INVALID_WKT_DATA',
+        polyofficial: null,
+      })
+
+      const wrapper = mountComponent()
+
+      // Should NOT show any TODO/developer message
+      expect(wrapper.text()).not.toContain('TO DO')
+      expect(wrapper.text()).not.toContain('Get code working')
+      // Should fall through to generic responsible-use warning
+      expect(wrapper.text()).toContain('Please be responsible')
+    })
+
+    it('shows generic warning when group has no polygon', () => {
+      mockModGroupStore.get.mockReturnValue({
+        id: 456,
+        name: 'Test Group',
+        poly: null,
+        polyofficial: null,
+      })
+
+      const wrapper = mountComponent()
+      expect(wrapper.text()).toContain('Please be responsible')
+      expect(wrapper.text()).not.toContain('home group')
+    })
+  })
+
   describe('modal functionality', () => {
     it('exposes show and hide from composable', () => {
       const wrapper = mountComponent()
