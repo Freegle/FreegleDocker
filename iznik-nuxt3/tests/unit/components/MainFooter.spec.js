@@ -114,7 +114,7 @@ describe('MainFooter', () => {
 
     it('shows navigation dividers', () => {
       const wrapper = createWrapper()
-      expect(wrapper.findAll('.nav-divider').length).toBe(4)
+      expect(wrapper.findAll('.nav-divider').length).toBe(5)
     })
   })
 })

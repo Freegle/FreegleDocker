@@ -221,10 +221,10 @@ func Single(c *fiber.Ctx) error {
 func canModify(myid uint64, eventID uint64) bool {
 	db := database.DBConn
 
-	var ownerID uint64
+	var ownerID *uint64
 	db.Raw("SELECT userid FROM communityevents WHERE id = ?", eventID).Scan(&ownerID)
 
-	if ownerID == myid {
+	if ownerID != nil && *ownerID == myid {
 		return true
 	}
 
@@ -416,11 +416,11 @@ func Update(c *fiber.Ctx) error {
 
 			// Side effects: create newsfeed entry and notify group moderators.
 			// 1. Create newsfeed entry for this community event.
-			var ownerID uint64
+			var ownerID *uint64
 			db.Raw("SELECT userid FROM communityevents WHERE id = ?", req.ID).Scan(&ownerID)
-			if ownerID > 0 {
+			if ownerID != nil && *ownerID > 0 {
 				eventID := req.ID
-				newsfeed.CreateNewsfeedEntry(newsfeed.TypeCommunityEvent, ownerID, req.GroupID, &eventID, nil)
+				newsfeed.CreateNewsfeedEntry(newsfeed.TypeCommunityEvent, *ownerID, req.GroupID, &eventID, nil)
 			}
 
 			// 2. Notify group moderators via background task queue.
