@@ -165,6 +165,34 @@ func TestVectorSearchSidecarError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestEmbedBatch(t *testing.T) {
+	vec1 := makeTestVec(1.0)
+	vec2 := makeTestVec(2.0)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		type resp struct {
+			Embeddings [][]float32 `json:"embeddings"`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp{Embeddings: [][]float32{vec1[:], vec2[:]}})
+	}))
+	defer server.Close()
+	embedding.SetSidecarURL(server.URL)
+	defer embedding.SetSidecarURL("")
+
+	results, err := embedding.EmbedBatch([]string{"chair", "table"})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.Equal(t, vec1[0], results[0][0])
+	assert.Equal(t, vec2[0], results[1][0])
+}
+
+func TestEmbedBatchEmpty(t *testing.T) {
+	results, err := embedding.EmbedBatch([]string{})
+	require.NoError(t, err)
+	assert.Nil(t, results)
+}
+
 func TestStoreSetEntriesAndCount(t *testing.T) {
 	embedding.Global.SetEntries([]embedding.Entry{
 		{Msgid: 1}, {Msgid: 2}, {Msgid: 3},
