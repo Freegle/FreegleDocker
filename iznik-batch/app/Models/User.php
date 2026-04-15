@@ -2,11 +2,12 @@
 
 namespace App\Models;
 
-use App\Support\DBIgnore;
+use App\Support\EloquentUtils;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log as Logger;
 
@@ -958,38 +959,31 @@ class User extends Model
 
                 if (!$id1Memb) {
                     // id1 is not already a member — just reassign the membership.
-                    Membership::where('userid', $id2)
-                        ->where('groupid', $id2Memb->groupid)
-                        ->update(['userid' => $id1]);
+                    $id2Memb->userid = $id1;
+                    $id2Memb->save();
                 } else {
                     // Both are members — merge: take highest role, oldest date, non-NULL attributes.
                     $role = self::roleMax($id1Memb->role, $id2Memb->role);
 
                     if ($role !== $id1Memb->role) {
-                        Membership::where('userid', $id1)
-                            ->where('groupid', $id2Memb->groupid)
-                            ->update(['role' => $role]);
+                        $id1Memb->role = $role;
                     }
 
                     // Keep the older added date.
                     $date = min(strtotime($id1Memb->added), strtotime($id2Memb->added));
-                    Membership::where('userid', $id1)
-                        ->where('groupid', $id2Memb->groupid)
-                        ->update(['added' => date('Y-m-d H:i:s', $date)]);
+                    $id1Memb->added = date('Y-m-d H:i:s', $date);
 
                     // Take non-NULL values from id2 for these attributes.
                     foreach (['configid', 'settings', 'heldby'] as $key) {
                         if ($id2Memb->$key !== NULL) {
-                            Membership::where('userid', $id1)
-                                ->where('groupid', $id2Memb->groupid)
-                                ->update([$key => $id2Memb->$key]);
+                            $id1Memb->$key = $id2Memb->$key;
                         }
                     }
 
+                    $id1Memb->save();
+
                     // Remove the now-redundant id2 membership.
-                    Membership::where('userid', $id2)
-                        ->where('groupid', $id2Memb->groupid)
-                        ->delete();
+                    $id2Memb->delete();
                 }
             }
 
@@ -1029,70 +1023,82 @@ class User extends Model
             }
 
             // Move all id2 emails to id1, clearing preferred.
-            UserEmail::where('userid', $id2)
-                ->update(['userid' => $id1, 'preferred' => 0]);
+            UserEmail::where('userid', $id2)->get()->each(function ($emailRow) use ($id1) {
+                $emailRow->userid = $id1;
+                $emailRow->preferred = 0;
+                $emailRow->save();
+            });
 
             if ($primary) {
-                UserEmail::where('id', $primary)
-                    ->update(['preferred' => 1]);
+                $primaryRow = UserEmail::find($primary);
+                if ($primaryRow) {
+                    $primaryRow->preferred = 1;
+                    $primaryRow->save();
+                }
             }
 
             // --- Merge foreign keys (less critical — use IGNORE equivalent) ---
-            // For tables with unique constraints, we delete id2 rows that would conflict.
-            // UPDATE IGNORE equivalent: try update, silently skip constraint violations.
-            DBIgnore::executeIgnored([
-                fn() => LocationExcluded::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => ChatRoster::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserSession::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => SpamUser::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => SpamUser::where('byuserid', $id2)->update(['byuserid' => $id1]),
-                fn() => UserAddress::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserDonation::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserImage::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserInvitation::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserNearby::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => Notification::where('fromuser', $id2)->update(['fromuser' => $id1]),
-                fn() => Notification::where('touser', $id2)->update(['touser' => $id1]),
-                fn() => UserNudge::where('fromuser', $id2)->update(['fromuser' => $id1]),
-                fn() => UserNudge::where('touser', $id2)->update(['touser' => $id1]),
-                fn() => UserPushNotification::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserRequest::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserRequest::where('completedby', $id2)->update(['completedby' => $id1]),
-                fn() => UserSearch::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => Newsfeed::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => MessageReneged::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserStory::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserStoryLike::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserStoryRequested::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserThanks::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => ModNotif::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => TeamMember::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserAboutMe::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => Rating::where('rater', $id2)->update(['rater' => $id1]),
-                fn() => Rating::where('ratee', $id2)->update(['ratee' => $id1]),
-                fn() => UserReplyTime::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => MessagePromise::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => MessageBy::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => Tryst::where('user1', $id2)->update(['user1' => $id1]),
-                fn() => Tryst::where('user2', $id2)->update(['user2' => $id1]),
-                fn() => IsochroneUser::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => Microaction::where('userid', $id2)->update(['userid' => $id1]),
-            ]);
+            // For tables with unique constraints, per-row conflicts trigger a delete of the
+            // offending id2 row (matches net effect of the original UPDATE IGNORE + cascade).
+            EloquentUtils::reparentRowIgnore(LocationExcluded::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(ChatRoster::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserSession::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(SpamUser::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(SpamUser::class, 'byuserid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserAddress::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserDonation::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserImage::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserInvitation::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserNearby::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Notification::class, 'fromuser', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Notification::class, 'touser', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserNudge::class, 'fromuser', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserNudge::class, 'touser', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserPushNotification::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserRequest::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserRequest::class, 'completedby', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserSearch::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Newsfeed::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(MessageReneged::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserStory::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserStoryLike::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserStoryRequested::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserThanks::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(ModNotif::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(TeamMember::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserAboutMe::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Rating::class, 'rater', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Rating::class, 'ratee', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserReplyTime::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(MessagePromise::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(MessageBy::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Tryst::class, 'user1', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Tryst::class, 'user2', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(IsochroneUser::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(Microaction::class, 'userid', $id2, $id1);
 
             // Non-IGNORE updates (no unique constraint conflicts expected).
-            UserComment::where('userid', $id2)->update(['userid' => $id1]);
-            UserComment::where('byuserid', $id2)->update(['byuserid' => $id1]);
-            UserLogin::where('userid', $id2)->update(['userid' => $id1]);
+            EloquentUtils::reparentRow(UserComment::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRow(UserComment::class, 'byuserid', $id2, $id1);
+            EloquentUtils::reparentRow(UserLogin::class, 'userid', $id2, $id1);
 
-            DBIgnore::executeIgnored([
-                // Update Native login uid to match new userid.
-                fn() => UserLogin::where('userid', $id1)
-                    ->where('type', self::LOGIN_NATIVE)
-                    ->update(['uid' => $id1]),
-                // --- Handle bans ---
-                fn() => UserBanned::where('userid', $id2)->update(['userid' => $id1]),
-                fn() => UserBanned::where('byuser', $id2)->update(['byuser' => $id1]),
-            ]);
+            // Update Native login uid to match new userid.
+            UserLogin::where('userid', $id1)
+                ->where('type', self::LOGIN_NATIVE)
+                ->where('uid', '!=', (string) $id1)
+                ->get()
+                ->each(function ($nativeLogin) use ($id1) {
+                    try {
+                        $nativeLogin->uid = (string) $id1;
+                        $nativeLogin->save();
+                    } catch (QueryException $e) {
+                        Logger::warning("Native login uid update conflict for {$nativeLogin->getKey()}: " . $e->getMessage());
+                    }
+                });
+
+            // --- Handle bans ---
+            EloquentUtils::reparentRowIgnore(UserBanned::class, 'userid', $id2, $id1);
+            EloquentUtils::reparentRowIgnore(UserBanned::class, 'byuser', $id2, $id1);
 
             // Remove memberships for groups the merged user is banned from.
             $bans = UserBanned::where('userid', $id1)->get();
@@ -1131,22 +1137,26 @@ class User extends Model
 
                 if ($existing) {
                     // Room already exists for id1 — move messages into it.
-                    ChatMessage::where('chatid', $room->id)
-                        ->update(['chatid' => $existing->id]);
+                    ChatMessage::where('chatid', $room->id)->get()->each(function ($chatMessage) use ($existing) {
+                        $chatMessage->chatid = $existing->id;
+                        $chatMessage->save();
+                    });
 
                     // Keep the latest message timestamp.
-                    ChatRoom::where('id', $existing->id)
-                        ->update(['latestmessage' => DB::raw("GREATEST(latestmessage, '{$room->latestmessage}')")]);
+                    if ($room->latestmessage && (!$existing->latestmessage || $room->latestmessage > $existing->latestmessage)) {
+                        $existing->latestmessage = $room->latestmessage;
+                        $existing->save();
+                    }
                 } else {
                     // No existing room — just reassign user reference.
                     $col = ($room->user1 == $id2) ? 'user1' : 'user2';
-                    ChatRoom::where('id', $room->id)
-                        ->update([$col => $id1]);
+                    $room->$col = $id1;
+                    $room->save();
                 }
             }
 
             // Move all remaining chat messages from id2.
-            ChatMessage::where('userid', $id2)->update(['userid' => $id1]);
+            EloquentUtils::reparentRow(ChatMessage::class, 'userid', $id2, $id1);
 
             // --- Merge user attributes (keep non-NULL from id2 if id1 is NULL) ---
             // Refresh models after membership changes.
@@ -1160,55 +1170,57 @@ class User extends Model
                 }
 
                 // Clear id2's attribute first (unique key safety for yahooid).
-                User::where('id', $id2)->update([$att => NULL]);
+                $u2->$att = NULL;
+                $u2->save();
 
-                if ($u1->$att === NULL) {
-                    if ($att !== 'fullname') {
-                        User::where('id', $id1)
-                            ->whereNull($att)
-                            ->update([$att => $id2Value]);
-                    } elseif (stripos($id2Value, 'fbuser') === FALSE && stripos($id2Value, '-owner') === FALSE) {
-                        // Don't overwrite a name with FBUser or a -owner address.
-                        User::where('id', $id1)
-                            ->update([$att => $id2Value]);
-                    }
+                // Don't overwrite a name with FBUser or a -owner address.
+                $isDodgyName = $att === 'fullname'
+                    && (stripos($id2Value, 'fbuser') !== FALSE || stripos($id2Value, '-owner') !== FALSE);
+
+                if ($u1->$att === NULL && !$isDodgyName) {
+                    $u1->$att = $id2Value;
+                    $u1->save();
                 }
 
                 $u1->refresh();
             }
 
             // --- Merge logs ---
-            Log::where('user', $id2)->update(['user' => $id1]);
-            Log::where('byuser', $id2)->update(['byuser' => $id1]);
+            EloquentUtils::reparentRow(Log::class, 'user', $id2, $id1);
+            EloquentUtils::reparentRow(Log::class, 'byuser', $id2, $id1);
 
             // --- Merge messages ---
-            Message::where('fromuser', $id2)->update(['fromuser' => $id1]);
+            EloquentUtils::reparentRow(Message::class, 'fromuser', $id2, $id1);
 
             // --- Merge history ---
-            MessageHistory::where('fromuser', $id2)->update(['fromuser' => $id1]);
-            MembershipHistory::where('userid', $id2)->update(['userid' => $id1]);
+            EloquentUtils::reparentRow(MessageHistory::class, 'fromuser', $id2, $id1);
+            EloquentUtils::reparentRow(MembershipHistory::class, 'userid', $id2, $id1);
 
             // --- Merge system role (take highest) ---
             $u1->refresh();
             $u2->refresh();
 
             $mergedSystemRole = self::systemRoleMax($u1->systemrole, $u2->systemrole);
-            User::where('id', $id1)->update(['systemrole' => $mergedSystemRole]);
+            if ($u1->systemrole !== $mergedSystemRole) {
+                $u1->systemrole = $mergedSystemRole;
+                $u1->save();
+            }
 
             // --- Merge added date (keep oldest) ---
             $earlierAdded = ($u1->added < $u2->added) ? $u1->added : $u2->added;
-            User::where('id', $id1)->update([
-                'added' => $earlierAdded,
-                'lastupdated' => now(),
-            ]);
+            $u1->added = $earlierAdded;
+            $u1->lastupdated = now();
+            $u1->save();
 
             // --- Merge TN user ID ---
             $tnId1 = $u1->tnuserid;
             $tnId2 = $u2->tnuserid;
 
             if (!$tnId1 && $tnId2) {
-                User::where('id', $id2)->update(['tnuserid' => NULL]);
-                User::where('id', $id1)->update(['tnuserid' => $tnId2]);
+                $u2->tnuserid = NULL;
+                $u2->save();
+                $u1->tnuserid = $tnId2;
+                $u1->save();
             }
 
             // --- Merge gift aid (keep most favourable declaration) ---
@@ -1238,34 +1250,37 @@ class User extends Model
                 // Delete all except the best.
                 foreach ($giftAids as $giftAid) {
                     if ($giftAid->id !== $best->id) {
-                        GiftAid::where('id', $giftAid->id)->delete();
+                        $giftAid->delete();
                     }
                 }
 
                 // Assign the best to id1.
-                GiftAid::where('id', $best->id)->update(['userid' => $id1]);
+                if ($best->userid !== $id1) {
+                    $best->userid = $id1;
+                    $best->save();
+                }
             }
 
             // --- Log the merge (before deleting id2) ---
             $mergeText = "Merged {$id2} into {$id1} ({$reason})";
 
-            Log::insert([
-                'timestamp' => now(),
-                'type' => 'User',
-                'subtype' => 'Merged',
-                'user' => $id2,
-                'byuser' => $byUserId,
-                'text' => $mergeText,
-            ]);
+            $logId2 = new Log();
+            $logId2->timestamp = now();
+            $logId2->type = 'User';
+            $logId2->subtype = 'Merged';
+            $logId2->user = $id2;
+            $logId2->byuser = $byUserId;
+            $logId2->text = $mergeText;
+            $logId2->save();
 
-            Log::insert([
-                'timestamp' => now(),
-                'type' => 'User',
-                'subtype' => 'Merged',
-                'user' => $id1,
-                'byuser' => $byUserId,
-                'text' => $mergeText,
-            ]);
+            $logId1 = new Log();
+            $logId1->timestamp = now();
+            $logId1->type = 'User';
+            $logId1->subtype = 'Merged';
+            $logId1->user = $id1;
+            $logId1->byuser = $byUserId;
+            $logId1->text = $mergeText;
+            $logId1->save();
 
             DB::commit();
         } catch (\Exception $e) {
@@ -1281,8 +1296,8 @@ class User extends Model
         #
         # Make sure we don't pick up an old cached version, as we've just changed it quite a bit.
         try {
-            Membership::where('userid', $id2)->delete();
-            User::where('id', $id2)->delete();
+            Membership::where('userid', $id2)->get()->each->delete();
+            User::find($id2)?->delete();
             Logger::info("Merged {$id1} < {$id2}, {$reason}");
         } catch (\Exception $e) {
             Logger::error("Failed to delete merged user {$id2}: " . $e->getMessage());
