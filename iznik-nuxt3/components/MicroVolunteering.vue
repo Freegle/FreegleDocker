@@ -186,6 +186,7 @@ import { useMicroVolunteeringStore } from '~/stores/microvolunteering'
 import { useMiscStore } from '~/stores/misc'
 import { useAuthStore } from '~/stores/auth'
 import { useMe } from '~/composables/useMe'
+import { useClientLog } from '~/composables/useClientLog'
 
 const MicroVolunteeringFacebook = defineAsyncComponent(() =>
   import('./MicroVolunteeringFacebook')
@@ -222,6 +223,7 @@ const emit = defineEmits(['verified'])
 const microVolunteeringStore = useMicroVolunteeringStore()
 const miscStore = useMiscStore()
 const authStore = useAuthStore()
+const clientLog = useClientLog()
 // Use both fetchMe and me from useMe composable for consistency
 const { fetchMe, me } = useMe()
 const debug = false
@@ -323,6 +325,11 @@ async function getTask() {
   })
 
   if (task.value) {
+    clientLog.info('Microvolunteering challenge received', {
+      event_type: 'microvolunteering',
+      challenge_type: task.value.type,
+    })
+
     miscStore.set({
       key: 'microvolunteeringlastask',
       value: Date.now(),
@@ -346,6 +353,10 @@ async function getTask() {
 
     console.log('Show?', showTask.value)
   } else {
+    clientLog.info('Microvolunteering no challenge available', {
+      event_type: 'microvolunteering',
+      challenge_type: 'none',
+    })
     // Nothing to do.
     doneForNow()
   }

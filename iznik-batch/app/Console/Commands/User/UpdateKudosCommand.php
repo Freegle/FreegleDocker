@@ -15,7 +15,8 @@ class UpdateKudosCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'users:update-kudos';
+    protected $signature = 'users:update-kudos
+                            {--dry-run : Show what would be updated without actually changing}';
 
     /**
      * The console command description.
@@ -29,11 +30,17 @@ class UpdateKudosCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        return $this->runWithLogging(function () use ($userService) {
-            Log::info('Starting kudos update');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        return $this->runWithLogging(function () use ($userService, $dryRun) {
+            Log::info('Starting kudos update', ['dry_run' => $dryRun]);
             $this->info('Updating user kudos...');
 
-            $updated = $userService->updateKudos();
+            $updated = $userService->updateKudos($dryRun);
 
             $this->info("Updated kudos for {$updated} users.");
 

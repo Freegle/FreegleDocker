@@ -11,7 +11,8 @@ class ThankDonorsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'mail:donations:thank';
+    protected $signature = 'mail:donations:thank
+                            {--dry-run : Show what would be sent without actually sending}';
 
     /**
      * The console command description.
@@ -23,10 +24,16 @@ class ThankDonorsCommand extends Command
      */
     public function handle(DonationService $donationService): int
     {
-        Log::info('Starting donor thank you process');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        Log::info('Starting donor thank you process', ['dry_run' => $dryRun]);
         $this->info('Thanking donors...');
 
-        $stats = $donationService->thankDonors();
+        $stats = $donationService->thankDonors($dryRun);
 
         $this->info("Processed: {$stats['processed']}");
         $this->info("Emails sent: {$stats['emails_sent']}");

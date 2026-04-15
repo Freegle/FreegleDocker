@@ -12,7 +12,8 @@ class UpdateLastAccessCommand extends Command
 {
     use GracefulShutdown, LogsBatchJob;
 
-    protected $signature = 'users:update-lastaccess';
+    protected $signature = 'users:update-lastaccess
+                            {--dry-run : Show what would be updated without actually changing}';
 
     protected $description = 'Fallback update of user last access timestamps from chat messages and memberships';
 
@@ -20,11 +21,17 @@ class UpdateLastAccessCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        return $this->runWithLogging(function () use ($service) {
-            Log::info('Starting lastaccess fallback update');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        return $this->runWithLogging(function () use ($service, $dryRun) {
+            Log::info('Starting lastaccess fallback update', ['dry_run' => $dryRun]);
             $this->info('Updating user last access timestamps...');
 
-            $stats = $service->updateLastAccess();
+            $stats = $service->updateLastAccess($dryRun);
 
             $this->info("Updated lastaccess for {$stats['updated']} of {$stats['candidates']} candidate users.");
             Log::info('Lastaccess update complete', $stats);
