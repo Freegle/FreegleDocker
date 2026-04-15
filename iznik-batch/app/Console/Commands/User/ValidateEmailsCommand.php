@@ -12,7 +12,8 @@ class ValidateEmailsCommand extends Command
 {
     use GracefulShutdown, LogsBatchJob;
 
-    protected $signature = 'emails:validate';
+    protected $signature = 'emails:validate
+                            {--dry-run : Show what would be deleted without actually deleting}';
 
     protected $description = 'Validate all non-bouncing emails and delete invalid ones';
 
@@ -20,10 +21,16 @@ class ValidateEmailsCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        return $this->runWithLogging(function () use ($service) {
-            Log::info('Starting email validation');
+        $dryRun = $this->option('dry-run');
 
-            $stats = $service->validateEmails();
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        return $this->runWithLogging(function () use ($service, $dryRun) {
+            Log::info('Starting email validation', ['dry_run' => $dryRun]);
+
+            $stats = $service->validateEmails($dryRun);
 
             $this->info("Validated {$stats['total']} emails, deleted {$stats['invalid']} invalid.");
             Log::info('Email validation complete', $stats);

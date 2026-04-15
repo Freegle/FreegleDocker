@@ -50,23 +50,18 @@ class SendUnifiedDigestCommand extends Command
             return Command::FAILURE;
         }
 
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
         $this->info("Sending unified digests (mode: {$mode}, limit: {$limit})...");
 
         if ($userId) {
             $this->info("Processing single user ID: {$userId}");
         }
 
-        if ($dryRun) {
-            $this->warn('Dry run mode - no emails will actually be sent.');
-            // In dry run mode, we just show what would happen.
-            // The service doesn't support dry-run internally, so we just report.
-            $this->info("Would process digests for users with {$mode} mode.");
-
-            return Command::SUCCESS;
-        }
-
         // Run the service.
-        $stats = $service->sendDigests($mode, $userId);
+        $stats = $service->sendDigests($mode, $userId, $limit, $dryRun);
 
         $this->newLine();
         $this->table(

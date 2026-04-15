@@ -13,7 +13,7 @@ class GroupMaintenanceService
      *
      * Migrated from iznik-server/scripts/cron/membercounts.php
      */
-    public function updateMemberCounts(): array
+    public function updateMemberCounts(bool $dryRun = false): array
     {
         $stats = [
             'groups_updated' => 0,
@@ -31,12 +31,14 @@ class GroupMaintenanceService
                 ->whereIn('role', ['Owner', 'Moderator'])
                 ->count();
 
-            DB::table('groups')
-                ->where('id', $group->id)
-                ->update([
-                    'membercount' => $memberCount,
-                    'modcount' => $modCount,
-                ]);
+            if (!$dryRun) {
+                DB::table('groups')
+                    ->where('id', $group->id)
+                    ->update([
+                        'membercount' => $memberCount,
+                        'modcount' => $modCount,
+                    ]);
+            }
 
             $stats['groups_updated']++;
         }
@@ -56,7 +58,7 @@ class GroupMaintenanceService
      *
      * Migrated from iznik-server/scripts/cron/locations_skewwhiff.php
      */
-    public function fixSkewedLocations(): array
+    public function fixSkewedLocations(bool $dryRun = false): array
     {
         $stats = [
             'locations_fixed' => 0,
@@ -72,13 +74,15 @@ class GroupMaintenanceService
         foreach ($locations as $location) {
             $details .= "{$location->id}, {$location->name}, {$location->lat}, {$location->lng}\n";
 
-            // Swap lat and lng.
-            DB::table('locations')
-                ->where('id', $location->id)
-                ->update([
-                    'lat' => $location->lng,
-                    'lng' => $location->lat,
-                ]);
+            if (!$dryRun) {
+                // Swap lat and lng.
+                DB::table('locations')
+                    ->where('id', $location->id)
+                    ->update([
+                        'lat' => $location->lng,
+                        'lng' => $location->lat,
+                    ]);
+            }
 
             $stats['locations_fixed']++;
 
@@ -89,12 +93,14 @@ class GroupMaintenanceService
                 ->get();
 
             foreach ($messages as $msg) {
-                DB::table('messages')
-                    ->where('id', $msg->id)
-                    ->update([
-                        'lat' => $location->lng,
-                        'lng' => $location->lat,
-                    ]);
+                if (!$dryRun) {
+                    DB::table('messages')
+                        ->where('id', $msg->id)
+                        ->update([
+                            'lat' => $location->lng,
+                            'lng' => $location->lat,
+                        ]);
+                }
 
                 $details .= "...fix message {$msg->id}\n";
                 $stats['messages_fixed']++;
@@ -104,14 +110,16 @@ class GroupMaintenanceService
         if ($stats['locations_fixed'] > 0) {
             Log::warning("Fixed {$stats['locations_fixed']} skewed locations", $stats);
 
-            Mail::raw(
-                $details,
-                function ($message) use ($stats) {
-                    $message->to(config('freegle.alerts.geek_email', 'geek-alerts@ilovefreegle.org'))
-                        ->from('geeks@ilovefreegle.org')
-                        ->subject("{$stats['locations_fixed']} locations lat/lngs skewwhiff");
-                }
-            );
+            if (!$dryRun) {
+                Mail::raw(
+                    $details,
+                    function ($message) use ($stats) {
+                        $message->to(config('freegle.alerts.geek_email', 'geek-alerts@ilovefreegle.org'))
+                            ->from('geeks@ilovefreegle.org')
+                            ->subject("{$stats['locations_fixed']} locations lat/lngs skewwhiff");
+                    }
+                );
+            }
         } else {
             Log::info('All locations ok');
         }
