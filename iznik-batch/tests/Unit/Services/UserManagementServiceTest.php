@@ -23,195 +23,34 @@ class UserManagementServiceTest extends TestCase
         $this->service = new UserManagementService($lokiService);
     }
 
-    public function test_process_bounced_emails_suspends_on_permanent_threshold(): void
+    public function test_process_bounced_emails_marks_invalid(): void
     {
         $user = $this->createTestUser();
-        $emailRow = UserEmail::where('userid', $user->id)->first();
 
-        // Create 3 permanent bounces for this user's email (meets threshold of 3).
-        for ($i = 0; $i < 3; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $emailRow->id,
-                'date' => now(),
-                'reason' => '550 5.1.1 Mailbox not found',
-                'permanent' => 1,
-                'reset' => 0,
-            ]);
-        }
+        // Update the user's email to have bounced (timestamp set) and be validated.
+        UserEmail::where('userid', $user->id)
+            ->update(['bounced' => now(), 'validated' => now()]);
 
         $stats = $this->service->processBouncedEmails();
 
-        $this->assertEquals(1, $stats['permanent_suspended']);
+        $this->assertEquals(1, $stats['marked_invalid']);
 
-        // Verify user is now bouncing.
-        $user->refresh();
-        $this->assertEquals(1, $user->bouncing);
-
-        // Verify log entry was created.
-        $this->assertDatabaseHas('logs', [
-            'type' => 'User',
-            'subtype' => 'SuspendMail',
-            'user' => $user->id,
-        ]);
+        // Verify email is now invalid (validated set to NULL).
+        $email = UserEmail::where('userid', $user->id)->first();
+        $this->assertNull($email->validated);
     }
 
-    public function test_process_bounced_emails_does_not_suspend_below_threshold(): void
+    public function test_process_bounced_emails_ignores_non_bounced(): void
     {
         $user = $this->createTestUser();
-        $emailRow = UserEmail::where('userid', $user->id)->first();
 
-        // Create only 2 permanent bounces (below threshold of 3).
-        for ($i = 0; $i < 2; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $emailRow->id,
-                'date' => now(),
-                'reason' => '550 5.1.1 Mailbox not found',
-                'permanent' => 1,
-                'reset' => 0,
-            ]);
-        }
+        // Update the user's email to be validated but not bounced.
+        UserEmail::where('userid', $user->id)
+            ->update(['bounced' => null, 'validated' => now()]);
 
         $stats = $this->service->processBouncedEmails();
 
-        $this->assertEquals(0, $stats['permanent_suspended']);
-        $this->assertEquals(0, $stats['total_suspended']);
-
-        // Verify user is NOT bouncing.
-        $user->refresh();
-        $this->assertEquals(0, $user->bouncing);
-    }
-
-    public function test_process_bounced_emails_suspends_on_total_threshold(): void
-    {
-        $user = $this->createTestUser();
-        $emailRow = UserEmail::where('userid', $user->id)->first();
-
-        // Create 50 non-permanent bounces (meets total threshold of 50).
-        for ($i = 0; $i < 50; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $emailRow->id,
-                'date' => now(),
-                'reason' => 'Temporary failure',
-                'permanent' => 0,
-                'reset' => 0,
-            ]);
-        }
-
-        $stats = $this->service->processBouncedEmails();
-
-        $this->assertEquals(0, $stats['permanent_suspended']);
-        $this->assertEquals(1, $stats['total_suspended']);
-
-        $user->refresh();
-        $this->assertEquals(1, $user->bouncing);
-    }
-
-    public function test_process_bounced_emails_ignores_non_preferred_email(): void
-    {
-        $user = $this->createTestUser();
-
-        // Create a second (non-preferred) email for the user.
-        $secondEmail = UserEmail::create([
-            'userid' => $user->id,
-            'email' => $this->uniqueEmail('secondary'),
-            'preferred' => 0,
-            'added' => now(),
-        ]);
-
-        // Create 3 permanent bounces on the non-preferred email.
-        for ($i = 0; $i < 3; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $secondEmail->id,
-                'date' => now(),
-                'reason' => '550 5.1.1 Mailbox not found',
-                'permanent' => 1,
-                'reset' => 0,
-            ]);
-        }
-
-        $stats = $this->service->processBouncedEmails();
-
-        // Should NOT suspend because bounces are on a non-preferred email.
-        $this->assertEquals(0, $stats['permanent_suspended']);
-
-        $user->refresh();
-        $this->assertEquals(0, $user->bouncing);
-    }
-
-    public function test_process_bounced_emails_ignores_reset_bounces(): void
-    {
-        $user = $this->createTestUser();
-        $emailRow = UserEmail::where('userid', $user->id)->first();
-
-        // Create 3 permanent bounces but with reset = 1.
-        for ($i = 0; $i < 3; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $emailRow->id,
-                'date' => now(),
-                'reason' => '550 5.1.1 Mailbox not found',
-                'permanent' => 1,
-                'reset' => 1,
-            ]);
-        }
-
-        $stats = $this->service->processBouncedEmails();
-
-        $this->assertEquals(0, $stats['permanent_suspended']);
-        $this->assertEquals(0, $stats['total_suspended']);
-
-        $user->refresh();
-        $this->assertEquals(0, $user->bouncing);
-    }
-
-    public function test_process_bounced_emails_skips_already_bouncing_user(): void
-    {
-        $user = $this->createTestUser();
-        $emailRow = UserEmail::where('userid', $user->id)->first();
-
-        // Set user as already bouncing.
-        DB::table('users')->where('id', $user->id)->update(['bouncing' => 1]);
-
-        // Create 3 permanent bounces.
-        for ($i = 0; $i < 3; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $emailRow->id,
-                'date' => now(),
-                'reason' => '550 5.1.1 Mailbox not found',
-                'permanent' => 1,
-                'reset' => 0,
-            ]);
-        }
-
-        $stats = $this->service->processBouncedEmails();
-
-        // Should not suspend because the query filters for bouncing = 0.
-        $this->assertEquals(0, $stats['permanent_suspended']);
-    }
-
-    public function test_process_bounced_emails_dry_run(): void
-    {
-        $user = $this->createTestUser();
-        $emailRow = UserEmail::where('userid', $user->id)->first();
-
-        // Create 3 permanent bounces.
-        for ($i = 0; $i < 3; $i++) {
-            DB::table('bounces_emails')->insert([
-                'emailid' => $emailRow->id,
-                'date' => now(),
-                'reason' => '550 5.1.1 Mailbox not found',
-                'permanent' => 1,
-                'reset' => 0,
-            ]);
-        }
-
-        $stats = $this->service->processBouncedEmails(dryRun: true);
-
-        // Dry run still reports the count.
-        $this->assertEquals(1, $stats['permanent_suspended']);
-
-        // But user should NOT be marked as bouncing.
-        $user->refresh();
-        $this->assertEquals(0, $user->bouncing);
+        $this->assertEquals(0, $stats['marked_invalid']);
     }
 
     public function test_cleanup_users_returns_all_stats(): void
@@ -322,8 +161,8 @@ class UserManagementServiceTest extends TestCase
     {
         $stats = $this->service->processBouncedEmails();
 
-        $this->assertEquals(0, $stats['permanent_suspended']);
-        $this->assertEquals(0, $stats['total_suspended']);
+        $this->assertEquals(0, $stats['processed']);
+        $this->assertEquals(0, $stats['marked_invalid']);
     }
 
 

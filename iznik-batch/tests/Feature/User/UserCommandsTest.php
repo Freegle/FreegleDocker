@@ -17,9 +17,9 @@ class UserCommandsTest extends TestCase
     public function test_process_bounced_displays_stats(): void
     {
         $this->artisan('mail:bounced')
-            ->expectsOutputToContain('Processing bounce suspensions')
-            ->expectsOutputToContain('Suspended (permanent bounces >= 3):')
-            ->expectsOutputToContain('Suspended (total bounces >= 50):')
+            ->expectsOutputToContain('Processing bounced emails')
+            ->expectsOutputToContain('Processed:')
+            ->expectsOutputToContain('Marked invalid:')
             ->assertExitCode(0);
     }
 

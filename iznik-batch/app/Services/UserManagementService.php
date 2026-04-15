@@ -121,135 +121,39 @@ class UserManagementService
     }
 
     /**
-     * Suspend mail for users with excessive bounces.
-     *
-     * - If a user has >= PERM_THRESHOLD (3) permanent bounces on their preferred email, set bouncing = 1
-     * - If a user has >= ALL_THRESHOLD (50) total bounces on their preferred email, set bouncing = 1
-     * - Only suspends if the bouncing email matches the user's preferred/primary email
-     * - Logs the suspension (TYPE_USER, SUBTYPE_SUSPEND_MAIL equivalent)
+     * Check and update user email validity via bounce tracking.
+     * Emails that have bounced (bounced timestamp is set) and were validated
+     * are marked as invalid (validated set to NULL).
      */
-    public function processBouncedEmails(bool $dryRun = false, int $permThreshold = 3, int $allThreshold = 50): array
+    public function processBouncedEmails(bool $dryRun = false): array
     {
         $stats = [
-            'permanent_suspended' => 0,
-            'total_suspended' => 0,
+            'processed' => 0,
+            'marked_invalid' => 0,
         ];
 
-        // Query 1: Users with permanent bounces >= threshold.
-        // V1: SELECT COUNT(*) AS count, userid, emailid, email, reason
-        //     FROM bounces_emails
-        //     INNER JOIN users_emails ON users_emails.id = bounces_emails.emailid
-        //     INNER JOIN users ON users.id = users_emails.userid
-        //     WHERE permanent = 1 AND reset = 0 AND users.bouncing = 0
-        //     GROUP BY userid ORDER BY count DESC
-        $permUsers = DB::table('bounces_emails')
-            ->join('users_emails', 'users_emails.id', '=', 'bounces_emails.emailid')
-            ->join('users', 'users.id', '=', 'users_emails.userid')
-            ->where('bounces_emails.permanent', 1)
-            ->where('bounces_emails.reset', 0)
-            ->where('users.bouncing', 0)
-            ->select(
-                DB::raw('COUNT(*) as count'),
-                'users_emails.userid',
-                'bounces_emails.emailid',
-                'users_emails.email',
-            )
-            ->groupBy('users_emails.userid', 'bounces_emails.emailid', 'users_emails.email')
-            ->havingRaw('COUNT(*) >= ?', [$permThreshold])
-            ->orderByDesc('count')
+        // Get validated emails that have bounced.
+        $bouncedEmails = DB::table('users_emails')
+            ->whereNotNull('bounced')
+            ->whereNotNull('validated')
+            ->limit($this->chunkSize)
             ->get();
 
-        foreach ($permUsers as $row) {
-            $user = User::find($row->userid);
-            if (!$user) {
-                continue;
+        foreach ($bouncedEmails as $email) {
+            if (!$dryRun) {
+                UserEmail::where('id', $email->id)
+                    ->update(['validated' => null]);
+
+                $this->lokiService->logBounceEvent(
+                    $email->email ?? '',
+                    $email->userid ?? 0,
+                    true,
+                    'Bounced email marked invalid',
+                );
             }
 
-            // V1: Only suspend if the bouncing email is the user's preferred email.
-            if ($row->email === $user->email_preferred) {
-                if (!$dryRun) {
-                    DB::table('users')
-                        ->where('id', $row->userid)
-                        ->update(['bouncing' => 1]);
-
-                    DB::table('logs')->insert([
-                        'timestamp' => now(),
-                        'type' => 'User',
-                        'subtype' => 'SuspendMail',
-                        'user' => $row->userid,
-                        'text' => "Permanent bounces ({$row->count}) >= {$permThreshold} for {$row->email}",
-                    ]);
-
-                    $this->lokiService->logBounceEvent(
-                        $row->email,
-                        $row->userid,
-                        true,
-                        "Suspended: {$row->count} permanent bounces",
-                    );
-
-                    Log::info("Suspended mail for user #{$row->userid}: {$row->count} permanent bounces on {$row->email}");
-                }
-
-                $stats['permanent_suspended']++;
-            }
-        }
-
-        // Query 2: Users with total bounces (permanent + temporary) >= threshold.
-        // V1: Same query but without permanent = 1 filter.
-        $allUsers = DB::table('bounces_emails')
-            ->join('users_emails', 'users_emails.id', '=', 'bounces_emails.emailid')
-            ->join('users', 'users.id', '=', 'users_emails.userid')
-            ->where('bounces_emails.reset', 0)
-            ->where('users.bouncing', 0)
-            ->select(
-                DB::raw('COUNT(*) as count'),
-                'users_emails.userid',
-                'bounces_emails.emailid',
-                'users_emails.email',
-            )
-            ->groupBy('users_emails.userid', 'bounces_emails.emailid', 'users_emails.email')
-            ->havingRaw('COUNT(*) >= ?', [$allThreshold])
-            ->orderByDesc('count')
-            ->get();
-
-        foreach ($allUsers as $row) {
-            $user = User::find($row->userid);
-            if (!$user) {
-                continue;
-            }
-
-            // Re-check bouncing=0 since the permanent pass may have already set it.
-            $user->refresh();
-            if ($user->bouncing) {
-                continue;
-            }
-
-            if ($row->email === $user->email_preferred) {
-                if (!$dryRun) {
-                    DB::table('users')
-                        ->where('id', $row->userid)
-                        ->update(['bouncing' => 1]);
-
-                    DB::table('logs')->insert([
-                        'timestamp' => now(),
-                        'type' => 'User',
-                        'subtype' => 'SuspendMail',
-                        'user' => $row->userid,
-                        'text' => "Total bounces ({$row->count}) >= {$allThreshold} for {$row->email}",
-                    ]);
-
-                    $this->lokiService->logBounceEvent(
-                        $row->email,
-                        $row->userid,
-                        false,
-                        "Suspended: {$row->count} total bounces",
-                    );
-
-                    Log::info("Suspended mail for user #{$row->userid}: {$row->count} total bounces on {$row->email}");
-                }
-
-                $stats['total_suspended']++;
-            }
+            $stats['marked_invalid']++;
+            $stats['processed']++;
         }
 
         return $stats;
