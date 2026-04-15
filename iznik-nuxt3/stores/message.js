@@ -475,21 +475,28 @@ export const useMessageStore = defineStore({
           searchmode: 'vector',
         })
 
-        if (!results || results.length === 0) return
+        if (!results || results.length === 0) return []
 
-        await Promise.all(
+        // Fetch in parallel but preserve API score order via Promise.all index stability
+        const fetched = await Promise.all(
           results.map(async (r) => {
             try {
               const message = await this.fetchMT({ id: r.id || r.msgid })
               if (message) {
+                // Carry matchedon from search result onto the fetched message
+                if (r.matchedon) {
+                  message.matchedon = r.matchedon
+                }
                 this.list[message.id] = message
+                return message.id
               }
             } catch (e) {
               console.log('Failed to fetch message', r.id, e?.message)
             }
+            return null
           })
         )
-        return
+        return fetched.filter((id) => id !== null)
       }
 
       // Existing keyword search path
