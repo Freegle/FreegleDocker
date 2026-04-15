@@ -1,7 +1,7 @@
 {{ $postCount }} new post{{ $postCount === 1 ? '' : 's' }} near you
 ====================================
 
-Hi {{ $user->displayname ?? 'there' }},
+Dear {{ $user->displayname ?? 'there' }},
 
 Here {{ $postCount === 1 ? 'is' : 'are' }} {{ $postCount }} new post{{ $postCount === 1 ? '' : 's' }} from your Freegle communities:
 

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\Message\DeadlineReached;
+use App\Mail\Traits\FeatureFlags;
 use App\Models\Message;
 use App\Models\MessageGroup;
 use App\Models\MessageOutcome;
@@ -14,6 +15,9 @@ use Illuminate\Support\Facades\Mail;
 
 class MessageExpiryService
 {
+    use FeatureFlags;
+
+    public const EMAIL_TYPE = 'MessageExpiry';
     /**
      * Default number of days to look back for messages.
      */
@@ -22,7 +26,7 @@ class MessageExpiryService
     /**
      * Process messages that have reached their deadline.
      */
-    public function processDeadlineExpired(): array
+    public function processDeadlineExpired(bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -30,10 +34,22 @@ class MessageExpiryService
             'errors' => 0,
         ];
 
+        if (!self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
+            Log::info('MessageExpiry emails disabled via FREEGLE_MAIL_ENABLED_TYPES');
+            return $stats;
+        }
+
         $messages = $this->getMessagesWithExpiredDeadline();
 
         foreach ($messages as $message) {
             try {
+                if ($dryRun) {
+                    Log::info("Dry run: would expire message #{$message->id}: {$message->subject}");
+                    $stats['processed']++;
+                    $stats['emails_sent']++;
+                    continue;
+                }
+
                 $this->markAsExpired($message);
                 $this->sendDeadlineNotification($message);
                 $stats['processed']++;
@@ -96,7 +112,7 @@ class MessageExpiryService
     /**
      * Process messages that are expired based on spatial index.
      */
-    public function processExpiredFromSpatialIndex(): int
+    public function processExpiredFromSpatialIndex(bool $dryRun = false): int
     {
         $count = 0;
 
@@ -108,6 +124,12 @@ class MessageExpiryService
             try {
                 $message = Message::find($msgid);
                 if ($message) {
+                    if ($dryRun) {
+                        Log::info("Dry run: would expire spatial message #{$msgid}");
+                        $count++;
+                        continue;
+                    }
+
                     $this->processMessageExpiry($message);
                     $count++;
                 }

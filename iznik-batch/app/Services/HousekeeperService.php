@@ -2,10 +2,8 @@
 
 namespace App\Services;
 
-use App\Mail\Housekeeper\HousekeeperResultsMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 /**
  * Processes housekeeping task results from the Chrome extension.
@@ -18,25 +16,41 @@ class HousekeeperService
     /**
      * Process a housekeeping notification.
      */
-    public function process(array $data, EmailSpoolerService $spooler, bool $shouldSpool): void
+    public function process(array $data): void
     {
         $task = $data['task'] ?? NULL;
         $status = $data['status'] ?? NULL;
         $summary = $data['summary'] ?? '';
-        $email = $data['email'] ?? NULL;
         $taskData = $data['data'] ?? [];
 
         Log::info("Housekeeper: processing {$task} ({$status}): {$summary}");
 
         $results = [];
+        $logLines = [];
 
         if ($task === 'facebook-deletion' && $status === 'success') {
-            $results = $this->processFacebookDeletion($taskData);
+            $results = $this->processFacebookDeletion($taskData, $logLines);
         }
 
-        // Send notification email if configured.
-        if ($email) {
-            $this->sendNotification($email, $task, $status, $summary, $results, $spooler, $shouldSpool);
+        // Build a one-line status summary from results.
+        $generatedSummary = $this->generateSummary($task, $status, $summary, $results);
+
+        // Build full log text.
+        $logText = implode("\n", $logLines);
+
+        // Record this task run with log and summary.
+        if ($task) {
+            DB::table('housekeeper_tasks')->updateOrInsert(
+                ['task_key' => $task],
+                [
+                    'name' => $task,
+                    'last_run_at' => now(),
+                    'last_status' => $status,
+                    'last_summary' => $generatedSummary,
+                    'last_log' => $logText ?: null,
+                    'updated_at' => now(),
+                ]
+            );
         }
     }
 
@@ -47,10 +61,12 @@ class HousekeeperService
      * into limbo (14-day grace period). This mirrors the logic in
      * iznik-server/http/facebook/facebook_unsubscribe.php.
      */
-    protected function processFacebookDeletion(array $taskData): array
+    protected function processFacebookDeletion(array $taskData, array &$logLines): array
     {
         $ids = $taskData['ids'] ?? [];
         $results = [];
+
+        $logLines[] = 'Processing ' . count($ids) . ' Facebook user ID(s)';
 
         foreach ($ids as $fbId) {
             $fbId = (string) $fbId;
@@ -66,6 +82,7 @@ class HousekeeperService
                     'facebook_id' => $fbId,
                     'status' => 'not_found',
                 ];
+                $logLines[] = "FB {$fbId}: not found in Freegle";
                 Log::info("Housekeeper: Facebook ID {$fbId} not found");
                 continue;
             }
@@ -81,6 +98,7 @@ class HousekeeperService
                     'freegle_id' => $userId,
                     'status' => 'already_deleted',
                 ];
+                $logLines[] = "FB {$fbId} → user #{$userId}: already deleted";
                 Log::info("Housekeeper: Facebook ID {$fbId} -> user {$userId} already deleted");
                 continue;
             }
@@ -96,6 +114,7 @@ class HousekeeperService
                 'status' => 'limbo',
             ];
 
+            $logLines[] = "FB {$fbId} → user #{$userId}: marked for deletion (14-day limbo)";
             Log::info("Housekeeper: Facebook ID {$fbId} -> user {$userId} marked for deletion (limbo)");
         }
 
@@ -103,30 +122,28 @@ class HousekeeperService
     }
 
     /**
-     * Send a notification email summarising what happened.
+     * Generate a one-line status summary for display in the dashboard.
      */
-    protected function sendNotification(
-        string $toEmail,
-        string $task,
-        string $status,
-        string $summary,
-        array $results,
-        EmailSpoolerService $spooler,
-        bool $shouldSpool
-    ): void {
-        try {
-            $mailable = new HousekeeperResultsMail($task, $status, $summary, $results);
-            $mailable->to($toEmail);
-
-            if ($shouldSpool) {
-                $spooler->spool($mailable, $toEmail);
-            } else {
-                Mail::send($mailable);
-            }
-
-            Log::info("Housekeeper: notification sent to {$toEmail}");
-        } catch (\Exception $e) {
-            Log::error("Housekeeper: failed to send notification: {$e->getMessage()}");
+    protected function generateSummary(string $task, string $status, string $extensionSummary, array $results): string
+    {
+        if ($status !== 'success') {
+            return "Failed: {$extensionSummary}";
         }
+
+        if ($task === 'facebook-deletion') {
+            $total = count($results);
+            $limbo = count(array_filter($results, fn($r) => $r['status'] === 'limbo'));
+            $notFound = count(array_filter($results, fn($r) => $r['status'] === 'not_found'));
+            $alreadyDeleted = count(array_filter($results, fn($r) => $r['status'] === 'already_deleted'));
+
+            $parts = [];
+            if ($limbo > 0) $parts[] = "{$limbo} marked for deletion";
+            if ($notFound > 0) $parts[] = "{$notFound} not found";
+            if ($alreadyDeleted > 0) $parts[] = "{$alreadyDeleted} already deleted";
+
+            return "Processed {$total} IDs: " . ($parts ? implode(', ', $parts) : 'no action needed');
+        }
+
+        return $extensionSummary;
     }
 }

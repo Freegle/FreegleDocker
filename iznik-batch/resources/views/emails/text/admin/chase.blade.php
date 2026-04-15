@@ -1,4 +1,4 @@
-Hi {{ $userName }},
+Dear {{ $userName }},
 
 There is a pending suggested admin for {{ $groupName }} that has been waiting for {{ $pendingTimeText }} without being approved, rejected, or held.
 

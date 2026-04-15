@@ -8,6 +8,7 @@
 !/conf/postfix/
 !/conf/rspamd/
 /.claude/settings.local.json
+/.claude/monitor-state.json
 /logs/
 /.idea/prettier.xml
 /ssl/

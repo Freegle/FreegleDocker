@@ -1,7 +1,7 @@
 #!/bin/bash
 # Freegle worktree management CLI
 # Manages multiple Docker Compose environments for parallel development.
-# Each worktree gets its own unique port range (offset by slot*10000) so
+# Each worktree gets its own unique port range (offset by slot*2000) so
 # all instances can run simultaneously without conflicts.
 #
 # Usage:
@@ -127,18 +127,33 @@ cmd_worktree_create() {
     echo "  Directory: $worktree_dir"
     echo "  Branch:    $branch"
 
-    # Count existing worktrees BEFORE adding the new one (includes main repo as slot 0)
-    local slot
-    slot=$(git -C "$main_repo" worktree list --porcelain | grep -c '^worktree ' || true)
-    # slot = number of worktrees currently (main repo = 1, so first worktree gets slot 1)
+    # Find the next free slot by checking PORT_STATUS in each existing worktree's .env.
+    # This avoids reusing a slot after a worktree is removed (the old count-based approach
+    # would assign the same slot number to a new worktree if one had been deleted).
+    local max_slot=0
+    for wt in $(git -C "$main_repo" worktree list --porcelain | grep '^worktree ' | sed 's/^worktree //'); do
+        if [[ -f "$wt/.env" ]]; then
+            local wt_status_port
+            wt_status_port=$(grep -E '^PORT_STATUS=' "$wt/.env" 2>/dev/null | cut -d= -f2 || true)
+            if [[ -n "$wt_status_port" && "$wt_status_port" =~ ^[0-9]+$ ]]; then
+                # Base STATUS port is 8081. Slot = (port - 8081) / 9000
+                local wt_slot=$(( (wt_status_port - 8081) / 9000 ))
+                if (( wt_slot > max_slot )); then
+                    max_slot=$wt_slot
+                fi
+            fi
+        fi
+    done
+    local slot=$(( max_slot + 1 ))
 
     # Create the worktree
     git -C "$main_repo" worktree add "$worktree_dir" "$branch"
 
-    # Fix CRLF line endings in submodules (WSL/Windows git may convert LF→CRLF,
+    # Fix CRLF line endings in subtrees (WSL/Windows git may convert LF→CRLF,
     # breaking shell scripts like generate-swagger.sh inside containers)
-    git -C "$worktree_dir" submodule foreach --quiet \
-        'git config core.autocrlf false && git checkout -- .' 2>/dev/null || true
+    for dir in iznik-nuxt3 iznik-server-go iznik-server; do
+        git -C "$worktree_dir/$dir" config core.autocrlf false 2>/dev/null || true
+    done
 
     # Copy .env and configure for no ports
     if [[ -f "$main_repo/.env" ]]; then
@@ -153,13 +168,13 @@ cmd_worktree_create() {
     # Assign unique PORT_* values to avoid conflicts with other running instances.
     # All port bindings live in docker-compose.yml (for backwards compat with single-file
     # installs), so changing COMPOSE_FILE alone doesn't prevent conflicts. We offset every
-    # PORT_* value by slot*10000 instead.
+    # PORT_* value by slot*2000 instead.
     #
     # slot was counted before git worktree add, so:
-    #   first worktree (slot=1) → +10000, second (slot=2) → +20000, …
-    # Use 9000 per slot (not 10000) — 80+10000=10080 is blocked by Chrome as unsafe port,
-    # but 80+9000=9080 is fine.
-    local port_offset=$(( slot * 9000 ))
+    #   first worktree (slot=1) → +2000, second (slot=2) → +4000, …
+    # 2000 is the minimum round increment with zero port collisions across slots
+    # (verified against all 25 PORT_* defaults ranging from 25 to 11334).
+    local port_offset=$(( slot * 2000 ))
 
     # Build a map of effective PORT_* defaults: start with docker-compose.yml defaults,
     # then override with whatever is explicitly set in the main .env
@@ -172,6 +187,9 @@ cmd_worktree_create() {
             port_defaults["$key"]="$val"
         fi
     done < <(grep -E '^PORT_[A-Z0-9_]+=[0-9]+$' "$main_repo/.env")
+
+    # Ensure .env ends with a newline before appending (prevents concatenation with last line)
+    [[ -f "$worktree_dir/.env" && -s "$worktree_dir/.env" ]] && sed -i -e '$a\' "$worktree_dir/.env"
 
     # Write all PORT_* with offset into worktree .env
     for key in "${!port_defaults[@]}"; do

@@ -32,6 +32,14 @@
       </mj-column>
     </mj-section>
 
+    @if(!empty($trackingPixelMjml))
+    <mj-section padding="0">
+      <mj-column>
+        {!! $trackingPixelMjml !!}
+      </mj-column>
+    </mj-section>
+    @endif
+
     @include('emails.mjml.partials.footer', ['email' => $email])
   </mj-body>
 </mjml>

@@ -25,7 +25,7 @@ class DigestService
     /**
      * Send digests for a group at a specific frequency.
      */
-    public function sendDigestForGroup(Group $group, int $frequency): array
+    public function sendDigestForGroup(Group $group, int $frequency, bool $dryRun = false): array
     {
         $stats = [
             'members_processed' => 0,
@@ -75,7 +75,9 @@ class DigestService
                     continue;
                 }
 
-                $this->sendDigestToUser($user, $group, $userMessages, $frequency);
+                if (!$dryRun) {
+                    $this->sendDigestToUser($user, $group, $userMessages, $frequency);
+                }
                 $stats['emails_sent']++;
             } catch (\Exception $e) {
                 Log::error("Failed to send digest to user {$membership->userid}: " . $e->getMessage());
@@ -86,7 +88,9 @@ class DigestService
         }
 
         // Update digest record with latest message.
-        $this->updateDigestRecord($digest, $messages);
+        if (!$dryRun) {
+            $this->updateDigestRecord($digest, $messages);
+        }
 
         return $stats;
     }

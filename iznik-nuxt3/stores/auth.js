@@ -1,0 +1,565 @@
+import { defineStore } from 'pinia'
+import { SocialLogin } from '@capgo/capacitor-social-login'
+import { LoginError, SignUpError } from '~/api/APIErrors'
+import {
+  abortAllPendingRequests,
+  enterLogoutMode,
+  exitLogoutMode,
+} from '~/api/BaseAPI'
+import { useComposeStore } from '~/stores/compose'
+import { useGroupStore } from '~/stores/group'
+import api from '~/api'
+import { useMobileStore } from '@/stores/mobile'
+import { useMiscStore } from '~/stores/misc'
+
+export const useAuthStore = defineStore({
+  id: 'auth',
+  persist: {
+    storage: piniaPluginPersistedstate.localStorage(),
+    // We don't persist much about the user, to avoid data getting 'stuck'.  All we need is enough to log us
+    // in, and information about which users have been used on this device.
+    pick: ['auth', 'userlist', 'loggedInEver'],
+  },
+  state: () => ({
+    auth: {
+      // For APIv2
+      jwt: null,
+
+      // For APIv2,
+      persistent: null,
+    },
+
+    loginStateKnown: false,
+    forceLogin: false,
+    user: null,
+    groups: [],
+    loggedInEver: false,
+    userlist: [],
+    loginType: null,
+    loginCount: 0,
+    work: {}, // ModTools: moderator work counts
+    discourse: {}, // ModTools: Discourse integration
+  }),
+  actions: {
+    init(config) {
+      this.config = config
+      this.$api = api(config)
+
+      // Don't get auth info via cookies.  That would mean that we rendered the page in SSR logged in, which
+      // sounds good, but we would then return the store to the client for hydration.  That would include the
+      // auth section which might lead to us being logged in as the wrong user.
+    },
+    setAuth(jwt, persistent) {
+      this.auth.jwt = jwt
+      this.auth.persistent = persistent
+    },
+    setUser(value) {
+      if (value) {
+        // Remember that we have successfully logged in at some point.
+        this.loggedInEver = true
+        this.user = value
+
+        // Ensure we have a basic set of settings.
+        if (!this.user.settings) {
+          this.user.settings = {}
+        }
+
+        if (!this.user.settings.notifications) {
+          this.user.settings.notifications = {
+            email: true,
+            emailmine: false,
+            push: true,
+            facebook: true,
+            app: true,
+          }
+        }
+
+        const miscStore = useMiscStore()
+        if (!this.user.source && miscStore.source) {
+          // Record that this user came from this source.
+          console.log('Logged in and no source - update', value)
+          this.saveAndGet({ source: miscStore.source })
+        }
+
+        // Ensure we don't store any password (it shouldn't get persisted anyway, but let's be careful).
+        delete this.user.password
+
+        this.addRelatedUser(value.id)
+
+        if (this.forceLogin) {
+          // We have logged in.
+          this.forceLogin = false
+        }
+      } else {
+        this.user = null
+      }
+    },
+    async addRelatedUser(id) {
+      if (id) {
+        // Keep track of which users we log in as.
+        if (!this.userlist) {
+          this.userlist = []
+        }
+
+        if (!this.userlist.includes(id)) {
+          if (this.userlist.length > 9) {
+            this.userlist.pop()
+          }
+
+          this.userlist.unshift(id)
+
+          if (this.userlist.length > 1) {
+            try {
+              // Logged in as multiple users.  Let the server know.  This can fail, but we don't care.
+              await this.$api.session.related(this.userlist)
+            } catch (e) {}
+          }
+        }
+      }
+    },
+    clearRelated() {
+      this.userlist = []
+    },
+    disableGoogleAutoselect() {
+      if (
+        window &&
+        window.google &&
+        window.google.accounts &&
+        window.google.accounts.id
+      ) {
+        try {
+          console.log('Disable Google autoselect')
+          window?.google?.accounts?.id?.disableAutoSelect()
+        } catch (e) {
+          console.log('Ignore Google autoselect error', e)
+        }
+      } else {
+        console.log("Google not yet loaded so can't disable")
+        setTimeout(this.disableGoogleAutoselect, 100)
+      }
+    },
+    // Abort all in-flight API requests. Used before logout to prevent
+    // stale responses from arriving with Set-Cookie headers that would
+    // re-establish the session cookie after we've cleared it.
+    abortPendingRequests() {
+      abortAllPendingRequests()
+    },
+    async logout() {
+      const mobileStore = useMobileStore()
+
+      // Enter logout mode: abort all in-flight requests AND keep the
+      // controller aborted so any NEW requests triggered by Vue
+      // re-rendering are also immediately killed.  Without this there is
+      // a race: DELETE /api/session deletes the DB row, but a group or
+      // user fetch initiated by a reactive watcher uses the still-valid
+      // JWT, arrives at the server after the session is deleted, and
+      // gets 401 → Sentry error.
+      enterLogoutMode()
+
+      await this.$api.session.logout()
+
+      if (!mobileStore.isApp) {
+        this.disableGoogleAutoselect()
+      }
+
+      if (mobileStore.isApp) {
+        try {
+          console.log('Try Facebook logout')
+          const runtimeConfig = useRuntimeConfig()
+          await SocialLogin.initialize({
+            facebook: {
+              appId: runtimeConfig.public.FACEBOOK_APPID,
+              clientToken: runtimeConfig.public.FACEBOOK_CLIENTID,
+            },
+          })
+          await SocialLogin.logout({ provider: 'facebook' })
+          console.log('Facebook logout OK')
+        } catch (e) {
+          console.log('Ignore Facebook logout error', e)
+        }
+
+        try {
+          console.log('Try Google logout')
+          const runtimeConfig = useRuntimeConfig()
+          await SocialLogin.initialize({
+            google: {
+              webClientId: runtimeConfig.public.GOOGLE_CLIENT_ID, // the web client id for Android and Web
+              iOSClientId: runtimeConfig.public.GOOGLE_IOS_CLIENT_ID, // for iOS
+            },
+          })
+          await SocialLogin.logout({ provider: 'google' })
+          console.log('Google logout OK')
+        } catch (e) {
+          console.log('Ignore Google logout error', e)
+        }
+
+        this.logoutPushId()
+      }
+      // We are going to reset the store, but there are a few things we want to preserve.
+      const loginCount = this.loginCount
+      const config = this.config
+      const api = this.$api
+      const loggedInEver = this.loggedInEver
+      this.$reset()
+      this.loginCount = loginCount
+      this.config = config
+      this.loggedInEver = loggedInEver
+      this.$api = api
+
+      // Restore normal request handling now that logout is complete.
+      exitLogoutMode()
+    },
+    async forget() {
+      await this.$api.session.forget()
+      await this.logout()
+    },
+    async restore() {
+      await this.$api.session.restore()
+      await this.fetchUser()
+    },
+    async login(params) {
+      try {
+        // Tell the server if this is a ModTools login so it can auto-confirm
+        // group affiliation for Owners.
+        const miscStore = useMiscStore()
+        if (miscStore.modtools) {
+          params.modtools = true
+        }
+
+        const res = await this.$api.session.login(params, false)
+
+        const { persistent, jwt } = res
+        this.setAuth(jwt, persistent)
+        await this.fetchUser()
+      } catch (e) {
+        if (e instanceof LoginError) {
+          throw e
+        }
+
+        if (e.response?.status) {
+          throw new LoginError(
+            e.response.status,
+            e.response.data?.status || 'Login failed'
+          )
+        }
+
+        throw e
+      }
+
+      this.loginCount++
+    },
+    async lostPassword(email) {
+      let unknown = false
+      let worked = false
+
+      try {
+        await this.$api.session.lostPassword(email)
+        worked = true
+      } catch (e) {
+        if (e.response?.status === 404) {
+          unknown = true
+          worked = true
+        } else {
+          console.log('Lost password error', e)
+        }
+      }
+
+      return { unknown, worked }
+    },
+    async unsubscribe(email) {
+      const unknown = false
+      let worked = false
+
+      try {
+        await this.$api.session.unsubscribe(email)
+        worked = true
+      } catch (e) {
+        console.log('Unsubscribe error', e)
+      }
+
+      return { unknown, worked }
+    },
+    async signUp(params) {
+      try {
+        const res = await this.$api.user.signUp(params, false)
+        const { jwt, persistent } = res
+
+        this.forceLogin = false
+        this.setAuth(jwt, persistent)
+        await this.fetchUser()
+      } catch (e) {
+        console.log('exception', e?.response?.data)
+
+        if (e instanceof SignUpError) {
+          throw e
+        }
+
+        if (e.response?.status === 409) {
+          throw new SignUpError(
+            409,
+            e.response.data?.message || 'That email is already in use'
+          )
+        }
+
+        throw new SignUpError(
+          e.response?.status,
+          e.response?.data?.message || 'Registration failed'
+        )
+      }
+
+      this.loginCount++
+    },
+    async fetchUser() {
+      // We're so vain, we probably think this call is about us.
+      let me = null
+      let groups = null
+      let serverError = false
+
+      // Use V2 API (Go backend) - GET /session returns {me, groups, work, discourse, ...}
+      if (this.auth.jwt || this.auth.persistent) {
+        try {
+          const sessionData = await this.$api.session.fetchv2(
+            {
+              webversion: this.config.public.BUILD_DATE,
+            },
+            false
+          )
+
+          if (sessionData && sessionData.me && sessionData.me.id) {
+            me = sessionData.me
+
+            // Attach emails to the user object for client code that accesses user.emails.
+            me.emails = sessionData.emails || []
+
+            groups = sessionData.groups || []
+
+            // Fetch full group details for each membership. The session response
+            // only returns membership-specific data (groupid, role, etc.) - group
+            // details (name, type, region, bbox) come from the cached group store.
+            if (groups.length > 0) {
+              const groupStore = useGroupStore()
+
+              await groupStore.fetchBatch(groups.map((g) => g.groupid))
+            }
+
+            // Update JWT/persistent if returned (session refresh).
+            if (sessionData.jwt) {
+              this.setAuth(
+                sessionData.jwt,
+                sessionData.persistent || this.auth.persistent
+              )
+            }
+
+            // ModTools work counts and Discourse stats.
+            if (sessionData.work) {
+              this.work = sessionData.work
+            }
+            if (sessionData.discourse) {
+              this.discourse = sessionData.discourse
+            }
+          }
+        } catch (e) {
+          // 401/404 means our JWT is genuinely invalid — BaseAPI already clears
+          // auth for 401.  Any other error (500, network timeout) is a server
+          // problem — the JWT may still be valid so we must not wipe it.
+          const status = e?.response?.status
+          if (status && status !== 401 && status !== 404) {
+            serverError = true
+          }
+          console.log('Exception fetching user, status', status)
+        }
+      }
+
+      if (me) {
+        if (groups && groups.length) {
+          this.groups = groups
+        } else {
+          // We asked for groups but got none, so we're not a member of any.
+          this.groups = []
+        }
+
+        // Set the user, which will trigger various re-rendering if we were required to be logged in.
+        this.setUser(me)
+
+        await this.savePushId() // Tell server our mobile push notification id, if available
+
+        const composeStore = useComposeStore()
+        const email = composeStore.email
+
+        if (me.email && email !== me.email) {
+          // Save off our current email from the account for use in post composing.  Old values might be stuck
+          // because persisted.
+          composeStore.email = me.email
+        }
+
+        if (process.client) {
+          // Sync marketing consent from local storage to user profile if needed
+          const miscStore = useMiscStore()
+
+          if (miscStore.marketingConsent !== undefined) {
+            const localConsent = !!miscStore.marketingConsent
+            console.log(
+              'Local marketing consent',
+              localConsent,
+              'User marketing consent',
+              me.marketingconsent
+            )
+
+            if (me.marketingconsent !== localConsent) {
+              try {
+                await this.$api.session.save({
+                  marketingconsent: localConsent,
+                })
+
+                me.marketingconsent = localConsent
+                console.log("Sync'd marketing consent")
+              } catch (e) {
+                console.log('Failed to sync marketing consent', e)
+              }
+            } else {
+              console.log("Marketing consent already sync'd")
+            }
+          } else {
+            console.log('No local marketing consent to sync')
+          }
+        }
+      } else if (!serverError) {
+        // No user returned and no server error — auth is genuinely invalid.
+        this.setAuth(null, null)
+        this.setUser(null)
+      }
+
+      this.loginStateKnown = true
+
+      return this.user
+    },
+    async saveAboutMe(value) {
+      const data = await this.$api.session.save({
+        aboutme: value,
+      })
+      await this.fetchUser()
+      return data
+    },
+    async saveEmail(email) {
+      const data = await this.$api.session.save({ email })
+      await this.fetchUser()
+      return data
+    },
+    async saveMicrovolunteering(value) {
+      const data = await this.$api.user.save({
+        id: this.user?.id,
+        trustlevel: value,
+      })
+      await this.fetchUser()
+      return data
+    },
+    async unbounce(id) {
+      await this.$api.user.unbounce(id)
+      this.user.bouncing = 0
+    },
+    async unbounceMT(id) {
+      // ModTools - unbounce for another user
+      await this.$api.user.unbounce(id)
+    },
+    async saveAndGet(params) {
+      console.log('Save and get', params)
+      await this.$api.session.save(params)
+      console.log('Saved')
+      const user = await this.fetchUser()
+      console.log('Fetched user', JSON.stringify(user))
+      return user
+    },
+    async setGroup(params, nofetch) {
+      await this.$api.memberships.update(params)
+
+      if (!nofetch) {
+        await this.fetchUser()
+      }
+    },
+    async leaveGroup(userid, groupid) {
+      await this.$api.memberships.leaveGroup({
+        userid,
+        groupid,
+      })
+      await this.fetchUser()
+      return this.user
+    },
+    async joinGroup(userid, groupid, manual) {
+      await this.$api.memberships.joinGroup({
+        userid,
+        groupid,
+        manual,
+      })
+      await this.fetchUser()
+      return this.user
+    },
+    async savePushId() {
+      const mobileStore = useMobileStore()
+      if (mobileStore.mobilePushId === null)
+        console.log('******************* mobileStore.mobilePushId===null')
+      // Tell server our push notification id if logged in
+      if (
+        this.user !== null &&
+        typeof mobileStore.mobilePushId === 'string' &&
+        mobileStore.mobilePushId.length > 0
+      ) {
+        if (mobileStore.acceptedMobilePushId !== mobileStore.mobilePushId) {
+          const params = {
+            notifications: {
+              push: {
+                type: mobileStore.isiOS ? 'FCMIOS' : 'FCMAndroid',
+                subscription: mobileStore.mobilePushId,
+                deviceuserinfo: mobileStore.deviceuserinfo,
+              },
+            },
+          }
+          await this.$api.session.save(params)
+          mobileStore.acceptedMobilePushId = mobileStore.mobilePushId
+          console.log('savePushId: saved OK')
+        }
+      }
+    },
+    // Remember that we've logged out
+    // It could tell the server to invalidate pushid
+    // However we simply zap acceptedMobilePushId so it is sent when logged in
+    logoutPushId() {
+      // TODO
+      const mobileStore = useMobileStore()
+      mobileStore.acceptedMobilePushId = false
+      console.log('logoutPushId')
+    },
+    async makeEmailPrimary(email) {
+      await api(this.config).user.addEmail(this.user?.id, email, true)
+      return await this.fetchUser()
+    },
+    async removeEmail(email) {
+      if (this.user) {
+        await api(this.config).user.removeEmail(this.user.id, email)
+        await this.fetchUser()
+      }
+    },
+    async merge(params) {
+      // ModTools - merge two user accounts
+      await api(this.config).user.merge(
+        params.email1,
+        params.email2,
+        params.id1,
+        params.id2,
+        params.reason
+      )
+    },
+  },
+  getters: {
+    member: (state) => (id) => {
+      if (state.user) {
+        for (const group of state.groups) {
+          if (parseInt(group.groupid) === parseInt(id)) {
+            return group.role
+          }
+        }
+      }
+
+      return false
+    },
+  },
+})

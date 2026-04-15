@@ -11,7 +11,7 @@ class ProcessBouncedEmailsCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'mail:bounced';
+    protected $signature = 'mail:bounced {--dry-run : Show what would be processed without making changes}';
 
     /**
      * The console command description.
@@ -23,13 +23,20 @@ class ProcessBouncedEmailsCommand extends Command
      */
     public function handle(UserManagementService $userService): int
     {
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
         Log::info('Starting bounced email processing');
         $this->info('Processing bounced emails...');
 
-        $stats = $userService->processBouncedEmails();
+        $stats = $userService->processBouncedEmails($dryRun);
 
-        $this->info("Processed: {$stats['processed']}");
-        $this->info("Marked invalid: {$stats['marked_invalid']}");
+        $prefix = $dryRun ? '[DRY RUN] ' : '';
+        $this->info("{$prefix}Processed: {$stats['processed']}");
+        $this->info("{$prefix}Marked invalid: {$stats['marked_invalid']}");
 
         Log::info('Bounced email processing complete', $stats);
 

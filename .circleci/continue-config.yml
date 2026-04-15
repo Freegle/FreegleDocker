@@ -1,0 +1,132 @@
+version: 2.1
+
+parameters:
+  use_self_hosted:
+    type: boolean
+    default: false
+    description: "Set by setup workflow — true when self-hosted runner is online"
+  run_manual_promote:
+    type: boolean
+    default: false
+    description: "Set to true to manually trigger promotion/submission workflow"
+  build_testflight:
+    type: boolean
+    default: false
+    description: "Set to true to build iOS and upload to TestFlight from current branch"
+
+orbs:
+  freegle: freegle/tests@1
+
+workflows:
+  version: 2
+
+  # Main test workflow — runs on all branches
+  # Uses self-hosted runner when available, cloud otherwise
+  build-test-local:
+    when:
+      and:
+        - << pipeline.parameters.use_self_hosted >>
+        - not: << pipeline.parameters.run_manual_promote >>
+        - not: << pipeline.parameters.build_testflight >>
+    jobs:
+      - freegle/build-and-test:
+          use-executor:
+            name: freegle/machine-executor-local
+          filters:
+            branches:
+              ignore:
+                - modtools
+
+  build-test-cloud:
+    when:
+      and:
+        - not: << pipeline.parameters.use_self_hosted >>
+        - not: << pipeline.parameters.run_manual_promote >>
+        - not: << pipeline.parameters.build_testflight >>
+    jobs:
+      - freegle/build-and-test:
+          filters:
+            branches:
+              ignore:
+                - modtools
+
+  # Build Android debug APKs for non-production branches
+  build-android-apps:
+    when:
+      and:
+        - not: << pipeline.parameters.run_manual_promote >>
+        - not: << pipeline.parameters.build_testflight >>
+    jobs:
+      - freegle/build-android-dev:
+          filters:
+            branches:
+              ignore:
+                - production
+                - modtools
+      - freegle/build-android-debug:
+          filters:
+            branches:
+              ignore:
+                - production
+                - modtools
+
+  # Deploy apps when production branch is pushed
+  deploy-apps:
+    when:
+      and:
+        - not: << pipeline.parameters.run_manual_promote >>
+        - not: << pipeline.parameters.build_testflight >>
+    jobs:
+      - freegle/increment-version:
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/build-android:
+          requires:
+            - freegle/increment-version
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/build-ios:
+          requires:
+            - freegle/increment-version
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/check-hotfix-promote:
+          requires:
+            - freegle/build-android
+            - freegle/build-ios
+          filters:
+            branches:
+              only:
+                - production
+
+  # Manual promotion trigger
+  manual-promote-submit:
+    when: << pipeline.parameters.run_manual_promote >>
+    jobs:
+      - freegle/auto-promote-production:
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/auto-submit-ios:
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/auto-release-ios:
+          filters:
+            branches:
+              only:
+                - production
+
+  # Build iOS for TestFlight from any branch
+  testflight-branch:
+    when: << pipeline.parameters.build_testflight >>
+    jobs:
+      - freegle/build-ios-testflight

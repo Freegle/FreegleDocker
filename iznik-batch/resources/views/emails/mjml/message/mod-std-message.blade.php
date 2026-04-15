@@ -1,15 +1,6 @@
 <mjml>
-    <mj-head>
-        <mj-attributes>
-            <mj-all font-family="Arial, sans-serif" />
-            <mj-text font-size="14px" color="#333333" line-height="1.5" />
-        </mj-attributes>
-        <mj-style inline="inline">
-            a { color: #5cb85c; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-        </mj-style>
-        <mj-title>Message from {{ $groupName }} volunteers</mj-title>
-    </mj-head>
+    @include('emails.mjml.partials.head', ['preview' => 'Message from ' . $groupName . ' volunteers'])
+
     <mj-body background-color="#f4f4f4">
         @include('emails.mjml.components.header')
 
@@ -20,6 +11,14 @@
                 </mj-text>
             </mj-column>
         </mj-section>
+
+        @if(!empty($trackingPixelMjml))
+        <mj-section padding="0">
+            <mj-column>
+                {!! $trackingPixelMjml !!}
+            </mj-column>
+        </mj-section>
+        @endif
 
         @include('emails.mjml.partials.footer', ['email' => $email ?? ''])
     </mj-body>

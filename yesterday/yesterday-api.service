@@ -1,6 +1,6 @@
 [Unit]
 Description=Yesterday Backup Management API
-Documentation=https://github.com/Freegle/FreegleDocker/tree/master/yesterday
+Documentation=https://github.com/Freegle/Iznik/tree/master/yesterday
 After=network.target
 
 [Service]
