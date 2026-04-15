@@ -2918,6 +2918,58 @@ func TestPublicLocation_ResponseStructure(t *testing.T) {
 	assert.True(t, hasGroupname, "Response should have 'groupname' field")
 }
 
+func TestPublicLocation_PrefersMemberOverModerator(t *testing.T) {
+	// Bug: when a user is a Member of group A and a Moderator (caretaker) of group B
+	// added more recently, the profile should show group A's name (where they live),
+	// not group B (which they just manage).
+	prefix := uniquePrefix("publocpref")
+	db := database.DBConn
+
+	// Create a moderator user who will view the target user's profile.
+	modUserID := CreateTestUser(t, prefix+"_mod", "User")
+
+	// Create the target user with no mylocation setting and no lastlocation.
+	db.Exec("INSERT INTO users (firstname, lastname, fullname, systemrole, lastlocation, settings) "+
+		"VALUES ('Test', ?, ?, 'User', NULL, NULL)", prefix, "Test User "+prefix)
+	var targetUserID uint64
+	db.Raw("SELECT id FROM users WHERE fullname = ? ORDER BY id DESC LIMIT 1", "Test User "+prefix).Scan(&targetUserID)
+	require.Greater(t, targetUserID, uint64(0))
+
+	// Create two groups.
+	memberGroupID := CreateTestGroup(t, prefix+"_member")
+	modGroupID := CreateTestGroup(t, prefix+"_mod2")
+
+	// Set distinct full names so we can tell which is returned.
+	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Member Town Freegle", memberGroupID)
+	db.Exec("UPDATE `groups` SET namefull = ? WHERE id = ?", "Caretaker Town Freegle", modGroupID)
+
+	// Make the viewing user a moderator of both groups so they have permission.
+	CreateTestMembership(t, modUserID, memberGroupID, "Moderator")
+	CreateTestMembership(t, modUserID, modGroupID, "Moderator")
+
+	// Add target user as Member of one group (where they live).
+	CreateTestMembership(t, targetUserID, memberGroupID, "Member")
+	// Add target user as Moderator of the other (caretaker — they don't live there).
+	CreateTestMembership(t, targetUserID, modGroupID, "Moderator")
+
+	// Fetch the target user via modtools endpoint.
+	_, token := CreateTestSession(t, modUserID)
+	resp, _ := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/user/%d?modtools=true&jwt=%s", targetUserID, token), nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json2.Unmarshal(rsp(resp), &result)
+
+	// The publiclocation is nested under info.publiclocation.
+	info, ok := result["info"].(map[string]interface{})
+	require.True(t, ok, "Expected info in modtools user response")
+	pubLoc, ok := info["publiclocation"].(map[string]interface{})
+	require.True(t, ok, "Expected publiclocation in info")
+	assert.Equal(t, "Member Town Freegle", pubLoc["groupname"],
+		"Public location should prefer Member role group over Moderator role group")
+}
+
 // =============================================================================
 // Tests for GET /api/user/{id}/search
 // =============================================================================

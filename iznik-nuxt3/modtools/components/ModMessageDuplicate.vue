@@ -70,6 +70,13 @@ const isPending = computed(() => {
 
 const duplicateLink = computed(() => {
   const page = isPending.value ? 'pending' : 'approved'
-  return '/messages/' + page + '/' + groupid.value + '/' + message.value.id
+  return (
+    '/messages/' +
+    page +
+    '?groupid=' +
+    groupid.value +
+    '&msgid=' +
+    message.value.id
+  )
 })
 </script>

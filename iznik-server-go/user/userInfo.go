@@ -292,7 +292,9 @@ func GetPublicLocationForUser(userid uint64) *Publiclocation {
 		}
 	}
 
-	// Fall back to most recent group membership.
+	// Fall back to most recent group membership. Prefer Member role (where the user
+	// actually lives) over Moderator/Owner roles (which may be "caretaker" groups
+	// the user manages but doesn't live near).
 	var groupLoc struct {
 		Groupid   uint64
 		Groupname string
@@ -301,7 +303,8 @@ func GetPublicLocationForUser(userid uint64) *Publiclocation {
 		"FROM memberships m "+
 		"INNER JOIN `groups` g ON g.id = m.groupid "+
 		"WHERE m.userid = ? AND m.collection = ? "+
-		"ORDER BY m.added DESC LIMIT 1", userid, utils.COLLECTION_APPROVED).Scan(&groupLoc)
+		"ORDER BY CASE WHEN m.role = ? THEN 0 ELSE 1 END, m.added DESC LIMIT 1",
+		userid, utils.COLLECTION_APPROVED, utils.ROLE_MEMBER).Scan(&groupLoc)
 
 	if groupLoc.Groupid > 0 {
 		return &Publiclocation{
