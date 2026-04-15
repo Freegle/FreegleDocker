@@ -1191,11 +1191,16 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 
 	if modtools {
 		if privatePos.Lat != 0 || privatePos.Lng != 0 {
-			var locName string
+			var locNamePtr *string
 			db.Raw("SELECT JSON_UNQUOTE(JSON_EXTRACT(JSON_EXTRACT(settings, '$.mylocation'), '$.name')) "+
-				"FROM users WHERE id = ? AND settings IS NOT NULL", id).Scan(&locName)
+				"FROM users WHERE id = ? AND settings IS NOT NULL", id).Scan(&locNamePtr)
 
-			if locName == "" || locName == "null" {
+			locName := ""
+			if locNamePtr != nil && *locNamePtr != "null" {
+				locName = *locNamePtr
+			}
+
+			if locName == "" {
 				locName = ""
 				if u.Lastlocation != nil && *u.Lastlocation > 0 {
 					db.Raw("SELECT name FROM locations WHERE id = ?", *u.Lastlocation).Scan(&locName)
