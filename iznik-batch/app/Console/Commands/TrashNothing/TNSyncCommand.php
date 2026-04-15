@@ -4,11 +4,14 @@ namespace App\Console\Commands\TrashNothing;
 
 use App\Console\Concerns\PreventsOverlapping;
 use App\Models\Location;
+use App\Models\Rating;
 use App\Models\User;
+use App\Models\UserAboutMe;
+use App\Models\UserEmail;
+use App\Models\UserReplyTime;
 use App\Traits\GracefulShutdown;
 use App\Traits\LogsBatchJob;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -109,8 +112,7 @@ class TNSyncCommand extends Command
         }
 
         // Fallback to max rating timestamp.
-        $max = DB::table('ratings')
-            ->whereNotNull('tn_rating_id')
+        $max = Rating::whereNotNull('tn_rating_id')
             ->max('timestamp');
 
         $from = $max ? gmdate('c', strtotime($max)) : gmdate('c', strtotime('-1 day'));
@@ -177,22 +179,19 @@ class TNSyncCommand extends Command
 
                 try {
                     if ($rating['rating']) {
-                        DB::table('ratings')->upsert(
-                            [
-                                'ratee' => $rating['ratee_fd_user_id'],
-                                'rating' => $rating['rating'],
-                                'timestamp' => $rating['date'],
-                                'visible' => 1,
-                                'tn_rating_id' => $rating['rating_id'],
-                            ],
-                            ['tn_rating_id'],
-                            ['rating', 'timestamp']
-                        );
+                        $ratingModel = Rating::firstOrNew(['tn_rating_id' => $rating['rating_id']]);
+                        if (!$ratingModel->exists) {
+                            $ratingModel->ratee = $rating['ratee_fd_user_id'];
+                            $ratingModel->visible = 1;
+                        }
+                        $ratingModel->rating = $rating['rating'];
+                        $ratingModel->timestamp = $rating['date'];
+                        $ratingModel->save();
                     } else {
-                        DB::table('ratings')
-                            ->where('ratee', $rating['ratee_fd_user_id'])
+                        Rating::where('ratee', $rating['ratee_fd_user_id'])
                             ->where('tn_rating_id', $rating['rating_id'])
-                            ->delete();
+                            ->first()
+                            ?->delete();
                     }
                 } catch (\Exception $e) {
                     Log::error('TN sync: ratings sync failed', [
@@ -261,28 +260,18 @@ class TNSyncCommand extends Command
                     }
 
                     if (!empty($change['reply_time'])) {
-                        DB::table('users_replytime')->upsert(
-                            [
-                                'userid' => $change['fd_user_id'],
-                                'replytime' => $change['reply_time'],
-                                'timestamp' => $change['date'],
-                            ],
-                            ['userid'],
-                            ['replytime', 'timestamp']
-                        );
+                        $replyTime = UserReplyTime::firstOrNew(['userid' => $change['fd_user_id']]);
+                        $replyTime->replytime = $change['reply_time'];
+                        $replyTime->timestamp = $change['date'];
+                        $replyTime->save();
                     }
 
                     if (!empty($change['about_me'])) {
                         try {
-                            DB::table('users_aboutme')->upsert(
-                                [
-                                    'userid' => $change['fd_user_id'],
-                                    'timestamp' => $change['date'],
-                                    'text' => $change['about_me'],
-                                ],
-                                ['userid'],
-                                ['timestamp', 'text']
-                            );
+                            $aboutMe = UserAboutMe::firstOrNew(['userid' => $change['fd_user_id']]);
+                            $aboutMe->timestamp = $change['date'];
+                            $aboutMe->text = $change['about_me'];
+                            $aboutMe->save();
                         } catch (\Exception $e) {
                             if (function_exists('\Sentry\captureException')) {
                                 \Sentry\captureException($e);
@@ -296,7 +285,7 @@ class TNSyncCommand extends Command
 
                         if ($oldname != $change['username']) {
                             Log::info("Name change for {$change['fd_user_id']} {$oldname} => {$change['username']}");
-                            $user->update(['fullname' => $change['username']]);
+                            $user->fullname = $change['username'];
 
                             $emails = $user->emails()->pluck('email');
 
@@ -321,10 +310,12 @@ class TNSyncCommand extends Command
 
                             if ($loc) {
                                 Log::info("FD #{$change['fd_user_id']} TN lat/lng {$lat},{$lng} has changed  => {$loc['id']} {$loc['name']}");
-                                $user->update(['lastlocation' => $loc['id']]);
+                                $user->lastlocation = $loc['id'];
                             }
                         }
                     }
+
+                    $user->save();
                 } catch (\Exception $e) {
                     Log::error('TN sync: user changes sync failed', [
                         'error' => $e->getMessage(),
@@ -342,13 +333,11 @@ class TNSyncCommand extends Command
 
     private function mergeDuplicateTNUsers(): int
     {
-        $duplicates = DB::table('users_emails')
-            ->selectRaw("COUNT(DISTINCT(userid)) AS count, REGEXP_REPLACE(email, '(.*)-g[0-9]+@user\\.trashnothing\\.com', '$1') AS username")
+        $duplicates = UserEmail::selectRaw("COUNT(DISTINCT(userid)) AS count, REGEXP_REPLACE(email, '(.*)-g[0-9]+@user\\.trashnothing\\.com', '$1') AS username")
             ->where('email', 'LIKE', '%@user.trashnothing.com')
             ->groupBy('username')
             ->having('count', '>', 1)
-            ->get()
-            ->toArray();
+            ->get();
 
         if (empty($duplicates)) {
             return 0;
@@ -360,8 +349,7 @@ class TNSyncCommand extends Command
         foreach ($duplicates as $dup) {
             Log::info("Look for dups for {$dup->username}");
 
-            $userIds = DB::table('users_emails')
-                ->selectRaw("DISTINCT(userid) as userid")
+            $userIds = UserEmail::selectRaw("DISTINCT(userid) as userid")
                 ->whereRaw("REGEXP_REPLACE(email, '(.*)-g[0-9]+@user\\.trashnothing\\.com', '$1') = ?", [$dup->username])
                 ->where('email', 'LIKE', '%@user.trashnothing.com')
                 ->pluck('userid')

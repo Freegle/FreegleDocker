@@ -7,8 +7,103 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\DB;
 
+/**
+ * @property int $id Unique iD
+ * @property \Illuminate\Support\Carbon $arrival When this message arrived at our server
+ * @property \Illuminate\Support\Carbon|null $date When this message was created, e.g. Date header
+ * @property \Illuminate\Support\Carbon|null $deleted When this message was deleted
+ * @property int|null $heldby If this message is held by a moderator
+ * @property string|null $source Source of incoming message
+ * @property string|null $sourceheader Any source header, e.g. X-Freegle-Source
+ * @property string|null $fromip IP we think this message came from
+ * @property string|null $fromcountry fromip geocoded to country
+ * @property string $message The unparsed message
+ * @property int|null $fromuser
+ * @property string|null $envelopefrom
+ * @property string|null $fromname
+ * @property string|null $fromaddr
+ * @property string|null $envelopeto
+ * @property string|null $replyto
+ * @property string|null $subject
+ * @property string|null $suggestedsubject
+ * @property string|null $type For reuse groups, the message categorisation
+ * @property string|null $messageid
+ * @property string|null $tnpostid If this message came from Trash Nothing, the unique post ID
+ * @property string|null $textbody
+ * @property string|null $htmlbody
+ * @property int $retrycount We might fail to route, and later retry
+ * @property string|null $retrylastfailure
+ * @property string|null $spamtype
+ * @property string|null $spamreason Why we think this message may be spam
+ * @property numeric|null $lat
+ * @property numeric|null $lng
+ * @property int|null $locationid
+ * @property int|null $editedby
+ * @property string|null $editedat
+ * @property int $availableinitially
+ * @property bool $availablenow
+ * @property string|null $lastroute
+ * @property int $deliverypossible
+ * @property \Illuminate\Support\Carbon|null $deadline
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\MessageAttachment> $attachments
+ * @property-read int|null $attachments_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ChatMessage> $chatMessages
+ * @property-read int|null $chat_messages_count
+ * @property-read \App\Models\User|null $fromUser
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Group> $groups
+ * @property-read int|null $groups_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\MessageOutcome> $outcomes
+ * @property-read int|null $outcomes_count
+ * @method static Builder<static>|Message approved()
+ * @method static Builder<static>|Message deadlineReached()
+ * @method static Builder<static>|Message newModelQuery()
+ * @method static Builder<static>|Message newQuery()
+ * @method static Builder<static>|Message notDeleted()
+ * @method static Builder<static>|Message offers()
+ * @method static Builder<static>|Message query()
+ * @method static Builder<static>|Message recent(int $days = 31)
+ * @method static Builder<static>|Message wanted()
+ * @method static Builder<static>|Message whereArrival($value)
+ * @method static Builder<static>|Message whereAvailableinitially($value)
+ * @method static Builder<static>|Message whereAvailablenow($value)
+ * @method static Builder<static>|Message whereDate($value)
+ * @method static Builder<static>|Message whereDeadline($value)
+ * @method static Builder<static>|Message whereDeleted($value)
+ * @method static Builder<static>|Message whereDeliverypossible($value)
+ * @method static Builder<static>|Message whereEditedat($value)
+ * @method static Builder<static>|Message whereEditedby($value)
+ * @method static Builder<static>|Message whereEnvelopefrom($value)
+ * @method static Builder<static>|Message whereEnvelopeto($value)
+ * @method static Builder<static>|Message whereFromaddr($value)
+ * @method static Builder<static>|Message whereFromcountry($value)
+ * @method static Builder<static>|Message whereFromip($value)
+ * @method static Builder<static>|Message whereFromname($value)
+ * @method static Builder<static>|Message whereFromuser($value)
+ * @method static Builder<static>|Message whereHeldby($value)
+ * @method static Builder<static>|Message whereHtmlbody($value)
+ * @method static Builder<static>|Message whereId($value)
+ * @method static Builder<static>|Message whereLastroute($value)
+ * @method static Builder<static>|Message whereLat($value)
+ * @method static Builder<static>|Message whereLng($value)
+ * @method static Builder<static>|Message whereLocationid($value)
+ * @method static Builder<static>|Message whereMessage($value)
+ * @method static Builder<static>|Message whereMessageid($value)
+ * @method static Builder<static>|Message whereReplyto($value)
+ * @method static Builder<static>|Message whereRetrycount($value)
+ * @method static Builder<static>|Message whereRetrylastfailure($value)
+ * @method static Builder<static>|Message whereSource($value)
+ * @method static Builder<static>|Message whereSourceheader($value)
+ * @method static Builder<static>|Message whereSpamreason($value)
+ * @method static Builder<static>|Message whereSpamtype($value)
+ * @method static Builder<static>|Message whereSubject($value)
+ * @method static Builder<static>|Message whereSuggestedsubject($value)
+ * @method static Builder<static>|Message whereTextbody($value)
+ * @method static Builder<static>|Message whereTnpostid($value)
+ * @method static Builder<static>|Message whereType($value)
+ * @method static Builder<static>|Message withLocation()
+ * @mixin \Eloquent
+ */
 class Message extends Model
 {
     protected $table = 'messages';
@@ -39,22 +134,80 @@ class Message extends Model
      */
     public const TYPE_KEYWORDS = [
         self::TYPE_OFFER => [
-            'ofer', 'offr', 'offrer', 'ffered', 'offfered', 'offrered', 'offered', 'offeer', 'cynnig', 'offred',
-            'offer', 'offering', 'reoffer', 're offer', 're-offer', 'reoffered', 're offered', 're-offered',
-            'offfer', 'offeed', 'available',
+            'ofer',
+            'offr',
+            'offrer',
+            'ffered',
+            'offfered',
+            'offrered',
+            'offered',
+            'offeer',
+            'cynnig',
+            'offred',
+            'offer',
+            'offering',
+            'reoffer',
+            're offer',
+            're-offer',
+            'reoffered',
+            're offered',
+            're-offered',
+            'offfer',
+            'offeed',
+            'available',
         ],
         self::TYPE_TAKEN => [
-            'collected', 'take', 'stc', 'gone', 'withdrawn', 'ta ke n', 'promised',
-            'cymeryd', 'cymerwyd', 'takln', 'taken', 'cymryd',
+            'collected',
+            'take',
+            'stc',
+            'gone',
+            'withdrawn',
+            'ta ke n',
+            'promised',
+            'cymeryd',
+            'cymerwyd',
+            'takln',
+            'taken',
+            'cymryd',
         ],
         self::TYPE_WANTED => [
-            'wnted', 'requested', 'rquested', 'request', 'would like', 'want',
-            'anted', 'wated', 'need', 'needed', 'wamted', 'require', 'required', 'watnted', 'wented',
-            'sought', 'seeking', 'eisiau', 'wedi eisiau', 'eisiau', 'wnated', 'wanted', 'looking', 'waned',
+            'wnted',
+            'requested',
+            'rquested',
+            'request',
+            'would like',
+            'want',
+            'anted',
+            'wated',
+            'need',
+            'needed',
+            'wamted',
+            'require',
+            'required',
+            'watnted',
+            'wented',
+            'sought',
+            'seeking',
+            'eisiau',
+            'wedi eisiau',
+            'eisiau',
+            'wnated',
+            'wanted',
+            'looking',
+            'waned',
         ],
         self::TYPE_RECEIVED => [
-            'recieved', 'reiceved', 'receved', 'rcd', 'rec\'d', 'recevied',
-            'receive', 'derbynewid', 'derbyniwyd', 'received', 'recivered',
+            'recieved',
+            'reiceved',
+            'receved',
+            'rcd',
+            'rec\'d',
+            'recevied',
+            'receive',
+            'derbynewid',
+            'derbyniwyd',
+            'received',
+            'recivered',
         ],
         self::TYPE_ADMIN => ['admin', 'sn'],
     ];
@@ -243,17 +396,19 @@ class Message extends Model
         if (strlen($comment)) {
             $dull = FALSE;
 
-            foreach ([
-                'Sorry, this is no longer available.',
-                'Thanks, this has now been taken.',
-                "Thanks, I'm no longer looking for this.",
-                'Sorry, this has now been taken.',
-                'Thanks for the interest, but this has now been taken.',
-                'Thanks, these have now been taken.',
-                'Thanks, this has now been received.',
-                'Sorry, this is no longer available',
-                'Withdrawn on user unsubscribe',
-            ] as $bland) {
+            foreach (
+                [
+                    'Sorry, this is no longer available.',
+                    'Thanks, this has now been taken.',
+                    "Thanks, I'm no longer looking for this.",
+                    'Sorry, this has now been taken.',
+                    'Thanks for the interest, but this has now been taken.',
+                    'Thanks, these have now been taken.',
+                    'Thanks, this has now been received.',
+                    'Sorry, this is no longer available',
+                    'Withdrawn on user unsubscribe',
+                ] as $bland
+            ) {
                 if (strcmp($comment, $bland) === 0) {
                     $dull = TRUE;
                 }
@@ -282,23 +437,23 @@ class Message extends Model
     {
         $intcomment = $this->interestingComment($comment);
 
-        DB::table('messages_outcomes_intended')->where('msgid', $this->id)->delete();
+        MessageOutcomeIntended::where('msgid', $this->id)->get()->each->delete();
 
-        DB::table('messages_outcomes')->insert([
-            'msgid' => $this->id,
-            'outcome' => self::OUTCOME_WITHDRAWN,
-            'happiness' => $happiness,
-            'comments' => $intcomment,
-        ]);
+        $messageOutcome = new MessageOutcome();
+        $messageOutcome->msgid = $this->id;
+        $messageOutcome->outcome = self::OUTCOME_WITHDRAWN;
+        $messageOutcome->happiness = $happiness;
+        $messageOutcome->comments = $intcomment;
+        $messageOutcome->save();
 
-        DB::table('logs')->insert([
-            'timestamp' => now(),
-            'type' => 'Message',
-            'subtype' => 'Outcome',
-            'msgid' => $this->id,
-            'user' => $this->fromuser,
-            'byuser' => $byUserId,
-            'text' => $intcomment ? "Withdrawn: $comment" : 'Withdrawn',
-        ]);
+        $log = new Log();
+        $log->timestamp = now();
+        $log->type = 'Message';
+        $log->subtype = 'Outcome';
+        $log->msgid = $this->id;
+        $log->user = $this->fromuser;
+        $log->byuser = $byUserId;
+        $log->text = $intcomment ? "Withdrawn: $comment" : 'Withdrawn';
+        $log->save();
     }
 }

@@ -1,6 +1,6 @@
-<?php return array (
-  'providers' => 
-  array (
+<?php return array(
+  'providers' =>
+  array(
     0 => 'Illuminate\\Auth\\AuthServiceProvider',
     1 => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
     2 => 'Illuminate\\Bus\\BusServiceProvider',
@@ -38,8 +38,8 @@
     34 => 'App\\Providers\\AppServiceProvider',
     35 => 'OwenIt\\Auditing\\AuditingServiceProvider',
   ),
-  'eager' => 
-  array (
+  'eager' =>
+  array(
     0 => 'Illuminate\\Auth\\AuthServiceProvider',
     1 => 'Illuminate\\Cookie\\CookieServiceProvider',
     2 => 'Illuminate\\Database\\DatabaseServiceProvider',
@@ -62,8 +62,8 @@
     19 => 'App\\Providers\\AppServiceProvider',
     20 => 'OwenIt\\Auditing\\AuditingServiceProvider',
   ),
-  'deferred' => 
-  array (
+  'deferred' =>
+  array(
     'Illuminate\\Broadcasting\\BroadcastManager' => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
     'Illuminate\\Contracts\\Broadcasting\\Factory' => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
     'Illuminate\\Contracts\\Broadcasting\\Broadcaster' => 'Illuminate\\Broadcasting\\BroadcastServiceProvider',
@@ -218,56 +218,47 @@
     'validator' => 'Illuminate\\Validation\\ValidationServiceProvider',
     'validation.presence' => 'Illuminate\\Validation\\ValidationServiceProvider',
     'Illuminate\\Contracts\\Validation\\UncompromisedVerifier' => 'Illuminate\\Validation\\ValidationServiceProvider',
+    'Barryvdh\\LaravelIdeHelper\\Console\\GeneratorCommand' => 'Barryvdh\\LaravelIdeHelper\\IdeHelperServiceProvider',
+    'Barryvdh\\LaravelIdeHelper\\Console\\ModelsCommand' => 'Barryvdh\\LaravelIdeHelper\\IdeHelperServiceProvider',
+    'Barryvdh\\LaravelIdeHelper\\Console\\MetaCommand' => 'Barryvdh\\LaravelIdeHelper\\IdeHelperServiceProvider',
+    'Barryvdh\\LaravelIdeHelper\\Console\\EloquentCommand' => 'Barryvdh\\LaravelIdeHelper\\IdeHelperServiceProvider',
     'Laravel\\Sail\\Console\\InstallCommand' => 'Laravel\\Sail\\SailServiceProvider',
     'Laravel\\Sail\\Console\\PublishCommand' => 'Laravel\\Sail\\SailServiceProvider',
     'command.tinker' => 'Laravel\\Tinker\\TinkerServiceProvider',
   ),
-  'when' => 
-  array (
-    'Illuminate\\Broadcasting\\BroadcastServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Bus\\BusServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Cache\\CacheServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Concurrency\\ConcurrencyServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Hashing\\HashServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Mail\\MailServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Auth\\Passwords\\PasswordResetServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Pipeline\\PipelineServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Queue\\QueueServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Redis\\RedisServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Translation\\TranslationServiceProvider' => 
-    array (
-    ),
-    'Illuminate\\Validation\\ValidationServiceProvider' => 
-    array (
-    ),
-    'Laravel\\Sail\\SailServiceProvider' => 
-    array (
-    ),
-    'Laravel\\Tinker\\TinkerServiceProvider' => 
-    array (
-    ),
+  'when' =>
+  array(
+    'Illuminate\\Broadcasting\\BroadcastServiceProvider' =>
+    array(),
+    'Illuminate\\Bus\\BusServiceProvider' =>
+    array(),
+    'Illuminate\\Cache\\CacheServiceProvider' =>
+    array(),
+    'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider' =>
+    array(),
+    'Illuminate\\Concurrency\\ConcurrencyServiceProvider' =>
+    array(),
+    'Illuminate\\Hashing\\HashServiceProvider' =>
+    array(),
+    'Illuminate\\Mail\\MailServiceProvider' =>
+    array(),
+    'Illuminate\\Auth\\Passwords\\PasswordResetServiceProvider' =>
+    array(),
+    'Illuminate\\Pipeline\\PipelineServiceProvider' =>
+    array(),
+    'Illuminate\\Queue\\QueueServiceProvider' =>
+    array(),
+    'Illuminate\\Redis\\RedisServiceProvider' =>
+    array(),
+    'Illuminate\\Translation\\TranslationServiceProvider' =>
+    array(),
+    'Illuminate\\Validation\\ValidationServiceProvider' =>
+    array(),
+    'Barryvdh\\LaravelIdeHelper\\IdeHelperServiceProvider' =>
+    array(),
+    'Laravel\\Sail\\SailServiceProvider' =>
+    array(),
+    'Laravel\\Tinker\\TinkerServiceProvider' =>
+    array(),
   ),
 );

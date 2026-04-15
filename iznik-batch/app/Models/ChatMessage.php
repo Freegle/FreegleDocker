@@ -8,6 +8,75 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @property int $id
+ * @property int $chatid
+ * @property int $userid From
+ * @property string $type
+ * @property string|null $reportreason
+ * @property int|null $refmsgid
+ * @property int|null $refchatid
+ * @property int|null $imageid
+ * @property \Illuminate\Support\Carbon $date
+ * @property string|null $message
+ * @property bool $platform Whether this was created on the platform vs email
+ * @property bool $seenbyall
+ * @property bool $mailedtoall
+ * @property bool $reviewrequired Whether a volunteer should review before it's passed on
+ * @property int|null $reviewedby User id of volunteer who reviewed it
+ * @property bool $reviewrejected
+ * @property int|null $spamscore SpamAssassin score for mail replies
+ * @property string|null $facebookid
+ * @property int|null $scheduleid
+ * @property bool|null $replyexpected
+ * @property bool $replyreceived
+ * @property bool $processingrequired
+ * @property bool $processingsuccessful
+ * @property bool $confirmrequired
+ * @property bool $deleted
+ * @property-read \App\Models\ChatRoom $chatRoom
+ * @property-read \App\Models\ChatImage|null $image
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ChatImage> $images
+ * @property-read int|null $images_count
+ * @property-read \App\Models\Message|null $refMessage
+ * @property-read \App\Models\User|null $reviewer
+ * @property-read \App\Models\User $user
+ * @method static Builder<static>|ChatMessage expectingReply()
+ * @method static Builder<static>|ChatMessage newModelQuery()
+ * @method static Builder<static>|ChatMessage newQuery()
+ * @method static Builder<static>|ChatMessage query()
+ * @method static Builder<static>|ChatMessage recent(int $days = 31)
+ * @method static Builder<static>|ChatMessage requiringReview()
+ * @method static Builder<static>|ChatMessage unmailed()
+ * @method static Builder<static>|ChatMessage unseen()
+ * @method static Builder<static>|ChatMessage visible()
+ * @method static Builder<static>|ChatMessage whereChatid($value)
+ * @method static Builder<static>|ChatMessage whereConfirmrequired($value)
+ * @method static Builder<static>|ChatMessage whereDate($value)
+ * @method static Builder<static>|ChatMessage whereDeleted($value)
+ * @method static Builder<static>|ChatMessage whereFacebookid($value)
+ * @method static Builder<static>|ChatMessage whereId($value)
+ * @method static Builder<static>|ChatMessage whereImageid($value)
+ * @method static Builder<static>|ChatMessage whereMailedtoall($value)
+ * @method static Builder<static>|ChatMessage whereMessage($value)
+ * @method static Builder<static>|ChatMessage wherePlatform($value)
+ * @method static Builder<static>|ChatMessage whereProcessingrequired($value)
+ * @method static Builder<static>|ChatMessage whereProcessingsuccessful($value)
+ * @method static Builder<static>|ChatMessage whereRefchatid($value)
+ * @method static Builder<static>|ChatMessage whereRefmsgid($value)
+ * @method static Builder<static>|ChatMessage whereReplyexpected($value)
+ * @method static Builder<static>|ChatMessage whereReplyreceived($value)
+ * @method static Builder<static>|ChatMessage whereReportreason($value)
+ * @method static Builder<static>|ChatMessage whereReviewedby($value)
+ * @method static Builder<static>|ChatMessage whereReviewrejected($value)
+ * @method static Builder<static>|ChatMessage whereReviewrequired($value)
+ * @method static Builder<static>|ChatMessage whereScheduleid($value)
+ * @method static Builder<static>|ChatMessage whereSeenbyall($value)
+ * @method static Builder<static>|ChatMessage whereSpamscore($value)
+ * @method static Builder<static>|ChatMessage whereType($value)
+ * @method static Builder<static>|ChatMessage whereUserid($value)
+ * @mixin \Eloquent
+ */
 class ChatMessage extends Model
 {
     protected $table = 'chat_messages';
