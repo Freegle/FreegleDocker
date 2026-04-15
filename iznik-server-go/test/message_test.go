@@ -6575,3 +6575,160 @@ func TestListMessagesMultiGroupNoDuplicates(t *testing.T) {
 	}
 	assert.Equal(t, 1, count, "Multi-group message should appear exactly once in list")
 }
+
+func TestPostMessageSpamLastGroupSoftDeletesMessage(t *testing.T) {
+	prefix := uniquePrefix("spam_pg_last")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+
+	// Spam on the only group.
+	body := map[string]interface{}{
+		"id":      msgID,
+		"action":  "Spam",
+		"groupid": groupA,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?jwt=%s", modToken)
+	req := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// Group A's row should be soft-deleted.
+	var deletedA int
+	db.Raw("SELECT deleted FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupA).Scan(&deletedA)
+	assert.Equal(t, 1, deletedA)
+
+	// Message should be globally soft-deleted (was the last group).
+	var isDeleted int
+	db.Raw("SELECT CASE WHEN deleted IS NOT NULL AND deleted > '2000-01-01' THEN 1 ELSE 0 END FROM messages WHERE id = ?", msgID).Scan(&isDeleted)
+	assert.Equal(t, 1, isDeleted, "Message should be soft-deleted when spammed from last group")
+}
+
+func TestPostMessageApprovePerGroupSpamtype(t *testing.T) {
+	prefix := uniquePrefix("appr_pg_spam")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	groupB := CreateTestGroup(t, prefix+"_b")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, posterID, groupB, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	CreateTestMembership(t, modID, groupB, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	// Create a message on both groups flagged as spam via per-group spamtype.
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Pending', 0)", msgID, groupB)
+	db.Exec("UPDATE messages_groups SET spamtype = 'Whitelisted' WHERE msgid = ? AND groupid = ?", msgID, groupA)
+
+	// Approve on group A — should check per-group spamtype and record ham.
+	body := map[string]interface{}{
+		"id":      msgID,
+		"action":  "Approve",
+		"groupid": groupA,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?jwt=%s", modToken)
+	req := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// Should have created a messages_spamham record for Ham.
+	var spamham string
+	db.Raw("SELECT spamham FROM messages_spamham WHERE msgid = ?", msgID).Scan(&spamham)
+	assert.Equal(t, "Ham", spamham, "Approving a per-group spam-flagged message should record Ham")
+}
+
+func TestListMessagesMTMultiGroupNoDuplicates(t *testing.T) {
+	prefix := uniquePrefix("listmt_dedup")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	groupB := CreateTestGroup(t, prefix+"_b")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, posterID, groupB, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	CreateTestMembership(t, modID, groupB, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	// Create a message on both groups as Pending.
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Pending', 0)", msgID, groupB)
+
+	// List Pending messages via ModTools endpoint (no groupid filter).
+	url := fmt.Sprintf("/api/modtools/messages?collection=Pending&jwt=%s", modToken)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	msgs := result["messages"].([]interface{})
+
+	// Count how many times our msgID appears — should be exactly 1.
+	count := 0
+	for _, m := range msgs {
+		mm := m.(map[string]interface{})
+		if uint64(mm["id"].(float64)) == msgID {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "Multi-group message should appear exactly once in MT list")
+}
+
+func TestListMessagesGroupsIncludesHeldby(t *testing.T) {
+	prefix := uniquePrefix("list_heldby")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+	db.Exec("UPDATE messages_groups SET heldby = ? WHERE msgid = ? AND groupid = ?", modID, msgID, groupA)
+
+	// List messages and check that groups include heldby.
+	url := fmt.Sprintf("/api/messages?collection=Pending&groupid=%d&jwt=%s", groupA, modToken)
+	req := httptest.NewRequest("GET", url, nil)
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	msgs := result["messages"].([]interface{})
+
+	found := false
+	for _, m := range msgs {
+		mm := m.(map[string]interface{})
+		if uint64(mm["id"].(float64)) == msgID {
+			found = true
+			groups := mm["groups"].([]interface{})
+			assert.Greater(t, len(groups), 0)
+			g := groups[0].(map[string]interface{})
+			assert.NotNil(t, g["heldby"], "groups entry should include heldby")
+			assert.Equal(t, float64(modID), g["heldby"])
+		}
+	}
+	assert.True(t, found, "Message should appear in list")
+}
