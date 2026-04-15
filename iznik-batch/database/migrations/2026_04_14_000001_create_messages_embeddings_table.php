@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('messages_embeddings')) {
+            return;
+        }
+
         Schema::create('messages_embeddings', function (Blueprint $table) {
             $table->unsignedBigInteger('msgid')->primary();
             $table->binary('embedding'); // 256 float32 = 1024 bytes

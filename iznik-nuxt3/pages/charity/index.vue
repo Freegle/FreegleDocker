@@ -36,10 +36,10 @@
             Sign up as a <strong>Charity Partner</strong> and stand out to
             thousands of local freeglers.
           </p>
-          <a href="#signup" class="hero-cta-btn">
+          <button class="hero-cta-btn" @click="scrollToSignup">
             <v-icon icon="arrow-down" class="me-2" />
             Register your organisation
-          </a>
+          </button>
           <p class="hero-giveaway-notice">
             You can also
             <nuxt-link no-prefetch to="/give">
@@ -302,14 +302,6 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label"> Organisation logo </label>
-              <div class="logo-upload">
-                <v-icon icon="camera" class="logo-upload-icon" />
-                <span>Upload your logo (optional)</span>
-              </div>
-            </div>
-
-            <div class="form-group">
               <label class="form-label" for="description">
                 About your organisation
               </label>
@@ -407,6 +399,10 @@ const submitError = ref(null)
 const canSubmit = computed(() => {
   return form.orgName.trim() && form.contactEmail.trim() && form.orgType
 })
+
+function scrollToSignup() {
+  document.getElementById('signup')?.scrollIntoView({ behavior: 'smooth' })
+}
 
 async function submitForm() {
   submitting.value = true
@@ -524,15 +520,15 @@ $charity-blue-light: #eff6ff;
   color: white;
   font-weight: 600;
   font-size: 1rem;
+  border: none;
   border-radius: 8px;
-  text-decoration: none;
+  cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
 
   &:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
     color: white;
-    text-decoration: none;
   }
 }
 
@@ -773,24 +769,6 @@ $charity-blue-light: #eff6ff;
   color: var(--color-gray-600);
   margin-bottom: 0.5rem;
   line-height: 1.4;
-}
-
-.logo-upload {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1.5rem;
-  border: 2px dashed $gray-300;
-  border-radius: 8px;
-  color: var(--color-gray-600);
-  font-size: 0.9rem;
-  cursor: not-allowed;
-  opacity: 0.7;
-
-  .logo-upload-icon {
-    font-size: 1.5rem;
-    color: $gray-400;
-  }
 }
 
 .form-actions {
