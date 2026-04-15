@@ -6422,6 +6422,120 @@ func TestPostMessageHoldPerGroupLogsCorrectGroup(t *testing.T) {
 	assert.Equal(t, groupB, logGroupid, "Log should record the target group, not the primary group")
 }
 
+func TestPostMessageApproveAllGroupsReleasesAllHolds(t *testing.T) {
+	prefix := uniquePrefix("apr_all_hld")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	groupB := CreateTestGroup(t, prefix+"_b")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, posterID, groupB, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	CreateTestMembership(t, modID, groupB, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	// Create message on both groups, held on both.
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Pending', 0)", msgID, groupB)
+	db.Exec("UPDATE messages_groups SET heldby = ? WHERE msgid = ?", modID, msgID)
+	db.Exec("UPDATE messages SET heldby = ? WHERE id = ?", modID, msgID)
+
+	// Approve WITHOUT specifying a groupid (global approve).
+	body := map[string]interface{}{
+		"id":     msgID,
+		"action": "Approve",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?jwt=%s", modToken)
+	req := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// Both groups should have heldby cleared.
+	var heldbyA *uint64
+	db.Raw("SELECT heldby FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupA).Scan(&heldbyA)
+	assert.Nil(t, heldbyA, "Group A hold should be released on global approve")
+
+	var heldbyB *uint64
+	db.Raw("SELECT heldby FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupB).Scan(&heldbyB)
+	assert.Nil(t, heldbyB, "Group B hold should be released on global approve")
+
+	// messages.heldby should also be cleared.
+	var msgHeldby *uint64
+	db.Raw("SELECT heldby FROM messages WHERE id = ?", msgID).Scan(&msgHeldby)
+	assert.Nil(t, msgHeldby, "messages.heldby should be cleared")
+}
+
+func TestPostMessageDeleteAfterSpamExcludesSoftDeleted(t *testing.T) {
+	prefix := uniquePrefix("del_after_spam")
+	db := database.DBConn
+
+	groupA := CreateTestGroup(t, prefix+"_a")
+	groupB := CreateTestGroup(t, prefix+"_b")
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, posterID, groupA, "Member")
+	CreateTestMembership(t, posterID, groupB, "Member")
+	CreateTestMembership(t, modID, groupA, "Moderator")
+	CreateTestMembership(t, modID, groupB, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	msgID := createPendingMessage(t, posterID, groupA, prefix)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Approved', 0)", msgID, groupB)
+
+	// Spam on group B (soft-deletes its row).
+	body := map[string]interface{}{
+		"id":      msgID,
+		"action":  "Spam",
+		"groupid": groupB,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	url := fmt.Sprintf("/api/message?jwt=%s", modToken)
+	req := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// Verify group B is soft-deleted.
+	var deletedB int
+	db.Raw("SELECT deleted FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupB).Scan(&deletedB)
+	assert.Equal(t, 1, deletedB)
+
+	// Message should NOT be globally deleted yet (group A still active).
+	var isDeleted1 int
+	db.Raw("SELECT CASE WHEN deleted IS NOT NULL AND deleted > '2000-01-01' THEN 1 ELSE 0 END FROM messages WHERE id = ?", msgID).Scan(&isDeleted1)
+	assert.Equal(t, 0, isDeleted1)
+
+	// Now delete from group A (hard-deletes its row).
+	body2 := map[string]interface{}{
+		"id":      msgID,
+		"action":  "Delete",
+		"groupid": groupA,
+	}
+	bodyBytes2, _ := json.Marshal(body2)
+	req2 := httptest.NewRequest("POST", url, bytes.NewBuffer(bodyBytes2))
+	req2.Header.Set("Content-Type", "application/json")
+	resp2, err2 := getApp().Test(req2)
+	assert.NoError(t, err2)
+	assert.Equal(t, 200, resp2.StatusCode)
+
+	// Group A row should be gone.
+	var countA int64
+	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupA).Scan(&countA)
+	assert.Equal(t, int64(0), countA)
+
+	// Message SHOULD be globally soft-deleted now — group B is only soft-deleted (deleted=1),
+	// so no non-deleted groups remain.
+	var isDeleted2 int
+	db.Raw("SELECT CASE WHEN deleted IS NOT NULL AND deleted > '2000-01-01' THEN 1 ELSE 0 END FROM messages WHERE id = ?", msgID).Scan(&isDeleted2)
+	assert.Equal(t, 1, isDeleted2, "Message should be soft-deleted when only soft-deleted groups remain")
+}
+
 func TestListMessagesMultiGroupNoDuplicates(t *testing.T) {
 	prefix := uniquePrefix("list_dedup")
 	db := database.DBConn

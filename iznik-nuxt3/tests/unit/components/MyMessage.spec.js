@@ -1052,4 +1052,39 @@ describe('MyMessage', () => {
       expect(mockRouterPush).not.toHaveBeenCalled()
     })
   })
+
+  describe('multi-group messages', () => {
+    it('fetches all groups and computes messageGroups', async () => {
+      mockData.message.groups = [
+        { groupid: 1, collection: 'Approved' },
+        { groupid: 2, collection: 'Approved' },
+      ]
+      mockGroupStore.get.mockImplementation((id) => ({
+        id,
+        nameshort: `group-${id}`,
+        namedisplay: `Group ${id}`,
+      }))
+      const wrapper = await createWrapper()
+      expect(mockGroupStore.fetch).toHaveBeenCalledWith(1)
+      expect(mockGroupStore.fetch).toHaveBeenCalledWith(2)
+      expect(wrapper.vm.messageGroups).toHaveLength(2)
+      expect(wrapper.vm.messageGroups[0].namedisplay).toBe('Group 1')
+      expect(wrapper.vm.messageGroups[1].namedisplay).toBe('Group 2')
+    })
+
+    it('shows all group names in the template', async () => {
+      mockData.message.groups = [
+        { groupid: 1, collection: 'Approved' },
+        { groupid: 2, collection: 'Approved' },
+      ]
+      mockGroupStore.get.mockImplementation((id) => ({
+        id,
+        nameshort: `group-${id}`,
+        namedisplay: `Group ${id}`,
+      }))
+      const wrapper = await createWrapper()
+      expect(wrapper.text()).toContain('Group 1')
+      expect(wrapper.text()).toContain('Group 2')
+    })
+  })
 })
