@@ -118,7 +118,6 @@ func ensureIsochroneExists(locationid uint64, transport string, minutes int) uin
 
 		if existingPointID > 0 {
 			// Update the existing broken POINT isochrone with the real polygon.
-			log.Printf("Updating POINT isochrone %d with real Mapbox polygon for location %d", existingPointID, locationid)
 			db.Exec("UPDATE isochrones SET polygon = "+
 				"CASE WHEN ST_SIMPLIFY(ST_GeomFromText(?, ?), 0.01) IS NULL THEN ST_GeomFromText(?, ?) ELSE ST_SIMPLIFY(ST_GeomFromText(?, ?), 0.01) END "+
 				"WHERE id = ?",

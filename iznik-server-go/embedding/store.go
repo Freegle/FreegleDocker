@@ -112,7 +112,6 @@ func (s *Store) Load() error {
 	s.entries = entries
 	s.mu.Unlock()
 
-	fmt.Printf("Loaded %d embeddings into memory\n", len(entries))
 	return nil
 }
 
