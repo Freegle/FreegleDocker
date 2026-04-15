@@ -301,7 +301,8 @@ func GetPublicLocationForUser(userid uint64) *Publiclocation {
 		"FROM memberships m "+
 		"INNER JOIN `groups` g ON g.id = m.groupid "+
 		"WHERE m.userid = ? AND m.collection = ? "+
-		"ORDER BY m.added DESC LIMIT 1", userid, utils.COLLECTION_APPROVED).Scan(&groupLoc)
+		"ORDER BY m.added DESC LIMIT 1",
+		userid, utils.COLLECTION_APPROVED).Scan(&groupLoc)
 
 	if groupLoc.Groupid > 0 {
 		return &Publiclocation{

@@ -681,12 +681,13 @@ const test = base.test.extend({
             )
           }
 
-          // Check if it's a retryable connection error
+          // Check if it's a retryable connection/navigation error
           const isRetryable =
             error.message.includes('ERR_CONNECTION_RESET') ||
             error.message.includes('ERR_SOCKET_NOT_CONNECTED') ||
             error.message.includes('ERR_NETWORK_CHANGED') ||
-            error.message.includes('net::ERR_')
+            error.message.includes('net::ERR_') ||
+            error.message.includes('Execution context was destroyed')
 
           if (isRetryable && attempt < maxRetries) {
             console.log(

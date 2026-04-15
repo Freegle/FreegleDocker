@@ -1531,10 +1531,14 @@ func getModeratorChatIDs(db *gorm.DB, myid uint64, chattypes []string, search st
 			"LEFT JOIN chat_messages ON chat_messages.chatid = chat_rooms.id "+
 			"LEFT JOIN users u1 ON u1.id = chat_rooms.user1 "+
 			"LEFT JOIN users u2 ON u2.id = chat_rooms.user2 "+
+			"LEFT JOIN users_emails ue1 ON ue1.userid = chat_rooms.user1 "+
+			"LEFT JOIN users_emails ue2 ON ue2.userid = chat_rooms.user2 "+
 			"WHERE chat_rooms.id IN ("+idlist+") "+
 			"AND (chat_messages.message LIKE ? OR u1.fullname LIKE ? OR u2.fullname LIKE ? "+
-			"OR u1.firstname LIKE ? OR u2.firstname LIKE ?)",
-			"%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%").Scan(&filteredIDs)
+			"OR u1.firstname LIKE ? OR u2.firstname LIKE ? "+
+			"OR ue1.email LIKE ? OR ue2.email LIKE ?)",
+			"%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%",
+			"%"+search+"%", "%"+search+"%").Scan(&filteredIDs)
 		return filteredIDs
 	}
 

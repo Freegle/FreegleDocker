@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { ref, computed } from 'vue'
-import PendingPage from '~/modtools/pages/messages/pending.vue'
+import PendingPage from '~/modtools/pages/messages/pending/[[id]]/[[term]].vue'
 
 // Mock refs that will be shared between tests
 const mockBusy = ref(false)
