@@ -2014,6 +2014,9 @@ func handleJoinAndPost(c *fiber.Ctx, myid uint64, req PostMessageRequest) error 
 
 	db.Exec("DELETE FROM messages_drafts WHERE msgid = ?", req.ID)
 
+	// V1 parity: Message::submit() logs Message/Received when a post is submitted.
+	logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_RECEIVED, groupid, myid, myid, req.ID, 0, "")
+
 	// Add to spatial index now that the message is in a group
 	// (only runs after messages_groups insert).
 	var msgLat, msgLng float64
@@ -2751,6 +2754,9 @@ func PutMessage(c *fiber.Ctx) error {
 
 		db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, arrival) VALUES (?, ?, ?, NOW())",
 			newMsgID, req.Groupid, collection)
+
+		// V1 parity: log Message/Received when a post is submitted directly (non-draft).
+		logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_RECEIVED, req.Groupid, myid, myid, newMsgID, 0, "")
 	}
 
 	// Link attachments.
