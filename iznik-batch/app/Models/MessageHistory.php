@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_messages_history_table.php
@@ -43,8 +44,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|MessageHistory whereSubject($value)
  * @mixin \Eloquent
  */
-class MessageHistory extends Model
+class MessageHistory extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'messages_history';
     protected $guarded = ['id'];
     public $timestamps = false;

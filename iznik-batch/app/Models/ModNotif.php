@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_modnotifs_table.php
@@ -19,8 +20,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ModNotif whereUserid($value)
  * @mixin \Eloquent
  */
-class ModNotif extends Model
+class ModNotif extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'modnotifs';
     protected $guarded = ['id'];
     public $timestamps = false;

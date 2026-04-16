@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @property int $id
@@ -43,11 +44,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @method static Builder<static>|UserEmail whereViewed($value)
  * @mixin \Eloquent
  */
-class UserEmail extends Model
+class UserEmail extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users_emails';
     protected $guarded = ['id'];
-    public $timestamps = FALSE;
+    public $timestamps = false;
 
     protected $casts = [
         'added' => 'datetime',
@@ -101,7 +104,7 @@ class UserEmail extends Model
      */
     public function isValidated(): bool
     {
-        return $this->validated !== NULL;
+        return $this->validated !== null;
     }
 
     /**

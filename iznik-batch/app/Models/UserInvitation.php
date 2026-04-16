@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_users_invitations_table.php
@@ -23,8 +24,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|UserInvitation whereUserid($value)
  * @mixin \Eloquent
  */
-class UserInvitation extends Model
+class UserInvitation extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users_invitations';
     protected $guarded = ['id'];
     public $timestamps = false;

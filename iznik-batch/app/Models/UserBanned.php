@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_users_banned_table.php
@@ -19,8 +20,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|UserBanned whereUserid($value)
  * @mixin \Eloquent
  */
-class UserBanned extends Model
+class UserBanned extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users_banned';
     protected $guarded = [];
     public $timestamps = false;

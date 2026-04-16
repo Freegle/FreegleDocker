@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @property int $msgid id in the messages table
@@ -52,8 +53,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @method static Builder<static>|MessageGroup whereYahooreject($value)
  * @mixin \Eloquent
  */
-class MessageGroup extends Model
+class MessageGroup extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'messages_groups';
     protected $primaryKey = 'msgid';
     public $incrementing = FALSE;

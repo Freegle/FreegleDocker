@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_locations_excluded_table.php
@@ -23,8 +24,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|LocationExcluded whereUserid($value)
  * @mixin \Eloquent
  */
-class LocationExcluded extends Model
+class LocationExcluded extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'locations_excluded';
     protected $guarded = ['id'];
     public $timestamps = false;

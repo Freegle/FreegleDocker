@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_users_stories_requested_table.php
@@ -17,8 +18,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|UserStoryRequested whereUserid($value)
  * @mixin \Eloquent
  */
-class UserStoryRequested extends Model
+class UserStoryRequested extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users_stories_requested';
     protected $guarded = ['id'];
     public $timestamps = false;

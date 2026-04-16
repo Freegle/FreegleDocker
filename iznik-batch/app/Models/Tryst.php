@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_trysts_table.php
@@ -41,8 +42,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Tryst whereUser2response($value)
  * @mixin \Eloquent
  */
-class Tryst extends Model
+class Tryst extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'trysts';
     protected $guarded = ['id'];
     public $timestamps = false;

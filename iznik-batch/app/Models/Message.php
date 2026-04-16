@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @property int $id Unique iD
@@ -104,8 +105,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @method static Builder<static>|Message withLocation()
  * @mixin \Eloquent
  */
-class Message extends Model
+class Message extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'messages';
     protected $guarded = ['id'];
     public $timestamps = FALSE;

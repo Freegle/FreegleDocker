@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_users_nearby_table.php
@@ -17,8 +18,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|UserNearby whereUserid($value)
  * @mixin \Eloquent
  */
-class UserNearby extends Model
+class UserNearby extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users_nearby';
     protected $guarded = [];
     public $timestamps = false;

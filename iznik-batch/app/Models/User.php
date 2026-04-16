@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log as Logger;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_users_table.php
@@ -111,8 +112,10 @@ use Illuminate\Support\Facades\Log as Logger;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereYahooid($value)
  * @mixin \Eloquent
  */
-class User extends Model
+class User extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users';
     protected $guarded = ['id'];
     public $timestamps = FALSE;

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @property int $id
@@ -34,8 +35,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|GiftAid whereUserid($value)
  * @mixin \Eloquent
  */
-class GiftAid extends Model
+class GiftAid extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'giftaid';
     protected $guarded = ['id'];
     public $timestamps = FALSE;
@@ -94,8 +97,10 @@ class GiftAid extends Model
      */
     public function hasValidNameSplit(): bool
     {
-        if ($this->firstname !== null && $this->firstname !== '' &&
-            $this->lastname !== null && $this->lastname !== '') {
+        if (
+            $this->firstname !== null && $this->firstname !== '' &&
+            $this->lastname !== null && $this->lastname !== ''
+        ) {
             return true;
         }
 

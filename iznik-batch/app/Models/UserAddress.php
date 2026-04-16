@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @property int $id
@@ -25,8 +26,10 @@ use Illuminate\Support\Facades\DB;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|UserAddress whereUserid($value)
  * @mixin \Eloquent
  */
-class UserAddress extends Model
+class UserAddress extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users_addresses';
     protected $guarded = ['id'];
     public $timestamps = false;

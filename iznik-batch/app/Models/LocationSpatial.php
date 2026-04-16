@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_locations_spatial_table.php
@@ -17,8 +18,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|LocationSpatial whereLocationid($value)
  * @mixin \Eloquent
  */
-class LocationSpatial extends Model
+class LocationSpatial extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'locations_spatial';
     protected $primaryKey = 'locationid';
     public $incrementing = false;

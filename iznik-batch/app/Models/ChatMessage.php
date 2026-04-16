@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @property int $id
@@ -77,8 +78,10 @@ use Illuminate\Support\Facades\DB;
  * @method static Builder<static>|ChatMessage whereUserid($value)
  * @mixin \Eloquent
  */
-class ChatMessage extends Model
+class ChatMessage extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'chat_messages';
     protected $guarded = ['id'];
     public $timestamps = FALSE;
@@ -286,11 +289,11 @@ class ChatMessage extends Model
             ->join('chat_rooms', 'chat_rooms.id', '=', 'chat_messages.chatid')
             ->join('memberships', function ($join) use ($groupIds, $otherUser) {
                 $join->whereRaw("memberships.userid = {$otherUser}")
-                     ->whereIn('memberships.groupid', $groupIds);
+                    ->whereIn('memberships.groupid', $groupIds);
             })
             ->join('groups', function ($join) {
                 $join->on('memberships.groupid', '=', 'groups.id')
-                     ->where('groups.type', Group::TYPE_FREEGLE);
+                    ->where('groups.type', Group::TYPE_FREEGLE);
             })
             ->where('chat_messages.reviewrequired', 1)
             ->where('chat_messages.reviewrejected', 0)
@@ -306,11 +309,11 @@ class ChatMessage extends Model
             })
             ->leftJoin('groups', function ($join) {
                 $join->on('m1.groupid', '=', 'groups.id')
-                     ->where('groups.type', Group::TYPE_FREEGLE);
+                    ->where('groups.type', Group::TYPE_FREEGLE);
             })
             ->join('memberships as m2', function ($join) use ($groupIds) {
                 $join->on('m2.userid', '=', 'chat_messages.userid')
-                     ->whereIn('m2.groupid', $groupIds);
+                    ->whereIn('m2.groupid', $groupIds);
             })
             ->where('chat_messages.reviewrequired', 1)
             ->where('chat_messages.reviewrejected', 0)
@@ -338,7 +341,7 @@ class ChatMessage extends Model
                 })
                 ->join('groups', function ($join) {
                     $join->on('memberships.groupid', '=', 'groups.id')
-                         ->where('groups.type', Group::TYPE_FREEGLE);
+                        ->where('groups.type', Group::TYPE_FREEGLE);
                 })
                 ->where('chat_messages.reviewrequired', 1)
                 ->where('chat_messages.reviewrejected', 0)

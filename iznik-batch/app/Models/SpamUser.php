@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_spam_users_table.php
@@ -29,8 +30,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|SpamUser whereUserid($value)
  * @mixin \Eloquent
  */
-class SpamUser extends Model
+class SpamUser extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'spam_users';
     protected $guarded = ['id'];
     public $timestamps = false;

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_users_push_notifications_table.php
@@ -29,8 +30,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|UserPushNotification whereUserid($value)
  * @mixin \Eloquent
  */
-class UserPushNotification extends Model
+class UserPushNotification extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'users_push_notifications';
     protected $guarded = ['id'];
     public $timestamps = false;

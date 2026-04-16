@@ -9,9 +9,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use App\Models\ChatMessage;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class Group extends Model
+class Group extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     public const TYPE_FREEGLE = 'Freegle';
     public const TYPE_REUSE = 'Reuse';
     public const TYPE_OTHER = 'Other';
@@ -287,7 +290,7 @@ class Group extends Model
             ->where('messages_groups.arrival', '>=', $earliestmsg)
             ->where(function ($q) {
                 $q->whereNull('messages.lastroute')
-                  ->orWhere('messages.lastroute', '!=', 'ToSystem');
+                    ->orWhere('messages.lastroute', '!=', 'ToSystem');
             })
             ->groupBy('messages_groups.groupid', 'messages_groups.collection', 'held')
             ->get();
@@ -303,7 +306,7 @@ class Group extends Model
             ->whereNotNull('reviewrequestedat')
             ->where(function ($q) {
                 $q->whereNull('reviewedat')
-                  ->orWhereRaw('DATE(reviewedat) < DATE_SUB(NOW(), INTERVAL 31 DAY)');
+                    ->orWhereRaw('DATE(reviewedat) < DATE_SUB(NOW(), INTERVAL 31 DAY)');
             })
             ->whereIn('groupid', $groupids)
             ->groupBy('groupid', 'held')
@@ -321,8 +324,8 @@ class Group extends Model
             ->whereIn('communityevents_groups.groupid', $groupids)
             ->where(function ($q) {
                 $q->whereNull('groups.settings')
-                  ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.communityevents') IS NULL")
-                  ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.communityevents') = 1");
+                    ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.communityevents') IS NULL")
+                    ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.communityevents') = 1");
             })
             ->where('communityevents.pending', 1)
             ->where('communityevents.deleted', 0)
@@ -345,16 +348,16 @@ class Group extends Model
             ->where('volunteering.expired', 0)
             ->where(function ($q) {
                 $q->whereNull('groups.settings')
-                  ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.volunteering') IS NULL")
-                  ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.volunteering') = 1");
+                    ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.volunteering') IS NULL")
+                    ->orWhereRaw("JSON_EXTRACT(groups.settings, '$.volunteering') = 1");
             })
             ->where(function ($q) use ($eventsqltime) {
                 $q->whereNull('volunteering.applyby')
-                  ->orWhere('volunteering.applyby', '>=', $eventsqltime);
+                    ->orWhere('volunteering.applyby', '>=', $eventsqltime);
             })
             ->where(function ($q) use ($eventsqltime) {
                 $q->whereNull('volunteering_dates.end')
-                  ->orWhere('volunteering_dates.end', '>=', $eventsqltime);
+                    ->orWhere('volunteering_dates.end', '>=', $eventsqltime);
             })
             ->groupBy('volunteering_groups.groupid')
             ->get();
@@ -383,13 +386,13 @@ class Group extends Model
             ->join('memberships', 'users_related.user1', '=', 'memberships.userid')
             ->join('users as u1', function ($join) {
                 $join->on('users_related.user1', '=', 'u1.id')
-                     ->whereNull('u1.deleted')
-                     ->where('u1.systemrole', 'User');
+                    ->whereNull('u1.deleted')
+                    ->where('u1.systemrole', 'User');
             })
             ->join('users as u2', function ($join) {
                 $join->on('users_related.user2', '=', 'u2.id')
-                     ->whereNull('u2.deleted')
-                     ->where('u2.systemrole', 'User');
+                    ->whereNull('u2.deleted')
+                    ->where('u2.systemrole', 'User');
             })
             ->whereColumn('users_related.user1', '<', 'users_related.user2')
             ->where('users_related.notified', 0)
@@ -405,13 +408,13 @@ class Group extends Model
             ->join('memberships', 'users_related.user2', '=', 'memberships.userid')
             ->join('users as u3', function ($join) {
                 $join->on('users_related.user2', '=', 'u3.id')
-                     ->whereNull('u3.deleted')
-                     ->where('u3.systemrole', 'User');
+                    ->whereNull('u3.deleted')
+                    ->where('u3.systemrole', 'User');
             })
             ->join('users as u4', function ($join) {
                 $join->on('users_related.user1', '=', 'u4.id')
-                     ->whereNull('u4.deleted')
-                     ->where('u4.systemrole', 'User');
+                    ->whereNull('u4.deleted')
+                    ->where('u4.systemrole', 'User');
             })
             ->whereColumn('users_related.user1', '<', 'users_related.user2')
             ->where('users_related.notified', 0)
@@ -625,11 +628,47 @@ class Group extends Model
 
     // Fields exposed by getPublic() - mirrors iznik-server Group::$publicatts.
     private const PUBLIC_ATTS = [
-        'id', 'nameshort', 'namefull', 'nameabbr', 'namedisplay', 'settings', 'rules', 'type', 'region', 'logo', 'publish',
-        'onhere', 'ontn', 'membercount', 'modcount', 'lat', 'lng',
-        'profile', 'cover', 'onmap', 'tagline', 'legacyid', 'external', 'welcomemail', 'description',
-        'contactmail', 'fundingtarget', 'affiliationconfirmed', 'affiliationconfirmedby', 'mentored', 'privategroup', 'defaultlocation',
-        'moderationstatus', 'maxagetoshow', 'nearbygroups', 'microvolunteering', 'microvolunteeringoptions', 'autofunctionoverride', 'overridemoderation', 'precovidmoderated', 'onlovejunk',
+        'id',
+        'nameshort',
+        'namefull',
+        'nameabbr',
+        'namedisplay',
+        'settings',
+        'rules',
+        'type',
+        'region',
+        'logo',
+        'publish',
+        'onhere',
+        'ontn',
+        'membercount',
+        'modcount',
+        'lat',
+        'lng',
+        'profile',
+        'cover',
+        'onmap',
+        'tagline',
+        'legacyid',
+        'external',
+        'welcomemail',
+        'description',
+        'contactmail',
+        'fundingtarget',
+        'affiliationconfirmed',
+        'affiliationconfirmedby',
+        'mentored',
+        'privategroup',
+        'defaultlocation',
+        'moderationstatus',
+        'maxagetoshow',
+        'nearbygroups',
+        'microvolunteering',
+        'microvolunteeringoptions',
+        'autofunctionoverride',
+        'overridemoderation',
+        'precovidmoderated',
+        'onlovejunk',
     ];
 
     /**

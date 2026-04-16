@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_volunteering_table.php
@@ -53,8 +54,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Volunteering whereUserid($value)
  * @mixin \Eloquent
  */
-class Volunteering extends Model
+class Volunteering extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'volunteering';
     protected $guarded = ['id'];
     public $timestamps = false;

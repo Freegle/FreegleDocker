@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @property int $id
@@ -57,8 +58,10 @@ use Illuminate\Support\Facades\Log;
  * @method static Builder<static>|ChatRoom whereUser2($value)
  * @mixin \Eloquent
  */
-class ChatRoom extends Model
+class ChatRoom extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'chat_rooms';
     protected $guarded = ['id'];
     public $timestamps = FALSE;

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 /**
  * @see ../../database/migrations/2025_12_10_094529_create_newsfeed_table.php
@@ -57,8 +58,10 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Newsfeed whereVolunteeringid($value)
  * @mixin \Eloquent
  */
-class Newsfeed extends Model
+class Newsfeed extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
+
     protected $table = 'newsfeed';
     protected $guarded = ['id'];
     public $timestamps = false;
