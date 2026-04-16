@@ -62,10 +62,8 @@ const groupid = computed(() => {
 })
 
 const isPending = computed(() => {
-  return (
-    message.value?.collection === 'Pending' ||
-    message.value?.collection === 'PendingOther'
-  )
+  const collection = message.value?.groups?.[0]?.collection
+  return collection === 'Pending' || collection === 'PendingOther'
 })
 
 const duplicateLink = computed(() => {

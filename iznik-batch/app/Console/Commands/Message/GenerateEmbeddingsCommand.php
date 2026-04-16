@@ -15,11 +15,11 @@ class GenerateEmbeddingsCommand extends Command
     protected $signature = 'embeddings:generate
                             {--backfill : Process all messages without embeddings}
                             {--limit=500 : Maximum messages to process per run}
-                            {--chunk=500 : Messages per Node.js subprocess call}';
+                            {--chunk=100 : Messages per Node.js subprocess call}';
 
     protected $description = 'Generate vector embeddings for messages in messages_spatial';
 
-    private const PROCESS_TIMEOUT = 300; // 5 min per chunk
+    private const PROCESS_TIMEOUT = 600; // 10 min per chunk
 
     public function handle(): int
     {
