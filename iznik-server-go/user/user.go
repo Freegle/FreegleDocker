@@ -564,6 +564,18 @@ func GetUserById(id uint64, myid uint64) User {
 				if user.Displayname == "A freegler" {
 					user.Displayname = InventName(db, id)
 				}
+
+				// Rewrite misleading/fraudulent names for non-mods on display
+				// (Discourse #9587). Stored fullname is untouched.
+				isGroupMod := false
+				var modCount int
+				db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND role IN (?, ?)",
+					id, utils.ROLE_OWNER, utils.ROLE_MODERATOR).Scan(&modCount)
+				if modCount > 0 {
+					isGroupMod = true
+				}
+				isExempt := IsExemptBySystemroleAndMod(user.Systemrole, isGroupMod)
+				user.Displayname = SanitizeDisplayName(user.Displayname, isExempt)
 			} else {
 				// Censor name for deleted user when viewed by non-mod.
 				user.Displayname = "Deleted User #" + strconv.FormatUint(id, 10)
