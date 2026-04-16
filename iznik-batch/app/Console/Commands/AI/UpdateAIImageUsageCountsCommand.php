@@ -28,50 +28,40 @@ class UpdateAIImageUsageCountsCommand extends Command
             GROUP BY ma.externaluid
         ");
 
-        // Step 2: Apply counts in batched JOIN updates to avoid deadlocking
-        // with concurrent writers while keeping round-trips low.
-        $batchSize = 500;
-        $lastId = 0;
+        // Step 2: Update one row at a time via JOIN, skipping rows where
+        // the count hasn't changed. Single-row updates lock for microseconds
+        // and don't interfere with concurrent operations.
         $totalUpdated = 0;
+        $totalSkipped = 0;
 
         try {
-            do {
-                // Find the upper bound and count of this batch.
-                $batchInfo = DB::selectOne("
-                    SELECT MAX(id) AS max_id, COUNT(*) AS cnt FROM (
-                        SELECT id FROM ai_images
-                        WHERE id > ?
-                          AND externaluid IS NOT NULL
-                          AND externaluid != ''
-                        ORDER BY id
-                        LIMIT ?
-                    ) batch
-                ", [$lastId, $batchSize]);
+            $rows = DB::table('ai_images')
+                ->whereNotNull('externaluid')
+                ->where('externaluid', '!=', '')
+                ->orderBy('id')
+                ->select('id')
+                ->lazy(500);
 
-                if (!$batchInfo || !$batchInfo->max_id) {
-                    break;
-                }
-
-                $batchMaxId = $batchInfo->max_id;
-
-                // Batched JOIN update — one query per batch instead of per row.
-                DB::update("
+            foreach ($rows as $row) {
+                $affected = DB::update("
                     UPDATE ai_images ai
                     LEFT JOIN tmp_ai_usage_counts t ON t.externaluid = ai.externaluid
                     SET ai.usage_count = COALESCE(t.cnt, 0)
-                    WHERE ai.id > ? AND ai.id <= ?
-                      AND ai.externaluid IS NOT NULL
-                      AND ai.externaluid != ''
-                ", [$lastId, $batchMaxId]);
+                    WHERE ai.id = ?
+                      AND ai.usage_count != COALESCE(t.cnt, 0)
+                ", [$row->id]);
 
-                $totalUpdated += $batchInfo->cnt;
-                $lastId = $batchMaxId;
-            } while (true);
+                if ($affected > 0) {
+                    $totalUpdated++;
+                } else {
+                    $totalSkipped++;
+                }
+            }
         } finally {
             DB::statement('DROP TEMPORARY TABLE IF EXISTS tmp_ai_usage_counts');
         }
 
-        $this->info("Updated usage counts for {$totalUpdated} AI images.");
+        $this->info("Updated {$totalUpdated} AI images, skipped {$totalSkipped} unchanged.");
 
         return Command::SUCCESS;
     }

@@ -6,8 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Support\TransactionPolicy;
-use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class EmailTracking extends Model
@@ -84,38 +82,17 @@ class EmailTracking extends Model
             $groupId = null;
         }
 
-        // Retry on deadlock — concurrent chat notification workers can deadlock
-        // on this INSERT. Uses TransactionPolicy::isDeadlock() for robust detection
-        // (catches DeadlockException, SQLSTATE 40001, MySQL 1213, lock wait timeout).
-        //
-        // IMPORTANT: Only retry at autocommit level. When inside an explicit
-        // transaction, MySQL rolls back the ENTIRE transaction on deadlock — not
-        // just the failed statement — so retrying the INSERT alone is futile.
-        // In that case, re-throw and let the outer code handle it.
-        $canRetry = DB::transactionLevel() === 0;
-        $maxRetries = $canRetry ? 3 : 1;
-        $attempt = 0;
-
-        while (true) {
-            try {
-                return self::create([
-                    'tracking_id' => self::generateTrackingId(),
-                    'email_type' => $emailType,
-                    'userid' => $userId,
-                    'groupid' => $groupId,
-                    'recipient_email' => $recipientEmail,
-                    'subject' => $subject,
-                    'metadata' => $metadata,
-                    'sent_at' => now(),
-                    'has_amp' => $hasAmp,
-                ]);
-            } catch (QueryException $e) {
-                if (++$attempt >= $maxRetries || !TransactionPolicy::isDeadlock($e)) {
-                    throw $e;
-                }
-                usleep(50_000 * $attempt);
-            }
-        }
+        return TransactionPolicy::retryOnDeadlock(fn () => self::create([
+            'tracking_id' => self::generateTrackingId(),
+            'email_type' => $emailType,
+            'userid' => $userId,
+            'groupid' => $groupId,
+            'recipient_email' => $recipientEmail,
+            'subject' => $subject,
+            'metadata' => $metadata,
+            'sent_at' => now(),
+            'has_amp' => $hasAmp,
+        ]), 'EmailTracking::createForEmail');
     }
 
     /**
