@@ -44,7 +44,7 @@
                 <b-form-input
                   v-model="editmessage.item.name"
                   size="lg"
-                  class="me-1 flex-grow-1"
+                  class="me-1 flex-grow-1 item-name-input"
                 />
               </div>
               <div v-if="editmessage.item && editmessage.location">
@@ -1391,6 +1391,12 @@ function spamReport() {
 
 .location {
   max-width: 250px;
+}
+
+.item-name-input {
+  /* Cap growth on wide desktop so the field doesn't stretch the whole row.
+     flex-grow-1 keeps it filling available space up to this cap. */
+  max-width: 500px;
 }
 
 .fullsubject {
