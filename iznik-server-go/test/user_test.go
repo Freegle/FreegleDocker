@@ -1030,6 +1030,40 @@ func TestPatchUserSettings(t *testing.T) {
 	assert.Contains(t, storedSettings, "notificationmuted")
 }
 
+func TestPatchUserSettingsMergesNotReplaces(t *testing.T) {
+	prefix := uniquePrefix("patchmerge")
+	db := database.DBConn
+	userID := CreateTestUser(t, prefix, "User")
+	_, token := CreateTestSession(t, userID)
+
+	// Set existing settings with multiple fields.
+	db.Exec(`UPDATE users SET settings = '{"notificationmails":true,"somecustom":"keep","notifications":{"push":true}}' WHERE id = ?`, userID)
+
+	// PATCH with only one changed field — should merge, not replace.
+	payload := map[string]interface{}{
+		"settings": map[string]interface{}{
+			"notificationmails": false,
+		},
+	}
+	s, _ := json.Marshal(payload)
+	request := httptest.NewRequest("PATCH", "/api/user?jwt="+token, bytes.NewBuffer(s))
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(request)
+	assert.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	// Verify the changed field is updated AND existing fields are preserved.
+	var storedSettings string
+	db.Raw("SELECT settings FROM users WHERE id = ?", userID).Scan(&storedSettings)
+
+	var settings map[string]interface{}
+	json.Unmarshal([]byte(storedSettings), &settings)
+
+	assert.Equal(t, false, settings["notificationmails"], "changed field should be updated")
+	assert.Equal(t, "keep", settings["somecustom"], "existing field should be preserved")
+	assert.NotNil(t, settings["notifications"], "existing nested field should be preserved")
+}
+
 func TestPatchUserSettingsPostcodeChange(t *testing.T) {
 	prefix := uniquePrefix("patchpostcode")
 	db := database.DBConn
@@ -3245,14 +3279,65 @@ func TestSettingsDefaultsApplied(t *testing.T) {
 	settings, ok := result["settings"].(map[string]interface{})
 	require.True(t, ok, "settings should be a map")
 
-	// V1-parity defaults should be applied.
+	// V1-parity defaults should be applied for all users.
 	assert.Equal(t, true, settings["notificationmails"], "notificationmails should default to true")
 	assert.Equal(t, true, settings["engagement"], "engagement should default to true")
-	assert.Equal(t, float64(4), settings["modnotifs"], "modnotifs should default to 4")
-	assert.Equal(t, float64(12), settings["backupmodnotifs"], "backupmodnotifs should default to 12")
+
+	// Mod-specific defaults should NOT be present for regular users.
+	_, hasModnotifs := settings["modnotifs"]
+	_, hasBackup := settings["backupmodnotifs"]
+	assert.False(t, hasModnotifs, "modnotifs should not be injected for regular user")
+	assert.False(t, hasBackup, "backupmodnotifs should not be injected for regular user")
 
 	// Existing field should still be present.
 	assert.Equal(t, true, settings["somecustom"], "existing field should be preserved")
+}
+
+func TestSettingsDefaultsModOnlyFields(t *testing.T) {
+	prefix := uniquePrefix("settingsModOnly")
+	db := database.DBConn
+
+	// Regular user — should NOT get modnotifs/backupmodnotifs defaults.
+	regularID := CreateTestUser(t, prefix+"_reg", "User")
+	_, regularToken := CreateTestSession(t, regularID)
+	db.Exec(`UPDATE users SET settings = '{"somecustom":true}' WHERE id = ?`, regularID)
+
+	url := fmt.Sprintf("/api/user/%d?jwt=%s", regularID, regularToken)
+	resp, err := getApp().Test(httptest.NewRequest("GET", url, nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var regResult map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&regResult)
+	regSettings, ok := regResult["settings"].(map[string]interface{})
+	require.True(t, ok)
+
+	// Non-mod defaults should still be applied.
+	assert.Equal(t, true, regSettings["notificationmails"], "notificationmails should default to true for regular user")
+	assert.Equal(t, true, regSettings["engagement"], "engagement should default to true for regular user")
+	// Mod-specific defaults should NOT be injected for regular users.
+	_, hasModnotifs := regSettings["modnotifs"]
+	_, hasBackup := regSettings["backupmodnotifs"]
+	assert.False(t, hasModnotifs, "modnotifs should NOT be injected for regular user")
+	assert.False(t, hasBackup, "backupmodnotifs should NOT be injected for regular user")
+
+	// Moderator — SHOULD get modnotifs/backupmodnotifs defaults.
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+	db.Exec(`UPDATE users SET settings = '{"somecustom":true}' WHERE id = ?`, modID)
+
+	url = fmt.Sprintf("/api/user/%d?jwt=%s", modID, modToken)
+	resp, err = getApp().Test(httptest.NewRequest("GET", url, nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var modResult map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&modResult)
+	modSettings, ok := modResult["settings"].(map[string]interface{})
+	require.True(t, ok)
+
+	assert.Equal(t, float64(4), modSettings["modnotifs"], "modnotifs should default to 4 for moderator")
+	assert.Equal(t, float64(12), modSettings["backupmodnotifs"], "backupmodnotifs should default to 12 for moderator")
 }
 
 func TestSettingsNotVisibleToOtherUsers(t *testing.T) {

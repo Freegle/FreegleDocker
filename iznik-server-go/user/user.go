@@ -480,13 +480,22 @@ func applySettingsDefaults(user *User) {
 		settings["engagement"] = true
 		changed = true
 	}
-	if _, ok := settings["modnotifs"]; !ok {
-		settings["modnotifs"] = 4
-		changed = true
-	}
-	if _, ok := settings["backupmodnotifs"]; !ok {
-		settings["backupmodnotifs"] = 12
-		changed = true
+
+	// Mod-specific defaults only for users with a moderator+ systemrole.
+	// Injecting these for regular users caused settings contamination when
+	// the frontend echoed the full settings blob back via PATCH.
+	isMod := user.Systemrole == utils.SYSTEMROLE_MODERATOR ||
+		user.Systemrole == utils.SYSTEMROLE_SUPPORT ||
+		user.Systemrole == utils.SYSTEMROLE_ADMIN
+	if isMod {
+		if _, ok := settings["modnotifs"]; !ok {
+			settings["modnotifs"] = 4
+			changed = true
+		}
+		if _, ok := settings["backupmodnotifs"]; !ok {
+			settings["backupmodnotifs"] = 12
+			changed = true
+		}
 	}
 
 	if changed {
@@ -1948,7 +1957,9 @@ func PatchUser(c *fiber.Ctx) error {
 			var setClauses []string
 			var setArgs []interface{}
 			settingsJSON = ProcessSettingsUpdate(settingsJSON, targetID, &setClauses, &setArgs)
-			setClauses = append(setClauses, "settings = ?")
+			// Merge incoming settings into existing rather than replacing,
+			// so partial updates don't wipe unrelated fields.
+			setClauses = append(setClauses, "settings = JSON_MERGE_PATCH(COALESCE(settings, '{}'), CAST(? AS JSON))")
 			setArgs = append(setArgs, string(settingsJSON))
 			setArgs = append(setArgs, targetID)
 			db.Exec("UPDATE users SET "+strings.Join(setClauses, ", ")+" WHERE id = ?", setArgs...)
