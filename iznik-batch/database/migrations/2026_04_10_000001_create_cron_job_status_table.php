@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('cron_job_status')) {
+            return;
+        }
+
         Schema::create('cron_job_status', function (Blueprint $table) {
             $table->id();
             $table->string('command', 255)->unique();

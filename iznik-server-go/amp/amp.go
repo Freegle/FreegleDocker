@@ -62,8 +62,6 @@ func getAMPSecret() string {
 	}
 	if secret == "" {
 		log.Printf("[AMP] WARNING: No AMP secret configured (checked AMP_SECRET and FREEGLE_AMP_SECRET)")
-	} else {
-		log.Printf("[AMP] Secret configured, length=%d", len(secret))
 	}
 	return secret
 }
@@ -84,40 +82,28 @@ func ValidateToken(c *fiber.Ctx) (uint64, uint64, error) {
 	exp := c.Query("exp")   // Expiry timestamp
 	resID := c.Params("id") // Resource ID (chat ID, etc.)
 
-	log.Printf("[AMP] ValidateToken: resID=%s, uid=%s, exp=%s, token_len=%d", resID, uid, exp, len(token))
-
 	// Check all required params present
 	if token == "" || uid == "" || exp == "" || resID == "" {
-		log.Printf("[AMP] Missing params: token=%v, uid=%v, exp=%v, resID=%v", token != "", uid != "", exp != "", resID != "")
 		return 0, 0, nil
 	}
 
 	// Check expiry
 	expTime, err := strconv.ParseInt(exp, 10, 64)
 	if err != nil || time.Now().Unix() > expTime {
-		log.Printf("[AMP] Token expired or invalid expiry: exp=%s, now=%d", exp, time.Now().Unix())
 		return 0, 0, nil
 	}
 
 	// Validate HMAC: "amp" + user_id + resource_id + expiry
 	secret := getAMPSecret()
 	if secret == "" {
-		log.Printf("[AMP] No secret configured, failing validation")
 		return 0, 0, nil
 	}
 
 	message := "amp" + uid + resID + exp
 	expectedMAC := computeHMAC(message, secret)
 
-	log.Printf("[AMP] HMAC check: message=%s, expected_len=%d, provided_len=%d", message, len(expectedMAC), len(token))
-
 	// Constant-time comparison to prevent timing attacks
 	if subtle.ConstantTimeCompare([]byte(token), []byte(expectedMAC)) != 1 {
-		tokenPreview := token
-		if len(token) > 16 {
-			tokenPreview = token[:16]
-		}
-		log.Printf("[AMP] HMAC mismatch: expected=%s, got=%s...", expectedMAC[:16]+"...", tokenPreview)
 		return 0, 0, nil
 	}
 
@@ -129,11 +115,9 @@ func ValidateToken(c *fiber.Ctx) (uint64, uint64, error) {
 	var exists bool
 	db.Raw("SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)", userID).Scan(&exists)
 	if !exists {
-		log.Printf("[AMP] User %d does not exist", userID)
 		return 0, 0, nil
 	}
 
-	log.Printf("[AMP] Token validated successfully: userID=%d, resourceID=%d", userID, resourceID)
 	return userID, resourceID, nil
 }
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/embedding"
 	"github.com/freegle/iznik-server-go/group"
 	"github.com/freegle/iznik-server-go/item"
 	"github.com/freegle/iznik-server-go/location"
@@ -354,10 +355,9 @@ func GetMessagesByIds(myid uint64, ids []string) []Message {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					result := db.Raw("SELECT id, oldsubject, newsubject, oldtext, newtext, reviewrequired, `timestamp` AS `timestamp` "+
+					db.Raw("SELECT id, oldsubject, newsubject, oldtext, newtext, reviewrequired, `timestamp` AS `timestamp` "+
 						"FROM messages_edits WHERE msgid = ? AND reviewrequired = 1 AND approvedat IS NULL AND revertedat IS NULL "+
 						"ORDER BY id DESC", id).Scan(&messageEdits)
-					log.Printf("Edits query for message %s: rows=%d err=%v edits=%d", id, result.RowsAffected, result.Error, len(messageEdits))
 				}()
 			}
 
@@ -1053,6 +1053,8 @@ func Search(c *fiber.Ctx) error {
 	swlat, _ := strconv.ParseFloat(c.Query("swlat", "0"), 32)
 	swlng, _ := strconv.ParseFloat(c.Query("swlng", "0"), 32)
 
+	searchmode := c.Query("searchmode", "keyword")
+
 	// We've seen problems with crashes inside Gorm.  Best I can tell, it looks like a Gorm bug exposed when an
 	// array is resized.  So as a workaround we create slices with capacity, then filter out the empty ones at
 	// the end.
@@ -1064,37 +1066,51 @@ func Search(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusBadRequest, "No search term")
 		}
 
-		words := GetWords(term)
-
-		var wg sync.WaitGroup
-		wg.Add(2)
-
-		go func() {
-			defer wg.Done()
-			res = GetWordsExact(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
-		}()
-
-		go func() {
-			defer wg.Done()
-			// Add in prefix matches, which helps with plurals.
-			res2 = GetWordsStarts(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
-		}()
-
-		wg.Wait()
-
-		res = append(res, res2...)
-
-		if len(res) == 0 {
-			res = GetWordsTypo(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
+		// Try vector search if requested and embeddings are loaded
+		if searchmode == "vector" && embedding.Global.Count() > 0 {
+			vectorResults, err := VectorSearch(term, SEARCH_LIMIT, groupids, msgtype,
+				float32(nelat), float32(nelng), float32(swlat), float32(swlng))
+			if err != nil {
+				fmt.Printf("Vector search failed, falling back to keyword: %v\n", err)
+			} else {
+				res = vectorResults
+			}
 		}
 
+		// Fall back to keyword search if vector returned nothing
 		if len(res) == 0 {
-			res = GetWordsSounds(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
-		}
+			words := GetWords(term)
 
-		// Blur
-		for ix, r := range res {
-			res[ix].Lat, res[ix].Lng = utils.Blur(r.Lat, r.Lng, utils.BLUR_USER)
+			var wg sync.WaitGroup
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+				res = GetWordsExact(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
+			}()
+
+			go func() {
+				defer wg.Done()
+				// Add in prefix matches, which helps with plurals.
+				res2 = GetWordsStarts(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
+			}()
+
+			wg.Wait()
+
+			res = append(res, res2...)
+
+			if len(res) == 0 {
+				res = GetWordsTypo(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
+			}
+
+			if len(res) == 0 {
+				res = GetWordsSounds(db, words, SEARCH_LIMIT, groupids, msgtype, float32(nelat), float32(nelng), float32(swlat), float32(swlng))
+			}
+
+			// Blur
+			for ix, r := range res {
+				res[ix].Lat, res[ix].Lng = utils.Blur(r.Lat, r.Lng, utils.BLUR_USER)
+			}
 		}
 	}
 

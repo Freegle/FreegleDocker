@@ -643,3 +643,34 @@ func TestCommunityEventAddGroupMemberAllowed(t *testing.T) {
 	resp, _ := getApp().Test(req)
 	assert.Equal(t, 200, resp.StatusCode)
 }
+
+func TestCommunityEventNullUserid(t *testing.T) {
+	// Community events can have NULL userid (e.g. created by old V1 code).
+	// canModify must not crash scanning NULL into uint64.
+	prefix := uniquePrefix("cewr_null")
+	db := database.DBConn
+	groupID := CreateTestGroup(t, prefix)
+
+	// Insert event with NULL userid directly.
+	db.Exec("INSERT INTO communityevents (userid, title, description, location, pending, deleted) VALUES (NULL, ?, 'Null user test', 'Somewhere', 0, 0)", "NullUser CE "+prefix)
+	var eventID uint64
+	db.Raw("SELECT id FROM communityevents WHERE title = ? ORDER BY id DESC LIMIT 1", "NullUser CE "+prefix).Scan(&eventID)
+	assert.Greater(t, eventID, uint64(0))
+	db.Exec("INSERT INTO communityevents_groups (eventid, groupid) VALUES (?, ?)", eventID, groupID)
+	db.Exec("INSERT INTO communityevents_dates (eventid, start, end) VALUES (?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))", eventID)
+
+	// GET should succeed (no scan error).
+	resp, _ := getApp().Test(httptest.NewRequest("GET", fmt.Sprintf("/api/communityevent/%d", eventID), nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// A moderator trying to PATCH should succeed via isModerator (not crash from NULL scan).
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	body := fmt.Sprintf(`{"id":%d,"title":"Updated by mod"}`, eventID)
+	req := httptest.NewRequest("PATCH", "/api/communityevent?jwt="+modToken, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ = getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+}

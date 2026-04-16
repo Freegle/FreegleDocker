@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	fiberadapter "github.com/awslabs/aws-lambda-go-api-proxy/fiber"
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/embedding"
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/router"
 	"github.com/freegle/iznik-server-go/user"
@@ -86,6 +87,9 @@ func main() {
 	}))
 
 	database.InitDatabase()
+
+	// Start embedding store refresh for vector search (every 2 minutes)
+	embedding.StartRefresh(2 * time.Minute)
 
 	app.Use(database.NewPingMiddleware(database.Config{}))
 

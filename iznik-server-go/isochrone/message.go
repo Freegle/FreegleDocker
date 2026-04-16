@@ -153,12 +153,12 @@ func isochroneCount(myid uint64) uint64 {
 
 				db.Raw("SELECT COUNT(DISTINCT(messages_spatial.msgid)) "+
 					"FROM messages_spatial "+
-					"INNER JOIN isochrones ON ST_Contains(isochrones.polygon, point) "+
+					"INNER JOIN isochrones ON ST_Contains(isochrones.polygon, ST_SRID(point, ?)) "+
 					"INNER JOIN `groups` ON groups.id = messages_spatial.groupid "+
 					"LEFT JOIN messages_likes ON messages_likes.msgid = messages_spatial.msgid AND messages_likes.userid = ? AND messages_likes.type = ? "+
 					"WHERE isochrones.id = ? AND messages_spatial.successful = 0 "+
 					"AND (CASE WHEN postvisibility IS NULL OR ST_Contains(postvisibility, ST_SRID(POINT(?, ?),?)) THEN 1 ELSE 0 END) = 1 "+
-					"AND messages_likes.msgid IS NULL;", myid, utils.MESSAGE_LIKES_VIEW, isochrone.Isochroneid, latlng.Lng, latlng.Lat, utils.SRID).Scan(&thiscount)
+					"AND messages_likes.msgid IS NULL;", utils.SRID, myid, utils.MESSAGE_LIKES_VIEW, isochrone.Isochroneid, latlng.Lng, latlng.Lat, utils.SRID).Scan(&thiscount)
 
 				mu.Lock()
 				defer mu.Unlock()

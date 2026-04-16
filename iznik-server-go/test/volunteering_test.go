@@ -675,3 +675,34 @@ func TestVolunteeringAddGroupMemberAllowed(t *testing.T) {
 	resp, _ := getApp().Test(req)
 	assert.Equal(t, 200, resp.StatusCode)
 }
+
+func TestVolunteeringNullUserid(t *testing.T) {
+	// Volunteering entries can have NULL userid (e.g. created by old V1 code).
+	// canModify must not crash scanning NULL into uint64.
+	prefix := uniquePrefix("volwr_null")
+	db := database.DBConn
+	groupID := CreateTestGroup(t, prefix)
+
+	// Insert volunteering with NULL userid directly.
+	db.Exec("INSERT INTO volunteering (userid, title, description, location, pending, deleted, expired) VALUES (NULL, ?, 'Null user test', 'Somewhere', 0, 0, 0)", "NullUser Vol "+prefix)
+	var volID uint64
+	db.Raw("SELECT id FROM volunteering WHERE title = ? ORDER BY id DESC LIMIT 1", "NullUser Vol "+prefix).Scan(&volID)
+	assert.Greater(t, volID, uint64(0))
+	db.Exec("INSERT INTO volunteering_groups (volunteeringid, groupid) VALUES (?, ?)", volID, groupID)
+	db.Exec("INSERT INTO volunteering_dates (volunteeringid, start, end) VALUES (?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))", volID)
+
+	// GET should succeed (no scan error).
+	resp, _ := getApp().Test(httptest.NewRequest("GET", fmt.Sprintf("/api/volunteering/%d", volID), nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// A moderator trying to PATCH should get 403 from canModify (not a 500 scan crash).
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	body := fmt.Sprintf(`{"id":%d,"title":"Updated by mod"}`, volID)
+	req := httptest.NewRequest("PATCH", "/api/volunteering?jwt="+modToken, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ = getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+}

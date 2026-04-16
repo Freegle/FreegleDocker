@@ -7,14 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/getsentry/sentry-go"
+	"gorm.io/gorm"
 	logger2 "gorm.io/gorm/logger"
 	"gorm.io/gorm/utils"
 	"log"
 	"time"
 )
 
-// ErrRecordNotFound record not found error
-var ErrRecordNotFound = errors.New("record not found")
+// ErrRecordNotFound uses GORM's sentinel so errors.Is() matches correctly.
+var ErrRecordNotFound = gorm.ErrRecordNotFound
 
 // Config logger config
 type Config struct {
@@ -97,7 +98,7 @@ func (l logger) Error(ctx context.Context, msg string, data ...interface{}) {
 
 // Trace print sql message
 func (l logger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
-	if err != nil {
+	if err != nil && (!errors.Is(err, ErrRecordNotFound) || !l.IgnoreRecordNotFoundError) {
 		fmt.Println("TRACE ", err.Error())
 		sentry.CaptureMessage(err.Error())
 	}

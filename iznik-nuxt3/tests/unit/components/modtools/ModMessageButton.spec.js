@@ -254,7 +254,9 @@ describe('ModMessageButton', () => {
     it('calls messageStore.hold when hold prop is true', async () => {
       const wrapper = mountComponent({ hold: true }, { id: 555 })
       await wrapper.vm.click()
-      expect(mockMessageStore.hold).toHaveBeenCalledWith({ id: 555 })
+      expect(mockMessageStore.hold).toHaveBeenCalledWith({
+        id: 555,
+      })
     })
 
     it('calls checkWorkDeferGetMessages after hold', async () => {
@@ -268,7 +270,9 @@ describe('ModMessageButton', () => {
     it('calls messageStore.release when release prop is true', async () => {
       const wrapper = mountComponent({ release: true }, { id: 666 })
       await wrapper.vm.click()
-      expect(mockMessageStore.release).toHaveBeenCalledWith({ id: 666 })
+      expect(mockMessageStore.release).toHaveBeenCalledWith({
+        id: 666,
+      })
     })
 
     it('calls checkWorkDeferGetMessages after release', async () => {

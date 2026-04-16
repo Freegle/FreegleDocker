@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('housekeeper_tasks')) {
+            return;
+        }
+
         Schema::create('housekeeper_tasks', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('task_key', 100)->unique();

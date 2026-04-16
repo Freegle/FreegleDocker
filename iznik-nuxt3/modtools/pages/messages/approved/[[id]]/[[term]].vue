@@ -19,6 +19,14 @@
       />
       <span v-else class="mt-2"> Select a community to search messages. </span>
       <ModtoolsViewControl misckey="modtoolsMessagesApprovedSummary" />
+      <b-form-checkbox
+        v-model="vectorSearchEnabled"
+        switch
+        size="sm"
+        class="mt-2 ms-2"
+      >
+        Semantic search
+      </b-form-checkbox>
     </div>
     <div>
       <NoticeMessage v-if="loaded && !messages.length && !busy" class="mt-2">
@@ -87,6 +95,8 @@ const {
 // Local state (formerly data())
 const chosengroupid = ref(0)
 const bump = ref(0)
+const vectorSearchEnabled = ref(false)
+const searchmode = computed(() => vectorSearchEnabled.value ? 'vector' : 'keyword')
 const urlOverride = ref(false)
 const loaded = ref(false)
 const highlightMsgId = ref(null)
@@ -167,6 +177,10 @@ onMounted(() => {
   }
   if (route?.params && 'term' in route.params && route.params.term) {
     messageTerm.value = route.params.term
+    highlightMsgId.value = parseInt(route.params.term)
+  }
+  if (route.query.searchmode) {
+    vectorSearchEnabled.value = route.query.searchmode === 'vector'
   }
   if (messageTerm.value) {
     // Clear existing messages and reset state for fresh search.
@@ -195,6 +209,15 @@ function searchedMessage(term) {
     router.push('/messages/approved/')
   }
 }
+
+watch(vectorSearchEnabled, () => {
+  show.value = 0
+  context.value = null
+  modMessages.listingIds.value = new Set()
+  modMessages.listingIdOrder.value = []
+  messageStore.clear()
+  bump.value++
+})
 
 function searchedMember(term) {
   show.value = 0
@@ -225,7 +248,21 @@ async function loadMore($state) {
 
     let params
 
-    if (messageTerm.value) {
+    if (messageTerm.value && searchmode.value === 'vector') {
+      // Vector search uses the V2 search API via searchMT
+      const ids = await messageStore.searchMT({
+        term: messageTerm.value,
+        groupid: groupid.value,
+        searchmode: 'vector',
+      })
+      if (ids) {
+        ids.forEach((id) => modMessages.listingIds.value.add(id))
+        modMessages.listingIdOrder.value = ids
+      }
+      show.value = messages.value.length
+      $state.complete()
+      return
+    } else if (messageTerm.value) {
       params = {
         subaction: 'searchall',
         search: messageTerm.value,

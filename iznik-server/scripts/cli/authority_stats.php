@@ -297,6 +297,10 @@ if (count($opts) < 1) {
             $row++;
         }
 
+        # Apply Segoe UI 10pt to all cells on the Postcode breakdown sheet.
+        $lastRow = max($row - 1, 1);
+        $sheet->getStyle("A1:H$lastRow")->getFont()->setName('Segoe UI')->setSize(10);
+
         # Select the right sheet to open on.
         $spreadsheet->setActiveSheetIndexByName('Standard report');
 

@@ -23,6 +23,7 @@ const mockVisibleMessages = ref([])
 const mockWork = computed(() => 0)
 const mockNextAfterRemoved = ref(null)
 const mockListingIds = ref(new Set())
+const mockListingIdOrder = ref([])
 
 vi.mock('~/composables/useModMessages', () => ({
   setupModMessages: () => ({
@@ -44,6 +45,7 @@ vi.mock('~/composables/useModMessages', () => ({
     work: mockWork,
     nextAfterRemoved: mockNextAfterRemoved,
     listingIds: mockListingIds,
+    listingIdOrder: mockListingIdOrder,
   }),
 }))
 
@@ -52,6 +54,7 @@ const mockMessageStore = {
   list: {},
   context: null,
   fetchMessagesMT: vi.fn().mockResolvedValue([]),
+  searchMT: vi.fn().mockResolvedValue([]),
   clearContext: vi.fn(),
   clear: vi.fn(),
 }
@@ -115,6 +118,12 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
     return mount(ApprovedPage, {
       global: {
         plugins: [createPinia()],
+        components: {
+          'b-form-checkbox': {
+            template: '<label><input type="checkbox" /><slot /></label>',
+            props: ['modelValue', 'switch', 'size'],
+          },
+        },
         stubs: {
           'client-only': {
             template: '<div><slot /></div>',
@@ -152,6 +161,14 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
             template: '<img />',
             props: ['src', 'alt', 'lazy'],
           },
+          'b-form-checkbox': {
+            template: '<label><input type="checkbox" /><slot /></label>',
+            props: ['modelValue', 'switch', 'size'],
+          },
+          BFormCheckbox: {
+            template: '<label><input type="checkbox" /><slot /></label>',
+            props: ['modelValue', 'switch', 'size'],
+          },
           'infinite-loading': {
             template:
               '<div class="infinite-loading"><slot name="spinner" /></div>',
@@ -188,6 +205,7 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
     mockMessageStore.list = {}
     mockMessageStore.context = null
     mockListingIds.value = new Set()
+    mockListingIdOrder.value = []
     mockRouteParams.value = { id: undefined, term: undefined }
     mockRouterPush.mockClear()
   })
@@ -226,6 +244,13 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
       const wrapper = mountComponent()
       await wrapper.vm.$nextTick()
       expect(wrapper.text()).toContain('Select a community to search messages')
+    })
+
+    it('renders semantic search toggle defaulting to on', async () => {
+      const wrapper = mountComponent()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.text()).toContain('Semantic search')
+      expect(wrapper.vm.vectorSearchEnabled).toBe(false)
     })
   })
 
@@ -400,8 +425,36 @@ describe('messages/approved/[[id]]/[[term]].vue page', () => {
         expect(mockMessageStore.fetchMessagesMT).toHaveBeenCalled()
       })
 
-      it('uses messageTerm params when searching by message', async () => {
+      it('uses vector search when toggle is enabled and populates listingIds', async () => {
         // Set route params so mounted() sets the values we need
+        mockRouteParams.value = { id: '123', term: 'test search' }
+        mockMessages.value = []
+        mockShow.value = 0
+        mockListingIds.value = new Set()
+        mockMessageStore.searchMT.mockResolvedValue([101, 102])
+        const wrapper = mountComponent()
+        await wrapper.vm.$nextTick()
+        // Enable vector search (defaults off)
+        wrapper.vm.vectorSearchEnabled = true
+        await wrapper.vm.$nextTick()
+        mockMessageStore.searchMT.mockClear()
+        mockMessageStore.searchMT.mockResolvedValue([101, 102])
+        const mockState = { loaded: vi.fn(), complete: vi.fn() }
+        await wrapper.vm.loadMore(mockState)
+        expect(mockMessageStore.searchMT).toHaveBeenCalledWith(
+          expect.objectContaining({
+            term: 'test search',
+            groupid: 123,
+            searchmode: 'vector',
+          })
+        )
+        expect(mockState.complete).toHaveBeenCalled()
+        expect(mockListingIds.value.has(101)).toBe(true)
+        expect(mockListingIds.value.has(102)).toBe(true)
+        expect(mockListingIdOrder.value).toEqual([101, 102])
+      })
+
+      it('uses keyword search by default when searching by message', async () => {
         mockRouteParams.value = { id: '123', term: 'test search' }
         mockMessages.value = []
         mockShow.value = 0
