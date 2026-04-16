@@ -5523,7 +5523,7 @@ func TestMessagePostWritesHistory(t *testing.T) {
 }
 
 // TestJoinAndPostLogsReceived verifies that JoinAndPost writes a Received log entry
-// (V1 parity: Message::submit() logs TYPE_MESSAGE / SUBTYPE_RECEIVED).
+// with V1 parity: byuser is NULL and text is the RFC822 Message-Id header.
 func TestJoinAndPostLogsReceived(t *testing.T) {
 	prefix := uniquePrefix("jap_rcvd")
 	db := database.DBConn
@@ -5532,8 +5532,10 @@ func TestJoinAndPostLogsReceived(t *testing.T) {
 	userID := CreateTestUser(t, prefix+"_user", "User")
 	_, token := CreateTestSession(t, userID)
 
-	// Create draft.
-	db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, arrival, date, source) VALUES (?, 'Offer', 'Offer: Test sofa', 'Free sofa', NOW(), NOW(), 'Platform')", userID)
+	// Create draft with a messageid so we can assert text==messageid.
+	wantMessageID := fmt.Sprintf("<%s@test.freegle.local>", prefix)
+	db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, arrival, date, source, messageid) VALUES (?, 'Offer', 'Offer: Test sofa', 'Free sofa', NOW(), NOW(), 'Platform', ?)",
+		userID, wantMessageID)
 	var msgID uint64
 	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", userID).Scan(&msgID)
 	require.NotZero(t, msgID)
@@ -5550,11 +5552,17 @@ func TestJoinAndPostLogsReceived(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	// Verify a Received log entry was written.
-	var logCount int64
-	db.Raw("SELECT COUNT(*) FROM logs WHERE type = ? AND subtype = ? AND user = ? AND msgid = ? AND groupid = ?",
-		log.LOG_TYPE_MESSAGE, log.LOG_SUBTYPE_RECEIVED, userID, msgID, groupID).Scan(&logCount)
-	assert.Equal(t, int64(1), logCount, "JoinAndPost should create a Message/Received log entry")
+	// Verify a Received log entry was written with V1-parity fields.
+	type logRow struct {
+		Byuser *uint64
+		Text   string
+	}
+	var rows []logRow
+	db.Raw("SELECT byuser, text FROM logs WHERE type = ? AND subtype = ? AND `user` = ? AND msgid = ? AND groupid = ?",
+		log.LOG_TYPE_MESSAGE, log.LOG_SUBTYPE_RECEIVED, userID, msgID, groupID).Scan(&rows)
+	require.Equal(t, 1, len(rows), "JoinAndPost should create exactly one Message/Received log")
+	assert.Nil(t, rows[0].Byuser, "Received log should have byuser=NULL (V1 parity)")
+	assert.Equal(t, wantMessageID, rows[0].Text, "Received log text should be the RFC822 Message-Id (V1 parity)")
 }
 
 // TestMessageEditRecordsAllColumns verifies that the PATCH /message edit path records

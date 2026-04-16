@@ -1234,12 +1234,31 @@ func GetRecentActivity(c *fiber.Ctx) error {
 
 // logModAction inserts a mod log entry for message actions (approve, reject, reply, etc).
 func logModAction(db *gorm.DB, logType string, subtype string, groupid uint64, userid uint64, byuser uint64, msgid uint64, stdmsgid uint64, text string) {
+	// `user` is a reserved word in MySQL — backtick to match V1's Log::log().
 	if stdmsgid > 0 {
-		db.Exec("INSERT INTO logs (timestamp, type, subtype, groupid, user, byuser, msgid, stdmsgid, text) VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?)",
+		db.Exec("INSERT INTO logs (timestamp, type, subtype, groupid, `user`, byuser, msgid, stdmsgid, text) VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?)",
 			logType, subtype, groupid, userid, byuser, msgid, stdmsgid, text)
 	} else {
-		db.Exec("INSERT INTO logs (timestamp, type, subtype, groupid, user, byuser, msgid, text) VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?)",
+		db.Exec("INSERT INTO logs (timestamp, type, subtype, groupid, `user`, byuser, msgid, text) VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?)",
 			logType, subtype, groupid, userid, byuser, msgid, text)
+	}
+}
+
+// logMessageReceived writes the V1-parity Message/Received log entry:
+// byuser is NULL (a Received log is a system event, not a mod action) and
+// text is the RFC822 Message-Id header (V1 Message::submit() records
+// $this->messageid). Only logs when the INSERT actually modifies a row
+// (which also means we don't emit duplicate Received logs if the caller
+// re-runs — the unique-by-msgid check is deferred to the caller context).
+func logMessageReceived(db *gorm.DB, groupid uint64, fromuser uint64, msgid uint64) {
+	var messageid string
+	db.Raw("SELECT COALESCE(messageid, '') FROM messages WHERE id = ?", msgid).Scan(&messageid)
+	result := db.Exec(
+		"INSERT INTO logs (timestamp, type, subtype, groupid, `user`, byuser, msgid, text) VALUES (NOW(), ?, ?, ?, ?, NULL, ?, ?)",
+		flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_RECEIVED, groupid, fromuser, msgid, messageid,
+	)
+	if result.Error != nil {
+		log.Printf("Failed to log Message/Received for msg %d group %d: %v", msgid, groupid, result.Error)
 	}
 }
 
@@ -2014,8 +2033,9 @@ func handleJoinAndPost(c *fiber.Ctx, myid uint64, req PostMessageRequest) error 
 
 	db.Exec("DELETE FROM messages_drafts WHERE msgid = ?", req.ID)
 
-	// V1 parity: Message::submit() logs Message/Received when a post is submitted.
-	logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_RECEIVED, groupid, myid, myid, req.ID, 0, "")
+	// V1 parity: Message::submit() logs Message/Received with byuser=NULL
+	// and text=messageid (RFC822 Message-Id header).
+	logMessageReceived(db, groupid, myid, req.ID)
 
 	// Add to spatial index now that the message is in a group
 	// (only runs after messages_groups insert).
@@ -2756,7 +2776,7 @@ func PutMessage(c *fiber.Ctx) error {
 			newMsgID, req.Groupid, collection)
 
 		// V1 parity: log Message/Received when a post is submitted directly (non-draft).
-		logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_RECEIVED, req.Groupid, myid, myid, newMsgID, 0, "")
+		logMessageReceived(db, req.Groupid, myid, newMsgID)
 	}
 
 	// Link attachments.
