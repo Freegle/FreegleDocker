@@ -177,6 +177,7 @@ onMounted(() => {
   }
   if (route?.params && 'term' in route.params && route.params.term) {
     messageTerm.value = route.params.term
+    highlightMsgId.value = parseInt(route.params.term)
   }
   if (route.query.searchmode) {
     vectorSearchEnabled.value = route.query.searchmode === 'vector'
