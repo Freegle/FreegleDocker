@@ -84,8 +84,6 @@ func CreateIntent(c *fiber.Ctx) error {
 
 	params.AddMetadata("uid", strconv.FormatUint(myid, 10))
 
-	log.Printf("Creating PaymentIntent for user %d, amount %d pence", myid, amountPence)
-
 	// Protect stripe.Key from concurrent access. The stripe-go library reads
 	// stripe.Key during API calls, so the lock must span key set + API call.
 	stripeMu.Lock()
@@ -97,8 +95,6 @@ func CreateIntent(c *fiber.Ctx) error {
 		log.Printf("Stripe PaymentIntent creation failed for user %d: %v", myid, err)
 		return fiber.NewError(fiber.StatusInternalServerError, "Payment processing failed")
 	}
-
-	log.Printf("PaymentIntent created: %s for user %d", pi.ID, myid)
 
 	return c.JSON(fiber.Map{
 		"id":           pi.ID,
@@ -168,8 +164,6 @@ func CreateSubscription(c *fiber.Ctx) error {
 		name = *fullname
 	}
 
-	log.Printf("Creating Stripe subscription for user %d, amount %d", myid, req.Amount)
-
 	// Create Stripe customer.
 	custParams := &stripe.CustomerParams{
 		Email: stripe.String(email),
@@ -228,8 +222,6 @@ func CreateSubscription(c *fiber.Ctx) error {
 		log.Printf("Stripe subscription creation failed for user %d: %v", myid, err)
 		return fiber.NewError(fiber.StatusInternalServerError, "Payment processing failed")
 	}
-
-	log.Printf("Stripe subscription created: %s for user %d", sub.ID, myid)
 
 	// Extract client secret from the latest invoice's confirmation secret.
 	var clientSecret string

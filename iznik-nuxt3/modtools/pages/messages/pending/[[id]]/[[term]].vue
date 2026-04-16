@@ -58,7 +58,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import dayjs from 'dayjs'
-import { useRoute } from '#imports'
+import { useRoute, useRouter } from '#imports'
 import { setupModMessages } from '~/composables/useModMessages'
 import { useAuthStore } from '@/stores/auth'
 import { useMessageStore } from '@/stores/message'
@@ -95,6 +95,14 @@ collection.value = 'Pending' // Pending also gets PendingOther
 workType.value = ['pending', 'pendingother']
 
 const { me, myGroups } = useMe()
+
+// Computed - route params
+const id = computed(() => {
+  if ('id' in route.params && route.params.id) {
+    return parseInt(route.params.id)
+  }
+  return 0
+})
 
 // Data
 const showCakeModal = ref(false)
@@ -160,11 +168,23 @@ watch(rulesGroup, (newVal) => {
 
 // Watchers
 watch(groupid, async (newVal) => {
+  const router = useRouter()
   context.value = null
   await modGroupStore.fetchIfNeedBeMT(newVal)
   group.value = modGroupStore.get(newVal)
   show.value = 0
   bump.value++
+
+  // Keep URL in sync with selected group.
+  if (newVal !== id.value) {
+    nextTick(() => {
+      if (newVal === 0) {
+        router.push('/messages/pending/')
+      } else {
+        router.push('/messages/pending/' + newVal)
+      }
+    })
+  }
 })
 
 watch(visibleMessages, (newVal) => {
@@ -186,14 +206,14 @@ watch(visibleMessages, (newVal) => {
 
 // Lifecycle
 onMounted(async () => {
-  // Check for query params from duplicate message link.
-  if (route.query.groupid !== undefined) {
-    groupid.value = parseInt(route.query.groupid)
-    // Mark that URL explicitly set the group (even if 0 for "All").
+  // Read group from route params (e.g. /messages/pending/456).
+  if (id.value) {
+    groupid.value = id.value
     urlOverride.value = true
   }
-  if (route.query.msgid) {
-    highlightMsgId.value = parseInt(route.query.msgid)
+  // Read message highlight from route term (e.g. /messages/pending/456/123).
+  if ('term' in route.params && route.params.term) {
+    highlightMsgId.value = parseInt(route.params.term)
   }
 
   // AIMS
@@ -296,6 +316,7 @@ defineExpose({
   bump,
   highlightMsgId,
   urlOverride,
+  id,
   groups,
   groupsreceived,
   rulesGroup,

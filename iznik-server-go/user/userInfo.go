@@ -265,14 +265,14 @@ func GetPublicLocationForUser(userid uint64) *Publiclocation {
 	db := database.DBConn
 
 	// Use settings.mylocation.area.name first for the public location display.
-	var areaName string
+	var areaName *string
 	db.Raw("SELECT JSON_UNQUOTE(JSON_EXTRACT(JSON_EXTRACT(JSON_EXTRACT(settings, '$.mylocation'), '$.area'), '$.name')) "+
 		"FROM users WHERE id = ? AND settings IS NOT NULL", userid).Scan(&areaName)
 
-	if areaName != "" && areaName != "null" {
+	if areaName != nil && *areaName != "" && *areaName != "null" {
 		return &Publiclocation{
-			Display:  areaName,
-			Location: areaName,
+			Display:  *areaName,
+			Location: *areaName,
 		}
 	}
 
@@ -301,7 +301,8 @@ func GetPublicLocationForUser(userid uint64) *Publiclocation {
 		"FROM memberships m "+
 		"INNER JOIN `groups` g ON g.id = m.groupid "+
 		"WHERE m.userid = ? AND m.collection = ? "+
-		"ORDER BY m.added DESC LIMIT 1", userid, utils.COLLECTION_APPROVED).Scan(&groupLoc)
+		"ORDER BY m.added DESC LIMIT 1",
+		userid, utils.COLLECTION_APPROVED).Scan(&groupLoc)
 
 	if groupLoc.Groupid > 0 {
 		return &Publiclocation{

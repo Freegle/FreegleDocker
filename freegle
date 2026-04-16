@@ -136,8 +136,8 @@ cmd_worktree_create() {
             local wt_status_port
             wt_status_port=$(grep -E '^PORT_STATUS=' "$wt/.env" 2>/dev/null | cut -d= -f2 || true)
             if [[ -n "$wt_status_port" && "$wt_status_port" =~ ^[0-9]+$ ]]; then
-                # Base STATUS port is 8081. Slot = (port - 8081) / 9000
-                local wt_slot=$(( (wt_status_port - 8081) / 9000 ))
+                # Base STATUS port is 8081. Slot = (port - 8081) / 5000
+                local wt_slot=$(( (wt_status_port - 8081) / 5000 ))
                 if (( wt_slot > max_slot )); then
                     max_slot=$wt_slot
                 fi
@@ -168,13 +168,14 @@ cmd_worktree_create() {
     # Assign unique PORT_* values to avoid conflicts with other running instances.
     # All port bindings live in docker-compose.yml (for backwards compat with single-file
     # installs), so changing COMPOSE_FILE alone doesn't prevent conflicts. We offset every
-    # PORT_* value by slot*2000 instead.
+    # PORT_* value by slot*5000 instead.
     #
     # slot was counted before git worktree add, so:
-    #   first worktree (slot=1) → +2000, second (slot=2) → +4000, …
-    # 2000 is the minimum round increment with zero port collisions across slots
-    # (verified against all 25 PORT_* defaults ranging from 25 to 11334).
-    local port_offset=$(( slot * 2000 ))
+    #   first worktree (slot=1) → +5000, second (slot=2) → +10000, …
+    # 5000 is the smallest round increment with zero port collisions across
+    # all 25 PORT_* defaults (ranging from 25 to 11334) for up to 11 slots.
+    # Max port at slot 10: 61334 (under 65535).
+    local port_offset=$(( slot * 5000 ))
 
     # Build a map of effective PORT_* defaults: start with docker-compose.yml defaults,
     # then override with whatever is explicitly set in the main .env

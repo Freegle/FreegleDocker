@@ -78,8 +78,12 @@
               class="fw-bold"
             />
             <div v-else :class="subjectClass + ' fw-bold'">
+              <span
+                v-if="message.matchedon && message.matchedon.type === 'Vector'"
+                class="highlight"
+              >{{ eSubject }}</span>
               <Highlighter
-                v-if="message.matchedon"
+                v-else-if="message.matchedon"
                 :search-words="[String(message.matchedon.word)]"
                 :text-to-highlight="eSubject"
                 highlight-class-name="highlight"
@@ -358,8 +362,12 @@
                 v-else
                 class="mb-3 rounded border p-2 preline forcebreak fw-bold"
               >
+                <span
+                  v-if="message.matchedon && message.matchedon.type === 'Vector'"
+                  class="highlight"
+                >{{ eBody }}</span>
                 <Highlighter
-                  v-if="message.matchedon"
+                  v-else-if="message.matchedon"
                   :search-words="[String(message.matchedon.word)]"
                   :text-to-highlight="eBody"
                   highlight-class-name="highlight"

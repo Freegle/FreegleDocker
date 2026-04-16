@@ -7,6 +7,9 @@ import { useAuthStore } from '~/stores/auth'
 const mockFetchByUser = vi.fn()
 const mockSave = vi.fn()
 const mockFetch = vi.fn()
+const mockSearch = vi.fn()
+const mockFetchMessages = vi.fn()
+const mockFetchMT = vi.fn()
 
 vi.mock('~/api', () => ({
   default: () => ({
@@ -14,6 +17,8 @@ vi.mock('~/api', () => ({
       fetchByUser: mockFetchByUser,
       save: mockSave,
       fetch: mockFetch,
+      search: mockSearch,
+      fetchMessages: mockFetchMessages,
     },
   }),
 }))
@@ -146,5 +151,188 @@ describe('message store - fetchActivePostCount', () => {
     await store.fetchActivePostCount()
 
     expect(store.activePostsCounter).toBe(0)
+  })
+})
+
+describe('message store - searchMT()', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    mockMiscStore.modtools = true
+  })
+
+  it('calls V2 search API with vector searchmode', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockSearch.mockResolvedValue([
+      { id: 101, msgid: 101, matchedon: { type: 'Vector', word: 'sofa' } },
+      { id: 102, msgid: 102, matchedon: { type: 'Vector', word: 'sofa' } },
+    ])
+
+    const store = useMessageStore()
+    // Mock fetchMT to avoid real API calls
+    store.fetchMT = vi.fn().mockImplementation(({ id }) => {
+      const msg = { id, subject: 'Test' }
+      return msg
+    })
+
+    const ids = await store.searchMT({
+      term: 'sofa',
+      groupid: 123,
+      searchmode: 'vector',
+    })
+
+    expect(mockSearch).toHaveBeenCalledWith({
+      search: 'sofa',
+      messagetype: 'All',
+      groupids: '123',
+      searchmode: 'vector',
+    })
+    expect(store.fetchMT).toHaveBeenCalledTimes(2)
+    expect(store.list[101]).toBeDefined()
+    expect(store.list[102]).toBeDefined()
+    expect(store.list[101].matchedon).toEqual({ type: 'Vector', word: 'sofa' })
+    expect(store.list[102].matchedon).toEqual({ type: 'Vector', word: 'sofa' })
+    expect(ids).toEqual(expect.arrayContaining([101, 102]))
+  })
+
+  it('preserves score order from API response', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockSearch.mockResolvedValue([
+      { id: 301, matchedon: { type: 'Vector', word: 'sofa' } },
+      { id: 302, matchedon: { type: 'Vector', word: 'sofa' } },
+      { id: 303, matchedon: { type: 'Vector', word: 'sofa' } },
+    ])
+
+    const store = useMessageStore()
+    store.fetchMT = vi.fn().mockImplementation(({ id }) => {
+      return { id, subject: 'Test' }
+    })
+
+    const ids = await store.searchMT({
+      term: 'sofa',
+      searchmode: 'vector',
+    })
+
+    // Order should match API response order (score-ranked)
+    expect(ids).toEqual([301, 302, 303])
+  })
+
+  it('handles empty vector search results', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockSearch.mockResolvedValue([])
+
+    const store = useMessageStore()
+    store.fetchMT = vi.fn()
+
+    const ids = await store.searchMT({
+      term: 'nonexistent',
+      searchmode: 'vector',
+    })
+
+    expect(mockSearch).toHaveBeenCalled()
+    expect(store.fetchMT).not.toHaveBeenCalled()
+    expect(ids).toEqual([])
+  })
+
+  it('handles null vector search results', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockSearch.mockResolvedValue(null)
+
+    const store = useMessageStore()
+    store.fetchMT = vi.fn()
+
+    const ids = await store.searchMT({
+      term: 'nonexistent',
+      searchmode: 'vector',
+    })
+
+    expect(store.fetchMT).not.toHaveBeenCalled()
+    expect(ids).toEqual([])
+  })
+
+  it('omits groupids when no groupid provided', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockSearch.mockResolvedValue([])
+
+    const store = useMessageStore()
+    await store.searchMT({
+      term: 'chair',
+      searchmode: 'vector',
+    })
+
+    expect(mockSearch).toHaveBeenCalledWith({
+      search: 'chair',
+      messagetype: 'All',
+      groupids: undefined,
+      searchmode: 'vector',
+    })
+  })
+
+  it('handles fetchMT failure for individual results gracefully', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockSearch.mockResolvedValue([
+      { id: 201 },
+      { id: 202 },
+    ])
+
+    const store = useMessageStore()
+    store.fetchMT = vi.fn().mockImplementation(({ id }) => {
+      if (id === 201) throw new Error('Not found')
+      const msg = { id, subject: 'Chair' }
+      store.list[id] = msg
+      return msg
+    })
+
+    const ids = await store.searchMT({
+      term: 'chair',
+      groupid: 100,
+      searchmode: 'vector',
+    })
+
+    // First result failed but second should still be in list
+    expect(store.list[201]).toBeUndefined()
+    expect(store.list[202]).toBeDefined()
+    expect(ids).toEqual([202])
+  })
+
+  it('uses keyword search when searchmode is not vector', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockFetchMessages.mockResolvedValue({
+      messages: [301, 302],
+    })
+
+    const store = useMessageStore()
+    store.fetchMT = vi.fn().mockImplementation(({ id }) => {
+      const msg = { id, subject: 'Bike' }
+      store.list[id] = msg
+      return msg
+    })
+
+    await store.searchMT({
+      term: 'bike',
+      groupid: 50,
+    })
+
+    expect(mockFetchMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: 'searchall',
+        search: 'bike',
+        exactonly: true,
+        groupid: 50,
+      })
+    )
+    expect(store.fetchMT).toHaveBeenCalledTimes(2)
+  })
+
+  it('handles empty keyword search results', async () => {
+    useAuthStore.mockReturnValue({ user: { id: 1 } })
+    mockFetchMessages.mockResolvedValue({ messages: [] })
+
+    const store = useMessageStore()
+    store.fetchMT = vi.fn()
+
+    await store.searchMT({ term: 'nothing' })
+
+    expect(store.fetchMT).not.toHaveBeenCalled()
   })
 })

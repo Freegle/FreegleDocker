@@ -23,6 +23,52 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Cancel older redundant pipelines
+          command: |
+            # Dynamic config (setup: true) breaks CircleCI's built-in auto-cancel.
+            # Continuation pipelines get new IDs, so CircleCI doesn't recognise them
+            # as redundant. We cancel older running pipelines for the same branch manually.
+            if [ -z "$CIRCLE_TOKEN" ]; then
+              echo "CIRCLE_TOKEN not set — skipping"
+              exit 0
+            fi
+
+            BRANCH="<< pipeline.git.branch >>"
+            THIS_PIPELINE="<< pipeline.id >>"
+            THIS_NUMBER="<< pipeline.number >>"
+            PROJECT_SLUG="gh/Freegle/Iznik"
+
+            echo "Current pipeline: #${THIS_NUMBER} (${THIS_PIPELINE}) on ${BRANCH}"
+
+            # Get recent pipelines for this branch
+            PIPELINES=$(curl -sf \
+              -H "Circle-Token: ${CIRCLE_TOKEN}" \
+              "https://circleci.com/api/v2/project/${PROJECT_SLUG}/pipeline?branch=${BRANCH}" 2>/dev/null) || true
+
+            if [ -z "$PIPELINES" ]; then
+              echo "Failed to fetch pipelines — skipping"
+              exit 0
+            fi
+
+            # Find older pipelines (lower number) that are still running
+            echo "$PIPELINES" | jq -r --argjson thisNum "$THIS_NUMBER" \
+              '.items[] | select(.number < $thisNum and .state == "created") | .id' | while read -r PIPELINE_ID; do
+              echo "Checking workflows for pipeline ${PIPELINE_ID}..."
+
+              WORKFLOWS=$(curl -sf \
+                -H "Circle-Token: ${CIRCLE_TOKEN}" \
+                "https://circleci.com/api/v2/pipeline/${PIPELINE_ID}/workflow" 2>/dev/null) || continue
+
+              echo "$WORKFLOWS" | jq -r '.items[] | select(.status == "running" or .status == "on_hold") | .id' | while read -r WF_ID; do
+                echo "Cancelling workflow ${WF_ID} from older pipeline"
+                curl -sf -X POST \
+                  -H "Circle-Token: ${CIRCLE_TOKEN}" \
+                  "https://circleci.com/api/v2/workflow/${WF_ID}/cancel" 2>/dev/null || true
+              done
+            done
+
+            echo "Done checking for redundant pipelines"
+      - run:
           name: Check self-hosted runner availability
           command: |
             # For manual promote or testflight, skip runner check — those workflows

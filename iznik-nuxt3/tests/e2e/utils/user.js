@@ -1257,9 +1257,19 @@ async function loginViaModTools(page, email, password = 'freegle') {
     timeout: timeouts.navigation.slowPage,
   })
 
-  const fullnameField = page.locator('#fullname, input[name="fullname"]')
+  // Wait for the modal's submit button to appear (either "Log in" or "Join Freegle")
+  // before checking mode. A point-in-time isVisible() on the fullname field races
+  // with Vue hydration — the modal may switch to signup mode after the check.
+  const anySubmitButton = page.locator(
+    '#loginModal button[type="submit"]'
+  )
+  await anySubmitButton.first().waitFor({
+    state: 'visible',
+    timeout: timeouts.ui.appearance,
+  })
 
-  // Switch to login mode if in signup mode (fullname field visible)
+  // Now check if we're in signup mode (fullname field visible) and switch if needed
+  const fullnameField = page.locator('#fullname, input[name="fullname"]')
   const fullnameVisible = await fullnameField.isVisible().catch(() => false)
   if (fullnameVisible) {
     console.log('In signup mode, switching to login mode')
@@ -1273,7 +1283,7 @@ async function loginViaModTools(page, email, password = 'freegle') {
     console.log('Switched to login mode')
   }
 
-  // Verify we're in login mode — the submit button must say "Log in"
+  // Now the submit button should say "Log in"
   const loginButton = page.locator(
     '#loginModal button[type="submit"]:has-text("Log in")'
   )

@@ -681,12 +681,13 @@ const test = base.test.extend({
             )
           }
 
-          // Check if it's a retryable connection error
+          // Check if it's a retryable connection/navigation error
           const isRetryable =
             error.message.includes('ERR_CONNECTION_RESET') ||
             error.message.includes('ERR_SOCKET_NOT_CONNECTED') ||
             error.message.includes('ERR_NETWORK_CHANGED') ||
-            error.message.includes('net::ERR_')
+            error.message.includes('net::ERR_') ||
+            error.message.includes('Execution context was destroyed')
 
           if (isRetryable && attempt < maxRetries) {
             console.log(
@@ -1829,6 +1830,24 @@ const testWithFixtures = test.extend({
       })
       const freshPage = await freshContext.newPage()
 
+      // Capture console logs from the fresh page for debugging.
+      // Without this, ReplyStateMachine logs are invisible when the flow fails.
+      const freshConsoleMessages = []
+      freshPage.on('console', (msg) => {
+        const text = msg.text()
+        if (
+          text.includes('ReplyStateMachine') ||
+          text.includes('MessageReplySection') ||
+          text.includes('openChat') ||
+          text.includes('fallback') ||
+          text.includes('timeout') ||
+          msg.type() === 'error'
+        ) {
+          freshConsoleMessages.push(`[fresh:${msg.type()}] ${text}`)
+          console.log(`[FreshContext] ${text}`)
+        }
+      })
+
       // Add gotoAndVerify helper to the fresh page
       // Don't use networkidle - the app has background polling that prevents idle state
       freshPage.gotoAndVerify = async (path, options = {}) => {
@@ -1976,35 +1995,43 @@ const testWithFixtures = test.extend({
       // we end up at /chats/ with a chat entry.
 
       try {
-        // The Welcome modal may appear for new users. Handle it if it does.
-        const welcomeModal = freshPage.locator('.modal-content').filter({
-          hasText: 'Welcome to Freegle',
-        })
+        // Handle the Welcome modal and Contact details modal concurrently
+        // with waiting for navigation. The state machine flow is:
+        // register → join group → create chat → (maybe show Welcome) → navigate to /chats/
+        // Any of these steps can be slow under load, so we handle modals
+        // asynchronously while waiting for the URL change.
 
-        try {
-          await welcomeModal.waitFor({ state: 'visible', timeout: 10000 })
-          console.log('Welcome to Freegle modal appeared')
-
-          const closeButton = welcomeModal.locator(
-            '.btn:has-text("Close and Continue")'
-          )
-          await closeButton.waitFor({
-            state: 'visible',
-            timeout: timeouts.ui.appearance,
+        // Start handling modals in the background — don't block the URL wait
+        const handleModals = async () => {
+          // Welcome modal may appear for new users
+          const welcomeModal = freshPage.locator('.modal-content').filter({
+            hasText: 'Welcome to Freegle',
           })
-          await closeButton.click()
-          console.log('Clicked Close and Continue')
-        } catch {
-          // Welcome modal may have already been dismissed or may not appear
-          // for users who have been registered before in a previous test run
-          console.log('Welcome modal did not appear within timeout')
+          try {
+            await welcomeModal.waitFor({ state: 'visible', timeout: 30000 })
+            console.log('Welcome to Freegle modal appeared')
+            const closeButton = welcomeModal.locator(
+              '.btn:has-text("Close and Continue")'
+            )
+            await closeButton.waitFor({
+              state: 'visible',
+              timeout: timeouts.ui.appearance,
+            })
+            await closeButton.click()
+            console.log('Clicked Close and Continue')
+          } catch {
+            console.log('Welcome modal did not appear within timeout')
+          }
         }
 
-        // Wait for navigation to chats page - this is the definitive success indicator
+        // Run modal handling and URL wait concurrently
+        const modalPromise = handleModals()
         await freshPage.waitForURL('**/chats/**', {
           timeout: timeouts.navigation.default,
         })
         console.log('Successfully navigated to chats page')
+        // Wait for modal handling to finish (it may have already)
+        await modalPromise
 
         // Handle ContactDetailsAskModal if it appears
         try {
@@ -2064,6 +2091,14 @@ const testWithFixtures = test.extend({
         try {
           const url = freshPage.url()
           console.log('Page URL at failure:', url)
+          if (freshConsoleMessages.length > 0) {
+            console.log(
+              'Fresh context console logs:',
+              freshConsoleMessages.join('\n  ')
+            )
+          } else {
+            console.log('No relevant console messages captured from fresh context')
+          }
         } catch {}
         await freshContext.close()
         return false

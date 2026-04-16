@@ -1101,9 +1101,12 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			db.Raw("SELECT MAX(lastsent) FROM users_push_notifications WHERE userid = ?", id).Scan(&lastpush)
-			if lastpush != nil && lastpush.IsZero() {
-				lastpush = nil
+			var lastpushStr *string
+			db.Raw("SELECT MAX(lastsent) FROM users_push_notifications WHERE userid = ?", id).Scan(&lastpushStr)
+			if lastpushStr != nil {
+				if parsed, err := time.Parse("2006-01-02 15:04:05", *lastpushStr); err == nil && !parsed.IsZero() {
+					lastpush = &parsed
+				}
 			}
 		}()
 	}
@@ -1188,11 +1191,16 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 
 	if modtools {
 		if privatePos.Lat != 0 || privatePos.Lng != 0 {
-			var locName string
+			var locNamePtr *string
 			db.Raw("SELECT JSON_UNQUOTE(JSON_EXTRACT(JSON_EXTRACT(settings, '$.mylocation'), '$.name')) "+
-				"FROM users WHERE id = ? AND settings IS NOT NULL", id).Scan(&locName)
+				"FROM users WHERE id = ? AND settings IS NOT NULL", id).Scan(&locNamePtr)
 
-			if locName == "" || locName == "null" {
+			locName := ""
+			if locNamePtr != nil && *locNamePtr != "null" {
+				locName = *locNamePtr
+			}
+
+			if locName == "" {
 				locName = ""
 				if u.Lastlocation != nil && *u.Lastlocation > 0 {
 					db.Raw("SELECT name FROM locations WHERE id = ?", *u.Lastlocation).Scan(&locName)
