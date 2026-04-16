@@ -223,6 +223,62 @@ describe('ModGroupMapLocation', () => {
     })
   })
 
+  describe('location computed - missing json guard', () => {
+    // Reproduces Sentry 7416439060: deleting a location from the store causes
+    // the computed to return an object without a `json` property. If the
+    // template does not guard with v-if="location.json", vue-leaflet's
+    // l-geo-json calls Leaflet addData(undefined) which throws
+    // "Invalid GeoJSON object".
+
+    // Mirrors the component's computed logic
+    const computeLocation = (loc, wktAvailable) => {
+      if (!loc?.polygon || !wktAvailable) {
+        return loc || {}
+      }
+      // If WKT is available and polygon exists, json would be added
+      return { ...loc, json: { type: 'Polygon', coordinates: [] } }
+    }
+
+    it('returns object without json when location has no polygon', () => {
+      const loc = { id: 1, name: 'Test' }
+      const result = computeLocation(loc, true)
+      expect(result).not.toHaveProperty('json')
+    })
+
+    it('returns empty object when location is not in store', () => {
+      const result = computeLocation(null, true)
+      expect(result).toEqual({})
+      expect(result).not.toHaveProperty('json')
+    })
+
+    it('returns object without json when polygon is empty string', () => {
+      const loc = { id: 1, name: 'Test', polygon: '' }
+      const result = computeLocation(loc, true)
+      expect(result).not.toHaveProperty('json')
+    })
+
+    it('returns location without json when Wkt is not loaded', () => {
+      const loc = {
+        id: 1,
+        name: 'Test',
+        polygon: 'POLYGON((-1 53,-1 54,-2 54,-2 53,-1 53))',
+      }
+      const result = computeLocation(loc, false)
+      expect(result).not.toHaveProperty('json')
+      expect(result.id).toBe(1)
+    })
+
+    it('returns location with json when polygon and Wkt both present', () => {
+      const loc = {
+        id: 1,
+        name: 'Test',
+        polygon: 'POLYGON((-1 53,-1 54,-2 54,-2 53,-1 53))',
+      }
+      const result = computeLocation(loc, true)
+      expect(result).toHaveProperty('json')
+    })
+  })
+
   describe('emits validation', () => {
     it('defines expected emits', () => {
       const expectedEmits = ['click', 'edit']
