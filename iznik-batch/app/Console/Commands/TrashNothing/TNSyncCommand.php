@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\UserAboutMe;
 use App\Models\UserEmail;
 use App\Models\UserReplyTime;
+use App\Services\LokiService;
 use App\Traits\GracefulShutdown;
 use App\Traits\LogsBatchJob;
 use Illuminate\Console\Command;
@@ -30,6 +31,13 @@ class TNSyncCommand extends Command
     private string $apiKey;
     private string $apiBaseUrl;
     private string $dateFile;
+    private LokiService $loki;
+
+    public function __construct(LokiService $loki)
+    {
+        parent::__construct();
+        $this->loki = $loki;
+    }
 
     public function handle(): int
     {
@@ -180,18 +188,30 @@ class TNSyncCommand extends Command
                 try {
                     if ($rating['rating']) {
                         $ratingModel = Rating::firstOrNew(['tn_rating_id' => $rating['rating_id']]);
-                        if (!$ratingModel->exists) {
+                        $isNew = !$ratingModel->exists;
+                        if ($isNew) {
                             $ratingModel->ratee = $rating['ratee_fd_user_id'];
                             $ratingModel->visible = 1;
                         }
                         $ratingModel->rating = $rating['rating'];
                         $ratingModel->timestamp = $rating['date'];
                         $ratingModel->save();
+                        $this->loki->logEvent('tn-sync', 'rating-upsert', [
+                            'action' => $isNew ? 'insert' : 'update',
+                            'tn_rating_id' => $rating['rating_id'],
+                            'user_id' => $rating['ratee_fd_user_id'],
+                        ]);
                     } else {
-                        Rating::where('ratee', $rating['ratee_fd_user_id'])
+                        $existing = Rating::where('ratee', $rating['ratee_fd_user_id'])
                             ->where('tn_rating_id', $rating['rating_id'])
-                            ->first()
-                            ?->delete();
+                            ->first();
+                        if ($existing) {
+                            $existing->delete();
+                            $this->loki->logEvent('tn-sync', 'rating-delete', [
+                                'tn_rating_id' => $rating['rating_id'],
+                                'user_id' => $rating['ratee_fd_user_id'],
+                            ]);
+                        }
                     }
                 } catch (\Exception $e) {
                     Log::error('TN sync: ratings sync failed', [
@@ -256,22 +276,35 @@ class TNSyncCommand extends Command
                     if (!empty($change['account_removed'])) {
                         Log::info("FD #{$change['fd_user_id']} TN account removed");
                         $user->forget('TN account removed');
+                        $this->loki->logEvent('tn-sync', 'user-forget', [
+                            'user_id' => $change['fd_user_id'],
+                        ]);
                         continue;
                     }
 
                     if (!empty($change['reply_time'])) {
                         $replyTime = UserReplyTime::firstOrNew(['userid' => $change['fd_user_id']]);
+                        $isNew = !$replyTime->exists;
                         $replyTime->replytime = $change['reply_time'];
                         $replyTime->timestamp = $change['date'];
                         $replyTime->save();
+                        $this->loki->logEvent('tn-sync', 'user-reply-time-upsert', [
+                            'action' => $isNew ? 'insert' : 'update',
+                            'user_id' => $change['fd_user_id'],
+                        ]);
                     }
 
                     if (!empty($change['about_me'])) {
                         try {
                             $aboutMe = UserAboutMe::firstOrNew(['userid' => $change['fd_user_id']]);
+                            $isNew = !$aboutMe->exists;
                             $aboutMe->timestamp = $change['date'];
                             $aboutMe->text = $change['about_me'];
                             $aboutMe->save();
+                            $this->loki->logEvent('tn-sync', 'user-about-me-upsert', [
+                                'action' => $isNew ? 'insert' : 'update',
+                                'user_id' => $change['fd_user_id'],
+                            ]);
                         } catch (\Exception $e) {
                             if (function_exists('\Sentry\captureException')) {
                                 \Sentry\captureException($e);
@@ -295,6 +328,11 @@ class TNSyncCommand extends Command
                                     $user->removeEmail($email);
                                     Log::info("...{$email} => {$newEmail}");
                                     $user->addEmail($newEmail);
+                                    $this->loki->logEvent('tn-sync', 'user-email-rename', [
+                                        'user_id' => $change['fd_user_id'],
+                                        'old_email' => $email,
+                                        'new_email' => $newEmail,
+                                    ]);
                                 }
                             }
                         }
@@ -316,6 +354,9 @@ class TNSyncCommand extends Command
                     }
 
                     $user->save();
+                    $this->loki->logEvent('tn-sync', 'user-update', [
+                        'user_id' => $change['fd_user_id'],
+                    ]);
                 } catch (\Exception $e) {
                     Log::error('TN sync: user changes sync failed', [
                         'error' => $e->getMessage(),
@@ -364,6 +405,10 @@ class TNSyncCommand extends Command
                     if ($userId != $mergeTo) {
                         Log::info("Merging {$userId} into {$mergeTo}");
                         User::merge($mergeTo, $userId, "Duplicate TN user created accidentally");
+                        $this->loki->logEvent('tn-sync', 'user-merge', [
+                            'merge_to' => $mergeTo,
+                            'merge_from' => $userId,
+                        ]);
                         $merged++;
                     }
                 }

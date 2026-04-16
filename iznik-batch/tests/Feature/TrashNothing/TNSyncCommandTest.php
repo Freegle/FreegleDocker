@@ -4,6 +4,7 @@ namespace Tests\Feature\TrashNothing;
 
 use App\Models\User;
 use App\Models\UserEmail;
+use App\Services\LokiService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -657,6 +658,292 @@ class TNSyncCommandTest extends TestCase
         $this->assertTrue(
             DB::table('ratings')->where('tn_rating_id', $page2RatingId)->exists()
         );
+    }
+
+    // =========================================================================
+    // Loki logging
+    // =========================================================================
+
+    public function test_loki_logs_rating_insert(): void
+    {
+        $user = $this->createTestUser();
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'rating-upsert', \Mockery::on(fn($ctx) =>
+                $ctx['action'] === 'insert' && $ctx['user_id'] === $user->id
+            ));
+
+        Http::fake([
+            '*/ratings*' => Http::response([
+                'ratings' => [[
+                    'rating_id' => 'tn_r_loki_' . uniqid(),
+                    'ratee_fd_user_id' => $user->id,
+                    'rating' => 'Up',
+                    'date' => self::DATE_SYNC,
+                ]],
+            ], 200),
+            '*/user-changes*' => Http::response(['changes' => []], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_rating_update(): void
+    {
+        $user = $this->createTestUser();
+        $tnRatingId = 'tn_r_loki_update_' . uniqid();
+
+        DB::table('ratings')->insert([
+            'ratee' => $user->id,
+            'rating' => 'Up',
+            'timestamp' => self::DATE_OLD,
+            'visible' => 1,
+            'tn_rating_id' => $tnRatingId,
+        ]);
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'rating-upsert', \Mockery::on(fn($ctx) =>
+                $ctx['action'] === 'update' && $ctx['tn_rating_id'] === $tnRatingId
+            ));
+
+        Http::fake([
+            '*/ratings*' => Http::response([
+                'ratings' => [[
+                    'rating_id' => $tnRatingId,
+                    'ratee_fd_user_id' => $user->id,
+                    'rating' => 'Down',
+                    'date' => self::DATE_LATER,
+                ]],
+            ], 200),
+            '*/user-changes*' => Http::response(['changes' => []], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_rating_delete(): void
+    {
+        $user = $this->createTestUser();
+        $tnRatingId = 'tn_r_loki_del_' . uniqid();
+
+        DB::table('ratings')->insert([
+            'ratee' => $user->id,
+            'rating' => 'Up',
+            'timestamp' => self::DATE_OLD,
+            'visible' => 1,
+            'tn_rating_id' => $tnRatingId,
+        ]);
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'rating-delete', \Mockery::on(fn($ctx) =>
+                $ctx['tn_rating_id'] === $tnRatingId && $ctx['user_id'] === $user->id
+            ));
+
+        Http::fake([
+            '*/ratings*' => Http::response([
+                'ratings' => [[
+                    'rating_id' => $tnRatingId,
+                    'ratee_fd_user_id' => $user->id,
+                    'rating' => null,
+                    'date' => self::DATE_LATER,
+                ]],
+            ], 200),
+            '*/user-changes*' => Http::response(['changes' => []], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_user_forget(): void
+    {
+        $user = $this->createTNUser();
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-forget', \Mockery::on(fn($ctx) =>
+                $ctx['user_id'] === $user->id
+            ));
+
+        Http::fake([
+            '*/ratings*' => Http::response(['ratings' => []], 200),
+            '*/user-changes*' => Http::response([
+                'changes' => [[
+                    'fd_user_id' => $user->id,
+                    'account_removed' => true,
+                    'date' => self::DATE_SYNC,
+                ]],
+            ], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_user_reply_time_insert(): void
+    {
+        $user = $this->createTNUser();
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-reply-time-upsert', \Mockery::on(fn($ctx) =>
+                $ctx['action'] === 'insert' && $ctx['user_id'] === $user->id
+            ));
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-update', \Mockery::any());
+
+        Http::fake([
+            '*/ratings*' => Http::response(['ratings' => []], 200),
+            '*/user-changes*' => Http::response([
+                'changes' => [[
+                    'fd_user_id' => $user->id,
+                    'reply_time' => 3600,
+                    'date' => self::DATE_SYNC,
+                ]],
+            ], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_user_about_me_insert(): void
+    {
+        $user = $this->createTNUser();
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-about-me-upsert', \Mockery::on(fn($ctx) =>
+                $ctx['action'] === 'insert' && $ctx['user_id'] === $user->id
+            ));
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-update', \Mockery::any());
+
+        Http::fake([
+            '*/ratings*' => Http::response(['ratings' => []], 200),
+            '*/user-changes*' => Http::response([
+                'changes' => [[
+                    'fd_user_id' => $user->id,
+                    'about_me' => 'Test bio',
+                    'date' => self::DATE_SYNC,
+                ]],
+            ], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_user_email_rename(): void
+    {
+        $user = $this->createTNUser('OldName');
+
+        DB::table('users_emails')->insert([
+            'userid' => $user->id,
+            'email' => 'OldName-g123@user.trashnothing.com',
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-email-rename', \Mockery::on(fn($ctx) =>
+                $ctx['user_id'] === $user->id &&
+                $ctx['old_email'] === 'OldName-g123@user.trashnothing.com' &&
+                $ctx['new_email'] === 'NewName-g123@user.trashnothing.com'
+            ));
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-update', \Mockery::any());
+
+        Http::fake([
+            '*/ratings*' => Http::response(['ratings' => []], 200),
+            '*/user-changes*' => Http::response([
+                'changes' => [[
+                    'fd_user_id' => $user->id,
+                    'username' => 'NewName',
+                    'date' => self::DATE_SYNC,
+                ]],
+            ], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_user_update(): void
+    {
+        $user = $this->createTNUser();
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-update', \Mockery::on(fn($ctx) =>
+                $ctx['user_id'] === $user->id
+            ));
+
+        Http::fake([
+            '*/ratings*' => Http::response(['ratings' => []], 200),
+            '*/user-changes*' => Http::response([
+                'changes' => [[
+                    'fd_user_id' => $user->id,
+                    'date' => self::DATE_SYNC,
+                ]],
+            ], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
+    }
+
+    public function test_loki_logs_user_merge(): void
+    {
+        $user1 = $this->createTestUser(['fullname' => 'MergeTest']);
+        $user2 = $this->createTestUser(['fullname' => 'MergeTest']);
+
+        $tnBase = 'mergetest_' . uniqid('', true);
+
+        DB::table('users_emails')->insert([
+            'userid' => $user1->id,
+            'email' => "{$tnBase}-g101@user.trashnothing.com",
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+        DB::table('users_emails')->insert([
+            'userid' => $user2->id,
+            'email' => "{$tnBase}-g202@user.trashnothing.com",
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $loki = $this->mock(LokiService::class);
+        $loki->shouldIgnoreMissing();
+        $loki->shouldReceive('logEvent')
+            ->once()
+            ->with('tn-sync', 'user-merge', \Mockery::on(fn($ctx) =>
+                isset($ctx['merge_to']) && isset($ctx['merge_from'])
+            ));
+
+        Http::fake([
+            '*/ratings*' => Http::response(['ratings' => []], 200),
+            '*/user-changes*' => Http::response(['changes' => []], 200),
+        ]);
+
+        $this->artisan('tn:sync')->assertExitCode(0);
     }
 
     // =========================================================================
