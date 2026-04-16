@@ -35,12 +35,14 @@ class UpdateAIImageUsageCountsCommand extends Command
         $totalSkipped = 0;
 
         try {
+            // lazyById() uses cursor-based pagination (WHERE id > lastId) rather
+            // than LIMIT/OFFSET, so concurrent INSERT/DELETE on ai_images cannot
+            // cause rows to be skipped or seen twice during iteration.
             $rows = DB::table('ai_images')
                 ->whereNotNull('externaluid')
                 ->where('externaluid', '!=', '')
-                ->orderBy('id')
                 ->select('id')
-                ->lazy(500);
+                ->lazyById(500);
 
             foreach ($rows as $row) {
                 $affected = DB::update("

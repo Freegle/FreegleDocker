@@ -66,4 +66,75 @@ class DeadlockRetryConnectionTest extends TestCase
 
         DB::select('SELECT * FROM nonexistent_table_deadlock_test_xyz');
     }
+
+    public function test_deadlock_retries_and_succeeds(): void
+    {
+        $conn = DB::connection();
+        $this->assertInstanceOf(DeadlockRetryConnection::class, $conn);
+
+        // Subclass that fails with a deadlock the first N times runQueryCallback
+        // is invoked, then succeeds. Proves the retry loop actually reruns the
+        // callback rather than just swallowing the exception.
+        $testable = new class($conn->getPdo(), $conn->getDatabaseName(), $conn->getTablePrefix(), $conn->getConfig()) extends DeadlockRetryConnection {
+            public int $callCount = 0;
+            public int $failUntilAttempt = 2;
+            public int $lastDelayMs = 0;
+
+            protected function runQueryCallback($query, $bindings, \Closure $callback)
+            {
+                $this->callCount++;
+                if ($this->callCount <= $this->failUntilAttempt) {
+                    throw new \Illuminate\Database\QueryException(
+                        'mysql', $query, $bindings,
+                        new \PDOException('SQLSTATE[40001]: Deadlock found when trying to get lock; try restarting transaction', 40001)
+                    );
+                }
+                return 1;
+            }
+        };
+
+        // Fast path: shrink delay so the test runs quickly.
+        $ref = new \ReflectionProperty(DeadlockRetryConnection::class, 'deadlockBaseDelayMs');
+        $ref->setAccessible(true);
+        $ref->setValue($testable, 1);
+
+        $result = $testable->update('UPDATE fake SET x = 1 WHERE id = ?', [1]);
+
+        // initial (fail) -> retry 1 (fail) -> retry 2 (succeeds) = 3 calls.
+        $this->assertEquals(3, $testable->callCount);
+        $this->assertEquals(1, $result);
+    }
+
+    public function test_deadlock_exhausts_retries_and_throws(): void
+    {
+        $conn = DB::connection();
+
+        // Always fails with deadlock — after maxRetries attempts, should rethrow.
+        $testable = new class($conn->getPdo(), $conn->getDatabaseName(), $conn->getTablePrefix(), $conn->getConfig()) extends DeadlockRetryConnection {
+            public int $callCount = 0;
+
+            protected function runQueryCallback($query, $bindings, \Closure $callback)
+            {
+                $this->callCount++;
+                throw new \Illuminate\Database\QueryException(
+                    'mysql', $query, $bindings,
+                    new \PDOException('SQLSTATE[40001]: Deadlock found; try restarting transaction', 40001)
+                );
+            }
+        };
+
+        $ref = new \ReflectionProperty(DeadlockRetryConnection::class, 'deadlockBaseDelayMs');
+        $ref->setAccessible(true);
+        $ref->setValue($testable, 1);
+
+        try {
+            $testable->update('UPDATE fake SET x = 1 WHERE id = ?', [1]);
+            $this->fail('Expected QueryException after retries exhausted');
+        } catch (\Illuminate\Database\QueryException $e) {
+            $this->assertStringContainsString('Deadlock', $e->getMessage());
+        }
+
+        // 1 initial + 3 retries = 4 attempts total
+        $this->assertEquals(4, $testable->callCount);
+    }
 }
