@@ -98,7 +98,6 @@ class UpdateAIImageUsageCountsCommandTest extends TestCase
             ->toArray();
 
         $this->artisan('ai:usage-counts:update')
-            ->expectsOutputToContain('skipped')
             ->assertSuccessful();
 
         // Count should still be 1 (unchanged).

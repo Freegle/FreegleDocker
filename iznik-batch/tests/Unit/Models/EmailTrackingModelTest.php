@@ -258,9 +258,6 @@ class EmailTrackingModelTest extends TestCase
     public function test_create_for_email_works_inside_transaction(): void
     {
         // createForEmail must work inside a transaction (e.g., admin mail sending).
-        // Deadlock retry is disabled in this case — MySQL rolls back the entire
-        // outer transaction on deadlock, so retrying the INSERT alone is futile.
-        // The caller is responsible for retry at the transaction boundary.
         $email = $this->uniqueEmail('tracking-txn');
 
         // DatabaseTransactions trait already wraps us in a transaction.

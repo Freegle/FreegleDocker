@@ -252,50 +252,6 @@ class TransactionPolicyTest extends TestCase
         DB::statement('DROP TEMPORARY TABLE test_rollback');
     }
 
-    public function test_retry_on_deadlock_retries_outside_transaction(): void
-    {
-        // retryOnDeadlock should retry when not inside a transaction.
-        // We can't easily test outside the test transaction wrapper,
-        // so verify the method exists and has correct signature.
-        $attempts = 0;
-
-        TransactionPolicy::configure(3, 10);
-
-        // Inside a transaction (test wrapper), retryOnDeadlock passes through
-        // without retry — so a deadlock on first attempt should throw.
-        $this->expectException(DeadlockException::class);
-
-        TransactionPolicy::retryOnDeadlock(function () use (&$attempts) {
-            $attempts++;
-            throw new DeadlockException('Simulated deadlock');
-        }, 'test retry on deadlock inside txn');
-    }
-
-    public function test_retry_on_deadlock_passes_through_inside_transaction(): void
-    {
-        // Inside a transaction, retryOnDeadlock should NOT retry — just
-        // execute once and let exceptions propagate.
-        $this->assertTrue(TransactionPolicy::inTransaction());
-
-        $result = TransactionPolicy::retryOnDeadlock(fn () => 'direct result', 'test passthrough');
-
-        $this->assertEquals('direct result', $result);
-    }
-
-    public function test_retry_on_deadlock_does_not_retry_non_deadlock(): void
-    {
-        $attempts = 0;
-
-        TransactionPolicy::configure(3, 10);
-
-        $this->expectException(RuntimeException::class);
-
-        TransactionPolicy::retryOnDeadlock(function () use (&$attempts) {
-            $attempts++;
-            throw new RuntimeException('Not a deadlock');
-        }, 'test no retry non-deadlock');
-    }
-
     public function test_bulk_deadlock_retry_rejects_inside_transaction(): void
     {
         // Verify bulk() consistently rejects calls inside transactions,

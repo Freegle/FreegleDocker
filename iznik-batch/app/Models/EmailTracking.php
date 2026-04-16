@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Support\TransactionPolicy;
 use Illuminate\Support\Str;
 
 class EmailTracking extends Model
@@ -82,7 +81,7 @@ class EmailTracking extends Model
             $groupId = null;
         }
 
-        return TransactionPolicy::retryOnDeadlock(fn () => self::create([
+        return self::create([
             'tracking_id' => self::generateTrackingId(),
             'email_type' => $emailType,
             'userid' => $userId,
@@ -92,7 +91,7 @@ class EmailTracking extends Model
             'metadata' => $metadata,
             'sent_at' => now(),
             'has_amp' => $hasAmp,
-        ]), 'EmailTracking::createForEmail');
+        ]);
     }
 
     /**
