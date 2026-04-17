@@ -204,6 +204,7 @@ return [
 
     'git_summary' => [
         'gemini_api_key' => env('GOOGLE_GEMINI_API_KEY', ''),
+        'github_token' => env('GIT_SUMMARY_GITHUB_TOKEN', ''),
         'from_address' => env('GIT_SUMMARY_FROM_ADDRESS', 'geeks@ilovefreegle.org'),
         'from_name' => env('GIT_SUMMARY_FROM_NAME', 'Freegle Geeks'),
         'repositories' => [

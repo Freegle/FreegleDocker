@@ -1,5 +1,6 @@
 <template>
   <l-geo-json
+    v-if="location.json"
     ref="geojson"
     :geojson="location.json"
     :options="locationOptions"

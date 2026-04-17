@@ -438,7 +438,7 @@ services:
       - default
     build:
       context: ./docker/embedding-sidecar
-    restart: "no"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3200/health || exit 1"]
       interval: 30s

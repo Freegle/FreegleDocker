@@ -38,6 +38,40 @@ func SetSidecarURL(url string) {
 	sidecarURL = url
 }
 
+// EmbedBatch calls the sidecar to embed multiple texts in one request.
+func EmbedBatch(texts []string) ([][]float32, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	body, err := json.Marshal(embedRequest{Texts: texts})
+	if err != nil {
+		return nil, fmt.Errorf("marshal: %w", err)
+	}
+
+	resp, err := client.Post(sidecarURL+"/embed", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("sidecar request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("sidecar returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result embedResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+
+	return result.Embeddings, nil
+}
+
 // EmbedQuery calls the sidecar to embed a single search query.
 // Returns a normalized float32 slice of length EmbeddingDim.
 func EmbedQuery(text string) ([]float32, error) {

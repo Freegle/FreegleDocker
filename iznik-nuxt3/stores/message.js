@@ -1,4 +1,3 @@
-import cloneDeep from 'lodash.clonedeep'
 import { defineStore } from 'pinia'
 import { nextTick } from 'vue'
 import api from '~/api'
@@ -475,21 +474,28 @@ export const useMessageStore = defineStore({
           searchmode: 'vector',
         })
 
-        if (!results || results.length === 0) return
+        if (!results || results.length === 0) return []
 
-        await Promise.all(
+        // Fetch in parallel but preserve API score order via Promise.all index stability
+        const fetched = await Promise.all(
           results.map(async (r) => {
             try {
               const message = await this.fetchMT({ id: r.id || r.msgid })
               if (message) {
+                // Carry matchedon from search result onto the fetched message
+                if (r.matchedon) {
+                  message.matchedon = r.matchedon
+                }
                 this.list[message.id] = message
+                return message.id
               }
             } catch (e) {
               console.log('Failed to fetch message', r.id, e?.message)
             }
+            return null
           })
         )
-        return
+        return fetched.filter((id) => id !== null)
       }
 
       // Existing keyword search path
@@ -516,8 +522,10 @@ export const useMessageStore = defineStore({
     },
     async fetchMessagesMT(params) {
       if (params.context) {
-        // Ensure the context is a real object, in case it has been in the store.
-        params.context = cloneDeep(params.context)
+        // Server expects context as a JSON-encoded string; URLSearchParams
+        // would otherwise coerce an object to "[object Object]", the server
+        // silently drops it, and infinite scroll caps at one page (~100).
+        params.context = JSON.stringify(params.context)
       }
       if (!params.context) params.context = null
 

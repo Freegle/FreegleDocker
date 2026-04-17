@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/freegle/iznik-server-go/database"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -106,6 +107,80 @@ func TestStoreCount(t *testing.T) {
 
 	s.entries = make([]Entry, 5)
 	assert.Equal(t, 5, s.Count())
+}
+
+func TestStoreSetEntries(t *testing.T) {
+	s := &Store{}
+	assert.Equal(t, 0, s.Count())
+
+	entries := []Entry{
+		{Msgid: 10, Groupid: 1, Msgtype: "Offer", Subject: "a"},
+		{Msgid: 11, Groupid: 2, Msgtype: "Wanted", Subject: "b"},
+	}
+	s.SetEntries(entries)
+	assert.Equal(t, 2, s.Count())
+
+	// Overwrite with an empty slice — Count must drop back to zero.
+	s.SetEntries([]Entry{})
+	assert.Equal(t, 0, s.Count())
+}
+
+func TestStoreLoadWithoutDB(t *testing.T) {
+	// When database.DBConn is nil, Load must fail fast with a clear error
+	// rather than panicking. This is the path taken before InitDatabase runs
+	// (e.g. in tests that never initialise the DB).
+	orig := database.DBConn
+	database.DBConn = nil
+	defer func() { database.DBConn = orig }()
+
+	s := &Store{}
+	err := s.Load()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "database not initialized")
+}
+
+func TestStoreSearchMsgtypeAllReturnsAll(t *testing.T) {
+	// An empty msgtype filter ("" — i.e. "any") must NOT filter out anything.
+	s := &Store{}
+	v := makeVec(1.0)
+	s.entries = []Entry{
+		{Msgid: 1, Groupid: 100, Msgtype: "Offer", Vec: v},
+		{Msgid: 2, Groupid: 100, Msgtype: "Wanted", Vec: v},
+		{Msgid: 3, Groupid: 100, Msgtype: "Taken", Vec: v},
+	}
+
+	results := s.Search(v[:], 10, "", nil, 0, 0, 0, 0)
+	assert.Len(t, results, 3)
+}
+
+func TestStoreSearchBoundingBoxTolerance(t *testing.T) {
+	// The box filter allows 0.02 degrees of slack on each edge — points just
+	// outside the requested box must still come back.
+	s := &Store{}
+	v := makeVec(1.0)
+	s.entries = []Entry{
+		{Msgid: 1, Msgtype: "Offer", Lat: 51.515, Lng: -0.105, Vec: v}, // 0.015 outside
+		{Msgid: 2, Msgtype: "Offer", Lat: 51.55, Lng: -0.1, Vec: v},    // inside
+		{Msgid: 3, Msgtype: "Offer", Lat: 51.6, Lng: 0.1, Vec: v},      // well outside (>0.02)
+	}
+
+	// Request box: swlat=51.52 swlng=-0.10 nelat=51.58 nelng=0.00
+	results := s.Search(v[:], 10, "", nil, 51.52, -0.10, 51.58, 0.00)
+	ids := make(map[uint64]bool, len(results))
+	for _, r := range results {
+		ids[r.Msgid] = true
+	}
+	assert.True(t, ids[1], "msgid 1 should be within 0.02 slack")
+	assert.True(t, ids[2], "msgid 2 is inside the box")
+	assert.False(t, ids[3], "msgid 3 is well outside the slack")
+}
+
+func TestStoreSearchEmptyStore(t *testing.T) {
+	// Searching an empty store must return an empty slice, not panic.
+	s := &Store{}
+	v := makeVec(1.0)
+	results := s.Search(v[:], 10, "", nil, 0, 0, 0, 0)
+	assert.Empty(t, results)
 }
 
 func TestVecToBytes(t *testing.T) {
