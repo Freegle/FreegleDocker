@@ -103,6 +103,7 @@ import SpinButton from '~/components/SpinButton'
 import NoticeMessage from '~/components/NoticeMessage'
 import Api from '~/api'
 import SupportLink from '~/components/SupportLink'
+import { formatLogins } from '~/composables/useMergeLogins'
 
 const ExternalLink = defineAsyncComponent(() =>
   import('~/components/ExternalLink')
@@ -133,40 +134,13 @@ if (!merge.value?.id || !merge.value.user1?.id || !merge.value.user2?.id) {
   invalid.value = true
 }
 
-function logins(user) {
-  const ret = []
+const u1logins = computed(() =>
+  merge.value ? formatLogins(merge.value.user1) : '',
+)
 
-  user.logins.forEach((login) => {
-    switch (login.type) {
-      case 'Native': {
-        ret.push('Email/Password')
-        break
-      }
-      case 'Facebook': {
-        ret.push('Facebook')
-        break
-      }
-      case 'Yahoo': {
-        ret.push('Yahoo')
-        break
-      }
-      case 'Google': {
-        ret.push('Google')
-        break
-      }
-    }
-  })
-
-  return [...new Set(ret)].join(', ')
-}
-
-const u1logins = computed(() => {
-  return merge.value ? logins(merge.value.user1) : ''
-})
-
-const u2logins = computed(() => {
-  return merge.value ? logins(merge.value.user2) : ''
-})
+const u2logins = computed(() =>
+  merge.value ? formatLogins(merge.value.user2) : '',
+)
 
 function mergeit() {
   merging.value = true
