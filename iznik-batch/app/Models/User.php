@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\NameSanitiser;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -161,6 +162,8 @@ class User extends Model
     /**
      * Get full name or display name.
      * Strips the "-gXXX" suffix from TrashNothing user names.
+     * Rewrites misleading brand/authority names for non-mods on display
+     * (Discourse #9587) — storage is untouched.
      */
     public function getDisplayNameAttribute(): string
     {
@@ -176,8 +179,21 @@ class User extends Model
             return 'Freegle User';
         }
 
-        // Strip the "-gXXX" suffix from TrashNothing user names.
-        return self::removeTNGroup($name);
+        $name = self::removeTNGroup($name);
+
+        return NameSanitiser::sanitize($name, $this->isNameExempt());
+    }
+
+    /**
+     * A user is exempt from the display-name sanitiser when they are a
+     * platform mod/support/admin or Owner/Moderator on any group.
+     */
+    public function isNameExempt(): bool
+    {
+        if (in_array($this->systemrole, ['Moderator', 'Support', 'Admin'], TRUE)) {
+            return TRUE;
+        }
+        return $this->isModerator();
     }
 
     /**
