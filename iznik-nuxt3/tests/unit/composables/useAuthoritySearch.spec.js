@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   normalizeAuthoritySearch,
   parseOutcomeDate,
+  DASHBOARD_CHART_HEADER,
+  hasChartDataRows,
 } from '~/composables/useAuthoritySearch'
 
 describe('normalizeAuthoritySearch', () => {
@@ -69,5 +71,34 @@ describe('parseOutcomeDate', () => {
     expect(parseOutcomeDate(null)).toBe('')
     expect(parseOutcomeDate(undefined)).toBe('')
     expect(parseOutcomeDate(123)).toBe('')
+  })
+})
+
+describe('DASHBOARD_CHART_HEADER', () => {
+  it('types column 0 as date so Google Charts does not infer string', () => {
+    expect(DASHBOARD_CHART_HEADER[0]).toEqual({ type: 'date', label: 'Date' })
+  })
+
+  it('types column 1 as number', () => {
+    expect(DASHBOARD_CHART_HEADER[1]).toEqual({ type: 'number', label: 'Count' })
+  })
+})
+
+describe('hasChartDataRows', () => {
+  it('is false for a header-only dataset', () => {
+    expect(hasChartDataRows([DASHBOARD_CHART_HEADER])).toBe(false)
+  })
+
+  it('is true when at least one data row is present', () => {
+    expect(
+      hasChartDataRows([DASHBOARD_CHART_HEADER, [new Date('2025-04-01'), 42]])
+    ).toBe(true)
+  })
+
+  it('is false for non-array input', () => {
+    expect(hasChartDataRows(null)).toBe(false)
+    expect(hasChartDataRows(undefined)).toBe(false)
+    expect(hasChartDataRows('nope')).toBe(false)
+    expect(hasChartDataRows([])).toBe(false)
   })
 })
