@@ -4,6 +4,7 @@ namespace Tests\Feature\Donation;
 
 use App\Models\User;
 use App\Models\UserDonation;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -42,7 +43,6 @@ class DonationCommandsTest extends TestCase
             'TransactionType' => 'Donation',
             'GrossAmount' => 10.00,
             'source' => 'PayPal',
-            'thanked' => 0,
         ]);
 
         $this->artisan('mail:donations:thank')
@@ -57,6 +57,11 @@ class DonationCommandsTest extends TestCase
 
     public function test_ask_donations_command_displays_table(): void
     {
+        // Freeze time to a point where the query window (yesterday 17:00 to today 17:00)
+        // won't contain any messages_by rows created by parallel tests.
+        // Using a time far in the past ensures no interference.
+        $this->travelTo(now()->subYears(5));
+
         $this->artisan('mail:donations:ask')
             ->expectsOutputToContain('Asking for donations')
             ->expectsTable(
@@ -69,5 +74,7 @@ class DonationCommandsTest extends TestCase
                 ]
             )
             ->assertExitCode(0);
+
+        $this->travelBack();
     }
 }

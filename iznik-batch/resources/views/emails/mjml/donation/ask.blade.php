@@ -1,30 +1,20 @@
 <mjml>
-    <mj-head>
-        <mj-attributes>
-            <mj-all font-family="Arial, sans-serif" />
-            <mj-text font-size="14px" color="#333333" line-height="1.5" />
-            <mj-button background-color="#5cb85c" color="#ffffff" font-size="14px" />
-        </mj-attributes>
-        <mj-style inline="inline">
-            a { color: #5cb85c; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-        </mj-style>
-        <mj-title>Thanks for freegling!</mj-title>
-    </mj-head>
+    @include('emails.mjml.partials.head', ['preview' => 'Thanks for freegling!'])
+
     <mj-body background-color="#f4f4f4">
         @include('emails.mjml.components.header')
 
         <mj-section background-color="#ffffff" padding="20px">
             <mj-column>
                 <mj-text>
-                    Hi {{ $user->displayname ?? 'there' }},
+                    Dear {{ $user->displayname ?? 'there' }},
                 </mj-text>
 
                 @if($itemSubject)
                 <mj-text>
                     Did you just get this from Freegle?
                 </mj-text>
-                <mj-text font-weight="bold" color="#5cb85c">
+                <mj-text font-weight="bold" mj-class="text-success">
                     {{ $itemSubject }}
                 </mj-text>
                 <mj-text font-size="12px" color="#666666">
@@ -49,7 +39,7 @@
                 <mj-text>
                     If you can, please consider donating &pound;1 to help support Freegle:
                 </mj-text>
-                <mj-button href="{{ $donateUrl }}" background-color="#f0ad4e">
+                <mj-button href="{{ $donateUrl }}" mj-class="btn-warning" border-radius="3px">
                     Donate &pound;1 via PayPal
                 </mj-button>
                 <mj-text font-size="12px" color="#666666" align="center">
@@ -63,16 +53,20 @@
                 <mj-text>
                     Either way, thanks for freegling!
                 </mj-text>
-                <mj-button href="{{ $continueUrl }}">
+                <mj-button href="{{ $continueUrl }}" mj-class="btn-success" border-radius="3px">
                     Continue Freegling
                 </mj-button>
             </mj-column>
         </mj-section>
 
-        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
-
-        @if(isset($trackingPixelMjml))
-        {!! $trackingPixelMjml !!}
+        @if(!empty($trackingPixelMjml))
+        <mj-section padding="0">
+            <mj-column>
+                {!! $trackingPixelMjml !!}
+            </mj-column>
+        </mj-section>
         @endif
+
+        @include('emails.mjml.partials.footer', ['email' => $user->email_preferred, 'settingsUrl' => $settingsUrl])
     </mj-body>
 </mjml>

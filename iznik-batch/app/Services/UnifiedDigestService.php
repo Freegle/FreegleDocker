@@ -41,7 +41,7 @@ class UnifiedDigestService
      * @param int|null $userId Specific user ID to process (for testing)
      * @return array Statistics about the operation
      */
-    public function sendDigests(string $mode, ?int $userId = null): array
+    public function sendDigests(string $mode, ?int $userId = null, ?int $limit = null, bool $dryRun = false): array
     {
         $stats = [
             'users_processed' => 0,
@@ -59,9 +59,13 @@ class UnifiedDigestService
 
         $users = $this->getUsersForDigest($mode, $userId);
 
+        if ($limit) {
+            $users = $users->take($limit);
+        }
+
         foreach ($users as $user) {
             try {
-                $result = $this->sendDigestToUser($user, $mode);
+                $result = $this->sendDigestToUser($user, $mode, $dryRun);
 
                 if ($result === 'sent') {
                     $stats['emails_sent']++;
@@ -135,7 +139,7 @@ class UnifiedDigestService
      * @param string $mode
      * @return string 'sent', 'no_posts', or 'skipped'
      */
-    protected function sendDigestToUser(User $user, string $mode): string
+    protected function sendDigestToUser(User $user, string $mode, bool $dryRun = false): string
     {
         $email = $user->email_preferred;
 
@@ -164,11 +168,16 @@ class UnifiedDigestService
             return 'no_posts';
         }
 
-        // Send the email.
-        Mail::send(new UnifiedDigest($user, $deduplicatedPosts, $mode));
+        // Get deduplicated sponsors for the user's groups.
+        $sponsors = $this->getSponsorsForUser($user);
 
-        // Update tracker.
-        $this->updateDigestTracker($digestTracker, $posts);
+        if (!$dryRun) {
+            // Send the email.
+            Mail::send(new UnifiedDigest($user, $deduplicatedPosts, $mode, $sponsors));
+
+            // Update tracker.
+            $this->updateDigestTracker($digestTracker, $posts);
+        }
 
         return 'sent';
     }
@@ -392,5 +401,41 @@ class UnifiedDigestService
             ->pluck('nameshort');
 
         return 'Posted to: ' . $groupNames->implode(', ');
+    }
+
+    /**
+     * Get active sponsors for a user's groups, deduplicated.
+     *
+     * A sponsor like Essex County Council may sponsor multiple groups in
+     * the same area. In a unified digest, we show each sponsor once
+     * (the highest-amount entry wins for ordering) rather than repeating
+     * them per group.
+     *
+     * @param User $user
+     * @return Collection Deduplicated sponsor records
+     */
+    public function getSponsorsForUser(User $user): Collection
+    {
+        $groupIds = $user->memberships()
+            ->where('collection', Membership::COLLECTION_APPROVED)
+            ->pluck('groupid');
+
+        if ($groupIds->isEmpty()) {
+            return collect();
+        }
+
+        // Fetch all active, visible sponsors for the user's groups.
+        $sponsors = DB::table('groups_sponsorship')
+            ->whereIn('groupid', $groupIds)
+            ->where('visible', TRUE)
+            ->where('startdate', '<=', now())
+            ->where('enddate', '>=', now()->startOfDay())
+            ->orderByDesc('amount')
+            ->get();
+
+        // Deduplicate by name — same sponsor across multiple groups
+        // appears once. Keep the entry with the highest amount (first
+        // in the result set due to ORDER BY amount DESC).
+        return $sponsors->unique('name')->values();
     }
 }

@@ -1,0 +1,33 @@
+# Freegle Netlify configuration
+[build.environment]
+NODE_VERSION = "22"
+NPM_FLAGS = "--legacy-peer-deps"
+
+[build]
+command = "export NODE_OPTIONS=--max_old_space_size=6000 && npm run build"
+publish = "dist"
+
+# Return 404 for requests from old code. This avoids the function call, which costs.
+[[redirects]]
+from = "/api/*"
+to = "/"
+status = 404
+force = true
+
+[[redirects]]
+from = "/sw.js*"
+to = "/"
+status = 404
+force = true
+
+[[redirects]]
+from = "/gimg*"
+to = "/"
+status = 404
+force = true
+
+[[redirects]]
+from = "/uimg*"
+to = "/"
+status = 404
+force = true

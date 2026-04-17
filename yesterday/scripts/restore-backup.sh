@@ -11,6 +11,9 @@ LOG_FILE="/var/log/yesterday-restore-${BACKUP_DATE}.log"
 COMPOSE_FILE="/var/www/FreegleDocker/docker-compose.yml"
 STATUS_FILE="/var/www/FreegleDocker/yesterday/data/restore-status.json"
 
+# Derive the Docker Compose project name dynamically (defaults to directory name)
+PROJECT_NAME=$(cd /var/www/FreegleDocker && docker compose config --format json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('name','freegledocker'))" 2>/dev/null || echo "freegledocker")
+
 # Helper function to update restore status
 update_status() {
     local status=$1
@@ -46,6 +49,8 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 # the yesterday services (API, 2FA, traefik) stay dead, breaking the entire system.
 cleanup_on_failure() {
     update_status "failed" "Restore failed - check logs"
+    # Clean up Loki temp file if it exists (can be 20GB+)
+    rm -f /tmp/loki-backup.tar.gz 2>/dev/null || true
     # Always clean up skip-grant-tables if it was added (leaves percona with no TCP port)
     sed -i '/skip-grant-tables/d' /var/www/FreegleDocker/conf/percona-my.cnf 2>/dev/null || true
     echo "Restarting main Docker stack after failure..."
@@ -60,6 +65,9 @@ trap cleanup_on_failure ERR
 echo "=== Yesterday Restoration Started: $(date) ==="
 echo "Restoring backup from date: ${BACKUP_DATE}..."
 update_status "starting" "Finding backup..."
+
+# Clean up old restore logs (keep last 7 days)
+find /var/log/yesterday-restore-*.log -mtime +7 -delete 2>/dev/null || true
 
 mkdir -p "$BACKUP_DIR"
 
@@ -87,7 +95,6 @@ echo "Updating Yesterday code..."
 cd /var/www/FreegleDocker
 git fetch origin
 git reset --hard origin/master
-git submodule update --init --recursive
 echo "✅ Code updated"
 
 echo "Configuring Yesterday environment..."
@@ -98,6 +105,9 @@ else
     echo "⚠️  Warning: yesterday/docker-compose.override.yml not found"
 fi
 
+echo "Cleaning up unused Docker images..."
+docker image prune -af 2>/dev/null | tail -1 || true
+
 echo "Stopping all Docker containers..."
 update_status "stopping" "Stopping containers..."
 # Aggressive shutdown - we're restoring from backup so don't need to preserve anything
@@ -107,6 +117,13 @@ docker stop $(docker ps -q) 2>/dev/null || true
 # Remove all containers to prevent name conflicts
 docker rm -f $(docker ps -aq) 2>/dev/null || true
 echo "✅ All containers stopped and removed"
+
+echo "Restarting Yesterday services (status page available during restore)..."
+# Recreate the freegledocker_default network (destroyed by docker compose down above).
+# yesterday-2fa needs this network in its compose config even though backends are down.
+docker network create freegledocker_default 2>/dev/null || true
+docker compose -f /var/www/FreegleDocker/yesterday/docker-compose.yesterday-services.yml up -d 2>/dev/null || true
+echo "✅ Yesterday services running — users see restore progress instead of connection errors"
 
 echo "Getting volume path..."
 VOLUME_PATH=$(docker volume inspect freegle_db -f '{{.Mountpoint}}' 2>/dev/null || echo "")
@@ -340,14 +357,14 @@ verify_all_containers() {
         if [ -n "$container" ]; then
             created_containers+=("$container")
         fi
-    done < <(docker-compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps -a 2>/dev/null | grep "Created" | awk '{print $1}' | sed "s/${PROJECT_NAME}-//")
 
     # Get list of exited/unhealthy containers
     while IFS= read -r container; do
         if [ -n "$container" ]; then
             failed_containers+=("$container")
         fi
-    done < <(docker-compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed 's/freegle-//')
+    done < <(docker-compose ps 2>/dev/null | grep -E "(Exit|unhealthy)" | awk '{print $1}' | sed "s/${PROJECT_NAME}-//")
 
     if [ ${#created_containers[@]} -gt 0 ]; then
         echo "⚠️  Found containers in Created state (not started): ${created_containers[*]}"
@@ -400,31 +417,40 @@ if [ -n "$LOKI_BACKUP" ]; then
     echo "Clearing existing Loki data..."
     rm -rf "${LOKI_VOLUME_PATH}"/*
 
-    # Download Loki backup to local file first, then extract
-    # gsutil cp has built-in retries and resumable downloads, unlike gsutil cat which
-    # streams through a single SSL connection that fails on large files (20GB+)
-    LOKI_LOCAL="/tmp/loki-backup.tar.gz"
-    echo "Downloading Loki backup to local file..."
-    rm -f "$LOKI_LOCAL"
-    gsutil -o 'GSUtil:resumable_threshold=1048576' cp "$LOKI_BACKUP" "$LOKI_LOCAL"
-    echo "Extracting Loki backup to volume..."
-    tar -xzf "$LOKI_LOCAL" -C "${LOKI_VOLUME_PATH}" --strip-components=1
-    rm -f "$LOKI_LOCAL"
+    # Check disk space before downloading (need ~2x Loki size: download + extraction)
+    AVAIL_GB=$(df --output=avail / | tail -1 | awk '{print int($1/1024/1024)}')
+    LOKI_NEEDED_GB=$(( LOKI_SIZE_GB * 3 ))
+    echo "Available disk: ${AVAIL_GB}GB, estimated need: ${LOKI_NEEDED_GB}GB (download + extraction)"
+    if [ "$AVAIL_GB" -lt "$LOKI_NEEDED_GB" ]; then
+        echo "⚠️  Insufficient disk space for Loki restore (${AVAIL_GB}GB < ${LOKI_NEEDED_GB}GB) - skipping"
+        echo "   Loki will start with empty data. Free disk space and restore manually."
+    else
+        # Download Loki backup to local file first, then extract
+        # gsutil cp has built-in retries and resumable downloads, unlike gsutil cat which
+        # streams through a single SSL connection that fails on large files (20GB+)
+        LOKI_LOCAL="/tmp/loki-backup.tar.gz"
+        echo "Downloading Loki backup to local file..."
+        rm -f "$LOKI_LOCAL"
+        gsutil -o 'GSUtil:resumable_threshold=1048576' cp "$LOKI_BACKUP" "$LOKI_LOCAL"
+        echo "Extracting Loki backup to volume..."
+        tar -xzf "$LOKI_LOCAL" -C "${LOKI_VOLUME_PATH}" --strip-components=1
+        rm -f "$LOKI_LOCAL"
 
-    # Set ownership for Loki (runs as UID 10001)
-    chown -R 10001:10001 "${LOKI_VOLUME_PATH}"
+        # Set ownership for Loki (runs as UID 10001)
+        chown -R 10001:10001 "${LOKI_VOLUME_PATH}"
 
-    LOKI_FINAL_SIZE=$(du -sh "${LOKI_VOLUME_PATH}" | awk '{print $1}')
-    echo "✅ Loki backup restored: ${LOKI_FINAL_SIZE}"
+        LOKI_FINAL_SIZE=$(du -sh "${LOKI_VOLUME_PATH}" | awk '{print $1}')
+        echo "✅ Loki backup restored: ${LOKI_FINAL_SIZE}"
 
-    # Flush disk buffers and pause to let I/O settle
-    # After extracting 26GB of data, the system is under heavy I/O load.
-    # Without this pause, containers (especially traefik) may fail healthchecks
-    # due to slow disk access when reading config files.
-    echo "Syncing disk buffers after Loki restore..."
-    sync
-    echo "Waiting for I/O to settle..."
-    sleep 15
+        # Flush disk buffers and pause to let I/O settle
+        # After extracting 26GB of data, the system is under heavy I/O load.
+        # Without this pause, containers (especially traefik) may fail healthchecks
+        # due to slow disk access when reading config files.
+        echo "Syncing disk buffers after Loki restore..."
+        sync
+        echo "Waiting for I/O to settle..."
+        sleep 15
+    fi
 else
     echo "⚠️  No Loki backup found in $BACKUP_BUCKET/loki/ - skipping Loki restore"
     echo "   Loki will start with empty data (no historical logs)"
@@ -470,27 +496,24 @@ docker compose build apiv1 apiv2 freegle-dev-local modtools-dev-local status 2>&
 echo "✅ Container build complete"
 
 echo ""
-echo "Starting all Docker containers..."
-update_status "starting" "Starting containers..."
-docker compose up -d
-
-echo "Configuring PHP-FPM for production load..."
-# Wait for API v1 container to be running
-sleep 5
-docker exec freegle-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
-docker exec freegle-apiv1 /etc/init.d/php8.1-fpm restart
-echo "✅ PHP-FPM configured with increased worker pool"
+echo "=========================================="
+echo "Starting infrastructure containers first..."
+echo "=========================================="
+update_status "starting_infra" "Starting infrastructure containers..."
+# Start infrastructure services individually, NOT with 'docker compose up -d' which
+# enforces depends_on health check constraints. After restoring 22GB+ Loki backup,
+# disk I/O is saturated and containers may take longer than their health check windows
+# to become healthy. Starting individually + manual waiting avoids the cascade failure
+# where Docker Compose skips dependent containers when any dependency times out.
+docker compose up -d percona redis postgres loki beanstalkd spamassassin-app rspamd mailpit mjml 2>&1 || true
 
 echo ""
 echo "Waiting for critical infrastructure containers..."
 
-# Wait for critical containers with health checks
+# Wait for Percona to be healthy - restored production DB needs InnoDB init (60-90s)
 wait_for_container_health "percona" 240 || {
     echo "❌ Percona failed to start. Checking logs..."
-    docker logs freegle-percona --tail 20
+    docker logs ${PROJECT_NAME}-percona --tail 20
     exit 1
 }
 
@@ -505,14 +528,14 @@ docker compose start percona
 # The healthcheck uses TCP, so it will never pass. Wait for the socket instead.
 echo "Waiting for MySQL socket (skip-grant-tables disables TCP)..."
 for i in $(seq 1 60); do
-    if docker exec freegle-percona mysqladmin ping --socket=/var/lib/mysql/mysql.sock 2>/dev/null; then
+    if docker exec ${PROJECT_NAME}-percona mysqladmin ping --socket=/var/lib/mysql/mysql.sock 2>/dev/null; then
         echo "✅ MySQL ready via socket"
         break
     fi
     sleep 2
 done
 # Use 'if' to prevent set -e from killing the script on failure
-if docker exec freegle-percona mysql --socket=/var/lib/mysql/mysql.sock -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null; then
+if docker exec ${PROJECT_NAME}-percona mysql --socket=/var/lib/mysql/mysql.sock -u root -e "FLUSH PRIVILEGES; ALTER USER 'root'@'localhost' IDENTIFIED BY 'iznik'; ALTER USER 'root'@'%' IDENTIFIED BY 'iznik'; FLUSH PRIVILEGES;" 2>/dev/null; then
     echo "✅ MySQL root password reset to 'iznik'"
 else
     echo "⚠️ Failed to reset MySQL root password - containers may not connect to DB"
@@ -525,19 +548,40 @@ wait_for_container_health "percona" 120 || {
 }
 echo "✅ Percona restarted with normal authentication"
 
-wait_for_container_health "reverse-proxy" 120 || {
-    echo "❌ Traefik failed to start. Checking logs..."
-    docker logs freegle-traefik --tail 20
-    exit 1
-}
-
 wait_for_container_health "redis" 60
 wait_for_container_health "postgres" 120
 wait_for_container_health "beanstalkd" 60
+wait_for_container_health "loki" 120
+
+echo ""
+echo "=========================================="
+echo "Starting all remaining containers..."
+echo "=========================================="
+update_status "starting_apps" "Starting application containers..."
+# Now that infrastructure is healthy, start everything else.
+# Docker Compose will see the infrastructure containers already running+healthy
+# and start the dependent application containers without timeout issues.
+docker compose up -d
+
+echo "Configuring PHP-FPM for production load..."
+# Wait for API v1 container to be running
+sleep 5
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.max_children = 5$/pm.max_children = 20/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.start_servers = 2$/pm.start_servers = 5/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.min_spare_servers = 1$/pm.min_spare_servers = 3/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 sed -i 's/^pm.max_spare_servers = 3$/pm.max_spare_servers = 10/' /etc/php/8.1/fpm/pool.d/www.conf
+docker exec ${PROJECT_NAME}-apiv1 /etc/init.d/php8.1-fpm restart
+echo "✅ PHP-FPM configured with increased worker pool"
 
 echo ""
 echo "Infrastructure containers ready. Waiting for application containers..."
 sleep 10
+
+wait_for_container_health "reverse-proxy" 120 || {
+    echo "❌ Traefik failed to start. Checking logs..."
+    docker logs ${PROJECT_NAME}-traefik --tail 20
+    exit 1
+}
 
 # Verify all containers are running, retry if needed
 MAX_RETRIES=3
@@ -577,10 +621,10 @@ if [ -z "$MYSQL_PASSWORD" ]; then
     MYSQL_PASSWORD="iznik"
 fi
 
-if docker exec freegle-percona mysql -uroot -p"${MYSQL_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
+if docker exec ${PROJECT_NAME}-percona mysql -uroot -p"${MYSQL_PASSWORD}" -e "SHOW DATABASES;" 2>/dev/null | grep -q "iznik"; then
     echo "✅ Database verification successful!"
 
-    TABLE_COUNT=$(docker exec freegle-percona mysql -uroot -p"${MYSQL_PASSWORD}" iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
+    TABLE_COUNT=$(docker exec ${PROJECT_NAME}-percona mysql -uroot -p"${MYSQL_PASSWORD}" iznik -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='iznik';" 2>/dev/null | tail -1)
     echo "Database contains ${TABLE_COUNT} tables"
 else
     echo "❌ Database verification failed!"

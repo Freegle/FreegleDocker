@@ -1,7 +1,7 @@
 {{ $postCount }} new post{{ $postCount === 1 ? '' : 's' }} near you
 ====================================
 
-Hi {{ $user->displayname ?? 'there' }},
+Dear {{ $user->displayname ?? 'there' }},
 
 Here {{ $postCount === 1 ? 'is' : 'are' }} {{ $postCount }} new post{{ $postCount === 1 ? '' : 's' }} from your Freegle communities:
 
@@ -20,6 +20,13 @@ View: {{ $post['messageUrl'] }}
 ------------------------------------
 
 Browse all posts: {{ $browseUrl }}
+@if($sponsors->isNotEmpty())
+
+Sponsored by:
+@foreach($sponsors as $sponsor)
+- {{ $sponsor->name }}{{ $sponsor->tagline ? ' - ' . $sponsor->tagline : '' }}{{ $sponsor->linkurl ? ' (' . $sponsor->linkurl . ')' : '' }}
+@endforeach
+@endif
 
 ------------------------------------
 

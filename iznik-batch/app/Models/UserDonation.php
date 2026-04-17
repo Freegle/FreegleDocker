@@ -24,7 +24,6 @@ class UserDonation extends Model
         'amount' => 'decimal:2',
         'giftaidconsent' => 'boolean',
         'giftaidchaseup' => 'datetime',
-        'thanked' => 'datetime',
     ];
 
     /**
@@ -57,14 +56,6 @@ class UserDonation extends Model
     public function scopeNotChasedForGiftAid(Builder $query): Builder
     {
         return $query->whereNull('giftaidchaseup');
-    }
-
-    /**
-     * Scope to donations not yet thanked.
-     */
-    public function scopeNotThanked(Builder $query): Builder
-    {
-        return $query->whereNull('thanked');
     }
 
     /**

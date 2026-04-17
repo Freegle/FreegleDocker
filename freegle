@@ -1,0 +1,335 @@
+#!/bin/bash
+# Freegle worktree management CLI
+# Manages multiple Docker Compose environments for parallel development.
+# Each worktree gets its own unique port range (offset by slot*2000) so
+# all instances can run simultaneously without conflicts.
+#
+# Usage:
+#   freegle status                Show all worktrees + container counts
+#   freegle worktree create <n>   Create a worktree with isolated compose env
+#   freegle worktree list         List worktrees with compose status
+#   freegle worktree remove <n>   Stop compose, remove volumes and worktree
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Get the root of the main git repo (not a worktree)
+get_main_repo() {
+    local gitdir
+    gitdir=$(git -C "$SCRIPT_DIR" rev-parse --git-common-dir 2>/dev/null)
+    # Resolve to absolute path and strip /.git
+    (cd "$SCRIPT_DIR" && cd "$(dirname "$gitdir")" && pwd)
+}
+
+# Get current worktree directory
+get_current_worktree() {
+    git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null
+}
+
+# Get COMPOSE_PROJECT_NAME from a directory's .env
+get_project_name() {
+    local dir="$1"
+    if [[ -f "$dir/.env" ]]; then
+        grep -E '^COMPOSE_PROJECT_NAME=' "$dir/.env" 2>/dev/null | cut -d= -f2 || echo ""
+    fi
+}
+
+# Find all worktree directories
+get_worktrees() {
+    git -C "$SCRIPT_DIR" worktree list --porcelain 2>/dev/null | grep '^worktree ' | sed 's/^worktree //'
+}
+
+# Resolve a worktree name to its directory
+# Matches by: full path, basename, or suffix (e.g. "test-wt1" matches "FreegleDocker-test-wt1")
+resolve_worktree() {
+    local name="$1"
+    for wt in $(get_worktrees); do
+        local base
+        base=$(basename "$wt")
+        if [[ "$base" == "$name" || "$wt" == "$name" || "$base" == *"-${name}" || "$base" == *"${name}" ]]; then
+            echo "$wt"
+            return 0
+        fi
+    done
+    return 1
+}
+
+cmd_status() {
+    echo -e "${BLUE}=== Freegle Worktree Status ===${NC}"
+    echo ""
+
+    for wt in $(get_worktrees); do
+        local name
+        name=$(basename "$wt")
+        local project
+        project=$(get_project_name "$wt")
+        local container_count=0
+
+        # Count running containers for this project
+        # Use label filter for exact project match (avoids freegle- matching freegle-wt1-)
+        if [[ -n "$project" ]]; then
+            container_count=$(docker ps --filter "label=com.docker.compose.project=${project}" --format '{{.Names}}' 2>/dev/null | wc -l || echo 0)
+        fi
+
+        local branch
+        branch=$(git -C "$wt" branch --show-current 2>/dev/null || echo "detached")
+
+        # Show the traefik port so you know which URL to use
+        local traefik_port=""
+        if [[ -f "$wt/.env" ]]; then
+            traefik_port=$(grep -E '^PORT_TRAEFIK_HTTP=' "$wt/.env" 2>/dev/null | cut -d= -f2 || true)
+        fi
+        local url_hint=""
+        if [[ -n "$traefik_port" && "$traefik_port" != "80" ]]; then
+            url_hint="  → http://freegle-dev-live.localhost:${traefik_port}"
+        else
+            url_hint="  → http://freegle-dev-live.localhost"
+        fi
+
+        echo -e "  ${BLUE}${name}${NC}"
+        echo "    Path:       $wt"
+        echo "    Branch:     $branch"
+        echo "    Project:    ${project:-not set}"
+        echo "    Containers: $container_count running"
+        echo "    URL:       ${url_hint}"
+        echo ""
+    done
+}
+
+cmd_worktree_create() {
+    if [[ $# -eq 0 ]]; then
+        echo "Usage: freegle worktree create <name> [branch]" >&2
+        return 1
+    fi
+
+    local name="$1"
+    local branch="${2:-HEAD}"
+    local main_repo
+    main_repo=$(get_main_repo)
+    local parent_dir
+    parent_dir=$(dirname "$main_repo")
+    local worktree_dir="${parent_dir}/FreegleDocker-${name}"
+
+    if [[ -d "$worktree_dir" ]]; then
+        echo -e "${RED}Error: Directory $worktree_dir already exists${NC}" >&2
+        return 1
+    fi
+
+    echo -e "${BLUE}Creating worktree: ${name}${NC}"
+    echo "  Directory: $worktree_dir"
+    echo "  Branch:    $branch"
+
+    # Find the next free slot by checking PORT_STATUS in each existing worktree's .env.
+    # This avoids reusing a slot after a worktree is removed (the old count-based approach
+    # would assign the same slot number to a new worktree if one had been deleted).
+    local max_slot=0
+    for wt in $(git -C "$main_repo" worktree list --porcelain | grep '^worktree ' | sed 's/^worktree //'); do
+        if [[ -f "$wt/.env" ]]; then
+            local wt_status_port
+            wt_status_port=$(grep -E '^PORT_STATUS=' "$wt/.env" 2>/dev/null | cut -d= -f2 || true)
+            if [[ -n "$wt_status_port" && "$wt_status_port" =~ ^[0-9]+$ ]]; then
+                # Base STATUS port is 8081. Slot = (port - 8081) / 5000
+                local wt_slot=$(( (wt_status_port - 8081) / 5000 ))
+                if (( wt_slot > max_slot )); then
+                    max_slot=$wt_slot
+                fi
+            fi
+        fi
+    done
+    local slot=$(( max_slot + 1 ))
+
+    # Create the worktree
+    git -C "$main_repo" worktree add "$worktree_dir" "$branch"
+
+    # Fix CRLF line endings in subtrees (WSL/Windows git may convert LF→CRLF,
+    # breaking shell scripts like generate-swagger.sh inside containers)
+    for dir in iznik-nuxt3 iznik-server-go iznik-server; do
+        git -C "$worktree_dir/$dir" config core.autocrlf false 2>/dev/null || true
+    done
+
+    # Copy .env and configure for no ports
+    if [[ -f "$main_repo/.env" ]]; then
+        cp "$main_repo/.env" "$worktree_dir/.env"
+    fi
+
+    # Set unique project name and remove ports overlay
+    local project_name="freegle-${name}"
+    sed -i "s|^COMPOSE_PROJECT_NAME=.*|COMPOSE_PROJECT_NAME=${project_name}|" "$worktree_dir/.env"
+    sed -i "s|^COMPOSE_FILE=.*|COMPOSE_FILE=docker-compose.yml|" "$worktree_dir/.env"
+
+    # Assign unique PORT_* values to avoid conflicts with other running instances.
+    # All port bindings live in docker-compose.yml (for backwards compat with single-file
+    # installs), so changing COMPOSE_FILE alone doesn't prevent conflicts. We offset every
+    # PORT_* value by slot*5000 instead.
+    #
+    # slot was counted before git worktree add, so:
+    #   first worktree (slot=1) → +5000, second (slot=2) → +10000, …
+    # 5000 is the smallest round increment with zero port collisions across
+    # all 25 PORT_* defaults (ranging from 25 to 11334) for up to 11 slots.
+    # Max port at slot 10: 61334 (under 65535).
+    local port_offset=$(( slot * 5000 ))
+
+    # Build a map of effective PORT_* defaults: start with docker-compose.yml defaults,
+    # then override with whatever is explicitly set in the main .env
+    declare -A port_defaults
+    while IFS='=' read -r key val; do
+        port_defaults["$key"]="$val"
+    done < <(grep -oE 'PORT_[A-Z0-9_]+:-[0-9]+' "$main_repo/docker-compose.yml" | sed 's/:-/=/' | sort -u)
+    while IFS='=' read -r key val; do
+        if [[ "$key" =~ ^PORT_ && "$val" =~ ^[0-9]+$ ]]; then
+            port_defaults["$key"]="$val"
+        fi
+    done < <(grep -E '^PORT_[A-Z0-9_]+=[0-9]+$' "$main_repo/.env")
+
+    # Ensure .env ends with a newline before appending (prevents concatenation with last line)
+    [[ -f "$worktree_dir/.env" && -s "$worktree_dir/.env" ]] && sed -i -e '$a\' "$worktree_dir/.env"
+
+    # Write all PORT_* with offset into worktree .env
+    for key in "${!port_defaults[@]}"; do
+        local base_val="${port_defaults[$key]}"
+        local new_val=$(( base_val + port_offset ))
+        if grep -q "^${key}=" "$worktree_dir/.env"; then
+            sed -i "s|^${key}=.*|${key}=${new_val}|" "$worktree_dir/.env"
+        else
+            echo "${key}=${new_val}" >> "$worktree_dir/.env"
+        fi
+    done
+
+    # LOKI_VOLUME must be unique per instance (not a PORT_ so handled separately)
+    if grep -q '^LOKI_VOLUME=' "$worktree_dir/.env"; then
+        sed -i "s|^LOKI_VOLUME=.*|LOKI_VOLUME=${project_name}-loki-data|" "$worktree_dir/.env"
+    else
+        echo "LOKI_VOLUME=${project_name}-loki-data" >> "$worktree_dir/.env"
+    fi
+
+    # Start the containers immediately so the worktree is ready to use
+    echo ""
+    echo "🔄 Starting containers in $worktree_dir ..."
+    (cd "$worktree_dir" && docker-compose up -d 2>&1) || true
+
+    echo ""
+    echo -e "${GREEN}Worktree created successfully.${NC}"
+    echo ""
+    local traefik_port
+    traefik_port=$(grep -E '^PORT_TRAEFIK_HTTP=' "$worktree_dir/.env" | cut -d= -f2)
+    local status_port
+    status_port=$(grep -E '^PORT_STATUS=' "$worktree_dir/.env" | cut -d= -f2)
+    echo "Services are running on offset ports (+${port_offset} from primary)."
+    echo "  Status:  http://localhost:${status_port}"
+    echo "  Traefik: http://freegle-dev-live.localhost:${traefik_port}"
+    echo ""
+    echo "Chrome MCP tip: use isolatedContext=\"${name}\" when opening tabs to avoid"
+    echo "  tab conflicts with other Claude sessions using Chrome MCP."
+}
+
+cmd_worktree_list() {
+    echo -e "${BLUE}Worktrees:${NC}"
+    for wt in $(get_worktrees); do
+        local name
+        name=$(basename "$wt")
+        local project
+        project=$(get_project_name "$wt")
+        local branch
+        branch=$(git -C "$wt" branch --show-current 2>/dev/null || echo "detached")
+        local last_active
+        last_active=$(git -C "$wt" log -1 --format="%ar" 2>/dev/null || echo "unknown")
+
+        echo -e "  ${name}  (${branch})  project=${project:-unset}  last active: ${last_active}"
+    done
+}
+
+cmd_worktree_remove() {
+    if [[ $# -eq 0 ]]; then
+        echo "Usage: freegle worktree remove <name>" >&2
+        return 1
+    fi
+
+    local name="$1"
+    local worktree_dir
+    worktree_dir=$(resolve_worktree "$name") || {
+        echo -e "${RED}Error: Worktree '$name' not found${NC}" >&2
+        return 1
+    }
+
+    # Don't remove the main repo
+    local main_repo
+    main_repo=$(get_main_repo)
+    if [[ "$worktree_dir" == "$main_repo" ]]; then
+        echo -e "${RED}Error: Cannot remove the main repository${NC}" >&2
+        return 1
+    fi
+
+    local project
+    project=$(get_project_name "$worktree_dir")
+
+    echo -e "${YELLOW}Removing worktree: ${name}${NC}"
+
+    # Stop compose services
+    if [[ -n "$project" ]]; then
+        echo "Stopping compose services..."
+        (cd "$worktree_dir" && docker-compose down -v 2>/dev/null) || true
+    fi
+
+    # Remove git worktree
+    # Docker containers create root-owned files (vendor/, conf/, etc.) that
+    # normal rm can't delete. Use a throwaway container to clean them up
+    # instead of requiring sudo.
+    echo "Removing worktree..."
+    git -C "$main_repo" worktree remove "$worktree_dir" --force 2>/dev/null || {
+        echo "Cleaning up root-owned files via Docker..."
+        docker run --rm -v "$worktree_dir:/cleanup:rw" alpine \
+            sh -c 'find /cleanup -mindepth 1 -delete' 2>/dev/null || true
+        rmdir "$worktree_dir" 2>/dev/null || rm -rf "$worktree_dir" 2>/dev/null || true
+        git -C "$main_repo" worktree prune
+    }
+
+    echo -e "${GREEN}Worktree '${name}' removed.${NC}"
+}
+
+# Main command dispatch
+case "${1:-help}" in
+    status)
+        cmd_status
+        ;;
+    worktree)
+        case "${2:-help}" in
+            create)
+                shift 2
+                cmd_worktree_create "$@"
+                ;;
+            list|ls)
+                cmd_worktree_list
+                ;;
+            remove|rm)
+                shift 2
+                cmd_worktree_remove "$@"
+                ;;
+            *)
+                echo "Usage: freegle worktree {create|list|remove} [args]"
+                ;;
+        esac
+        ;;
+    help|--help|-h)
+        echo "Freegle worktree management CLI"
+        echo ""
+        echo "Usage: freegle <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  status                  Show all worktrees, containers, and URLs"
+        echo "  worktree create <name>  Create isolated worktree (unique ports, starts containers)"
+        echo "  worktree list           List all worktrees"
+        echo "  worktree remove <name>  Stop and remove a worktree"
+        ;;
+    *)
+        echo "Unknown command: $1. Run 'freegle help' for usage." >&2
+        exit 1
+        ;;
+esac

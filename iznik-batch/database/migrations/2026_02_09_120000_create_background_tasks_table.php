@@ -16,6 +16,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('background_tasks')) {
+            return;
+        }
+
         Schema::create('background_tasks', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('task_type', 50)->index();

@@ -64,7 +64,8 @@ class ChatNotificationService
         ?int $chatId = null,
         int $delay = self::DEFAULT_DELAY,
         int $sinceHours = self::DEFAULT_SINCE_HOURS,
-        bool $forceAll = false
+        bool $forceAll = false,
+        bool $dryRun = false
     ): int {
         // Check if ChatNotification emails are enabled.
         if (! self::isEmailTypeEnabled(self::EMAIL_TYPE)) {
@@ -100,7 +101,7 @@ class ChatNotificationService
 
         foreach ($messages as $message) {
             try {
-                $notified += $this->processMessage($message, $chatType, $forceAll);
+                $notified += $this->processMessage($message, $chatType, $forceAll, $dryRun);
             } catch (\Exception $e) {
                 Log::error("Error processing chat message {$message->id}: ".$e->getMessage());
             }
@@ -156,7 +157,7 @@ class ChatNotificationService
     /**
      * Process a single message and send notifications to relevant users.
      */
-    protected function processMessage(ChatMessage $message, string $chatType, bool $forceAll): int
+    protected function processMessage(ChatMessage $message, string $chatType, bool $forceAll, bool $dryRun = false): int
     {
         $notified = 0;
         $chatRoom = $message->chatRoom;
@@ -194,20 +195,33 @@ class ChatNotificationService
                     $sendingFrom = $this->getOtherUser($chatRoom, $sendingTo);
                 }
 
-                // Send the notification email.
-                $this->sendNotificationEmail(
-                    $sendingTo,
-                    $sendingFrom,
-                    $chatRoom,
-                    $message,
-                    $chatType
-                );
+                if ($dryRun) {
+                    Log::info('Dry run: would send chat notification', [
+                        'chat_id' => $chatRoom->id,
+                        'message_id' => $message->id,
+                        'to_user' => $sendingTo->id,
+                    ]);
+                } else {
+                    // Send the notification email.
+                    $this->sendNotificationEmail(
+                        $sendingTo,
+                        $sendingFrom,
+                        $chatRoom,
+                        $message,
+                        $chatType
+                    );
 
-                // Update roster with last message emailed.
-                $roster->update(['lastmsgemailed' => $message->id]);
+                    // Update roster with last message emailed and notified.
+                    // lastmsgnotified is used by V1's push notification cron (notification_chaseup.php)
+                    // to avoid re-notifying users for messages already handled by email.
+                    $roster->update([
+                        'lastmsgemailed' => $message->id,
+                        'lastmsgnotified' => $message->id,
+                    ]);
 
-                // Update message mailedtoall if all members have been notified.
-                $this->updateMailedToAll($message);
+                    // Update message mailedtoall if all members have been notified.
+                    $this->updateMailedToAll($message);
+                }
 
                 $notified++;
 

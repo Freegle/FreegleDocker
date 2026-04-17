@@ -5,6 +5,7 @@ namespace Tests\Unit\Services\Mail\Incoming;
 use App\Models\ChatMessage;
 use App\Models\Group;
 use App\Models\User;
+use App\Models\UserEmail;
 use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use App\Services\Mail\Incoming\RoutingResult;
@@ -2779,6 +2780,63 @@ class IncomingMailServiceTest extends TestCase
     }
 
     // ========================================
+    // Merged User Tests
+    // ========================================
+
+    public function test_direct_mail_to_merged_user_proxy_address_is_delivered(): void
+    {
+        // Create the "merged" user (the one that survives)
+        $poster = $this->createTestUser(['email_preferred' => $this->uniqueEmail('poster')]);
+        $replier = $this->createTestUser(['email_preferred' => $this->uniqueEmail('replier')]);
+        $group = $this->createTestGroup();
+        $this->createMembership($poster, $group);
+        $message = $this->createTestMessage($poster, $group);
+
+        // Simulate a merged user: the old proxy address contains a non-existent user ID,
+        // but the email is registered in users_emails against the surviving user.
+        // This happens when user A is merged into user B — the old proxy email
+        // (slug-{A}@users.ilovefreegle.org) gets reassigned to user B's userid.
+        // Create a real user then delete it to get a UID that genuinely doesn't exist
+        // and won't collide with other concurrent tests.
+        $deletedUser = User::create(['fullname' => 'Deleted Merged User', 'added' => now()]);
+        $fakeOldUid = $deletedUser->id;
+        $deletedUser->delete();
+        $this->assertNull(User::find($fakeOldUid), 'Precondition: deleted UID should not exist');
+
+        $oldProxyEmail = "someslug-{$fakeOldUid}@users.ilovefreegle.org";
+        UserEmail::create([
+            'userid' => $poster->id,
+            'email' => $oldProxyEmail,
+            'preferred' => 0,
+            'added' => now(),
+        ]);
+
+        $replierEmail = $replier->emails->first()->email;
+
+        $email = $this->createMinimalEmail([
+            'From' => $replierEmail,
+            'To' => $oldProxyEmail,
+            'Subject' => $message->subject,
+            'x-fd-msgid' => (string) $message->id,
+        ], 'I would love this item!');
+
+        $parsed = $this->parser->parse($email, $replierEmail, $oldProxyEmail);
+
+        $result = $this->service->route($parsed);
+
+        $this->assertEquals(RoutingResult::TO_USER, $result, 'Mail to merged user proxy should be delivered, not dropped');
+
+        // Verify chat message was created between the correct users
+        $chatMsg = DB::table('chat_messages')
+            ->where('userid', $replier->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $this->assertNotNull($chatMsg, 'Chat message should be created for merged user');
+        $this->assertEquals($message->id, $chatMsg->refmsgid);
+    }
+
+    // ========================================
     // Helper Methods
     // ========================================
 
@@ -4604,5 +4662,51 @@ class IncomingMailServiceTest extends TestCase
         // lastaccess should have been updated
         $updatedUser = DB::table('users')->where('id', $user->id)->first();
         $this->assertGreaterThan('2025-01-01', $updatedUser->lastaccess, 'lastaccess should be updated on group post');
+    }
+
+    // ========================================
+    // recordFailure Tests
+    // ========================================
+
+    /**
+     * Test that recordFailure() increments retrycount and sets retrylastfailure.
+     *
+     * V1 parity: Message::recordFailure() in iznik-server/include/message/Message.php
+     * does: UPDATE messages SET retrycount = LAST_INSERT_ID(retrycount), retrylastfailure = NOW()
+     * and logs to the logs table with type='Message', subtype='Failure'.
+     */
+    public function test_record_failure_increments_retrycount_and_sets_retrylastfailure(): void
+    {
+        // Create a message record directly in the DB
+        $messageId = DB::table('messages')->insertGetId([
+            'date' => now(),
+            'source' => 'Email',
+            'messageid' => 'test-failure-' . uniqid() . '@example.com',
+            'retrycount' => 0,
+            'retrylastfailure' => null,
+        ]);
+
+        $this->service->recordFailure($messageId, 'Test failure reason');
+
+        $message = DB::table('messages')->where('id', $messageId)->first();
+        $this->assertEquals(1, $message->retrycount, 'retrycount should be incremented to 1');
+        $this->assertNotNull($message->retrylastfailure, 'retrylastfailure should be set');
+    }
+
+    public function test_record_failure_increments_retrycount_on_repeated_calls(): void
+    {
+        $messageId = DB::table('messages')->insertGetId([
+            'date' => now(),
+            'source' => 'Email',
+            'messageid' => 'test-failure-repeat-' . uniqid() . '@example.com',
+            'retrycount' => 0,
+            'retrylastfailure' => null,
+        ]);
+
+        $this->service->recordFailure($messageId, 'First failure');
+        $this->service->recordFailure($messageId, 'Second failure');
+
+        $message = DB::table('messages')->where('id', $messageId)->first();
+        $this->assertEquals(2, $message->retrycount, 'retrycount should be 2 after two failures');
     }
 }

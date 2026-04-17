@@ -2,11 +2,17 @@
 
 namespace App\Console\Commands\Mail;
 
+use App\Console\Commands\Mail\SendAdminCommand;
+use App\Mail\Admin\AdminMail;
 use App\Mail\Chat\ChatNotification;
 use App\Mail\Digest\UnifiedDigest;
 use App\Services\UnifiedDigestService;
 use App\Mail\Donation\AskForDonation;
 use App\Mail\Donation\DonationThankYou;
+use App\Mail\Message\AutoRepostWarning;
+use App\Mail\Message\ChaseUp;
+use App\Mail\Message\ChaseUpPromised;
+use App\Mail\Message\DeadlineReached;
 use App\Mail\Welcome\WelcomeMail;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
@@ -45,12 +51,18 @@ class TestMailCommand extends Command
      * Available email types.
      */
     protected array $emailTypes = [
+        'admin' => 'Generic admin email (with local volunteers)',
+        'admin:marketing' => 'Marketing admin email (Little Free Shop template)',
         'chat:user2user' => 'User-to-user chat notification',
         'chat:user2mod' => 'User-to-moderator chat notification',
         'digest' => 'Unified digest email (posts from all communities)',
         'donations:ask' => 'Donation request email',
         'donations:thank' => 'Donation thank you email',
         'welcome' => 'Welcome email for new users',
+        'autorepost-warning' => 'Auto-repost warning (Will Repost: subject)',
+        'chaseup' => 'Chase-up email (What happened to: subject)',
+        'chaseup-promised' => 'Chase-up promised email (promised variant)',
+        'deadline-reached' => 'Deadline reached notification',
     ];
 
     /**
@@ -327,14 +339,86 @@ class TestMailCommand extends Command
     protected function buildMailable(string $type): ?\Illuminate\Mail\Mailable
     {
         return match ($type) {
+            'admin' => $this->buildAdmin(FALSE),
+            'admin:marketing' => $this->buildAdmin(TRUE),
             'chat:user2user' => $this->buildChatNotification(ChatRoom::TYPE_USER2USER),
             'chat:user2mod' => $this->buildChatNotification(ChatRoom::TYPE_USER2MOD),
             'digest' => $this->buildDigest(),
             'donations:ask' => $this->buildDonationAsk(),
             'donations:thank' => $this->buildDonationThank(),
             'welcome' => $this->buildWelcome(),
+            'autorepost-warning' => $this->buildAutoRepostWarning(),
+            'chaseup' => $this->buildChaseUp(false),
+            'chaseup-promised' => $this->buildChaseUp(true),
+            'deadline-reached' => $this->buildDeadlineReached(),
             default => null,
         };
+    }
+
+    /**
+     * Build an admin email (generic or marketing).
+     */
+    protected function buildAdmin(bool $marketing): ?AdminMail
+    {
+        $toEmail = $this->option('to');
+
+        if (!$toEmail) {
+            $this->error('Please specify --to=email to find a user');
+
+            return null;
+        }
+
+        $user = User::whereHas('emails', function ($q) use ($toEmail) {
+            $q->where('email', $toEmail);
+        })->first();
+
+        if (!$user) {
+            $this->error("No user found with email: {$toEmail}");
+
+            return null;
+        }
+
+        $this->info("Found user: {$user->displayname} (ID: {$user->id})");
+
+        // Find a group the user is on, for realistic volunteer data.
+        $membership = DB::table('memberships')->where('userid', $user->id)->first();
+        $group = $membership ? Group::find($membership->groupid) : Group::where('type', Group::TYPE_FREEGLE)->first();
+
+        $groupName = $group ? ($group->namefull ?: $group->nameshort) : 'Test Freegle Group';
+        $groupShort = $group->nameshort ?? 'TestGroup';
+        $modsEmail = "{$groupShort}-volunteers@groups.ilovefreegle.org";
+
+        // Get real local volunteers for the group.
+        $volunteers = $group ? SendAdminCommand::getLocalVolunteers($group->id) : [];
+        $this->info("Found " . count($volunteers) . " local volunteer(s) for {$groupName}");
+
+        // Build a realistic admin record.
+        $admin = [
+            'id' => 0,
+            'groupid' => $group->id ?? 0,
+            'subject' => $marketing
+                ? 'Could you help us start a Little Free Shop?'
+                : 'Test admin email from ' . $groupName,
+            'text' => $marketing
+                ? "Dear \$membername,\n\nImagine a place in your neighbourhood where anyone can drop off things they no longer need — and anyone can pick up what they do.\n\nThat's the idea behind the Little Free Shop: a simple, community-run space that makes reuse easy and accessible for everyone.\n\nWe'd love to pilot this in a few areas across the UK, and your donation could help make it happen."
+                : "Hello \$membername,\n\nThis is a test admin email for \$groupname.\n\nYou can contact your local volunteers at \$owneremail.\n\nThank you for freegling!",
+            'ctatext' => $marketing ? 'Donate now' : 'Visit Freegle',
+            'ctalink' => $marketing
+                ? 'https://www.ilovefreegle.org/donate'
+                : 'https://www.ilovefreegle.org',
+            'essential' => FALSE,
+            'parentid' => null,
+            'template' => $marketing ? 'little-free-shop-2026' : null,
+        ];
+
+        // Apply variable substitution like the real send does.
+        $admin['text'] = str_replace(
+            ['$groupname', '$owneremail', '$membername', '$memberid'],
+            [$groupName, $modsEmail, $user->displayname ?? '', (string) $user->id],
+            $admin['text']
+        );
+
+        return new AdminMail($user, $admin, $groupName, $modsEmail, $groupShort, $volunteers);
     }
 
     /**
@@ -412,10 +496,32 @@ class TestMailCommand extends Command
         })->orderBy('id', 'desc')->first();
 
         if (! $chatRoom) {
-            $this->error("No {$chatType} chat with messages found for user {$recipient->id}".
-                ($perspective === 'mod' ? ' as moderator' : ''));
+            // Fall back to any chat of this type that has messages from multiple users
+            // (so we can find a message from someone other than user1).
+            $this->warn("No {$chatType} chat found for user {$recipient->id}, searching all chats...");
 
-            return null;
+            $chatRoom = ChatRoom::where('chattype', $chatType)
+                ->whereHas('messages', function ($q) {
+                    $q->select('chatid')
+                        ->groupBy('chatid')
+                        ->havingRaw('COUNT(DISTINCT userid) > 1');
+                })
+                ->orderBy('id', 'desc')
+                ->first();
+
+            if (! $chatRoom) {
+                $this->error("No {$chatType} chat with messages from multiple users found in the system");
+
+                return null;
+            }
+
+            // Override recipient to user1 (the member in User2Mod chats).
+            $recipientId = $chatRoom->user1;
+            $newRecipient = $recipientId ? User::find($recipientId) : null;
+            if ($newRecipient) {
+                $recipient = $newRecipient;
+                $this->info("Using fallback user: {$recipient->displayname} (ID: {$recipient->id})");
+            }
         }
 
         $this->info("Using chat room: {$chatRoom->id}");
@@ -628,10 +734,8 @@ class TestMailCommand extends Command
     {
         $userId = $this->option('user');
 
-        $user = $userId ? User::find($userId) : User::whereHas('emails')->inRandomOrder()->first();
+        $user = $this->findUserWithEmail($userId);
         if (! $user) {
-            $this->error('User not found');
-
             return null;
         }
 
@@ -654,10 +758,8 @@ class TestMailCommand extends Command
     {
         $userId = $this->option('user');
 
-        $user = $userId ? User::find($userId) : User::whereHas('emails')->inRandomOrder()->first();
+        $user = $this->findUserWithEmail($userId);
         if (! $user) {
-            $this->error('User not found');
-
             return null;
         }
 
@@ -673,10 +775,8 @@ class TestMailCommand extends Command
     {
         $userId = $this->option('user');
 
-        $user = $userId ? User::find($userId) : User::whereHas('emails')->inRandomOrder()->first();
+        $user = $this->findUserWithEmail($userId);
         if (! $user) {
-            $this->error('User not found');
-
             return null;
         }
 
@@ -692,6 +792,166 @@ class TestMailCommand extends Command
 
         // WelcomeMail takes email, optional password, and user ID for nearby offers.
         return new WelcomeMail($user->email_preferred, 'test-password-123', $user->id);
+    }
+
+    /**
+     * Build an auto-repost warning email.
+     */
+    protected function buildAutoRepostWarning(): ?AutoRepostWarning
+    {
+        [$user, $message, $group] = $this->findUserMessageGroup();
+        if (!$user) {
+            return null;
+        }
+
+        $this->info("Generating autorepost warning for: {$message->subject}");
+
+        return new AutoRepostWarning(
+            messageId: $message->id,
+            messageSubject: $message->subject ?? 'Test item',
+            messageType: $message->type ?? Message::TYPE_OFFER,
+            userId: $user->id,
+            userName: $user->displayname,
+            userEmail: $user->email_preferred,
+            groupId: $group->id,
+        );
+    }
+
+    /**
+     * Build a chase-up email (normal or promised variant).
+     */
+    protected function buildChaseUp(bool $promised): ChaseUp|ChaseUpPromised|null
+    {
+        [$user, $message, $group] = $this->findUserMessageGroup();
+        if (!$user) {
+            return null;
+        }
+
+        $variant = $promised ? 'promised' : 'normal';
+        $this->info("Generating chase-up ({$variant}) for: {$message->subject}");
+
+        if ($promised) {
+            return new ChaseUpPromised(
+                messageId: $message->id,
+                messageSubject: $message->subject ?? 'Test item',
+                messageType: $message->type ?? Message::TYPE_OFFER,
+                userId: $user->id,
+                userName: $user->displayname,
+                userEmail: $user->email_preferred,
+                groupId: $group->id,
+            );
+        }
+
+        return new ChaseUp(
+            messageId: $message->id,
+            messageSubject: $message->subject ?? 'Test item',
+            messageType: $message->type ?? Message::TYPE_OFFER,
+            userId: $user->id,
+            userName: $user->displayname,
+            userEmail: $user->email_preferred,
+            groupId: $group->id,
+        );
+    }
+
+    /**
+     * Build a deadline-reached email.
+     */
+    protected function buildDeadlineReached(): ?DeadlineReached
+    {
+        [$user, $message, $group] = $this->findUserMessageGroup();
+        if (!$user) {
+            return null;
+        }
+
+        $this->info("Generating deadline-reached for: {$message->subject}");
+
+        return new DeadlineReached($message, $user);
+    }
+
+    /**
+     * Find a user, message, and group for message-related test emails.
+     */
+    protected function findUserMessageGroup(): array
+    {
+        $toEmail = $this->option('to');
+
+        if (!$toEmail) {
+            $this->error('Please specify --to=email to find a user');
+
+            return [null, null, null];
+        }
+
+        $user = User::whereHas('emails', function ($q) use ($toEmail) {
+            $q->where('email', $toEmail);
+        })->first();
+
+        if (!$user) {
+            $this->error("No user found with email: {$toEmail}");
+
+            return [null, null, null];
+        }
+
+        $this->info("Found user: {$user->displayname} (ID: {$user->id})");
+
+        // Find a recent message from this user.
+        $message = Message::where('fromuser', $user->id)
+            ->whereIn('type', [Message::TYPE_OFFER, Message::TYPE_WANTED])
+            ->orderBy('arrival', 'desc')
+            ->first();
+
+        if (!$message) {
+            $this->error("No messages found for user {$user->id}");
+
+            return [null, null, null];
+        }
+
+        // Get a group the message is on.
+        $group = $message->groups->first();
+        if (!$group) {
+            $membership = DB::table('memberships')->where('userid', $user->id)->first();
+            $group = $membership ? Group::find($membership->groupid) : null;
+        }
+
+        if (!$group) {
+            $this->error('No group found for message or user');
+
+            return [null, null, null];
+        }
+
+        return [$user, $message, $group];
+    }
+
+    /**
+     * Find a user with a valid external email address.
+     * Some users only have internal emails (e.g. @users.ilovefreegle.org) which
+     * means email_preferred returns null and mailables can't be constructed.
+     */
+    protected function findUserWithEmail(?string $userId): ?User
+    {
+        if ($userId) {
+            $user = User::find($userId);
+            if ($user) {
+                $this->info("Found user: {$user->displayname} (ID: {$user->id})");
+            } else {
+                $this->error("User not found: {$userId}");
+            }
+
+            return $user;
+        }
+
+        // Try up to 10 random users to find one with a valid email_preferred.
+        for ($i = 0; $i < 10; $i++) {
+            $user = User::whereHas('emails')->inRandomOrder()->first();
+            if ($user && $user->email_preferred) {
+                $this->info("Found user: {$user->displayname} (ID: {$user->id})");
+
+                return $user;
+            }
+        }
+
+        $this->error('Could not find a user with a valid external email address');
+
+        return null;
     }
 
     /**

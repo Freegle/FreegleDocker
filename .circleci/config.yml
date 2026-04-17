@@ -1,15 +1,117 @@
 version: 2.1
 
+setup: true
+
+parameters:
+  run_manual_promote:
+    type: boolean
+    default: false
+    description: "Set to true to manually trigger promotion/submission workflow"
+  build_testflight:
+    type: boolean
+    default: false
+    description: "Set to true to build iOS and upload to TestFlight from current branch"
+
 orbs:
-  freegle: freegle/tests@1
+  continuation: circleci/continuation@2
+
+jobs:
+  check-runner:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Cancel older redundant pipelines
+          command: |
+            # Dynamic config (setup: true) breaks CircleCI's built-in auto-cancel.
+            # Continuation pipelines get new IDs, so CircleCI doesn't recognise them
+            # as redundant. We cancel older running pipelines for the same branch manually.
+            if [ -z "$CIRCLE_TOKEN" ]; then
+              echo "CIRCLE_TOKEN not set — skipping"
+              exit 0
+            fi
+
+            BRANCH="<< pipeline.git.branch >>"
+            THIS_PIPELINE="<< pipeline.id >>"
+            THIS_NUMBER="<< pipeline.number >>"
+            PROJECT_SLUG="gh/Freegle/Iznik"
+
+            echo "Current pipeline: #${THIS_NUMBER} (${THIS_PIPELINE}) on ${BRANCH}"
+
+            # Get recent pipelines for this branch
+            PIPELINES=$(curl -sf \
+              -H "Circle-Token: ${CIRCLE_TOKEN}" \
+              "https://circleci.com/api/v2/project/${PROJECT_SLUG}/pipeline?branch=${BRANCH}" 2>/dev/null) || true
+
+            if [ -z "$PIPELINES" ]; then
+              echo "Failed to fetch pipelines — skipping"
+              exit 0
+            fi
+
+            # Find older pipelines (lower number) that are still running
+            echo "$PIPELINES" | jq -r --argjson thisNum "$THIS_NUMBER" \
+              '.items[] | select(.number < $thisNum and .state == "created") | .id' | while read -r PIPELINE_ID; do
+              echo "Checking workflows for pipeline ${PIPELINE_ID}..."
+
+              WORKFLOWS=$(curl -sf \
+                -H "Circle-Token: ${CIRCLE_TOKEN}" \
+                "https://circleci.com/api/v2/pipeline/${PIPELINE_ID}/workflow" 2>/dev/null) || continue
+
+              echo "$WORKFLOWS" | jq -r '.items[] | select(.status == "running" or .status == "on_hold") | .id' | while read -r WF_ID; do
+                echo "Cancelling workflow ${WF_ID} from older pipeline"
+                curl -sf -X POST \
+                  -H "Circle-Token: ${CIRCLE_TOKEN}" \
+                  "https://circleci.com/api/v2/workflow/${WF_ID}/cancel" 2>/dev/null || true
+              done
+            done
+
+            echo "Done checking for redundant pipelines"
+      - run:
+          name: Check self-hosted runner availability
+          command: |
+            # For manual promote or testflight, skip runner check — those workflows
+            # don't use the runner. Only pass use_self_hosted to avoid re-passing
+            # trigger parameters which causes "Conflicting pipeline parameters".
+            if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || [ "<< pipeline.parameters.build_testflight >>" = "true" ]; then
+              echo "Manual promote or testflight trigger — skipping runner check"
+              echo "{\"use_self_hosted\": false}" > /tmp/pipeline-params.json
+              cat /tmp/pipeline-params.json
+              exit 0
+            fi
+
+            # Query CircleCI runner API to see if our self-hosted runner is online
+            # Uses CIRCLE_TOKEN (project env var — personal API token) for runner API auth
+            RUNNER_AVAILABLE=false
+
+            if [ -n "$CIRCLE_TOKEN" ]; then
+              echo "Checking for online runners in freegle/circleci-docker-runner..."
+              RESPONSE=$(curl -sf --retry 2 --retry-delay 3 \
+                -H "Circle-Token: ${CIRCLE_TOKEN}" \
+                "https://runner.circleci.com/api/v3/runner?resource-class=freegle/circleci-docker-runner" 2>/dev/null) || true
+
+              if [ -n "$RESPONSE" ]; then
+                ONLINE_COUNT=$(echo "$RESPONSE" | jq '[.items[] | select(.resource_class=="freegle/circleci-docker-runner")] | length' 2>/dev/null) || ONLINE_COUNT=0
+                echo "Found ${ONLINE_COUNT} runner(s)"
+                if [ "$ONLINE_COUNT" -gt "0" ]; then
+                  RUNNER_AVAILABLE=true
+                fi
+              else
+                echo "Runner API check failed or returned empty response — falling back to cloud"
+              fi
+            else
+              echo "CIRCLE_TOKEN not set — falling back to cloud"
+            fi
+
+            echo "Runner available: ${RUNNER_AVAILABLE}"
+            echo "{\"use_self_hosted\": ${RUNNER_AVAILABLE}}" > /tmp/pipeline-params.json
+            cat /tmp/pipeline-params.json
+      - continuation/continue:
+          configuration_path: .circleci/continue-config.yml
+          parameters: /tmp/pipeline-params.json
 
 workflows:
-  version: 2
-  build-test:
+  setup:
     jobs:
-      - freegle/build-and-test:
-          filters:
-            branches:
-              ignore:
-                - modtools
-
+      - check-runner

@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libgmp-dev \
     libicu-dev \
+    libpq-dev \
     zip \
     unzip \
     supervisor \
@@ -26,6 +27,7 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp
 # Install PHP extensions
 RUN docker-php-ext-install \
     pdo_mysql \
+    pdo_pgsql \
     mbstring \
     exif \
     pcntl \
@@ -79,6 +81,9 @@ COPY docker/supervisor.conf /etc/supervisor/conf.d/laravel-worker.conf
 # Copy entrypoint script
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Ensure interactive shells start in the working directory
+RUN echo "cd /var/www/html" >> /root/.bashrc
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-n"]

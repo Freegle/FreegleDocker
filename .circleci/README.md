@@ -1,71 +1,25 @@
 # CircleCI Configuration for FreegleDocker
 
-This directory contains CircleCI configuration that automatically monitors submodule changes and runs integration tests.
+This directory contains CircleCI configuration that runs integration tests for the monorepo.
 
 ## Overview
 
 The CircleCI pipeline:
-- **Updates submodules** to latest commits on their default branches
 - **Runs full integration tests** using the complete Docker Compose stack
-- **Commits successful updates** back to the repository
-- **Responds to webhooks** from submodule repositories for immediate testing
-- **Monitors submodules** every 2 days for updates
+- **Scheduled integration tests** every 2 days
 
 ## Workflows
 
-### 1. `webhook-triggered`
-- **Trigger**: API webhook calls from submodule repositories
-- **Purpose**: Immediate testing when submodules are updated
-
-### 2. `build-and-test`
+### 1. `build-and-test`
 - **Trigger**: Push to `master` branch
-- **Purpose**: Test submodule integration on manual pushes
+- **Purpose**: Run the full test suite (Go, PHP, Laravel, Playwright)
 
-### 3. `scheduled-integration-test`
+### 2. `scheduled-integration-test`
 - **Trigger**: Scheduled cron job every 2 days at 4pm UTC (`0 16 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31 * *`)
 - **Branch**: Only runs on `master`
-- **Purpose**: Regular automated checking for submodule updates
+- **Purpose**: Regular automated integration testing
 
-## Jobs
-
-### `check-submodules`
-Main job that:
-1. Checks out repository with submodules
-2. Updates submodules to latest commits
-3. Starts Docker Compose environment if changes detected
-4. Waits for all services to be ready
-5. Runs Playwright tests via status container API
-6. Commits updates if tests pass
-7. Cleans up Docker resources
-
-### `webhook-submodule-check`
-Webhook-triggered variant that:
-- Forces submodule updates regardless of detected changes
-- Always runs tests when triggered by webhook
-- Uses same testing logic as main job
-
-## Submodule PR Testing
-
-Each submodule has its own CircleCI configuration that runs tests on pull requests using FreegleDocker's Docker Compose setup:
-
-### Test Types
-
-| Submodule | Test Type | Description |
-|-----------|-----------|-------------|
-| **iznik-server** | PHPUnit | Unit tests for PHP API |
-| **iznik-server-go** | Go tests | Unit tests for Go API with race detection |
-| **iznik-nuxt3** | Playwright | End-to-end browser tests |
-
-### How It Works
-
-1. PR is opened in submodule repository
-2. CircleCI clones FreegleDocker and initializes submodules
-3. PR code replaces the submodule directory
-4. Docker Compose services are started
-5. Tests run via the status container API endpoints
-6. Results are reported back to the PR
-
-### Test Execution
+## Test Execution
 
 Tests are executed via the status container's API endpoints:
 
@@ -80,59 +34,7 @@ curl -X POST http://localhost:8081/api/tests/go
 curl -X POST http://localhost:8081/api/tests/playwright
 ```
 
-The status container provides a unified API for test execution across all submodules, making it easy to integrate with CircleCI or run tests manually.
-
-## Webhook Integration Status
-
-The following submodules are **already configured** with GitHub Actions workflows that trigger CircleCI builds:
-
-- ✅ **iznik-nuxt3** - `.github/workflows/trigger-parent-ci.yml` configured, PR Playwright tests
-- ✅ **iznik-nuxt3-modtools** - `.github/workflows/trigger-parent-ci.yml` configured
-- ✅ **iznik-server** - `.github/workflows/trigger-parent-ci.yml` configured, PR PHPUnit tests
-- ✅ **iznik-server-go** - `.github/workflows/trigger-parent-ci.yml` configured, PR Go tests
-
-### How Submodule Updates Work
-
-When code is pushed to a submodule's master branch:
-
-1. **GitHub Actions workflow** (`trigger-parent-ci.yml`) runs in the submodule
-2. The workflow clones FreegleDocker and updates the submodule reference
-3. The updated reference is pushed back to FreegleDocker master
-4. This push triggers CircleCI to run the full test suite
-
-### GitHub Token Configuration
-
-The submodule workflows use a **fine-grained Personal Access Token (PAT)** to push updates to FreegleDocker.
-
-**Important**: The PAT must be scoped to the **Freegle organization**, not a personal account.
-
-#### Creating the PAT
-
-1. Log in to GitHub as the service account (e.g., FreegleGeeks)
-2. Go to Settings → Developer settings → Fine-grained personal access tokens
-3. Click "Generate new token"
-4. **Resource owner**: Select **Freegle** (the organization) - NOT your personal account
-5. **Repository access**: Select "Only select repositories" → choose `FreegleDocker`
-6. **Permissions**:
-   - Contents: Read and write
-   - Metadata: Read-only (required)
-7. Generate the token
-
-#### Adding the Secret to Submodules
-
-Add the PAT as a secret named `FREEGLE_DOCKER_TOKEN` in each submodule:
-
-1. Go to submodule repo → Settings → Secrets and Variables → Actions
-2. Add repository secret named `FREEGLE_DOCKER_TOKEN`
-3. Paste the PAT value
-
-Links to add secrets:
-- https://github.com/Freegle/iznik-nuxt3/settings/secrets/actions
-- https://github.com/Freegle/iznik-server/settings/secrets/actions
-- https://github.com/Freegle/iznik-server-go/settings/secrets/actions
-- https://github.com/Freegle/iznik-nuxt3-modtools/settings/secrets/actions
-
-**Troubleshooting**: If you get "Permission denied to FreegleGeeks", the PAT is likely scoped to the user account instead of the Freegle organization. Regenerate it with the correct resource owner.
+The status container provides a unified API for test execution, making it easy to integrate with CircleCI or run tests manually.
 
 ## Manual Testing
 
@@ -148,7 +50,7 @@ curl -X POST \
   -H "Circle-Token: YOUR_CIRCLECI_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"branch": "master"}' \
-  https://circleci.com/api/v2/project/github/Freegle/FreegleDocker/pipeline
+  https://circleci.com/api/v2/project/github/Freegle/Iznik/pipeline
 ```
 
 ## Environment Variables
@@ -188,7 +90,7 @@ CIRCLECI_PAT=$(grep '^token:' ~/.circleci/cli.yml | awk '{print $2}')
 
 # 2. Find the latest pipeline
 curl -s -u "$CIRCLECI_PAT:" \
-  "https://circleci.com/api/v2/project/gh/Freegle/FreegleDocker/pipeline?branch=master" \
+  "https://circleci.com/api/v2/project/gh/Freegle/Iznik/pipeline?branch=master" \
   | python3 -c "import sys,json
 for p in json.load(sys.stdin).get('items',[])[:3]:
     print(f\"Pipeline: {p['id']} state: {p.get('state')}\")"
@@ -206,7 +108,7 @@ curl -s -X POST -u "$CIRCLECI_PAT:" -H "Content-Type: application/json" \
 
 # 5. Get SSH connection details from "Enable SSH" step output
 curl -s -u "$CIRCLECI_PAT:" \
-  "https://circleci.com/api/v1.1/project/github/Freegle/FreegleDocker/<JOB_NUMBER>/output/101/0" \
+  "https://circleci.com/api/v1.1/project/github/Freegle/Iznik/<JOB_NUMBER>/output/101/0" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['message'])"
 
 # 6. Connect
@@ -265,66 +167,94 @@ for i in {1..60}; do  # 60 attempts = 10 minutes max
 
 ## Self-Hosted Runner
 
-Builds run on a dedicated self-hosted runner for faster execution and to avoid CircleCI cloud timeouts.
+The `build-and-test` job can run on a self-hosted CircleCI runner for significantly faster builds. A setup workflow checks runner availability and routes automatically — if the runner is online, tests run locally; if not, they fall back to CircleCI cloud.
 
-### Runner Configuration
+### How It Works
 
-- **Resource class**: `freegle/circleci-docker-runner`
-- **Machine type**: Dedicated Linux server with Docker
-- **Runner software**: CircleCI Machine Runner 3.x
+1. **Setup workflow** (`config.yml`): A lightweight cloud job checks the CircleCI runner API for online runners in `freegle/circleci-docker-runner`
+2. **Continuation** (`continue-config.yml`): Routes to `build-test-local` (self-hosted) or `build-test-cloud` depending on availability
+3. **Other workflows** (`build-android-apps`, `deploy-apps`, etc.) always run on CircleCI cloud regardless
+
+### Speed Comparison (Cloud vs Local)
+
+| Step | Cloud | Local | Improvement |
+|------|-------|-------|-------------|
+| Build containers | ~8 min | <1 min (cached) | ~7 min saved |
+| Wait for prod containers | ~5.5 min | 0s | 5.5 min saved |
+| Vitest | ~6 min | ~3.5 min | 42% faster |
+| Parallel tests (Go/Laravel/Playwright) | ~21 min | ~3.5 min | 6x faster |
+| **Total** | **~42 min** | **~10 min** | **~75% faster** |
+
+The local runner benefits from: Docker layer cache (persistent between runs), faster disk I/O, more CPU cores, and no VM startup overhead.
 
 ### Runner Setup
 
-The runner is installed directly on the host machine (not in Docker) to avoid permission issues:
+The runner runs in a dedicated WSL2 distro called `circleci-runner`, separate from the main development distro.
 
-```bash
-# Runner binary location
-/opt/circleci/circleci-runner
-
-# Configuration file
-/etc/circleci-runner/circleci-runner-config.yaml
-
-# Systemd service
-sudo systemctl status circleci-runner
+**Runner location and config:**
+```
+/opt/circleci-runner/circleci-runner          # Binary
+/opt/circleci-runner/circleci-runner-config.yaml  # Config
+/opt/circleci-runner/start.sh                 # Boot script
 ```
 
-### Prerequisites on Runner Machine
+**Key config settings:**
+- `resource_class: freegle/circleci-docker-runner`
+- `cleanup_working_directory: false` (preserves Docker cache between runs)
+- `max_run_time: 2h`
 
+**Prerequisites in the runner distro:**
 - Docker and docker-compose
-- Git (configured with HTTPS for GitHub: `git config --global url."https://github.com/".insteadOf "git@github.com:"`)
-- curl, jq
-- Passwordless sudo for circleci user
+- Git
+- curl, jq, sysstat
+- Node.js 22 (for Vitest)
+- Passwordless sudo for `circleci` user
 
-### Custom Runner Docker Image
+### Starting the Runner
 
-For containerized runner deployments, a custom Dockerfile is available at `circleci-runner/Dockerfile` with all required tools pre-installed.
+The runner distro starts automatically on Windows boot via a script in the Windows Startup folder (`start-wsl-on-boot.bat`). It also starts keepalive sessions to prevent WSL idle termination.
+
+To start manually:
+```bash
+# From the main WSL distro
+wsl.exe -d circleci-runner -- echo started
+# Start keepalive sessions
+nohup wsl.exe -d circleci-runner -- bash -c 'while true; do sleep 60; done' > /dev/null 2>&1 &
+nohup wsl.exe -d circleci-runner -- bash -c 'while true; do sleep 300; done' > /dev/null 2>&1 &
+```
+
+### Orb Compatibility
+
+The orb (`freegle/tests`) detects the self-hosted runner via `SELF_HOSTED_RUNNER` env var and adjusts behaviour:
+- **Docker cache**: Uses layer cache on self-hosted (skips `--no-cache`), forces rebuild on cloud
+- **Docker cleanup**: Pre-checkout step cleans up containers/volumes from previous runs (self-hosted only)
+- **Path resolution**: All scripts use CWD-relative paths first (`./scripts/`, `./iznik-nuxt3/`) for runner compatibility, with fallbacks to `~/project/` (cloud) and `~/FreegleDocker/`
 
 ### Troubleshooting
 
 ```bash
-# Check runner status
-sudo systemctl status circleci-runner
+# Check runner is running
+wsl.exe -d circleci-runner -- ps aux | grep circleci-runner
 
-# View runner logs
-sudo journalctl -u circleci-runner -f
+# Check runner logs
+wsl.exe -d circleci-runner -- cat /opt/circleci-runner/logs/*.log | tail -50
 
-# Restart runner
-sudo systemctl restart circleci-runner
+# Check Docker containers in runner
+wsl.exe -d circleci-runner -- docker ps
+
+# Restart the runner
+wsl.exe -d circleci-runner -- sudo kill -9 $(wsl.exe -d circleci-runner -- pgrep circleci-runner)
+wsl.exe -t circleci-runner
+wsl.exe -d circleci-runner -- echo restarted
 ```
 
 ## Security Considerations
 
 - API tokens should be stored as encrypted secrets
-- Webhook payloads can be signed for verification
-- Only `master` branch commits trigger submodule updates
-- Git push uses service account credentials
 - Self-hosted runner has passwordless sudo for build operations
 
 ## Benefits
 
-✅ **Automated Integration**: Keeps parent repository current with submodule changes
-✅ **Comprehensive Testing**: Full Docker stack validation before updates
-✅ **Immediate Feedback**: Webhook integration provides fast feedback
-✅ **Artifact Collection**: Debugging information preserved for failed builds  
-✅ **Resource Efficiency**: Only runs tests when changes are detected
-✅ **Rollback Safety**: Only commits updates if tests pass# Trigger pipeline to test PHPUnit worker fix
+✅ **Comprehensive Testing**: Full Docker stack validation
+✅ **Artifact Collection**: Debugging information preserved for failed builds
+✅ **Rollback Safety**: Only commits updates if tests pass

@@ -15,7 +15,8 @@ class ProcessExpiredMessagesCommand extends Command
      * The name and signature of the console command.
      */
     protected $signature = 'messages:process-expired
-                            {--spatial : Also process spatial index expiry}';
+                            {--spatial : Also process spatial index expiry}
+                            {--dry-run : Show what would be processed without actually updating}';
 
     /**
      * The console command description.
@@ -29,13 +30,20 @@ class ProcessExpiredMessagesCommand extends Command
     {
         $this->registerShutdownHandlers();
 
-        Log::info('Starting message expiry processing');
+        $dryRun = $this->option('dry-run');
+
+        if ($dryRun) {
+            $this->info('DRY RUN — no changes will be made.');
+        }
+
+        Log::info('Starting message expiry processing', ['dry_run' => $dryRun]);
         $this->info('Processing expired messages...');
 
         // Process deadline-expired messages.
-        $stats = $expiryService->processDeadlineExpired();
+        $stats = $expiryService->processDeadlineExpired($dryRun);
 
-        $this->info("Deadline expired: {$stats['processed']} processed, {$stats['emails_sent']} emails sent");
+        $prefix = $dryRun ? '[DRY RUN] ' : '';
+        $this->info("{$prefix}Deadline expired: {$stats['processed']} processed, {$stats['emails_sent']} emails sent");
 
         if ($stats['errors'] > 0) {
             $this->warn("Errors: {$stats['errors']}");
@@ -49,7 +57,7 @@ class ProcessExpiredMessagesCommand extends Command
             }
 
             $this->info('Processing spatial index expiry...');
-            $spatialCount = $expiryService->processExpiredFromSpatialIndex();
+            $spatialCount = $expiryService->processExpiredFromSpatialIndex($dryRun);
             $this->info("Spatial index: {$spatialCount} messages processed");
         }
 

@@ -8,12 +8,15 @@ const statusStore = useStatusStore()
 const tabServices: Record<string, string[]> = {
   freegle: ['freegle-dev-local', 'freegle-prod-local'],
   modtools: ['modtools-dev-local', 'modtools-prod-local'],
-  backend: ['apiv1', 'apiv2', 'batch', 'host-scripts'],
+  backend: ['apiv1', 'apiv2', 'batch', 'host-scripts', 'mcp-sanitizer', 'mcp-interface', 'mcp-pseudonymizer'],
   devtools: ['phpmyadmin', 'mailpit', 'loki', 'grafana', 'playwright', 'status'],
   testing: [], // Testing tab shows test runners, not services
-  infrastructure: ['percona', 'postgres', 'redis', 'beanstalkd', 'spamassassin', 'traefik', 'tusd', 'delivery'],
-  production: ['freegle-dev-live', 'modtools-dev-live'], // Live/production services
+  infrastructure: ['percona', 'postgres', 'redis', 'beanstalkd', 'spamassassin', 'traefik', 'tusd', 'delivery', 'mjml', 'loki-backup'],
+  production: ['freegle-dev-live', 'modtools-dev-live', 'apiv2-live'], // Live/production services
 }
+
+// Services that are on-demand only and should not affect the overall status indicator.
+const onDemandServiceIds = new Set(['loki-backup'])
 
 const tabs = [
   { name: 'Freegle', path: '/freegle', id: 'freegle' },
@@ -29,10 +32,21 @@ const currentTab = computed(() => {
   return tabs.find(tab => route.path.startsWith(tab.path))?.path || '/freegle'
 })
 
-// Overall status for the circle indicator
+// Service IDs on the production tab — excluded from overall status
+const productionServiceIds = new Set(tabServices.production)
+
+// Overall status for the circle indicator (excludes production tab services)
 const overallStatus = computed(() => {
-  const online = statusStore.onlineCount
-  const total = statusStore.totalCount
+  let online = 0
+  let total = 0
+
+  for (const [id, s] of statusStore.serviceStates) {
+    if (productionServiceIds.has(id)) continue
+    if (onDemandServiceIds.has(id)) continue
+    total++
+    if (s.status === 'online') online++
+  }
+
   if (total === 0) return 'amber'
   if (online === total) return 'green'
   if (online === 0) return 'red'
@@ -52,6 +66,7 @@ const getTabStatus = (tabId: string): string => {
   let total = 0
 
   for (const id of serviceIds) {
+    if (onDemandServiceIds.has(id)) continue
     const state = statusStore.getServiceState(id)
     if (state) {
       total++
@@ -79,6 +94,12 @@ const getTabStatus = (tabId: string): string => {
         >
         <div :class="['status-circle', overallStatus]" />
         <h1>Freegle Status</h1>
+        <span v-if="statusStore.project" style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; margin-left: 8px;">
+          {{ statusStore.project }}
+        </span>
+        <span v-if="statusStore.branch" style="background: #0d6efd; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; margin-left: 4px;">
+          {{ statusStore.branch }}
+        </span>
       </div>
 
       <!-- Countdown -->

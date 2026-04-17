@@ -19,11 +19,10 @@ class DonationService
     public const EMAIL_TYPE_THANK = 'DonationThank';
     public const EMAIL_TYPE_ASK = 'DonationAsk';
     /**
-     * Excluded payer patterns (test payments, etc.).
+     * Excluded payer patterns (test payments, aggregators like PayPal Giving Fund).
      */
     protected const EXCLUDED_PAYERS = [
-        'test@example.com',
-        'PayPal Test',
+        'ppgfukpay@paypalgivingfund.org',
     ];
 
     /**
@@ -39,7 +38,7 @@ class DonationService
     /**
      * Send thank you emails to recent donors who haven't been thanked.
      */
-    public function thankDonors(): array
+    public function thankDonors(bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -64,8 +63,10 @@ class DonationService
                     continue;
                 }
 
-                Mail::send(new DonationThankYou($user));
-                $this->markAsThanked($donor->userid);
+                if (!$dryRun) {
+                    Mail::send(new DonationThankYou($user));
+                    $this->markAsThanked($donor->userid);
+                }
 
                 $stats['emails_sent']++;
                 $stats['processed']++;
@@ -109,21 +110,21 @@ class DonationService
     /**
      * Get SQL condition to exclude test/internal payers.
      */
-    protected function getExcludedPayersCondition(): string
+    protected function getExcludedPayersCondition(string $field = 'Payer'): string
     {
         $conditions = [];
 
         foreach (self::EXCLUDED_PAYERS as $payer) {
-            $conditions[] = "Payer NOT LIKE '%{$payer}%'";
+            $conditions[] = "{$field} != '{$payer}'";
         }
 
-        return implode(' AND ', $conditions);
+        return '(' . implode(' AND ', $conditions) . ')';
     }
 
     /**
      * Ask users for donations after they've received items.
      */
-    public function askForDonations(): array
+    public function askForDonations(bool $dryRun = false): array
     {
         $stats = [
             'processed' => 0,
@@ -161,8 +162,10 @@ class DonationService
                 $recentMessage = $this->getRecentReceivedMessage($recipient->userid);
 
                 if ($recentMessage) {
-                    Mail::send(new AskForDonation($user, $recentMessage->subject));
-                    $this->recordAsk($recipient->userid);
+                    if (!$dryRun) {
+                        Mail::send(new AskForDonation($user, $recentMessage->subject));
+                        $this->recordAsk($recipient->userid);
+                    }
                     $stats['emails_sent']++;
                 }
 
@@ -238,6 +241,61 @@ class DonationService
             'userid' => $userId,
             'timestamp' => now(),
         ]);
+    }
+
+    /**
+     * Update the ads-off donation target.
+     *
+     * Calculates how much more needs to be donated in the current 24-hour window
+     * to reach the target that disables ads. Updates the config table.
+     *
+     * Migrated from iznik-server/scripts/cron/donations_ads_target.php
+     */
+    public function updateAdsTarget(bool $dryRun = false): array
+    {
+        $targetMax = DB::table('config')
+            ->where('key', 'ads_off_target_max')
+            ->value('value');
+
+        if ($targetMax === NULL) {
+            Log::warning('ads_off_target_max not found in config table');
+            return ['target_max' => 0, 'donated_24h' => 0, 'remaining' => 0, 'ads_enabled' => 1];
+        }
+
+        $targetMax = (float) $targetMax;
+
+        $excludeCondition = $this->getExcludedPayersCondition('Payer');
+
+        $donated24h = (float) DB::selectOne("
+            SELECT COALESCE(SUM(GrossAmount), 0) AS total
+            FROM users_donations
+            WHERE TIMESTAMPDIFF(HOUR, users_donations.timestamp, NOW()) <= 24
+            AND {$excludeCondition}
+        ")->total;
+
+        $remaining = (int) ceil($targetMax - $donated24h);
+        if ($remaining < 0) {
+            $remaining = 0;
+        }
+
+        if (!$dryRun) {
+            DB::table('config')->updateOrInsert(
+                ['key' => 'ads_off_target'],
+                ['value' => $remaining]
+            );
+
+            DB::table('config')->updateOrInsert(
+                ['key' => 'ads_enabled'],
+                ['value' => $remaining > 0 ? 1 : 0]
+            );
+        }
+
+        return [
+            'target_max' => $targetMax,
+            'donated_24h' => $donated24h,
+            'remaining' => $remaining,
+            'ads_enabled' => $remaining > 0 ? 1 : 0,
+        ];
     }
 
     /**

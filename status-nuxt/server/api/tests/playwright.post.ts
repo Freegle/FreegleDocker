@@ -5,9 +5,14 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const body = await readBody(event).catch(() => ({}))
 
-  // Get test file and name from query params or body
-  const testFile = (body?.testFile || query.testSpec) as string | null
-  const testName = (body?.testName || body?.filter || query.testName || query.filter) as string | null
+  // Get test file and name from query params or body.
+  // The "filter" param is smart: if it looks like a filename (starts with "test-"
+  // or contains ".spec"), treat it as a file filter; otherwise treat it as a grep pattern.
+  const filterParam = (body?.filter || query.filter) as string | null
+  const isFileFilter = filterParam && (filterParam.startsWith('test-') || filterParam.includes('.spec'))
+
+  const testFile = (body?.testFile || query.testSpec || query.spec || (isFileFilter ? filterParam : null)) as string | null
+  const testName = (body?.testName || query.testName || (!isFileFilter ? filterParam : null)) as string | null
 
   let logMessage = 'Received request to run Playwright tests'
   if (testFile) logMessage += ` for file: ${testFile}`
@@ -57,24 +62,65 @@ export default defineEventHandler(async (event) => {
 
 async function runPlaywrightTests(testFile: string | null, testName: string | null) {
   try {
-    // Check freegle-prod-local is running
-    const freegleProdCheck = execSync(
-      'docker ps --filter "name=freegle-prod-local" --format "{{.Status}}"',
-      { encoding: 'utf8', timeout: 5000 }
-    ).trim()
+    // Check both prod containers are running
+    const pfx = process.env.COMPOSE_PROJECT_NAME || 'freegle'
+    for (const container of [`${pfx}-prod-local`, `${pfx}-modtools-prod-local`]) {
+      const check = execSync(
+        `docker ps --filter "name=${container}" --format "{{.Status}}"`,
+        { encoding: 'utf8', timeout: 5000 }
+      ).trim()
 
-    if (!freegleProdCheck.includes('Up')) {
-      throw new Error('Freegle Production container is not running')
+      if (!check.includes('Up')) {
+        throw new Error(`${container} container is not running`)
+      }
     }
 
-    appendTestLogs('playwright', 'Freegle Production container is running\n')
+    appendTestLogs('playwright', 'Production containers are running\n')
+
+    // Wait for both prod containers to be serving HTTP before starting tests.
+    // Docker "Up" status doesn't mean the Nuxt server inside is ready.
+    // Use Docker service names with internal ports (works on same Docker network).
+    // The .localhost hostnames require Traefik DNS which doesn't resolve inside containers.
+    setTestState('playwright', { message: 'Waiting for production containers to be ready...' })
+
+    const prodContainers = [
+      { name: `${pfx}-prod-local`, port: 3003 },
+      { name: `${pfx}-modtools-prod-local`, port: 3001 },
+    ]
+
+    for (const { name, port } of prodContainers) {
+      let ready = false
+      for (let attempt = 0; attempt < 30; attempt++) {
+        try {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 2000)
+          const resp = await fetch(`http://${name}:${port}/`, { signal: controller.signal })
+          clearTimeout(timeout)
+
+          if (resp.status === 200) {
+            ready = true
+            break
+          }
+        } catch {
+          // Server not ready yet
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+
+      if (!ready) {
+        throw new Error(`${name}:${port} did not become ready within 60 seconds`)
+      }
+
+      appendTestLogs('playwright', `${name}:${port} is ready\n`)
+    }
 
     // Restart Playwright container
     setTestState('playwright', { message: 'Restarting Playwright container...' })
     appendTestLogs('playwright', 'Restarting Playwright container...\n')
 
     try {
-      execSync('docker restart freegle-playwright', {
+      execSync(`docker restart ${pfx}-playwright`, {
         encoding: 'utf8',
         timeout: 30000,
       })
@@ -83,19 +129,28 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
       appendTestLogs('playwright', `Warning: Failed to restart container: ${restartError.message}\n`)
     }
 
-    // Wait a bit for container to be ready
+    // Wait for Playwright container to be ready
     await new Promise(resolve => setTimeout(resolve, 3000))
 
+    // Test environments are now created on demand by each test's testEnv fixture
+    // via GET /api/tests/env/:prefix (no pre-generation needed).
+
     // Build test args for both --list and actual run
+    // If testFile is a bare name (no path separators), expand to tests/e2e/<name>.spec.js
+    let resolvedTestFile = testFile
+    if (resolvedTestFile && !resolvedTestFile.includes('/')) {
+      const name = resolvedTestFile.replace(/\.spec\.js$/, '')
+      resolvedTestFile = `tests/e2e/${name}.spec.js`
+    }
     let testArgs = ''
-    if (testFile) testArgs += ` ${testFile}`
+    if (resolvedTestFile) testArgs += ` ${resolvedTestFile}`
     if (testName) testArgs += ` --grep "${testName}"`
 
     // Get accurate test count using --list before running
     setTestState('playwright', { message: 'Counting tests...' })
     try {
       const listOutput = execSync(
-        `docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
+        `docker exec ${pfx}-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && npx playwright test --list${testArgs}"`,
         { encoding: 'utf8', timeout: 60000 }
       )
       // Count lines that match test entries (lines with [chromium] marker)
@@ -121,7 +176,7 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
 
     // Run tests - NODE_PATH needed so require('@playwright/test') finds global install
     const testProcess = spawn('sh', ['-c', `
-      docker exec freegle-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
+      docker exec ${pfx}-playwright sh -c "cd /app && export NODE_PATH=/usr/lib/node_modules && ${testCmd} 2>&1"
     `], { stdio: 'pipe' })
 
     testProcess.stdout.on('data', (data) => {
@@ -193,16 +248,29 @@ function parsePlaywrightOutput(text: string) {
     state.progress.total = parseInt(testMatch[1])
   }
 
-  // Count individual test completions from accumulated logs (✓ or ✗ or ◼)
-  // Use accumulated logs to get accurate total counts
+  // Check accumulated logs for the final summary line (not just current chunk)
+  // The summary line is authoritative because symbol counting over-counts retries
+  // Playwright summary format: "  82 passed (5.2m)" — has time in parens
   const allLogs = state.logs || ''
-  const passSymbols = (allLogs.match(/✓/g) || []).length
-  const failSymbols = (allLogs.match(/✗/g) || []).length
+  const allPassedMatch = allLogs.match(/(\d+)\s+passed\s*\(/)
+  const allFailedMatch = allLogs.match(/(\d+)\s+failed\s*\(/)
 
-  // Symbol counts from accumulated logs are the authoritative count during test run
-  // Only use these if we haven't seen summary stats yet
-  if (!listPassedMatch && passSymbols > 0) state.progress.passed = passSymbols
-  if (!listFailedMatch && failSymbols > 0) state.progress.failed = failSymbols
+  if (allPassedMatch) {
+    state.progress.passed = parseInt(allPassedMatch[1])
+  } else {
+    // Fall back to counting Playwright list-reporter lines only (format: "  ✓  N [chromium]")
+    // Do NOT count bare ✓ symbols — test code (e.g. withdrawPost) also logs ✓.
+    const passLines = (allLogs.match(/^\s*✓\s+\d+\s+\[/gm) || []).length
+    if (passLines > 0) state.progress.passed = passLines
+  }
+
+  if (allFailedMatch) {
+    state.progress.failed = parseInt(allFailedMatch[1])
+  } else {
+    // Count only Playwright list-reporter failure lines (format: "  ✘  N [chromium]")
+    const failLines = (allLogs.match(/^\s*[✘✗×]\s+\d+\s+\[/gm) || []).length
+    if (failLines > 0) state.progress.failed = failLines
+  }
 
   // Update completed
   state.progress.completed = state.progress.passed + state.progress.failed

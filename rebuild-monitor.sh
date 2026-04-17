@@ -24,13 +24,18 @@ while true; do
             continue
         fi
         
-        echo "Rebuilding service: $service ($container)"
-        
-        # Execute the rebuild
-        if docker-compose stop "$service" && \
-           docker-compose rm -f "$service" && \
-           docker-compose build "$service" && \
-           docker-compose up --no-deps -d "$service"; then
+        # Container names have project prefix (freegle-xxx) but compose
+        # service names don't (xxx). Strip prefix if present.
+        svc=$(echo "$service" | sed 's/^freegle-//')
+        echo "Rebuilding service: $svc ($container)"
+
+        # Execute the rebuild.
+        # stop/rm may fail if container is already stopped — that's OK.
+        # Only build→up needs to succeed.
+        docker-compose stop "$svc" 2>/dev/null || true
+        docker-compose rm -f "$svc" 2>/dev/null || true
+        if docker-compose build "$svc" && \
+           docker-compose up --no-deps -d "$svc"; then
             echo "Rebuild completed successfully for $service"
         else
             echo "Rebuild failed for $service"

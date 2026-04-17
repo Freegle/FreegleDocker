@@ -38,7 +38,8 @@ class UnifiedDigest extends MjmlMailable
     public function __construct(
         protected User $user,
         protected Collection $posts,
-        protected string $mode
+        protected string $mode,
+        protected Collection $sponsors = new Collection()
     ) {
         parent::__construct();
 
@@ -87,6 +88,7 @@ class UnifiedDigest extends MjmlMailable
             'posts' => $this->preparedPosts,
             'postCount' => $this->posts->count(),
             'mode' => $this->mode,
+            'sponsors' => $this->sponsors,
             'settingsUrl' => $this->trackedUrl($this->userSite . '/settings', 'footer_settings', 'settings'),
             'unsubscribeUrl' => $this->trackedUrl($this->userSite . '/unsubscribe', 'footer_unsubscribe', 'unsubscribe'),
             'browseUrl' => $this->trackedUrl($this->userSite . '/browse', 'browse_cta', 'browse'),

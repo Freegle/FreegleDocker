@@ -345,6 +345,43 @@ class ChatNotificationServiceTest extends TestCase
         );
     }
 
+    public function test_notify_by_email_updates_lastmsgnotified(): void
+    {
+        $sender = $this->createTestUser();
+        $recipient = $this->createTestUser();
+
+        $room = $this->createTestChatRoom($sender, $recipient, [
+            'latestmessage' => now(),
+        ]);
+
+        ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $sender->id,
+            'lastmsgemailed' => null,
+            'lastmsgnotified' => null,
+        ]);
+
+        $recipientRoster = ChatRoster::create([
+            'chatid' => $room->id,
+            'userid' => $recipient->id,
+            'lastmsgemailed' => null,
+            'lastmsgnotified' => null,
+        ]);
+
+        $message = $this->createTestChatMessage($room, $sender, [
+            'date' => now()->subMinutes(5),
+        ]);
+
+        $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+        $recipientRoster->refresh();
+        $this->assertEquals(
+            $message->id,
+            $recipientRoster->lastmsgnotified,
+            'lastmsgnotified should be updated to the message ID after sending notification'
+        );
+    }
+
     public function test_default_delay_constant(): void
     {
         $this->assertEquals(30, ChatNotificationService::DEFAULT_DELAY);
@@ -1557,4 +1594,5 @@ class ChatNotificationServiceTest extends TestCase
         // Verify we only sent 1 notification (to user2), not 2.
         $this->assertEquals(1, $count, 'Should only notify the actual recipient, not the moderator');
     }
+
 }

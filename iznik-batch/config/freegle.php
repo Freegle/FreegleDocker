@@ -60,6 +60,8 @@ return [
         'support_addr' => env('FREEGLE_SUPPORT_ADDR', 'support@ilovefreegle.org'),
         // ChitChat support - receives newsfeed report emails.
         'chitchat_support_addr' => env('FREEGLE_CHITCHAT_SUPPORT_ADDR', 'support@ilovefreegle.org'),
+        // Partnerships address for charity partner signups.
+        'partnerships_addr' => env('FREEGLE_PARTNERSHIPS_ADDR', 'partnerships@ilovefreegle.org'),
         // Info address for donation notifications and general admin emails.
         'info_addr' => env('FREEGLE_INFO_ADDR', 'info@ilovefreegle.org'),
         // CC address for donation notification emails (legacy logging).
@@ -262,5 +264,38 @@ return [
         'token' => env('NETLIFY_TOKEN', ''),
         'site_id' => env('NETLIFY_SITE_ID', '75fa22f1-3d32-4474-a3fc-65afbd7f4f43'),
         'cert_path' => env('LETSENCRYPT_CERT_PATH', '/etc/letsencrypt/live/ilovefreegle.org'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Email Health Monitoring
+    |--------------------------------------------------------------------------
+    |
+    | Thresholds for the monitor:email-health cron job.
+    | The monitor only runs during daytime hours.
+    |
+    */
+
+    /*
+    |--------------------------------------------------------------------------
+    | Freebie Alerts Integration
+    |--------------------------------------------------------------------------
+    |
+    | API key and endpoint for freebiealerts.app — a third-party aggregator
+    | that lists Freegle Offer posts. Posts are added when approved and
+    | removed when taken, withdrawn, or deleted.
+    |
+    */
+
+    'freebie_alerts' => [
+        'api_url' => env('FREEBIE_ALERTS_API_URL', 'https://api.freebiealerts.app'),
+        'api_key' => env('FREEBIE_ALERTS_KEY', ''),
+    ],
+
+    'email_health' => [
+        'incoming_window_hours' => env('FREEGLE_EMAIL_HEALTH_INCOMING_WINDOW_HOURS', 2),
+        'outgoing_min_per_hour' => env('FREEGLE_EMAIL_HEALTH_OUTGOING_MIN_PER_HOUR', 10),
+        'daytime_start' => env('FREEGLE_EMAIL_HEALTH_DAYTIME_START', 7),
+        'daytime_end' => env('FREEGLE_EMAIL_HEALTH_DAYTIME_END', 22),
     ],
 ];

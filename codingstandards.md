@@ -11,7 +11,7 @@
 ## Commits & Deployment
 
 - NEVER commit unless tests pass. NEVER push unless told to. NEVER add "Claude Code" to commits. Full stops at end of sentences.
-- **Backend first**: Deploy backend before dependent frontend. Split cross-submodule changes into separate PRs. Link related PRs. Verify production deployment before merging frontend.
+- **Backend first**: Deploy backend before dependent frontend. Split cross-component changes into separate PRs. Link related PRs. Verify production deployment before merging frontend.
 
 ## Code Style
 
@@ -35,6 +35,7 @@ Follow existing patterns in iznik-server-go. Structure: AUTH → PARSE → DB �
 - Swagger: Add annotations, run `./generate-swagger.sh`. Register both `/api/` and `/apiv2/` routes.
 - Prefer `db.Raw()` over GORM for performance. Struct tags: `json:"field"`, `json:"-"`, `gorm:"-"`.
 - Tests: ARRANGE/ACT/ASSERT with `CreateTestUser`, `CreateTestGroup`. See existing `*_test.go` files.
+- **NEVER enrich responses with nested objects.** V2 returns IDs for related entities (e.g. `msgid`, `groupid`). The frontend fetches details separately via its stores. If you're writing `db.Raw("SELECT...")` inside a loop to inline related data, STOP — return the ID instead.
 
 ## Database Migrations
 
@@ -50,5 +51,5 @@ Follow existing patterns in iznik-server-go. Structure: AUTH → PARSE → DB �
 
 - Dev containers: auto-synced. Prod + Go API: rebuild required. Status: `docker restart status`.
 - Orb: `~/.local/bin/circleci orb publish .circleci/orb/freegle-tests.yml freegle/tests@X.X.X`
-- Plans in `FreegleDocker/plans/`, never submodules. Rebuild dev containers on branch switch.
+- Plans in `FreegleDocker/plans/`, never in subdirectory repos. Rebuild dev containers on branch switch.
 - No hardcoded IPs in docker-compose.yml. Container changes lost on restart.

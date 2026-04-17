@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Spins up a fresh Ubuntu 24.04 WSL2 instance with Docker Engine installed,
-    clones the FreegleDocker repo with submodules, and applies a port offset
+    clones the FreegleDocker repo, and applies a port offset
     so multiple instances can run simultaneously without conflicts.
 
 .PARAMETER Name
@@ -154,9 +154,9 @@ if ($LASTEXITCODE -ne 0) {
 # Set default user for the instance
 wsl -d $Name -- bash -c "echo -e '[user]\ndefault=$Username' >> /etc/wsl.conf"
 
-# Clone FreegleDocker repo
-Write-Host "Cloning FreegleDocker repository with submodules..." -ForegroundColor Green
-wsl -d $Name -u $Username -- bash -c "cd ~ && git clone --recurse-submodules https://github.com/Freegle/FreegleDocker.git FreegleDockerWSL 2>&1"
+# Clone Iznik repo
+Write-Host "Cloning Iznik repository..." -ForegroundColor Green
+wsl -d $Name -u $Username -- bash -c "cd ~ && git clone https://github.com/Freegle/Iznik.git FreegleDockerWSL 2>&1"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: Git clone may have had issues. Check output above." -ForegroundColor Yellow
 }
