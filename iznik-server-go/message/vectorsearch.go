@@ -1,8 +1,6 @@
 package message
 
 import (
-	"strings"
-
 	"github.com/freegle/iznik-server-go/embedding"
 	"github.com/freegle/iznik-server-go/utils"
 )
@@ -42,12 +40,22 @@ func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 			continue
 		}
 
+		// Keyword boost: whole-word overlap between query and subject, not substring.
+		// A substring match fires for e.g. "portable"/"adjustable" against the query
+		// "table" because those contain "table" as a substring, unfairly boosting
+		// unrelated results above literal-"table" subjects (Discourse 9585.11).
+		// Tokenise the subject the same way we tokenise the query (GetWords strips
+		// punctuation, lowercases, and removes common stop-words), then intersect.
 		var keywordScore float32
 		if len(queryWords) > 0 {
-			subjectLower := strings.ToLower(vr.Subject)
+			subjectWords := GetWords(vr.Subject)
+			subjectSet := make(map[string]bool, len(subjectWords))
+			for _, w := range subjectWords {
+				subjectSet[w] = true
+			}
 			matched := 0
 			for _, w := range queryWords {
-				if strings.Contains(subjectLower, w) {
+				if subjectSet[w] {
 					matched++
 				}
 			}
