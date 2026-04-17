@@ -45,7 +45,7 @@ type User struct {
 	Donated         *time.Time  `json:"donated" gorm:"-"`
 	DonatedType     *string     `json:"donatedtype" gorm:"-"`
 	Comments        []Comment   `json:"comments,omitempty" gorm:"-"`
-	Spammer         bool        `json:"spammer" gorm:"-"`
+	Spammer         interface{} `json:"spammer" gorm:"-"`
 	Showmod         bool        `json:"showmod" gorm:"-"`
 	Lat             float32     `json:"lat" gorm:"-"` // Exact for logged in user, approx for others.
 	Lng             float32     `json:"lng" gorm:"-"`
@@ -514,6 +514,22 @@ func GetUserById(id uint64, myid uint64) User {
 	var profileRecord UserProfileRecord
 	var expectedReplies []uint64
 
+	isMod := len(GetActiveModGroupIDs(myid)) > 0
+	// V1 getPublicSpammer checks systemrole directly for mod-visibility of spam details,
+	// not group-mod status — keep this separate from isMod used for settings inclusion.
+	isSystemMod := auth.IsSystemMod(myid)
+
+	type spamRow struct {
+		ID         uint64    `gorm:"column:id"`
+		Userid     uint64    `gorm:"column:userid"`
+		Byuserid   *uint64   `gorm:"column:byuserid"`
+		Collection string    `gorm:"column:collection"`
+		Reason     *string   `gorm:"column:reason"`
+		Added      time.Time `gorm:"column:added"`
+	}
+	var spam spamRow
+	var spamFound bool
+
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -523,7 +539,6 @@ func GetUserById(id uint64, myid uint64) User {
 		// Settings are needed for modtools toggles (notificationmails etc.).
 		// Return for self, or for mods viewing other users.
 		var settingsq = ""
-		isMod := len(GetActiveModGroupIDs(myid)) > 0
 
 		if id == myid || isMod {
 			settingsq = "settings, "
@@ -531,10 +546,9 @@ func GetUserById(id uint64, myid uint64) User {
 
 		err := db.Raw("SELECT users.id, firstname, lastname, fullname, lastaccess, users.added, systemrole, relevantallowed, newslettersallowed, marketingconsent, trustlevel, bouncing, deleted, forgotten, source, engagement, "+
 			"chatmodstatus, newsfeedmodstatus, tnuserid, "+settingsq+
-			"(CASE WHEN spam_users.id IS NOT NULL AND spam_users.collection = ? THEN 1 ELSE 0 END) AS spammer, "+
 			"CASE WHEN systemrole IN (?, ?, ?) AND JSON_EXTRACT(users.settings, '$.showmod') IS NULL THEN 1 ELSE JSON_EXTRACT(users.settings, '$.showmod') END AS showmod "+
-			"FROM users LEFT JOIN spam_users ON spam_users.userid = users.id "+
-			"WHERE users.id = ? ", utils.SPAM_COLLECTION_SPAMMER, utils.SYSTEMROLE_MODERATOR, utils.SYSTEMROLE_SUPPORT, utils.SYSTEMROLE_ADMIN, id).First(&user).Error
+			"FROM users "+
+			"WHERE users.id = ? ", utils.SYSTEMROLE_MODERATOR, utils.SYSTEMROLE_SUPPORT, utils.SYSTEMROLE_ADMIN, id).First(&user).Error
 
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			if user.Deleted == nil || isMod {
@@ -564,6 +578,18 @@ func GetUserById(id uint64, myid uint64) User {
 				if user.Displayname == "A freegler" {
 					user.Displayname = InventName(db, id)
 				}
+
+				// Rewrite misleading/fraudulent names for non-mods on display
+				// (Discourse #9587). Stored fullname is untouched.
+				isGroupMod := false
+				var modCount int
+				db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND role IN (?, ?)",
+					id, utils.ROLE_OWNER, utils.ROLE_MODERATOR).Scan(&modCount)
+				if modCount > 0 {
+					isGroupMod = true
+				}
+				isExempt := IsExemptBySystemroleAndMod(user.Systemrole, isGroupMod)
+				user.Displayname = SanitizeDisplayName(user.Displayname, isExempt)
 			} else {
 				// Censor name for deleted user when viewed by non-mod.
 				user.Displayname = "Deleted User #" + strconv.FormatUint(id, 10)
@@ -636,6 +662,17 @@ func GetUserById(id uint64, myid uint64) User {
 		expectedReplies = GetExpectedReplies(id)
 	}()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var rows []spamRow
+		db.Raw("SELECT id, userid, byuserid, collection, reason, added FROM spam_users WHERE userid = ? ORDER BY id ASC LIMIT 1", id).Scan(&rows)
+		if len(rows) > 0 {
+			spam = rows[0]
+			spamFound = true
+		}
+	}()
+
 	wg.Wait()
 
 	if user.Deleted == nil && profileRecord.Useprofile {
@@ -652,6 +689,29 @@ func GetUserById(id uint64, myid uint64) User {
 	}
 
 	user.Supporter = supporter.Supporter
+
+	// V1 parity (User::getPublicSpammer): mods see rich spam_users object so ModSpammer.vue
+	// can show "Unconfirmed Spammer" etc. Non-mods see bool TRUE only for confirmed Spammer
+	// collection — PendingAdd must not leak to regular users.
+	if spamFound {
+		if isSystemMod {
+			obj := map[string]interface{}{
+				"id":         spam.ID,
+				"userid":     spam.Userid,
+				"byuserid":   spam.Byuserid,
+				"collection": spam.Collection,
+				"reason":     spam.Reason,
+				"added":      spam.Added,
+			}
+			user.Spammer = obj
+		} else if spam.Collection == utils.SPAM_COLLECTION_SPAMMER {
+			user.Spammer = true
+		} else {
+			user.Spammer = false
+		}
+	} else {
+		user.Spammer = false
+	}
 
 	// Apply V1-parity defaults for settings fields that may be absent from the JSON.
 	applySettingsDefaults(&user)

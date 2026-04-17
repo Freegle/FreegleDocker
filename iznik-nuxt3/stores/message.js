@@ -1,4 +1,3 @@
-import cloneDeep from 'lodash.clonedeep'
 import { defineStore } from 'pinia'
 import { nextTick } from 'vue'
 import api from '~/api'
@@ -523,8 +522,10 @@ export const useMessageStore = defineStore({
     },
     async fetchMessagesMT(params) {
       if (params.context) {
-        // Ensure the context is a real object, in case it has been in the store.
-        params.context = cloneDeep(params.context)
+        // Server expects context as a JSON-encoded string; URLSearchParams
+        // would otherwise coerce an object to "[object Object]", the server
+        // silently drops it, and infinite scroll caps at one page (~100).
+        params.context = JSON.stringify(params.context)
       }
       if (!params.context) params.context = null
 
