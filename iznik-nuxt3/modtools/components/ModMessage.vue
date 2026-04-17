@@ -4,7 +4,7 @@
     <b-card bg-variant="white" no-body>
       <b-card-header class="p-1 p-md-2">
         <div class="d-flex justify-content-between">
-          <div class="flex-grow-1">
+          <div class="flex-grow-1" style="min-width: 0">
             <NoticeMessage
               v-if="editing && !message.lat && !message.lng"
               variant="danger"
@@ -33,7 +33,7 @@
               />
               <div
                 v-if="editmessage.item && editmessage.location"
-                class="d-flex justify-content-start"
+                class="d-flex flex-wrap flex-grow-1"
               >
                 <b-form-select
                   v-model="editmessage.type"
@@ -44,7 +44,7 @@
                 <b-form-input
                   v-model="editmessage.item.name"
                   size="lg"
-                  class="me-1"
+                  class="me-1 flex-grow-1 item-name-input"
                 />
               </div>
               <div v-if="editmessage.item && editmessage.location">
@@ -157,7 +157,7 @@
               />
             </div>
           </div>
-          <div class="d-flex">
+          <div class="d-flex flex-shrink-0">
             <div
               v-if="summary && message && fromUser"
               class="text-info fw-bold me-2"
@@ -1153,7 +1153,11 @@ function hasCollection(coll) {
 }
 
 function postcodeSelect(pc) {
-  message.value.location = pc
+  if (editing.value && editmessage.value) {
+    editmessage.value.location = pc
+  } else {
+    message.value.location = pc
+  }
 }
 
 function startEdit() {
@@ -1387,6 +1391,12 @@ function spamReport() {
 
 .location {
   max-width: 250px;
+}
+
+.item-name-input {
+  /* Cap growth on wide desktop so the field doesn't stretch the whole row.
+     flex-grow-1 keeps it filling available space up to this cap. */
+  max-width: 500px;
 }
 
 .fullsubject {
