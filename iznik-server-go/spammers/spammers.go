@@ -252,8 +252,10 @@ func PatchSpammer(c *fiber.Ctx) error {
 	db := database.DBConn
 	var current struct {
 		Collection string
+		Reason     string
+		Byuserid   *uint64
 	}
-	db.Raw("SELECT collection FROM spam_users WHERE id = ?", req.ID).Scan(&current)
+	db.Raw("SELECT collection, reason, byuserid FROM spam_users WHERE id = ?", req.ID).Scan(&current)
 
 	if current.Collection == "" {
 		return fiber.NewError(fiber.StatusNotFound, "Not found")
@@ -271,12 +273,28 @@ func PatchSpammer(c *fiber.Ctx) error {
 		}
 	}
 
-	// Build update.
+	// Build update. V1 parity (Spam::updateSpammer):
+	//   * Preserve the existing reason when the caller sends an empty one — a Hold
+	//     action carries no reason and must not blank out the reporter's facts.
+	//   * Preserve the existing byuserid (original reporter) except for
+	//     PENDING_REMOVE, where V1 tracks who requested removal by setting byuserid
+	//     to the acting mod. Otherwise holding or confirming a report must not
+	//     reassign the report to the current mod (Discourse #9592).
 	if req.Collection != "" {
+		reason := req.Reason
+		if reason == "" {
+			reason = current.Reason
+		}
+		var byuserid interface{}
+		if req.Collection == utils.SPAM_COLLECTION_PENDING_REMOVE {
+			byuserid = myid
+		} else {
+			byuserid = current.Byuserid
+		}
 		db.Exec("UPDATE spam_users SET collection = ?, reason = ?, byuserid = ?, "+
 			"heldby = ?, heldat = CASE WHEN ? IS NOT NULL THEN NOW() ELSE NULL END "+
 			"WHERE id = ?",
-			req.Collection, req.Reason, myid, req.Heldby, req.Heldby, req.ID)
+			req.Collection, reason, byuserid, req.Heldby, req.Heldby, req.ID)
 	}
 
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
