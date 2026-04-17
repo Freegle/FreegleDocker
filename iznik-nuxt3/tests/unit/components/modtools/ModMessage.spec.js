@@ -629,11 +629,37 @@ describe('ModMessage', () => {
   })
 
   describe('postcodeSelect', () => {
-    it('updates message location', () => {
-      const wrapper = mountComponent()
+    it('updates editmessage location when editing', () => {
+      const wrapper = mountComponent(
+        {},
+        {
+          item: { name: 'Test Item' },
+          location: { name: 'SW1A 1AA' },
+        }
+      )
+      wrapper.vm.startEdit()
       const pc = { name: 'SW1A 2AA', lat: 51.6, lng: -0.2 }
       wrapper.vm.postcodeSelect(pc)
-      expect(wrapper.vm.message.location).toEqual(pc)
+      expect(wrapper.vm.editmessage.location).toEqual(pc)
+    })
+
+    it('save sends updated postcode after postcodeSelect during edit', async () => {
+      const wrapper = mountComponent(
+        {},
+        {
+          item: { name: 'Test Item' },
+          location: { name: 'LA23 2JH' },
+        }
+      )
+      wrapper.vm.startEdit()
+      wrapper.vm.postcodeSelect({ name: 'LA3 3QJ', lat: 54.1, lng: -2.9 })
+      await wrapper.vm.save()
+
+      expect(mockMessageStore.patch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location: 'LA3 3QJ',
+        })
+      )
     })
   })
 
