@@ -332,10 +332,14 @@
                 </b-col>
                 <b-col class="border border-white p-0 bg-white overflow-hidden">
                   <GChart
+                    v-if="hasMemberData"
                     type="LineChart"
                     :data="memberData"
                     :options="memberOptions"
                   />
+                  <div v-else class="text-center text-muted small p-3">
+                    Member counts are only visible to moderators.
+                  </div>
                 </b-col>
               </b-row>
               <b-card variant="white" class="border-white">
@@ -412,7 +416,11 @@ import { MAX_MAP_ZOOM } from '~/constants'
 import StatsImpact from '~/components/StatsImpact.vue'
 import { buildHead } from '~/composables/useBuildHead'
 import { useStatsStore } from '~/stores/stats'
-import { parseOutcomeDate } from '~/composables/useAuthoritySearch'
+import {
+  parseOutcomeDate,
+  DASHBOARD_CHART_HEADER,
+  hasChartDataRows,
+} from '~/composables/useAuthoritySearch'
 import {
   getBenefitPerTonne,
   CO2_PER_TONNE,
@@ -593,7 +601,7 @@ const weightByMonth = computed(() => {
 })
 
 const weightData = computed(() => {
-  const ret = [['Date', 'Count']]
+  const ret = [DASHBOARD_CHART_HEADER]
   for (const mon in weightByMonth.value) {
     ret.push([new Date(mon + '-01'), weightByMonth.value[mon]])
   }
@@ -602,7 +610,7 @@ const weightData = computed(() => {
 })
 
 const memberData = computed(() => {
-  const ret = [['Date', 'Count']]
+  const ret = [DASHBOARD_CHART_HEADER]
   const dates = []
 
   for (const groupid in stats.value) {
@@ -627,6 +635,8 @@ const memberData = computed(() => {
 
   return ret
 })
+
+const hasMemberData = computed(() => hasChartDataRows(memberData.value))
 
 const totalMembers = computed(() => {
   let ret = 0
