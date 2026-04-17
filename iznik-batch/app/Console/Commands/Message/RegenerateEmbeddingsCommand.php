@@ -9,20 +9,22 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Nightly embedding generator — embeds messages that don't yet have a row
- * in messages_embeddings. See RegenerateEmbeddingsCommand for the full
- * rebuild used after recipe or model changes.
+ * Re-embed every live message from scratch. Used after the embedding text
+ * recipe changes (e.g. splitting subject and body into separate vectors) or
+ * after a model-version bump.
+ *
+ * Lives alongside embeddings:generate — the nightly command which only
+ * embeds rows that don't yet have one. This command rewrites existing rows.
  */
-class GenerateEmbeddingsCommand extends Command
+class RegenerateEmbeddingsCommand extends Command
 {
     use GracefulShutdown;
 
-    protected $signature = 'embeddings:generate
-                            {--backfill : Process all messages without embeddings}
-                            {--limit=500 : Maximum messages to process per run}
+    protected $signature = 'embeddings:regenerate
+                            {--limit=0 : Max messages to process (0 = unlimited)}
                             {--chunk=100 : Messages per embedder invocation}';
 
-    protected $description = 'Generate vector embeddings for live messages missing from messages_embeddings';
+    protected $description = 'Re-embed all live messages (subject + body) from scratch';
 
     public function handle(EmbeddingService $service): int
     {
@@ -31,16 +33,17 @@ class GenerateEmbeddingsCommand extends Command
         $limit = (int) $this->option('limit');
         $chunkSize = max(1, (int) $this->option('chunk'));
 
-        if ($this->option('backfill')) {
-            $limit = 50000;
-        }
-
         $totalCount = 0;
-        $remaining = $limit;
+        $lastId = 0;
 
-        while ($remaining > 0) {
+        while (true) {
             if ($this->shouldAbort()) {
                 $this->warn('Aborting due to shutdown signal.');
+                break;
+            }
+
+            $remaining = $limit > 0 ? $limit - $totalCount : PHP_INT_MAX;
+            if ($remaining <= 0) {
                 break;
             }
 
@@ -50,34 +53,35 @@ class GenerateEmbeddingsCommand extends Command
                 SELECT ms.msgid, m.subject, LEFT(m.textbody, 500) as body
                 FROM messages_spatial ms
                 JOIN messages m ON m.id = ms.msgid
-                LEFT JOIN messages_embeddings me ON me.msgid = ms.msgid
-                WHERE me.msgid IS NULL
-                  AND ms.successful = 0
+                WHERE ms.successful = 0
                   AND ms.promised = 0
-                ORDER BY ms.arrival DESC
+                  AND ms.msgid > ?
+                ORDER BY ms.msgid ASC
                 LIMIT ?
-            ', [$batchLimit]);
+            ', [$lastId, $batchLimit]);
 
             if (empty($messages)) {
                 break;
             }
 
-            $this->info(sprintf('Processing chunk of %d messages (%d done so far)...', count($messages), $totalCount));
+            $this->info(sprintf('Regenerating chunk of %d (%d done)...', count($messages), $totalCount));
 
             $count = $service->processMessages($messages);
             if ($count === false) {
+                $this->error('Embedder failed; aborting.');
+
                 return Command::FAILURE;
             }
 
             $totalCount += $count;
-            $remaining -= count($messages);
+            $lastId = (int) end($messages)->msgid;
         }
 
         if ($totalCount === 0) {
-            $this->info('No messages need embedding.');
+            $this->info('No live messages to regenerate.');
         } else {
-            $this->info("Generated {$totalCount} embeddings.");
-            Log::info('Embedding generation complete', ['count' => $totalCount]);
+            $this->info("Regenerated {$totalCount} embeddings.");
+            Log::info('Embedding regeneration complete', ['count' => $totalCount]);
         }
 
         return Command::SUCCESS;
