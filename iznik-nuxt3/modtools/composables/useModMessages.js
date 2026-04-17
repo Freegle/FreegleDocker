@@ -25,6 +25,7 @@ const show = ref(0)
 
 const collection = ref(null)
 const listingIds = ref(new Set())
+const listingIdOrder = ref([])
 const messageTerm = ref(null)
 const memberTerm = ref(null)
 const nextAfterRemoved = ref(null)
@@ -67,14 +68,24 @@ const messages = computed(() => {
     messages = messages.filter((m) => listingIds.value.has(m.id))
   }
   // console.log('---messages groupid:', groupid.value, 'messages:', messages.length)
-  // We need to sort as otherwise new messages may appear at the end.
-  // Use the contextual group's arrival if filtering by group (multi-group support).
-  const contextGid = groupid.value ? parseInt(groupid.value) : null
-  messages.sort((a, b) => {
-    const arrivalA = getContextArrival(a, contextGid)
-    const arrivalB = getContextArrival(b, contextGid)
-    return new Date(arrivalB).getTime() - new Date(arrivalA).getTime()
-  })
+  if (listingIdOrder.value.length > 0) {
+    // Vector search: sort by score order (position in listingIdOrder)
+    const orderMap = new Map(listingIdOrder.value.map((id, i) => [id, i]))
+    messages.sort((a, b) => {
+      const ai = orderMap.has(a.id) ? orderMap.get(a.id) : Infinity
+      const bi = orderMap.has(b.id) ? orderMap.get(b.id) : Infinity
+      return ai - bi
+    })
+  } else {
+    // Normal: sort by arrival date, newest first.
+    // Use the contextual group's arrival if filtering by group (multi-group support).
+    const contextGid = groupid.value ? parseInt(groupid.value) : null
+    messages.sort((a, b) => {
+      const arrivalA = getContextArrival(a, contextGid)
+      const arrivalB = getContextArrival(b, contextGid)
+      return new Date(arrivalB).getTime() - new Date(arrivalA).getTime()
+    })
+  }
   // console.log('###messages sort:', messages[0]?.groups[0]?.arrival)
   return messages
 })
@@ -110,6 +121,7 @@ export function setupModMessages(reset) {
     workType.value = null
     show.value = 0
     listingIds.value = new Set()
+    listingIdOrder.value = []
 
     collection.value = null
     messageTerm.value = null
@@ -277,6 +289,7 @@ export function setupModMessages(reset) {
     summary,
     messages,
     listingIds,
+    listingIdOrder,
     visibleMessages,
     work,
     getMessages,

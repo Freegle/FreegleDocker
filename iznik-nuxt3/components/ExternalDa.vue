@@ -373,8 +373,11 @@ function rippleRendered(rendered) {
   }
 }
 
+// v-bind in scoped <style> emits the returned value directly into CSS, so
+// it must be a valid CSS value — not a boolean. `pointer-events: true` is
+// invalid and triggers "Invalid value used for CSS binding" warnings.
 const passClicks = computed(() => {
-  return !adShown.value
+  return adShown.value ? 'none' : 'auto'
 })
 
 onBeforeUnmount(() => {

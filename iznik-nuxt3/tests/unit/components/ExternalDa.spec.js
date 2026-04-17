@@ -330,16 +330,19 @@ describe('ExternalDa', () => {
   })
 
   describe('passClicks computed', () => {
-    it('returns false when adShown is true', () => {
+    // passClicks feeds straight into `pointer-events` via v-bind in <style>,
+    // so it must resolve to a real CSS keyword. Booleans trigger the Vue
+    // "Invalid value used for CSS binding" warning.
+    it("returns 'none' when adShown is true", () => {
       const wrapper = createWrapper()
       wrapper.vm.adShown = true
-      expect(wrapper.vm.passClicks).toBe(false)
+      expect(wrapper.vm.passClicks).toBe('none')
     })
 
-    it('returns true when adShown is false', () => {
+    it("returns 'auto' when adShown is false", () => {
       const wrapper = createWrapper()
       wrapper.vm.adShown = false
-      expect(wrapper.vm.passClicks).toBe(true)
+      expect(wrapper.vm.passClicks).toBe('auto')
     })
   })
 

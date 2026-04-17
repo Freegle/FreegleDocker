@@ -193,7 +193,7 @@ const team = [
     name: 'Natalie Ibbott',
     role: 'Councils & Partnerships Project Manager',
     photo: '/partnerships/natalie-ibbott.jpg',
-    bio: '20+ years in waste, reuse, recycling and circular economy. Experience ranges from teaching primary school children about waste to running circular economy strategy workshops for city executives. PRINCE2 Practitioner specialising in project management, research and partnership working.',
+    bio: 'With 20+ years in waste, reuse, recycling and circular economy, with experience across local government, regional partnerships and consultancy, Natalie has worked on projects for Arts Council England, ReLondon, Canary Wharf Group and numerous local authorities. She specialises in strategy, project management and partnership working.',
     freegleStory:
       "I posted a Wanted for topiary shears, definitely not expecting a reply — but my local community didn't let me down. A few hours later I had an old but perfectly functioning pair!",
     linkedin: 'https://www.linkedin.com/in/natalieibbott/',

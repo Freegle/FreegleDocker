@@ -88,11 +88,12 @@ test.describe('Post flow tests', () => {
     await logoutIfLoggedIn(page)
 
     // Use the fixture to reply to the message with signup
-    await replyToMessageWithSignup({
+    const replySuccess = await replyToMessageWithSignup({
       messageId: result.id,
       itemName: result.item,
       email: replyEmail,
     })
+    expect(replySuccess).toBeTruthy()
 
     // Now log back in as the original user and withdraw the post
     console.log('Logging in as original user to withdraw the post')
