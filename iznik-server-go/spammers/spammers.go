@@ -169,6 +169,18 @@ func PostSpammer(c *fiber.Ctx) error {
 	}
 
 	db := database.DBConn
+
+	// V1 parity (Spam::addSpammer): for PendingAdd, skip the REPLACE if a spam_users row
+	// already exists for this user so the original reporter's byuserid is preserved.
+	// This is the fix for Discourse #9589 (wrong-attribution bug).
+	if req.Collection == utils.SPAM_COLLECTION_PENDING_ADD {
+		var existingCount int64
+		db.Raw("SELECT COUNT(*) FROM spam_users WHERE userid = ?", req.Userid).Scan(&existingCount)
+		if existingCount > 0 {
+			return c.JSON(fiber.Map{"ret": 0, "status": "Success", "id": 0})
+		}
+	}
+
 	// Use the underlying sql.DB to get LastInsertId() directly from the MySQL protocol
 	// response — never issue a separate SELECT LAST_INSERT_ID() as it's unsafe under
 	// parallel load (GORM's connection pool may assign a different connection).
@@ -188,6 +200,13 @@ func PostSpammer(c *fiber.Ctx) error {
 	lastID, err := sqlResult.LastInsertId()
 	if err == nil && lastID > 0 {
 		newID = uint64(lastID)
+	}
+
+	// V1 parity: reporting a SYSTEMROLE_USER as PendingAdd suppresses their ChitChat/newsfeed
+	// posts by setting users.newsfeedmodstatus = 'Suppressed' while pending review.
+	if req.Collection == utils.SPAM_COLLECTION_PENDING_ADD {
+		db.Exec("UPDATE users SET newsfeedmodstatus = ? WHERE id = ? AND systemrole = ?",
+			utils.NEWSFEED_MODSTATUS_SUPPRESSED, req.Userid, utils.SYSTEMROLE_USER)
 	}
 
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success", "id": newID})
