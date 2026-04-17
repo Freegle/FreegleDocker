@@ -314,12 +314,12 @@
                 <b-col
                   class="border border-white p-0 bg-white text-center pt-1"
                 >
-                  <H5>WEIGHTS (KG)</H5>
+                  <h5>WEIGHTS (KG)</h5>
                 </b-col>
                 <b-col
                   class="border border-white p-0 bg-white text-center pt-1"
                 >
-                  <H5>MEMBERS</H5>
+                  <h5>MEMBERS</h5>
                 </b-col>
               </b-row>
               <b-row class="m-0">
@@ -412,6 +412,7 @@ import { MAX_MAP_ZOOM } from '~/constants'
 import StatsImpact from '~/components/StatsImpact.vue'
 import { buildHead } from '~/composables/useBuildHead'
 import { useStatsStore } from '~/stores/stats'
+import { parseOutcomeDate } from '~/composables/useAuthoritySearch'
 import {
   getBenefitPerTonne,
   CO2_PER_TONNE,
@@ -550,13 +551,15 @@ const totalGifts = computed(() => {
   for (const groupid in stats.value) {
     const overlapValue = overlap(groupid)
     const stat = stats.value[groupid]
-    const outcomes = stat.OutcomesPerMonth
+    const outcomes = Array.isArray(stat.OutcomesPerMonth)
+      ? stat.OutcomesPerMonth
+      : []
 
     const start = dayjs(startDate.value)
     const end = dayjs(endDate.value)
 
     for (const outcome of outcomes) {
-      const m = dayjs(outcome.date + '-01')
+      const m = dayjs(parseOutcomeDate(outcome.date))
 
       if (!m.isBefore(start) && !m.isAfter(end)) {
         count += outcome.count * overlapValue
@@ -838,14 +841,16 @@ const last3MonthsGiftsTotal = computed(() => {
     for (const groupid in stats.value) {
       const overlapValue = overlap(groupid)
       const stat = stats.value[groupid]
-      const outcomes = stat.OutcomesPerMonth
+      const outcomes = Array.isArray(stat.OutcomesPerMonth)
+        ? stat.OutcomesPerMonth
+        : []
       let thisone = 0
 
       const start = last3Months.value[mon].startOf('month')
       const end = last3Months.value[mon].endOf('month')
 
       for (const outcome of outcomes) {
-        const m = dayjs(outcome.date + '-01')
+        const m = dayjs(parseOutcomeDate(outcome.date))
 
         if (!m.isBefore(start) && !m.isAfter(end)) {
           thisone += outcome.count * overlapValue
@@ -930,12 +935,12 @@ const last3MonthsGroups = computed(() => {
 
 // Initialize date range
 // Default end is last complete month, and start is a year before that, so we cover twelve months.
-endDate.value = dayjs().subtract(1, 'month').endOf('month').format()
+endDate.value = dayjs().subtract(1, 'month').endOf('month').toDate()
 startDate.value = dayjs(endDate.value)
   .subtract(1, 'year')
   .add(1, 'month')
   .startOf('month')
-  .format()
+  .toDate()
 
 // Methods
 function mapPoly(poly, options) {
@@ -993,13 +998,14 @@ async function fetchData(id) {
     await statsStore.fetch({
       group: group.id,
       grouptype: 'Freegle',
+      components: 'Weight,ApprovedMemberCount,Outcomes',
       start,
       end,
       force: true,
     })
 
     const overlapValue = group.overlap
-    const weights = statsStore.Weight
+    const weights = Array.isArray(statsStore.Weight) ? statsStore.Weight : []
 
     let totalWeight = 0
     for (const w of weights) {
@@ -1024,8 +1030,12 @@ async function fetchData(id) {
           avpermonth,
           totalweight: totalWeight,
           Weights: weights,
-          ApprovedMemberCount: statsStore.ApprovedMemberCount,
-          OutcomesPerMonth: statsStore.OutcomesPerMonth,
+          ApprovedMemberCount: Array.isArray(statsStore.ApprovedMemberCount)
+            ? statsStore.ApprovedMemberCount
+            : [],
+          OutcomesPerMonth: Array.isArray(statsStore.Outcomes)
+            ? statsStore.Outcomes
+            : [],
           group,
         }
       }

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeAuthoritySearch } from '~/composables/useAuthoritySearch'
+import {
+  normalizeAuthoritySearch,
+  parseOutcomeDate,
+} from '~/composables/useAuthoritySearch'
 
 describe('normalizeAuthoritySearch', () => {
   const a = (id, name) => ({ id, name, area_code: 'Ward' })
@@ -45,5 +48,26 @@ describe('normalizeAuthoritySearch', () => {
   it('returns an empty array when the array is empty', () => {
     expect(normalizeAuthoritySearch([])).toEqual([])
     expect(normalizeAuthoritySearch({ authorities: [] })).toEqual([])
+  })
+})
+
+describe('parseOutcomeDate', () => {
+  it('pins the V1 "YYYY-MM" shape to the first of the month', () => {
+    expect(parseOutcomeDate('2025-04')).toBe('2025-04-01')
+  })
+
+  it('strips the time portion from the V2 ISO datetime shape', () => {
+    expect(parseOutcomeDate('2025-04-15T00:00:00Z')).toBe('2025-04-15')
+    expect(parseOutcomeDate('2025-04-15T23:59:59+01:00')).toBe('2025-04-15')
+  })
+
+  it('passes through a plain "YYYY-MM-DD" unchanged', () => {
+    expect(parseOutcomeDate('2025-04-15')).toBe('2025-04-15')
+  })
+
+  it('returns an empty string for falsy/non-string input', () => {
+    expect(parseOutcomeDate(null)).toBe('')
+    expect(parseOutcomeDate(undefined)).toBe('')
+    expect(parseOutcomeDate(123)).toBe('')
   })
 })
