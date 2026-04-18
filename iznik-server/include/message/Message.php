@@ -5459,7 +5459,7 @@ $mq", [
         # site but this stops a flood when we reopen.
         $ret = 0;
         $idq = $id ? " AND msgid = $id " : "";
-        $sql = "SELECT msgid, groupid, TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) AS ago FROM messages_groups INNER JOIN messages ON messages.id = messages_groups.msgid WHERE collection = ? AND heldby IS NULL HAVING ago > 48 $idq;";
+        $sql = "SELECT msgid, groupid, TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) AS ago FROM messages_groups INNER JOIN messages ON messages.id = messages_groups.msgid WHERE collection = ? AND messages_groups.heldby IS NULL HAVING ago > 48 $idq;";
         $messages = $this->dbhr->preQuery($sql, [
             MessageCollection::PENDING
         ]);

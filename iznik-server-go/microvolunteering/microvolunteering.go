@@ -732,7 +732,7 @@ func ModFeedback(c *fiber.Ctx) error {
 // This is the Go equivalent of V1's Message::sendForReview().
 func sendForReview(db *gorm.DB, msgid uint64, reason string) {
 	db.Exec("UPDATE messages SET spamreason = ? WHERE id = ?", reason, msgid)
-	db.Exec("UPDATE messages_groups SET collection = ? WHERE msgid = ?", utils.COLLECTION_PENDING, msgid)
+	db.Exec("UPDATE messages_groups SET collection = ?, spamreason = ? WHERE msgid = ?", utils.COLLECTION_PENDING, reason, msgid)
 }
 
 // listMicroActions returns microvolunteering activity for moderator review.
