@@ -1,17 +1,15 @@
 package message
 
 import (
-	"strings"
-
 	"github.com/freegle/iznik-server-go/embedding"
 	"github.com/freegle/iznik-server-go/utils"
 )
 
 const keywordBoostWeight = 0.3
 
-// MinVectorScore is the minimum cosine similarity to include a result.
-// nomic-embed-text-v1.5 normalized dot products: random/noise scores ~0.50,
-// tangential matches ~0.60, genuine semantic matches 0.70+, exact 0.75+.
+// MinVectorScore is the minimum combined (subject+body) cosine score to
+// include a result. nomic-embed-text-v1.5 normalized dot products: random
+// noise ~0.50, tangential ~0.60, genuine semantic matches 0.70+, exact 0.75+.
 const MinVectorScore = 0.65
 
 // VectorSearch performs semantic search with hybrid keyword scoring.
@@ -23,7 +21,7 @@ func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 		return nil, err
 	}
 
-	// Fetch more than needed so we can re-rank with keyword boost
+	// Fetch more than needed so we can re-rank with keyword boost.
 	vecResults := embedding.Global.Search(queryVec, limit*3, msgtype, groupids,
 		swlat, swlng, nelat, nelng)
 
@@ -37,17 +35,25 @@ func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 	scored := make([]scoredResult, 0, len(vecResults))
 
 	for _, vr := range vecResults {
-		// Skip results below the minimum similarity threshold
+		// Combined score below threshold → drop. Keyword boost doesn't
+		// rescue results below the semantic floor; it only re-orders.
 		if vr.Score < MinVectorScore {
 			continue
 		}
 
 		var keywordScore float32
 		if len(queryWords) > 0 {
-			subjectLower := strings.ToLower(vr.Subject)
+			// Whole-word match: tokenise the subject with the same rules
+			// GetWords uses for the query so "table" ≠ "portable".
+			subjectWords := GetWords(vr.Subject)
+			subjectSet := make(map[string]struct{}, len(subjectWords))
+			for _, w := range subjectWords {
+				subjectSet[w] = struct{}{}
+			}
+
 			matched := 0
 			for _, w := range queryWords {
-				if strings.Contains(subjectLower, w) {
+				if _, ok := subjectSet[w]; ok {
 					matched++
 				}
 			}
@@ -75,7 +81,7 @@ func VectorSearch(term string, limit int, groupids []uint64, msgtype string,
 		scored = append(scored, scoredResult{result: sr, score: hybridScore})
 	}
 
-	// Sort by hybrid score descending
+	// Sort by hybrid score descending.
 	for i := 0; i < len(scored)-1; i++ {
 		for j := i + 1; j < len(scored); j++ {
 			if scored[j].score > scored[i].score {

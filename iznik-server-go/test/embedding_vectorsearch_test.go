@@ -44,9 +44,9 @@ func TestVectorSearchBasic(t *testing.T) {
 	bikeVec := makeTestVec(5.0)
 
 	embedding.Global.SetEntries([]embedding.Entry{
-		{Msgid: 1, Groupid: 100, Msgtype: "Offer", Lat: 51.5, Lng: -0.1, Subject: "OFFER: Sofa bed", Arrival: time.Now(), Vec: sofaVec},
-		{Msgid: 2, Groupid: 100, Msgtype: "Offer", Lat: 51.5, Lng: -0.1, Subject: "OFFER: Chair", Arrival: time.Now(), Vec: chairVec},
-		{Msgid: 3, Groupid: 200, Msgtype: "Wanted", Lat: 52.0, Lng: 0.0, Subject: "WANTED: Bike", Arrival: time.Now(), Vec: bikeVec},
+		{Msgid: 1, Groupid: 100, Msgtype: "Offer", Lat: 51.5, Lng: -0.1, Subject: "OFFER: Sofa bed", Arrival: time.Now(), SubjectVec: sofaVec},
+		{Msgid: 2, Groupid: 100, Msgtype: "Offer", Lat: 51.5, Lng: -0.1, Subject: "OFFER: Chair", Arrival: time.Now(), SubjectVec: chairVec},
+		{Msgid: 3, Groupid: 200, Msgtype: "Wanted", Lat: 52.0, Lng: 0.0, Subject: "WANTED: Bike", Arrival: time.Now(), SubjectVec: bikeVec},
 	})
 	defer embedding.Global.SetEntries(nil)
 
@@ -68,8 +68,8 @@ func TestVectorSearchKeywordBoost(t *testing.T) {
 	vecSimilar := makeTestVec(1.001)
 
 	embedding.Global.SetEntries([]embedding.Entry{
-		{Msgid: 10, Groupid: 100, Msgtype: "Offer", Subject: "OFFER: Table lamp", Vec: vecSimilar},
-		{Msgid: 11, Groupid: 100, Msgtype: "Offer", Subject: "OFFER: Sofa bed", Vec: vecSimilar},
+		{Msgid: 10, Groupid: 100, Msgtype: "Offer", Subject: "OFFER: Table lamp", SubjectVec: vecSimilar},
+		{Msgid: 11, Groupid: 100, Msgtype: "Offer", Subject: "OFFER: Sofa bed", SubjectVec: vecSimilar},
 	})
 	defer embedding.Global.SetEntries(nil)
 
@@ -89,8 +89,8 @@ func TestVectorSearchWithMsgtypeFilter(t *testing.T) {
 	vec := makeTestVec(1.0)
 
 	embedding.Global.SetEntries([]embedding.Entry{
-		{Msgid: 20, Groupid: 100, Msgtype: "Offer", Lat: 51.5, Lng: -0.1, Subject: "OFFER: Sofa", Vec: vec},
-		{Msgid: 21, Groupid: 200, Msgtype: "Wanted", Lat: 52.0, Lng: 0.0, Subject: "WANTED: Sofa", Vec: vec},
+		{Msgid: 20, Groupid: 100, Msgtype: "Offer", Lat: 51.5, Lng: -0.1, Subject: "OFFER: Sofa", SubjectVec: vec},
+		{Msgid: 21, Groupid: 200, Msgtype: "Wanted", Lat: 52.0, Lng: 0.0, Subject: "WANTED: Sofa", SubjectVec: vec},
 	})
 	defer embedding.Global.SetEntries(nil)
 
@@ -109,8 +109,8 @@ func TestVectorSearchWithGroupFilter(t *testing.T) {
 	vec := makeTestVec(1.0)
 
 	embedding.Global.SetEntries([]embedding.Entry{
-		{Msgid: 30, Groupid: 100, Msgtype: "Offer", Subject: "OFFER: Sofa", Vec: vec},
-		{Msgid: 31, Groupid: 200, Msgtype: "Offer", Subject: "OFFER: Sofa", Vec: vec},
+		{Msgid: 30, Groupid: 100, Msgtype: "Offer", Subject: "OFFER: Sofa", SubjectVec: vec},
+		{Msgid: 31, Groupid: 200, Msgtype: "Offer", Subject: "OFFER: Sofa", SubjectVec: vec},
 	})
 	defer embedding.Global.SetEntries(nil)
 
@@ -131,7 +131,7 @@ func TestVectorSearchLimit(t *testing.T) {
 	for i := range entries {
 		entries[i] = embedding.Entry{
 			Msgid: uint64(i + 1), Groupid: 100, Msgtype: "Offer",
-			Subject: "OFFER: Item", Vec: vec,
+			Subject: "OFFER: Item", SubjectVec: vec,
 		}
 	}
 	embedding.Global.SetEntries(entries)
@@ -149,7 +149,7 @@ func TestVectorSearchLimit(t *testing.T) {
 
 func TestVectorSearchSidecarError(t *testing.T) {
 	embedding.Global.SetEntries([]embedding.Entry{
-		{Msgid: 1, Groupid: 100, Msgtype: "Offer", Subject: "test", Vec: makeTestVec(1.0)},
+		{Msgid: 1, Groupid: 100, Msgtype: "Offer", Subject: "test", SubjectVec: makeTestVec(1.0)},
 	})
 	defer embedding.Global.SetEntries(nil)
 

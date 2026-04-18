@@ -7,6 +7,9 @@ on:
     paths:
       - 'iznik-batch/**'
 
+permissions:
+  contents: write
+
 jobs:
   update-version:
     runs-on: ubuntu-latest
