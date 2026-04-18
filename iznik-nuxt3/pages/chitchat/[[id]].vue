@@ -471,6 +471,25 @@ function rendered() {
   }
 }
 
+// Prefetch a window of threads ahead of the scroll position so that
+// NewsThread's `await newsfeedStore.fetch(id)` in <script setup> doesn't
+// serialise one RTT per item. On high-latency connections (iOS cellular
+// ~300ms RTT) serial fetching makes the feed appear "very limited" as users
+// give up before items render.
+const PREFETCH_WINDOW = 20
+
+function prefetchWindow(startIndex) {
+  const feed = newsfeedStore.feed
+  if (!feed?.length) return
+  const endIndex = Math.min(startIndex + PREFETCH_WINDOW, feed.length)
+  for (let i = startIndex; i < endIndex; i++) {
+    const item = feed[i]
+    if (item?.id) {
+      newsfeedStore.fetch(item.id)
+    }
+  }
+}
+
 function loadMore($state) {
   infiniteState.value = $state
 
@@ -483,6 +502,7 @@ function loadMore($state) {
 
   if (show.value < newsfeed.value.length) {
     show.value += 1
+    prefetchWindow(show.value)
   } else if (newsfeed.value.length === 0) {
     // Feed hasn't loaded yet — don't call complete() prematurely.
     $state.loaded()
@@ -502,6 +522,7 @@ async function areaChange() {
   await newsfeedStore.fetchFeed(newDistance)
   infiniteId.value++
   show.value = 0
+  prefetchWindow(0)
 }
 
 async function postIt() {
@@ -677,15 +698,7 @@ if (me.value) {
     })
   } else {
     newsfeedStore.fetchFeed(distance.value).then(() => {
-      // Fetch the first few threads in parallel so that they are in the store.
-      const feed = newsfeedStore.feed
-
-      if (feed?.length) {
-        const firstThreads = feed.slice(0, 5)
-        firstThreads.forEach((thread) => {
-          newsfeedStore.fetch(thread.id)
-        })
-      }
+      prefetchWindow(0)
     })
   }
 }
