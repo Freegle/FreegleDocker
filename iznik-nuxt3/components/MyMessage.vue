@@ -887,36 +887,42 @@ const repost = async (e) => {
     e.stopPropagation()
   }
 
+  // Repost may be triggered via ?action=repost before the store has loaded
+  // the message (e.g. direct link from an email). Sentry 7421179445 caught
+  // message.value.id crashing here — fetch if missing.
+  const msg = message.value || (await messageStore.fetch(props.id, true))
+  if (!msg) return
+
   await composeStore.clearMessages()
 
   await composeStore.setMessage(
     0,
     {
-      id: message.value.id,
-      savedBy: message.value.fromuser,
-      item: message.value.item?.name.trim(),
-      description: message.value.textbody?.trim() || null,
-      availablenow: message.value.availablenow,
-      type: message.value.type,
+      id: msg.id,
+      savedBy: msg.fromuser,
+      item: msg.item?.name.trim(),
+      description: msg.textbody?.trim() || null,
+      availablenow: msg.availablenow,
+      type: msg.type,
       repostof: props.id,
       deadline: null,
     },
     me
   )
 
-  if (message.value.location) {
-    const locs = await locationStore.typeahead(message.value.location.name)
+  if (msg.location) {
+    const locs = await locationStore.typeahead(msg.location.name)
     composeStore.postcode = locs[0]
   }
 
   // Set the group from the original message so the dropdown shows the correct
   // group rather than falling back to groupsnear[0] or a stale localStorage value.
-  if (message.value.groups?.length > 0) {
-    composeStore.group = message.value.groups[0].groupid
+  if (msg.groups?.length > 0) {
+    composeStore.group = msg.groups[0].groupid
   }
 
-  await composeStore.setAttachmentsForMessage(0, message.value.attachments)
-  router.push(message.value.type === 'Offer' ? '/give' : '/find')
+  await composeStore.setAttachmentsForMessage(0, msg.attachments)
+  router.push(msg.type === 'Offer' ? '/give' : '/find')
 }
 
 const hidden = () => {

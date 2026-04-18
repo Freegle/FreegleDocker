@@ -1031,6 +1031,34 @@ describe('MyMessage', () => {
       expect(mockComposeStore.setMessage).toHaveBeenCalled()
     })
 
+    it('fetches message before repost when not yet in store (Sentry 7421179445)', async () => {
+      // Simulate the Sentry case: message not yet in store at mount time.
+      // The useMessageDisplay mock returns ref(mockData.message), so setting
+      // mockData.message = null makes message.value null in the component.
+      const fetchedMessage = {
+        id: 999,
+        type: 'Offer',
+        fromuser: 1,
+        groups: [{ groupid: 1 }],
+        canrepost: true,
+        location: { name: 'AB1 2CD' },
+        item: { name: 'Test item' },
+        attachments: [],
+        availablenow: 1,
+        textbody: 'body',
+      }
+      mockData.message = null
+      mockMessageStore.fetch.mockResolvedValue(fetchedMessage)
+      await createWrapper({ action: 'repost', id: 999 })
+      // Without the fix, message.value.id throws (null.id) and setMessage is
+      // never called with the fetched id.
+      expect(mockComposeStore.setMessage).toHaveBeenCalledWith(
+        0,
+        expect.objectContaining({ id: 999 }),
+        expect.anything()
+      )
+    })
+
     it('redirects to /myposts when outcome modal closes for withdraw action', async () => {
       const wrapper = await createWrapper({ action: 'withdraw' })
       wrapper.vm.onOutcomeHidden()
