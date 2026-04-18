@@ -41,17 +41,37 @@ async function waitForAuthPersistence(page) {
  * @returns {Promise<void>}
  */
 async function clearSessionData(page) {
-  await page.evaluate(() => {
-    try {
-      localStorage.clear()
-    } catch {}
-    try {
-      sessionStorage.clear()
-    } catch {}
-  })
+  // If the page/context was already closed (e.g. the test is in an error-recovery
+  // path after a prior navigation destroyed the page), there's nothing left to
+  // clear — swallow the "Target page, context or browser has been closed" error
+  // instead of re-raising it from logger.js's proxy wrapper.
+  if (page.isClosed && page.isClosed()) {
+    return
+  }
 
-  const context = page.context()
-  await context.clearCookies()
+  try {
+    await page.evaluate(() => {
+      try {
+        localStorage.clear()
+      } catch {}
+      try {
+        sessionStorage.clear()
+      } catch {}
+    })
+  } catch (e) {
+    if (!/closed|Target .* closed|Execution context was destroyed/i.test(e.message)) {
+      throw e
+    }
+  }
+
+  try {
+    const context = page.context()
+    await context.clearCookies()
+  } catch (e) {
+    if (!/closed|Target .* closed/i.test(e.message)) {
+      throw e
+    }
+  }
 }
 
 /**
