@@ -1858,24 +1858,20 @@ jobs:
               CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "ALL")
             fi
 
-            SKIP_GO=true
-            SKIP_VITEST=true
-            SKIP_PLAYWRIGHT=true
-            SKIP_LARAVEL=true
-
-            if echo "$CHANGED" | grep -q '^iznik-server-go/'; then SKIP_GO=false; fi
-            if echo "$CHANGED" | grep -q '^iznik-nuxt3/'; then SKIP_VITEST=false; SKIP_PLAYWRIGHT=false; fi
-            if echo "$CHANGED" | grep -q '^iznik-batch/'; then SKIP_LARAVEL=false; fi
-
-            # Shared files → run everything
-            if echo "$CHANGED" | grep -qE '^(docker-compose|\.circleci|scripts/|testenv)'; then
-              SKIP_GO=false; SKIP_VITEST=false; SKIP_PLAYWRIGHT=false; SKIP_LARAVEL=false
-            fi
-
-            # Master branch always runs everything
-            if [ "$CIRCLE_BRANCH" = "master" ]; then
-              SKIP_GO=false; SKIP_VITEST=false; SKIP_PLAYWRIGHT=false; SKIP_LARAVEL=false
-            fi
+            # All four suites always run: Coveralls build-level comparison
+            # compares total relevant_lines across all flags. If a branch
+            # skipped Go/Laravel tests, its uploaded build would have ~87K
+            # lines (vitest+playwright only) vs master's ~132K (all 4), and
+            # Coveralls would report a false ~-1.6% coverage drop (see PR #211,
+            # Coveralls build 78961812 vs master 78961760). The carryforward
+            # payload parameter on the parallel webhook is not honored for
+            # this repo, so partial uploads cannot be patched up after the
+            # fact. Running all 4 in parallel adds no wall-time (Playwright
+            # is the long pole regardless).
+            SKIP_GO=false
+            SKIP_VITEST=false
+            SKIP_PLAYWRIGHT=false
+            SKIP_LARAVEL=false
 
             echo "export SKIP_GO=$SKIP_GO" >> "$BASH_ENV"
             echo "export SKIP_VITEST=$SKIP_VITEST" >> "$BASH_ENV"
@@ -2518,19 +2514,10 @@ jobs:
           command: |
             [ "${SKIP_COVERAGE:-}" = "true" ] && exit 0
             if [ "${COV_UPLOADS:-0}" -gt 0 ]; then
-              # Carry forward master's last-known coverage for any suite flags not
-              # uploaded in this build. Feature branches skip test suites whose
-              # subtree wasn't touched (SKIP_GO/SKIP_LARAVEL/SKIP_VITEST/SKIP_PLAYWRIGHT),
-              # so their Coveralls flag files are absent — without carryforward,
-              # Coveralls compares partial-branch coverage against master's full
-              # coverage and reports a large false "coverage dropped" regression
-              # (seen as a -7.1% drop on Nuxt-only PRs that skip Go+Laravel).
-              # carryforward only fills flags MISSING from this build; uploaded
-              # flags keep their fresh PR coverage.
-              echo "📊 Uploaded $COV_UPLOADS reports. Sending webhook (carryforward=go,laravel,vitest,playwright)..."
+              echo "📊 Uploaded $COV_UPLOADS reports. Sending webhook..."
               curl -sf -X POST "https://coveralls.io/webhook?repo_token=${COVERALLS_REPO_TOKEN}" \
                 -H "Content-Type: application/json" \
-                -d "{\"payload\":{\"build_num\":\"${CIRCLE_BUILD_NUM}\",\"status\":\"done\",\"carryforward\":\"go,laravel,vitest,playwright\"}}" \
+                -d "{\"payload\":{\"build_num\":\"${CIRCLE_BUILD_NUM}\",\"status\":\"done\"}}" \
                 && echo "✅ Webhook sent" || echo "⚠️ Webhook failed"
             else echo "⚠️ No coverage uploaded"; fi
 

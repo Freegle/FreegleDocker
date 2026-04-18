@@ -205,7 +205,51 @@ describe('chitchat/[[id]].vue loadMore', () => {
 
     wrapper.vm.loadMore(mockState)
 
-    expect(wrapper.vm.show).toBe(1)
+    expect(wrapper.vm.show).toBeGreaterThan(0)
+  })
+
+  it('loadMore advances show without depending on rendered event (iOS cardinality regression)', () => {
+    // iOS cardinality bug: NewsThread does `await newsfeedStore.fetch` at top
+    // of <script setup>.  If that hangs (iOS Safari cancelling a pending
+    // request during backgrounding, or a 404 for a deleted item), onMounted
+    // never fires, so NewsThread never emits 'rendered', so the old
+    // rendered -> loaded chain stalled the feed at 1-3 items while desktop
+    // users saw plenty.
+    //
+    // loadMore must call $state.loaded() directly so the infinite-loader
+    // keeps ticking regardless of per-item render success.
+    mockNewsfeedStore.feed = Array.from({ length: 30 }, (_, i) => ({
+      id: i + 1,
+      userid: 100 + i,
+    }))
+    mountComponent()
+    wrapper.vm.show = 0
+    const mockState = { loaded: vi.fn(), complete: vi.fn() }
+
+    wrapper.vm.loadMore(mockState)
+
+    // After advancing, loaded() must be called directly so the infinite
+    // loader resumes even if no NewsThread ever emits rendered.
+    expect(mockState.loaded).toHaveBeenCalled()
+    expect(mockState.complete).not.toHaveBeenCalled()
+  })
+
+  it('loadMore batches items to match desktop cardinality on iOS', () => {
+    // Advance in batches rather than 1-at-a-time so a single stuck fetch
+    // cannot cap the visible count at 1-2 items on iOS.
+    mockNewsfeedStore.feed = Array.from({ length: 50 }, (_, i) => ({
+      id: i + 1,
+      userid: 100 + i,
+    }))
+    mountComponent()
+    wrapper.vm.show = 0
+    const mockState = { loaded: vi.fn(), complete: vi.fn() }
+
+    wrapper.vm.loadMore(mockState)
+
+    // Must reveal materially more than one item per tick.  Exact size is an
+    // implementation detail; anything >= 5 is fine.
+    expect(wrapper.vm.show).toBeGreaterThanOrEqual(5)
   })
 
   it('loadMore calls complete when all items shown', () => {
