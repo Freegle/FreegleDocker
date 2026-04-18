@@ -2151,6 +2151,49 @@ func TestPutMessageRecordsFromIP(t *testing.T) {
 	assert.NotNil(t, fromip, "fromip should be recorded")
 }
 
+// TestPutMessageGeneratesSyntheticMessageID verifies that PUT /message
+// populates messages.messageid with a synthetic value in the form
+// "<microtime>@users.ilovefreegle.org-<groupid>" (V1 parity — see
+// iznik-server/include/message/Message.php lines 2708 and 2717).
+// Before this fix, Go left messageid NULL, breaking dedupe and
+// cross-reference lookups that rely on the column being populated.
+func TestPutMessageGeneratesSyntheticMessageID(t *testing.T) {
+	prefix := uniquePrefix("msgput_msgid")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	CreateTestMembership(t, userID, groupID, "Member")
+	_, token := CreateTestSession(t, userID)
+
+	body := map[string]interface{}{
+		"groupid":    groupID,
+		"type":       "Offer",
+		"subject":    prefix + " MessageID Test",
+		"textbody":   "Testing synthetic messageid",
+		"item":       "Test Item",
+		"collection": "Pending",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest("PUT", "/api/message?jwt="+token, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	newID := uint64(result["id"].(float64))
+	require.NotZero(t, newID)
+
+	var messageid *string
+	db.Raw("SELECT messageid FROM messages WHERE id = ?", newID).Scan(&messageid)
+	require.NotNil(t, messageid, "messageid must not be NULL — V1 parity")
+	assert.NotEmpty(t, *messageid, "messageid must be a non-empty synthetic value")
+	assert.Contains(t, *messageid, "@"+utils.USER_DOMAIN, "messageid must use users.ilovefreegle.org domain")
+	assert.Contains(t, *messageid, fmt.Sprintf("-%d", groupID), "messageid must have -{groupid} suffix")
+}
+
 // TestPutMessageAvailableNowSetsInitially verifies: sending only
 // availablenow sets both availableinitially and availablenow to that value.
 func TestPutMessageAvailableNowSetsInitially(t *testing.T) {

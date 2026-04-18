@@ -2878,8 +2878,14 @@ func PutMessage(c *fiber.Ctx) error {
 
 	// Create message.
 	fromip := c.IP()
-	result := db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, arrival, date, source, availableinitially, availablenow, locationid, fromip) VALUES (?, ?, ?, ?, NOW(), NOW(), 'Platform', ?, ?, ?, ?)",
-		myid, req.Type, req.Subject, req.Textbody, availInit, availNow, req.Locationid, fromip)
+	// V1 parity (Message.php:2708/2717): invent a unique messageid because
+	// downstream dedupe/cross-reference joins assume it's populated.
+	messageid := fmt.Sprintf("%.6f@%s", float64(time.Now().UnixNano())/1e9, utils.USER_DOMAIN)
+	if req.Groupid > 0 {
+		messageid = fmt.Sprintf("%s-%d", messageid, req.Groupid)
+	}
+	result := db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, arrival, date, source, availableinitially, availablenow, locationid, fromip, messageid) VALUES (?, ?, ?, ?, NOW(), NOW(), 'Platform', ?, ?, ?, ?, ?)",
+		myid, req.Type, req.Subject, req.Textbody, availInit, availNow, req.Locationid, fromip, messageid)
 
 	if result.Error != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create message")

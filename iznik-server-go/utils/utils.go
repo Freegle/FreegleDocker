@@ -118,6 +118,8 @@ const SRID = 3857
 const CHAT_TYPE_USER2USER = "User2User"
 const CHAT_TYPE_USER2MOD = "User2Mod"
 const CHAT_TYPE_GROUP = "Group"
+
+const USER_DOMAIN = "users.ilovefreegle.org"
 const CHAT_TYPE_MOD2MOD = "Mod2Mod"
 
 const CHAT_MESSAGE_DEFAULT = "Default"
@@ -283,7 +285,7 @@ var tnRegexp = regexp.MustCompile(TN_REGEXP)
 var yahooIDRegexp = regexp.MustCompile("[A-Za-z].*[0-9]|[0-9].*[A-Za-z]")
 
 func OurDomain(email string) int {
-	domains := [...]string{"users.ilovefreegle.org", "groups.ilovefreegle.org", "direct.ilovefreegle.org", "republisher.freegle.in"}
+	domains := [...]string{USER_DOMAIN, "groups.ilovefreegle.org", "direct.ilovefreegle.org", "republisher.freegle.in"}
 
 	for _, e := range domains {
 		if strings.Contains(email, e) {
