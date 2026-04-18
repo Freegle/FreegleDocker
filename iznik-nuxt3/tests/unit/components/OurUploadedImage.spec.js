@@ -199,6 +199,15 @@ describe('OurUploadedImage', () => {
       expect(wrapper.emitted('error')).toBeTruthy()
       expect(wrapper.emitted('error')[0][0]).toBe(mockEvent)
     })
+
+    it('does not report broken images to Sentry (NUXT3-BS6 noise)', async () => {
+      const Sentry = await import('@sentry/browser')
+      const wrapper = createWrapper({ src: 'freegletusd-abc123' })
+      await wrapper.vm.brokenImage({ target: {} })
+      expect(Sentry.captureMessage).not.toHaveBeenCalledWith(
+        expect.stringContaining('Failed to fetch image')
+      )
+    })
   })
 
   describe('loading behavior', () => {

@@ -155,9 +155,5 @@ function brokenImage(e) {
   console.log('Our uploaded image broken', props.src)
   emit('error', e)
   show.value = false
-
-  if (process.client) {
-    Sentry.captureMessage('Failed to fetch image ' + props.src)
-  }
 }
 </script>
