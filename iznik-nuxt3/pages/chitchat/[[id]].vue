@@ -463,13 +463,18 @@ watch(
 
 // Methods
 function rendered() {
-  // We do this so that we wait until one item has rendered before inserting another.
-  // Otherwise we get them appearing out of order, which is worse than there being a delay before they appear in series.
-  console.log('Rendered')
-  if (infiniteState.value) {
-    infiniteState.value.loaded()
-  }
+  // No-op: the infinite-loader is driven directly by loadMore calling
+  // $state.loaded() below.  Previously we re-emitted loaded() here when each
+  // NewsThread mounted, but NewsThread does a top-level `await` in its
+  // <script setup>, and if that fetch hangs (iOS Safari cancelling pending
+  // requests during backgrounding, or a 404 for a deleted item) onMounted
+  // never fires, 'rendered' is never emitted, and the whole feed stalled at
+  // 1-3 items on iOS while desktop saw plenty.
 }
+
+// Reveal items in batches rather than 1-at-a-time.  Larger batches mean the
+// visible count is resilient to individual NewsThread render failures.
+const LOAD_BATCH_SIZE = 10
 
 function loadMore($state) {
   infiniteState.value = $state
@@ -481,10 +486,20 @@ function loadMore($state) {
     return
   }
 
-  if (show.value < newsfeed.value.length) {
-    show.value += 1
-  } else if (newsfeed.value.length === 0) {
+  if (newsfeed.value.length === 0) {
     // Feed hasn't loaded yet — don't call complete() prematurely.
+    $state.loaded()
+    return
+  }
+
+  if (show.value < newsfeed.value.length) {
+    show.value = Math.min(
+      show.value + LOAD_BATCH_SIZE,
+      newsfeed.value.length
+    )
+    // Call loaded() directly so the infinite-loader's fallback timer keeps
+    // ticking.  Do NOT depend on NewsThread's 'rendered' event — if any
+    // individual item fails to render, the whole feed would otherwise stall.
     $state.loaded()
   } else {
     $state.complete()
