@@ -6726,10 +6726,10 @@ func TestListMessagesMTMultiGroupNoDuplicates(t *testing.T) {
 	msgs := result["messages"].([]interface{})
 
 	// Count how many times our msgID appears — should be exactly 1.
+	// /api/modtools/messages returns message IDs only (float64 via JSON), not full objects.
 	count := 0
-	for _, m := range msgs {
-		mm := m.(map[string]interface{})
-		if uint64(mm["id"].(float64)) == msgID {
+	for _, id := range msgs {
+		if uint64(id.(float64)) == msgID {
 			count++
 		}
 	}
