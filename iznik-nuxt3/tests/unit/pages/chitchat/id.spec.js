@@ -266,4 +266,28 @@ describe('chitchat/[[id]].vue loadMore', () => {
     expect(shown).toHaveLength(3)
     expect(shown.map((s) => s.id)).toEqual([3, 2, 1])
   })
+
+  it('loadMore prefetches a window of upcoming items to avoid serial fetch on slow networks', () => {
+    // Regression: on high-latency networks (iOS cellular, ~300ms RTT) each
+    // NewsThread does `await newsfeedStore.fetch(id)` in <script setup>.
+    // loadMore advances show by 1, so items were fetched serially: ~30s for
+    // 100 items on iOS vs a few seconds on desktop fibre. Users perceived
+    // "very few posts". Fix: prefetch a window ahead so fetches overlap.
+    const feedItems = Array.from({ length: 30 }, (_, i) => ({
+      id: i + 1,
+      userid: i + 1,
+    }))
+    mockNewsfeedStore.feed = feedItems
+    mountComponent()
+    wrapper.vm.show = 0
+    mockNewsfeedStore.fetch.mockClear()
+    const mockState = { loaded: vi.fn(), complete: vi.fn() }
+
+    wrapper.vm.loadMore(mockState)
+
+    const fetchedIds = mockNewsfeedStore.fetch.mock.calls.map((c) => c[0])
+    expect(fetchedIds.length).toBeGreaterThanOrEqual(10)
+    expect(fetchedIds).toContain(5)
+    expect(fetchedIds).toContain(10)
+  })
 })

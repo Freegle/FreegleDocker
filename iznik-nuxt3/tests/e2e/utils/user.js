@@ -118,7 +118,16 @@ async function logoutIfLoggedIn(page, navigateToHome = true) {
     await clearSessionData(page)
 
     if (navigateToHome) {
-      await page.gotoAndVerify('/', { timeout: timeouts.navigation.initial })
+      // Use waitUntil: 'domcontentloaded' rather than the default 'load'. The
+      // homepage loads tracking/ads scripts (Google, Freestar, etc.) whose
+      // requests keep the 'load' event pending; in post-logout contexts this
+      // has caused page.goto('/') to hang until the 10-minute test timeout.
+      // DOM-ready is sufficient here since we don't interact with third-party
+      // widgets — we're just ending in a logged-out state for the next test.
+      await page.gotoAndVerify('/', {
+        timeout: timeouts.navigation.initial,
+        waitUntil: 'domcontentloaded',
+      })
       console.log('Navigated to homepage')
     }
 
@@ -135,7 +144,10 @@ async function logoutIfLoggedIn(page, navigateToHome = true) {
     // Fall back to clearing cookies/storage
     await clearSessionData(page)
     if (navigateToHome) {
-      await page.gotoAndVerify('/', { timeout: timeouts.navigation.initial })
+      await page.gotoAndVerify('/', {
+        timeout: timeouts.navigation.initial,
+        waitUntil: 'domcontentloaded',
+      })
     }
     return page
   }
