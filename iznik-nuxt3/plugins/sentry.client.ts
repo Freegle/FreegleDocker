@@ -110,6 +110,17 @@ export default defineNuxtPlugin(async (nuxtApp) => {
             return null
           }
 
+          // Drop "Failed to fetch image ..." captureMessage events.
+          // Sentry issue NUXT3-BS6 (~94k events, 351 users, level info). These fire
+          // from OurUploadedImage.vue when a user's image can't load - typically
+          // because it was deleted, the user is on a flaky network, or an ad/image
+          // blocker is active. Not actionable. We've removed the captureMessage
+          // call, but keep this filter to catch already-deployed / cached bundles
+          // (which also emit the same message for non-freegletusd sources).
+          if (event.message?.startsWith('Failed to fetch image ')) {
+            return null
+          }
+
           // In modtools, 401 means session expired during a long mod session.
           // BaseAPI already clears auth state and the login modal appears.
           // Any of the 600+ store calls can hit this; suppress globally here
