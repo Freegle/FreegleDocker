@@ -13,16 +13,27 @@ import (
 // EmbeddingDim is 256-dim Matryoshka truncation of nomic-embed-text-v1.5.
 const EmbeddingDim = 256
 
-// Entry holds one message's embedding and metadata for filtering.
+// SubjectWeight and BodyWeight combine the two per-message cosine scores into
+// the final ranking score. Subject dominates because the subject line is the
+// high-signal "what is this item" field; the body disambiguates but is noisy
+// (boilerplate, location text, tags). When body is absent we fall back to the
+// pure subject cosine (not 0.7×subject) so the scoring scale stays consistent.
+const (
+	SubjectWeight float32 = 0.7
+	BodyWeight    float32 = 0.3
+)
+
+// Entry holds one message's subject (and optional body) embedding plus metadata.
 type Entry struct {
-	Msgid   uint64
-	Groupid uint64
-	Msgtype string
-	Lat     float64
-	Lng     float64
-	Subject string
-	Arrival time.Time
-	Vec     [EmbeddingDim]float32
+	Msgid      uint64
+	Groupid    uint64
+	Msgtype    string
+	Lat        float64
+	Lng        float64
+	Subject    string
+	Arrival    time.Time
+	SubjectVec [EmbeddingDim]float32
+	BodyVec    *[EmbeddingDim]float32 // nil when no body embedding stored
 }
 
 // Store is the in-memory embedding index.
@@ -58,19 +69,20 @@ func (s *Store) Load() error {
 	}
 
 	type row struct {
-		Msgid     uint64    `gorm:"column:msgid"`
-		Embedding []byte    `gorm:"column:embedding"`
-		Groupid   uint64    `gorm:"column:groupid"`
-		Msgtype   string    `gorm:"column:msgtype"`
-		Lat       float64   `gorm:"column:lat"`
-		Lng       float64   `gorm:"column:lng"`
-		Subject   string    `gorm:"column:subject"`
-		Arrival   time.Time `gorm:"column:arrival"`
+		Msgid            uint64    `gorm:"column:msgid"`
+		SubjectEmbedding []byte    `gorm:"column:subject_embedding"`
+		BodyEmbedding    []byte    `gorm:"column:body_embedding"`
+		Groupid          uint64    `gorm:"column:groupid"`
+		Msgtype          string    `gorm:"column:msgtype"`
+		Lat              float64   `gorm:"column:lat"`
+		Lng              float64   `gorm:"column:lng"`
+		Subject          string    `gorm:"column:subject"`
+		Arrival          time.Time `gorm:"column:arrival"`
 	}
 
 	var rows []row
 	result := db.Raw(`
-		SELECT me.msgid, me.embedding,
+		SELECT me.msgid, me.subject_embedding, me.body_embedding,
 		       ms.groupid, ms.msgtype,
 		       ST_Y(ms.point) as lat, ST_X(ms.point) as lng,
 		       m.subject, ms.arrival
@@ -86,25 +98,10 @@ func (s *Store) Load() error {
 
 	entries := make([]Entry, 0, len(rows))
 	for _, r := range rows {
-		if len(r.Embedding) != EmbeddingDim*4 {
-			continue // wrong size, skip
+		e, err := decodeEntry(r.Msgid, r.Groupid, r.Msgtype, r.Lat, r.Lng, r.Subject, r.Arrival, r.SubjectEmbedding, r.BodyEmbedding)
+		if err != nil {
+			continue // wrong-sized subject blob: skip
 		}
-
-		var e Entry
-		e.Msgid = r.Msgid
-		e.Groupid = r.Groupid
-		e.Msgtype = r.Msgtype
-		e.Lat = r.Lat
-		e.Lng = r.Lng
-		e.Subject = r.Subject
-		e.Arrival = r.Arrival
-
-		// Decode float32 from little-endian binary
-		for i := 0; i < EmbeddingDim; i++ {
-			bits := binary.LittleEndian.Uint32(r.Embedding[i*4 : (i+1)*4])
-			e.Vec[i] = math.Float32frombits(bits)
-		}
-
 		entries = append(entries, e)
 	}
 
@@ -113,6 +110,43 @@ func (s *Store) Load() error {
 	s.mu.Unlock()
 
 	return nil
+}
+
+// decodeEntry builds an Entry from raw DB columns. Subject embedding is
+// required and must match EmbeddingDim; body embedding is optional and
+// silently skipped if the wrong size.
+func decodeEntry(msgid, groupid uint64, msgtype string, lat, lng float64, subject string, arrival time.Time, subjectBytes, bodyBytes []byte) (Entry, error) {
+	if len(subjectBytes) != EmbeddingDim*4 {
+		return Entry{}, fmt.Errorf("subject embedding wrong size: %d", len(subjectBytes))
+	}
+
+	e := Entry{
+		Msgid:   msgid,
+		Groupid: groupid,
+		Msgtype: msgtype,
+		Lat:     lat,
+		Lng:     lng,
+		Subject: subject,
+		Arrival: arrival,
+	}
+
+	decodeFloats(subjectBytes, e.SubjectVec[:])
+
+	if len(bodyBytes) == EmbeddingDim*4 {
+		var body [EmbeddingDim]float32
+		decodeFloats(bodyBytes, body[:])
+		e.BodyVec = &body
+	}
+
+	return e, nil
+}
+
+// decodeFloats decodes little-endian float32s from raw bytes into dst.
+func decodeFloats(raw []byte, dst []float32) {
+	for i := 0; i < len(dst); i++ {
+		bits := binary.LittleEndian.Uint32(raw[i*4 : (i+1)*4])
+		dst[i] = math.Float32frombits(bits)
+	}
 }
 
 // VectorSearchResult from vector search.
@@ -127,7 +161,10 @@ type VectorSearchResult struct {
 	Arrival time.Time `json:"-"`
 }
 
-// Search performs brute-force cosine similarity (dot product on normalized vectors).
+// Search performs brute-force cosine similarity. Each entry contributes a
+// subject cosine; if a body embedding is present the final score is the
+// weighted combination 0.7*subject + 0.3*body. Bodyless entries keep their
+// pure subject cosine so the scale matches.
 func (s *Store) Search(query []float32, limit int, msgtype string, groupids []uint64,
 	swlat, swlng, nelat, nelng float32) []VectorSearchResult {
 
@@ -168,13 +205,21 @@ func (s *Store) Search(query []float32, limit int, msgtype string, groupids []ui
 			}
 		}
 
-		// Dot product (vectors are pre-normalized)
-		var dot float32
+		var subjectCos float32
 		for j := 0; j < EmbeddingDim; j++ {
-			dot += query[j] * e.Vec[j]
+			subjectCos += query[j] * e.SubjectVec[j]
 		}
 
-		results = append(results, scored{idx: i, score: dot})
+		score := subjectCos
+		if e.BodyVec != nil {
+			var bodyCos float32
+			for j := 0; j < EmbeddingDim; j++ {
+				bodyCos += query[j] * e.BodyVec[j]
+			}
+			score = SubjectWeight*subjectCos + BodyWeight*bodyCos
+		}
+
+		results = append(results, scored{idx: i, score: score})
 	}
 
 	// Sort top-K by score descending (selection sort — fine for N < 1000)
