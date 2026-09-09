@@ -309,7 +309,6 @@ const showMobileNavbar = computed(() => {
 const { me } = useMe()
 const loggedIn = computed(() => authStore.user !== null)
 
-
 let title = 'Chats'
 let description = "See the conversations you're having with other freeglers."
 
