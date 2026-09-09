@@ -306,6 +306,21 @@ async function newPageWithRetry(context) {
   return page
 }
 
+// The chat shell is the default front door. These specs describe the classic pages, so
+// every context starts with the classic choice; the chat shell specs replace it.
+function classicModeCookie(baseURL) {
+  return {
+    name: 'freegle-ui-mode',
+    value: 'classic',
+    domain: new URL(baseURL).hostname,
+    path: '/',
+    expires: -1,
+    httpOnly: false,
+    secure: false,
+    sameSite: 'Lax',
+  }
+}
+
 // Define a custom test function that wraps the base test to add automatic screenshot capture
 const fixtures = {
   // The app's WebView for the whole worker, null for the browser projects.
@@ -324,7 +339,7 @@ const fixtures = {
   ],
 
   // Create a new isolated context for each test
-  context: async ({ browser, appWebView }, use) => {
+  context: async ({ browser, appWebView, baseURL }, use) => {
     if (appWebView) {
       // An earlier test may have killed the app (a cold start); start from the
       // WebView that is there now.
@@ -354,7 +369,8 @@ const fixtures = {
       ignoreHTTPSErrors: true, // Useful for local dev environments
       acceptDownloads: true,
       viewport: { width: 1280, height: 720 },
-      storageState: { cookies: [], origins: [] }, // Start with blank storage
+      // Blank storage apart from the classic front door.
+      storageState: { cookies: [classicModeCookie(baseURL)], origins: [] },
     })
 
     console.log(`Created new isolated browser context for test`)
@@ -2459,7 +2475,7 @@ const testWithFixtures = test.extend({
     await use(setNewUserPassword)
   },
 
-  replyToMessageWithSignup: async ({ page, browser }, use) => {
+  replyToMessageWithSignup: async ({ page, browser, baseURL }, use) => {
     /**
      * Navigates to a message page and replies with signup as a new user
      * @param {Object} options - The reply options
@@ -2492,7 +2508,7 @@ const testWithFixtures = test.extend({
       // page is the app's WebView, and the second member replies from a browser.
       const freshContext = await browser.newContext({
         viewport: { width: 1280, height: 900 },
-        storageState: { cookies: [], origins: [] },
+        storageState: { cookies: [classicModeCookie(baseURL)], origins: [] },
       })
       const freshPage = await freshContext.newPage()
 
@@ -2815,4 +2831,5 @@ const testWithFixtures = test.extend({
 // Export our enhanced test function with all fixtures and expect
 exports.test = testWithFixtures
 exports.expect = base.expect
+exports.classicModeCookie = classicModeCookie
 exports.NUXT_TEST_UTILS_AVAILABLE = NUXT_TEST_UTILS_AVAILABLE
