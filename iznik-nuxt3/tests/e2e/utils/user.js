@@ -13,6 +13,7 @@ const {
   noteRecovery,
 } = require('./app-mount')
 const { waitForModal } = require('./ui')
+const { classicModeCookie, defaultBaseURL } = require('./uiMode')
 
 /**
  * Remove any leftover modal backdrop.
@@ -141,6 +142,9 @@ async function clearSessionData(page) {
   try {
     const context = page.context()
     await context.clearCookies()
+    // Cookies gone means the front door is the chat shell again; these helpers
+    // drive the classic pages, so put that choice back.
+    await context.addCookies([classicModeCookie(defaultBaseURL())])
   } catch (e) {
     // "not supported": the app project's context is the Android WebView's own,
     // which has no cookie management over CDP; the storage above is what the app

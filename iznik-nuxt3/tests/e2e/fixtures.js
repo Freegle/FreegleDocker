@@ -308,18 +308,7 @@ async function newPageWithRetry(context) {
 
 // The chat shell is the default front door. These specs describe the classic pages, so
 // every context starts with the classic choice; the chat shell specs replace it.
-function classicModeCookie(baseURL) {
-  return {
-    name: 'freegle-ui-mode',
-    value: 'classic',
-    domain: new URL(baseURL).hostname,
-    path: '/',
-    expires: -1,
-    httpOnly: false,
-    secure: false,
-    sameSite: 'Lax',
-  }
-}
+const { classicModeCookie } = require('./utils/uiMode')
 
 // Define a custom test function that wraps the base test to add automatic screenshot capture
 const fixtures = {
