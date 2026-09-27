@@ -21,6 +21,7 @@ const mockUpdate = vi.fn()
 const mockApprove = vi.fn()
 const mockReject = vi.fn()
 const mockDelete = vi.fn()
+const mockMarkChecked = vi.fn()
 
 vi.mock('~/api', () => ({
   default: () => ({
@@ -40,6 +41,7 @@ vi.mock('~/api', () => ({
       approve: mockApprove,
       reject: mockReject,
       delete: mockDelete,
+      markChecked: mockMarkChecked,
     },
   }),
 }))
@@ -923,5 +925,31 @@ describe('message store - acting on several communities', () => {
 
     expect(mockDelete.mock.calls[0]).toHaveLength(5)
     expect(store.fetchMT).not.toHaveBeenCalled()
+  })
+})
+
+// Reject from the Check queue pulls the post back to Pending and keeps it in the list,
+// now as a Pending card the moderator acts on in place.
+describe('message store - rejectFromOversight()', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('marks the post pulled back and keeps it, refreshed, as Pending', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[700] = { id: 700, groups: [{ groupid: 3, collection: 'Approved' }] }
+    mockMarkChecked.mockResolvedValue({ success: true })
+    store.fetchMT = vi.fn().mockResolvedValue({
+      id: 700,
+      groups: [{ groupid: 3, collection: 'Pending', heldby: 9 }],
+    })
+
+    await store.rejectFromOversight(700, 3)
+
+    expect(mockMarkChecked).toHaveBeenCalledWith({ groupid: 3, ids: [700], reject: true })
+    expect(store.pulledBack[700]).toBe(true)
+    expect(store.list[700].groups[0].collection).toBe('Pending')
   })
 })
