@@ -109,8 +109,8 @@ turn on something that publishes posts. The earned-reach gate is read the same w
 a positive whole number or the default; blank, zero, negative, fractional and non-numeric all
 mean the default. A group list keeps only plain-digit ids, so `12abc` is not community 12. The
 two earned-reach numbers (`RIPPLE_AUTOAPPROVE_HOLD_SECONDS` and `RIPPLE_CLEAN_VIEWS_PER_GROUP`)
-are plain integers instead, where `0` means off; blank keeps the default (they are read
-through `EnvSetting::env`), but a typo is not caught.
+are counts where `0` is a real setting (hold off, cap off): blank or unset means the default,
+and only an explicit `0` turns them off.
 
 ### The automated review service's own settings
 
