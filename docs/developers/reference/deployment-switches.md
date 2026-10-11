@@ -18,6 +18,7 @@ covers:
   - iznik-server-go/message/messageOutcome.go
   - iznik-server-go/test/message_agreement_test.go
   - iznik-server-go/utils/autoapprovetrial.go
+  - iznik-server-go/utils/envsetting.go
   - iznik-nuxt3/eslint.config.mjs
   - .env.background.example
   - iznik-batch/app/Support/EnvSetting.php
@@ -101,14 +102,15 @@ one blank, and fails if the two results differ, so a new bare `env()` read canno
 
 The batch reads the post-moderation switches, group lists and numbers above through
 `App\Support\EnvSetting`, and the Go API applies the same rule
-(`iznik-server-go/utils/autoapprovetrial.go`), so the cron and the countdown cannot disagree
-about a community. A switch is on only for `true` or `1`, in
-any case: `yes`, `on`, `off` and `no` are all off, so a word that merely looks like a value
-cannot turn on something that publishes posts. A number is a positive whole number or the
-default; blank, zero, negative, fractional and non-numeric all mean the default. A group list
-keeps only plain-digit ids, so `12abc` is not community 12. The `ripple.*` settings further up
-go through `EnvSetting::env` (blank means the default) but are otherwise plain `env()` values,
-not parsed by the stricter rules above.
+(`iznik-server-go/utils/envsetting.go`, tested against the same cases), so the cron and the
+countdown cannot disagree about a community. A switch is on only for `true` or `1`, in any
+case: `yes`, `on`, `off` and `no` are all off, so a word that merely looks like a value cannot
+turn on something that publishes posts. The earned-reach gate is read the same way. A number is
+a positive whole number or the default; blank, zero, negative, fractional and non-numeric all
+mean the default. A group list keeps only plain-digit ids, so `12abc` is not community 12. The
+two earned-reach numbers (`RIPPLE_AUTOAPPROVE_HOLD_SECONDS` and `RIPPLE_CLEAN_VIEWS_PER_GROUP`)
+are plain integers instead, where `0` means off; blank keeps the default (they are read
+through `EnvSetting::env`), but a typo is not caught.
 
 ### The automated review service's own settings
 

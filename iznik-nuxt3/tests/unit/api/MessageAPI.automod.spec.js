@@ -68,7 +68,24 @@ describe('MessageAPI - Check queue and automated review', () => {
 
     await api.automodFeedbackUndo(body)
 
-    expect(spy).toHaveBeenCalledWith('/modtools/automod/feedback', body)
+    expect(spy).toHaveBeenCalledWith(
+      '/modtools/automod/feedback',
+      body,
+      expect.any(Function)
+    )
+  })
+
+  it('keeps a 404 on taking a mark back out of Sentry', async () => {
+    // 404 is how the server says there was no mark to take back, which the store counts as
+    // done. Any other failure is still worth reporting.
+    const spy = vi.spyOn(api, '$delv2').mockResolvedValue({})
+
+    await api.automodFeedbackUndo({ msgid: 5, groupid: 3, node: 'APPROVE' })
+
+    const logError = spy.mock.calls[0][2]
+    expect(logError({ error: 404, message: 'No such mark' })).toBe(false)
+    expect(logError({ error: 500, message: 'Boom' })).toBe(true)
+    expect(logError(undefined)).toBe(true)
   })
 
   it('asks for the agreement report with its window and community', async () => {
@@ -97,7 +114,7 @@ describe('MessageAPI - Check queue and automated review', () => {
         headers: { 'Content-Type': 'application/json' },
         params: body,
       },
-      true
+      expect.any(Function)
     )
   })
 })

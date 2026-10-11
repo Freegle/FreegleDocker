@@ -764,9 +764,16 @@ export const useMessageStore = defineStore('message', {
       return await api(this.config).message.automodFeedback(params)
     },
 
-    // Take back the caller's own mark on that node ({msgid, groupid, node}, as for the mark).
+    // Take back the caller's own mark on that node ({msgid, groupid, node}, as for the mark). The
+    // server answers 404 when there is no mark on that step: another tab took it back first, or
+    // this screen was stale. The moderator wanted it gone and it is, so that counts as done.
     async deleteAutomodFeedback(params) {
-      return await api(this.config).message.automodFeedbackUndo(params)
+      try {
+        return await api(this.config).message.automodFeedbackUndo(params)
+      } catch (e) {
+        if (e?.response?.status === 404) return { success: true }
+        throw e
+      }
     },
 
     // Fetch SysAdmin automated review agreement analytics for the last N days.

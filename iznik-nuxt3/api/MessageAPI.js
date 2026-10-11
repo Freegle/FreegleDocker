@@ -99,8 +99,14 @@ export default class MessageAPI extends BaseAPI {
   }
 
   // Takes back the caller's own mark on that node; the body is the same {msgid, groupid, node}.
+  // The server answers 404 when there is no mark to take back, which the store counts as done,
+  // so that answer is kept out of Sentry.
   automodFeedbackUndo(params) {
-    return this.$delv2('/modtools/automod/feedback', params)
+    return this.$delv2(
+      '/modtools/automod/feedback',
+      params,
+      (data) => data?.error !== 404
+    )
   }
 
   // SysAdmin automated review agreement analytics for the last N days.

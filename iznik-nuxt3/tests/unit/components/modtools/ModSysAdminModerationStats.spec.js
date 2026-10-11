@@ -290,22 +290,21 @@ describe('ModSysAdminModerationStats.vue', () => {
       expect(wrapper.vm.sampleBadRate).toBe('20.0%')
     })
 
-    it('shows how much of the sample has been decided, and the rate over those', async () => {
+    it('shows how many of the sample have been decided and the rate over those', async () => {
       mockMessageStore.fetchModerationStats.mockResolvedValue(sampled)
       const wrapper = mountFull()
       await flushPromises()
-      const text = wrapper.text()
-      expect(text).toContain('a moderator has decided')
-      expect(text).toContain('25.0% of the sample')
-      expect(text).toContain('20.0% of those decided were bad')
-      expect(text).not.toContain('5.0% were bad')
+      expect(wrapper.find('[data-testid="sample-decided"]').text()).toBe('10')
+      expect(wrapper.find('[data-testid="sample-bad-rate"]').text()).toContain(
+        '20.0% were bad'
+      )
     })
 
     it('says why the rate is over the decided ones', async () => {
       mockMessageStore.fetchModerationStats.mockResolvedValue(sampled)
       const wrapper = mountFull()
       await flushPromises()
-      expect(wrapper.text()).toContain('still waiting for somebody to look')
+      expect(wrapper.text()).toContain('the rest are still waiting')
     })
 
     it('judges the verdict on the decided rate', async () => {
@@ -332,11 +331,26 @@ describe('ModSysAdminModerationStats.vue', () => {
       await flushPromises()
       expect(wrapper.vm.sampleBadRate).toBe('-')
       expect(wrapper.text()).toContain(
+        '6 posts were held back for a manual quality check'
+      )
+      expect(wrapper.text()).toContain(
         'no moderator has decided any of them yet'
       )
       expect(wrapper.text()).not.toContain(
         'No quality-check sample in this period'
       )
+    })
+
+    it('says "1 post was" for a sample of one', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue({
+        ...sampled,
+        qualitySampled: 1,
+        qualitySampleDecided: 0,
+        qualitySampleBad: 0,
+      })
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.text()).toContain('1 post was held back')
     })
 
     it('still says there is no sample when nothing was sampled', async () => {
@@ -349,18 +363,6 @@ describe('ModSysAdminModerationStats.vue', () => {
       const wrapper = mountFull()
       await flushPromises()
       expect(wrapper.text()).toContain('No quality-check sample in this period')
-    })
-
-    it('falls back to every post sampled when the API does not report the decided count', async () => {
-      mockMessageStore.fetchModerationStats.mockResolvedValue({
-        ...sampleStats,
-        qualitySampled: 40,
-        qualitySampleBad: 1,
-      })
-      const wrapper = mountFull()
-      await flushPromises()
-      expect(wrapper.vm.sampleBadRate).toBe('2.5%')
-      expect(wrapper.text()).not.toContain('a moderator has decided')
     })
   })
 })

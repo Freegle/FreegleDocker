@@ -1053,6 +1053,40 @@ describe('message store - automod feedback', () => {
       node: 'APPROVE',
     })
   })
+
+  it('counts a 404 on taking the mark back as done', async () => {
+    // The server answers 404 when there is no mark on that step to take back: another tab got
+    // there first, or the screen was stale. The moderator wanted it gone and it is, so asking
+    // them to try again would only send them round the same dead end.
+    const store = useMessageStore()
+    store.config = {}
+    mockAutomodFeedbackUndo.mockRejectedValue({ response: { status: 404 } })
+
+    await expect(
+      store.deleteAutomodFeedback({ msgid: 5, groupid: 3, node: 'APPROVE' })
+    ).resolves.toMatchObject({ success: true })
+  })
+
+  it('passes any other failure of taking a mark back on', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    mockAutomodFeedbackUndo.mockRejectedValue({ response: { status: 500 } })
+
+    await expect(
+      store.deleteAutomodFeedback({ msgid: 5, groupid: 3, node: 'APPROVE' })
+    ).rejects.toMatchObject({ response: { status: 500 } })
+  })
+
+  it('does not hide a failed mark behind the same rule', async () => {
+    // Only taking a mark back may treat a 404 as done. A mark that was refused is not recorded.
+    const store = useMessageStore()
+    store.config = {}
+    mockAutomodFeedback.mockRejectedValue({ response: { status: 404 } })
+
+    await expect(
+      store.postAutomodFeedback({ msgid: 5, groupid: 3, node: 'APPROVE' })
+    ).rejects.toMatchObject({ response: { status: 404 } })
+  })
 })
 
 // Approve, Reject and Delete on a post pending on several of a moderator's communities name

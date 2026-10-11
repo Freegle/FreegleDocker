@@ -486,18 +486,23 @@ These are known and not fully solved:
   error rate for the posts automated review's approve published (the 48-hour fallback
   publishes on every community, so it is counted separately and not allowed to dilute the
   trial's rate), how many of the checks were two microvolunteers rather than a moderator,
-  quality-sample verdicts against it, and the time posts spent paused waiting for a
-  moderator. The automated review panel beside it, for the last 7, 30 or 90 days and for
-  all trial communities or one of them: how many posts it reviewed in shadow and in
+  the quality sample's verdicts against it (the share of the sampled posts a moderator
+  has given a verdict on that they rejected or deleted; samples still waiting are not
+  counted, so the rate does not read low while moderators catch up), and the time posts
+  spent paused waiting for a moderator. The automated review panel beside it, for the last
+  7, 30 or 90 days and for all trial communities or one of them: how many posts it reviewed in shadow and in
   approve mode; how many posts were pulled back from Check and how many of those a
   moderator then approved (false alarms) or rejected (real catches); how many times it
   **could not run** (the service was down, so the post waited for a moderator); how many
   it decided **late**, after the wait had already run out, so the post published with no
   countdown ever shown; the time from content check to decision, average and longest;
   for each place the flowchart ended, how often a **moderator disagreed** (a hold they
-  approved, an approval they rejected, deleted or pulled back) and how often a
-  **neighbour disagreed** (a copy of an approved post that a neighbouring community's
-  moderator rejected after it rippled in); the same per community (a community that ran
+  approved, or an approval they rejected, deleted or put on hold; the poster withdrawing
+  their own post does not count) and how often a **neighbour disagreed** (a copy of an
+  approved post that a neighbouring community's moderator rejected, deleted or held after
+  it rippled in; your own community's pull-backs are not a neighbour's); decisions where
+  the service could not run, or the community has every post checked, are left out of
+  those counts; the same per community (a community that ran
   in shadow and then in approve mode has a row for each, and the approve mode figure is a
   lower bound, because only a post somebody opens in Check meets a moderator), per chart
   version (so a new chart or model shows as its own row) and per day (the trend); and the

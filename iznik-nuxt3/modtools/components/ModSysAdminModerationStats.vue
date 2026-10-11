@@ -295,6 +295,14 @@ const verdictVariant = computed(() => {
 
 const verdict = computed(() => {
   if (sampleBadRateNum.value === null) {
+    // Posts were held back but nobody has given a verdict on any yet: there is a sample, and
+    // nothing to compare it with. That is not the same as there being no sample.
+    const sampled = stats.value?.qualitySampled
+    if (sampled > 0) {
+      const were = sampled === 1 ? '1 post was' : `${sampled} posts were`
+      return `${were} held back for a manual quality check in this period, but no moderator has decided any of them yet, so there is nothing to cross-check against.`
+    }
+
     return 'No quality-check sample in this period. The share of approved posts held back for a moderator is one setting for every community (FREEGLE_AUTOAPPROVE_QUALITY_CHECK_PCT in the batch environment); while it is 0 there is no sample to cross-check against.'
   }
   const diff = sampleBadRateNum.value - autoErrorRateNum.value
