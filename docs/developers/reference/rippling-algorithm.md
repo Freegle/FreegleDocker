@@ -850,8 +850,8 @@ was posted to directly. `advanceDue` writes its status with `status <> 'held'`, 
 while a run is in flight survives it.
 
 `FreezeReachIfOriginPending` (`iznik-server-go/microvolunteering`) sets `status='held'` when a
-post's origin copy stops being live-Approved: Back to pending, a Check pull-back or a report quorum. A
-home community's Back to pending freezes unconditionally (`FreezeReach`), because a
+post's origin copy stops being live-Approved: Back to pending, a Check pull-back or a report
+quorum. A home community's Back to pending freezes unconditionally (`FreezeReach`), because a
 hand-approved copy on a second home community can leave the origin Approved. The third writer is
 `modmessaging.RemoveUnaddressedPost`, which takes an unaddressed post off the platform on a
 report quorum: every copy is soft-deleted and the reach frozen directly. Those are the only
