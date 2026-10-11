@@ -65,6 +65,35 @@ Before that flag existed, the content check re-approved every unheld copy a minu
 next edit, with no log entry, so a moderator's decision was quietly undone everywhere but on
 their own group (122011064, 121985402). Any new automatic approval path must honour the flag.
 
+## A pull-back freezes the reach, and approving the home copy resumes it
+
+A pull-back sets `rippling_reach.status` to `held` with nothing scheduled: `FreezeReachIfOriginPending`
+once the post's home copy is no longer live (a moderator's Back to pending, a members' report quorum,
+a moderator's report), and `FreezeReach` outright for a home community's Back to pending. A
+moderator's **Approve of a home copy** (`handleApprove`, `rippled_in = 0`, any community the post was
+posted to) then calls `ResumeReachIfHeld`: `held` becomes `expanding`, due now. The engine's next run
+catches the reach up to the tick the clock says the post is at, counted from its arrival, so the
+time it spent in review is not given back and a post held for hours takes several steps at once.
+Nobody already told is told again (`rippling_reach_notified`), and `updated_at` is left for the
+engine to bump, because it is the reach mailer's signal.
+
+What does not resume it, silently:
+
+- **A home community's Back to pending.** It writes `rippling_blocked` as well: the post must never
+  ripple again, and `ResumeReachIfHeld` refuses a blocked post. The same row is what stops a repost,
+  which deletes the reach row, starting a new reach.
+- **Approving a rippled-in copy alone.** That says nothing about the post's own community.
+- **A reach that is not `held`.** `expanding` keeps its schedule; `done` and `stopped` are left
+  alone. A frozen reach has lost which of those it was, and the engine returns a finished one to
+  `done` the next time it looks.
+- **A post with no live home copy.** The check is in the same UPDATE as the write, because the
+  engine retracts the rippled copies of an `expanding` reach whose origin is not live and deletes
+  its reach row (`retractCopiesOrphanedByOriginRemoval`), which is what the freeze exists to prevent.
+
+A new way of approving a home copy, or of undoing a pull-back, has to call `ResumeReachIfHeld`
+itself. Nothing else will: the post stays `held` for the rest of its life, with no error and no log
+line, and members stop being told about it.
+
 ## Nothing ripples unless its home copy is approved
 
 `messages_spatial` keeps a post for up to five minutes after it is moved back to Pending, and

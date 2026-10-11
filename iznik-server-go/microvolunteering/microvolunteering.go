@@ -978,7 +978,9 @@ func SendForReviewGroupsExcept(db *gorm.DB, msgid uint64, reason string, rippled
 // retraction paths skip it and the Pending rippled copies persist for per-group
 // moderation, and (c) initialiseNew's anti-join can never re-reach + re-notify it if a
 // moderator later re-approves a copy. No-op if the origin is still live, or there is no
-// reach row. Exported for the moderation Back to Pending path.
+// reach row. Exported for the moderation Back to Pending path. A moderator's Approve of the
+// home copy lifts the freeze again (ResumeReachIfHeld), unless the home community sent the
+// post back, which also bars it from rippling for good (rippling_blocked).
 func FreezeReachIfOriginPending(db *gorm.DB, msgid uint64) {
 	if msgid == 0 {
 		return
@@ -1002,6 +1004,39 @@ func FreezeReach(db *gorm.DB, msgid uint64) {
 	}
 	db.Table("rippling_reach").Where("msgid = ? AND status <> 'held'", msgid).
 		Updates(map[string]interface{}{"status": gorm.Expr("'held'"), "next_expansion_at": gorm.Expr("NULL")})
+}
+
+// ResumeReachIfHeld lets a frozen ripple spread again once a moderator has approved the post's
+// home copy: status 'held' goes back to 'expanding' with the next step due now, so the engine's
+// next run carries on from the tick the reach had got to, caught up to where the clock has got
+// to since the post arrived. It is the counterpart of FreezeReachIfOriginPending and writes
+// nothing else. updated_at stays as it is, because it is the reach mailer's signal and the
+// engine bumps it when it next advances the row; members already told about the post are not
+// told again (rippling_reach_notified).
+//
+// Three things are not resumed. A post in rippling_blocked stays frozen: its home community sent
+// it back, it must never ripple again, and that block is also what stops a repost, which deletes
+// the reach row, starting a new reach. A post with no live home copy stays frozen, because the
+// engine retracts the rippled copies of an 'expanding' reach whose origin is not live; the check
+// is in the same statement as the write, so a send-back landing in between cannot be undone by
+// it. And only 'held' is touched: an 'expanding' reach keeps its schedule, and 'done' and
+// 'stopped' are left as they are (a frozen one has lost which it was, and the engine puts a
+// finished reach back to 'done' the next time it looks).
+//
+// Reports whether a reach was resumed. Called by the moderation Approve of a home copy.
+func ResumeReachIfHeld(db *gorm.DB, msgid uint64) bool {
+	if msgid == 0 {
+		return false
+	}
+
+	res := db.Table("rippling_reach").
+		Where("msgid = ? AND status = 'held'", msgid).
+		Where("NOT EXISTS (SELECT 1 FROM rippling_blocked rb WHERE rb.msgid = rippling_reach.msgid)").
+		Where("EXISTS (SELECT 1 FROM messages_groups mg WHERE mg.msgid = rippling_reach.msgid "+
+			"AND mg.rippled_in = 0 AND mg.deleted = 0 AND mg.collection = ?)", utils.COLLECTION_APPROVED).
+		Updates(map[string]interface{}{"status": gorm.Expr("'expanding'"), "next_expansion_at": gorm.Expr("NOW()")})
+
+	return res.Error == nil && res.RowsAffected > 0
 }
 
 // reporterIsModOf reports whether the reporter's verdict on the group they reported on
