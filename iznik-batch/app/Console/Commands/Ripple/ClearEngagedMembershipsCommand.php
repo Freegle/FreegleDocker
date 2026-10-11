@@ -20,7 +20,7 @@ class ClearEngagedMembershipsCommand extends Command
     use GracefulShutdown;
 
     protected $signature = 'ripple:clear-engaged
-                            {--days=120 : How far back a first run looks, when no position is saved}';
+                            {--days=30 : How far back a first run looks, when no position is saved}';
 
     protected $description = 'Make ripple-created memberships ordinary once the member has engaged with the community';
 
