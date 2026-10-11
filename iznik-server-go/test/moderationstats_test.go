@@ -54,6 +54,10 @@ func TestModerationStats_CountsAutoApprovedAndSample(t *testing.T) {
 	// A quality-check sample post (held back for manual review).
 	sampleMsg := CreateTestMessage(t, nullPoster, groupID, prefix+" quality sample", 52.0, -1.0)
 	db.Exec("UPDATE messages_groups SET collection='Pending', quality_sample=1, arrival=NOW() WHERE msgid=?", sampleMsg)
+	// The sample is stamped as the automated review records its approve, and counted from then.
+	db.Exec("INSERT INTO messages_automod (msgid, groupid, mode, chart_version, verdict, end_node, reason, path, created) "+
+		"VALUES (?, ?, 'approve', 'v1', 'approve', 'test_end', NULL, '{}', NOW())", sampleMsg, groupID)
+	defer db.Exec("DELETE FROM messages_automod WHERE msgid = ?", sampleMsg)
 
 	today := time.Now().Format("2006-01-02")
 	resp, err := getApp().Test(httptest.NewRequest("GET",
@@ -177,7 +181,10 @@ func TestModerationStats_AllFieldsExactCounts(t *testing.T) {
 	// qualitySampled = 1 (msgQ) + qualitySampleBad = 1 (a Rejected on it, also +1 manualRejected).
 	msgQ := CreateTestMessage(t, poster, groupID, prefix+" sample", 52.0, -1.0)
 	db.Exec("UPDATE messages_groups SET collection='Pending', quality_sample=1, arrival=? WHERE msgid=?", tEarly, msgQ)
-	db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, byuser, user) VALUES (?, 'Message', 'Rejected', ?, ?, ?, ?)", tEarly, msgQ, groupID, mod, poster)
+	// The sample is counted from the automated review's approve, which is what stamped it.
+	db.Exec("INSERT INTO messages_automod (msgid, groupid, mode, chart_version, verdict, end_node, reason, path, created) "+
+		"VALUES (?, ?, 'approve', 'v1', 'approve', 'test_end', NULL, '{}', ?)", msgQ, groupID, tEarly)
+	db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, byuser, user) VALUES (?, 'Message', 'Rejected', ?, ?, ?, ?)", tLater, msgQ, groupID, mod, poster)
 
 	resp, err := getApp().Test(httptest.NewRequest("GET",
 		fmt.Sprintf("/api/modtools/moderationstats?start=%s&end=%s&jwt=%s", day, day, adminToken), nil))
@@ -198,7 +205,10 @@ func TestModerationStats_AllFieldsExactCounts(t *testing.T) {
 	assert.Equal(t, float64(1), f("autoLaterActioned"), "autoLaterActioned")
 	assert.Equal(t, float64(1), f("qualitySampled"), "qualitySampled")
 	assert.Equal(t, float64(1), f("qualitySampleBad"), "qualitySampleBad")
+	assert.Equal(t, float64(1), f("qualitySampleDecided"), "qualitySampleDecided (the moderator's rejection is a verdict)")
+	assert.Equal(t, float64(1), f("autoLaterActionedClean"), "autoLaterActionedClean (msgA: published by the clean path, then rejected)")
 
+	db.Exec("DELETE FROM messages_automod WHERE msgid = ?", msgQ)
 	db.Exec("DELETE FROM logs WHERE timestamp BETWEEN ? AND ?", "2005-06-13 00:00:00", "2005-06-13 23:59:59")
 	db.Exec("DELETE FROM messages_groups WHERE msgid IN (?, ?, ?, ?)", msgA, msgV, msgT, msgQ)
 	db.Exec("DELETE FROM messages WHERE id IN (?, ?, ?, ?)", msgA, msgV, msgT, msgQ)
@@ -242,4 +252,146 @@ func TestModerationStats_TrustedIsBoundedByArrival(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&stats)
 	trusted, _ := stats["trusted"].(float64)
 	assert.Equal(t, float64(1), trusted, "the post that arrived and was approved in the window counts; the one that arrived long before is outside the bound")
+}
+
+// sampleCopy makes a copy held back as a quality sample: stamped when the automated review recorded
+// its approve at decided, and with arrival wherever the caller says (a moderator's approve
+// re-stamps it to the time of the approval).
+func sampleCopy(t *testing.T, poster, groupID uint64, name, decided, arrival string, sampled bool) uint64 {
+	db := database.DBConn
+	msg := CreateTestMessage(t, poster, groupID, name, 52.0, -1.0)
+	flag := 0
+	if sampled {
+		flag = 1
+	}
+	db.Exec("UPDATE messages_groups SET collection='Pending', quality_sample=?, arrival=? WHERE msgid=?", flag, arrival, msg)
+	db.Exec("INSERT INTO messages_automod (msgid, groupid, mode, chart_version, verdict, end_node, reason, path, created) "+
+		"VALUES (?, ?, 'approve', 'v1', 'approve', 'test_end', NULL, '{}', ?)", msg, groupID, decided)
+	return msg
+}
+
+// The quality sample is counted in the window its approve was recorded in, which is when it was
+// drawn, and not by messages_groups.arrival: a moderator's approve re-stamps arrival to the time
+// of the approval, so approved samples drifted into the window after the one they belonged to
+// while rejected ones stayed. And the rate of bad ones is of those a moderator has decided, not
+// of every sample, most of which are still waiting for someone to look.
+func TestModerationStats_QualitySampleIsBucketedByTheDecisionAndDividedByDecided(t *testing.T) {
+	prefix := uniquePrefix("modstats_sample")
+	db := database.DBConn
+
+	const day = "2005-06-16"
+	const inWindow = "2005-06-16 10:00:00"
+	const verdictAt = "2005-06-16 11:00:00"
+	const beforeSample = "2005-06-16 09:00:00"
+	const longBefore = "2005-06-09 10:00:00"
+	const afterWindow = "2005-06-30 09:00:00"
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	mod := CreateTestUser(t, prefix+"_mod", "User")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	CreateTestMembership(t, poster, groupID, "Member")
+	_, adminToken := CreateTestSession(t, adminID)
+
+	verdict := func(msg uint64, subtype string, at string, by uint64) {
+		db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, byuser, user) VALUES (?, 'Message', ?, ?, ?, ?, ?)",
+			at, subtype, msg, groupID, by, poster)
+	}
+
+	// Approved by a moderator, whose approve re-stamped arrival to long after the window.
+	approved := sampleCopy(t, poster, groupID, prefix+" approved", inWindow, afterWindow, true)
+	verdict(approved, "Approved", verdictAt, mod)
+	// Rejected by a moderator: a bad one.
+	rejected := sampleCopy(t, poster, groupID, prefix+" rejected", inWindow, inWindow, true)
+	verdict(rejected, "Rejected", verdictAt, mod)
+	// Still waiting for a verdict, arrival also re-stamped away from the window.
+	waiting := sampleCopy(t, poster, groupID, prefix+" waiting", inWindow, afterWindow, true)
+	// The poster withdrew it themselves: not a moderator's verdict.
+	withdrawn := sampleCopy(t, poster, groupID, prefix+" withdrawn", inWindow, inWindow, true)
+	verdict(withdrawn, "Deleted", verdictAt, poster)
+	// An approval from before the sample was drawn is not a verdict on the sample.
+	earlier := sampleCopy(t, poster, groupID, prefix+" earlier approval", inWindow, inWindow, true)
+	verdict(earlier, "Approved", beforeSample, mod)
+	// Drawn long before the window, arrival (and a verdict) inside it: not this window's.
+	old := sampleCopy(t, poster, groupID, prefix+" old sample", longBefore, inWindow, true)
+	verdict(old, "Rejected", verdictAt, mod)
+	// Not in the sample at all.
+	plain := sampleCopy(t, poster, groupID, prefix+" not sampled", inWindow, inWindow, false)
+	verdict(plain, "Approved", verdictAt, mod)
+
+	msgs := []uint64{approved, rejected, waiting, withdrawn, earlier, old, plain}
+	defer func() {
+		for _, m := range msgs {
+			db.Exec("DELETE FROM messages_automod WHERE msgid = ?", m)
+			db.Exec("DELETE FROM messages_groups WHERE msgid = ?", m)
+			db.Exec("DELETE FROM messages WHERE id = ?", m)
+		}
+		db.Exec("DELETE FROM logs WHERE timestamp BETWEEN ? AND ?", "2005-06-16 00:00:00", "2005-06-16 23:59:59")
+	}()
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/modtools/moderationstats?start=%s&end=%s&jwt=%s", day, day, adminToken), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	var stats map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&stats)
+	f := func(k string) float64 { v, _ := stats[k].(float64); return v }
+
+	assert.Equal(t, float64(5), f("qualitySampled"), "drawn in the window: approved, rejected, waiting, withdrawn, earlier approval")
+	assert.Equal(t, float64(2), f("qualitySampleDecided"), "a moderator has decided two: the approved one and the rejected one")
+	assert.Equal(t, float64(1), f("qualitySampleBad"), "of which one was rejected")
+}
+
+// autoLaterActioned counts every auto-published post that was later acted on, the 48-hour
+// fallback's included; the trial's own error rate needs the same count over the posts the clean
+// path published (the Autoapproved log's text is 'automod'), to set against autoApprovedClean.
+func TestModerationStats_LaterActionedCleanCountsOnlyThePostsTheTrialPublished(t *testing.T) {
+	prefix := uniquePrefix("modstats_clean")
+	db := database.DBConn
+
+	const day = "2005-06-17"
+	const published = "2005-06-17 10:00:00"
+	const actedOn = "2005-06-17 11:00:00"
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	mod := CreateTestUser(t, prefix+"_mod", "User")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	CreateTestMembership(t, poster, groupID, "Member")
+	_, adminToken := CreateTestSession(t, adminID)
+
+	autoPublished := func(name, text string, actedOnAfter string) uint64 {
+		msg := CreateTestMessage(t, poster, groupID, prefix+" "+name, 52.0, -1.0)
+		db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, user, text) VALUES (?, 'Message', 'Autoapproved', ?, ?, ?, ?)",
+			published, msg, groupID, poster, text)
+		if actedOnAfter != "" {
+			db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, byuser, user) VALUES (?, 'Message', ?, ?, ?, ?, ?)",
+				actedOn, actedOnAfter, msg, groupID, mod, poster)
+		}
+		return msg
+	}
+	cleanRejected := autoPublished("clean rejected", "automod", "Rejected")
+	cleanQuiet := autoPublished("clean quiet", "automod", "")
+	fallbackDeleted := autoPublished("fallback deleted", "", "Deleted")
+	msgs := []uint64{cleanRejected, cleanQuiet, fallbackDeleted}
+	defer func() {
+		for _, m := range msgs {
+			db.Exec("DELETE FROM messages_groups WHERE msgid = ?", m)
+			db.Exec("DELETE FROM messages WHERE id = ?", m)
+		}
+		db.Exec("DELETE FROM logs WHERE timestamp BETWEEN ? AND ?", "2005-06-17 00:00:00", "2005-06-17 23:59:59")
+	}()
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/modtools/moderationstats?start=%s&end=%s&jwt=%s", day, day, adminToken), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	var stats map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&stats)
+	f := func(k string) float64 { v, _ := stats[k].(float64); return v }
+
+	assert.Equal(t, float64(3), f("autoApproved"), "all three were auto-published")
+	assert.Equal(t, float64(2), f("autoApprovedClean"), "two by the clean path")
+	assert.Equal(t, float64(2), f("autoLaterActioned"), "two were acted on afterwards: one clean, one fallback")
+	assert.Equal(t, float64(1), f("autoLaterActionedClean"), "of the clean path's, one")
 }

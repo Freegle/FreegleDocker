@@ -227,6 +227,7 @@ type agreementBody struct {
 	Feedback []struct {
 		Node  string `json:"node"`
 		Count int64  `json:"count"`
+		Posts int64  `json:"posts"`
 	} `json:"feedback"`
 	PulledBack         int64 `json:"pulledBack"`
 	PulledBackApproved int64 `json:"pulledBackApproved"`

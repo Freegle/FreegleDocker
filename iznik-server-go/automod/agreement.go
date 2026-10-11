@@ -27,10 +27,13 @@ type EndCount struct {
 	NeighbourDisagreed int64  `json:"neighbourDisagreed"`
 }
 
-// FeedbackCount is how many times moderators marked one node's answer as wrong.
+// FeedbackCount is how often moderators marked one node's answer as wrong: Count is the marks,
+// and Posts the decisions they were on, so two moderators marking one post is two marks on one
+// post and a step that is wrong on many posts is told from one that one post set off.
 type FeedbackCount struct {
 	Node  string `json:"node" gorm:"column:node"`
 	Count int64  `json:"count" gorm:"column:count"`
+	Posts int64  `json:"posts" gorm:"column:posts"`
 }
 
 // ModeCount is how many decisions were recorded in one mode.
@@ -389,7 +392,7 @@ func Agreement(c *fiber.Ctx) error {
 	if groupid > 0 {
 		feedback = feedback.Where("ma.groupid = ?", groupid)
 	}
-	feedback.Select("f.node, COUNT(*) AS count").
+	feedback.Select("f.node, COUNT(*) AS count, COUNT(DISTINCT f.automodid) AS posts").
 		Group("f.node").
 		Order("count DESC").
 		Scan(&resp.Feedback)

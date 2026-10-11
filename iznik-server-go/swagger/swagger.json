@@ -4431,6 +4431,45 @@
       "BearerAuth": []
      }
     ]
+   },
+   "delete": {
+    "description": "A moderator removes their own mark from one step of an automated review decision. The step is\nnamed in the body, as for marking it. Answers 404 when the moderator has no mark there.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "Take back a mark on an automated review step",
+    "operationId": "automodFeedbackUndo",
+    "parameters": [
+     {
+      "name": "Body",
+      "in": "body",
+      "schema": {
+       "$ref": "#/definitions/FeedbackRequest"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/genericResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "404": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
    }
   },
   "/modtools/automod/agreement": {

@@ -155,8 +155,9 @@ func TestAutoapproveatDelayIsSiteWide(t *testing.T) {
 
 	msg := CreateTestMessage(t, poster, groupID, prefix+" clean pending", 52.0, -1.0)
 	db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW() - INTERVAL 5 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 4 MINUTE, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", msg)
-	// Decided a minute after the content check, as the chart normally is.
-	insertAutomodRow(t, msg, groupID, "approve", 4)
+	// Decided a minute after the content check, as the chart normally is (the cron wants the
+	// decision strictly later than the check, so it cannot be the same second).
+	insertAutomodRow(t, msg, groupID, "approve", 3)
 	defer db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
 	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
 	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
@@ -169,7 +170,7 @@ func TestAutoapproveatDelayIsSiteWide(t *testing.T) {
 		return at
 	}
 
-	// Site-wide 20 minutes from a decision 4 minutes ago: about 16 minutes away, not
+	// Site-wide 20 minutes from a decision 3 minutes ago: about 17 minutes away, not
 	// already due as the group's 5-minute figure would make it.
 	at := parseAt(getAutoapproveatField(t, msg, groupID, modToken))
 	assert.True(t, at.After(time.Now().Add(12*time.Minute)),
@@ -1097,4 +1098,194 @@ func TestApproveOfACopyThatAlreadyPublishedChangesNothing(t *testing.T) {
 	var approvedby *uint64
 	db.Raw("SELECT approvedby FROM messages_groups WHERE msgid=? AND groupid=?", msg, groupID).Scan(&approvedby)
 	assert.Nil(t, approvedby, "the copy is still the cron's, not a moderator approval")
+}
+
+// holdState reads a copy's autoapprove_hold_until: whether one is set, and how many seconds
+// from now it ends.
+func holdState(msgid, groupid uint64) (set bool, secs int64) {
+	database.DBConn.Raw("SELECT autoapprove_hold_until IS NOT NULL, "+
+		"COALESCE(TIMESTAMPDIFF(SECOND, NOW(), autoapprove_hold_until), 0) "+
+		"FROM messages_groups WHERE msgid = ? AND groupid = ?", msgid, groupid).Row().Scan(&set, &secs)
+	return
+}
+
+// Opening the Pending queue holds every post it lists for at least ten minutes, not only the
+// page that was fetched: a moderator with the queue open must not see a post on page two
+// publish itself because they had not scrolled to it. The hold covers the communities in the
+// request that are in the trial, only extends, and leaves alone what the queue does not show.
+func TestListMessagesMTPendingHoldsEveryCopyOnTheListedCommunities(t *testing.T) {
+	prefix := uniquePrefix("hold_all")
+	db := database.DBConn
+
+	listed := CreateTestGroup(t, prefix+"_listed")
+	otherTrial := CreateTestGroup(t, prefix+"_other")
+	outside := CreateTestGroup(t, prefix+"_outside")
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "")
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", fmt.Sprintf("%d,%d", listed, otherTrial))
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	for _, gid := range []uint64{listed, otherTrial, outside} {
+		CreateTestMembership(t, poster, gid, "Member")
+		CreateTestMembership(t, modID, gid, "Moderator")
+	}
+	_, modToken := CreateTestSession(t, modID)
+
+	var msgs []uint64
+	pending := func(gid uint64, subject, extra string) uint64 {
+		m := CreateTestMessage(t, poster, gid, prefix+" "+subject, 52.0, -1.0)
+		db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW(), contentcheck_checked_at=NOW(), "+
+			"autoapprove_hold_until=NULL, heldby=NULL, rippled_in=0 "+extra+" WHERE msgid=?", m)
+		msgs = append(msgs, m)
+		return m
+	}
+	t.Cleanup(func() {
+		for _, m := range msgs {
+			db.Exec("DELETE FROM messages_groups WHERE msgid = ?", m)
+			db.Exec("DELETE FROM messages WHERE id = ?", m)
+		}
+	})
+
+	// Three posts waiting on the listed community: the page below fetches one of them.
+	a1 := pending(listed, "a1", "")
+	a2 := pending(listed, "a2", "")
+	a3 := pending(listed, "a3", "")
+	// Already held for an hour: a later load must not shorten that.
+	aLong := pending(listed, "long", ", autoapprove_hold_until = NOW() + INTERVAL 60 MINUTE")
+	// What the queue does not show, or what no hold could matter to.
+	aHeld := pending(listed, "held by a moderator", fmt.Sprintf(", heldby = %d", modID))
+	aRippled := pending(listed, "rippled in", ", rippled_in = 1")
+	aUnchecked := pending(listed, "content check not run", ", contentcheck_checked_at = NULL")
+	aApproved := pending(listed, "already live", ", collection = 'Approved'")
+	// Another trial community the moderator covers, and one outside the trial.
+	b1 := pending(otherTrial, "b1", "")
+	c1 := pending(outside, "c1", "")
+
+	list := func(query string) []interface{} {
+		resp, err := getApp().Test(httptest.NewRequest("GET",
+			fmt.Sprintf("/api/modtools/messages?collection=Pending&%s&jwt=%s", query, modToken), nil))
+		assert.NoError(t, err)
+		assert.Equal(t, 200, resp.StatusCode)
+		var body map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&body)
+		ids, _ := body["messages"].([]interface{})
+		return ids
+	}
+
+	// The community is named and one post fetched: every post the queue shows for it is held.
+	assert.Len(t, list(fmt.Sprintf("groupid=%d&limit=1", listed)), 1)
+
+	for name, m := range map[string]uint64{"a1": a1, "a2": a2, "a3": a3} {
+		set, secs := holdState(m, listed)
+		assert.True(t, set, "%s: held although it was not on the page that was fetched", name)
+		assert.GreaterOrEqual(t, secs, int64(9*60), "%s: at least ten minutes", name)
+	}
+	_, longSecs := holdState(aLong, listed)
+	assert.Greater(t, longSecs, int64(30*60), "extend-only: a hold further out is not shortened")
+
+	for name, m := range map[string]uint64{"held by a moderator": aHeld, "rippled in": aRippled,
+		"content check not run": aUnchecked, "already live": aApproved} {
+		set, _ := holdState(m, listed)
+		assert.False(t, set, "%s: not in the queue's scope, so no hold is written", name)
+	}
+
+	// Bounded to the communities in the request: the others are not touched.
+	set, _ := holdState(b1, otherTrial)
+	assert.False(t, set, "a trial community the request did not name is not held")
+	set, _ = holdState(c1, outside)
+	assert.False(t, set, "a community outside the trial is never held")
+
+	// With no community named the request covers every community the moderator is active on;
+	// the trial ones among them are held, the one outside still is not.
+	assert.NotEmpty(t, list("limit=1"))
+	set, secs := holdState(b1, otherTrial)
+	assert.True(t, set, "listing every community holds the other trial community's posts too")
+	assert.GreaterOrEqual(t, secs, int64(9*60))
+	set, _ = holdState(c1, outside)
+	assert.False(t, set, "still never held outside the trial")
+}
+
+// insertAutomodRowInMode is insertAutomodRow with the mode the decision was recorded in.
+func insertAutomodRowInMode(t *testing.T, msgid uint64, groupid uint64, mode, verdict string, createdMinutesAgo int) {
+	sql := fmt.Sprintf(
+		"INSERT INTO messages_automod (msgid, groupid, mode, chart_version, verdict, end_node, reason, path, created) "+
+			"VALUES (?, ?, ?, 'v1', ?, 'test_end', NULL, '{}', NOW() - INTERVAL %d MINUTE)", createdMinutesAgo)
+	res := database.DBConn.Exec(sql, msgid, groupid, mode, verdict)
+	assert.NoError(t, res.Error)
+}
+
+// A decision recorded in shadow mode was never a promise: the cron publishes only on an approve
+// recorded in approve mode, so a community moved from shadow to approve has no countdown on a
+// post until the chart has decided it again.
+func TestAutoapproveatIgnoresAShadowDecision(t *testing.T) {
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
+	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
+	prefix := uniquePrefix("aashadowdec")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, poster, groupID, "Member")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	db.Exec("UPDATE memberships SET ourPostingStatus = NULL WHERE userid = ? AND groupid = ?", poster, groupID)
+	_, modToken := CreateTestSession(t, modID)
+
+	msg := CreateTestMessage(t, poster, groupID, prefix+" shadow then approve", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW() - INTERVAL 5 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 4 MINUTE, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+
+	insertAutomodRowInMode(t, msg, groupID, "shadow", "approve", 2)
+	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken),
+		"an approve recorded in shadow mode never counts down: the cron would not publish on it")
+
+	db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+	insertAutomodRowInMode(t, msg, groupID, "approve", "approve", 2)
+	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken),
+		"the same approve recorded in approve mode does")
+}
+
+// The cron wants the decision strictly later than the content check it drew its facts from and
+// than the last edit: equal to the second is not later, because the chart may have read the
+// text first. The countdown says the same, so it never promises a publish the cron refuses.
+func TestAutoapproveatDecisionMustBeStrictlyLater(t *testing.T) {
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
+	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
+	prefix := uniquePrefix("aastrict")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, poster, groupID, "Member")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	db.Exec("UPDATE memberships SET ourPostingStatus = NULL WHERE userid = ? AND groupid = ?", poster, groupID)
+	_, modToken := CreateTestSession(t, modID)
+
+	const checked = "2026-10-10 10:00:00"
+	const later = "2026-10-10 10:00:01"
+	msg := CreateTestMessage(t, poster, groupID, prefix+" strictly later", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW() - INTERVAL 5 MINUTE, contentcheck_checked_at=?, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", checked, msg)
+	db.Exec("UPDATE messages SET editedat = NULL WHERE id = ?", msg)
+	defer db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+
+	decide := func(created string) {
+		db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+		res := db.Exec("INSERT INTO messages_automod (msgid, groupid, mode, chart_version, verdict, end_node, reason, path, created) "+
+			"VALUES (?, ?, 'approve', 'v1', 'approve', 'test_end', NULL, '{}', ?)", msg, groupID, created)
+		assert.NoError(t, res.Error)
+	}
+
+	decide(checked)
+	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken), "decided in the same second as the content check: not later")
+	decide(later)
+	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken), "a second later is later")
+
+	db.Exec("UPDATE messages SET editedat = ? WHERE id = ?", later, msg)
+	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken), "decided in the same second as the last edit: not later")
+	db.Exec("UPDATE messages SET editedat = ? WHERE id = ?", checked, msg)
+	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken), "decided after the edit")
 }

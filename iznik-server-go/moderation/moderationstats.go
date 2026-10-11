@@ -7,6 +7,7 @@ import (
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 // ModerationStats summarises how posts were moderated over a period, so admins
@@ -36,10 +37,20 @@ type ModerationStats struct {
 	AutoModChecked             int64 `json:"autoModChecked"`             // later marked checked, by a moderator or by two microvolunteers
 	AutoModCheckedByVolunteers int64 `json:"autoModCheckedByVolunteers"` // of those, cleared by two microvolunteer approvals (no checkedby)
 	AutoLaterActioned          int64 `json:"autoLaterActioned"`          // later rejected/deleted/edited/held after going live
+	// Of those, the ones the clean path published (the Autoapproved log's text is 'automod'): the
+	// numerator for the trial's own error rate, over AutoApprovedClean, so the 48-hour fallback's
+	// posts on every community do not dilute or inflate it.
+	AutoLaterActionedClean int64 `json:"autoLaterActionedClean"`
 
-	// Quality-check sample held back for manual review.
+	// Quality-check sample held back for manual review. Counted in the window the automated
+	// review recorded its approve in (when the sample was drawn), and in posts: a copy's
+	// arrival is not the time, because a moderator's approve re-stamps it.
 	QualitySampled   int64 `json:"qualitySampled"`   // posts held back for a manual quality check
 	QualitySampleBad int64 `json:"qualitySampleBad"` // of those, ones a moderator then rejected/deleted
+	// Of those, the ones a moderator has decided (approved, rejected or deleted): the denominator
+	// for the rate of bad ones. Most of a sample is still waiting for somebody to look, and a rate
+	// over all of it reads low for as long as it does.
+	QualitySampleDecided int64 `json:"qualitySampleDecided"`
 }
 
 // Stats handles GET /modtools/moderationstats?start=&end= (Admin/Support only).
@@ -144,34 +155,56 @@ func Stats(c *fiber.Ctx) error {
 			Where("l.type='Message' AND l.subtype='Autoapproved' AND l.timestamp BETWEEN ? AND ? AND mg.checkedat IS NOT NULL AND mg.checkedby IS NULL", start, end).
 			Scan(&stats.AutoModCheckedByVolunteers)
 	})
-	run(func() {
-		// Auto-approved posts that later needed intervention: a rejection, deletion,
-		// edit or hold by someone other than the author, after the auto-approval.
-		db.Table("logs a").
+	// Auto-approved posts that later needed intervention: a rejection, deletion, edit or hold by
+	// someone other than the author, after the auto-approval. The same shape twice: over every
+	// auto-approved post, and over the clean path's alone (see AutoLaterActionedClean).
+	laterActioned := func(clean bool) *gorm.DB {
+		autoapproved := "a.type='Message' AND a.subtype='Autoapproved' AND a.timestamp BETWEEN ? AND ? "
+		if clean {
+			autoapproved += "AND a.text='automod' "
+		}
+
+		return db.Table("logs a").
 			Select("COUNT(DISTINCT a.msgid)").
 			Joins("JOIN logs x ON x.msgid=a.msgid AND x.groupid=a.groupid").
-			Where("a.type='Message' AND a.subtype='Autoapproved' AND a.timestamp BETWEEN ? AND ? "+
+			Where(autoapproved+
 				"AND x.type='Message' AND x.subtype IN ('Rejected','Deleted','Edit','Hold') "+
 				"AND x.byuser IS NOT NULL AND x.byuser <> a.user AND x.timestamp > a.timestamp",
-				start, end).
-			Scan(&stats.AutoLaterActioned)
-	})
+				start, end)
+	}
+	run(func() { laterActioned(false).Scan(&stats.AutoLaterActioned) })
+	run(func() { laterActioned(true).Scan(&stats.AutoLaterActionedClean) })
 
 	// --- Quality-check sample ---
-	run(func() {
-		db.Table("messages_groups mg").Select("COUNT(*)").
-			Where("mg.quality_sample=1 AND mg.arrival BETWEEN ? AND ?", start, end).
-			Scan(&stats.QualitySampled)
-	})
-	run(func() {
-		db.Table("messages_groups mg").
+	//
+	// The sample is the posts the automated review approved and the quality check then kept in
+	// Pending for a moderator's verdict (messages_groups.quality_sample, stamped as the approve is
+	// recorded). It is counted in the window of that approve, messages_automod.created, which is
+	// when it was drawn, and not by messages_groups.arrival: a moderator's approve re-stamps
+	// arrival to the time of the approval, so approved samples fell into a later window than the
+	// one they were drawn in while rejected ones stayed. That also drives the query from the
+	// decision's index on created, where arrival bounds a scan of the table.
+	//
+	// A verdict is a moderator's Approved, Rejected or Deleted log on the copy after it was drawn
+	// (not the poster's own withdrawal, and not an approval from before). Bad is the rejected and
+	// deleted among them. All three count posts, so a cross-post stamped on two communities is one
+	// post throughout and the rate cannot pass 100%.
+	qualitySample := func(verdicts string) *gorm.DB {
+		q := db.Table("messages_automod ma").
 			Select("COUNT(DISTINCT mg.msgid)").
-			Joins("JOIN logs l ON l.msgid=mg.msgid AND l.groupid=mg.groupid").
-			Where("mg.quality_sample=1 AND mg.arrival BETWEEN ? AND ? "+
-				"AND l.type='Message' AND l.subtype IN ('Rejected','Deleted') "+
-				"AND l.byuser IS NOT NULL AND l.byuser <> l.user", start, end).
-			Scan(&stats.QualitySampleBad)
-	})
+			Joins("JOIN messages_groups mg ON mg.msgid=ma.msgid AND mg.groupid=ma.groupid").
+			Where("mg.quality_sample=1 AND ma.created BETWEEN ? AND ?", start, end)
+		if verdicts != "" {
+			q = q.Joins("JOIN logs l ON l.msgid=mg.msgid AND l.groupid=mg.groupid").
+				Where("l.type='Message' AND l.subtype IN (" + verdicts + ") " +
+					"AND l.byuser IS NOT NULL AND l.byuser <> l.user AND l.timestamp >= ma.created")
+		}
+
+		return q
+	}
+	run(func() { qualitySample("").Scan(&stats.QualitySampled) })
+	run(func() { qualitySample("'Approved','Rejected','Deleted'").Scan(&stats.QualitySampleDecided) })
+	run(func() { qualitySample("'Rejected','Deleted'").Scan(&stats.QualitySampleBad) })
 
 	wg.Wait()
 

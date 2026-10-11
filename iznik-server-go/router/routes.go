@@ -1474,8 +1474,10 @@ func SetupRoutes(app *fiber.App) {
 		// Moderation analytics for the auto-approve approach (Admin/Support only).
 		rg.Get("/modtools/moderationstats", moderation.Stats)
 
-		// Automated review: a moderator marks one step wrong; the SysAdmin agreement report.
+		// Automated review: a moderator marks one step wrong, or takes the mark back; the SysAdmin
+		// agreement report.
 		rg.Post("/modtools/automod/feedback", automod.Feedback)
+		rg.Delete("/modtools/automod/feedback", automod.UndoFeedback)
 		rg.Get("/modtools/automod/agreement", automod.Agreement)
 
 		// Deferral suppressions (authenticated, admin only)

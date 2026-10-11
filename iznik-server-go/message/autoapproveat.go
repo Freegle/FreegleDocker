@@ -58,14 +58,18 @@ func rippledInPendingHours() int {
 // the row, so there is always at most one candidate and no ORDER BY / LIMIT is needed to find
 // "the latest" one.
 //
-// The joins carry the cron's own conditions, so the countdown is not a promise the cron will
-// not keep:
+// The joins carry the cron's own conditions (its currentApprove), so the countdown is not a
+// promise the cron will not keep:
+//   - the approve must have been recorded in approve mode. A shadow decision was never a
+//     promise: the cron publishes only on an approve-mode one, so a community moved from shadow
+//     to approve has no countdown on a post until the chart has decided it again;
 //   - the poster's ourPostingStatus on this community must still be NULL (the auto-moderated
 //     tier). The chart saw the status as a fact when it ran, but nothing re-runs it when a
 //     moderator changes it while the post waits;
 //   - after an edit the content check re-runs, and a decision made before that re-run saw the
 //     old findings, so it does not count until the chart has decided again; and the content
-//     check must have run on this copy at all;
+//     check must have run on this copy at all. "Later" is strictly later, as the cron has it:
+//     equal to the second is not later, because the chart may have read the text first;
 //   - the message itself must not be held (messages.heldby: the cron skips on that as well as
 //     on this copy's own hold, which the caller has already checked), and the poster's account
 //     must not be deleted.
@@ -78,10 +82,10 @@ func automodApproved(db *gorm.DB, msgid uint64, groupid uint64) *time.Time {
 		Joins("JOIN users u ON u.id = m.fromuser").
 		Joins("JOIN messages_groups mg ON mg.msgid = ma.msgid AND mg.groupid = ma.groupid").
 		Joins("JOIN memberships mem ON mem.userid = m.fromuser AND mem.groupid = ma.groupid").
-		Where("ma.msgid = ? AND ma.groupid = ? AND ma.verdict = ?", msgid, groupid, "approve").
+		Where("ma.msgid = ? AND ma.groupid = ? AND ma.verdict = ? AND ma.mode = ?", msgid, groupid, "approve", "approve").
 		Where("m.heldby IS NULL AND u.deleted IS NULL").
-		Where("m.editedat IS NULL OR ma.created >= m.editedat").
-		Where("mg.contentcheck_checked_at IS NOT NULL AND ma.created >= mg.contentcheck_checked_at").
+		Where("m.editedat IS NULL OR ma.created > m.editedat").
+		Where("mg.contentcheck_checked_at IS NOT NULL AND ma.created > mg.contentcheck_checked_at").
 		Where("mem.ourPostingStatus IS NULL").
 		Select("ma.created").
 		Limit(1).

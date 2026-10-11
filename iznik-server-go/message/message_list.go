@@ -442,20 +442,25 @@ func ListMessagesMT(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"messages": []uint64{}})
 	}
 
-	// A3. Reset-to-minimum hold (extend-only) for the messages just loaded. When a
-	// moderator views the Pending queue, every fetched post is given at least 10 more
-	// minutes before it becomes eligible for auto-approval, so nothing vanishes while
-	// the page is open. GREATEST(COALESCE(autoapprove_hold_until, NOW()), NOW()+10m) is
-	// extend-only: an existing hold further out is never shortened. Scope: Pending,
-	// heldby IS NULL, deleted=0, only the mod's groups that are in the post-moderation
-	// trial: nothing reads the hold anywhere else, so outside the trial this would be a
-	// write to the hottest ModTools page's rows for nothing.
+	// A3. Reset-to-minimum hold (extend-only). When a moderator opens the Pending queue, every
+	// post it shows for the communities asked about is given at least 10 more minutes before it
+	// becomes eligible for auto-approval, so nothing publishes under a moderator who has the
+	// queue open. That is the whole queue and not only the page that was fetched: a post on
+	// page two is as much in front of the moderator as one on page one, and the page size is
+	// not something they chose. GREATEST(COALESCE(autoapprove_hold_until, NOW()), NOW()+10m)
+	// is extend-only: an existing hold further out is never shortened.
+	//
+	// Scope: the Pending copies the queue can show (the same visibility rule as the list:
+	// content check run, or older than the 30 minute fallback), heldby IS NULL, deleted=0, and
+	// only the communities in the request that are in the post-moderation trial: nothing reads
+	// the hold anywhere else, so outside the trial this would be a write to the hottest ModTools
+	// page's rows for nothing.
 	if collection == utils.COLLECTION_PENDING {
 		if trialGroupIDs := utils.AutoapproveTrialGroups(groupIDs); len(trialGroupIDs) > 0 {
 			db.Table("messages_groups").
-				Where("msgid IN ? AND groupid IN ? "+
-					"AND collection = 'Pending' AND heldby IS NULL AND deleted = 0 AND rippled_in = 0",
-					msgIDs, trialGroupIDs).
+				Where("groupid IN ? AND collection = 'Pending' AND heldby IS NULL AND deleted = 0 AND rippled_in = 0 "+
+					"AND (contentcheck_checked_at IS NOT NULL OR arrival < NOW() - INTERVAL 30 MINUTE)",
+					trialGroupIDs).
 				Update("autoapprove_hold_until",
 					gorm.Expr("GREATEST(COALESCE(autoapprove_hold_until, NOW()), NOW() + INTERVAL 10 MINUTE)"))
 		}

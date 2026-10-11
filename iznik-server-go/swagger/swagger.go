@@ -6268,6 +6268,31 @@ type automodFeedbackParams struct {
 	Body automod.FeedbackRequest `json:"body"`
 }
 
+// swagger:route DELETE /modtools/automod/feedback modtools automodFeedbackUndo
+// Take back a mark on an automated review step
+//
+// A moderator removes their own mark from one step of an automated review decision. The step is
+// named in the body, as for marking it. Answers 404 when the moderator has no mark there.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+//	404: errorResponse
+
+// automodFeedbackUndoParams is the body of DELETE /modtools/automod/feedback.
+// swagger:parameters automodFeedbackUndo
+type automodFeedbackUndoParams struct {
+	// in: body
+	// required: true
+	Body automod.FeedbackRequest `json:"body"`
+}
+
 // swagger:route GET /modtools/automod/agreement modtools automodAgreement
 // Automated review agreement report
 //

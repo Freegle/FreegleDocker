@@ -248,9 +248,27 @@ A value one side calls on and the other calls off is silent. Either posts publis
 no countdown, Check queue or badge to say so, or a countdown shows for a post nothing will publish.
 So do not read one of these variables with `os.Getenv(...) == "true"`, `(bool) env()` or `(int) env()`.
 
-`RIPPLE_EARNED_REACH_ENABLED` is the exception for now: `config/freegle.php` still casts it with
-`(bool) env()`, where "yes" and "off" are on, so Go reads it with `utils.EnvBool` to agree. Moving it
-onto `EnvSetting::flag` and moving the Go read onto `EnvSwitch` is one change in two places.
+`RIPPLE_EARNED_REACH_ENABLED` follows the same rule: `config/freegle.php` reads it through
+`EnvSetting::flag` and `microvolunteering.go` through `utils.EnvSwitch`. A `(bool) env()` read of
+any of these is a bug, not a second rule: PHP's own cast reads "off" and "no" as on.
+
+## The countdown mirrors the cron, condition by condition
+
+The countdown on a Pending card (`message/autoapproveat.go`: `computeAutoapproveat` and
+`automodApproved`) is a promise about when `AutoApproveCleanService` will publish the copy, so it
+carries the cron's own conditions, in step with `currentApprove` and the candidate query: the chart's
+decision recorded in **approve** mode (a shadow decision never counts down), **strictly** later than
+the content check and the last edit (equal to the second is not later), the poster's posting status
+still NULL, no hold on the post or the copy, the poster not deleted, not a quality sample, not pulled
+back, no spam reason, and the wait counted from the later of arrival and the decision, with
+`autoapprove_hold_until` as a floor. A condition added to the cron needs the same here, and the other
+way round, or a moderator is promised a publish that never comes, or gets none shown for one that does.
+Not yet mirrored: the lockdown, which stops the cron for a post with an open `lockdown_holds` row and
+for every post while `posts` is held.
+
+Opening the Pending queue holds every Pending copy it can show on the trial communities in the request
+for at least ten more minutes (`autoapprove_hold_until`, extend-only), not just the page fetched, so
+nothing publishes under a moderator who has the queue open.
 
 ## See also
 
