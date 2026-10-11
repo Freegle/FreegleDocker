@@ -285,7 +285,7 @@ jobs:
           command: |
             # A fork PR is built from a mirror branch ci/pr-<n> (.github/workflows/fork-pr-ci.yml). That branch has no PR
             # of its own, so CIRCLE_PULL_REQUEST is empty and the PR number has to come from the branch name.
-            PR_NUMBER=$(echo "$CIRCLE_PULL_REQUEST" | grep -oE '[0-9]+$')
+            PR_NUMBER=$(echo "$CIRCLE_PULL_REQUEST" | grep -oE '[0-9]+$' || true)
             [ -n "$PR_NUMBER" ] || PR_NUMBER=$(echo "$CIRCLE_BRANCH" | sed -nE 's#^ci/pr-([0-9]+)$#\1#p')
             if [ -z "$PR_NUMBER" ] || [ -z "$GITHUB_TOKEN" ]; then exit 0; fi
             REPO="Freegle/Iznik"
