@@ -691,10 +691,11 @@ class ExpandService
      * replies still held against the reach we are dropping.
      *
      * Skips 'held' rows for the same reason the other retraction paths do: their copies are
-     * deliberately Pending for per-group moderation. Freezing is one-way: nothing clears
-     * 'held' (FreezeReachIfOriginPending in iznik-server-go's microvolunteering package is
-     * the only writer, and freezes precisely so that re-approving a copy cannot re-reach and
-     * re-notify), so a frozen post stays outside this pass for the rest of its life.
+     * deliberately Pending for per-group moderation. A freeze lasts until a moderator approves
+     * the post's home copy (ResumeReachIfHeld in iznik-server-go's microvolunteering package, the
+     * counterpart of FreezeReachIfOriginPending), which makes the same row 'expanding' again so
+     * that re-approving cannot re-reach and re-notify, or for good when the home community sent
+     * the post back (rippling_blocked). While it lasts a frozen post stays outside this pass.
      *
      * Scope: only --msgid restricts it, matching removeStaleAndRetract - retracting a committed
      * copy must complete regardless of the current area scope.
@@ -767,9 +768,9 @@ class ExpandService
      * group re-ripples it afresh. Best-effort: never breaks the run.
      *
      * A frozen ('held') reach is retracted too, once the home post is deleted or rejected: Back to
-     * pending freezes the reach and nothing clears it, so skipping 'held' meant a later delete at
-     * home never cascaded (122141630). While the home copy still exists and is Pending, a held
-     * reach keeps its copies for per-group moderation.
+     * pending freezes the reach until a moderator approves the home copy again, so skipping 'held'
+     * meant a later delete at home never cascaded (122141630). While the home copy still exists
+     * and is Pending, a held reach keeps its copies for per-group moderation.
      */
     private function retractCopiesOrphanedByOriginRemoval(bool $dryRun, array &$stats, ?int $onlyMsgid = null): void
     {
@@ -2335,6 +2336,9 @@ class ExpandService
             // last joined manually/ordinarily and then left must NOT block rippling. (The post
             // itself is also pulled from such groups by pullRippledPostsFromLeftGroups; here we only
             // gate the membership.)
+            // Only a copy that is still live counts: a withdrawn one (deleted = 1) took the poster's
+            // ripple-join with it, and every later tick of the reach would otherwise join them again
+            // to a community the post is no longer on.
             // The left-group gate is computed in PHP from ONE indexed pass over the
             // poster's Group Joined/Left logs. Its previous form - correlated NOT
             // EXISTS with two nested logs probes per candidate group - resolved every
@@ -2350,7 +2354,7 @@ class ExpandService
             $targets = DB::select(
                 "SELECT mg.groupid
                  FROM messages_groups mg
-                 WHERE mg.msgid = ? AND mg.rippled_in = 1
+                 WHERE mg.msgid = ? AND mg.rippled_in = 1 AND mg.deleted = 0
                    {$notBlockedSql}
                    AND NOT EXISTS (
                        SELECT 1 FROM memberships m WHERE m.userid = ? AND m.groupid = mg.groupid
