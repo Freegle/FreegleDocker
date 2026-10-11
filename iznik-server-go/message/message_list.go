@@ -3,7 +3,6 @@ package message
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -189,6 +188,24 @@ func ListMessagesMT(c *fiber.Ctx) error {
 	//             the automated checks, from members with no posting status
 	filter := c.Query("filter", "")
 
+	if filter != "" {
+		// A filter is an oversight view of a community's live posts - which of them nobody has
+		// looked at - and the Approved collection's list is otherwise open to anyone who names
+		// the community, so a filter needs a moderator of the community named. With none named
+		// the list is of the communities the caller actively moderates (above), which for
+		// anyone else is none. Permission is settled before the filter is judged, so a stranger
+		// learns nothing about which filters exist.
+		if groupid > 0 && !user.IsModOfGroup(myid, groupid) {
+			return fiber.NewError(fiber.StatusForbidden, "Not a moderator for this group")
+		}
+		if filter != "checked" {
+			return fiber.NewError(fiber.StatusBadRequest, "Unknown filter")
+		}
+		if collection != utils.COLLECTION_APPROVED {
+			return fiber.NewError(fiber.StatusBadRequest, "The checked filter lists live posts: use collection=Approved")
+		}
+	}
+
 	// The Check queue exists only on communities in the post-moderation trial.
 	if filter == "checked" {
 		groupIDs = utils.AutoapproveTrialGroups(groupIDs)
@@ -366,32 +383,27 @@ func ListMessagesMT(c *fiber.Ctx) error {
 			branchArgs = []interface{}{utils.COLLECTION_PENDING, utils.COLLECTION_SPAM}
 		}
 
-		// Optional moderation filter. Values are matched against a fixed set, so the
-		// injected SQL is constant (no user-supplied text reaches the query).
-		filterJoin := ""
-		filterWhere := ""
-		// The Check oversight queue shows only posts a mod has NOT yet marked
-		// checked, within the auto-check window — so the list matches the session
-		// work-count badge and clears as posts are checked.
-		checkedWindow := fmt.Sprintf(
-			"AND mg.checkedat IS NULL AND mg.arrival >= NOW() - INTERVAL %d DAY ",
-			utils.MESSAGE_CHECK_WINDOW_DAYS,
-		)
-		switch filter {
-		case "checked":
-			// Auto-approved (approvedby NULL) from auto-moderated (NULL) members.
-			filterJoin = "INNER JOIN memberships mem ON mem.userid = m.fromuser AND mem.groupid = mg.groupid "
-			filterWhere = "AND mg.approvedby IS NULL AND mg.rippled_in = 0 AND mem.ourPostingStatus IS NULL " + checkedWindow
+		var branchSQL string
+		if filter == "checked" {
+			// The Check oversight queue: live posts that published themselves from auto-moderated
+			// members and that no moderator has marked checked, within the check window. Its
+			// definition is utils.CheckQueueConditions, shared with the session badge and the
+			// marking actions so the list, the count and "mark all" can never disagree. The
+			// collection is part of that definition, so there is no collection argument to bind.
+			// Constant SQL: no user-supplied text reaches the query.
+			branchSQL = "SELECT mg.msgid, mg.arrival FROM messages_groups mg " +
+				utils.CheckQueueJoins +
+				"WHERE mg.groupid = %GID% AND " + utils.CheckQueueConditions(true) + " " +
+				contentcheckFilter + " "
+			branchArgs = []interface{}{}
+		} else {
+			branchSQL = "SELECT mg.msgid, mg.arrival FROM messages_groups mg " +
+				"INNER JOIN messages m ON m.id = mg.msgid " +
+				"INNER JOIN users u ON u.id = m.fromuser " +
+				"WHERE mg.groupid = %GID% AND " + collectionFilter + " AND mg.deleted = 0 " +
+				"AND m.deleted IS NULL AND m.fromuser IS NOT NULL AND u.deleted IS NULL " +
+				contentcheckFilter + " "
 		}
-
-		branchSQL := "SELECT mg.msgid, mg.arrival FROM messages_groups mg " +
-			"INNER JOIN messages m ON m.id = mg.msgid " +
-			"INNER JOIN users u ON u.id = m.fromuser " +
-			filterJoin +
-			"WHERE mg.groupid = %GID% AND " + collectionFilter + " AND mg.deleted = 0 " +
-			"AND m.deleted IS NULL AND m.fromuser IS NOT NULL AND u.deleted IS NULL " +
-			filterWhere +
-			contentcheckFilter + " "
 
 		if fromuser > 0 {
 			branchSQL += "AND m.fromuser = ? "

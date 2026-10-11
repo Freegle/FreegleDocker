@@ -38,6 +38,9 @@ func TestMicroVolunteeringTwoApprovalsMarkChecked(t *testing.T) {
 	db := database.DBConn
 	prefix := uniquePrefix("mv_quorum")
 	groupID := CreateTestGroup(t, prefix)
+	// The Checked queue and its stamps exist on communities in the post-moderation trial.
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "")
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", fmt.Sprintf("%d", groupID))
 	poster := CreateTestUser(t, prefix+"_poster", "User")
 	r1 := CreateTestUser(t, prefix+"_r1", "User")
 	r2 := CreateTestUser(t, prefix+"_r2", "User")
@@ -74,6 +77,8 @@ func TestMicroVolunteeringApprovalsRespectRejectionsAndModerators(t *testing.T) 
 	db := database.DBConn
 	prefix := uniquePrefix("mv_quorum2")
 	groupID := CreateTestGroup(t, prefix)
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "")
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", fmt.Sprintf("%d", groupID))
 	poster := CreateTestUser(t, prefix+"_poster", "User")
 	modID := CreateTestUser(t, prefix+"_mod", "User")
 	r1 := CreateTestUser(t, prefix+"_r1", "User")
@@ -137,6 +142,8 @@ func TestGetMicrovolunteering_CheckMessagePendingPrefersSelfPublishing(t *testin
 	db.Exec("INSERT INTO `groups` (nameshort, namefull, type, microvolunteering, polyindex) VALUES (?, ?, 'Freegle', 1, ST_GeomFromText('POINT(0 0)', 3857))", prefix, prefix+" full")
 	db.Raw("SELECT LAST_INSERT_ID()").Scan(&groupID)
 	defer db.Exec("DELETE FROM `groups` WHERE id = ?", groupID)
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "")
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", fmt.Sprintf("%d", groupID))
 	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", reviewer, groupID)
 	db.Exec("INSERT INTO memberships (userid, groupid, ourPostingStatus) VALUES (?, ?, 'MODERATED')", moderatedPoster, groupID)
 	db.Exec("INSERT INTO memberships (userid, groupid, ourPostingStatus) VALUES (?, ?, NULL)", autoPoster, groupID)
@@ -159,4 +166,52 @@ func TestGetMicrovolunteering_CheckMessagePendingPrefersSelfPublishing(t *testin
 	if assert.NotNil(t, result.Msgid) {
 		assert.Equal(t, newer, *result.Msgid, "the post that will publish by itself is offered first")
 	}
+
+	// A community outside the trial has no posts that publish by themselves, so its queue is
+	// ordered as it always was: oldest first.
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", "")
+	resp, _ = getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token, nil))
+	assert.Equal(t, 200, resp.StatusCode)
+	var outside microvolunteering.Challenge
+	json2.Unmarshal(rsp(resp), &outside)
+	if assert.NotNil(t, outside.Msgid) {
+		assert.Equal(t, older, *outside.Msgid, "outside the trial the oldest pending post is offered first, whoever posted it")
+	}
+}
+
+// Two approvals mark a post checked only where there is a Checked queue to clear it from: on a
+// community outside the trial the same stamp would be set on every community's trusted-member
+// and 48-hour-fallback posts, count as a human review in the moderation stats, and lift the
+// earned-reach hold on a post nobody looked at.
+func TestMicroVolunteeringApprovalsOutsideTheTrialDoNotMarkChecked(t *testing.T) {
+	db := database.DBConn
+	prefix := uniquePrefix("mv_notrial")
+	groupID := CreateTestGroup(t, prefix)
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "")
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", "")
+	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	r1 := CreateTestUser(t, prefix+"_r1", "User")
+	r2 := CreateTestUser(t, prefix+"_r2", "User")
+	for _, u := range []uint64{poster, r1, r2} {
+		CreateTestMembership(t, u, groupID, "Member")
+	}
+	_, t1 := CreateTestSession(t, r1)
+	_, t2 := CreateTestSession(t, r2)
+
+	msg := CreateTestMessage(t, poster, groupID, prefix+" fallback approved", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection = 'Approved', approvedby = NULL, approvedat = NOW(), checkedat = NULL, checkedby = NULL, rippled_in = 0 WHERE msgid = ?", msg)
+	defer db.Exec("DELETE FROM microactions WHERE msgid = ?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id = ?", msg)
+
+	postVerdict(t, t1, msg, "Approve")
+	postVerdict(t, t2, msg, "Approve")
+	at, _ := checkedState(t, msg, groupID)
+	assert.Nil(t, at, "outside the trial two approvals stamp nothing")
+
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", fmt.Sprintf("%d", groupID))
+	postVerdict(t, t1, msg, "Approve")
+	at, _ = checkedState(t, msg, groupID)
+	assert.NotNil(t, at, "in the trial the same two approvals do")
 }

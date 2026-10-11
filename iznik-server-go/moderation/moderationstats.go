@@ -111,14 +111,21 @@ func Stats(c *fiber.Ctx) error {
 	run(func() {
 		// Trusted: went live without moderation (approvedby NULL, content-checked,
 		// trusted member) and with no Autoapproved log.
+		//
+		// Bounded by arrival as well as by approval time. messages_groups has no index on
+		// approvedat, so approvedat alone is a scan of the whole table, for a panel that loads
+		// a month by default; arrival is indexed, and for a copy that publishes by itself it is
+		// the moment of approval or a minute or so before it. So the count reads the window's
+		// rows only. (A copy that arrived just before the window and was approved just inside
+		// it is in neither this window nor the one before: a minute's worth at each edge.)
 		db.Table("messages_groups mg").Select("COUNT(*)").
 			Joins("JOIN messages m ON m.id=mg.msgid").
 			Joins("JOIN memberships mem ON mem.userid=m.fromuser AND mem.groupid=mg.groupid").
-			Where("mg.approvedat BETWEEN ? AND ? AND mg.approvedby IS NULL AND mg.rippled_in = 0 "+
+			Where("mg.arrival BETWEEN ? AND ? AND mg.approvedat BETWEEN ? AND ? AND mg.approvedby IS NULL AND mg.rippled_in = 0 "+
 				"AND mg.contentcheck_checked_at IS NOT NULL AND mg.deleted=0 "+
 				"AND (mem.ourPostingStatus='DEFAULT' OR mem.ourPostingStatus='UNMODERATED') "+
 				"AND NOT EXISTS (SELECT 1 FROM logs l WHERE l.msgid=mg.msgid AND l.groupid=mg.groupid AND l.type='Message' AND l.subtype='Autoapproved')",
-				start, end).
+				start, end, start, end).
 			Scan(&stats.Trusted)
 	})
 

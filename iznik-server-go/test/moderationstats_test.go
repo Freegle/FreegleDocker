@@ -101,8 +101,8 @@ func TestModerationStats_TrustedScopedByGroup(t *testing.T) {
 	// Cross-posted, trusted-live message: approved (approvedby NULL, content-checked)
 	// on group A; an Autoapproved log exists only for group B.
 	msgT := CreateTestMessage(t, poster, groupA, prefix+" trusted xpost", 52.0, -1.0)
-	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=?, contentcheck_checked_at=? WHERE msgid=? AND groupid=?",
-		winStart, winStart, msgT, groupA)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=?, arrival=?, contentcheck_checked_at=? WHERE msgid=? AND groupid=?",
+		winStart, winStart, winStart, msgT, groupA)
 	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, approvedby, approvedat, contentcheck_checked_at, deleted) "+
 		"VALUES (?, ?, ?, 'Approved', 0, NULL, ?, ?, 0)", msgT, groupB, winStart, winStart, winStart)
 	db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, user) VALUES (?, 'Message', 'Autoapproved', ?, ?, ?)",
@@ -172,7 +172,7 @@ func TestModerationStats_AllFieldsExactCounts(t *testing.T) {
 
 	// trusted = 1 (msgT): approved-live, DEFAULT member, no Autoapproved log.
 	msgT := CreateTestMessage(t, poster, groupID, prefix+" trusted", 52.0, -1.0)
-	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=?, contentcheck_checked_at=? WHERE msgid=?", tAuto, tAuto, msgT)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=?, arrival=?, contentcheck_checked_at=? WHERE msgid=?", tAuto, tAuto, tAuto, msgT)
 
 	// qualitySampled = 1 (msgQ) + qualitySampleBad = 1 (a Rejected on it, also +1 manualRejected).
 	msgQ := CreateTestMessage(t, poster, groupID, prefix+" sample", 52.0, -1.0)
@@ -202,4 +202,44 @@ func TestModerationStats_AllFieldsExactCounts(t *testing.T) {
 	db.Exec("DELETE FROM logs WHERE timestamp BETWEEN ? AND ?", "2005-06-13 00:00:00", "2005-06-13 23:59:59")
 	db.Exec("DELETE FROM messages_groups WHERE msgid IN (?, ?, ?, ?)", msgA, msgV, msgT, msgQ)
 	db.Exec("DELETE FROM messages WHERE id IN (?, ?, ?, ?)", msgA, msgV, msgT, msgQ)
+}
+
+// The Trusted count reads the copies approved in the window. messages_groups has no index on
+// approvedat, so on its own that is a scan of the whole table (tens of millions of rows) for a
+// panel that loads a month by default; arrival is indexed and, for a copy that publishes by
+// itself, is the same moment as approval or a minute or so before it. So the count is bounded by
+// both, and reads only the window's rows.
+func TestModerationStats_TrustedIsBoundedByArrival(t *testing.T) {
+	prefix := uniquePrefix("modstats_trustbound")
+	db := database.DBConn
+
+	const day = "2005-06-12"
+	const inWindow = "2005-06-12 10:00:00"
+	const longBefore = "2004-01-01 10:00:00"
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	CreateTestMembership(t, poster, groupID, "Member")
+	db.Exec("UPDATE memberships SET ourPostingStatus='DEFAULT' WHERE userid=? AND groupid=?", poster, groupID)
+	_, adminToken := CreateTestSession(t, adminID)
+
+	counted := CreateTestMessage(t, poster, groupID, prefix+" arrived and approved in the window", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=?, arrival=?, contentcheck_checked_at=? WHERE msgid=?",
+		inWindow, inWindow, inWindow, counted)
+	// Approved in the window, but it arrived long before: outside the arrival bound.
+	outside := CreateTestMessage(t, poster, groupID, prefix+" arrived long before", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=?, arrival=?, contentcheck_checked_at=? WHERE msgid=?",
+		inWindow, longBefore, inWindow, outside)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid IN (?, ?)", counted, outside)
+	defer db.Exec("DELETE FROM messages WHERE id IN (?, ?)", counted, outside)
+
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/modtools/moderationstats?start=%s&end=%s&jwt=%s", day, day, adminToken), nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	var stats map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&stats)
+	trusted, _ := stats["trusted"].(float64)
+	assert.Equal(t, float64(1), trusted, "the post that arrived and was approved in the window counts; the one that arrived long before is outside the bound")
 }

@@ -1173,12 +1173,6 @@ func GetSession(c *fiber.Ctx) error {
 
 		var wg2 sync.WaitGroup
 
-		// The Check queue counts only unchecked posts within the check window.
-		checkedWindowSQL := fmt.Sprintf(
-			"AND mg.checkedat IS NULL AND mg.arrival >= NOW() - INTERVAL %d DAY",
-			utils.MESSAGE_CHECK_WINDOW_DAYS,
-		)
-
 		// --- Pending messages: active groups split by held, inactive all → pendingother ---
 		// Only count messages where contentcheck_checked_at IS NOT NULL: the content
 		// check has run and left the message pending (moderated user/group or flagged
@@ -1242,23 +1236,22 @@ func GetSession(c *fiber.Ctx) error {
 		// --- Checked: UNCHECKED auto-approved posts from auto-moderated (NULL) members.
 		// Outstanding oversight work (blue): a mod hasn't marked it checked and it
 		// is within the 7-day check window. Only communities in the post-moderation
-		// trial have a Check queue. ---
-		trialGroupIDs := utils.AutoapproveTrialGroups(modGroupIDs)
+		// trial have a Check queue. Counted exactly as the Check list is built: by the same
+		// definition (utils.CheckQueueConditions), over the communities the moderator is
+		// ACTIVE on (the all-communities list is built from those alone, so a backup
+		// moderator's badge must not count a community the list leaves out), and one per
+		// POST (the list shows a cross-posted post once, however many of the moderator's
+		// communities it is direct on). ---
+		trialGroupIDs := utils.AutoapproveTrialGroups(activeGroupIDs)
 		wg2.Add(1)
 		go func() {
 			defer wg2.Done()
 			if len(trialGroupIDs) == 0 {
 				return
 			}
-			db.Table("messages_groups mg").Select("COUNT(*)").
-				Joins("INNER JOIN messages m ON m.id = mg.msgid").
-				Joins("INNER JOIN users u ON u.id = m.fromuser").
-				Joins("INNER JOIN memberships mem ON mem.userid = m.fromuser AND mem.groupid = mg.groupid").
-				Where("mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 "+
-					"AND m.deleted IS NULL AND u.deleted IS NULL "+
-					"AND mg.approvedby IS NULL AND mg.rippled_in = 0 AND mem.ourPostingStatus IS NULL "+
-					checkedWindowSQL,
-					trialGroupIDs, utils.COLLECTION_APPROVED).
+			db.Table("messages_groups mg").Select("COUNT(DISTINCT mg.msgid)").
+				Joins(utils.CheckQueueJoins).
+				Where("mg.groupid IN ? AND "+utils.CheckQueueConditions(true), trialGroupIDs).
 				Scan(&checked)
 		}()
 

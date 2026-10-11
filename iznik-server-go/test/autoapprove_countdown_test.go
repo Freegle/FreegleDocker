@@ -299,10 +299,15 @@ func checkedOn(t *testing.T, msgid, groupid uint64) uint64 {
 	return *by
 }
 
-// A moderator who approves, rejects or deletes a post on one of their communities has looked at
-// it, so the copy of the same post that published itself on another trial community they
+// A moderator who APPROVES a post on one of their communities has looked at it and let it
+// stand, so the copy of the same post that published itself on another trial community they
 // moderate is stamped as checked, as if marked in Check. A copy on a community outside the
 // trial is left alone, and so is one a moderator approved by hand.
+//
+// Rejecting or deleting the post on one community is not that: the moderator has turned the
+// post down, and stamping its other copy as checked would lift the earned-reach hold on it
+// (the hold lifts as soon as any copy is checked) and take it out of Check, the one place
+// somebody still has to decide about it.
 func TestModActionStampsOwnSelfPublishedCopies(t *testing.T) {
 	prefix := uniquePrefix("aastampown")
 	db := database.DBConn
@@ -337,7 +342,8 @@ func TestModActionStampsOwnSelfPublishedCopies(t *testing.T) {
 	assert.Equal(t, modID, checkedOn(t, msg, trial), "the self-published trial copy is stamped as checked by this moderator")
 	assert.Equal(t, uint64(0), checkedOn(t, msg, outside), "a copy outside the trial is not part of Check and is not stamped")
 
-	// A second post, this time rejected on the third community: the same stamp.
+	// A second post, this time rejected on the third community: the moderator has turned the
+	// post down, so the live copy is not marked checked (it stays in Check, and its reach stays held).
 	rejected := CreateTestMessage(t, poster, trial, prefix+" rejected elsewhere", 52.0, -1.0)
 	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NULL, checkedby=NULL, rippled_in=0 WHERE msgid=? AND groupid=?", rejected, trial)
 	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in) VALUES (?, ?, NOW(), 'Pending', 0, 0)", rejected, pendingOn)
@@ -348,7 +354,20 @@ func TestModActionStampsOwnSelfPublishedCopies(t *testing.T) {
 		"id": rejected, "action": "Reject", "groupid": pendingOn, "subject": "No thanks", "body": "Not for this community.",
 	})
 	assert.Equal(t, 200, status)
-	assert.Equal(t, modID, checkedOn(t, rejected, trial), "rejecting elsewhere is a look too")
+	assert.Equal(t, uint64(0), checkedOn(t, rejected, trial), "rejecting elsewhere is not a check of this copy")
+
+	// Nor is deleting it elsewhere.
+	deleted := CreateTestMessage(t, poster, trial, prefix+" deleted elsewhere", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NULL, checkedby=NULL, rippled_in=0 WHERE msgid=? AND groupid=?", deleted, trial)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in) VALUES (?, ?, NOW(), 'Pending', 0, 0)", deleted, pendingOn)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", deleted)
+	defer db.Exec("DELETE FROM messages WHERE id=?", deleted)
+
+	status, _ = postMultiAction(t, modToken, map[string]interface{}{
+		"id": deleted, "action": "Delete", "groupid": pendingOn,
+	})
+	assert.Equal(t, 200, status)
+	assert.Equal(t, uint64(0), checkedOn(t, deleted, trial), "deleting elsewhere is not a check of this copy")
 
 	// A hand-approved copy is already reviewed and keeps its own record.
 	handApproved := CreateTestMessage(t, poster, trial, prefix+" hand approved", 52.0, -1.0)
@@ -535,7 +554,15 @@ func TestMarkCheckedCrossGroupAndNonMod(t *testing.T) {
 }
 
 // Reject pulls the specified Approved auto-published posts back to Pending, held by the
-// mod, clearing checkedat; it requires explicit ids (no bulk reject).
+// mod, for a proper decision; it requires explicit ids (no bulk reject).
+//
+// It is a second look, not a home community's decision. So it withdraws nothing, blocks
+// nothing and deletes nothing: no rippled copy is soft-deleted, nobody's ripple membership is
+// removed, no Message/Deleted log is written against the poster (the automated review reads
+// those as "a moderator acted on this member's posts" and holds their next posts for 90
+// days), and the post is not barred from rippling. The copies on other communities go back to
+// their own Pending queues, in neutral words (nothing says "Check" to a community that has no
+// Check queue), unless that community's own moderator reviewed theirs, which stays live.
 func TestMarkCheckedReject(t *testing.T) {
 	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
 	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
@@ -549,18 +576,22 @@ func TestMarkCheckedReject(t *testing.T) {
 	CreateTestMembership(t, modID, groupA, "Moderator")
 	_, modToken := CreateTestSession(t, modID)
 
+	// A real Check-queue row: self-published, and nobody has looked at it yet.
 	approved := CreateTestMessage(t, poster, groupA, prefix+" approved", 52.0, -1.0)
-	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NOW(), checkedby=? WHERE msgid=?", modID, approved)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NULL, checkedby=NULL WHERE msgid=?", approved)
 
-	// The post is mid-ripple: an expanding reach row, a rippled-in copy on a community
-	// whose moderators have not looked at it, and one on a community whose own moderator
-	// approved it by hand. The reject is Back to pending on the home community: the
-	// unreviewed copy is withdrawn, the hand-approved one stays, the reach is frozen so a
-	// later Approve brings the post back.
+	// The post is mid-ripple: an expanding reach row, a rippled-in copy on a community whose
+	// moderators have not looked at it (the poster was joined to it by the ripple), one on a
+	// community whose own moderator approved it by hand, and one on a community where it is
+	// still Pending and a moderator is holding it.
 	groupB := CreateTestGroup(t, prefix+"_b")
 	groupC := CreateTestGroup(t, prefix+"_c")
+	groupD := CreateTestGroup(t, prefix+"_d")
 	modC := CreateTestUser(t, prefix+"_modc", "User")
+	modD := CreateTestUser(t, prefix+"_modd", "User")
 	CreateTestMembership(t, modC, groupC, "Moderator")
+	CreateTestMembership(t, modD, groupD, "Moderator")
+	db.Exec("INSERT INTO memberships (userid, groupid, role, rippled) VALUES (?, ?, 'Member', 1)", poster, groupB)
 	// Mid-pause when rejected: the awaiting stamp must be banked and cleared by the
 	// reject, or the "posts awaiting review" metric counts this frozen row forever.
 	db.Exec("INSERT INTO rippling_reach (msgid, lat, lng, outer_bound, arrival, awaiting_review_since) "+
@@ -571,8 +602,11 @@ func TestMarkCheckedReject(t *testing.T) {
 		"VALUES (?, ?, NOW(), 'Approved', 0, 1)", approved, groupB)
 	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in, approvedby, approvedat) "+
 		"VALUES (?, ?, NOW(), 'Approved', 0, 1, ?, NOW())", approved, groupC, modC)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in, heldby) "+
+		"VALUES (?, ?, NOW(), 'Pending', 0, 1, ?)", approved, groupD, modD)
 	defer db.Exec("DELETE FROM rippling_reach WHERE msgid=?", approved)
 	defer db.Exec("DELETE FROM rippling_blocked WHERE msgid=?", approved)
+	defer db.Exec("DELETE FROM memberships WHERE userid=? AND groupid=?", poster, groupB)
 
 	// Reject requires explicit ids.
 	noIDs := fmt.Sprintf(`{"groupid": %d, "reject": true}`, groupA)
@@ -606,13 +640,13 @@ func TestMarkCheckedReject(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	var rejectResp map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&rejectResp)
-	assert.Equal(t, float64(1), rejectResp["rejected"])
+	assert.Equal(t, float64(1), rejectResp["rejected"], "the count is of copies pulled back, whether or not any column changed")
 
 	var pendingHeld, stillChecked int64
 	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid=? AND groupid=? AND collection='Pending' AND heldby=? AND needs_moderator=1 AND checkedat IS NULL AND checkedby IS NULL", approved, groupA, modID).Scan(&pendingHeld)
 	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid=? AND groupid=? AND checkedat IS NOT NULL", approved, groupA).Scan(&stillChecked)
 	assert.Equal(t, int64(1), pendingHeld, "rejected post is Pending, held by the mod, needs_moderator set, checked stamp cleared")
-	assert.Equal(t, int64(0), stillChecked, "checkedat must be cleared on reject")
+	assert.Equal(t, int64(0), stillChecked, "checkedat must stay clear on reject")
 
 	// Pulling a post back is a Hold, not a decision: the moderator's later Approve or
 	// Reject writes its own log. No Rejected row yet, so an approved post does not count
@@ -621,17 +655,17 @@ func TestMarkCheckedReject(t *testing.T) {
 	db.Raw("SELECT COUNT(*) FROM logs WHERE type='Message' AND subtype='Hold' AND msgid=? AND groupid=? AND user=? AND byuser=? AND text='Pulled back from Check'",
 		approved, groupA, poster, modID).Scan(&holdLogs)
 	db.Raw("SELECT COUNT(*) FROM logs WHERE type='Message' AND subtype='Rejected' AND msgid=?", approved).Scan(&rejectedLogs)
-	assert.Equal(t, int64(1), holdLogs, "reject must write a Message/Hold log row on the home community")
+	assert.Equal(t, int64(1), holdLogs, "reject must write one Message/Hold log row on the home community")
 	assert.Equal(t, int64(0), rejectedLogs, "reject must not write a Rejected log before the moderator decides")
 
-	// The reach is frozen, not killed: a later Approve brings the post back, and the
-	// engine's orphan retraction (which exempts only 'held') leaves the kept copy alone.
+	// The reach is frozen, not killed, and the post is not barred from rippling: this was a
+	// second look, not the home community's decision.
 	var reachStatus string
 	db.Raw("SELECT status FROM rippling_reach WHERE msgid=?", approved).Scan(&reachStatus)
 	assert.Equal(t, "held", reachStatus, "reject must freeze the reach row synchronously")
 	var blocked int64
 	db.Raw("SELECT COUNT(*) FROM rippling_blocked WHERE msgid=?", approved).Scan(&blocked)
-	assert.Equal(t, int64(1), blocked, "a home pull-back blocks the post from rippling again")
+	assert.Equal(t, int64(0), blocked, "a Check reject is not a home decision, so it does not bar the post from rippling")
 
 	// The await-review pause is settled by the reject: time banked, stamp cleared.
 	var awaitOpen, awaitBanked int64
@@ -640,21 +674,122 @@ func TestMarkCheckedReject(t *testing.T) {
 	assert.Equal(t, int64(0), awaitOpen, "reject must clear the awaiting stamp")
 	assert.GreaterOrEqual(t, awaitBanked, int64(590), "reject must bank the paused time")
 
-	// The unreviewed rippled-in copy is withdrawn, with a log to that community; the copy
-	// another community's moderator approved by hand survives, untouched and unlogged.
-	var withdrawn, withdrawnLog, keptCopy, keptLogs int64
-	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid=? AND groupid=? AND deleted=1", approved, groupB).Scan(&withdrawn)
-	db.Raw("SELECT COUNT(*) FROM logs WHERE type='Message' AND subtype='Deleted' AND msgid=? AND groupid=?", approved, groupB).Scan(&withdrawnLog)
+	// Nothing is withdrawn: no copy deleted, no Deleted log against the poster (which the
+	// automated review would read as a moderator acting on their posts), their ripple
+	// membership untouched.
+	var deletedCopies, deletedLogs, rippleMembership int64
+	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid=? AND deleted=1", approved).Scan(&deletedCopies)
+	db.Raw("SELECT COUNT(*) FROM logs WHERE type='Message' AND subtype='Deleted' AND msgid=?", approved).Scan(&deletedLogs)
+	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid=? AND groupid=? AND rippled=1", poster, groupB).Scan(&rippleMembership)
+	assert.Equal(t, int64(0), deletedCopies, "a Check reject withdraws no copy")
+	assert.Equal(t, int64(0), deletedLogs, "and writes no Deleted log for the poster's next post to be held for")
+	assert.Equal(t, int64(1), rippleMembership, "and removes nobody's membership")
+
+	// The unreviewed rippled-in copy goes back to its own community's Pending queue for that
+	// community's moderators, with the neutral Back to pending wording.
+	var b struct {
+		Collection     string
+		Deleted        int
+		NeedsModerator int
+		Spamreason     *string
+	}
+	db.Raw("SELECT collection, deleted, needs_moderator, spamreason FROM messages_groups WHERE msgid=? AND groupid=?", approved, groupB).Scan(&b)
+	assert.Equal(t, "Pending", b.Collection, "an unreviewed copy elsewhere goes back to its own Pending queue")
+	assert.Equal(t, 0, b.Deleted)
+	assert.Equal(t, 1, b.NeedsModerator, "waiting for a moderator of its own community")
+	if assert.NotNil(t, b.Spamreason) {
+		assert.Equal(t, "A moderator moved this post back to pending for review.", *b.Spamreason)
+	}
+	var bHold int64
+	db.Raw("SELECT COUNT(*) FROM logs WHERE type='Message' AND subtype='Hold' AND msgid=? AND groupid=? AND byuser=? AND text='A moderator moved this post back to pending for review.'",
+		approved, groupB, modID).Scan(&bHold)
+	assert.Equal(t, int64(1), bHold, "that community is told, in neutral words")
+
+	// The copy another community's moderator approved by hand stays live, untouched and unlogged.
+	var keptCopy, keptLogs int64
 	db.Raw("SELECT COUNT(*) FROM messages_groups WHERE msgid=? AND groupid=? AND collection='Approved' AND deleted=0 AND approvedby=? AND needs_moderator=0", approved, groupC, modC).Scan(&keptCopy)
 	db.Raw("SELECT COUNT(*) FROM logs WHERE type='Message' AND msgid=? AND groupid=?", approved, groupC).Scan(&keptLogs)
-	assert.Equal(t, int64(1), withdrawn, "an unreviewed rippled-in copy is withdrawn by a home pull-back")
-	assert.Equal(t, int64(1), withdrawnLog, "and that community is told")
 	assert.Equal(t, int64(1), keptCopy, "a copy another community's moderator approved by hand stays live")
 	assert.Equal(t, int64(0), keptLogs, "and gets no log")
+
+	// A copy that is already Pending on another community, held by that community's own
+	// moderator, is not this moderator's to touch.
+	var d struct {
+		Collection string
+		Deleted    int
+		Heldby     *uint64
+	}
+	db.Raw("SELECT collection, deleted, heldby FROM messages_groups WHERE msgid=? AND groupid=?", approved, groupD).Scan(&d)
+	assert.Equal(t, "Pending", d.Collection)
+	assert.Equal(t, 0, d.Deleted, "a held Pending copy elsewhere is not deleted out from under its moderator")
+	if assert.NotNil(t, d.Heldby) {
+		assert.Equal(t, modD, *d.Heldby, "and their hold stands")
+	}
+	var dLogs int64
+	db.Raw("SELECT COUNT(*) FROM logs WHERE type='Message' AND msgid=? AND groupid=?", approved, groupD).Scan(&dLogs)
+	assert.Equal(t, int64(0), dLogs)
+
+	// "Check" is a word for the trial community only.
+	var checkWording int64
+	db.Raw("SELECT (SELECT COUNT(*) FROM messages_groups WHERE msgid=? AND groupid <> ? AND spamreason LIKE '%Check%') + "+
+		"(SELECT COUNT(*) FROM logs WHERE msgid=? AND groupid <> ? AND text LIKE '%Check%')", approved, groupA, approved, groupA).Scan(&checkWording)
+	assert.Equal(t, int64(0), checkWording, "no copy or log outside the community acted on says Check")
 
 	db.Exec("DELETE FROM logs WHERE type='Message' AND msgid=?", approved)
 	db.Exec("DELETE FROM messages_groups WHERE msgid=?", approved)
 	db.Exec("DELETE FROM messages WHERE id=?", approved)
+}
+
+// After a Check reject the moderator decides. Approving brings the copy back as the
+// moderator's own approval: the hold and needs_moderator go, approvedby is stamped. The
+// reach stays frozen, as after any Back to pending (nothing re-ripples or re-notifies), and
+// the post is not barred from rippling.
+func TestMarkCheckedRejectThenApprove(t *testing.T) {
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
+	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
+	prefix := uniquePrefix("markchk_approve")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, poster, groupID, "Member")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	msg := CreateTestMessage(t, poster, groupID, prefix+" approved again", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NULL, checkedby=NULL WHERE msgid=?", msg)
+	addExpandingReach(t, msg)
+	defer db.Exec("DELETE FROM logs WHERE type='Message' AND msgid=?", msg)
+	defer db.Exec("DELETE FROM rippling_blocked WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+
+	out := postMarkChecked(t, modToken, fmt.Sprintf(`{"groupid": %d, "reject": true, "ids": [%d]}`, groupID, msg))
+	assert.Equal(t, float64(1), out["rejected"])
+	assert.Equal(t, "held", reachStatus(msg))
+
+	status, body := postModAction(t, modToken, msg, "Approve", groupID)
+	assert.Equal(t, 200, status, body)
+
+	var state struct {
+		Collection     string
+		Approvedby     *uint64
+		Heldby         *uint64
+		NeedsModerator int
+	}
+	db.Raw("SELECT collection, approvedby, heldby, needs_moderator FROM messages_groups WHERE msgid=? AND groupid=?", msg, groupID).Scan(&state)
+	assert.Equal(t, "Approved", state.Collection)
+	if assert.NotNil(t, state.Approvedby) {
+		assert.Equal(t, modID, *state.Approvedby, "the moderator's own approval")
+	}
+	assert.Nil(t, state.Heldby, "the hold is released by the approval")
+	assert.Equal(t, 0, state.NeedsModerator, "and so is needs_moderator")
+	assert.Equal(t, "held", reachStatus(msg), "the reach stays frozen, as after any Back to pending")
+
+	var blocked int64
+	db.Raw("SELECT COUNT(*) FROM rippling_blocked WHERE msgid=?", msg).Scan(&blocked)
+	assert.Equal(t, int64(0), blocked, "nothing barred the post from rippling")
 }
 
 // A Check reject then a Release (the moderator lets a colleague decide) leaves
@@ -845,4 +980,121 @@ func TestAutoapproveatPostingStatusSetMidWait(t *testing.T) {
 
 	db.Exec("UPDATE memberships SET ourPostingStatus = 'MODERATED' WHERE userid = ? AND groupid = ?", poster, groupID)
 	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken), "set to Moderated mid-wait: no countdown, as the cron will not publish it")
+}
+
+// The countdown is for the moderators of the community whose copy will publish. A post that
+// is Pending on a trial community and on a neighbour outside the trial (a TrashNothing
+// cross-post) is shown to the neighbour's moderator too, and the API used to hand them the
+// trial community's countdown in the payload - a promise about a copy that is not theirs.
+func TestAutoapproveatOnlyOnTheViewersOwnCopies(t *testing.T) {
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "")
+	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
+	prefix := uniquePrefix("aaviewer")
+	db := database.DBConn
+
+	trial := CreateTestGroup(t, prefix+"_trial")
+	outside := CreateTestGroup(t, prefix+"_outside")
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", fmt.Sprintf("%d", trial))
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	trialMod := CreateTestUser(t, prefix+"_trialmod", "User")
+	outsideMod := CreateTestUser(t, prefix+"_outsidemod", "User")
+	bothMod := CreateTestUser(t, prefix+"_bothmod", "User")
+	CreateTestMembership(t, poster, trial, "Member")
+	CreateTestMembership(t, poster, outside, "Member")
+	CreateTestMembership(t, trialMod, trial, "Moderator")
+	CreateTestMembership(t, outsideMod, outside, "Moderator")
+	CreateTestMembership(t, bothMod, trial, "Moderator")
+	CreateTestMembership(t, bothMod, outside, "Moderator")
+	_, trialToken := CreateTestSession(t, trialMod)
+	_, outsideToken := CreateTestSession(t, outsideMod)
+	_, bothToken := CreateTestSession(t, bothMod)
+
+	msg := CreateTestMessage(t, poster, trial, prefix+" cross-post", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW() - INTERVAL 5 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 4 MINUTE, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", msg)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in, contentcheck_checked_at) VALUES (?, ?, NOW() - INTERVAL 5 MINUTE, 'Pending', 0, 0, NOW() - INTERVAL 4 MINUTE)", msg, outside)
+	insertAutomodRow(t, msg, trial, "approve", 3)
+	defer db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+
+	assert.NotNil(t, getAutoapproveatField(t, msg, trial, trialToken), "the trial community's moderator sees its countdown")
+	assert.Nil(t, getAutoapproveatField(t, msg, trial, outsideToken),
+		"a moderator of a community outside the trial is not handed a countdown for a copy that is not theirs")
+	assert.Nil(t, getAutoapproveatField(t, msg, outside, outsideToken), "and their own copy has none")
+	assert.NotNil(t, getAutoapproveatField(t, msg, trial, bothToken), "a moderator of both still sees the trial copy's")
+}
+
+// The cron has three more conditions than the countdown used to check. A hold on the message
+// itself (not just on this community's copy), a content check that has not run on the copy,
+// and a poster whose account has been deleted each stop the cron publishing, so none may show
+// a countdown.
+func TestAutoapproveatMirrorsTheCronsOtherConditions(t *testing.T) {
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
+	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
+	prefix := uniquePrefix("aacronconds")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	// A moderator as production has them (system role Moderator), who is shown a post whose
+	// poster has since deleted their account; a plain member is not.
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	CreateTestMembership(t, poster, groupID, "Member")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	db.Exec("UPDATE memberships SET ourPostingStatus = NULL WHERE userid = ? AND groupid = ?", poster, groupID)
+	_, modToken := CreateTestSession(t, modID)
+
+	msg := CreateTestMessage(t, poster, groupID, prefix+" cron conditions", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW() - INTERVAL 5 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 4 MINUTE, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", msg)
+	insertAutomodRow(t, msg, groupID, "approve", 3)
+	defer db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+	defer db.Exec("UPDATE users SET deleted = NULL WHERE id = ?", poster)
+
+	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken), "nothing stops it: the countdown shows")
+
+	db.Exec("UPDATE messages SET heldby = ? WHERE id = ?", modID, msg)
+	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken), "held on the message itself: the cron skips it, so no countdown")
+	db.Exec("UPDATE messages SET heldby = NULL WHERE id = ?", msg)
+	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken))
+
+	db.Exec("UPDATE messages_groups SET contentcheck_checked_at = NULL WHERE msgid = ?", msg)
+	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken), "the content check has not run on the copy: the cron needs it to have")
+	db.Exec("UPDATE messages_groups SET contentcheck_checked_at = NOW() - INTERVAL 4 MINUTE WHERE msgid = ?", msg)
+	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken))
+
+	db.Exec("UPDATE users SET deleted = NOW() WHERE id = ?", poster)
+	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken), "the poster's account is deleted: the cron joins the poster, so it will not publish")
+}
+
+// A moderator clicking Approve on a copy the cron published moments earlier changes nothing,
+// so it must do nothing: no approval mail task for the poster-facing batch (which would write
+// a phantom Approved log against a copy that has no approver) and no second freebie alert.
+func TestApproveOfACopyThatAlreadyPublishedChangesNothing(t *testing.T) {
+	prefix := uniquePrefix("aaphantom")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, poster, groupID, "Member")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	msg := CreateTestMessage(t, poster, groupID, prefix+" published a moment ago", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=NOW() WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM background_tasks WHERE JSON_EXTRACT(data, '$.msgid') = ?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+
+	status, out := postMultiAction(t, modToken, map[string]interface{}{"id": msg, "action": "Approve", "groupid": groupID})
+	assert.Equal(t, 200, status)
+	assert.Equal(t, float64(1), out["ret"], "answered like the several-communities form: no longer pending, not approved")
+	assert.Equal(t, int64(0), taskCount(t, "email_message_approved", msg), "no approval task for a copy that was not approved")
+	assert.Equal(t, int64(0), taskCount(t, "freebie_alerts_add", msg), "and no second freebie alert")
+
+	var approvedby *uint64
+	db.Raw("SELECT approvedby FROM messages_groups WHERE msgid=? AND groupid=?", msg, groupID).Scan(&approvedby)
+	assert.Nil(t, approvedby, "the copy is still the cron's, not a moderator approval")
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -100,10 +101,11 @@ func isValidEEESize(v string) bool      { return validEEESizes[v] }
 // earnedReachEnabled reports whether the earned-reach review gate is on (env
 // RIPPLE_EARNED_REACH_ENABLED). When off, the approved-message reviewer pool is
 // unrestricted - byte-for-byte the pre-gate query. Kept local to avoid an import
-// cycle with the message package; mirrors the same env var ExpandService reads.
+// cycle with the message package; reads the same env var ExpandService reads, the way it
+// reads it: config/freegle.php casts it with (bool) env(), which is utils.EnvBool and not the
+// stricter utils.EnvSwitch the post-moderation switches use.
 func earnedReachEnabled() bool {
-	v := os.Getenv("RIPPLE_EARNED_REACH_ENABLED")
-	return v == "true" || v == "1"
+	return utils.EnvBool("RIPPLE_EARNED_REACH_ENABLED")
 }
 
 // CoinFlip picks between AI image review and approved message review when both
@@ -360,9 +362,19 @@ func getPendingMessageChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) *
 		"AND microvolunteering = 1 AND messages.deleted IS NULL AND microactions.id IS NULL " +
 		"AND (microvolunteeringoptions IS NULL OR JSON_EXTRACT(microvolunteeringoptions, '$.approvedmessages') = 1) " +
 		"AND messages_groups.collection = ? AND messages_groups.autoreposts = 0"
-	// Posts from members with no posting status publish by themselves after the
-	// auto-approve wait, so a human look matters most there: offer those first,
-	// oldest first within each group, then the posts a moderator will deal with anyway.
+	// On a community in the post-moderation trial, posts from members with no posting status
+	// publish by themselves after the auto-approve wait, so a human look matters most there:
+	// offer those first, oldest first within each group, then the posts a moderator will deal
+	// with anyway. Elsewhere nothing publishes by itself and the queue is oldest first as it
+	// always was.
+	order := "messages_groups.arrival ASC"
+	if trial := utils.AutoapproveTrialGroups(groupIDs); len(trial) > 0 {
+		ids := make([]string, len(trial))
+		for i, gid := range trial {
+			ids[i] = strconv.FormatUint(gid, 10)
+		}
+		order = "(poster.ourPostingStatus IS NULL AND messages_groups.groupid IN (" + strings.Join(ids, ",") + ")) DESC, " + order
+	}
 	err := db.Table("messages_groups").
 		Select("messages_groups.msgid").
 		Joins("INNER JOIN messages ON messages.id = messages_groups.msgid").
@@ -370,7 +382,7 @@ func getPendingMessageChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) *
 		Joins("LEFT JOIN microactions ON microactions.msgid = messages_groups.msgid AND microactions.userid = ?", userID).
 		Joins("LEFT JOIN memberships poster ON poster.userid = messages.fromuser AND poster.groupid = messages_groups.groupid").
 		Where(pendingWhereSQL, groupIDs, userID, utils.COLLECTION_PENDING).
-		Order("(poster.ourPostingStatus IS NULL) DESC, messages_groups.arrival ASC").Limit(1).Scan(&msg).Error
+		Order(order).Limit(1).Scan(&msg).Error
 
 	if err == nil && msg.Msgid > 0 {
 		return &Challenge{
@@ -953,7 +965,21 @@ func ModFeedback(c *fiber.Ctx) error {
 // checkedby empty: that is how a microvolunteer check is told apart from a moderator's.
 // The stamp does the same three things a moderator's check does: the post leaves the
 // Checked queue, the hold on spreading is lifted, and the first reply mail may go out.
+//
+// Only on communities in the post-moderation trial: that is where the Checked queue exists and
+// where a stamp means anything. Everywhere else a copy with no approver is a trusted member's
+// post or a 48-hour fallback approval, and stamping it would count in the moderation stats as a
+// human review of a post nobody reviewed.
 func markCheckedByMicrovolunteers(db *gorm.DB, msgid uint64) {
+	var direct []uint64
+	db.Table("messages_groups").Select("groupid").
+		Where("msgid = ? AND rippled_in = 0 AND approvedby IS NULL AND checkedat IS NULL AND deleted = 0", msgid).
+		Scan(&direct)
+	trial := utils.AutoapproveTrialGroups(direct)
+	if len(trial) == 0 {
+		return
+	}
+
 	var approvers int64
 	db.Table("microactions ma").
 		Select("COUNT(DISTINCT ma.userid)").
@@ -973,7 +999,7 @@ func markCheckedByMicrovolunteers(db *gorm.DB, msgid uint64) {
 	}
 
 	db.Table("messages_groups").
-		Where("msgid = ? AND rippled_in = 0 AND approvedby IS NULL AND checkedat IS NULL AND deleted = 0", msgid).
+		Where("msgid = ? AND groupid IN ? AND rippled_in = 0 AND approvedby IS NULL AND checkedat IS NULL AND deleted = 0", msgid, trial).
 		Update("checkedat", gorm.Expr("NOW()"))
 }
 

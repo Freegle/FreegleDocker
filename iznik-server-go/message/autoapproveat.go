@@ -53,30 +53,35 @@ func rippledInPendingHours() int {
 }
 
 // automodApproved returns when the latest messages_automod row for (msgid, groupid) said
-// verdict='approve', if it did and is not stale (its created is on or after
-// messages.editedat, or editedat is null); nil otherwise. messages_automod has a UNIQUE
-// (msgid, groupid): a rerun of the chart REPLACES the row, so there is always at most one
-// candidate and no ORDER BY / LIMIT is needed to find "the latest" one.
+// verdict='approve', if it did and the cron (AutoApproveCleanService) would still honour it;
+// nil otherwise. messages_automod has a UNIQUE (msgid, groupid): a rerun of the chart REPLACES
+// the row, so there is always at most one candidate and no ORDER BY / LIMIT is needed to find
+// "the latest" one.
+//
+// The joins carry the cron's own conditions, so the countdown is not a promise the cron will
+// not keep:
+//   - the poster's ourPostingStatus on this community must still be NULL (the auto-moderated
+//     tier). The chart saw the status as a fact when it ran, but nothing re-runs it when a
+//     moderator changes it while the post waits;
+//   - after an edit the content check re-runs, and a decision made before that re-run saw the
+//     old findings, so it does not count until the chart has decided again; and the content
+//     check must have run on this copy at all;
+//   - the message itself must not be held (messages.heldby: the cron skips on that as well as
+//     on this copy's own hold, which the caller has already checked), and the poster's account
+//     must not be deleted.
 func automodApproved(db *gorm.DB, msgid uint64, groupid uint64) *time.Time {
 	var rows []struct {
 		Created time.Time
 	}
-	// The membership join mirrors the cron's own query (AutoApproveCleanService: the
-	// poster's ourPostingStatus on this community must still be NULL, the auto-moderated
-	// tier). The chart saw the posting status as a fact when it ran, but nothing re-runs it
-	// when a moderator changes the status while the post waits, so without this a member
-	// set to Moderated mid-wait kept a countdown the cron would never honour.
-	//
-	// The messages_groups join mirrors the cron's freshness rule: after an edit the content
-	// check re-runs, and a decision made before that re-run saw the old findings, so it does
-	// not count until the chart has decided again.
 	db.Table("messages_automod AS ma").
 		Joins("JOIN messages m ON m.id = ma.msgid").
+		Joins("JOIN users u ON u.id = m.fromuser").
 		Joins("JOIN messages_groups mg ON mg.msgid = ma.msgid AND mg.groupid = ma.groupid").
 		Joins("JOIN memberships mem ON mem.userid = m.fromuser AND mem.groupid = ma.groupid").
 		Where("ma.msgid = ? AND ma.groupid = ? AND ma.verdict = ?", msgid, groupid, "approve").
+		Where("m.heldby IS NULL AND u.deleted IS NULL").
 		Where("m.editedat IS NULL OR ma.created >= m.editedat").
-		Where("mg.contentcheck_checked_at IS NULL OR ma.created >= mg.contentcheck_checked_at").
+		Where("mg.contentcheck_checked_at IS NOT NULL AND ma.created >= mg.contentcheck_checked_at").
 		Where("mem.ourPostingStatus IS NULL").
 		Select("ma.created").
 		Limit(1).
@@ -105,7 +110,11 @@ func automodApproved(db *gorm.DB, msgid uint64, groupid uint64) *time.Time {
 //     verdict that lands late never publishes a post with no window shown.
 //
 // then capped below by autoapprove_hold_until (the extend-only hold set on Pending load).
-func computeAutoapproveat(db *gorm.DB, message *Message, groups []MessageGroup, idStr string) {
+//
+// Only the copies on communities the viewer moderates (myModGroups) get a countdown: it is a
+// statement about when THAT community's copy will publish, and a moderator of a neighbouring
+// community outside the trial must not be handed the trial community's.
+func computeAutoapproveat(db *gorm.DB, msgid uint64, groups []MessageGroup, myModGroups []uint64) {
 	// Spam on ANY group blocks auto-approval everywhere (Discourse #9654 parity).
 	for _, mg := range groups {
 		if mg.Collection == utils.COLLECTION_SPAM {
@@ -113,11 +122,17 @@ func computeAutoapproveat(db *gorm.DB, message *Message, groups []MessageGroup, 
 		}
 	}
 
+	viewer := make(map[uint64]bool, len(myModGroups))
+	for _, gid := range myModGroups {
+		viewer[gid] = true
+	}
+
 	var pendingIdx []int
 	for i := range groups {
 		// Outside the trial there is no countdown at all, so a community not taking part sees
 		// Pending as it did before post-moderation.
-		if groups[i].Collection == utils.COLLECTION_PENDING && groups[i].Heldby == nil && utils.AutoapproveTrialGroup(groups[i].Groupid) {
+		if groups[i].Collection == utils.COLLECTION_PENDING && groups[i].Heldby == nil &&
+			viewer[groups[i].Groupid] && utils.AutoapproveTrialGroup(groups[i].Groupid) {
 			pendingIdx = append(pendingIdx, i)
 		}
 	}
@@ -125,12 +140,10 @@ func computeAutoapproveat(db *gorm.DB, message *Message, groups []MessageGroup, 
 		return
 	}
 
-	idNum, _ := strconv.ParseUint(idStr, 10, 64)
-
 	// The cron also excludes a post whose MESSAGE-level spam reason is set (not just the
 	// per-group one). The Message payload does not carry that column, so read it once.
 	var msgSpamreason bool
-	db.Table("messages").Select("spamreason IS NOT NULL").Where("id = ?", idNum).Scan(&msgSpamreason)
+	db.Table("messages").Select("spamreason IS NOT NULL").Where("id = ?", msgid).Scan(&msgSpamreason)
 
 	for _, i := range pendingIdx {
 		mg := &groups[i]
@@ -166,7 +179,7 @@ func computeAutoapproveat(db *gorm.DB, message *Message, groups []MessageGroup, 
 			continue
 		}
 
-		decided := automodApproved(db, idNum, mg.Groupid)
+		decided := automodApproved(db, msgid, mg.Groupid)
 		if decided == nil {
 			continue
 		}
@@ -198,38 +211,32 @@ type automodRow struct {
 }
 
 // populateAutomodDecisions fills groups[].Automod for the groups on this message that are
-// both automod groups (utils.AutomodGroup) and moderated by myid, from messages_automod.
-// One membership query and one messages_automod query cover every group on the message,
-// regardless of how many groups it's on. A group with no row yet (not run, or not on an
-// automod path) gets no Automod field, and neither does a group myid doesn't moderate.
-func populateAutomodDecisions(db *gorm.DB, myid uint64, msgid uint64, groups []MessageGroup) {
-	var automodGroupids []uint64
+// both automod groups (utils.AutomodGroup) and moderated by the viewer (myModGroups, which the
+// caller has already read), from messages_automod. One messages_automod query covers every
+// group on the message, regardless of how many groups it's on. A group with no row yet (not
+// run, or not on an automod path) gets no Automod field, and neither does a group the viewer
+// doesn't moderate.
+func populateAutomodDecisions(db *gorm.DB, myid uint64, msgid uint64, groups []MessageGroup, myModGroups []uint64) {
+	viewer := make(map[uint64]bool, len(myModGroups))
+	for _, gid := range myModGroups {
+		viewer[gid] = true
+	}
+
+	var mine []uint64
 	for _, mg := range groups {
-		if utils.AutomodGroup(mg.Groupid) {
-			automodGroupids = append(automodGroupids, mg.Groupid)
+		if viewer[mg.Groupid] && utils.AutomodGroup(mg.Groupid) {
+			mine = append(mine, mg.Groupid)
 		}
 	}
 
-	if len(automodGroupids) == 0 {
-		return
-	}
-
-	// Same moderator check as Heldby above, scoped to the groups this message is on that
-	// are actually automod groups.
-	var myModGroups []uint64
-	db.Table("memberships").Select("groupid").
-		Where("userid = ? AND groupid IN ? AND role IN (?, ?) AND collection = ?",
-			myid, automodGroupids, utils.ROLE_MODERATOR, utils.ROLE_OWNER, utils.COLLECTION_APPROVED).
-		Scan(&myModGroups)
-
-	if len(myModGroups) == 0 {
+	if len(mine) == 0 {
 		return
 	}
 
 	var rows []automodRow
 	db.Table("messages_automod").
 		Select("id, groupid, verdict, reason, end_node, mode, chart_version, path, created").
-		Where("msgid = ? AND groupid IN ?", msgid, myModGroups).
+		Where("msgid = ? AND groupid IN ?", msgid, mine).
 		Scan(&rows)
 
 	if len(rows) == 0 {

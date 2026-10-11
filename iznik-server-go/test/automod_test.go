@@ -191,6 +191,7 @@ type agreementBody struct {
 	} `json:"byEnd"`
 	ByGroup []struct {
 		Groupid            uint64 `json:"groupid"`
+		Mode               string `json:"mode"`
 		Nameshort          string `json:"nameshort"`
 		Decisions          int64  `json:"decisions"`
 		Decided            int64  `json:"decided"`
@@ -227,7 +228,10 @@ type agreementBody struct {
 		Node  string `json:"node"`
 		Count int64  `json:"count"`
 	} `json:"feedback"`
-	Shadow struct {
+	PulledBack         int64 `json:"pulledBack"`
+	PulledBackApproved int64 `json:"pulledBackApproved"`
+	PulledBackRejected int64 `json:"pulledBackRejected"`
+	Shadow             struct {
 		Count int64 `json:"count"`
 	} `json:"shadow"`
 	Approve struct {
@@ -269,7 +273,10 @@ func TestAutomodAgreementByGroupLatencyAndNeighbours(t *testing.T) {
 	// latency, and late: arrival + 20 minutes was long gone), published, then a moderator
 	// of neighbouring B rejected the rippled copy there.
 	late := CreateTestMessage(t, poster, groupA, prefix+" late", 52.0, -1.0)
-	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, arrival=NOW() - INTERVAL 3 HOUR, contentcheck_checked_at=NOW() - INTERVAL 3 HOUR WHERE msgid=?", late)
+	// Publishing re-stamps the copy's arrival (the digest keys off it), so a published copy's
+	// arrival is when it went live, and the time the post waited is read off the post itself.
+	db.Exec("UPDATE messages SET arrival=NOW() - INTERVAL 3 HOUR WHERE id=?", late)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, arrival=NOW() - INTERVAL 5 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 3 HOUR WHERE msgid=?", late)
 	db.Exec("INSERT INTO messages_automod (msgid, groupid, mode, chart_version, verdict, end_node, reason, path, created) "+
 		"VALUES (?, ?, 'approve', '2', 'approve', 'APPROVE', NULL, '[]', NOW() - INTERVAL 1 HOUR)", late, groupA)
 	db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, byuser, user) VALUES (NOW(), 'Message', 'Rejected', ?, ?, ?, ?)", late, groupB, modB, poster)
