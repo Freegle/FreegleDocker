@@ -1,10 +1,11 @@
 ---
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
   - docs/ops/reference/logging.md
   - iznik-nuxt3/modtools/components/ModStatus.vue
   - iznik-batch/app/Monitoring/PlatformStatusWriter.php
+  - iznik-batch/app/Console/Commands/Monitor/ApiBackupTrafficCommand.php
 ---
 
 # Monitoring and logging
@@ -82,6 +83,25 @@ see [Domains, services and runbooks](domains-services-and-runbooks.md).
 **Sentry** captures application errors. The **monitor-fsm** (see `monitor-fsm/README.md`)
 scans unresolved Sentry issues each iteration and can propose fixes for recurring issues as
 pull requests for a human to review.
+
+### Members' API requests on a backup node
+
+The load balancer sends every API request to one active apiv2 node and uses the others only
+as backups while it is down. A backup that goes on serving members after the active node is
+back raises no error anywhere: everything works, but the backup is also the database read
+node and carries load it should not.
+
+`monitor:api-backup-traffic` looks for that every night at 05:40. It counts, from Loki, the
+requests each node served in each hour of the previous day, leaving out the nodes' own health
+checks, and takes the busiest node to be the active one. It raises a Sentry error when another
+node served more than a tenth of any hour's requests. A restart's failover lasts a minute or
+two and stays well under that; clients held on a backup for hours do not. The error names the
+node, the hours and the peak share. The first place to look is the load balancer's stick rules
+for the API backend, which should only ever pin a client to the active node.
+
+The whole day is checked because pinned clients drift back by themselves overnight, so a
+night-only window would miss a pin-up after a daytime deploy. If Loki cannot be queried, or
+holds no API traffic for the day, that is reported as an error too rather than as a pass.
 
 ## Development and test visibility: the status dashboard
 

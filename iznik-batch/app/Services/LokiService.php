@@ -423,4 +423,53 @@ class LokiService
 
         return $rows;
     }
+
+    /**
+     * Read side: run a LogQL metric query (count_over_time and the like) over
+     * [$start, $end], evaluated every $stepSeconds. Returns one entry per series,
+     * its labels and its points keyed by unix timestamp - or NULL if the query
+     * failed, for the same reason as queryRange: a Loki error is not "zero".
+     *
+     * @return array<int, array{labels: array<string, string>, points: array<int, float>}>|null
+     */
+    public function queryMetricRange(string $logql, Carbon $start, Carbon $end, int $stepSeconds): ?array
+    {
+        $url = config('freegle.loki.query_url');
+        if (empty($url)) {
+            Log::warning('LokiService::queryMetricRange: no freegle.loki.query_url configured');
+
+            return null;
+        }
+
+        try {
+            $resp = Http::timeout(120)->get(rtrim($url, '/').'/loki/api/v1/query_range', [
+                'query' => $logql,
+                'start' => $start->getTimestamp() * 1_000_000_000, // ns
+                'end' => $end->getTimestamp() * 1_000_000_000,   // ns
+                'step' => $stepSeconds,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('LokiService::queryMetricRange failed: '.$e->getMessage());
+
+            return null;
+        }
+
+        if (! $resp->ok() || $resp->json('data.resultType') !== 'matrix') {
+            Log::warning('LokiService::queryMetricRange unexpected response: '.$resp->status().' '.substr($resp->body(), 0, 500));
+
+            return null;
+        }
+
+        $series = [];
+        foreach (($resp->json('data.result') ?? []) as $result) {
+            $points = [];
+            foreach (($result['values'] ?? []) as $pair) {
+                // $pair = [ <unix seconds>, "<value>" ]
+                $points[(int) $pair[0]] = (float) $pair[1];
+            }
+            $series[] = ['labels' => $result['metric'] ?? [], 'points' => $points];
+        }
+
+        return $series;
+    }
 }
