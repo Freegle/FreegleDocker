@@ -70,9 +70,12 @@ vi.mock('~/stores/chatdraft', () => ({
     clearDraft: vi.fn(),
   }),
 }))
-vi.mock('pinia', () => {
-  const { ref } = require('vue')
-  return { storeToRefs: () => ({ lastTyping: ref(null) }) }
+vi.mock('pinia', async (importOriginal) => {
+  const { ref } = await import('vue')
+  return {
+    ...(await importOriginal()),
+    storeToRefs: () => ({ lastTyping: ref(null) }),
+  }
 })
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({ me: mockMe, myid: 999 }),
@@ -91,6 +94,11 @@ vi.mock('floating-vue/dist/style.css', () => ({}))
 vi.mock('textarea-caret', () => ({
   default: vi.fn(() => ({ top: 0, left: 0 })),
 }))
+
+// A part ChatFooter loads asynchronously can finish loading after its test
+// ends. tests/unit/setup.ts unmounts every wrapper after each test, so it
+// cannot render into a leftover one; calling enableAutoUnmount again here
+// would throw.
 
 describe('ChatFooter Ctrl+Enter / Cmd+Enter', () => {
   const stubs = {
@@ -156,6 +164,47 @@ describe('ChatFooter Ctrl+Enter / Cmd+Enter', () => {
     it('sends on Ctrl+Enter', async () => {
       await press(await mountFooter(), { ctrlKey: true })
       expect(mockChatStore.send).toHaveBeenCalledWith(123, 'hello')
+    })
+  })
+
+  describe('failed send', () => {
+    it('stops the SpinButton and shows why the send failed', async () => {
+      // The catch must call the SpinButton callback too, or the send button
+      // spins for the full 20 seconds and reports a forgotten callback
+      // (frontend-traps rule: callback on every early-return path).
+      const finishSpy = vi.fn()
+      const wrapper = mount(ChatFooter, {
+        props: { id: 123 },
+        global: {
+          stubs: {
+            ...stubs,
+            ChatNotice: { template: '<div class="chat-notice"><slot /></div>' },
+            SpinButton: {
+              template:
+                '<button class="spin-button" @click="fire"><slot /></button>',
+              emits: ['handle'],
+              methods: {
+                fire() {
+                  this.$emit('handle', finishSpy)
+                },
+              },
+            },
+          },
+          directives: { 'b-tooltip': {} },
+        },
+      })
+      await flushPromises()
+      mockChatStore.send.mockRejectedValueOnce({
+        response: { status: 404 },
+      })
+      const area = wrapper.find('#chatmessage')
+      await area.setValue('hello')
+      await wrapper.find('button.send-button').trigger('click')
+      await flushPromises()
+      expect(finishSpy).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('.chat-notice').text()).toContain(
+        'no longer available'
+      )
     })
   })
 })
