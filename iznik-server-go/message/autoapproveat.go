@@ -66,11 +66,17 @@ func automodApproved(db *gorm.DB, msgid uint64, groupid uint64) *time.Time {
 	// tier). The chart saw the posting status as a fact when it ran, but nothing re-runs it
 	// when a moderator changes the status while the post waits, so without this a member
 	// set to Moderated mid-wait kept a countdown the cron would never honour.
+	//
+	// The messages_groups join mirrors the cron's freshness rule: after an edit the content
+	// check re-runs, and a decision made before that re-run saw the old findings, so it does
+	// not count until the chart has decided again.
 	db.Table("messages_automod AS ma").
 		Joins("JOIN messages m ON m.id = ma.msgid").
+		Joins("JOIN messages_groups mg ON mg.msgid = ma.msgid AND mg.groupid = ma.groupid").
 		Joins("JOIN memberships mem ON mem.userid = m.fromuser AND mem.groupid = ma.groupid").
 		Where("ma.msgid = ? AND ma.groupid = ? AND ma.verdict = ?", msgid, groupid, "approve").
 		Where("m.editedat IS NULL OR ma.created >= m.editedat").
+		Where("mg.contentcheck_checked_at IS NULL OR ma.created >= mg.contentcheck_checked_at").
 		Where("mem.ourPostingStatus IS NULL").
 		Select("ma.created").
 		Limit(1).
@@ -254,14 +260,15 @@ func populateAutomodDecisions(db *gorm.DB, myid uint64, msgid uint64, groups []M
 	for i := range groups {
 		if r, ok := byGroup[groups[i].Groupid]; ok {
 			groups[i].Automod = &AutomodDecision{
-				Verdict:  r.Verdict,
-				Reason:   r.Reason,
-				End:      r.EndNode,
-				Mode:     r.Mode,
-				Version:  r.ChartVersion,
-				Path:     r.Path,
-				Created:  r.Created,
-				Feedback: feedbackByID[r.ID],
+				Verdict:       r.Verdict,
+				Reason:        r.Reason,
+				End:           r.EndNode,
+				Mode:          r.Mode,
+				Version:       r.ChartVersion,
+				Path:          r.Path,
+				Created:       r.Created,
+				Feedback:      feedbackByID[r.ID],
+				QualitySample: groups[i].QualitySample != 0,
 			}
 		}
 	}

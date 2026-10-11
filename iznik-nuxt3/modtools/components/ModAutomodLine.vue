@@ -102,6 +102,12 @@ const lineText = computed(() => {
         : `Automated review: would hold - ${a.reason}`
     }
 
+    // Approved by the chart but picked for the quality-check sample: it waits for a
+    // moderator's verdict with no countdown, and the card has to say why.
+    if (a.verdict === 'approve' && a.qualitysample) {
+      return 'Automated review: approved, but held back as a quality-check sample for a moderator'
+    }
+
     return a.verdict === 'approve'
       ? 'Automated review: will publish after the wait'
       : `Automated review: holding - ${a.reason}`

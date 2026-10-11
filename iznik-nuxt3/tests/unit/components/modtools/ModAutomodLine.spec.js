@@ -167,6 +167,19 @@ describe('ModAutomodLine', () => {
         'Automated review: holding - suspicious wording'
       )
     })
+
+    it('explains an approved decision that is held back as a quality-check sample', () => {
+      const message = messageWithAutomod(7, {
+        verdict: 'approve',
+        mode: 'approve',
+        qualitysample: true,
+      })
+      const wrapper = mountLine({ message, groupid: 7, pending: true })
+      expect(wrapper.text()).toContain(
+        'held back as a quality-check sample for a moderator'
+      )
+      expect(wrapper.text()).not.toContain('will publish after the wait')
+    })
   })
 
   it('opens the modal when Why? is clicked', async () => {

@@ -246,6 +246,46 @@ func TestAutoapproveatQualitySample(t *testing.T) {
 
 	db.Exec("UPDATE messages_groups SET quality_sample=1 WHERE msgid=?", msg)
 	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken), "sampled: waits for a moderator")
+
+	// The decision block says so, which is how the card explains an approved decision
+	// with no countdown.
+	automod := getAutomodField(t, msg, groupID, modToken)
+	assert.NotNil(t, automod, "the moderator sees the stored decision")
+	assert.Equal(t, true, automod["qualitysample"], "the decision block carries the sample flag")
+}
+
+// After an edit the content check re-runs. A decision made before that re-run saw the old
+// findings and is not current, as the cron's own query says, so there is no countdown until
+// the chart has decided again.
+func TestAutoapproveatDecisionBeforeContentCheckRerun(t *testing.T) {
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
+	prefix := uniquePrefix("aastalefacts")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, poster, groupID, "Member")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	db.Exec("UPDATE memberships SET ourPostingStatus = NULL WHERE userid = ? AND groupid = ?", poster, groupID)
+	_, modToken := CreateTestSession(t, modID)
+
+	// Decided four minutes ago; the content check ran again two minutes ago.
+	msg := CreateTestMessage(t, poster, groupID, prefix+" edited after decision", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW() - INTERVAL 10 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 2 MINUTE, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", msg)
+	insertAutomodRow(t, msg, groupID, "approve", 4)
+	defer db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+
+	assert.Nil(t, getAutoapproveatField(t, msg, groupID, modToken),
+		"a decision older than the content check's last run is not current")
+
+	// The chart decides again on the new findings.
+	db.Exec("DELETE FROM messages_automod WHERE msgid=?", msg)
+	insertAutomodRow(t, msg, groupID, "approve", 1)
+	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken),
+		"a decision made after the re-run counts down")
 }
 
 // A rippled-in copy is AutoApproveService's: released after rippled_in_pending_hours,

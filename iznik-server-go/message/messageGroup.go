@@ -100,6 +100,10 @@ type AutomodDecision struct {
 	// Feedback lists the node ids this moderator has already marked as wrong on this
 	// decision (POST /modtools/automod/feedback), so ModTools can show that after a reload.
 	Feedback []string `json:"feedback,omitempty"`
+	// QualitySample: the chart approved this copy but the batch held it back as part of the
+	// quality-check sample, so it waits for a moderator with no countdown. Said here so the
+	// card can explain why an approved decision is not counting down.
+	QualitySample bool `json:"qualitysample,omitempty"`
 }
 
 // effectiveHomeLocks clears LockedByHome on every row that is not actually blocked: a lock
