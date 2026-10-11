@@ -743,8 +743,9 @@ func TestMarkCheckedReject(t *testing.T) {
 
 // After a Check reject the moderator decides. Approving brings the copy back as the
 // moderator's own approval: the hold and needs_moderator go, approvedby is stamped. The
-// reach stays frozen, as after any Back to pending (nothing re-ripples or re-notifies), and
-// the post is not barred from rippling.
+// reach the pull-back froze spreads again from where it had got to (nothing re-ripples or
+// re-notifies anyone already told), because a Check reject does not bar the post from
+// rippling the way a home community's Back to pending does.
 func TestMarkCheckedRejectThenApprove(t *testing.T) {
 	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
 	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
@@ -761,6 +762,7 @@ func TestMarkCheckedRejectThenApprove(t *testing.T) {
 	msg := CreateTestMessage(t, poster, groupID, prefix+" approved again", 52.0, -1.0)
 	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NULL, checkedby=NULL WHERE msgid=?", msg)
 	addExpandingReach(t, msg)
+	scheduleReachIn(msg, "1 HOUR")
 	defer db.Exec("DELETE FROM logs WHERE type='Message' AND msgid=?", msg)
 	defer db.Exec("DELETE FROM rippling_blocked WHERE msgid=?", msg)
 	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
@@ -768,7 +770,7 @@ func TestMarkCheckedRejectThenApprove(t *testing.T) {
 
 	out := postMarkChecked(t, modToken, fmt.Sprintf(`{"groupid": %d, "reject": true, "ids": [%d]}`, groupID, msg))
 	assert.Equal(t, float64(1), out["rejected"])
-	assert.Equal(t, "held", reachStatus(msg))
+	requireFrozen(t, msg, "the pull-back from Check froze the reach")
 
 	status, body := postModAction(t, modToken, msg, "Approve", groupID)
 	assert.Equal(t, 200, status, body)
@@ -786,7 +788,7 @@ func TestMarkCheckedRejectThenApprove(t *testing.T) {
 	}
 	assert.Nil(t, state.Heldby, "the hold is released by the approval")
 	assert.Equal(t, 0, state.NeedsModerator, "and so is needs_moderator")
-	assert.Equal(t, "held", reachStatus(msg), "the reach stays frozen, as after any Back to pending")
+	assertResumed(t, msg, "approving the home copy lifts the freeze the pull-back put on the reach")
 
 	var blocked int64
 	db.Raw("SELECT COUNT(*) FROM rippling_blocked WHERE msgid=?", msg).Scan(&blocked)

@@ -76,9 +76,8 @@ penalise the poster for a post the moderator approved. Only the moderator's own 
 should do that.
 
 Either way the reach goes `held`, not `stopped` (`stopped` is what the engine's orphan
-retraction acts on, and it exempts only `held`), and **nothing resumes a `held` reach**. A later
-Approve brings the post's own copy back, as the moderator's approval, but the post does not start
-spreading again. That is master's Back to pending, documented rather than fixed.
+retraction acts on, and it exempts only `held`). A Check reject bars nothing, so a moderator's
+later Approve of the home copy resumes the reach (next section).
 
 What counts as "in the Check queue" is `utils.CheckQueueJoins` plus `utils.CheckQueueConditions`
 and nothing else. The list, the menu badge, Mark all as checked, marking particular posts and the

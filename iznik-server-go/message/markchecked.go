@@ -94,10 +94,12 @@ func MarkChecked(c *fiber.Ctx) error {
 	// stays live, every unreviewed copy elsewhere goes back to its own community's Pending
 	// queue (in neutral words: those communities have no Check queue), needs_moderator stops
 	// the auto-approve cron re-publishing the post if the hold is released, and the reach is
-	// frozen, as after any Back to pending. Targeted only - there is no bulk "reject the whole
-	// bucket" (that would be far too blunt). rippled_in = 0: oversight actions apply to a
-	// post's ORIGIN row only - rippled-in copies are the origin community's responsibility,
-	// never yanked directly from another group's queue.
+	// frozen while the post is under review. A moderator's later Approve of the home copy
+	// resumes it (ResumeReachIfHeld), because nothing here barred the post from rippling.
+	// Targeted only - there is no bulk "reject the whole bucket" (that would be far too
+	// blunt). rippled_in = 0: oversight actions apply to a post's ORIGIN row only -
+	// rippled-in copies are the origin community's responsibility, never yanked directly
+	// from another group's queue.
 	if req.Reject {
 		if len(req.IDs) == 0 {
 			return fiber.NewError(fiber.StatusBadRequest, "reject requires specific ids")
