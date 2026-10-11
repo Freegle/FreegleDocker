@@ -59,6 +59,34 @@ type Latency struct {
 	MaxSeconds float64 `json:"maxSeconds" gorm:"column:max_seconds"`
 }
 
+// VersionCount is the same breakdown per chart version, so a chart or model change shows as
+// a step in the disagreement rate rather than being averaged into the window.
+type VersionCount struct {
+	Version            string `json:"version" gorm:"column:chart_version"`
+	Decisions          int64  `json:"decisions" gorm:"column:decisions"`
+	Decided            int64  `json:"decided" gorm:"column:decided"`
+	Approves           int64  `json:"approves" gorm:"column:approves"`
+	Holds              int64  `json:"holds" gorm:"column:holds"`
+	Unavailable        int64  `json:"unavailable" gorm:"column:unavailable"`
+	ModDisagreed       int64  `json:"modDisagreed" gorm:"column:mod_disagreed"`
+	NeighbourDisagreed int64  `json:"neighbourDisagreed" gorm:"column:neighbour_disagreed"`
+	Late               int64  `json:"late" gorm:"column:late"`
+}
+
+// DayCount is the same breakdown per day of decision, oldest first: the trend line, where a
+// backlog, an outage or a regression shows as a day that looks unlike its neighbours.
+type DayCount struct {
+	Day                string `json:"day" gorm:"column:day"`
+	Decisions          int64  `json:"decisions" gorm:"column:decisions"`
+	Decided            int64  `json:"decided" gorm:"column:decided"`
+	Approves           int64  `json:"approves" gorm:"column:approves"`
+	Holds              int64  `json:"holds" gorm:"column:holds"`
+	Unavailable        int64  `json:"unavailable" gorm:"column:unavailable"`
+	ModDisagreed       int64  `json:"modDisagreed" gorm:"column:mod_disagreed"`
+	NeighbourDisagreed int64  `json:"neighbourDisagreed" gorm:"column:neighbour_disagreed"`
+	Late               int64  `json:"late" gorm:"column:late"`
+}
+
 // AgreementResponse is the SysAdmin automated review report.
 type AgreementResponse struct {
 	Days        int             `json:"days"`
@@ -69,9 +97,23 @@ type AgreementResponse struct {
 	Latency     Latency         `json:"latency"`
 	ByEnd       []EndCount      `json:"byEnd"`
 	ByGroup     []GroupCount    `json:"byGroup"`
+	ByVersion   []VersionCount  `json:"byVersion"`
+	ByDay       []DayCount      `json:"byDay"`
 	Feedback    []FeedbackCount `json:"feedback"`
 	Shadow      ModeCount       `json:"shadow"`
 	Approve     ModeCount       `json:"approve"`
+}
+
+// breakdownSQL is the per-row aggregate every breakdown (community, chart version, day)
+// shares, so they can never drift apart.
+func breakdownSQL() string {
+	return "COUNT(*) AS decisions, " +
+		"SUM(" + decidedSQL + ") AS decided, " +
+		"SUM(" + decidedSQL + " AND ma.verdict = 'approve') AS approves, " +
+		"SUM(" + decidedSQL + " AND ma.verdict = 'hold') AS holds, " +
+		"SUM(ma.end_node = 'UNAVAILABLE') AS unavailable, " +
+		modDisagreedSQL + ", " + neighbourDisagreedSQL + ", " +
+		"SUM(" + lateSQL() + ") AS late"
 }
 
 // undecidedEnds are the end nodes that are not a verdict on the post itself: the service
@@ -142,7 +184,7 @@ func Agreement(c *fiber.Ctx) error {
 
 	db := database.DBConn
 	since := gorm.Expr("NOW() - INTERVAL ? DAY", days)
-	resp := AgreementResponse{Days: days, Groupid: groupid, ByEnd: []EndCount{}, ByGroup: []GroupCount{}, Feedback: []FeedbackCount{}}
+	resp := AgreementResponse{Days: days, Groupid: groupid, ByEnd: []EndCount{}, ByGroup: []GroupCount{}, ByVersion: []VersionCount{}, ByDay: []DayCount{}, Feedback: []FeedbackCount{}}
 
 	// Every query below starts from the decisions in the window, optionally one community's.
 	decisions := func() *gorm.DB {
@@ -164,16 +206,22 @@ func Agreement(c *fiber.Ctx) error {
 
 	withCopy().
 		Joins("LEFT JOIN `groups` g ON g.id = ma.groupid").
-		Select("ma.groupid, COALESCE(g.nameshort, '') AS nameshort, COUNT(*) AS decisions, " +
-			"SUM(" + decidedSQL + ") AS decided, " +
-			"SUM(" + decidedSQL + " AND ma.verdict = 'approve') AS approves, " +
-			"SUM(" + decidedSQL + " AND ma.verdict = 'hold') AS holds, " +
-			"SUM(ma.end_node = 'UNAVAILABLE') AS unavailable, " +
-			modDisagreedSQL + ", " + neighbourDisagreedSQL + ", " +
-			"SUM(" + lateSQL() + ") AS late").
+		Select("ma.groupid, COALESCE(g.nameshort, '') AS nameshort, " + breakdownSQL()).
 		Group("ma.groupid, g.nameshort").
 		Order("decisions DESC").
 		Scan(&resp.ByGroup)
+
+	withCopy().
+		Select("ma.chart_version, " + breakdownSQL()).
+		Group("ma.chart_version").
+		Order("decisions DESC").
+		Scan(&resp.ByVersion)
+
+	withCopy().
+		Select("DATE(ma.created) AS day, " + breakdownSQL()).
+		Group("DATE(ma.created)").
+		Order("day ASC").
+		Scan(&resp.ByDay)
 
 	feedback := db.Table("messages_automod_feedback f").
 		Joins("JOIN messages_automod ma ON ma.id = f.automodid").

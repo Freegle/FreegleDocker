@@ -288,6 +288,82 @@ func TestAutoapproveatDecisionBeforeContentCheckRerun(t *testing.T) {
 		"a decision made after the re-run counts down")
 }
 
+// checkedOn returns checkedby for a copy, 0 when unstamped.
+func checkedOn(t *testing.T, msgid, groupid uint64) uint64 {
+	t.Helper()
+	var by *uint64
+	database.DBConn.Raw("SELECT checkedby FROM messages_groups WHERE msgid = ? AND groupid = ?", msgid, groupid).Scan(&by)
+	if by == nil {
+		return 0
+	}
+	return *by
+}
+
+// A moderator who approves, rejects or deletes a post on one of their communities has looked at
+// it, so the copy of the same post that published itself on another trial community they
+// moderate is stamped as checked, as if marked in Check. A copy on a community outside the
+// trial is left alone, and so is one a moderator approved by hand.
+func TestModActionStampsOwnSelfPublishedCopies(t *testing.T) {
+	prefix := uniquePrefix("aastampown")
+	db := database.DBConn
+
+	trial := CreateTestGroup(t, prefix+"_trial")
+	outside := CreateTestGroup(t, prefix+"_outside")
+	pendingOn := CreateTestGroup(t, prefix+"_pending")
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	for _, gid := range []uint64{trial, outside, pendingOn} {
+		CreateTestMembership(t, poster, gid, "Member")
+		CreateTestMembership(t, modID, gid, "Moderator")
+	}
+	_, modToken := CreateTestSession(t, modID)
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "")
+	t.Setenv("FREEGLE_AUTOAPPROVE_TRIAL_GROUPS", fmt.Sprintf("%d", trial))
+
+	// A TN-style cross-post: direct rows on three communities. Self-published on the trial
+	// community, self-published on one outside the trial, still Pending on the third.
+	msg := CreateTestMessage(t, poster, trial, prefix+" cross-post", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NULL, checkedby=NULL, rippled_in=0 WHERE msgid=? AND groupid=?", msg, trial)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in) VALUES (?, ?, NOW(), 'Approved', 0, 0)", msg, outside)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in) VALUES (?, ?, NOW(), 'Pending', 0, 0)", msg, pendingOn)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", msg)
+	defer db.Exec("DELETE FROM messages WHERE id=?", msg)
+
+	status, _ := postMultiAction(t, modToken, map[string]interface{}{
+		"id": msg, "action": "Approve", "groupid": pendingOn,
+	})
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "Approved", collectionOn(t, msg, pendingOn))
+	assert.Equal(t, modID, checkedOn(t, msg, trial), "the self-published trial copy is stamped as checked by this moderator")
+	assert.Equal(t, uint64(0), checkedOn(t, msg, outside), "a copy outside the trial is not part of Check and is not stamped")
+
+	// A second post, this time rejected on the third community: the same stamp.
+	rejected := CreateTestMessage(t, poster, trial, prefix+" rejected elsewhere", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, checkedat=NULL, checkedby=NULL, rippled_in=0 WHERE msgid=? AND groupid=?", rejected, trial)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in) VALUES (?, ?, NOW(), 'Pending', 0, 0)", rejected, pendingOn)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", rejected)
+	defer db.Exec("DELETE FROM messages WHERE id=?", rejected)
+
+	status, _ = postMultiAction(t, modToken, map[string]interface{}{
+		"id": rejected, "action": "Reject", "groupid": pendingOn, "subject": "No thanks", "body": "Not for this community.",
+	})
+	assert.Equal(t, 200, status)
+	assert.Equal(t, modID, checkedOn(t, rejected, trial), "rejecting elsewhere is a look too")
+
+	// A hand-approved copy is already reviewed and keeps its own record.
+	handApproved := CreateTestMessage(t, poster, trial, prefix+" hand approved", 52.0, -1.0)
+	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=?, checkedat=NULL, checkedby=NULL, rippled_in=0 WHERE msgid=? AND groupid=?", poster, handApproved, trial)
+	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, rippled_in) VALUES (?, ?, NOW(), 'Pending', 0, 0)", handApproved, pendingOn)
+	defer db.Exec("DELETE FROM messages_groups WHERE msgid=?", handApproved)
+	defer db.Exec("DELETE FROM messages WHERE id=?", handApproved)
+
+	status, _ = postMultiAction(t, modToken, map[string]interface{}{
+		"id": handApproved, "action": "Approve", "groupid": pendingOn,
+	})
+	assert.Equal(t, 200, status)
+	assert.Equal(t, uint64(0), checkedOn(t, handApproved, trial), "a hand-approved copy is not stamped")
+}
+
 // A rippled-in copy is AutoApproveService's: released after rippled_in_pending_hours,
 // unless the RECEIVING group's own keywords or worry words held it, in which case it waits
 // for one of that group's moderators and never auto-approves. The countdown must say the

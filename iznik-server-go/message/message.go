@@ -2658,6 +2658,10 @@ func handleApprove(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	}
 	authorizedGroups = approvable
 
+	// A copy of this post that published itself on another of this moderator's trial
+	// communities has now been looked at by them.
+	stampOwnSelfPublishedCopies(db, myid, req.ID)
+
 	// The home copy is approved, so the copies it was locking go back to normal per-group
 	// moderation, and a reach a pull-back froze spreads again from where it had got to: nothing
 	// is re-sent to anyone already told, and a post its home community sent back stays frozen
@@ -2918,6 +2922,24 @@ func PosterMessagingGroups(db *gorm.DB, msgid uint64) map[uint64]bool {
 	return groups
 }
 
+// stampOwnSelfPublishedCopies records that this moderator has looked at a post: any copy of it
+// that published itself (Approved, approvedby NULL, direct) on a trial community they moderate
+// gets checkedat/checkedby, exactly as marking it in Check would. A moderator who approves,
+// rejects or deletes the post on one of their communities has plainly reviewed it, and without
+// this the self-published copy stayed "unreviewed" (in Check, and holding the earned-reach gate)
+// although the human look it was waiting for had happened. Trial communities only, like Check.
+func stampOwnSelfPublishedCopies(db *gorm.DB, myid uint64, msgid uint64) {
+	gids := utils.AutoapproveTrialGroups(user.GetActiveModGroupIDs(myid))
+	if len(gids) == 0 {
+		return
+	}
+
+	db.Table("messages_groups").
+		Where("msgid = ? AND groupid IN ? AND collection = ? AND approvedby IS NULL AND rippled_in = 0 AND deleted = 0 AND checkedat IS NULL",
+			msgid, gids, utils.COLLECTION_APPROVED).
+		Updates(map[string]interface{}{"checkedat": gorm.Expr("NOW()"), "checkedby": myid})
+}
+
 // NotifyPosterFlag reports whether a moderation action taken on group gid may be relayed
 // to the poster: 1 for a community the post was posted to (HomeGroups), 0 for one it
 // merely rippled into. It is written into the poster-email background task, which the
@@ -3073,6 +3095,10 @@ func handleReject(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 				req.ID, gid, myid, subject, body, stdmsgid, "Reject", notify[gid]),
 		})
 	}
+
+	// Rejecting the post on one community is a review of it: a copy that published itself
+	// on another of this moderator's trial communities no longer waits for a look.
+	stampOwnSelfPublishedCopies(db, myid, req.ID)
 
 	if multi {
 		return c.JSON(fiber.Map{"ret": 0, "status": "Success", "groupids": pendingGroups, "skipped": actionSkips(heldByOther, nil)})
@@ -3298,6 +3324,10 @@ func handleDeleteMessage(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 				req.ID, gid, myid, subject, body, stdmsgid, "Delete Approved Message", notify[gid]),
 		})
 	}
+
+	// As for a rejection: the moderator has looked at the post, so their own self-published
+	// copies of it elsewhere are checked.
+	stampOwnSelfPublishedCopies(db, myid, req.ID)
 
 	if multi {
 		return c.JSON(fiber.Map{"ret": 0, "status": "Success", "groupids": authorizedGroups, "skipped": actionSkips(heldByOther, nil)})

@@ -70,6 +70,54 @@ const stats = {
       late: 0,
     },
   ],
+  byVersion: [
+    {
+      version: '5',
+      decisions: 10,
+      decided: 10,
+      approves: 8,
+      holds: 2,
+      unavailable: 0,
+      modDisagreed: 1,
+      neighbourDisagreed: 3,
+      late: 1,
+    },
+    {
+      version: '',
+      decisions: 2,
+      decided: 0,
+      approves: 0,
+      holds: 0,
+      unavailable: 2,
+      modDisagreed: 0,
+      neighbourDisagreed: 0,
+      late: 0,
+    },
+  ],
+  byDay: [
+    {
+      day: '2026-10-09',
+      decisions: 7,
+      decided: 6,
+      approves: 5,
+      holds: 1,
+      unavailable: 1,
+      modDisagreed: 0,
+      neighbourDisagreed: 1,
+      late: 0,
+    },
+    {
+      day: '2026-10-10',
+      decisions: 5,
+      decided: 4,
+      approves: 4,
+      holds: 0,
+      unavailable: 1,
+      modDisagreed: 1,
+      neighbourDisagreed: 2,
+      late: 1,
+    },
+  ],
   feedback: [{ node: 'LOAN', count: 2 }],
 }
 
@@ -140,6 +188,35 @@ describe('ModSysAdminAutomod', () => {
       groupid: 5,
     })
     expect(wrapper.vm.groupOptions).toHaveLength(3)
+  })
+
+  // A chart bump or a bad day has to show as its own row, not be averaged into the window.
+  it('breaks the figures down by chart version and by day', async () => {
+    const wrapper = mount(ModSysAdminAutomod, { global: { stubs } })
+    await flushPromises()
+    const byVersion = wrapper.find('[data-testid="automod-by-version"]')
+    expect(byVersion.exists()).toBe(true)
+    expect(byVersion.text()).toContain('(none)')
+    expect(byVersion.text()).toContain('10.0%')
+    const byDay = wrapper.find('[data-testid="automod-by-day"]')
+    expect(byDay.exists()).toBe(true)
+    expect(byDay.text()).toContain('2026-10-09')
+    expect(byDay.text()).toContain('2026-10-10')
+    expect(byDay.text()).toContain('25.0%')
+  })
+
+  it('says so when a period has no decisions to break down', async () => {
+    mockFetchAutomodAgreement.mockResolvedValue({
+      ...stats,
+      byVersion: [],
+      byDay: undefined,
+    })
+    const wrapper = mount(ModSysAdminAutomod, { global: { stubs } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="automod-by-version"]').exists()).toBe(
+      false
+    )
+    expect(wrapper.find('[data-testid="automod-by-day"]').exists()).toBe(false)
   })
 
   it('shows the error when the request fails', async () => {

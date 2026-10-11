@@ -147,6 +147,94 @@
         </b-table-simple>
         <p v-else class="text-muted mb-0">No decisions in this period.</p>
       </b-card>
+      <b-card class="mb-3" header="By chart version">
+        <p class="small text-muted mb-2">
+          A new chart or model shows here as its own row, so a change in the
+          disagreement rate can be put down to it rather than averaged away.
+          Decisions with no version are ones the service could not run.
+        </p>
+        <b-table-simple
+          v-if="stats.byVersion?.length"
+          small
+          responsive
+          data-testid="automod-by-version"
+        >
+          <b-thead>
+            <b-tr>
+              <b-th>Version</b-th>
+              <b-th class="text-end">Decisions</b-th>
+              <b-th class="text-end">Approves</b-th>
+              <b-th class="text-end">Holds</b-th>
+              <b-th class="text-end">Could not run</b-th>
+              <b-th class="text-end">Late</b-th>
+              <b-th class="text-end">Moderator disagreed</b-th>
+              <b-th class="text-end">Neighbour disagreed</b-th>
+            </b-tr>
+          </b-thead>
+          <b-tbody>
+            <b-tr v-for="row in stats.byVersion" :key="'v' + row.version">
+              <b-td>{{ row.version || '(none)' }}</b-td>
+              <b-td class="text-end">{{ row.decisions }}</b-td>
+              <b-td class="text-end">{{ row.approves }}</b-td>
+              <b-td class="text-end">{{ row.holds }}</b-td>
+              <b-td class="text-end">{{ row.unavailable }}</b-td>
+              <b-td class="text-end">{{ row.late }}</b-td>
+              <b-td class="text-end">
+                {{ row.modDisagreed }}
+                <span class="text-muted">{{
+                  pct(row.modDisagreed, row.decided)
+                }}</span>
+              </b-td>
+              <b-td class="text-end">{{ row.neighbourDisagreed }}</b-td>
+            </b-tr>
+          </b-tbody>
+        </b-table-simple>
+        <p v-else class="text-muted mb-0">No decisions in this period.</p>
+      </b-card>
+      <b-card class="mb-3" header="By day">
+        <p class="small text-muted mb-2">
+          The trend. A backlog, an outage or a regression shows as a day unlike
+          its neighbours: a jump in "could not run" or "late", or in either
+          disagreement count.
+        </p>
+        <b-table-simple
+          v-if="stats.byDay?.length"
+          small
+          responsive
+          data-testid="automod-by-day"
+        >
+          <b-thead>
+            <b-tr>
+              <b-th>Day</b-th>
+              <b-th class="text-end">Decisions</b-th>
+              <b-th class="text-end">Approves</b-th>
+              <b-th class="text-end">Holds</b-th>
+              <b-th class="text-end">Could not run</b-th>
+              <b-th class="text-end">Late</b-th>
+              <b-th class="text-end">Moderator disagreed</b-th>
+              <b-th class="text-end">Neighbour disagreed</b-th>
+            </b-tr>
+          </b-thead>
+          <b-tbody>
+            <b-tr v-for="row in stats.byDay" :key="row.day">
+              <b-td>{{ row.day }}</b-td>
+              <b-td class="text-end">{{ row.decisions }}</b-td>
+              <b-td class="text-end">{{ row.approves }}</b-td>
+              <b-td class="text-end">{{ row.holds }}</b-td>
+              <b-td class="text-end">{{ row.unavailable }}</b-td>
+              <b-td class="text-end">{{ row.late }}</b-td>
+              <b-td class="text-end">
+                {{ row.modDisagreed }}
+                <span class="text-muted">{{
+                  pct(row.modDisagreed, row.decided)
+                }}</span>
+              </b-td>
+              <b-td class="text-end">{{ row.neighbourDisagreed }}</b-td>
+            </b-tr>
+          </b-tbody>
+        </b-table-simple>
+        <p v-else class="text-muted mb-0">No decisions in this period.</p>
+      </b-card>
       <b-card header="Steps flagged as wrong by moderators">
         <b-table-simple v-if="stats.feedback?.length" small responsive>
           <b-tbody>

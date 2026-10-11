@@ -201,6 +201,28 @@ type agreementBody struct {
 		NeighbourDisagreed int64  `json:"neighbourDisagreed"`
 		Late               int64  `json:"late"`
 	} `json:"byGroup"`
+	ByVersion []struct {
+		Version            string `json:"version"`
+		Decisions          int64  `json:"decisions"`
+		Decided            int64  `json:"decided"`
+		Approves           int64  `json:"approves"`
+		Holds              int64  `json:"holds"`
+		Unavailable        int64  `json:"unavailable"`
+		ModDisagreed       int64  `json:"modDisagreed"`
+		NeighbourDisagreed int64  `json:"neighbourDisagreed"`
+		Late               int64  `json:"late"`
+	} `json:"byVersion"`
+	ByDay []struct {
+		Day                string `json:"day"`
+		Decisions          int64  `json:"decisions"`
+		Decided            int64  `json:"decided"`
+		Approves           int64  `json:"approves"`
+		Holds              int64  `json:"holds"`
+		Unavailable        int64  `json:"unavailable"`
+		ModDisagreed       int64  `json:"modDisagreed"`
+		NeighbourDisagreed int64  `json:"neighbourDisagreed"`
+		Late               int64  `json:"late"`
+	} `json:"byDay"`
 	Feedback []struct {
 		Node  string `json:"node"`
 		Count int64  `json:"count"`
@@ -315,6 +337,34 @@ func TestAutomodAgreementByGroupLatencyAndNeighbours(t *testing.T) {
 		}
 	}
 	assert.True(t, approveRow)
+
+	// The same figures per chart version and per day, so a chart bump or a bad day shows as
+	// a step rather than being averaged into the window.
+	if assert.Len(t, body.ByVersion, 2, "chart version 2 and the UNAVAILABLE rows' empty version") {
+		for _, v := range body.ByVersion {
+			if v.Version == "2" {
+				assert.Equal(t, int64(2), v.Decisions)
+				assert.Equal(t, int64(2), v.Decided)
+				assert.Equal(t, int64(1), v.Approves)
+				assert.Equal(t, int64(1), v.Holds)
+				assert.Equal(t, int64(1), v.NeighbourDisagreed)
+				assert.Equal(t, int64(1), v.Late)
+			} else {
+				assert.Equal(t, "", v.Version, "an UNAVAILABLE row has no chart version")
+				assert.Equal(t, int64(1), v.Unavailable)
+				assert.Equal(t, int64(0), v.Decided)
+			}
+		}
+	}
+	if assert.Len(t, body.ByDay, 1, "every decision here was made today") {
+		d := body.ByDay[0]
+		assert.Regexp(t, `^\d{4}-\d{2}-\d{2}`, d.Day)
+		assert.Equal(t, int64(3), d.Decisions)
+		assert.Equal(t, int64(2), d.Decided)
+		assert.Equal(t, int64(1), d.Unavailable)
+		assert.Equal(t, int64(1), d.NeighbourDisagreed)
+		assert.Equal(t, int64(1), d.Late)
+	}
 
 	all := getAgreement(t, adminToken, "days=1")
 	assert.GreaterOrEqual(t, all.Total, int64(4), "without the filter every community's decisions count")
