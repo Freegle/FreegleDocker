@@ -101,11 +101,10 @@ func isValidEEESize(v string) bool      { return validEEESizes[v] }
 // earnedReachEnabled reports whether the earned-reach review gate is on (env
 // RIPPLE_EARNED_REACH_ENABLED). When off, the approved-message reviewer pool is
 // unrestricted - byte-for-byte the pre-gate query. Kept local to avoid an import
-// cycle with the message package; reads the same env var ExpandService reads, the way it
-// reads it: config/freegle.php casts it with (bool) env(), which is utils.EnvBool and not the
-// stricter utils.EnvSwitch the post-moderation switches use.
+// cycle with the message package; reads the same env var ExpandService reads, the way the
+// batch reads every post-moderation switch (EnvSetting::flag): on for "true" or "1" only.
 func earnedReachEnabled() bool {
-	return utils.EnvBool("RIPPLE_EARNED_REACH_ENABLED")
+	return utils.EnvSwitch("RIPPLE_EARNED_REACH_ENABLED")
 }
 
 // CoinFlip picks between AI image review and approved message review when both

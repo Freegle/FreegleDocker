@@ -114,25 +114,6 @@ func TestEnvGroupIDs(t *testing.T) {
 	assert.Empty(t, EnvGroupIDs("ENV_SETTING_NEVER_SET_FOR_TEST"), "unset lists nobody")
 }
 
-func TestEnvBool(t *testing.T) {
-	// `(bool) env()` on the batch: Laravel lowercases the value and reads true, false, empty and
-	// null (bracketed or not) as those values, and PHP casts what is left, so only "", "0" and
-	// those spellings of false are off. Unlike EnvSwitch, "yes", "off" and a lone space are on,
-	// which is why the post-moderation switches do not use it.
-	for _, v := range []string{"", "0", "false", "FALSE", "False", "(false)", "null", "(null)", "empty", "(empty)"} {
-		t.Setenv("ENV_SETTING_FOR_TEST", v)
-		assert.False(t, EnvBool("ENV_SETTING_FOR_TEST"), "%q is off", v)
-	}
-
-	for _, v := range []string{"1", "true", "TRUE", "True", "(true)", "yes", "on", "off", "no", " ", " 0 ", "2"} {
-		t.Setenv("ENV_SETTING_FOR_TEST", v)
-		assert.True(t, EnvBool("ENV_SETTING_FOR_TEST"), "%q is on", v)
-	}
-
-	os.Unsetenv("ENV_SETTING_NEVER_SET_FOR_TEST")
-	assert.False(t, EnvBool("ENV_SETTING_NEVER_SET_FOR_TEST"), "unset is off")
-}
-
 func TestAutoapproveTrialGroup_GlobalSwitchIsReadLikeTheBatchReadsIt(t *testing.T) {
 	// The batch publishes posts for every community when it reads the switch as on, so this side
 	// must read it the same way for every value, not just the usual spellings: a value the batch

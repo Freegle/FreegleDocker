@@ -15,9 +15,8 @@ import (
 // EnvSwitch, EnvPositiveInt and EnvGroupIDs are the batch's App\Support\EnvSetting::flag,
 // positiveInt and groupIds, case for case. utils/envsetting_test.go holds the same cases as the
 // batch's tests/Unit/Support/EnvSettingTest.php; a case added to one belongs in the other.
-//
-// EnvBool is the other rule, for a variable the batch reads as `(bool) env('NAME')` and has not
-// moved onto EnvSetting.
+// Every switch the two sides share goes through these; a `(bool) env()` read on the batch side
+// is a bug, not a second rule.
 
 // phpTrimChars is what PHP's trim() strips by default. strings.TrimSpace would also strip
 // non-breaking and other Unicode spaces, which PHP leaves in place.
@@ -75,22 +74,6 @@ func EnvGroupIDs(name string) []uint64 {
 	}
 
 	return ids
-}
-
-// EnvBool reads the named variable the way the batch reads `(bool) env('NAME')`: Laravel lowercases
-// the value and takes "true", "false", "empty" and "null" (bracketed or not) as those values, and
-// PHP casts what is left, so "", "0" and those spellings of false are off and anything else ("1",
-// "yes", " ") is on. Nothing is trimmed: PHP does not.
-//
-// Only for a variable whose batch side is still a `(bool) env()` read (RIPPLE_EARNED_REACH_ENABLED,
-// in config/freegle.php). The post-moderation switches use EnvSwitch.
-func EnvBool(name string) bool {
-	switch strings.ToLower(os.Getenv(name)) {
-	case "", "0", "false", "(false)", "null", "(null)", "empty", "(empty)":
-		return false
-	}
-
-	return true
 }
 
 // asciiDigits is true for a non-empty string of the digits 0 to 9 and nothing else: not the digits
