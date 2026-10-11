@@ -16,7 +16,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $end_node The chart end node reached, e.g. APPROVE or HOLD_LOAN.
  * @property string|null $reason Moderator-facing explanation of the end node.
  * @property array $path Every node visited: question, answer, confidence, evidence.
- * @property \Illuminate\Support\Carbon $created
+ * @property array|null $detail What the service reported about the run: features, model, calls, ms, cost_usd, tokens, prompt_sha, reply_sha, elapsed_ms (or error, when unavailable).
+ * @property \Illuminate\Support\Carbon $created When the post's text was read for this decision.
  * @property-read \App\Models\Message $message
  * @property-read \App\Models\Group $group
  * @property-read \Illuminate\Database\Eloquent\Collection<int, MessageAutomodFeedback> $feedback
@@ -36,6 +37,7 @@ class MessageAutomod extends Model
 
     protected $casts = [
         'path' => 'array',
+        'detail' => 'array',
         'created' => 'datetime',
     ];
 

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS messages_automod_feedback (
     userid    BIGINT UNSIGNED NOT NULL COMMENT 'The moderator who gave the feedback.',
     created   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    KEY messages_automod_feedback_automodid_index (automodid),
+    UNIQUE KEY messages_automod_feedback_unique (automodid, node, userid),
     CONSTRAINT messages_automod_feedback_automodid_foreign FOREIGN KEY (automodid)
         REFERENCES messages_automod (id) ON DELETE CASCADE,
     CONSTRAINT messages_automod_feedback_userid_foreign FOREIGN KEY (userid)

@@ -18,15 +18,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('messages_groups', function (Blueprint $table) {
+            // No index: every reader filters on quality_sample behind collection = 'Pending'.
             $table->boolean('quality_sample')->default(false)->after('checkedby');
-            $table->index(['groupid', 'quality_sample'], 'messages_groups_groupid_qsample_idx');
         });
     }
 
     public function down(): void
     {
         Schema::table('messages_groups', function (Blueprint $table) {
-            $table->dropIndex('messages_groups_groupid_qsample_idx');
             $table->dropColumn('quality_sample');
         });
     }

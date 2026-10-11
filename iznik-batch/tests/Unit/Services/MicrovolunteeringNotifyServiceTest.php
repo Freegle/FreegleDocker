@@ -128,6 +128,12 @@ class MicrovolunteeringNotifyServiceTest extends TestCase
         DB::table('memberships')->where('userid', $auto)->where('groupid', $group)->update(['ourPostingStatus' => null]);
         $autoMsg = $this->createMessage($group, $auto, 'Pending');
         DB::table('messages_groups')->where('msgid', $autoMsg)->update(['arrival' => now()->subMinutes(5)]);
+        // Automated review has approved it, so it will publish once the wait is up.
+        DB::table('messages_automod')->insert([
+            'msgid' => $autoMsg, 'groupid' => $group, 'mode' => 'approve', 'chart_version' => '5',
+            'verdict' => 'approve', 'end_node' => 'APPROVE', 'reason' => null, 'path' => '[]',
+            'created' => now()->subMinutes(5),
+        ]);
 
         $stats = (new MicrovolunteeringNotifyService())->notifyForMessages();
 
@@ -594,5 +600,56 @@ class MicrovolunteeringNotifyServiceTest extends TestCase
         $stats = (new MicrovolunteeringNotifyService())->notifyForMessages();
 
         $this->assertSame(0, $stats['messages_considered'], 'a message already exhorted must not be offered again');
+    }
+
+    /**
+     * Only a post automated review has approved will publish by itself. One it held, or has
+     * not decided yet, waits for a moderator and gets the ordinary wording - and the ordinary
+     * place in the queue.
+     */
+    public function test_a_post_automated_review_held_keeps_the_plain_wording(): void
+    {
+        config(['freegle.autoapprove.enabled' => true, 'freegle.autoapprove.delay_minutes' => 20]);
+
+        $group    = $this->createGroup();
+        $reviewer = $this->createUser('Moderate');
+        $this->addMembership($reviewer, $group);
+        $auto = $this->createUser();
+        $this->addMembership($auto, $group);
+        DB::table('memberships')->where('userid', $auto)->where('groupid', $group)->update(['ourPostingStatus' => null]);
+        $autoMsg = $this->createMessage($group, $auto, 'Pending');
+        DB::table('messages_groups')->where('msgid', $autoMsg)->update(['arrival' => now()->subMinutes(5)]);
+        DB::table('messages_automod')->insert([
+            'msgid' => $autoMsg, 'groupid' => $group, 'mode' => 'approve', 'chart_version' => '5',
+            'verdict' => 'hold', 'end_node' => 'HOLD_MONEY', 'reason' => 'Asks for money', 'path' => '[]',
+            'created' => now()->subMinutes(4),
+        ]);
+
+        (new MicrovolunteeringNotifyService())->notifyForMessages();
+
+        $row = DB::table('users_notifications')->where('touser', $reviewer)->where('type', 'Exhort')->first();
+        $this->assertNotNull($row);
+        $this->assertStringStartsWith('Click here to review', $row->text);
+        $this->assertStringNotContainsString('could go live', $row->text);
+    }
+
+    public function test_a_post_automated_review_has_not_decided_keeps_the_plain_wording(): void
+    {
+        config(['freegle.autoapprove.enabled' => true, 'freegle.autoapprove.delay_minutes' => 20]);
+
+        $group    = $this->createGroup();
+        $reviewer = $this->createUser('Moderate');
+        $this->addMembership($reviewer, $group);
+        $auto = $this->createUser();
+        $this->addMembership($auto, $group);
+        DB::table('memberships')->where('userid', $auto)->where('groupid', $group)->update(['ourPostingStatus' => null]);
+        $autoMsg = $this->createMessage($group, $auto, 'Pending');
+        DB::table('messages_groups')->where('msgid', $autoMsg)->update(['arrival' => now()->subMinutes(5)]);
+
+        (new MicrovolunteeringNotifyService())->notifyForMessages();
+
+        $row = DB::table('users_notifications')->where('touser', $reviewer)->where('type', 'Exhort')->first();
+        $this->assertNotNull($row);
+        $this->assertStringNotContainsString('could go live', $row->text);
     }
 }

@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AutoApproveCleanService;
 use App\Services\ContentCheckService;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\LokiSpy;
 use Tests\TestCase;
 
 /**
@@ -81,7 +82,9 @@ class AutoApproveCleanServiceTest extends TestCase
                 'end_node' => 'APPROVE',
                 'reason' => null,
                 'path' => [],
-                'created' => now(),
+                // The chart decided a minute after the content check ran: the wait counts
+                // from the decision, so a fixture decided "now" would not be due yet.
+                'created' => now()->subMinutes(20),
             ], is_array($opts['automod'] ?? null) ? $opts['automod'] : []));
         }
 
@@ -93,8 +96,9 @@ class AutoApproveCleanServiceTest extends TestCase
         $mg = DB::table('messages_groups')->where('msgid', $msgid)->where('groupid', $groupid)->first();
         $this->assertEquals(MessageGroup::COLLECTION_APPROVED, $mg->collection, 'message should be Approved');
         $this->assertNull($mg->approvedby, 'auto-approval leaves approvedby NULL');
+        // text says which automatic path published it: the 48h sweep writes none.
         $this->assertDatabaseHas('logs', [
-            'msgid' => $msgid, 'groupid' => $groupid, 'type' => 'Message', 'subtype' => 'Autoapproved',
+            'msgid' => $msgid, 'groupid' => $groupid, 'type' => 'Message', 'subtype' => 'Autoapproved', 'text' => 'automod',
         ]);
     }
 
@@ -135,6 +139,36 @@ class AutoApproveCleanServiceTest extends TestCase
         $this->service->process();
 
         $this->assertStillPending($message->id, $group->id);
+    }
+
+    /**
+     * The wait is counted from the chart's decision, not only from arrival. If the review
+     * lands late (service down, backlog, UNAVAILABLE retry) a post that is already older than
+     * the delay must not publish the minute its verdict is written: moderators would have had
+     * no countdown and no window at all.
+     */
+    public function test_does_not_approve_within_the_delay_of_the_automod_decision(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable([
+            'mg'      => ['arrival' => now()->subHours(2)],
+            'automod' => ['created' => now()->subMinutes(19)],
+        ]);
+
+        $this->service->process();
+
+        $this->assertStillPending($message->id, $group->id);
+    }
+
+    public function test_approves_once_the_automod_decision_is_as_old_as_the_delay(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable([
+            'mg'      => ['arrival' => now()->subHours(2), 'contentcheck_checked_at' => now()->subMinutes(22)],
+            'automod' => ['created' => now()->subMinutes(21)],
+        ]);
+
+        $this->service->process();
+
+        $this->assertApproved($message->id, $group->id);
     }
 
     public function test_skips_default_posting_status(): void
@@ -198,6 +232,10 @@ class AutoApproveCleanServiceTest extends TestCase
             'the content check records why the post is waiting'
         );
 
+        // The check just ran and the chart decides straight after it; wind both back so the
+        // wait after the decision has passed, keeping the decision after the check.
+        DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)
+            ->update(['contentcheck_checked_at' => now()->subMinutes(21)]);
         MessageAutomod::create([
             'msgid' => $message->id,
             'groupid' => $group->id,
@@ -207,13 +245,30 @@ class AutoApproveCleanServiceTest extends TestCase
             'end_node' => 'APPROVE',
             'reason' => null,
             'path' => [],
-            'created' => now(),
+            'created' => now()->subMinutes(20),
         ]);
 
         $stats = $this->service->process();
 
         $this->assertGreaterThanOrEqual(1, $stats['approved']);
         $this->assertApproved($message->id, $group->id);
+    }
+
+    /**
+     * A copy pulled back by a moderator (Back to Pending, or Reject from the Check queue)
+     * carries needs_moderator until a moderator's own Approve clears it. Release clears
+     * heldby alone, so without this the still-current approve verdict would publish the
+     * post again a minute later.
+     */
+    public function test_skips_copy_pulled_back_for_a_moderator(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable([
+            'mg' => ['needs_moderator' => 1],
+        ]);
+
+        $this->service->process();
+
+        $this->assertStillPending($message->id, $group->id);
     }
 
     public function test_skips_held_message(): void
@@ -550,5 +605,118 @@ class AutoApproveCleanServiceTest extends TestCase
         $this->service->process();
 
         $this->assertApproved($message->id, $group->id);
+    }
+
+    // --- decision vs content check, shadow, and the write-time guards -------------------------
+
+    /** The chart's decision must postdate the content check it drew its facts from. */
+    public function test_does_not_approve_on_a_decision_older_than_the_latest_content_check(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable([
+            'mg'      => ['contentcheck_checked_at' => now()->subMinutes(5)],
+            'automod' => ['created' => now()->subMinutes(25)],
+        ]);
+
+        $this->service->process();
+
+        $this->assertStillPending($message->id, $group->id);
+    }
+
+    public function test_a_shadow_community_never_publishes_even_when_approve_is_on_everywhere(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        config(['freegle.automod.shadow_group_ids' => (string) $group->id]);
+
+        $this->service->process();
+
+        $this->assertStillPending($message->id, $group->id);
+    }
+
+    /** Runs approve() on a row exactly as process() would have selected it a moment earlier. */
+    private function approveSelectedRow(Message $message, Group $group, User $user): void
+    {
+        $row = (object) [
+            'msgid'      => $message->id,
+            'groupid'    => $group->id,
+            'fromuser'   => $user->id,
+            'spamtype'   => null,
+            'subject'    => $message->subject,
+            'msgtype'    => $message->type,
+            'arrival'    => now()->subMinutes(21)->toDateTimeString(),
+            'decided_at' => now()->subMinutes(20)->toDateTimeString(),
+        ];
+        $method = new \ReflectionMethod($this->service, 'approve');
+        $method->setAccessible(true);
+        $method->invoke($this->service, $row);
+    }
+
+    private function assertNothingPublished(int $msgid, int $groupid, string $collection): void
+    {
+        $this->assertDatabaseHas('messages_groups', ['msgid' => $msgid, 'groupid' => $groupid, 'collection' => $collection]);
+        $this->assertDatabaseMissing('logs', ['msgid' => $msgid, 'type' => 'Message', 'subtype' => 'Autoapproved']);
+        $this->assertDatabaseMissing('messages_spatial', ['msgid' => $msgid]);
+        $this->assertSame(0, DB::table('background_tasks')->where('data', 'like', '%"msgid":' . $msgid . '%')->count());
+    }
+
+    /**
+     * Candidates are selected once and written one by one; a moderator can act in between.
+     * A Reject landing in that window must stand: the write re-checks that the copy is still
+     * an unheld, un-pulled-back Pending row with no live hold, and does nothing otherwise.
+     */
+    public function test_a_reject_landing_before_the_write_is_not_overturned(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)
+            ->update(['collection' => MessageGroup::COLLECTION_REJECTED, 'rejectedat' => now()]);
+
+        $this->approveSelectedRow($message, $group, $user);
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_REJECTED);
+    }
+
+    public function test_a_hold_bumped_before_the_write_wins(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)
+            ->update(['autoapprove_hold_until' => now()->addMinutes(10)]);
+
+        $this->approveSelectedRow($message, $group, $user);
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    public function test_a_copy_pulled_back_before_the_write_is_not_published(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)
+            ->update(['needs_moderator' => 1]);
+
+        $this->approveSelectedRow($message, $group, $user);
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    // --- what reaches Loki -------------------------------------------------------------------
+
+    public function test_a_publish_is_logged_to_loki_with_how_long_it_waited(): void
+    {
+        $loki = new LokiSpy();
+        $service = new AutoApproveCleanService($loki);
+        [$user, $group, $message] = $this->makeApprovable([
+            'mg'      => ['arrival' => now()->subMinutes(40), 'contentcheck_checked_at' => now()->subMinutes(39)],
+            'automod' => ['created' => now()->subMinutes(25)],
+        ]);
+
+        $service->process();
+
+        $this->assertApproved($message->id, $group->id);
+        $events = $loki->eventsOf('autoapprove', 'published');
+        $this->assertCount(1, $events);
+        $this->assertSame($message->id, $events[0]['context']['msgid']);
+        $this->assertSame($group->id, $events[0]['context']['groupid']);
+        $this->assertGreaterThanOrEqual(39, $events[0]['context']['minutes_waited']);
+        $this->assertLessThanOrEqual(41, $events[0]['context']['minutes_waited']);
+        $this->assertGreaterThanOrEqual(24 * 60, $events[0]['context']['decision_age_seconds']);
+        $this->assertLessThanOrEqual(26 * 60, $events[0]['context']['decision_age_seconds']);
     }
 }

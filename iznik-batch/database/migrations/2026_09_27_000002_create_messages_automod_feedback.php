@@ -30,7 +30,8 @@ return new class extends Migration
             $table->foreign('userid', 'messages_automod_feedback_userid_foreign')
                 ->references('id')->on('users')->onDelete('cascade');
 
-            $table->index('automodid', 'messages_automod_feedback_automodid_index');
+            // One flag per moderator per step of a run; the unique key also serves the foreign key.
+            $table->unique(['automodid', 'node', 'userid'], 'messages_automod_feedback_unique');
 
             $table->comment('A moderator flagging one node of a stored automod run as wrong.');
         });

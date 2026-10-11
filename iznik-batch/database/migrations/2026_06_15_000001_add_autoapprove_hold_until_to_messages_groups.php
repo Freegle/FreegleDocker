@@ -21,17 +21,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('messages_groups', function (Blueprint $table) {
+            // No index: every reader filters on the hold behind collection = 'Pending'.
             $table->timestamp('autoapprove_hold_until')->nullable()->after('quality_sample');
-            // Keeps the candidate-query predicate fast: both auto-approvers gain
-            // AND (mg.autoapprove_hold_until IS NULL OR mg.autoapprove_hold_until <= NOW())
-            $table->index(['groupid', 'autoapprove_hold_until'], 'messages_groups_groupid_hold_until_idx');
         });
     }
 
     public function down(): void
     {
         Schema::table('messages_groups', function (Blueprint $table) {
-            $table->dropIndex('messages_groups_groupid_hold_until_idx');
             $table->dropColumn('autoapprove_hold_until');
         });
     }

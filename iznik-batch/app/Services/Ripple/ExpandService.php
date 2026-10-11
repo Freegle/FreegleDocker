@@ -24,6 +24,7 @@ use App\Database\Expressions\StUnion;
 use App\Database\Expressions\StX;
 use App\Database\Expressions\StY;
 use App\Database\Expressions\Value;
+use App\Services\Automod\AutomodMode;
 use App\Services\ContentCheckService;
 use App\Services\MessageSpatialService;
 use App\Support\GreatCircle;
@@ -1284,7 +1285,9 @@ class ExpandService
         // RIPPLE_AUTOAPPROVE_HOLD_SECONDS old before it starts rippling, so a mod or the microvol
         // pool can catch a bad one before it fans out. A post a mod approved (approvedby NOT NULL)
         // or checked (checkedat NOT NULL) skips the hold; an explicit --msgid run bypasses it,
-        // exactly like the arrival cutoff.
+        // exactly like the arrival cutoff. Only a post on an approve-mode community can have
+        // published itself (AutomodMode), so the hold applies there and nowhere else: outside
+        // the trial the content check's own promotions ripple exactly as before.
         if (config('freegle.ripple.earned_reach_enabled', false) && $onlyMsgid === null) {
             $holdSeconds = (int) config('freegle.ripple.autoapprove_hold_seconds', 3600);
             if ($holdSeconds > 0) {
@@ -1295,7 +1298,10 @@ class ExpandService
                             ->where(function ($a) {
                                 $a->whereNotNull('mg_h.approvedby')->orWhereNotNull('mg_h.checkedat');
                             });
-                    })->orWhereRaw('ms.arrival <= DATE_SUB(NOW(), INTERVAL ? SECOND)', [$holdSeconds]);
+                    })->orWhereRaw('ms.arrival <= DATE_SUB(NOW(), INTERVAL ? SECOND)', [$holdSeconds])
+                    ->orWhereNull('ms.groupid')
+                    // keep-raw: the approve-mode set is a dynamic id list from config, or always/never.
+                    ->orWhereRaw('NOT ' . AutomodMode::approveModeSql('ms.groupid'));
                 });
             }
         }
@@ -2138,10 +2144,16 @@ class ExpandService
         // the oldest one. That does not change the answer: rippled-in rows are inserted with
         // approvedby NULL, so picking one only matters if the true origin HAS an approvedby -
         // and modLooked() below inspects every row, so it catches exactly that case.
+        //
+        // Only a post on an approve-mode community can have published itself; elsewhere
+        // approvedby NULL is the content check's ordinary promotion and the gate does not apply.
         $originRow = DB::table('messages_groups')
-            ->where('msgid', $msgid)->orderBy('arrival')->first(['approvedby']);
+            ->where('msgid', $msgid)->orderBy('arrival')->first(['approvedby', 'groupid']);
 
-        return $originRow !== null && $originRow->approvedby === null && !$this->modLooked($msgid);
+        return $originRow !== null
+            && $originRow->approvedby === null
+            && AutomodMode::isApproveMode((int) $originRow->groupid)
+            && !$this->modLooked($msgid);
     }
 
     /**

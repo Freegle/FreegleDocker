@@ -582,6 +582,15 @@ Schedule::command('monitor:email-health')
     ->appendOutputTo(cronLog('monitor:email-health'))
     ->runInBackground();
 
+// Automated review health: fails when a review has been unavailable for a quarter of an hour,
+// or an approve-mode post is past the publish delay with no decision at all. Quiet while both
+// automod lists are empty.
+Schedule::command('monitor:automod-health')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(30)
+    ->appendOutputTo(cronLog('monitor:automod-health'))
+    ->runInBackground();
+
 // Deprecated-endpoint retirement report: once daily, early, so the team sees it
 // with the morning's mail. Only emails when an endpoint is past its x-sunset date.
 Schedule::command('monitor:deprecated-endpoints')

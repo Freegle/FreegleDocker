@@ -947,7 +947,13 @@ TrashNothing ingestion skip it; approving a home group clears it), but nothing s
 With post-moderation (see
 [../../moderators/post-moderation.md](../../moderators/post-moderation.md)) a post can be
 live without any human look (origin `approvedby` NULL, no `checkedat` anywhere). The gate
-stops such posts spreading ahead of scrutiny:
+stops such posts spreading ahead of scrutiny. It applies only where a post can have
+published itself: an origin on an approve-mode community (`AutomodMode`: the
+`FREEGLE_AUTOAPPROVE_TRIAL_GROUPS` list, or every community when
+`FREEGLE_AUTOAPPROVE_ENABLED` is on, never one in the shadow list). Everywhere else
+`approvedby` NULL is the content check's ordinary promotion of a trusted member's post, and
+the gate leaves it alone, so switching `RIPPLE_EARNED_REACH_ENABLED` on changes nothing
+outside the trial. The scout gate in `firstreply` match mail is scoped the same way.
 
 - **Hold**: `initialiseNew` skips an unreviewed post until it is
   `RIPPLE_AUTOAPPROVE_HOLD_SECONDS` (default 1h) old. No reach row exists during the hold,
@@ -968,8 +974,11 @@ stops such posts spreading ahead of scrutiny:
   current polygon has to check the gate itself. `firstreply` match mail does this by
   skipping unreviewed posts entirely while the gate is on (match mail can reach someone
   beyond the current edge, and a matched member's reply raises `min_tick`).
-- The oversight **reject** (Go `markchecked.go`) sets the reach row `status = 'stopped'`
-  and settles the await stamp in the same statement.
+- Reject from the **Check** queue (Go `markchecked.go`) reuses Back to pending: the origin
+  goes Pending, held by the moderator and marked `needs_moderator`, the reach is frozen
+  (`status = 'held'`, §6) and the await stamp settled. Rippled-in copies stay for per-group
+  moderation, a copy another community's moderator approved by hand included, so the
+  moderator's following Approve brings them back without re-rippling.
 
 ## 6. Retraction
 
@@ -1444,7 +1453,8 @@ about travel time, so the reach wins wherever we have it.
   `rippling_reach` row yet for its first ten minutes. Set to `0` to show every post at once.
 - `earned_reach_enabled` (`RIPPLE_EARNED_REACH_ENABLED`), `autoapprove_hold_seconds`
   (`RIPPLE_AUTOAPPROVE_HOLD_SECONDS`, 3600), `clean_views_per_group`
-  (`RIPPLE_CLEAN_VIEWS_PER_GROUP`, 5) - the earned-reach gate (§5).
+  (`RIPPLE_CLEAN_VIEWS_PER_GROUP`, 5) - the earned-reach gate (§5), approve-mode
+  communities only.
 
 Per-community rather than config: `groups.settings.rippling.{out,in}` switches rippling off for
 one community in either direction (§4a), set only via `php artisan ripple:opt-out`.

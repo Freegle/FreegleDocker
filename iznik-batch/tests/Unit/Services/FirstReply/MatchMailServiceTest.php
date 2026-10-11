@@ -446,7 +446,7 @@ class MatchMailServiceTest extends TestCase
         // Ripple\ExpandService), and a scout reply would then pull the reach out
         // to meet them. While the gate is on, a silent unreviewed post waits for
         // a moderator look before it is scouted.
-        config(['freegle.ripple.earned_reach_enabled' => true]);
+        config(['freegle.ripple.earned_reach_enabled' => true, 'freegle.autoapprove.enabled' => true]);
         $message = $this->seedSilentOffer(); // approvedby NULL = no human look
         $wanter = $this->memberAt(51.9, 0.8);
         $this->wantedAt($wanter, 51.9, 0.8);
@@ -459,7 +459,7 @@ class MatchMailServiceTest extends TestCase
 
     public function test_earned_reach_gate_scouts_normally_after_a_mod_look(): void
     {
-        config(['freegle.ripple.earned_reach_enabled' => true]);
+        config(['freegle.ripple.earned_reach_enabled' => true, 'freegle.autoapprove.enabled' => true]);
         $message = $this->seedSilentOffer();
         DB::table('messages_groups')->where('msgid', $message->id)->update(['checkedat' => now()]);
         $wanter = $this->memberAt(51.9, 0.8);

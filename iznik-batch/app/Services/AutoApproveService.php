@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Helpers\ItemQuality;
 use App\Models\Group;
 use App\Models\Membership;
+use App\Models\MessageAutomod;
 use App\Models\MessageGroup;
+use App\Services\Automod\AutomodMode;
 use App\Services\Lockdown\LockdownService;
 use App\Services\Lockdown\LockdownHoldsService;
 use Illuminate\Support\Facades\DB;
@@ -14,8 +16,10 @@ use Illuminate\Support\Str;
 
 class AutoApproveService
 {
-    public function __construct(private readonly ?LockdownService $lockdown = null)
-    {
+    public function __construct(
+        private readonly ?LockdownService $lockdown = null,
+        private readonly ?LokiService $loki = null
+    ) {
     }
 
     /**
@@ -140,11 +144,11 @@ class AutoApproveService
                 $q->whereNull('messages_groups.autoapprove_hold_until')
                     ->orWhere('messages_groups.autoapprove_hold_until', '<=', DB::raw('NOW()'));
             })
-            // Posts held back as a manual quality-check sample stay held for a human:
-            // letting the 48h fallback sweep them up would silently drain the sample
-            // AutoApproveCleanService set aside, breaking the sample-vs-population
-            // error-rate comparison on the moderation stats.
-            ->where('messages_groups.quality_sample', 0)
+            // A quality-check sample (messages_groups.quality_sample) is deliberately NOT
+            // excluded: the sample is held back from the 20-minute path for a moderator's
+            // verdict, and this sweep stays its backstop, so a sample nobody looked at does
+            // not wait in Pending for ever. The Autoapproved log it writes has no text, so the
+            // moderation stats can still tell a swept sample from a moderator's verdict.
             ->where(function ($q) {
                 // Normal posts: the 48h fallback (unchanged).
                 $q->where(function ($q2) {
@@ -220,6 +224,11 @@ class AutoApproveService
                             $stats['skipped']++;
                             continue;
                         }
+
+                        if ($this->heldByAutomatedReview($candidate)) {
+                            $stats['skipped']++;
+                            continue;
+                        }
                     }
 
                     if ($this->shouldApproveOnGroup($candidate, $candidate->groupid)) {
@@ -249,6 +258,41 @@ class AutoApproveService
         }
 
         return $stats;
+    }
+
+    /**
+     * On an approve-mode community a post automated review held (money, a loan, medicine) has
+     * a recorded reason to wait for a moderator, and this sweep is for posts nobody has looked
+     * at, not a way round that reason. A decision the review could not make (UNAVAILABLE), or
+     * the community's own moderate-everything setting (GROUP_MODERATES_ALL), is not such a
+     * reason, and outside approve mode the chart's verdict decides nothing.
+     */
+    private function heldByAutomatedReview(object $candidate): bool
+    {
+        if (!AutomodMode::isApproveMode((int) $candidate->groupid)) {
+            return false;
+        }
+
+        $decision = DB::table('messages_automod')
+            ->where('msgid', $candidate->msgid)
+            ->where('groupid', $candidate->groupid)
+            ->first(['verdict', 'end_node', 'reason']);
+
+        if (!$decision
+            || $decision->verdict !== MessageAutomod::VERDICT_HOLD
+            || in_array($decision->end_node, ['UNAVAILABLE', 'GROUP_MODERATES_ALL'], true)) {
+            return false;
+        }
+
+        Log::info("AutoApprove: 48h sweep leaves message #{$candidate->msgid} on group #{$candidate->groupid} for a moderator: automated review held it ({$decision->end_node}: {$decision->reason})");
+        ($this->loki ?? app(LokiService::class))->logEvent('autoapprove', 'fallback_skipped_hold', [
+            'msgid' => (int) $candidate->msgid,
+            'groupid' => (int) $candidate->groupid,
+            'end_node' => $decision->end_node,
+            'reason' => $decision->reason,
+        ]);
+
+        return true;
     }
 
     /**

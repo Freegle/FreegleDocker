@@ -159,7 +159,9 @@ class AutomodFactsService
 
     /**
      * The member's other open posts of the same type on this community in the last 60 days,
-     * one line each, for the duplicate question the model answers by comparing items.
+     * one line each, for the duplicate question the model answers by comparing items. Only
+     * posts that arrived before this one: of two similar posts, the later is the duplicate,
+     * and holding the earlier one for it would hold both.
      *
      * @return string[]
      */
@@ -174,6 +176,7 @@ class AutomodFactsService
             ->where('m.fromuser', $message->fromuser)
             ->where('m.type', $message->type)
             ->where('m.id', '<>', $msgid)
+            ->where('m.arrival', '<', $message->arrival ?? now())
             ->where('mg.groupid', $groupid)
             ->whereIn('mg.collection', ['Approved', 'Pending'])
             ->where('mg.deleted', 0)
@@ -248,7 +251,8 @@ class AutomodFactsService
 
     /**
      * The same poster already has this post open on the community, or posted it again
-     * sooner than the community's repost interval allows. Looks back 60 days.
+     * sooner than the community's repost interval allows. Looks back 60 days, at posts that
+     * arrived before this one only: the later of two similar posts is the duplicate.
      *
      * @return array{0: bool, 1: ?string}
      */
@@ -268,6 +272,7 @@ class AutomodFactsService
             ->where('m.fromuser', $message->fromuser)
             ->where('m.type', $message->type)
             ->where('m.id', '<>', $msgid)
+            ->where('m.arrival', '<', $message->arrival ?? now())
             ->where('mg.groupid', $groupid)
             ->whereIn('mg.collection', ['Approved', 'Pending'])
             ->where('mg.deleted', 0)

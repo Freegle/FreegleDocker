@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Services;
 
+use App\Models\MessageAutomod;
 use App\Models\MessageGroup;
 use App\Services\AutoApproveService;
 use Illuminate\Support\Facades\DB;
@@ -68,11 +69,10 @@ class AutoApproveServiceHoldTest extends TestCase
         ]);
     }
 
-    public function test_48h_fallback_leaves_quality_sample_for_a_human(): void
+    public function test_48h_fallback_still_catches_a_quality_sample(): void
     {
-        // A post AutoApproveCleanService held back as a quality-check sample is waiting
-        // for a moderator's verdict. The 48h fallback must not sweep it up — that would
-        // silently drain the sample and break the sample-vs-population error comparison.
+        // A quality sample is held for a moderator's verdict; the 48h sweep stays its
+        // backstop, so a sample nobody looked at does not wait in Pending for ever.
         [$user, $group, $message] = $this->makeApprovable48h();
         DB::table('messages_groups')
             ->where('msgid', $message->id)
@@ -84,9 +84,9 @@ class AutoApproveServiceHoldTest extends TestCase
         $this->assertDatabaseHas('messages_groups', [
             'msgid'      => $message->id,
             'groupid'    => $group->id,
-            'collection' => MessageGroup::COLLECTION_PENDING,
+            'collection' => MessageGroup::COLLECTION_APPROVED,
         ]);
-        $this->assertDatabaseMissing('logs', [
+        $this->assertDatabaseHas('logs', [
             'msgid'   => $message->id,
             'type'    => 'Message',
             'subtype' => 'Autoapproved',
@@ -128,6 +128,61 @@ class AutoApproveServiceHoldTest extends TestCase
             'msgid'   => $message->id,
             'type'    => 'Message',
             'subtype' => 'Autoapproved',
+        ]);
+    }
+
+    private function seedDecision(int $msgid, int $groupid, string $verdict, string $end): void
+    {
+        MessageAutomod::create([
+            'msgid' => $msgid, 'groupid' => $groupid, 'mode' => MessageAutomod::MODE_APPROVE,
+            'chart_version' => '5', 'verdict' => $verdict, 'end_node' => $end, 'reason' => null,
+            'path' => [], 'created' => now()->subHour(),
+        ]);
+    }
+
+    /**
+     * On an approve-mode community a post automated review held (money, medicine, a loan)
+     * has a recorded reason to wait for a moderator. The 48h sweep is for posts nobody has
+     * looked at, not a way round that reason.
+     */
+    public function test_48h_fallback_skips_a_post_automated_review_held_on_an_approve_mode_community(): void
+    {
+        config(['freegle.autoapprove.enabled' => true, 'freegle.automod.shadow_group_ids' => '']);
+        [$user, $group, $message] = $this->makeApprovable48h();
+        $this->seedDecision($message->id, $group->id, MessageAutomod::VERDICT_HOLD, 'HOLD_MONEY');
+
+        $stats = $this->service->process();
+
+        $this->assertDatabaseHas('messages_groups', [
+            'msgid' => $message->id, 'groupid' => $group->id, 'collection' => MessageGroup::COLLECTION_PENDING,
+        ]);
+        $this->assertDatabaseMissing('logs', ['msgid' => $message->id, 'type' => 'Message', 'subtype' => 'Autoapproved']);
+        $this->assertGreaterThanOrEqual(1, $stats['skipped']);
+    }
+
+    public function test_48h_fallback_still_runs_when_the_review_could_not_decide(): void
+    {
+        config(['freegle.autoapprove.enabled' => true, 'freegle.automod.shadow_group_ids' => '']);
+        [$user, $group, $message] = $this->makeApprovable48h();
+        $this->seedDecision($message->id, $group->id, MessageAutomod::VERDICT_HOLD, 'UNAVAILABLE');
+
+        $this->service->process();
+
+        $this->assertDatabaseHas('messages_groups', [
+            'msgid' => $message->id, 'groupid' => $group->id, 'collection' => MessageGroup::COLLECTION_APPROVED,
+        ]);
+    }
+
+    public function test_48h_fallback_ignores_a_hold_recorded_outside_approve_mode(): void
+    {
+        config(['freegle.autoapprove.enabled' => false, 'freegle.autoapprove.trial_group_ids' => '']);
+        [$user, $group, $message] = $this->makeApprovable48h();
+        $this->seedDecision($message->id, $group->id, MessageAutomod::VERDICT_HOLD, 'HOLD_MONEY');
+
+        $this->service->process();
+
+        $this->assertDatabaseHas('messages_groups', [
+            'msgid' => $message->id, 'groupid' => $group->id, 'collection' => MessageGroup::COLLECTION_APPROVED,
         ]);
     }
 }

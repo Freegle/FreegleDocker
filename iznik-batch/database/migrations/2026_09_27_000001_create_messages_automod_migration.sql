@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS messages_automod (
     end_node      VARCHAR(255) NOT NULL COMMENT 'The chart end node reached, e.g. APPROVE or HOLD_LOAN.',
     reason        VARCHAR(255) NULL COMMENT 'Moderator-facing explanation of the end node.',
     path          JSON NOT NULL COMMENT 'Every node visited: question, answer, confidence, evidence.',
+    detail        JSON NULL COMMENT 'What the service reported about the run: features, model, calls, ms, cost_usd, tokens, prompt_sha, reply_sha; or the error when unavailable.',
     created       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY messages_automod_msgid_groupid_unique (msgid, groupid),

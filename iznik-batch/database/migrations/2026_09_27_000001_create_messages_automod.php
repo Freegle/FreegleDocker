@@ -35,6 +35,7 @@ return new class extends Migration
             $table->string('end_node')->comment('The chart end node reached, e.g. APPROVE or HOLD_LOAN.');
             $table->string('reason', 255)->nullable()->comment('Moderator-facing explanation of the end node.');
             $table->json('path')->comment('Every node visited: question, answer, confidence, evidence.');
+            $table->json('detail')->nullable()->comment('What the service reported about the run: features, model, calls, ms, cost_usd, tokens, prompt_sha, reply_sha; or the error when unavailable.');
             $table->timestamp('created')->useCurrent();
 
             $table->unique(['msgid', 'groupid'], 'messages_automod_msgid_groupid_unique');

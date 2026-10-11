@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Services\AutoApproveCleanService;
+use App\Services\Automod\AutomodMode;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -84,13 +86,17 @@ class MicrovolunteeringNotifyService
         // production: 17.03s for the joined form against 1.00s for this one, over 6,209
         // distinct message ids in 7 chunked lookups, returning a result set identical row
         // for row (23,926 rows both ways).
+        // keep-raw: correlated NOT EXISTS over the most-recent outcome, which the builder cannot render.
         $msgs = DB::select("
             SELECT messages.id, messages.fromuser, messages_groups.groupid, messages.subject, messages_groups.collection,
-                   messages_groups.arrival, poster.ourPostingStatus AS posterstatus
+                   messages_groups.arrival, poster.ourPostingStatus AS posterstatus,
+                   ma.verdict AS automodverdict, ma.created AS automodcreated,
+                   messages.editedat AS editedat, messages_groups.contentcheck_checked_at AS checkedat
             FROM messages
             INNER JOIN messages_groups ON messages.id = messages_groups.msgid
             INNER JOIN `groups` ON messages_groups.groupid = groups.id
             LEFT JOIN memberships poster ON poster.userid = messages.fromuser AND poster.groupid = messages_groups.groupid
+            LEFT JOIN messages_automod ma ON ma.msgid = messages.id AND ma.groupid = messages_groups.groupid
             WHERE messages_groups.arrival > DATE_SUB(NOW(), INTERVAL 1 DAY)
               AND messages.deleted IS NULL
               -- A hold is per-group. Every other predicate here is already
@@ -207,9 +213,12 @@ class MicrovolunteeringNotifyService
 
     /**
      * Minutes until a pending post publishes by itself, or null when it will not: only a
-     * post from a member with no posting status, on a community the auto-approve trial
-     * covers, is on that path. Danger signals and the quality sample are not checked
-     * here, hence "could go live" in the wording. Never below one minute.
+     * post from a member with no posting status, on an approve-mode community, that
+     * automated review has approved (a current decision: later than any edit and than the
+     * latest content check) is on that path. A post the review held, or has not decided yet,
+     * waits for a moderator and gets the ordinary wording. The wait runs from the later of
+     * arrival and the decision, as AutoApproveCleanService counts it; the quality sample is
+     * not checked here, hence "could go live". Never below one minute.
      */
     private function minutesUntilSelfPublish(object $msg): ?int
     {
@@ -217,17 +226,24 @@ class MicrovolunteeringNotifyService
             return null;
         }
 
-        $autoApprove = app(AutoApproveCleanService::class);
-        $enabled = $autoApprove->enabledGroupIds();
-        if ($enabled === [] || ($enabled !== null && !in_array((int) $msg->groupid, $enabled, true))) {
+        if (!AutomodMode::isApproveMode((int) $msg->groupid)) {
             return null;
         }
 
-        $elapsed = now()->diffInMinutes(\Carbon\Carbon::parse($msg->arrival), false);
-        // diffInMinutes with a past date is negative; we want minutes since arrival.
-        $sinceArrival = max(0, (int) floor(-$elapsed));
+        if (($msg->automodverdict ?? null) !== 'approve' || empty($msg->automodcreated)) {
+            return null;
+        }
 
-        return max(1, $autoApprove->delayMinutes() - $sinceArrival);
+        $decided = Carbon::parse($msg->automodcreated);
+        if ((!empty($msg->editedat) && Carbon::parse($msg->editedat)->gt($decided))
+            || (!empty($msg->checkedat) && Carbon::parse($msg->checkedat)->gt($decided))) {
+            return null;
+        }
+
+        $from = Carbon::parse($msg->arrival)->max($decided);
+        $sinceFrom = max(0, (int) floor(now()->diffInMinutes($from, true)));
+
+        return max(1, app(AutoApproveCleanService::class)->delayMinutes() - $sinceFrom);
     }
 
     /**

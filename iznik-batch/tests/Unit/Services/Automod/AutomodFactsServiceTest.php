@@ -272,8 +272,8 @@ class AutomodFactsServiceTest extends TestCase
     public function test_other_open_posts_are_listed_for_the_duplicate_question(): void
     {
         [$user, $group, $message] = $this->makeFactsSubject(["message" => ["subject" => "OFFER: Brown sofa (Leeds)"]]);
-        $other = $this->createTestMessage($user, $group, ["subject" => "OFFER: Kettle (Leeds)", "textbody" => "Works fine"]);
-        $gone = $this->createTestMessage($user, $group, ["subject" => "OFFER: Lamp (Leeds)"]);
+        $other = $this->createTestMessage($user, $group, ["subject" => "OFFER: Kettle (Leeds)", "textbody" => "Works fine", "arrival" => now()->subMinutes(5)]);
+        $gone = $this->createTestMessage($user, $group, ["subject" => "OFFER: Lamp (Leeds)", "arrival" => now()->subMinutes(5)]);
         DB::table("messages_outcomes")->insert(["msgid" => $gone->id, "outcome" => "Taken", "timestamp" => now()]);
 
         $facts = $this->service->facts($message->id, $group->id);
@@ -311,5 +311,17 @@ class AutomodFactsServiceTest extends TestCase
         $this->assertSame("Link to example.com", $facts["spam_links_detail"]);
         $this->assertTrue($facts["spam_pattern"]);
         $this->assertSame("Sent to 40 addresses", $facts["spam_pattern_detail"]);
+    }
+
+    /** Of two similar open posts, the later one is the duplicate; the earlier is not held for it. */
+    public function test_the_earlier_of_two_similar_open_posts_is_not_the_duplicate(): void
+    {
+        [$user, $group, $message] = $this->makeFactsSubject(["message" => ["subject" => "OFFER: Brown sofa (Leeds)", "arrival" => now()->subMinutes(2)]]);
+        $this->createTestMessage($user, $group, ["subject" => "OFFER: Brown sofa (Leeds)", "arrival" => now()->subMinute()]);
+
+        $facts = $this->service->facts($message->id, $group->id);
+
+        $this->assertFalse($facts["duplicate"], "the later post is the duplicate, not this one");
+        $this->assertFalse($facts["has_other_posts"]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services\FirstReply;
 
+use App\Services\Automod\AutomodMode;
 use App\Services\Ripple\RingIndex;
 use App\Services\UnifiedDigestService;
 use Illuminate\Support\Facades\DB;
@@ -493,13 +494,15 @@ class MatchMailService
         // the earned-reach gate, which exists to stop a post nobody has reviewed spreading
         // ahead of scrutiny - so while that gate is on, a post no human has looked at is not
         // scouted at all. A moderator look (approvedby or checkedat anywhere, exactly the
-        // gate's own test) restores normal scouting. Gate off => clause omitted => unchanged.
+        // gate's own test) restores normal scouting. Like the gate itself, this only applies
+        // to a post on an approve-mode community (AutomodMode), the only kind that can have
+        // published itself. Gate off => clause omitted => unchanged.
         $reviewGate = config('freegle.ripple.earned_reach_enabled', false)
-            ? " AND EXISTS (
+            ? " AND (EXISTS (
                      SELECT 1 FROM messages_groups mg_r
                      WHERE mg_r.msgid = ms.msgid
                        AND (mg_r.approvedby IS NOT NULL OR mg_r.checkedat IS NOT NULL)
-                   )"
+                   ) OR ms.groupid IS NULL OR NOT " . AutomodMode::approveModeSql('ms.groupid') . ')'
             : '';
 
         // keep-raw: existing correlated NOT EXISTS chain plus the conditional review-gate

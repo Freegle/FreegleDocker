@@ -39,6 +39,9 @@ class ExpandServiceTest extends TestCase
         config(['freegle.ripple.active_end_hour' => 24]);
         // Disable the go-live arrival cutoff so fixtures with back-dated arrivals still ripple.
         config(['freegle.ripple.enabled_at' => '']);
+        // The earned-reach gate only applies on approve-mode communities; the gate tests below
+        // are about the gate itself, so every community is in approve mode here.
+        config(['freegle.autoapprove.enabled' => true, 'freegle.autoapprove.trial_group_ids' => '', 'freegle.automod.shadow_group_ids' => '']);
         DB::statement('DELETE FROM rippling_held_replies');
         DB::statement('DELETE FROM rippling_reach');
         DB::statement('DELETE FROM messages_spatial');
@@ -5617,5 +5620,91 @@ class ExpandServiceTest extends TestCase
         $this->assertSame(1, $stats['initialized'], 'gate off: young post still ripples (no hold)');
         $this->assertSame(0, $stats['reach_capped'], 'gate off: cap never fires');
         $this->assertGreaterThanOrEqual(1, $stats['rippled_in'], 'gate off: unreviewed post ripples freely');
+    }
+
+    // --- the earned-reach gate is scoped to approve-mode communities --------------------------
+
+    /** Outside the approve trial a post nobody looked at ripples as it always did. */
+    public function test_the_earned_reach_hold_does_not_apply_outside_the_approve_trial(): void
+    {
+        config(['freegle.ripple.earned_reach_enabled' => true, 'freegle.ripple.autoapprove_hold_seconds' => 3600,
+            'freegle.autoapprove.enabled' => false, 'freegle.autoapprove.trial_group_ids' => '']);
+        $this->fakeRouting(3);
+        $this->seedSpatialPost(now()->subMinutes(30));
+
+        $stats = $this->service()->process(false, 500);
+
+        $this->assertSame(1, $stats['initialized'], 'a community outside the trial ripples as before');
+    }
+
+    public function test_the_earned_reach_hold_applies_to_a_trial_community(): void
+    {
+        config(['freegle.ripple.earned_reach_enabled' => true, 'freegle.ripple.autoapprove_hold_seconds' => 3600,
+            'freegle.autoapprove.enabled' => false]);
+        $this->fakeRouting(3);
+        $msgid = $this->seedSpatialPost(now()->subMinutes(30));
+        $origin = (int) DB::table('messages_groups')->where('msgid', $msgid)->value('groupid');
+        config(['freegle.autoapprove.trial_group_ids' => (string) $origin]);
+
+        $stats = $this->service()->process(false, 500);
+
+        $this->assertSame(0, $stats['initialized'], 'held on the trial community');
+    }
+
+    public function test_the_earned_reach_hold_skips_a_shadow_community_even_when_approve_is_on_everywhere(): void
+    {
+        config(['freegle.ripple.earned_reach_enabled' => true, 'freegle.ripple.autoapprove_hold_seconds' => 3600,
+            'freegle.autoapprove.enabled' => true]);
+        $this->fakeRouting(3);
+        $msgid = $this->seedSpatialPost(now()->subMinutes(30));
+        $origin = (int) DB::table('messages_groups')->where('msgid', $msgid)->value('groupid');
+        config(['freegle.automod.shadow_group_ids' => (string) $origin]);
+
+        $stats = $this->service()->process(false, 500);
+
+        $this->assertSame(1, $stats['initialized'], 'shadow decides nothing, so nothing is gated');
+    }
+
+    public function test_the_earned_reach_cap_does_not_apply_outside_the_approve_trial(): void
+    {
+        config(['freegle.ripple.earned_reach_enabled' => true, 'freegle.ripple.autoapprove_hold_seconds' => 0,
+            'freegle.ripple.clean_views_per_group' => 2,
+            'freegle.autoapprove.enabled' => false, 'freegle.autoapprove.trial_group_ids' => '']);
+        $this->fakeRouting(3);
+        $msgid = $this->seedSpatialPost(now()->subMinutes(90));
+        $groupB = $this->seedCoveringGroup();
+
+        $stats = $this->service()->process(false, 500);
+
+        $this->assertSame(1, $stats['rippled_in'], 'no views needed outside the trial');
+        $this->assertSame(0, $stats['reach_capped']);
+        $this->assertNotNull(DB::table('messages_groups')->where('msgid', $msgid)->where('groupid', $groupB)->first());
+    }
+
+    // --- a post pulled back from the Check queue -----------------------------------------------
+
+    /**
+     * Reject from the Check queue reuses Back to pending: the origin goes Pending, held by the
+     * moderator and marked needs_moderator, and the reach is frozen ('held'). The copies, one
+     * of them approved by hand by another community's moderator, stay for per-group
+     * moderation, and the reach row stays so a later Approve brings them back without
+     * re-rippling.
+     */
+    public function test_a_post_pulled_back_from_the_check_queue_keeps_its_copies_and_its_reach(): void
+    {
+        $this->fakeSpatialHttp();
+        [$msgid, $groupB] = $this->seedRippledCopyWithOrigin('pending', 51.5, -0.1, 'held');
+        $mod = $this->createTestUser();
+        DB::table('messages_groups')->where('msgid', $msgid)->where('rippled_in', 0)
+            ->update(['heldby' => $mod->id, 'needs_moderator' => 1]);
+        DB::table('messages_groups')->where('msgid', $msgid)->where('groupid', $groupB)
+            ->update(['approvedby' => $mod->id]);
+
+        $this->service()->process(false, 500);
+
+        $this->assertSame(0, (int) DB::table('messages_groups')->where('msgid', $msgid)->where('groupid', $groupB)->value('deleted'),
+            'the hand-approved copy stays');
+        $this->assertSame('held', DB::table('rippling_reach')->where('msgid', $msgid)->value('status'),
+            'the reach stays frozen, not dropped');
     }
 }

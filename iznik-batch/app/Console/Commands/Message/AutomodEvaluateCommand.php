@@ -7,6 +7,7 @@ use App\Models\MessageGroup;
 use App\Services\Automod\AutomodFactsService;
 use App\Services\Automod\AutomodService;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\DB;
  *   see AutomodService::review()'s $persist argument), and prints how often the chart's verdict
  *   agrees with what the moderator actually did.
  */
+#[AsCommand(name: 'automod:evaluate')]
 class AutomodEvaluateCommand extends Command
 {
     protected $signature = 'automod:evaluate

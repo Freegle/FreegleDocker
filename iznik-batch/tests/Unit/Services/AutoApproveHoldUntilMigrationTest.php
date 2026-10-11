@@ -16,11 +16,13 @@ class AutoApproveHoldUntilMigrationTest extends TestCase
         );
     }
 
-    public function test_autoapprove_hold_until_index_exists(): void
+    public function test_autoapprove_hold_until_has_no_index_of_its_own(): void
     {
+        // Every query reads the hold as a trailing filter behind collection = 'Pending', so an
+        // index on it would only add write cost on the largest table.
         $indexes = collect(
             DB::select("SHOW INDEX FROM messages_groups WHERE Key_name = 'messages_groups_groupid_hold_until_idx'")
         );
-        $this->assertNotEmpty($indexes, 'messages_groups_groupid_hold_until_idx index must exist');
+        $this->assertEmpty($indexes, 'messages_groups_groupid_hold_until_idx must not exist');
     }
 }
