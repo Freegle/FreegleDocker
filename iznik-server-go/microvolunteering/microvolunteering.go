@@ -976,10 +976,11 @@ func SendForReviewGroupsExcept(db *gorm.DB, msgid uint64, reason string, rippled
 // live-Approved (pulled back for review). Freezing keeps the rippling_reach row but sets
 // status='held' + next_expansion_at=NULL, so: (a) it stops expanding, (b) ExpandService's
 // retraction paths skip it and the Pending rippled copies persist for per-group
-// moderation, and (c) initialiseNew's anti-join can never re-reach + re-notify it if a
-// moderator later re-approves a copy. No-op if the origin is still live, or there is no
-// reach row. Exported for the moderation Back to Pending path. A moderator's Approve of the
-// home copy lifts the freeze again (ResumeReachIfHeld), unless the home community sent the
+// moderation, and (c) because the row stays, initialiseNew's anti-join cannot start a second
+// reach for the post, which would re-notify everyone, when a moderator later re-approves a
+// copy. No-op if the origin is still live, or there is no reach row. Exported for the
+// moderation Back to Pending path. A moderator's Approve of the home copy lifts the freeze
+// again (ResumeReachIfHeld) and the same reach carries on, unless the home community sent the
 // post back, which also bars it from rippling for good (rippling_blocked).
 func FreezeReachIfOriginPending(db *gorm.DB, msgid uint64) {
 	if msgid == 0 {
