@@ -967,17 +967,20 @@ func getRelatedMembers(c *fiber.Ctx, myid uint64, groupid uint64, limit int) err
 	// Table() passes its name argument through verbatim (no quoting) once it
 	// contains a space, so a parenthesized UNION subquery can be given as the
 	// "table name" with its own bind args in Table()'s variadic args.
+	// A pair across the TrashNothing line is left out: the merge would be refused, so the
+	// prompt only invites a moderator to try something that cannot work (Discourse 10238).
+	mergeable := user.MergeableSidesSQL("u1", "u2")
 	db.Table("(SELECT users_related.id, user1, user2, reason FROM users_related "+
 		"INNER JOIN memberships ON users_related.user1 = memberships.userid "+
 		"INNER JOIN users u1 ON users_related.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = 'User' "+
 		"INNER JOIN users u2 ON users_related.user2 = u2.id AND u2.deleted IS NULL "+
-		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ? "+
+		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ? AND "+mergeable+" "+
 		"UNION "+
 		"SELECT users_related.id, user1, user2, reason FROM users_related "+
 		"INNER JOIN memberships ON users_related.user2 = memberships.userid "+
 		"INNER JOIN users u1 ON users_related.user1 = u1.id AND u1.deleted IS NULL "+
 		"INNER JOIN users u2 ON users_related.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = 'User' "+
-		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ?) t",
+		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ? AND "+mergeable+") t",
 		modGroupIDs, modGroupIDs).
 		Select("DISTINCT id, user1, user2, reason").
 		Order("id DESC").

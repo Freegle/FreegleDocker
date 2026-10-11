@@ -152,6 +152,7 @@ class DetectRelatedAccountsCommand extends Command
         $created = 0;
         $skippedExisting = 0;
         $skippedSameChat = 0;
+        $skippedPartner = 0;
 
         foreach ($candidates as $key => $users) {
             $ids = array_values(array_filter(array_keys($users), fn ($id) => isset($eligible[$id])));
@@ -170,6 +171,14 @@ class DetectRelatedAccountsCommand extends Command
                     // is repeating the other back, which says nothing about who they are.
                     if (array_intersect_key($users[$u1]['chats'], $users[$u2]['chats'])) {
                         $skippedSameChat++;
+                        continue;
+                    }
+
+                    // A TrashNothing member and an account that is not one can never be
+                    // merged, so linking them only asks a moderator to try something that
+                    // will be refused (Discourse 10238).
+                    if ($eligible[$u1] !== $eligible[$u2]) {
+                        $skippedPartner++;
                         continue;
                     }
 
@@ -207,7 +216,8 @@ class DetectRelatedAccountsCommand extends Command
 
         $verb = $dryRun ? 'Would link' : 'Linked';
         $this->info("{$verb} {$created} account pairs by shared contact details "
-            . "({$skippedExisting} already known, {$skippedSameChat} were quoting each other).");
+            . "({$skippedExisting} already known, {$skippedSameChat} were quoting each other, "
+            . "{$skippedPartner} across the TrashNothing line).");
 
         if (!$dryRun && $created > 0) {
             Log::info('Related members detected by shared contact details', [
@@ -310,8 +320,11 @@ class DetectRelatedAccountsCommand extends Command
      * role, so the same details showing up under a volunteer account and a member account
      * is expected rather than evidence of anything.
      *
+     * The value says whether the account is a TrashNothing member: stamped with a tnuserid,
+     * or with a TrashNothing address as its preferred email, as the Go merge check decides.
+     *
      * @param list<int> $ids
-     * @return array<int,true>
+     * @return array<int,bool>
      */
     private function eligibleUsers(array $ids): array
     {
@@ -323,13 +336,17 @@ class DetectRelatedAccountsCommand extends Command
         foreach (array_chunk($ids, 1000) as $chunk) {
             $rows = DB::table('users')
                 ->select('id')
+                ->selectRaw(
+                    "(tnuserid IS NOT NULL OR EXISTS (SELECT 1 FROM users_emails e WHERE e.userid = users.id "
+                    . "AND e.preferred = 1 AND e.email LIKE '%@user.trashnothing.com')) AS tn"
+                )
                 ->whereIn('id', $chunk)
                 ->whereNull('deleted')
                 ->where('systemrole', 'User')
-                ->pluck('id');
+                ->get();
 
-            foreach ($rows as $id) {
-                $out[(int) $id] = true;
+            foreach ($rows as $row) {
+                $out[(int) $row->id] = (bool) $row->tn;
             }
         }
 
