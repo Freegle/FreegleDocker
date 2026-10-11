@@ -212,10 +212,155 @@ describe('ModSysAdminModerationStats.vue', () => {
         ...sampleStats,
         autoApprovedClean: 20,
         autoLaterActionedClean: 3,
+        qualitySampleDecided: 10,
       })
       const wrapper = mountFull()
       await flushPromises()
       expect(wrapper.text()).not.toMatch(/[\u2013\u2014]/)
+    })
+
+    // A sample nobody has looked at yet is undecided, not good: the bad rate is over the
+    // samples a moderator gave a verdict on, when the API says how many that is.
+    it('divides the sample bad rate by the samples a moderator decided', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue({
+        ...sampleStats,
+        qualitySampled: 40,
+        qualitySampleDecided: 10,
+        qualitySampleBad: 1,
+      })
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.find('[data-testid="sample-decided"]').text()).toBe('10')
+      expect(wrapper.find('[data-testid="sample-bad-rate"]').text()).toContain(
+        '10.0% were bad'
+      )
+    })
+
+    it('falls back to every sample when the API does not say how many were decided', async () => {
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.find('[data-testid="sample-decided"]').exists()).toBe(
+        false
+      )
+      expect(wrapper.find('[data-testid="sample-bad-rate"]').text()).toContain(
+        '2.5% were bad'
+      )
+    })
+  })
+
+  // Most of a recent sample is still waiting for somebody to look at it, so the share that were
+  // bad is over the ones a moderator has decided. Over everything sampled it reads low for as
+  // long as they wait, and the comparison with the auto-published rate then flatters it.
+  describe('the quality sample', () => {
+    const sampled = {
+      ...sampleStats,
+      qualitySampled: 40,
+      qualitySampleDecided: 10,
+      qualitySampleBad: 2,
+    }
+    const slot = (tag = 'div') => ({
+      template: `<${tag}><slot /></${tag}>`,
+    })
+    function mountFull() {
+      return mount(ModSysAdminModerationStats, {
+        global: {
+          plugins: [createPinia()],
+          stubs: {
+            'b-form-group': slot(),
+            'b-form-input': true,
+            'b-button': slot('button'),
+            'b-card': {
+              props: ['header'],
+              template: '<div class="card"><h4>{{ header }}</h4><slot /></div>',
+            },
+            'b-table-simple': slot('table'),
+            'b-tbody': slot('tbody'),
+            'b-tr': slot('tr'),
+            'b-td': slot('td'),
+            NoticeMessage: slot(),
+          },
+        },
+      })
+    }
+
+    it('takes the share that were bad over the posts a moderator has decided', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue(sampled)
+      const wrapper = mountComponent()
+      await flushPromises()
+      expect(wrapper.vm.sampleBadRate).toBe('20.0%')
+    })
+
+    it('shows how much of the sample has been decided, and the rate over those', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue(sampled)
+      const wrapper = mountFull()
+      await flushPromises()
+      const text = wrapper.text()
+      expect(text).toContain('a moderator has decided')
+      expect(text).toContain('25.0% of the sample')
+      expect(text).toContain('20.0% of those decided were bad')
+      expect(text).not.toContain('5.0% were bad')
+    })
+
+    it('says why the rate is over the decided ones', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue(sampled)
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.text()).toContain('still waiting for somebody to look')
+    })
+
+    it('judges the verdict on the decided rate', async () => {
+      // 2 of 10 decided is 20% bad against 0.5% after publishing: far worse. Over all 40
+      // sampled it would be 5%, a milder concern.
+      mockMessageStore.fetchModerationStats.mockResolvedValue({
+        ...sampled,
+        autoApproved: 200,
+        autoLaterActioned: 1,
+      })
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.text()).toContain('Concern')
+    })
+
+    it('says so when posts were sampled but none has been decided', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue({
+        ...sampled,
+        qualitySampled: 6,
+        qualitySampleDecided: 0,
+        qualitySampleBad: 0,
+      })
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.vm.sampleBadRate).toBe('-')
+      expect(wrapper.text()).toContain(
+        'no moderator has decided any of them yet'
+      )
+      expect(wrapper.text()).not.toContain(
+        'No quality-check sample in this period'
+      )
+    })
+
+    it('still says there is no sample when nothing was sampled', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue({
+        ...sampled,
+        qualitySampled: 0,
+        qualitySampleDecided: 0,
+        qualitySampleBad: 0,
+      })
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.text()).toContain('No quality-check sample in this period')
+    })
+
+    it('falls back to every post sampled when the API does not report the decided count', async () => {
+      mockMessageStore.fetchModerationStats.mockResolvedValue({
+        ...sampleStats,
+        qualitySampled: 40,
+        qualitySampleBad: 1,
+      })
+      const wrapper = mountFull()
+      await flushPromises()
+      expect(wrapper.vm.sampleBadRate).toBe('2.5%')
+      expect(wrapper.text()).not.toContain('a moderator has decided')
     })
   })
 })

@@ -171,10 +171,21 @@
               <b-td class="text-end fw-bold">{{ stats.qualitySampled }}</b-td>
               <b-td />
             </b-tr>
+            <b-tr v-if="stats.qualitySampleDecided !== undefined">
+              <b-td>...a moderator has given a verdict on</b-td>
+              <b-td class="text-end fw-bold" data-testid="sample-decided">
+                {{ stats.qualitySampleDecided }}
+              </b-td>
+              <b-td class="text-muted">
+                the rest are still waiting, and are not counted below
+              </b-td>
+            </b-tr>
             <b-tr>
-              <b-td>…a moderator then rejected/deleted</b-td>
+              <b-td>...a moderator then rejected/deleted</b-td>
               <b-td class="text-end fw-bold">{{ stats.qualitySampleBad }}</b-td>
-              <b-td class="fw-bold">{{ sampleBadRate }} were bad</b-td>
+              <b-td class="fw-bold" data-testid="sample-bad-rate">
+                {{ sampleBadRate }} were bad
+              </b-td>
             </b-tr>
           </b-tbody>
         </b-table-simple>
@@ -248,11 +259,16 @@ const errorScope = computed(() =>
 const autoErrorRate = computed(() =>
   stats.value ? pct(errorNumerator.value, errorDenominator.value) : '-'
 )
-// Rate of quality-sample posts a mod then rejected.
+// Rate of quality-sample posts a mod then rejected, out of the samples a moderator has
+// actually decided (qualitySampleDecided): a sample nobody has looked at yet is not a good
+// post, it is an undecided one. An older API without that field falls back to every sample.
+const sampleDenominator = computed(() =>
+  stats.value?.qualitySampleDecided !== undefined
+    ? stats.value.qualitySampleDecided
+    : stats.value?.qualitySampled
+)
 const sampleBadRate = computed(() =>
-  stats.value
-    ? pct(stats.value.qualitySampleBad, stats.value.qualitySampled)
-    : '-'
+  stats.value ? pct(stats.value.qualitySampleBad, sampleDenominator.value) : '-'
 )
 
 const autoErrorRateNum = computed(() => {
@@ -260,8 +276,8 @@ const autoErrorRateNum = computed(() => {
   return (100 * errorNumerator.value) / errorDenominator.value
 })
 const sampleBadRateNum = computed(() => {
-  if (!stats.value || !stats.value.qualitySampled) return null
-  return (100 * stats.value.qualitySampleBad) / stats.value.qualitySampled
+  if (!stats.value || !sampleDenominator.value) return null
+  return (100 * stats.value.qualitySampleBad) / sampleDenominator.value
 })
 
 const laterActionedVariant = computed(() =>
