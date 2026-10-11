@@ -61,13 +61,13 @@ describe('createAttachmentSender', () => {
     expect(send.mock.calls.map(([id]) => id)).toEqual([9, 10])
   })
 
-  it.each(['components/ChatFooter.vue', 'modtools/components/ModChatFooter.vue'])(
-    'is what %s sends uploaded images through',
-    (path) => {
-      const footer = readFileSync(resolve(__dirname, '../../..', path), 'utf8')
-      expect(footer).toContain('createAttachmentSender(')
-      expect(footer).toContain('sendNewAttachments(newVal)')
-      expect(footer).not.toContain('null, null, att.id')
-    }
-  )
+  it.each([
+    'components/ChatFooter.vue',
+    'modtools/components/ModChatFooter.vue',
+  ])('is what %s sends uploaded images through', (path) => {
+    const footer = readFileSync(resolve(__dirname, '../../..', path), 'utf8')
+    expect(footer).toContain('createAttachmentSender(')
+    expect(footer).toContain('sendNewAttachments(newVal)')
+    expect(footer).not.toContain('null, null, att.id')
+  })
 })
