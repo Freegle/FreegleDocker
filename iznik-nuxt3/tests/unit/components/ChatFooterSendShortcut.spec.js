@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ChatFooter from '~/components/ChatFooter.vue'
 
 const { mockChatStore, mockMiscStore, mockChat, mockOtheruser, mockMe } =
@@ -70,9 +70,12 @@ vi.mock('~/stores/chatdraft', () => ({
     clearDraft: vi.fn(),
   }),
 }))
-vi.mock('pinia', () => {
-  const { ref } = require('vue')
-  return { storeToRefs: () => ({ lastTyping: ref(null) }) }
+vi.mock('pinia', async (importOriginal) => {
+  const { ref } = await import('vue')
+  return {
+    ...(await importOriginal()),
+    storeToRefs: () => ({ lastTyping: ref(null) }),
+  }
 })
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({ me: mockMe, myid: 999 }),
@@ -91,6 +94,10 @@ vi.mock('floating-vue/dist/style.css', () => ({}))
 vi.mock('textarea-caret', () => ({
   default: vi.fn(() => ({ top: 0, left: 0 })),
 }))
+
+// A part ChatFooter loads asynchronously can finish loading after its test
+// ends; unmounting keeps it from rendering into a leftover wrapper.
+enableAutoUnmount(afterEach)
 
 describe('ChatFooter Ctrl+Enter / Cmd+Enter', () => {
   const stubs = {
