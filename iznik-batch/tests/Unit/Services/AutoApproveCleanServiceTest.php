@@ -12,6 +12,7 @@ use App\Services\AutoApproveCleanService;
 use App\Services\ContentCheckService;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\LokiSpy;
+use Tests\Support\MakesApprovablePosts;
 use Tests\TestCase;
 
 /**
@@ -20,6 +21,8 @@ use Tests\TestCase;
  */
 class AutoApproveCleanServiceTest extends TestCase
 {
+    use MakesApprovablePosts;
+
     protected AutoApproveCleanService $service;
 
     protected function setUp(): void
@@ -36,79 +39,6 @@ class AutoApproveCleanServiceTest extends TestCase
             'freegle.autoapprove.delay_minutes' => 20,
             'freegle.autoapprove.quality_check_percent' => 0,
             'freegle.autoapprove.danger_log_days' => 90,
-        ]);
-    }
-
-    /**
-     * Build a clean, content-checked, NULL-status pending post that is eligible for
-     * auto-approval (arrival older than the default 20-minute delay).
-     *
-     * Eligibility for auto-approval is now a messages_automod row (the automod flowchart's
-     * verdict, plans/active/automod-flowchart.md) rather than anything AutoApproveCleanService
-     * computes itself, so this seeds a passing "approve" verdict by default. Pass
-     * `automod => false` to skip seeding (post has no verdict yet), or `automod => [...]` to
-     * override fields (e.g. verdict => MessageAutomod::VERDICT_HOLD, or a stale `created`).
-     *
-     * @return array{0: User, 1: Group, 2: Message}
-     */
-    private function makeApprovable(array $opts = []): array
-    {
-        $user  = $this->createTestUser();
-        $group = $this->createTestGroup($opts['group'] ?? []);
-        $this->createMembership($user, $group, array_merge([
-            'added' => now()->subDays(2),
-            // ourPostingStatus left NULL — the auto-moderated tier.
-        ], $opts['membership'] ?? []));
-
-        $message = $this->createTestMessage($user, $group, $opts['message'] ?? []);
-
-        DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->update(array_merge([
-                'collection'              => MessageGroup::COLLECTION_PENDING,
-                'arrival'                 => now()->subMinutes(21),
-                'contentcheck_checked_at' => now()->subMinutes(20),
-                'contentcheck_reasons'    => null,
-            ], $opts['mg'] ?? []));
-
-        if (($opts['automod'] ?? []) !== false) {
-            MessageAutomod::create(array_merge([
-                'msgid' => $message->id,
-                'groupid' => $group->id,
-                'mode' => MessageAutomod::MODE_APPROVE,
-                'chart_version' => 'test',
-                'verdict' => MessageAutomod::VERDICT_APPROVE,
-                'end_node' => 'APPROVE',
-                'reason' => null,
-                'path' => [],
-                // The chart decided a minute after the content check ran: the wait counts
-                // from the decision, so a fixture decided "now" would not be due yet.
-                'created' => now()->subMinutes(20),
-            ], is_array($opts['automod'] ?? null) ? $opts['automod'] : []));
-        }
-
-        return [$user, $group, $message];
-    }
-
-    private function assertApproved(int $msgid, int $groupid): void
-    {
-        $mg = DB::table('messages_groups')->where('msgid', $msgid)->where('groupid', $groupid)->first();
-        $this->assertEquals(MessageGroup::COLLECTION_APPROVED, $mg->collection, 'message should be Approved');
-        $this->assertNull($mg->approvedby, 'auto-approval leaves approvedby NULL');
-        // text says which automatic path published it: the 48h sweep writes none.
-        $this->assertDatabaseHas('logs', [
-            'msgid' => $msgid, 'groupid' => $groupid, 'type' => 'Message', 'subtype' => 'Autoapproved', 'text' => 'automod',
-        ]);
-    }
-
-    private function assertStillPending(int $msgid, int $groupid): void
-    {
-        $this->assertDatabaseHas('messages_groups', [
-            'msgid' => $msgid, 'groupid' => $groupid, 'collection' => MessageGroup::COLLECTION_PENDING,
-        ]);
-        $this->assertDatabaseMissing('logs', [
-            'msgid' => $msgid, 'type' => 'Message', 'subtype' => 'Autoapproved',
         ]);
     }
 
@@ -607,6 +537,23 @@ class AutoApproveCleanServiceTest extends TestCase
         $this->assertApproved($message->id, $group->id);
     }
 
+    /**
+     * A typo must never give a wait of zero: (int) "abc" is 0, which would publish the minute
+     * a decision lands. Blank, zero, negative and non-numeric values all mean the default 20,
+     * as they do in the Go countdown (utils.AutoapproveDelayMinutes).
+     */
+    public function test_a_junk_delay_means_the_default_not_no_wait(): void
+    {
+        foreach (['abc', '-5', '0', '', '20min', '1e1', null] as $junk) {
+            config(['freegle.autoapprove.delay_minutes' => $junk]);
+
+            $this->assertSame(20, $this->service->delayMinutes(), 'delay for ' . var_export($junk, true));
+        }
+
+        config(['freegle.autoapprove.delay_minutes' => ' 35 ']);
+        $this->assertSame(35, $this->service->delayMinutes());
+    }
+
     // --- decision vs content check, shadow, and the write-time guards -------------------------
 
     /** The chart's decision must postdate the content check it drew its facts from. */
@@ -718,5 +665,341 @@ class AutoApproveCleanServiceTest extends TestCase
         $this->assertLessThanOrEqual(41, $events[0]['context']['minutes_waited']);
         $this->assertGreaterThanOrEqual(24 * 60, $events[0]['context']['decision_age_seconds']);
         $this->assertLessThanOrEqual(26 * 60, $events[0]['context']['decision_age_seconds']);
+    }
+
+    // --- round 2: signals that arrive inside the wait, the whole write guard, mode, caps ------
+
+    /** Runs the atomic write on a row exactly as process() would have selected it a moment earlier. */
+    private function writeSelectedRow(Message $message, Group $group, User $user): bool
+    {
+        $row = (object) [
+            'msgid'      => $message->id,
+            'groupid'    => $group->id,
+            'fromuser'   => $user->id,
+            'spamtype'   => null,
+            'subject'    => $message->subject,
+            'msgtype'    => $message->type,
+            'arrival'    => now()->subMinutes(22)->toDateTimeString(),
+        ];
+        $method = new \ReflectionMethod($this->service, 'publishIfStillDue');
+        $method->setAccessible(true);
+
+        return $method->invoke($this->service, $row);
+    }
+
+    private function skipEvent(LokiSpy $loki, string $reason): ?array
+    {
+        foreach ($loki->eventsOf('autoapprove', 'skipped') as $event) {
+            if ($event['context']['reason'] === $reason) {
+                return $event['context'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The point of the wait is that someone can spot a problem inside it. The signals used to be
+     * read once, when the chart decided; a microvolunteer rejecting at minute five changed
+     * nothing, and two rejecting only pulled back an Approved copy, never a Pending one.
+     */
+    public function test_a_microvolunteer_reject_after_the_decision_blocks_the_publish(): void
+    {
+        $loki = new LokiSpy();
+        $service = new AutoApproveCleanService($loki);
+        [$user, $group, $message] = $this->makeApprovable();
+        $reviewer = $this->createTestUser();
+        DB::table('microactions')->insert([
+            'userid' => $reviewer->id, 'msgid' => $message->id, 'actiontype' => 'CheckMessage',
+            'result' => 'Reject', 'score_negative' => 1,
+        ]);
+
+        $stats = $service->process();
+
+        $this->assertSame(0, $stats['approved']);
+        $this->assertStillPending($message->id, $group->id);
+        $event = $this->skipEvent($loki, 'danger signal');
+        $this->assertNotNull($event, 'the skip is written to Loki');
+        $this->assertSame('microvol_reject', $event['signal']);
+        $this->assertSame($message->id, $event['msgid']);
+    }
+
+    public function test_a_post_stopped_by_a_late_signal_is_decided_again_on_the_current_facts(): void
+    {
+        $loki = new LokiSpy();
+        $service = new AutoApproveCleanService($loki);
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('users_comments')->insert(['userid' => $user->id, 'groupid' => $group->id, 'user1' => 'Keep an eye on this member.']);
+
+        $service->process();
+
+        $this->assertNull(
+            DB::table('messages_automod')->where('msgid', $message->id)->where('groupid', $group->id)->first(),
+            'the stale approve is withdrawn, so messages:automod decides again (it holds, with the right reason) and no countdown is promised'
+        );
+    }
+
+    public function test_every_member_and_community_signal_is_rechecked_at_publish(): void
+    {
+        $cases = [
+            'mod_note' => function ($user, $group, $message) {
+                DB::table('users_comments')->insert(['userid' => $user->id, 'groupid' => $group->id, 'user1' => 'note']);
+            },
+            'recent_action' => function ($user, $group, $message) {
+                $mod = $this->createTestUser();
+                DB::table('logs')->insert([
+                    'timestamp' => now()->subHours(2), 'type' => 'Message', 'subtype' => 'Rejected',
+                    'user' => $user->id, 'byuser' => $mod->id, 'groupid' => $group->id,
+                ]);
+            },
+            'spammer' => function ($user, $group, $message) {
+                DB::table('spam_users')->insert(['userid' => $user->id, 'collection' => 'Spammer']);
+            },
+            'membership_review' => function ($user, $group, $message) {
+                DB::table('memberships')->where('userid', $user->id)->where('groupid', $group->id)
+                    ->update(['reviewrequestedat' => now()->subHour(), 'reviewedat' => null]);
+            },
+            'group_disallows' => function ($user, $group, $message) {
+                DB::table('groups')->where('id', $group->id)->update(['settings' => json_encode(['moderated' => 1])]);
+            },
+        ];
+
+        foreach ($cases as $signal => $arrange) {
+            $loki = new LokiSpy();
+            $service = new AutoApproveCleanService($loki);
+            [$user, $group, $message] = $this->makeApprovable();
+            $arrange($user, $group, $message);
+
+            $stats = $service->process();
+
+            $this->assertSame(0, $stats['approved'], "{$signal} arriving after the decision must stop the publish");
+            $this->assertStillPending($message->id, $group->id);
+            $event = $this->skipEvent($loki, 'danger signal');
+            $this->assertNotNull($event, "{$signal} is named in the skip event");
+            $this->assertSame($signal, $event['signal']);
+        }
+    }
+
+    public function test_a_system_log_with_no_actor_is_not_a_danger_signal(): void
+    {
+        // The ripple engine writes Message/Deleted and User/Mailed rows with no byuser; they
+        // are lifecycle, not a moderator acting, and must not stop a member's next post.
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('logs')->insert([
+            'timestamp' => now()->subDays(2), 'type' => 'Message', 'subtype' => 'Deleted',
+            'user' => $user->id, 'byuser' => null, 'groupid' => $group->id,
+        ]);
+
+        $stats = $this->service->process();
+
+        $this->assertSame(1, $stats['approved']);
+        $this->assertApproved($message->id, $group->id);
+    }
+
+    // The write itself carries the whole decision: what was true when the candidates were read
+    // may not be true when this one is written (after a backlog that is tens of seconds later).
+
+    public function test_an_edit_in_the_gap_blocks_the_write(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages')->where('id', $message->id)->update(['editedat' => now()]);
+
+        $this->assertFalse($this->writeSelectedRow($message, $group, $user));
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    public function test_a_hold_verdict_in_the_gap_blocks_the_write(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages_automod')->where('msgid', $message->id)
+            ->update(['verdict' => MessageAutomod::VERDICT_HOLD, 'end_node' => 'HOLD_MONEY']);
+
+        $this->assertFalse($this->writeSelectedRow($message, $group, $user));
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    public function test_a_decision_withdrawn_in_the_gap_blocks_the_write(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages_automod')->where('msgid', $message->id)->delete();
+
+        $this->assertFalse($this->writeSelectedRow($message, $group, $user));
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    public function test_a_content_check_re_run_in_the_gap_blocks_the_write(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)
+            ->update(['contentcheck_checked_at' => now()]);
+
+        $this->assertFalse($this->writeSelectedRow($message, $group, $user));
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    public function test_a_quality_sample_stamped_in_the_gap_blocks_the_write(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)
+            ->update(['quality_sample' => 1]);
+
+        $this->assertFalse($this->writeSelectedRow($message, $group, $user));
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    public function test_a_spam_reason_or_message_hold_in_the_gap_blocks_the_write(): void
+    {
+        $arrangements = [
+            'copy spamreason' => fn ($m, $g) => DB::table('messages_groups')->where('msgid', $m->id)->where('groupid', $g->id)->update(['spamreason' => 'reported']),
+            'message spamreason' => fn ($m, $g) => DB::table('messages')->where('id', $m->id)->update(['spamreason' => 'reported']),
+            'message hold' => fn ($m, $g) => DB::table('messages')->where('id', $m->id)->update(['heldby' => $this->createTestUser()->id]),
+            'message deleted' => fn ($m, $g) => DB::table('messages')->where('id', $m->id)->update(['deleted' => now()]),
+        ];
+
+        foreach ($arrangements as $label => $arrange) {
+            [$user, $group, $message] = $this->makeApprovable();
+            $arrange($message, $group);
+
+            $this->assertFalse($this->writeSelectedRow($message, $group, $user), $label);
+
+            $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+        }
+    }
+
+    public function test_a_microvolunteer_reject_in_the_gap_blocks_the_write(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable();
+        DB::table('microactions')->insert([
+            'userid' => $this->createTestUser()->id, 'msgid' => $message->id, 'actiontype' => 'CheckMessage',
+            'result' => 'Reject', 'score_negative' => 1,
+        ]);
+
+        $this->assertFalse($this->writeSelectedRow($message, $group, $user));
+
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    // One-second resolution: a decision in the same second as an edit or the content check might
+    // have read the text before it, so it is not published; messages:automod decides again.
+
+    public function test_a_decision_in_the_same_second_as_an_edit_is_not_published(): void
+    {
+        $at = now()->subMinutes(25)->setMicroseconds(0);
+        [$user, $group, $message] = $this->makeApprovable([
+            'mg'      => ['contentcheck_checked_at' => $at->copy()->subMinute()],
+            'automod' => ['created' => $at],
+        ]);
+        DB::table('messages')->where('id', $message->id)->update(['editedat' => $at]);
+
+        $stats = $this->service->process();
+
+        $this->assertSame(0, $stats['approved']);
+        $this->assertStillPending($message->id, $group->id);
+    }
+
+    public function test_a_decision_in_the_same_second_as_the_content_check_is_not_published(): void
+    {
+        $at = now()->subMinutes(25)->setMicroseconds(0);
+        [$user, $group, $message] = $this->makeApprovable([
+            'mg'      => ['contentcheck_checked_at' => $at],
+            'automod' => ['created' => $at],
+        ]);
+
+        $stats = $this->service->process();
+
+        $this->assertSame(0, $stats['approved']);
+        $this->assertStillPending($message->id, $group->id);
+    }
+
+    // A shadow decision was never a promise. Moving a community from shadow to approve must not
+    // publish the old shadow approves the moment it flips: the wait starts again from a decision
+    // made in approve mode.
+
+    public function test_a_shadow_decision_is_never_published(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable([
+            'automod' => ['mode' => MessageAutomod::MODE_SHADOW, 'created' => now()->subMinutes(30)],
+        ]);
+        // The community is in approve mode now (setUp: master switch on, no shadow list).
+
+        $stats = $this->service->process();
+
+        $this->assertSame(0, $stats['approved'], 'a decision recorded in shadow mode is not due on the first tick of approve mode');
+        $this->assertStillPending($message->id, $group->id);
+    }
+
+    public function test_a_shadow_decision_cannot_be_written_through_either(): void
+    {
+        [$user, $group, $message] = $this->makeApprovable([
+            'automod' => ['mode' => MessageAutomod::MODE_SHADOW],
+        ]);
+
+        $this->assertFalse($this->writeSelectedRow($message, $group, $user));
+        $this->assertNothingPublished($message->id, $group->id, MessageGroup::COLLECTION_PENDING);
+    }
+
+    // --- the cap on one run -----------------------------------------------------------------
+
+    public function test_a_run_publishes_at_most_the_configured_number_of_posts(): void
+    {
+        config(['freegle.autoapprove.max_per_run' => 2]);
+        $loki = new LokiSpy();
+        $service = new AutoApproveCleanService($loki);
+        $posts = [];
+        for ($i = 0; $i < 3; $i++) {
+            $posts[] = $this->makeApprovable();
+        }
+
+        $stats = $service->process();
+
+        $this->assertSame(2, $stats['approved']);
+        $this->assertSame(1, $stats['capped']);
+        $approved = DB::table('messages_groups')
+            ->whereIn('msgid', array_map(fn ($p) => $p[2]->id, $posts))
+            ->where('collection', MessageGroup::COLLECTION_APPROVED)
+            ->count();
+        $this->assertSame(2, $approved, 'the rest wait for the next tick');
+        $capped = $loki->eventsOf('autoapprove', 'capped');
+        $this->assertCount(1, $capped);
+        $this->assertSame(2, $capped[0]['context']['limit']);
+        $this->assertSame(1, $capped[0]['context']['waiting']);
+    }
+
+    public function test_the_cap_defaults_to_twenty_and_a_typo_does_not_remove_it(): void
+    {
+        foreach ([null, '', 'abc', '0', '-3'] as $junk) {
+            config(['freegle.autoapprove.max_per_run' => $junk]);
+            $this->assertSame(20, $this->service->maxPerRun(), 'cap for ' . var_export($junk, true));
+        }
+
+        config(['freegle.autoapprove.max_per_run' => '5']);
+        $this->assertSame(5, $this->service->maxPerRun());
+    }
+
+    // --- why did this go live: the published event says what decided and what it saw ----------
+
+    public function test_the_published_event_carries_the_decision_and_the_text_it_covered(): void
+    {
+        $loki = new LokiSpy();
+        $service = new AutoApproveCleanService($loki);
+        [$user, $group, $message] = $this->makeApprovable([
+            'automod' => ['chart_version' => '6', 'detail' => ['text_sha' => str_repeat('a', 64)]],
+        ]);
+
+        $service->process();
+
+        $event = $loki->eventsOf('autoapprove', 'published')[0]['context'];
+        $this->assertSame('approve', $event['verdict']);
+        $this->assertSame('APPROVE', $event['end']);
+        $this->assertSame('6', $event['chart_version']);
+        $this->assertSame('approve', $event['mode']);
+        $this->assertNotEmpty($event['decision_created']);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $event['text_sha'], 'the live text at publish');
+        $this->assertSame(str_repeat('a', 64), $event['decision_text_sha'], 'the text the chart read');
     }
 }

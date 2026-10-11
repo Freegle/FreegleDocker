@@ -3,6 +3,7 @@
 namespace App\Services\Automod;
 
 use App\Services\AutoApproveCleanService;
+use App\Support\EnvSetting;
 
 /**
  * Which of the two independent automod rollout gates, if either, a group is in.
@@ -53,12 +54,7 @@ class AutomodMode
     /** @return int[] */
     public static function shadowGroupIds(): array
     {
-        $csv = trim((string) config('freegle.automod.shadow_group_ids', ''));
-        if ($csv === '') {
-            return [];
-        }
-
-        return array_values(array_filter(array_map('intval', explode(',', $csv))));
+        return EnvSetting::groupIds(config('freegle.automod.shadow_group_ids'));
     }
 
     /**

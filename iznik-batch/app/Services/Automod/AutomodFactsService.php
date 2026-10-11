@@ -4,6 +4,8 @@ namespace App\Services\Automod;
 
 use App\Models\Group;
 use App\Services\ContentCheckService;
+use App\Support\EnvSetting;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,6 +40,9 @@ class AutomodFactsService
 {
     /** messages.type values that count as "no location" / "outside UK" candidates. */
     private const LOCATION_RELEVANT_TYPES = ['Offer', 'Wanted'];
+
+    /** Outcomes after which an earlier post is no longer open. */
+    private const FINISHED_OUTCOMES = ['Taken', 'Received', 'Withdrawn', 'Expired'];
 
     /** ContentCheckService::CHECK_* constants that map to the "spam_signal" fact. */
     private const SPAM_SIGNAL_CHECKS = [
@@ -94,21 +99,30 @@ class AutomodFactsService
     /**
      * @return array<string, mixed> boolean facts, plus a "*_detail" string alongside any fact
      *                               that carries a human-readable reason for a moderator/chart.
+     *
+     * $asOf reads the member signals as they stood at that moment, for a backtest of a post a
+     * moderator already decided (automod:evaluate): the post's own logs and anything written
+     * after the decision are left out, and the look-back window is measured from it. Without
+     * it (the live review) the signals are read as they are now. The other facts are not
+     * time-travelled: the member's posting status, the community's switches and a duplicate
+     * can only be read as they are.
      */
-    public function facts(int $msgid, int $groupid): array
+    public function facts(int $msgid, int $groupid, ?Carbon $asOf = null): array
     {
         $message = DB::table('messages')
             ->where('id', $msgid)
             ->first(['fromuser', 'lat', 'lng', 'type', 'subject', 'arrival']);
 
         $fromuser = $message->fromuser ?? null;
-        $lat = $message->lat !== null ? (float) $message->lat : null;
-        $lng = $message->lng !== null ? (float) $message->lng : null;
+        // The message can be gone by now (deleted between choosing it and reading it): every fact
+        // still comes back, as no.
+        $lat = isset($message->lat) ? (float) $message->lat : null;
+        $lng = isset($message->lng) ? (float) $message->lng : null;
         $type = $message->type ?? null;
 
         $reasons = $this->contentCheckReasons($msgid, $groupid);
 
-        $member = $this->memberSignals($msgid, $groupid, $fromuser);
+        $member = $this->memberSignals($msgid, $groupid, $fromuser, $asOf);
         [$groupDisallows, $groupDisallowsDetail] = $this->groupDisallows($groupid);
         [$spamSignal, $spamSignalDetail] = $this->reasonCategory($reasons, self::SPAM_SIGNAL_CHECKS);
         [$spamLinks, $spamLinksDetail] = $this->reasonCategory($reasons, self::SPAM_LINK_CHECKS);
@@ -185,7 +199,7 @@ class AutomodFactsService
             ->whereNotExists(function ($q) {
                 $q->select(DB::raw(1))->from('messages_outcomes as mo')
                     ->whereColumn('mo.msgid', 'm.id')
-                    ->whereIn('mo.outcome', ['Taken', 'Received', 'Withdrawn']);
+                    ->whereIn('mo.outcome', self::FINISHED_OUTCOMES);
             })
             ->orderByDesc('m.arrival')
             ->limit(10)
@@ -217,6 +231,35 @@ class AutomodFactsService
         $status = $membership->ourPostingStatus;
 
         return $status !== null && $status !== '' ? ucfirst(strtolower($status)) : null;
+    }
+
+    /**
+     * The first member or community signal that holds this post right now, or null. These are the
+     * signals that can arrive while a post waits out its delay (a microvolunteer's reject, a
+     * moderator's note, a spammer mark, a membership review, the community switching to
+     * moderate-everything), so the clean cron reads them again at publish rather than trusting
+     * the chart's decision, which saw them as they were when it ran. The same queries as
+     * facts(), in the same order, so the answer is the one the chart would give now.
+     *
+     * @return array{signal: string, detail: ?string}|null
+     */
+    public function liveVeto(int $msgid, int $groupid): ?array
+    {
+        $fromuser = DB::table('messages')->where('id', $msgid)->value('fromuser');
+        $member = $this->memberSignals($msgid, $groupid, $fromuser !== null ? (int) $fromuser : null);
+
+        foreach (['mod_note', 'microvol_reject', 'recent_action', 'spammer', 'membership_review'] as $signal) {
+            if ($member[$signal]) {
+                return ['signal' => $signal, 'detail' => $member["{$signal}_detail"]];
+            }
+        }
+
+        [$disallows, $detail] = $this->groupDisallows($groupid);
+        if ($disallows) {
+            return ['signal' => 'group_disallows', 'detail' => $detail];
+        }
+
+        return null;
     }
 
     /**
@@ -292,7 +335,7 @@ class AutomodFactsService
 
             $finished = DB::table('messages_outcomes')
                 ->where('msgid', $other->id)
-                ->whereIn('outcome', ['Taken', 'Received', 'Withdrawn'])
+                ->whereIn('outcome', self::FINISHED_OUTCOMES)
                 ->exists();
 
             if (!$finished) {
@@ -330,7 +373,7 @@ class AutomodFactsService
     /**
      * @return array{0: bool, 1: ?string}
      */
-    private function memberSignals(int $msgid, int $groupid, ?int $fromuser): array
+    private function memberSignals(int $msgid, int $groupid, ?int $fromuser, ?Carbon $asOf = null): array
     {
         $out = [];
         foreach (['mod_note', 'microvol_reject', 'recent_action', 'spammer', 'membership_review'] as $k) {
@@ -345,6 +388,7 @@ class AutomodFactsService
             ->where('msgid', $msgid)
             ->where('actiontype', 'CheckMessage')
             ->where('result', 'Reject')
+            ->when($asOf !== null, fn ($q) => $q->where('timestamp', '<', $asOf))
             ->orderByDesc('timestamp')
             ->first(['timestamp']);
         if ($micro) {
@@ -352,19 +396,31 @@ class AutomodFactsService
             $out['microvol_reject_detail'] = 'A microvolunteer said no on ' . \Carbon\Carbon::parse($micro->timestamp)->format('j M');
         }
 
-        $note = DB::table('users_comments')->where('userid', $fromuser)->orderByDesc('date')->first(['date', 'groupid']);
+        $note = DB::table('users_comments')
+            ->where('userid', $fromuser)
+            ->when($asOf !== null, fn ($q) => $q->where('date', '<', $asOf))
+            ->orderByDesc('date')
+            ->first(['date', 'groupid']);
         if ($note) {
             $out['mod_note'] = true;
             $out['mod_note_detail'] = 'Note left ' . \Carbon\Carbon::parse($note->date)->format('j M Y');
         }
 
-        $dangerLogDays = (int) config('freegle.autoapprove.danger_log_days', 90);
+        $dangerLogDays = EnvSetting::positiveInt(config('freegle.autoapprove.danger_log_days'), 90);
         $log = DB::table('logs')
             ->where('user', $fromuser)
-            ->where('timestamp', '>=', now()->subDays($dangerLogDays))
-            ->where(function ($q) {
-                $q->whereColumn('byuser', '!=', 'user')->orWhereNull('byuser');
+            ->where('timestamp', '>=', ($asOf ?? now())->copy()->subDays($dangerLogDays))
+            ->when($asOf !== null, function ($q) use ($msgid, $asOf) {
+                // As of a moderator's decision: nothing written at or after it, and nothing about
+                // this post itself (their own Rejected log is the answer being predicted).
+                $q->where('timestamp', '<', $asOf)
+                    ->where(fn ($q2) => $q2->whereNull('msgid')->orWhere('msgid', '<>', $msgid));
             })
+            // A person acting, and not the member themselves. Rows with no byuser are the
+            // system's own (the ripple engine's retracted copies and its one-off intro mail):
+            // lifecycle, not a moderator, and they used to veto every member whose post rippled.
+            ->whereNotNull('byuser')
+            ->whereColumn('byuser', '!=', 'user')
             ->where(function ($q) {
                 $q->where(function ($q2) {
                     $q2->where('type', 'Message')->whereIn('subtype', ['Rejected', 'Deleted', 'Replied']);

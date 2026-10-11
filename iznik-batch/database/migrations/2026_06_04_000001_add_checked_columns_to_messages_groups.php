@@ -13,6 +13,15 @@ use Illuminate\Support\Facades\Schema;
  * pass, and heldby/spamreason/reviewrequestedat are unrelated. These columns give
  * the ModTools Checked/Trusted oversight queues a real, clearable "unchecked"
  * count: a mod marks a post checked, and it leaves the queue.
+ *
+ * Two columns and nothing else, on purpose. There is no foreign key on checkedby (nothing
+ * joins on it, a deleted moderator's id still means "a moderator checked it", and on
+ * messages_groups, about 10 million rows, adding one needs foreign_key_checks off to run
+ * in place and builds an index under the cluster-wide lock) and no (groupid, checkedat)
+ * index: the Check queue reads the existing `groupid` index (groupid, collection, deleted,
+ * arrival) on the seven-day arrival window and filters checkedat on the few rows it finds,
+ * where an index leading with groupid and checkedat would walk every unchecked row the
+ * community has ever had.
  */
 return new class extends Migration
 {
@@ -21,18 +30,12 @@ return new class extends Migration
         Schema::table('messages_groups', function (Blueprint $table) {
             $table->timestamp('checkedat')->nullable()->after('rejectedat');
             $table->unsignedBigInteger('checkedby')->nullable()->after('checkedat');
-
-            $table->foreign('checkedby')->references('id')->on('users')->onDelete('set null');
-            // Composite index supports the "unchecked in this group" oversight query.
-            $table->index(['groupid', 'checkedat'], 'messages_groups_groupid_checkedat_idx');
         });
     }
 
     public function down(): void
     {
         Schema::table('messages_groups', function (Blueprint $table) {
-            $table->dropForeign(['checkedby']);
-            $table->dropIndex('messages_groups_groupid_checkedat_idx');
             $table->dropColumn(['checkedat', 'checkedby']);
         });
     }

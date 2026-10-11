@@ -962,7 +962,10 @@ return [
         // EARNED-REACH GATE (auto-approve x rippling). Ships DARK: when false, ExpandService
         // behaves exactly as before - no 1h hold, no exposure cap, no await-review
         // instrumentation. Go-live is a deliberate env flip, exactly like RIPPLE_ENABLED.
-        'earned_reach_enabled' => (bool) EnvSetting::env('RIPPLE_EARNED_REACH_ENABLED', false),
+        // On only for "true" or "1" (App\Support\EnvSetting::flag), the rule every post-moderation
+        // switch uses and the Go API applies to this same variable (utils.EnvSwitch): a bare
+        // (bool) cast would read "off" and "no" as on here while Go read them as off.
+        'earned_reach_enabled' => EnvSetting::flag(EnvSetting::env('RIPPLE_EARNED_REACH_ENABLED', false)),
         // When the gate is on: minimum age (seconds) an auto-published, unreviewed post must
         // reach before it may start rippling. A post with approvedby or checkedat set (a mod
         // approved or checked it) skips the hold. Default 3600 (1h); 0 disables just the hold.
@@ -1536,17 +1539,24 @@ return [
     |                           Site-wide; the Go countdown reads the same env variable.
     | - danger_log_days:        how far back to look for negative moderation log
     |                           entries that veto auto-approval.
+    | - max_per_run:            the most posts one run of the clean cron publishes. A
+    |                           fault that makes many posts due at once then publishes
+    |                           them over several minutes, not in one go (default 20).
+    |
+    | These are the RAW environment values, read through App\Support\EnvSetting at the
+    | point of use, because the Go API applies the same rule to the same variables and
+    | the two must agree: a switch is on only for "true" or "1", a number is a positive
+    | whole number or the default, a group list keeps only plain-digit tokens. docker-
+    | compose passes unset variables through as empty strings, which all mean "default".
     |
     */
     'autoapprove' => [
-        'enabled'               => (bool) env('FREEGLE_AUTOAPPROVE_ENABLED', false),
-        'trial_group_ids'       => env('FREEGLE_AUTOAPPROVE_TRIAL_GROUPS', ''),
-        // docker-compose passes these through as empty strings when unset, and (int) '' is 0,
-        // which would publish with no wait and veto nothing. Blank or zero means the default,
-        // matching the Go countdown.
-        'delay_minutes'         => (int) (env('FREEGLE_AUTOAPPROVE_DELAY_MINUTES') ?: 20),
-        'quality_check_percent' => (int) env('FREEGLE_AUTOAPPROVE_QUALITY_CHECK_PCT', 0),
-        'danger_log_days'       => (int) (env('FREEGLE_AUTOAPPROVE_DANGER_LOG_DAYS') ?: 90),
+        'enabled'               => EnvSetting::env('FREEGLE_AUTOAPPROVE_ENABLED', ''),
+        'trial_group_ids'       => EnvSetting::env('FREEGLE_AUTOAPPROVE_TRIAL_GROUPS', ''),
+        'delay_minutes'         => EnvSetting::env('FREEGLE_AUTOAPPROVE_DELAY_MINUTES', ''),
+        'quality_check_percent' => (int) EnvSetting::env('FREEGLE_AUTOAPPROVE_QUALITY_CHECK_PCT', 0),
+        'danger_log_days'       => EnvSetting::env('FREEGLE_AUTOAPPROVE_DANGER_LOG_DAYS', ''),
+        'max_per_run'           => EnvSetting::env('FREEGLE_AUTOAPPROVE_MAX_PER_RUN', ''),
     ],
 
     /*
@@ -1571,17 +1581,20 @@ return [
     |
     | - url:     base URL of the automod Node service (internal network only,
     |            not routed through Traefik).
-    | - timeout: HTTP timeout in seconds for the /review call. A timeout or
+    | - timeout: HTTP timeout in seconds for the /review call (a positive whole
+    |            number, else 60: a zero timeout would wait for ever). A timeout or
     |            any other failure is treated as "unavailable", not a hold:
     |            AutomodService records end_node=UNAVAILABLE and leaves the
     |            post to ordinary moderation.
     |
+    | Raw environment values, read through App\Support\EnvSetting (see above).
+    |
     */
     'automod' => [
-        'url'              => env('AUTOMOD_URL', 'http://automod:8090'),
-        'shadow_group_ids' => env('FREEGLE_AUTOMOD_SHADOW_GROUPS', ''),
+        'url'              => EnvSetting::env('AUTOMOD_URL', 'http://automod:8090'),
+        'shadow_group_ids' => EnvSetting::env('FREEGLE_AUTOMOD_SHADOW_GROUPS', ''),
         // One call answers every question about a post; the frontier model takes 10 to 20 seconds.
-        'timeout'          => (int) (env('AUTOMOD_TIMEOUT') ?: 60),
+        'timeout'          => EnvSetting::env('AUTOMOD_TIMEOUT', ''),
     ],
 
     'email_health' => [

@@ -36,7 +36,9 @@ function prompt(post) {
 
 function ask(post) {
   return new Promise((resolve) => {
-    execFile('claude', ['-p', prompt(post), '--output-format', 'json', '--model', model], { cwd, maxBuffer: 1 << 24, timeout: 240000 }, (err, stdout) => {
+    // --no-session-persistence: the prompt holds a member's post, and the CLI would otherwise keep
+    // a transcript of every call on this machine.
+    execFile('claude', ['-p', prompt(post), '--output-format', 'json', '--model', model, '--no-session-persistence'], { cwd, maxBuffer: 1 << 24, timeout: 240000 }, (err, stdout) => {
       if (err) return resolve({ error: String(err.message).slice(0, 200) });
       try {
         const text = JSON.parse(stdout).result;

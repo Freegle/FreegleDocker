@@ -10,7 +10,7 @@
 // Usage: node src/evaluate.js posts.jsonl [--backends=claude,nli] [--limit=N] [--out=report.json]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createBackend } from './backend.js';
-import { createReviewer, loadChart } from './walk.js'
+import { createReviewer, loadChart, factNames } from './walk.js';
 import { keywordFlags, postText as postTextOf } from './prompt.js';
 
 function arg(name, fallback) {
@@ -36,6 +36,10 @@ export async function evaluate(posts, { backends, router, chartPath, parallel = 
   }
 
   const reviewer = createReviewer({ backend: router, chartPath });
+  // The service holds a post whose request leaves out a fact the chart reads. An exported set
+  // may carry few or none of them (it is for judging the text questions), so what an export
+  // does not say is taken as false here, and only here: production never assumes it.
+  const noFacts = Object.fromEntries(factNames(chart).map((name) => [name, false]));
   const perPost = [];
 
   let next = 0;
@@ -78,7 +82,7 @@ export async function evaluate(posts, { backends, router, chartPath, parallel = 
     }
 
     for (const name of backends) {
-      const result = await reviewer.review({ ...post, msgid: post.id, groupid: 1, backend: name });
+      const result = await reviewer.review({ ...post, facts: { ...noFacts, ...(post.facts || {}) }, msgid: post.id, groupid: 1, backend: name });
       record.verdict[name] = { verdict: result.verdict, end: result.end };
       const v = verdicts[name];
       const rejected = post.outcome === 'rejected';

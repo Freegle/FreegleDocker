@@ -750,7 +750,7 @@ services:
       - HF_CACHE_DIR=/app/model-cache
       # Text questions go to Claude unless a node or request names the local model.
       - AUTOMOD_BACKEND=${AUTOMOD_BACKEND:-claude}
-      - AUTOMOD_CLAUDE_MODEL=${AUTOMOD_CLAUDE_MODEL:-claude-opus-5}
+      - AUTOMOD_CLAUDE_MODEL=${AUTOMOD_CLAUDE_MODEL:-claude-opus-5-5}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # Without an API key, Claude runs through the claude CLI on a subscription token,
       # asking for this model alias; the model the CLI reports using is what gets recorded.
@@ -892,6 +892,10 @@ services:
       - FREEGLE_AUTOMOD_SHADOW_GROUPS=${FREEGLE_AUTOMOD_SHADOW_GROUPS:-}
       # Earned-reach review gate (reviewer-pool bounding in microvolunteering.go).
       - RIPPLE_EARNED_REACH_ENABLED=${RIPPLE_EARNED_REACH_ENABLED:-}
+      # Hours a rippled-in copy waits in the receiving community before it is approved there.
+      # The ModTools countdown on such a copy reads it (message/autoapproveat.go); the batch
+      # reads the same name, so set it once in each place and keep them equal.
+      - RIPPLE_RIPPLED_IN_PENDING_HOURS=${RIPPLE_RIPPLED_IN_PENDING_HOURS:-}
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - LOKI_JSON_PATH=/var/log/freegle
@@ -1117,6 +1121,10 @@ services:
       - FREEGLE_AUTOMOD_SHADOW_GROUPS=${FREEGLE_AUTOMOD_SHADOW_GROUPS:-}
       # Earned-reach review gate (reviewer-pool bounding in microvolunteering.go).
       - RIPPLE_EARNED_REACH_ENABLED=${RIPPLE_EARNED_REACH_ENABLED:-}
+      # Hours a rippled-in copy waits in the receiving community before it is approved there.
+      # The ModTools countdown on such a copy reads it (message/autoapproveat.go); the batch
+      # reads the same name, so set it once in each place and keep them equal.
+      - RIPPLE_RIPPLED_IN_PENDING_HOURS=${RIPPLE_RIPPLED_IN_PENDING_HOURS:-}
       - LOKI_ENABLED=true
       - LOKI_URL=http://loki:3100
       - LOKI_JSON_PATH=/var/log/freegle
@@ -1868,10 +1876,12 @@ services:
       - FREEGLE_AUTOAPPROVE_DANGER_LOG_DAYS=${FREEGLE_AUTOAPPROVE_DANGER_LOG_DAYS:-}
       - FREEGLE_AUTOAPPROVE_DELAY_MINUTES=${FREEGLE_AUTOAPPROVE_DELAY_MINUTES:-}
       - FREEGLE_AUTOAPPROVE_QUALITY_CHECK_PCT=${FREEGLE_AUTOAPPROVE_QUALITY_CHECK_PCT:-}
+      - FREEGLE_AUTOAPPROVE_MAX_PER_RUN=${FREEGLE_AUTOAPPROVE_MAX_PER_RUN:-}
       # Automod shadow trial: chart runs and records but changes nothing
       # (plans/active/automod-flowchart.md).
       - FREEGLE_AUTOMOD_SHADOW_GROUPS=${FREEGLE_AUTOMOD_SHADOW_GROUPS:-}
       - RIPPLE_EARNED_REACH_ENABLED=${RIPPLE_EARNED_REACH_ENABLED:-}
+      - RIPPLE_RIPPLED_IN_PENDING_HOURS=${RIPPLE_RIPPLED_IN_PENDING_HOURS:-}
       - RIPPLE_AUTOAPPROVE_HOLD_SECONDS=${RIPPLE_AUTOAPPROVE_HOLD_SECONDS:-}
       - RIPPLE_CLEAN_VIEWS_PER_GROUP=${RIPPLE_CLEAN_VIEWS_PER_GROUP:-}
       # CI=true skips supervisor startup to prevent Laravel bootstrap race conditions.
@@ -2041,9 +2051,17 @@ services:
       - EMBEDDING_SIDECAR_URL=http://embedding-sidecar:3200
       # Automated review (automod/chart.json): local flowchart service that
       # classifies Pending posts (approve/hold + reason), internal network
-      # only, no ports/Traefik. Shadow trial records but changes nothing.
+      # only, no ports/Traefik. It runs from the `backend` profile, which this
+      # host's COMPOSE_PROFILES (backend,production,mail,edge) includes, on the
+      # same default network as this container.
+      #
+      # The post-moderation switches (FREEGLE_AUTOAPPROVE_*, FREEGLE_AUTOMOD_SHADOW_GROUPS,
+      # RIPPLE_EARNED_REACH_* and RIPPLE_RIPPLED_IN_PENDING_HOURS) are deliberately NOT
+      # listed here: they come from .env.background (env_file above), and an `environment:`
+      # entry would override that file with an empty string. apiv2-live reads the same names
+      # from the root .env; set both, then recreate the containers (docker compose up -d), as
+      # a restart keeps the environment a container was created with.
       - AUTOMOD_URL=http://automod:8090
-      - FREEGLE_AUTOMOD_SHADOW_GROUPS=${FREEGLE_AUTOMOD_SHADOW_GROUPS:-}
       # Avatar generation (Go API)
       - FREEGLE_AVATAR_SERVER_URL=https://api.ilovefreegle.org/avatar
       # AMP Email

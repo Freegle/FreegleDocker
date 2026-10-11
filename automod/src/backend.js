@@ -223,7 +223,7 @@ function sdkUsage(response) {
 export class ClaudeBackend {
   constructor({ apiKey = process.env.ANTHROPIC_API_KEY, model, effort } = {}) {
     this.client = new Anthropic({ apiKey });
-    this.model = model || process.env.AUTOMOD_CLAUDE_MODEL || 'claude-opus-5';
+    this.model = model || process.env.AUTOMOD_CLAUDE_MODEL || 'claude-opus-5-5';
     this.effort = effort || process.env.AUTOMOD_CLAUDE_EFFORT || 'medium';
     this.questions = [];
     this.cache = new Map();
@@ -238,23 +238,34 @@ export class ClaudeBackend {
   }
 
   /**
-   * The batched call for a post, once: a second review of the same text, or a second question
-   * in the same walk, reads the cached entry. The first ask in a walk is credited with the
-   * call's usage, or marked a cache hit, and either way carries the entry's features and hashes.
+   * What a batched answer depends on: the text and the findings the model is told about it. A
+   * post sent to two communities is two reviews of one text, and one community's content check
+   * may have found a concern word that the other's did not, so the text alone is not the key.
+   */
+  cacheKey(text, hints) {
+    return sha(JSON.stringify([text, hints ?? []]));
+  }
+
+  /**
+   * The batched call for a post, once: a second review of the same text and findings, or a
+   * second question in the same walk, reads the cached entry. The first ask in a walk is
+   * credited with the call's usage, or marked a cache hit, and either way carries the entry's
+   * features and hashes.
    */
   async askAll(text, hints, opts = {}) {
-    const hit = this.cache.has(text);
+    const key = this.cacheKey(text, hints);
+    const hit = this.cache.has(key);
     if (!hit) {
       const pending = this.requestAll(text, hints, opts).catch((err) => {
-        this.cache.delete(text);
+        this.cache.delete(key);
         throw err;
       });
-      this.cache.set(text, pending);
+      this.cache.set(key, pending);
       if (this.cache.size > ANSWER_CACHE_SIZE) {
         this.cache.delete(this.cache.keys().next().value);
       }
     }
-    const entry = await this.cache.get(text);
+    const entry = await this.cache.get(key);
     const acct = opts.acct;
     if (acct && !acct.batch) {
       acct.batch = true;
@@ -401,9 +412,11 @@ function cliUsage(out, fallbackModel) {
  *
  * The CLI runs in an empty config directory so no settings, hooks or MCP servers load;
  * `--tools ""` removes every built-in tool (`--allowedTools ""` alone only pre-approves none,
- * leaving the permission-free ones callable), `--max-turns 1` stops it after one reply, and the
- * prompt goes in on stdin, since a long post would overrun the size of one command-line argument.
- * The model it reports having used is recorded, not the alias it was asked for.
+ * leaving the permission-free ones callable), `--max-turns 1` stops it after one reply,
+ * `--no-session-persistence` stops it writing the prompt, which holds a member's text, to a
+ * session file on disk for every call, and the prompt goes in on stdin, since a long post would
+ * overrun the size of one command-line argument. The model it reports having used is recorded,
+ * not the alias it was asked for.
  */
 export class ClaudeCliBackend extends ClaudeBackend {
   constructor({ token = process.env.CLAUDE_CODE_OAUTH_TOKEN, model, bin } = {}) {
@@ -420,7 +433,7 @@ export class ClaudeCliBackend extends ClaudeBackend {
     return new Promise((resolve, reject) => {
       const child = execFile(
         this.bin,
-        ['-p', '--output-format', 'json', '--model', this.cliModel, '--tools', '', '--allowedTools', '', '--max-turns', '1'],
+        ['-p', '--output-format', 'json', '--model', this.cliModel, '--tools', '', '--allowedTools', '', '--max-turns', '1', '--no-session-persistence'],
         {
           cwd: this.configDir,
           timeout,

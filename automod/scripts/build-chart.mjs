@@ -21,10 +21,15 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MAX_TEXT_CHARS } from '../src/prompt.js';
 
 const T = 0.7;
 
-export const VERSION = '5';
+// 6: TOO_LONG, so a post longer than the review reads is held instead of judged on its first part.
+export const VERSION = '6';
+
+// 8000 as "8,000", the way a moderator reads it.
+const READ_LIMIT = String(MAX_TEXT_CHARS).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 // [id, short question, hold reason, check]
 export const NODES = [
@@ -68,6 +73,11 @@ export const NODES = [
   ['PERSONAL_INFO', 'Does it contain a phone number or email address, on a community that does not allow them?',
     'It contains a phone number or email address, which this community does not allow.',
     { kind: 'fact', fact: 'personal_info', requiresRule: 'restrictpersonalinfo' }],
+  // Answered by the service itself from the text it was sent (the request need not carry it):
+  // the words past the limit are never read, and a sale or a link past it is the part that matters.
+  ['TOO_LONG', `Is it too long to read in full? (More than ${READ_LIMIT} characters.)`,
+    'The post is too long for automated review to read all of it, so it waits for a moderator.',
+    { kind: 'fact', fact: 'text_truncated' }],
 
   // What the words of the post say.
   ['DUPLICATE_ITEM', "Is it the same item as one of the member's other open posts?",

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { BackendRouter, FakeBackend, ClaudeBackend, ClaudeCliBackend, checkAnswerIds, newAccount, remainingMs } from '../src/backend.js';
 import { createReviewer } from '../src/walk.js';
 import { evaluate, formatReport } from '../src/evaluate.js';
+import { completeFacts } from './helpers.js';
 
 class NamedBackend {
   constructor(p) {
@@ -54,10 +55,10 @@ test('a request backend overrides the default for every text node', async () => 
   const router = routerWith({ claude: always, fake: never });
   const reviewer = createReviewer({ backend: router });
 
-  const viaDefault = await reviewer.review({ msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer' });
+  const viaDefault = await reviewer.review({ msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts() });
   assert.equal(viaDefault.verdict, 'hold');
 
-  const viaOverride = await reviewer.review({ msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', backend: 'fake' });
+  const viaOverride = await reviewer.review({ msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts(), backend: 'fake' });
   assert.equal(viaOverride.verdict, 'approve');
   assert.ok(never.calls > 0);
 });
@@ -65,7 +66,7 @@ test('a request backend overrides the default for every text node', async () => 
 test('backend evidence is carried into the path', async () => {
   const quoting = { ask: async () => ({ p: 0.95, model: 'claude:test', evidence: 'lend me a ladder' }) };
   const reviewer = createReviewer({ backend: quoting });
-  const result = await reviewer.review({ msgid: 1, groupid: 1, subject: 'WANTED: ladder', body: 'Can anyone lend me a ladder', type: 'Wanted' });
+  const result = await reviewer.review({ msgid: 1, groupid: 1, subject: 'WANTED: ladder', body: 'Can anyone lend me a ladder', type: 'Wanted', facts: completeFacts() });
   const last = result.path[result.path.length - 1];
   assert.equal(last.evidence, 'lend me a ladder');
 });
@@ -86,6 +87,18 @@ test('evaluate compares backends node by node and against the moderator outcome'
   assert.match(formatReport(report), /MONEY/);
 });
 
+test('evaluate decides a post from an export that carries no facts on its text, not as unavailable', async () => {
+  const router = routerWith({ claude: new FakeBackend() });
+  const posts = [
+    { id: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', outcome: 'approved' },
+    { id: 2, subject: 'OFFER: Bike', body: 'Selling my bike, money please', type: 'Offer', facts: { mod_note: true }, outcome: 'rejected' },
+  ];
+  const report = await evaluate(posts, { backends: ['claude'], router });
+
+  assert.equal(report.perPost[0].verdict.claude.end, 'APPROVE', 'what the export does not say is taken as false');
+  assert.equal(report.perPost[1].verdict.claude.end, 'HOLD_MOD_NOTE', 'what it does say still counts');
+});
+
 test('claude answers every chart question in one call per post, and the review says what it cost', async () => {
   const claude = new ClaudeBackend({ apiKey: 'test' });
   let calls = 0;
@@ -97,7 +110,7 @@ test('claude answers every chart question in one call per post, and the review s
   router.instances.claude = claude;
   const reviewer = createReviewer({ backend: router });
 
-  const result = await reviewer.review({ msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer' });
+  const result = await reviewer.review({ msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts() });
   assert.equal(result.verdict, 'approve');
   assert.equal(calls, 1);
   assert.ok(result.path.filter((s) => s.model.startsWith('claude:')).length > 5);
@@ -111,7 +124,7 @@ test('claude answers every chart question in one call per post, and the review s
   assert.equal(result.reply_sha, 'r'.repeat(64));
 
   // The same text again is a cache hit: no call, nothing charged, the entry's features still given.
-  const again = await reviewer.review({ msgid: 2, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer' });
+  const again = await reviewer.review({ msgid: 2, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts() });
   assert.equal(calls, 1);
   assert.equal(again.calls, 0);
   assert.equal(again.cache_hit, true);
@@ -247,6 +260,7 @@ test('the cli backend sends the prompt on stdin with no tools and one turn, and 
   assert.ok(!seen.argv.some((a) => a.includes('Is it a loan?')), 'the prompt is not on the command line');
   assert.equal(seen.argv[seen.argv.indexOf('--tools') + 1], '', 'no tools');
   assert.equal(seen.argv[seen.argv.indexOf('--max-turns') + 1], '1');
+  assert.ok(seen.argv.includes('--no-session-persistence'), 'the cli must not save the prompt, which holds a member\'s text, to disk');
   assert.equal(seen.argv[seen.argv.indexOf('--model') + 1], 'opus');
   assert.ok(seen.hasQuestion, 'the prompt arrived on stdin');
   assert.equal(acct.calls, 1);
@@ -290,4 +304,41 @@ test('the cli backend fails with the cause when the cli reports an error', async
 test('the cli backend does not start a call after the deadline', async () => {
   const backend = new ClaudeCliBackend({ token: 'test-token', bin: fakeCli() });
   await assert.rejects(backend.askOne('Is it a loan?', 'Subject: ladder', { deadline: Date.now() - 1 }), /deadline passed/);
+});
+
+test('the answer cache is keyed on the text AND the findings the model is told', async () => {
+  // A post to two communities is two reviews of the same text. If one community's content check
+  // found a concern word and the other's did not, the second must not be answered from a call
+  // that never saw the finding.
+  const claude = new ClaudeBackend({ apiKey: 'test' });
+  claude.setQuestions([{ question: 'A?', flags: [] }]);
+  const told = [];
+  claude.requestAll = async (text, hints) => {
+    told.push(hints);
+    return allNo(claude);
+  };
+
+  await claude.askAll('Subject: Sofa', [], {});
+  await claude.askAll('Subject: Sofa', [], {});
+  assert.equal(told.length, 1, 'same text, same findings: cached');
+
+  await claude.askAll('Subject: Sofa', ['A concern word matched (knife)'], {});
+  assert.equal(told.length, 2, 'same text, a finding the first call did not have: asked again');
+  assert.deepEqual(told[1], ['A concern word matched (knife)']);
+
+  await claude.askAll('Subject: Sofa', ['A concern word matched (knife)'], {});
+  assert.equal(told.length, 2, 'and that is cached in turn');
+
+  await claude.askAll('Subject: Sofa', undefined, {});
+  assert.equal(told.length, 2, 'no findings is the same as an empty list');
+});
+
+test('the default model is a valid id', () => {
+  const saved = process.env.AUTOMOD_CLAUDE_MODEL;
+  delete process.env.AUTOMOD_CLAUDE_MODEL;
+  try {
+    assert.equal(new ClaudeBackend({ apiKey: 'test' }).model, 'claude-opus-5-5');
+  } finally {
+    if (saved !== undefined) process.env.AUTOMOD_CLAUDE_MODEL = saved;
+  }
 });

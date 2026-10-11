@@ -48,6 +48,10 @@ RUN node scripts/prefetch-models.mjs
 
 EXPOSE 8090
 
+# Not root. The service reads member text and runs the claude CLI, so it needs no more than to read
+# /app (root-owned, world-readable, models included) and write its own temp directory (/tmp).
+USER node
+
 # /health answers 503 once the backend has failed AUTOMOD_UNHEALTHY_AFTER
 # reviews in a row (src/server.js), so a service that holds every post because
 # its token has lapsed shows as unhealthy rather than quietly healthy.

@@ -1,7 +1,7 @@
 {
   "id": "freegle-automod",
   "name": "Freegle automated review",
-  "version": "5",
+  "version": "6",
   "description": "Fact and text checks that decide whether a Pending post can be approved automatically (plans/active/automod-flowchart.md). Built by scripts/build-chart.mjs.",
   "initialState": "START",
   "states": {
@@ -164,6 +164,18 @@
     },
     "HOLD_PERSONAL_INFO": {
       "description": "It contains a phone number or email address, which this community does not allow.",
+      "nodeType": "end"
+    },
+    "TOO_LONG": {
+      "description": "Is it too long to read in full? (More than 8,000 characters.)",
+      "nodeType": "tool",
+      "check": {
+        "kind": "fact",
+        "fact": "text_truncated"
+      }
+    },
+    "HOLD_TOO_LONG": {
+      "description": "The post is too long for automated review to read all of it, so it waits for a moderator.",
       "nodeType": "end"
     },
     "DUPLICATE_ITEM": {
@@ -874,6 +886,28 @@
     {
       "id": "PERSONAL_INFO_no",
       "from": "PERSONAL_INFO",
+      "to": "TOO_LONG",
+      "trigger": "host_driven",
+      "condition": "no",
+      "label": "no",
+      "metadata": {
+        "answer": "no"
+      }
+    },
+    {
+      "id": "TOO_LONG_yes",
+      "from": "TOO_LONG",
+      "to": "HOLD_TOO_LONG",
+      "trigger": "host_driven",
+      "condition": "yes",
+      "label": "yes",
+      "metadata": {
+        "answer": "yes"
+      }
+    },
+    {
+      "id": "TOO_LONG_no",
+      "from": "TOO_LONG",
       "to": "DUPLICATE_ITEM",
       "trigger": "host_driven",
       "condition": "no",

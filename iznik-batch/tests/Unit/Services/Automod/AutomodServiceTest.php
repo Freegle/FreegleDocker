@@ -244,7 +244,7 @@ class AutomodServiceTest extends TestCase
 
         $stats = $this->service->process();
 
-        $this->assertSame(['reviewed' => 0, 'unavailable' => 0, 'errors' => 0, 'timeboxed' => 0], $stats);
+        $this->assertSame(['reviewed' => 0, 'unavailable' => 0, 'errors' => 0, 'timeboxed' => 0, 'busy' => 0, 'lockdown' => 0, 'breaker' => 0], $stats);
         Http::assertNothingSent();
     }
 
@@ -354,7 +354,7 @@ class AutomodServiceTest extends TestCase
         Http::fake();
 
         $service = new AutomodService(new class extends AutomodFactsService {
-            public function facts(int $msgid, int $groupid): array
+            public function facts(int $msgid, int $groupid, ?Carbon $asOf = null): array
             {
                 throw new \Exception('boom');
             }
@@ -521,6 +521,11 @@ class AutomodServiceTest extends TestCase
             ['verdict' => 'reject', 'end' => 'REJECT', 'path' => []],
             ['verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => '', 'path' => []],
             ['verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => 'APPROVE', 'path' => 'not a list'],
+            ['verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => 'UNAVAILABLE', 'path' => []],
+            ['verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => 'HOLD_MONEY', 'path' => []],
+            ['verdict' => MessageAutomod::VERDICT_HOLD, 'end' => 'APPROVE', 'path' => []],
+            ['verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => 'APPROVE', 'path' => [['node' => 'MONEY', 'answer' => 'yes', 'model' => 'claude']]],
+            ['verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => 'APPROVE', 'path' => [['node' => 'MONEY', 'answer' => 'no', 'model' => 'unavailable']]],
         ] as $body) {
             $this->fakeReviewResponse($body);
 
@@ -604,7 +609,7 @@ class AutomodServiceTest extends TestCase
                 'version' => '5', 'verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => 'APPROVE', 'path' => [],
                 'model' => 'claude-opus-5', 'ms' => 1500, 'cost_usd' => 0.01,
             ]), 200)
-            ->push('down', 503)]);
+            ->push('down', 500)]);
 
         $service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
 
@@ -625,7 +630,7 @@ class AutomodServiceTest extends TestCase
         $outages = $loki->eventsOf('automod', 'unavailable');
         $this->assertCount(1, $outages);
         $this->assertSame($message->id, $outages[0]['context']['msgid']);
-        $this->assertStringContainsString('503', (string) $outages[0]['context']['error']);
+        $this->assertStringContainsString('500', (string) $outages[0]['context']['error']);
     }
 
     public function test_each_run_logs_the_backlog_to_loki(): void
@@ -680,5 +685,402 @@ class AutomodServiceTest extends TestCase
         $this->assertSame(1, $stats['reviewed']);
         $this->assertSame(2, $stats['timeboxed']);
         Http::assertSentCount(1);
+    }
+
+    // --- round 2 ---------------------------------------------------------------------------
+
+    private function seedRow(int $msgid, int $groupid, array $over = []): void
+    {
+        DB::table('messages_automod')->insert(array_merge([
+            'msgid' => $msgid, 'groupid' => $groupid, 'mode' => MessageAutomod::MODE_APPROVE,
+            'chart_version' => 'test', 'verdict' => MessageAutomod::VERDICT_APPROVE, 'end_node' => 'APPROVE',
+            'reason' => null, 'path' => '[]', 'created' => now()->subMinutes(5),
+        ], $over));
+    }
+
+    private function approveBody(array $over = []): array
+    {
+        return array_merge(['version' => '6', 'verdict' => MessageAutomod::VERDICT_APPROVE, 'end' => 'APPROVE', 'path' => []], $over);
+    }
+
+    // A decision made in shadow was never a promise. The clock starts again from a decision made
+    // in approve mode, so moving a community across publishes nothing on the first tick.
+
+    public function test_a_shadow_decision_is_decided_again_once_the_community_is_in_approve_mode(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        [$user, $group, $message] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => now()->subMinutes(40)]]);
+        $this->seedRow($message->id, $group->id, ['mode' => MessageAutomod::MODE_SHADOW, 'created' => now()->subMinutes(30)]);
+        $this->fakeReviewResponse($this->approveBody());
+
+        $stats = $this->service->process();
+
+        $this->assertSame(1, $stats['reviewed']);
+        $row = $this->automodRow($message->id, $group->id);
+        $this->assertSame(MessageAutomod::MODE_APPROVE, $row->mode);
+        $this->assertTrue(Carbon::parse($row->created)->gte(now()->subMinute()), 'the new decision is dated now, so the wait starts now');
+    }
+
+    public function test_a_shadow_decision_is_left_alone_while_the_community_is_still_shadow(): void
+    {
+        [$user, $group, $message] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => now()->subMinutes(40)]]);
+        config(['freegle.automod.shadow_group_ids' => (string) $group->id]);
+        $this->seedRow($message->id, $group->id, ['mode' => MessageAutomod::MODE_SHADOW, 'created' => now()->subMinutes(30)]);
+        Http::fake();
+
+        $stats = $this->service->process();
+
+        $this->assertSame(0, $stats['reviewed']);
+        Http::assertNothingSent();
+    }
+
+    public function test_the_shadow_to_approve_flip_publishes_nothing_on_the_first_tick(): void
+    {
+        config(['freegle.autoapprove.enabled' => false, 'freegle.autoapprove.trial_group_ids' => '']);
+        [$user, $group, $message] = $this->makeCandidate([
+            'mg' => ['arrival' => now()->subHour(), 'contentcheck_checked_at' => now()->subMinutes(50)],
+        ]);
+        config(['freegle.automod.shadow_group_ids' => (string) $group->id]);
+        $this->seedRow($message->id, $group->id, ['mode' => MessageAutomod::MODE_SHADOW, 'created' => now()->subMinutes(40)]);
+
+        // The flip: out of the shadow list, into the trial list.
+        config(['freegle.automod.shadow_group_ids' => '', 'freegle.autoapprove.trial_group_ids' => (string) $group->id]);
+        $this->fakeReviewResponse($this->approveBody());
+
+        (new \App\Services\AutoApproveCleanService())->process();
+        $this->assertSame(
+            MessageGroup::COLLECTION_PENDING,
+            DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)->value('collection'),
+            'the old shadow approve is not published by the cron'
+        );
+
+        $this->service->process();
+        (new \App\Services\AutoApproveCleanService())->process();
+
+        $this->assertSame(
+            MessageGroup::COLLECTION_PENDING,
+            DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)->value('collection'),
+            'decided again in approve mode just now, so the wait has only just begun'
+        );
+        $this->assertSame(MessageAutomod::MODE_APPROVE, $this->automodRow($message->id, $group->id)->mode);
+    }
+
+    // An approve that has sat Pending for six hours is stale (the community was dark, the
+    // service was down, a lockdown held it): decide again on today's facts before anything
+    // publishes it.
+
+    public function test_an_approve_that_has_waited_six_hours_without_publishing_is_decided_again(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        [$user, $group, $message] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => now()->subHours(8)]]);
+        $this->seedRow($message->id, $group->id, ['created' => now()->subHours(7)]);
+        $this->fakeReviewResponse($this->approveBody());
+
+        $stats = $this->service->process();
+
+        $this->assertSame(1, $stats['reviewed']);
+        $this->assertTrue(Carbon::parse($this->automodRow($message->id, $group->id)->created)->gte(now()->subMinute()));
+    }
+
+    public function test_the_six_hour_rule_leaves_a_sampled_pulled_back_or_held_decision_alone(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        Http::fake();
+
+        [$u1, $g1, $m1] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => now()->subHours(8), 'quality_sample' => 1]]);
+        $this->seedRow($m1->id, $g1->id, ['created' => now()->subHours(7)]);
+        [$u2, $g2, $m2] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => now()->subHours(8), 'needs_moderator' => 1]]);
+        $this->seedRow($m2->id, $g2->id, ['created' => now()->subHours(7)]);
+        [$u3, $g3, $m3] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => now()->subHours(8)]]);
+        $this->seedRow($m3->id, $g3->id, ['created' => now()->subHours(7), 'verdict' => MessageAutomod::VERDICT_HOLD, 'end_node' => 'HOLD_MONEY']);
+        [$u4, $g4, $m4] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => now()->subHours(8)]]);
+        $this->seedRow($m4->id, $g4->id, ['created' => now()->subHours(5)]);
+
+        $stats = $this->service->process();
+
+        $this->assertSame(0, $stats['reviewed'], 'a sampled copy waits for a moderator, a pulled-back one for a moderator, a hold stays a hold, and five hours is not six');
+        Http::assertNothingSent();
+    }
+
+    // One-second resolution: a decision in the same second as an edit or the content check may have
+    // read the text before it, so it is decided again.
+
+    public function test_a_decision_in_the_same_second_as_an_edit_is_decided_again(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        $at = now()->subMinutes(10)->setMicroseconds(0);
+        [$user, $group, $message] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => $at]]);
+        DB::table('messages')->where('id', $message->id)->update(['editedat' => $at]);
+        $this->seedRow($message->id, $group->id, ['created' => $at]);
+        $this->fakeReviewResponse($this->approveBody());
+
+        $stats = $this->service->process();
+
+        $this->assertSame(1, $stats['reviewed']);
+    }
+
+    public function test_a_decision_in_the_same_second_as_the_content_check_is_decided_again(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        $at = now()->subMinutes(10)->setMicroseconds(0);
+        [$user, $group, $message] = $this->makeCandidate(['mg' => ['contentcheck_checked_at' => $at]]);
+        $this->seedRow($message->id, $group->id, ['created' => $at]);
+        $this->fakeReviewResponse($this->approveBody());
+
+        $stats = $this->service->process();
+
+        $this->assertSame(1, $stats['reviewed']);
+    }
+
+    // --- failed reviews remember how long and how often -------------------------------------
+
+    public function test_unavailable_reviews_count_their_attempts_and_remember_the_first_failure(): void
+    {
+        [$user, $group, $message] = $this->makeCandidate();
+        Http::fake(['*/review' => Http::sequence()
+            ->push('Server Error', 500)
+            ->push('Server Error', 500)
+            ->push(json_encode($this->approveBody()), 200)]);
+        $first = Carbon::create(2026, 10, 11, 12, 0, 0);
+
+        Carbon::setTestNow($first);
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $detail = MessageAutomod::where('msgid', $message->id)->first()->detail;
+        $this->assertSame(1, $detail['attempts']);
+        $this->assertSame($first->toDateTimeString(), $detail['first_failed_at']);
+
+        Carbon::setTestNow($first->copy()->addMinutes(6));
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $detail = MessageAutomod::where('msgid', $message->id)->first()->detail;
+        $this->assertSame(2, $detail['attempts']);
+        $this->assertSame($first->toDateTimeString(), $detail['first_failed_at'], 'the first failure is not overwritten by the retry');
+
+        Carbon::setTestNow($first->copy()->addMinutes(12));
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $row = MessageAutomod::where('msgid', $message->id)->first();
+        $this->assertSame('APPROVE', $row->end_node);
+        $this->assertArrayNotHasKey('attempts', $row->detail, 'a real decision starts the count again');
+    }
+
+    // --- a busy service is no decision --------------------------------------------------------
+
+    public function test_a_busy_service_writes_nothing_and_the_post_stays_a_candidate(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        $loki = new LokiSpy();
+        $service = new AutomodService(null, $loki);
+        [$user, $group, $message] = $this->makeCandidate();
+        Http::fake(['*/review' => Http::response(json_encode(['error' => 'Automated review is busy; try again later']), 503)]);
+
+        $result = $service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+
+        $this->assertNull($result);
+        $this->assertNull($this->automodRow($message->id, $group->id), 'no row, so no five-minute penalty and nothing for the monitor to count');
+        $this->assertSame([], $loki->eventsOf('automod', 'unavailable'));
+        $this->assertCount(1, $loki->eventsOf('automod', 'busy'));
+
+        $stats = $service->process();
+
+        $this->assertSame(1, $stats['busy'], 'next tick it is a candidate again');
+        $this->assertSame(0, $stats['unavailable']);
+        $this->assertNull($this->automodRow($message->id, $group->id));
+    }
+
+    public function test_a_busy_service_does_not_overwrite_the_previous_decision(): void
+    {
+        [$user, $group, $message] = $this->makeCandidate();
+        $this->seedRow($message->id, $group->id, ['created' => now()->subMinutes(30), 'verdict' => MessageAutomod::VERDICT_HOLD, 'end_node' => 'HOLD_MONEY']);
+        $before = $this->automodRow($message->id, $group->id);
+        Http::fake(['*/review' => Http::response('busy', 503)]);
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+
+        $after = $this->automodRow($message->id, $group->id);
+        $this->assertSame('HOLD_MONEY', $after->end_node);
+        $this->assertSame($before->created, $after->created);
+    }
+
+    // --- the run: budget, order, and the breaker ------------------------------------------
+
+    public function test_the_run_budget_ends_inside_the_minute(): void
+    {
+        // A call can start at the budget and still take a minute: the run must end well before the
+        // next scheduler tick, or the tick is skipped and the next run is two minutes away.
+        $this->assertSame(40.0, AutomodService::RUN_BUDGET_SECONDS);
+    }
+
+    public function test_a_run_stops_after_three_unavailable_reviews_in_a_row(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        for ($i = 0; $i < 5; $i++) {
+            $this->makeCandidate();
+        }
+        Http::fake(['*/review' => Http::response('Server Error', 500)]);
+
+        $stats = $this->service->process();
+
+        $this->assertSame(3, $stats['unavailable']);
+        $this->assertSame(1, $stats['breaker']);
+        Http::assertSentCount(3);
+    }
+
+    public function test_a_decision_in_between_resets_the_run_of_failures(): void
+    {
+        config(['freegle.autoapprove.enabled' => true]);
+        for ($i = 0; $i < 6; $i++) {
+            $this->makeCandidate();
+        }
+        $ok = json_encode($this->approveBody());
+        Http::fake(['*/review' => Http::sequence()
+            ->push('x', 500)->push('x', 500)->push($ok, 200)
+            ->push('x', 500)->push('x', 500)->push($ok, 200)]);
+
+        $stats = $this->service->process();
+
+        $this->assertSame(0, $stats['breaker']);
+        $this->assertSame(6, $stats['reviewed']);
+    }
+
+    public function test_approve_mode_communities_are_reviewed_before_shadow_ones(): void
+    {
+        [$u1, $shadowGroup, $shadowMessage] = $this->makeCandidate();
+        [$u2, $approveGroup, $approveMessage] = $this->makeCandidate();
+        config([
+            'freegle.autoapprove.enabled' => false,
+            'freegle.autoapprove.trial_group_ids' => (string) $approveGroup->id,
+            'freegle.automod.shadow_group_ids' => (string) $shadowGroup->id,
+        ]);
+        $this->fakeReviewResponse($this->approveBody());
+        $service = new class extends AutomodService {
+            public array $clock = [0.0, 0.0, 60.0];
+
+            protected function runClock(): float
+            {
+                return array_shift($this->clock) ?? 60.0;
+            }
+        };
+
+        $stats = $service->process(200, 50.0);
+
+        $this->assertSame(1, $stats['reviewed'], 'only one review fits this run');
+        $this->assertNotNull($this->automodRow($approveMessage->id, $approveGroup->id), 'the community that can publish goes first, though its post is newer');
+        $this->assertNull($this->automodRow($shadowMessage->id, $shadowGroup->id));
+    }
+
+    // --- what is sent ----------------------------------------------------------------------------
+
+    public function test_the_request_never_carries_more_than_the_body_cap(): void
+    {
+        [$user, $group, $message] = $this->makeCandidate(['message' => ['textbody' => str_repeat('a', 50000)]]);
+        $this->fakeReviewResponse($this->approveBody());
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_SHADOW);
+
+        Http::assertSent(fn ($request) => mb_strlen($request->data()['body']) === AutomodService::MAX_BODY_CHARS);
+    }
+
+    public function test_a_typo_in_the_timeout_does_not_remove_it(): void
+    {
+        config(['freegle.automod.timeout' => 'abc']);
+        [$user, $group, $message] = $this->makeCandidate();
+        $this->fakeReviewResponse($this->approveBody());
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_SHADOW);
+
+        Http::assertSent(fn ($request) => $request->data()['deadline_ms'] === 58000);
+    }
+
+    // --- the quality sample belongs to an approve --------------------------------------------
+
+    public function test_a_re_run_that_is_not_an_approve_withdraws_the_quality_sample(): void
+    {
+        config(['freegle.autoapprove.enabled' => true, 'freegle.autoapprove.quality_check_percent' => 100]);
+        [$user, $group, $message] = $this->makeCandidate();
+        $sampled = fn () => (int) DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)->value('quality_sample');
+        Http::fake(['*/review' => Http::sequence()
+            ->push(json_encode($this->approveBody()), 200)
+            ->push(json_encode(['version' => '6', 'verdict' => MessageAutomod::VERDICT_HOLD, 'end' => 'HOLD_MONEY', 'path' => []]), 200)
+            ->push(json_encode($this->approveBody()), 200)
+            ->push('Server Error', 500)]);
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $this->assertSame(1, $sampled(), 'an approve in the sample is stamped');
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $this->assertSame(0, $sampled(), 'the edit made it a hold, so it is no longer a chart-approved sample');
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $this->assertSame(1, $sampled(), 'an approve again is sampled again (deterministic on the post)');
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $this->assertSame(0, $sampled(), 'a review that could not decide is not an approve either');
+    }
+
+    // --- feedback belongs to the decision it was about -------------------------------------------
+
+    public function test_a_re_run_that_changes_the_path_clears_the_feedback_and_one_that_does_not_keeps_it(): void
+    {
+        [$user, $group, $message] = $this->makeCandidate();
+        $step = fn (string $answer, int $ms) => ['node' => 'MONEY', 'answer' => $answer, 'p' => 0.9, 'ms' => $ms];
+        Http::fake(['*/review' => Http::sequence()
+            ->push(json_encode(['version' => '6', 'verdict' => MessageAutomod::VERDICT_HOLD, 'end' => 'HOLD_MONEY', 'path' => [$step('yes', 100)]]), 200)
+            ->push(json_encode(['version' => '6', 'verdict' => MessageAutomod::VERDICT_HOLD, 'end' => 'HOLD_MONEY', 'path' => [$step('yes', 250)]]), 200)
+            ->push(json_encode($this->approveBody(['path' => [$step('no', 90)]])), 200)]);
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $automodid = $this->automodRow($message->id, $group->id)->id;
+        DB::table('messages_automod_feedback')->insert(['automodid' => $automodid, 'node' => 'MONEY', 'userid' => $this->createTestUser()->id]);
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $this->assertSame(1, DB::table('messages_automod_feedback')->where('automodid', $automodid)->count(), 'same nodes, same answers, only the timings moved');
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+        $this->assertSame(0, DB::table('messages_automod_feedback')->where('automodid', $automodid)->count(), 'the answer changed, so a mark about the old one is not about this decision');
+    }
+
+    // --- why did it decide that: the Loki event ---------------------------------------------------
+
+    public function test_the_decision_event_says_what_decided_and_what_it_read(): void
+    {
+        $loki = new LokiSpy();
+        $service = new AutomodService(null, $loki);
+        [$user, $group, $message] = $this->makeCandidate();
+        $this->fakeReviewResponse([
+            'version' => '6', 'verdict' => MessageAutomod::VERDICT_HOLD, 'end' => 'HOLD_MONEY', 'reason' => 'Mentions money',
+            'path' => [
+                ['node' => 'VAGUE', 'answer' => 'no', 'evidence' => ''],
+                ['node' => 'MONEY', 'answer' => 'yes', 'evidence' => 'selling for 50 pounds'],
+            ],
+            'model' => 'cli:opus', 'ms' => 15000, 'cost_usd' => 0.12, 'calls' => 1, 'cache_hit' => false,
+            'tokens' => ['input' => 900, 'output' => 120], 'prompt_sha' => 'p1', 'reply_sha' => 'r1',
+        ]);
+
+        $service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+
+        $context = $loki->eventsOf('automod', 'decision')[0]['context'];
+        $this->assertSame(['input' => 900, 'output' => 120], $context['tokens']);
+        $this->assertSame(1, $context['calls']);
+        $this->assertFalse($context['cache_hit']);
+        $this->assertSame('p1', $context['prompt_sha']);
+        $this->assertSame('r1', $context['reply_sha']);
+        $this->assertSame('MONEY', $context['deciding_node']);
+        $this->assertSame('selling for 50 pounds', $context['deciding_evidence']);
+        $this->assertFalse($context['quality_sample']);
+        $text = DB::table('messages')->where('id', $message->id)->first(['subject', 'textbody']);
+        $this->assertSame(AutomodService::textSha($text->subject, $text->textbody), $context['text_sha']);
+        $this->assertSame($context['text_sha'], MessageAutomod::where('msgid', $message->id)->first()->detail['text_sha'], 'the row keeps the same hash');
+    }
+
+    public function test_the_decision_event_says_when_the_post_was_picked_for_the_quality_sample(): void
+    {
+        config(['freegle.autoapprove.enabled' => true, 'freegle.autoapprove.quality_check_percent' => 100]);
+        $loki = new LokiSpy();
+        $service = new AutomodService(null, $loki);
+        [$user, $group, $message] = $this->makeCandidate();
+        $this->fakeReviewResponse($this->approveBody());
+
+        $service->review($message->id, $group->id, MessageAutomod::MODE_APPROVE);
+
+        $this->assertTrue($loki->eventsOf('automod', 'decision')[0]['context']['quality_sample']);
     }
 }

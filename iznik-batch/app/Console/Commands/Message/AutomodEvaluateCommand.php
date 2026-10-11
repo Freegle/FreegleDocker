@@ -6,6 +6,7 @@ use App\Models\MessageAutomod;
 use App\Models\MessageGroup;
 use App\Services\Automod\AutomodFactsService;
 use App\Services\Automod\AutomodService;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,12 @@ use Illuminate\Support\Facades\DB;
  *   posts and does not call the automod service at all. The service's own evaluate.js (automod/)
  *   loads this file and compares chart versions/backends offline, as many times as wanted,
  *   without re-querying the database each time. --backend is ignored in this mode.
+ * Either way the member signals are read as they stood when the moderator decided: read now, the
+ * facts would contain the decision being predicted (the moderator's own Rejected log is a recent
+ * moderator action on the member), which holds every rejected post before a single text question
+ * and inflates the agreement. See AutomodFactsService::facts() for what is and is not
+ * time-travelled.
+ *
  * - No --export: calls the live automod service (POST /review) for each sampled post with the
  *   requested --backend(s), without writing a messages_automod row for it (these posts are no
  *   longer Pending; recording a verdict for them would be noise, not a moderation decision -
@@ -85,7 +92,7 @@ class AutomodEvaluateCommand extends Command
      * against its own (or a predecessor feature's) decision. Every Rejected row is a human
      * decision regardless, since the chart never auto-rejects (AutomodMode's docblock).
      *
-     * @return \Illuminate\Support\Collection<int, object{msgid: int, groupid: int, collection: string}>
+     * @return \Illuminate\Support\Collection<int, object{msgid: int, groupid: int, collection: string, decided_at: string}>
      */
     private function sample(int $days, int $limit, ?int $groupid)
     {
@@ -103,7 +110,8 @@ class AutomodEvaluateCommand extends Command
             ->when($groupid !== null, fn ($query) => $query->where('mg.groupid', $groupid))
             ->orderByDesc('mg.arrival')
             ->limit($limit)
-            ->get(['mg.msgid', 'mg.groupid', 'mg.collection']);
+            // When the moderator decided: the moment the signals are read as of.
+            ->get(['mg.msgid', 'mg.groupid', 'mg.collection', DB::raw('COALESCE(mg.approvedat, mg.rejectedat, mg.arrival) as decided_at')]);
     }
 
     private function outcomeFor(string $collection): string
@@ -137,7 +145,7 @@ class AutomodEvaluateCommand extends Command
                 'subject' => $message->subject ?? '',
                 'body' => $message->textbody ?? '',
                 'type' => $message->type ?? '',
-                'facts' => $facts->facts((int) $row->msgid, (int) $row->groupid),
+                'facts' => $facts->facts((int) $row->msgid, (int) $row->groupid, Carbon::parse($row->decided_at)),
                 'rules' => $facts->rules((int) $row->groupid),
                 'outcome' => $this->outcomeFor($row->collection),
             ]) . "\n");
@@ -170,7 +178,7 @@ class AutomodEvaluateCommand extends Command
                 // shadow: whichever mode a live run would use, the verdict is what we compare,
                 // and persist=false means this never writes a messages_automod row for a post
                 // that is no longer Pending.
-                $result = $service->review($msgid, $groupid, 'shadow', $backend, false);
+                $result = $service->review($msgid, $groupid, 'shadow', $backend, false, Carbon::parse($row->decided_at));
 
                 if ($result === null) {
                     $stats[$backend]['unavailable']++;

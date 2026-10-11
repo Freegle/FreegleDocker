@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { buildChart, nodesHash, readLedger, CHART_PATH, VERSION, NODES } from '../scripts/build-chart.mjs';
+import { factNames } from '../src/walk.js';
 
 test('chart.json is exactly what build-chart.mjs builds', () => {
   assert.deepEqual(JSON.parse(readFileSync(CHART_PATH, 'utf8')), buildChart());
@@ -30,4 +31,18 @@ test('changing one question changes the hash', () => {
   changed[0][1] = `${changed[0][1]} (changed)`;
   const other = createHash('sha256').update(JSON.stringify(changed)).digest('hex');
   assert.notEqual(other, nodesHash());
+});
+
+// The batch sends every one of these as a true or false, and the service holds a post as
+// unavailable when one is missing (src/walk.js). The same list is pinned on the batch side by
+// AutomodFactsServiceTest::CHART_FACTS in iznik-batch; a fact added to the chart has to be added
+// to both, and to AutomodFactsService, before the chart ships. text_truncated is the service's own.
+test('the facts the chart reads are the facts the batch sends', () => {
+  const sent = [
+    'concern_keyword', 'duplicate', 'has_other_posts', 'is_offer', 'is_wanted', 'member_moderated',
+    'membership_review', 'microvol_reject', 'mod_note', 'no_location', 'not_english', 'outside_uk',
+    'personal_info', 'recent_action', 'spam_links', 'spam_pattern', 'spammer',
+  ];
+  const read = factNames(JSON.parse(readFileSync(CHART_PATH, 'utf8'))).filter((name) => name !== 'text_truncated');
+  assert.deepEqual(read.sort(), sent);
 });

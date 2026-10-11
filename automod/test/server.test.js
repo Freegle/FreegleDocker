@@ -7,6 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/server.js';
 import { FakeBackend } from '../src/backend.js';
+import { VERSION } from '../scripts/build-chart.mjs';
+import { completeFacts } from './helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CHART_PATH = path.join(__dirname, '..', 'chart.json');
@@ -51,7 +53,7 @@ describe('GET /health', () => {
     const body = await res.json();
     assert.equal(body.status, 'ok');
     assert.equal(body.chart, 'freegle-automod');
-    assert.equal(body.version, '5');
+    assert.equal(body.version, VERSION);
     assert.equal(body.backend, 'claude');
     assert.equal(body.consecutive_failures, 0);
     assert.equal(body.last_error, null);
@@ -65,7 +67,7 @@ describe('GET /chart', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.id, 'freegle-automod');
-    assert.equal(body.version, '5');
+    assert.equal(body.version, VERSION);
     assert.ok(body.states.MOD_NOTE);
   });
 });
@@ -89,6 +91,7 @@ describe('POST /review', () => {
         subject: 'Free sofa',
         body: 'Free two-seater sofa in good condition, must collect from the house.',
         type: 'Offer',
+        facts: completeFacts(),
       });
       assert.equal(res.status, 200);
       const body = await res.json();
@@ -117,6 +120,7 @@ describe('POST /review', () => {
       groupid: 1,
       body: 'Can I borrow your ladder for the weekend please?',
       type: 'Offer',
+      facts: completeFacts(),
     });
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -186,10 +190,50 @@ describe('POST /review', () => {
   });
 });
 
+// These reviews are unavailable by design, so they run on an app of their own: the shared one's
+// metrics (below) count what happened on it.
+describe('POST /review - the request must carry the facts', () => {
+  test('a request with no facts is held as unavailable, never approved', async () => {
+    const { app, url } = await listen({ backend: new FakeBackend() });
+    const err = mock.method(console, 'error', () => {});
+    const log = mock.method(console, 'log', () => {});
+    try {
+      const res = await review(url, { msgid: 1, groupid: 1, subject: 'Free sofa', body: 'Free sofa, collect.', type: 'Offer' });
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.verdict, 'hold');
+      assert.equal(body.end, 'UNAVAILABLE');
+
+      // It counts against the backend's health, so a batch that has stopped sending a fact shows.
+      const health = await (await fetch(`${url}/health`)).json();
+      assert.equal(health.consecutive_failures, 1);
+      assert.match(health.last_error, /mod_note/);
+    } finally {
+      err.mock.restore();
+      log.mock.restore();
+      await new Promise((resolve) => app.close(resolve));
+    }
+  });
+});
+
 describe('POST /review - PHP-encoded empty arrays', () => {
-  test('treats [] facts and rules as empty objects', async () => {
-    const res = await review(baseUrl, { msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', facts: [], rules: [] });
-    assert.equal(res.status, 200);
+  test('[] rules are an empty object; [] facts are accepted as the right type but are no facts', async () => {
+    const withFacts = await review(baseUrl, { msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts(), rules: [] });
+    assert.equal(withFacts.status, 200);
+    assert.equal((await withFacts.json()).end, 'APPROVE');
+
+    const { app, url } = await listen({ backend: new FakeBackend() });
+    const err = mock.method(console, 'error', () => {});
+    const log = mock.method(console, 'log', () => {});
+    try {
+      const noFacts = await review(url, { msgid: 1, groupid: 1, subject: 'OFFER: Sofa', body: 'Brown sofa', type: 'Offer', facts: [], rules: [] });
+      assert.equal(noFacts.status, 200, 'an empty PHP array is not rejected as the wrong type');
+      assert.equal((await noFacts.json()).end, 'UNAVAILABLE', 'and an empty set of facts is not a set of answers of no');
+    } finally {
+      err.mock.restore();
+      log.mock.restore();
+      await new Promise((resolve) => app.close(resolve));
+    }
   });
 });
 
@@ -216,7 +260,7 @@ describe('concurrency', () => {
     const { app, url } = await listen({ backend: slowBackend(150), concurrency: 1, queueMax: 0 });
     const log = mock.method(console, 'log', () => {});
     try {
-      const post = { msgid: 5, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer' };
+      const post = { msgid: 5, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts() };
       const [a, b] = await Promise.all([review(url, post), review(url, { ...post, msgid: 6 })]);
       assert.deepEqual([a.status, b.status].sort(), [200, 503]);
       const busy = a.status === 503 ? a : b;
@@ -232,7 +276,7 @@ describe('concurrency', () => {
   test('a review within the queue waits its turn and is answered', async () => {
     const { app, url } = await listen({ backend: slowBackend(50), concurrency: 1, queueMax: 5 });
     try {
-      const post = { msgid: 7, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer' };
+      const post = { msgid: 7, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts() };
       const results = await Promise.all([7, 8, 9].map((msgid) => review(url, { ...post, msgid })));
       assert.deepEqual(results.map((r) => r.status), [200, 200, 200]);
     } finally {
@@ -246,7 +290,7 @@ describe('deadline', () => {
     const { app, url } = await listen({ backend: slowBackend(30) });
     const log = mock.method(console, 'log', () => {});
     try {
-      const res = await review(url, { msgid: 10, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer', deadline_ms: 1 });
+      const res = await review(url, { msgid: 10, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts(), deadline_ms: 1 });
       assert.equal(res.status, 200);
       const line = JSON.parse(log.mock.calls.at(-1).arguments[0]);
       assert.equal(line.over_budget, true);
@@ -265,7 +309,7 @@ describe('readiness', () => {
     const log = mock.method(console, 'log', () => {});
     const err = mock.method(console, 'error', () => {});
     try {
-      const post = { msgid: 20, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer' };
+      const post = { msgid: 20, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts() };
       const first = await review(url, post);
       assert.equal(first.status, 200);
       assert.equal((await first.json()).end, 'UNAVAILABLE');
@@ -303,7 +347,7 @@ describe('readiness', () => {
     const log = mock.method(console, 'log', () => {});
     const err = mock.method(console, 'error', () => {});
     try {
-      const post = { msgid: 30, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer' };
+      const post = { msgid: 30, groupid: 1, subject: 'Sofa', body: 'Brown sofa', type: 'Offer', facts: completeFacts() };
       await review(url, post);
       assert.equal((await fetch(`${url}/health`)).status, 503);
       fail = false;
