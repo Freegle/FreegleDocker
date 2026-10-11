@@ -195,3 +195,20 @@ every moderator, with the room and the access rules both fine. `GET /chat/:id/me
 from 2026-03-20 (fd3a6c755), and posting from 2026-03-28 (70bdee1f4). Test existence by the row's
 `id`, then gate with `canSeeChatRoom` plus `mod2ModAllowed` (active moderators only, as
 `listChats`).
+
+## A chat that "never arrived" may sit on a merged-away account
+
+An account merge has to move chat rooms *and* their `chat_roster` rows. Before July 2026 the
+email-verify merge did neither reliably: the room update failed outright when the survivor
+already had a room with the same person (the unique key on user1, user2, chattype), leaving
+every room in that column on the soft-deleted loser, and roster rows were never moved at all.
+The member sees a conversation vanish, or sees messages arrive in the chat but is never
+emailed. No error is logged anywhere.
+
+That merge wrote nothing to `logs`, so the loser is not findable from the database by name.
+Two traces survive: the loser's `users.deleted` is the same second as the survivor's
+`users_emails.validated` for the email that moved, and the loser's messages were re-attributed
+to the survivor, so a stranded room holds messages from someone who is neither participant.
+The second also matches support accounts that write into members' chats, so use it only to
+confirm the first. `chat:repair-merged-rooms` finishes such a merge from a loser,survivor file;
+`session/merge.go` `mergeChatRooms` is what a merge does now.
