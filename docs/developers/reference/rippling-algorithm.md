@@ -878,14 +878,17 @@ resumed:
 On the batch side a resumed reach is an ordinary due row; nothing in the engine knows it was
 frozen. `advanceDue` takes it on from the stored tick, schedule and polygon, never through
 `initialiseNew` (which needs a post with no reach row): to the tick the clock is at, back on the
-hazard schedule if the clock has not moved on, or back to `done` if it had finished. The reach
-mailer picks the row up once the engine has written `updated_at`, and `mailNewlyReachedForPost`
-mails only members who are inside the reach at the row's current tick, are absent from
-`rippling_reach_notified`, and are on a community where the post is Approved and not deleted. So a
-copy withdrawn before the freeze (`deleted = 1`) is not recreated, its members are not mailed and
-its poster is not joined to it again (`addPosterMembershipToRippledGroups` ignores deleted
-copies), and a copy pulled back to Pending stays Pending and its members are not mailed.
-`ResumedReachTest` pins this against the exact row `ResumeReachIfHeld` leaves.
+hazard schedule if the clock has not moved on, or back to `done` if it had finished. The clock is
+the post's own arrival, so a reach held for hours takes every step it missed in one run and ripples
+into the communities of all those steps together. The reach mailer picks the row up once the
+engine has written `updated_at`, and `mailNewlyReachedForPost` mails only members who are inside
+the reach at the row's current tick, are absent from `rippling_reach_notified`, and are on a
+community where the post is Approved and not deleted. So everyone newly inside the reach is told
+in one pass, each member once, however many steps that run covered. A copy withdrawn before the
+freeze (`deleted = 1`) is not recreated, its members are not mailed and its poster is not joined
+to it again (`addPosterMembershipToRippledGroups` ignores deleted copies), and a copy pulled back
+to Pending stays Pending and its members are not mailed. `ResumedReachTest` pins this against the
+exact row `ResumeReachIfHeld` leaves.
 
 A Reject or Delete at home ends the reach instead (§6).
 
