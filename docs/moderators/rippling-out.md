@@ -49,8 +49,15 @@ What this means in practice:
 - Your community's member count may include rippled members.
 - The join is recorded as **'Rippled'** in the membership log, so you can distinguish it
   from a manual or organic join if you need to.
-- If they later join your community themselves, or move house into your area, the
-  membership becomes an ordinary one and none of the above applies any more.
+- The membership becomes an ordinary one, and none of the above applies any more, once
+  they have something to do with your community. That is when they:
+  - join it themselves, or move house into your area;
+  - post on it;
+  - reply to a post that was posted on it;
+  - write back to one of your members about their rippled post, for example to arrange a
+    collection.
+
+  This is checked every few minutes, so the change is not instant.
 
 ### Talking to the poster
 
@@ -63,6 +70,11 @@ So on a rippled-in post you will not see Blank Reply, or the standard messages w
 job is to write to the poster. Approving it and taking it off your community are still
 yours to do. This holds however you remove it - the Reject button, a standard message
 that rejects, or a standard message that deletes.
+
+Once the poster is an ordinary member of your community (see above), you can write to them
+about the post too: Blank Reply and those standard messages come back, and taking the post
+off your community tells them, as it would for their own community. Marking the post
+Taken, Received or Withdrawn stays with the community they posted it on.
 
 ---
 

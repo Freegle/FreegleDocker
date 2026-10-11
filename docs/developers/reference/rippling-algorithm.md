@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-11
 covers:
   - iznik-batch/app/Services/Ripple/**
   - iznik-batch/app/Console/Commands/Ripple/**
@@ -1416,7 +1416,17 @@ one community in either direction (§4a), set only via `php artisan ripple:opt-o
 - `logs` `text='Rippled'` - the ripple-join marker used for rejoin suppression.
 - `memberships.rippled = 1` - marks a membership rippling created, when the member's own post
   rippled into that group and we auto-joined them (§5). Every statistic that asks "were they
-  already a member?" must exclude these - see §10a.
+  already a member?" must exclude these - see §10a. The flag is cleared, and a Group/Joined
+  log row written with the text `Ripple-created membership became ordinary: <reason>`, once
+  the member has something to do with the community: they join it or move into its area
+  (`rippling.ClearRippledMembership` in iznik-server-go), or they post on it, reply to a post
+  posted on it, or write back to one of its ordinary members about their rippled post
+  (`ripple:clear-engaged`, `RippleEngagementService`, every five minutes). The clear counts
+  towards the "Seen on many groups" spam check like any join. `memberships_history` keeps
+  its flag, and `ripple:backfill-memberships` leaves a cleared membership alone.
+- A community a post rippled into may write to the poster about it once the poster is an
+  ordinary member there (`PosterMessagingGroups`). Whether an action turns the post away,
+  which stops it rippling back, still goes by `HomeGroups`.
 
 ### 9a. Shared geometry (`rippling_reach_geom`) - RETIRED
 
