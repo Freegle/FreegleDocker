@@ -3597,7 +3597,8 @@ class ExpandServiceTest extends TestCase
 
     /**
      * Back to pending freezes the reach (status 'held', as Go's FreezeReachIfOriginPending does)
-     * and nothing clears it, so a later delete on the home group must still pull the copies.
+     * until a moderator approves the home copy, so a delete on the home group while it is frozen
+     * must still pull the copies.
      */
     public function test_delete_on_home_group_after_freeze_retracts_rippled_copies(): void
     {

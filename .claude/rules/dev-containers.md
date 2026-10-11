@@ -226,6 +226,27 @@ The same file is an envsubst template. Only `${IMAGE_STORE_*}` is substituted, b
 compose sets `NGINX_ENVSUBST_FILTER`; without the filter every nginx `$variable` is
 blanked and `nginx -t` fails, so that one at least is loud.
 
+## Copying files into a running Nuxt dev container kills it
+
+`docker cp` of a directory into `modtools-dev-local` or `dev-local` while Nuxt's watcher is
+running makes the dev server crash (`ENOENT` on a file mid-replace, or a `nuxt.config.ts`
+restart that cannot find a module); the container then exits and the status API's Vitest run
+answers "container is not running" with 0 tests. Copy a whole tree only into the **stopped**
+container (`docker cp` works on stopped containers), then start it; copy single files while it
+runs. `npm ci` inside the running container is the same trap twice over: it deletes
+`node_modules` first, and if the container dies mid-way it can no longer start (`nuxt: not
+found`). Run a lint that needs the branch's packages on the host from the worktree instead.
+
+## The batch dev container is a bind mount: never `docker cp` into it
+
+`batch` mounts the worktree's `iznik-batch` at `/var/www/html` (`docker inspect` shows a `bind`
+mount; `apiv2`, `modtools-dev-local` and `automod` carry copies instead). A `docker cp` of a
+directory into it copies the tree onto itself, and two such copies overlapping truncate files
+to zero bytes, root-owned, which then shows as a pure-deletion diff and a `Class ... not found`
+in the next test run. Edits on the host are already visible inside; just run the tests. If a
+run behaves oddly, `git status` and `find iznik-batch -size 0 -type f` show the damage, and
+`git checkout HEAD -- <file>` repairs it.
+
 ## `sed -i` on a bind-mounted file edits nothing the container can see
 
 A single file bound into a container (`frontend-nginx.conf`, `firebase.json`, the SSH
@@ -249,6 +270,13 @@ relative `mime.types` include resolves against the config's own directory.
 - **The worktree guard is session-wide**, and a subagent can move it, after which commands are
   refused or land in the wrong place.
 - **`pkill -f` matches its own command line** and kills the shell that ran it.
+- **A worktree whose branch was rewritten elsewhere wakes up with a stale index.** When the
+  same branch is amended or rebased in another checkout and the ref moves, the worktree's
+  `HEAD` follows it but its index and working files do not. `git status` then shows hundreds
+  of staged changes that are really "old tree minus new tree", with nothing lost and nothing
+  to keep. Check `git reflog` for the old commit, confirm `git diff --cached --quiet <old>`
+  is clean, then `git reset --hard HEAD`. Do not commit the staged set: it reverts the
+  rewrite.
 
 ## `git checkout --ours` replaces the whole file
 
