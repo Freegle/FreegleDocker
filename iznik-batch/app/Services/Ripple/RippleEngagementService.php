@@ -64,6 +64,33 @@ class RippleEngagementService
     }
 
     /**
+     * One-off catch-up over everything since $since, for engagement from before the
+     * scheduled run existed or older than its first look-back. Runs the same three checks,
+     * but leaves the scheduled run's saved positions alone, so it can be run at any time
+     * without making the scheduled run skip or repeat anything.
+     *
+     * @return array{posted:int,replied:int,wrote_back:int}
+     */
+    public function backfill(\Carbon\CarbonInterface $since): array
+    {
+        $stats = ['posted' => 0, 'replied' => 0, 'wrote_back' => 0];
+
+        $this->clearForPostsSince($since, $stats);
+
+        $from = DB::table('chat_messages')->where('date', '>=', $since)->min('id');
+        $last = (int) (DB::table('chat_messages')->max('id') ?? 0);
+        if ($from !== null) {
+            for ($start = (int) $from; $start <= $last; $start += self::CHAT_CHUNK) {
+                $end = min($start + self::CHAT_CHUNK - 1, $last);
+                $this->clearForReplies($start, $end, $stats);
+                $this->clearForWriteBacks($start, $end, $stats);
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
      * Makes the member's ripple-created membership of the group ordinary, if it is one.
      * Returns whether anything changed.
      */
@@ -105,6 +132,13 @@ class RippleEngagementService
             ? \Carbon\Carbon::parse($saved)->subMinutes(self::POST_OVERLAP_MINUTES)
             : now()->subDays($days);
 
+        $this->clearForPostsSince($since, $stats);
+
+        $this->save(self::LAST_POST_ARRIVAL_KEY, $passStart->toDateTimeString());
+    }
+
+    private function clearForPostsSince(\Carbon\CarbonInterface $since, array &$stats): void
+    {
         $pairs = DB::table('messages_groups as mg')
             ->join('messages as msg', 'msg.id', '=', 'mg.msgid')
             ->join('memberships as m', function ($j) {
@@ -124,8 +158,6 @@ class RippleEngagementService
                 $stats['posted']++;
             }
         }
-
-        $this->save(self::LAST_POST_ARRIVAL_KEY, $passStart->toDateTimeString());
     }
 
     /**
