@@ -745,18 +745,26 @@ services:
       start_period: 60s
     environment:
       - PORT=8090
+      # The NLI models are baked into the image at this path (automod/Dockerfile);
+      # nothing downloads at runtime, so there is no volume to keep.
       - HF_CACHE_DIR=/app/model-cache
       # Text questions go to Claude unless a node or request names the local model.
       - AUTOMOD_BACKEND=${AUTOMOD_BACKEND:-claude}
       - AUTOMOD_CLAUDE_MODEL=${AUTOMOD_CLAUDE_MODEL:-claude-opus-5}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # Without an API key, Claude runs through the claude CLI on a subscription token.
+      # Without an API key, Claude runs through the claude CLI on a subscription token,
+      # asking for this model alias; the model the CLI reports using is what gets recorded.
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - AUTOMOD_CLAUDE_CLI_MODEL=${AUTOMOD_CLAUDE_CLI_MODEL:-opus}
+      - DISABLE_AUTOUPDATER=1
+      # Reviews run at once / waiting before a 503; consecutive backend failures before
+      # /health fails (src/server.js). Blank means the default (2 / 10 / 20).
+      - AUTOMOD_CONCURRENCY=${AUTOMOD_CONCURRENCY:-}
+      - AUTOMOD_QUEUE_MAX=${AUTOMOD_QUEUE_MAX:-}
+      - AUTOMOD_UNHEALTHY_AFTER=${AUTOMOD_UNHEALTHY_AFTER:-}
       # TypeSafe Jev as a backend for comparison (evaluate.js); TYPESAFE_BASE_URL for a compatible server.
       - TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
       - TYPESAFE_BASE_URL=${TYPESAFE_BASE_URL:-}
-    volumes:
-      - automod_model_cache:/app/model-cache
 
   host-scripts:
     image: alpine:latest
@@ -2148,8 +2156,6 @@ volumes:
   apiv2_logs:
     driver: local
   embedding_model_cache:
-    driver: local
-  automod_model_cache:
     driver: local
   # edge profile (front-end host) — see plans/2026-06-25-frontend-server-migration.md
   delivery-cache:

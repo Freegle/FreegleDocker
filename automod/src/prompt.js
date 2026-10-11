@@ -112,11 +112,38 @@ export function keywordFlags(text) {
   return out;
 }
 
-/** The post as the model sees it. */
+/**
+ * The most of a post that goes to any backend. Enough for any post a member wrote by hand;
+ * a bound on cost for one that arrived by email with a quoted thread, and on the size of what
+ * the CLI backend is handed.
+ */
+export const MAX_TEXT_CHARS = 8000;
+
+/**
+ * A member's text as a model may see it. NFKC-normalised, so fullwidth and other compatibility
+ * forms fold to plain letters and symbols and the keyword lists match them; zero-width and
+ * control characters removed, since a zero-width space inside "selling" would otherwise hide it
+ * from the keyword match; and anything that looks like the <post> delimiter neutralised, so a
+ * member cannot close the data block and write instructions after it.
+ */
+export function sanitiseText(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[​-‍⁠﻿]/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/<\s*\/?\s*post\b/gi, '[post]');
+}
+
+/** The post as the model sees it: sanitised, and cut at MAX_TEXT_CHARS with a note. */
 export function postText({ type, subject, body }) {
-  return [type ? `Type: ${type}` : null, subject ? `Subject: ${subject}` : null, body ? `Body: ${body}` : null]
+  const text = [
+    type ? `Type: ${sanitiseText(type)}` : null,
+    subject ? `Subject: ${sanitiseText(subject)}` : null,
+    body ? `Body: ${sanitiseText(body)}` : null,
+  ]
     .filter(Boolean)
     .join('\n');
+  return text.length > MAX_TEXT_CHARS ? `${text.slice(0, MAX_TEXT_CHARS)}\n[truncated]` : text;
 }
 
 export const SYSTEM =

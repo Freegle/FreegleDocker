@@ -52,6 +52,7 @@ Freegle (internally "Iznik") is a monorepo. The main pieces:
 | `iznik-routing-go/` | Go service for drive-time routing, used by rippling, browse and the sysadmin analytics; includes the reach engine (region labels instead of repeated searches - see `iznik-routing-go/REACH-ENGINE.md`), which also answers per-point drive-time evals without a full-graph sweep. | `iznik-routing-go/README.md` |
 | `iznik-spatial-go/` | Go service for spatial lookups (which community covers a point, etc). | `iznik-spatial-go/README.md` |
 | `status-nuxt/` | Development status dashboard and test runner; `server/api/tests/*.post.ts` run each suite inside its dev container. | - |
+| `automod/` | Node service that walks the automated review flowchart (`chart.json`) for a Pending post and answers approve or hold with the path taken; the questions about the words go to Claude. Called only by the batch (`messages:automod`), internal network, no database. See [../moderators/post-moderation.md](../moderators/post-moderation.md). | - |
 | `freegle-app/` | A Kotlin Multiplatform native app. An experiment; it does not ship. See [./reference/mobile-app.md](./reference/mobile-app.md). | - |
 
 The mobile apps that members install are **Capacitor builds of `iznik-nuxt3/`** - the same

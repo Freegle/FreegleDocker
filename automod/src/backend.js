@@ -1,10 +1,17 @@
 // The model backend behind every text check. walk.js only ever calls
-// ask(question, text) and expects { p, model } back; it decides yes/no
+// ask(question, text, opts) and expects { p, model } back; it decides yes/no
 // itself by comparing p to the node's threshold, and it is the one that
 // turns a thrown error into a hold (model: "unavailable"), so this file
 // does not need its own fallback-to-hold logic.
+//
+// opts.acct is the review's account (newAccount): every model call made is
+// counted on it, with the tokens, cost and model the backend learns, so the
+// service can log and return what one decision cost. opts.deadline is the
+// time (ms since the epoch) by which the caller has given up: no call starts
+// after it, and a call in flight is cut off at it.
 import { pipeline, env } from '@huggingface/transformers';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,6 +28,9 @@ if (process.env.HF_CACHE_DIR) {
 // process. xsmall is the preferred model - the fallback is smaller and less
 // accurate but keeps the service answering if xsmall cannot be loaded.
 export const MODELS = ['Xenova/nli-deberta-v3-xsmall', 'Xenova/mobilebert-uncased-mnli'];
+
+/** The most one CLI call may take, when the caller has set no shorter deadline. */
+export const CLI_TIMEOUT_MS = 180000;
 
 let loadingPromise = null;
 
@@ -49,18 +59,53 @@ async function getModel() {
   return loadingPromise;
 }
 
+/** The account a review carries through its backend calls. */
+export function newAccount() {
+  return {
+    calls: 0,
+    tokens: { input: 0, output: 0 },
+    cost_usd: null,
+    model: null,
+    cache_hit: false,
+    features: null,
+    prompt_sha: null,
+    reply_sha: null,
+  };
+}
+
+/** Add one model call's usage to the account. Unknown tokens or cost leave the totals as they were. */
+export function credit(acct, { model, input = 0, output = 0, cost = null } = {}) {
+  if (!acct) return;
+  acct.calls += 1;
+  if (model) acct.model = model;
+  acct.tokens.input += input || 0;
+  acct.tokens.output += output || 0;
+  if (typeof cost === 'number') acct.cost_usd = (acct.cost_usd || 0) + cost;
+}
+
+export const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
+
+/** Milliseconds left before the deadline, capped at max; throws if it has already passed. */
+export function remainingMs(deadline, max) {
+  if (!deadline) return max;
+  const left = deadline - Date.now();
+  if (left <= 0) throw new Error('the deadline passed before the model was asked');
+  return Math.min(max, left);
+}
+
 /**
  * Real backend: CPU zero-shot NLI classification. The question is used as
  * the single candidate label, so its entailment score against the post text
  * is the model's answer to that yes/no question.
  */
 export class NliBackend {
-  async ask(question, text) {
+  async ask(question, text, opts = {}) {
     const { classifier, model } = await getModel();
     const result = await classifier(text, [question], {
       hypothesis_template: '{}',
       multi_label: true,
     });
+    credit(opts.acct, { model: `nli:${model}` });
     return { p: result.scores[0], model: `nli:${model}` };
   }
 }
@@ -133,12 +178,37 @@ const ClaudeAnswers = z.object({
   answers: z.array(ClaudeAnswer.extend({ id: z.number() })),
 });
 
+/**
+ * The batched reply numbers its answers itself. A reply that numbers from 1, repeats a number
+ * or leaves one out would silently put every answer on the wrong question, so a reply is only
+ * used when its ids are exactly 0..n-1, once each.
+ */
+export function checkAnswerIds(answers, n) {
+  if (answers.length !== n) {
+    throw new Error(`claude answered ${answers.length} of ${n} questions`);
+  }
+  const ids = new Set(answers.map((a) => a.id));
+  if (ids.size !== n || [...ids].some((id) => !Number.isInteger(id) || id < 0 || id >= n)) {
+    throw new Error('claude numbered its answers wrongly');
+  }
+}
+
 // Posts whose answers are kept, so a walk asks Claude once per post.
 const ANSWER_CACHE_SIZE = 200;
 
 /** setQuestions takes strings or {question, flags}; this is the one shape used inside. */
 function normaliseQuestions(questions) {
   return questions.map((q) => (typeof q === 'string' ? { question: q, flags: [] } : { flags: [], ...q }));
+}
+
+/** Tokens and model from a Messages API response. The API does not say what it cost. */
+function sdkUsage(response) {
+  const u = response.usage || {};
+  return {
+    model: response.model ? `claude:${response.model}` : undefined,
+    input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
+    output: u.output_tokens || 0,
+  };
 }
 
 /**
@@ -167,9 +237,15 @@ export class ClaudeBackend {
     return this.questions.map((q) => q.question);
   }
 
-  async askAll(text, hints) {
-    if (!this.cache.has(text)) {
-      const pending = this.requestAll(text, hints).catch((err) => {
+  /**
+   * The batched call for a post, once: a second review of the same text, or a second question
+   * in the same walk, reads the cached entry. The first ask in a walk is credited with the
+   * call's usage, or marked a cache hit, and either way carries the entry's features and hashes.
+   */
+  async askAll(text, hints, opts = {}) {
+    const hit = this.cache.has(text);
+    if (!hit) {
+      const pending = this.requestAll(text, hints, opts).catch((err) => {
         this.cache.delete(text);
         throw err;
       });
@@ -178,27 +254,63 @@ export class ClaudeBackend {
         this.cache.delete(this.cache.keys().next().value);
       }
     }
-    return this.cache.get(text);
+    const entry = await this.cache.get(text);
+    const acct = opts.acct;
+    if (acct && !acct.batch) {
+      acct.batch = true;
+      if (hit) {
+        acct.cache_hit = true;
+        if (entry.usage?.model) acct.model = entry.usage.model;
+      } else {
+        credit(acct, entry.usage);
+      }
+      acct.features = entry.features;
+      acct.prompt_sha = entry.prompt_sha;
+      acct.reply_sha = entry.reply_sha;
+    }
+    return entry.byQuestion;
   }
 
   batchPromptFor(text, hints) {
     return batchPrompt({ questions: this.questionTexts(), text, flags: keywordFlags(text), hints });
   }
 
-  async requestAll(text, hints) {
-    const response = await this.client.messages.parse({
-      model: this.model,
-      max_tokens: 6000,
-      output_config: { effort: this.effort, format: zodOutputFormat(ClaudeAnswers) },
-      system: SYSTEM,
-      messages: [{ role: 'user', content: this.batchPromptFor(text, hints) }],
-    });
+  /** Request options for one Messages API call: cut off at the caller's deadline. */
+  requestOptions(opts = {}) {
+    const ms = remainingMs(opts.deadline, 10 * 60 * 1000);
+    return { signal: AbortSignal.timeout(ms), timeout: ms };
+  }
+
+  async requestAll(text, hints, opts = {}) {
+    const prompt = this.batchPromptFor(text, hints);
+    const response = await this.client.messages.parse(
+      {
+        model: this.model,
+        max_tokens: 6000,
+        output_config: { effort: this.effort, format: zodOutputFormat(ClaudeAnswers) },
+        system: SYSTEM,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      this.requestOptions(opts),
+    );
 
     if (response.stop_reason === 'refusal' || !response.parsed_output) {
       throw new Error(`claude gave no usable answer (${response.stop_reason})`);
     }
 
-    return this.indexAnswers(response.parsed_output);
+    return this.entryFor(prompt, response.parsed_output, sdkUsage(response));
+  }
+
+  /** One cache entry: the answers by question, plus what the call cost and what it extracted. */
+  entryFor(prompt, parsed, usage) {
+    checkAnswerIds(parsed.answers, this.questions.length);
+    return {
+      byQuestion: this.indexAnswers(parsed),
+      usage,
+      features: parsed.features,
+      prompt_sha: sha(prompt),
+      reply_sha: sha(JSON.stringify(parsed)),
+    };
   }
 
   indexAnswers({ features, answers }) {
@@ -214,10 +326,11 @@ export class ClaudeBackend {
   /**
    * @param {string} question
    * @param {string} text
-   * @param {{flags?: string[], flagged?: string[], hints?: string[], context?: string}} [opts]
+   * @param {{flags?: string[], flagged?: string[], hints?: string[], context?: string, acct?: object, deadline?: number}} [opts]
    *   flags: keyword categories this question is about; flagged: the words from them found in
    *   the post; hints: findings from Freegle's own checks, for the batched call; context:
-   *   extra text this question needs, which makes it a call of its own.
+   *   extra text this question needs, which makes it a call of its own; acct and deadline as
+   *   described at the top of this file.
    */
   async ask(question, text, opts = {}) {
     const known = this.questions.find((q) => q.question === question);
@@ -225,7 +338,7 @@ export class ClaudeBackend {
       return this.askOne(question, text, opts);
     }
 
-    const all = await this.askAll(text, opts.hints);
+    const all = await this.askAll(text, opts.hints, opts);
     const a = all.get(question);
     if (!a) {
       throw new Error('claude left a question unanswered');
@@ -248,28 +361,49 @@ export class ClaudeBackend {
   }
 
   async askOne(question, text, opts = {}) {
-    const response = await this.client.messages.parse({
-      model: this.model,
-      max_tokens: 2000,
-      output_config: { effort: this.effort, format: zodOutputFormat(ClaudeAnswer) },
-      system: SYSTEM,
-      messages: [{ role: 'user', content: singlePrompt({ question, text, flagged: opts.flagged, context: opts.context }) }],
-    });
+    const response = await this.client.messages.parse(
+      {
+        model: this.model,
+        max_tokens: 2000,
+        output_config: { effort: this.effort, format: zodOutputFormat(ClaudeAnswer) },
+        system: SYSTEM,
+        messages: [{ role: 'user', content: singlePrompt({ question, text, flagged: opts.flagged, context: opts.context }) }],
+      },
+      this.requestOptions(opts),
+    );
 
     if (response.stop_reason === 'refusal' || !response.parsed_output) {
       throw new Error(`claude gave no usable answer (${response.stop_reason})`);
     }
 
+    credit(opts.acct, sdkUsage(response));
     return this.toResult(response.parsed_output);
   }
+}
+
+/** What one `claude -p --output-format json` run reports it used. */
+function cliUsage(out, fallbackModel) {
+  const models = Object.keys(out.modelUsage || {});
+  const u = out.usage || {};
+  return {
+    model: models[0] ? `cli:${models[0]}` : `cli:${fallbackModel}`,
+    input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
+    output: u.output_tokens || 0,
+    cost: typeof out.total_cost_usd === 'number' ? out.total_cost_usd : null,
+  };
 }
 
 /**
  * Claude through the `claude` CLI on a subscription token (CLAUDE_CODE_OAUTH_TOKEN, from
  * `claude setup-token`), for a deployment with no metered API key. A raw OAuth call to the
  * Messages API is not supported, so this shells out, the same way Community News does. Same
- * prompts, same one call per post, same answer shape as ClaudeBackend. The CLI runs in an
- * empty config directory so no settings, hooks or tools load, and with no tools allowed.
+ * prompts, same one call per post, same answer shape as ClaudeBackend.
+ *
+ * The CLI runs in an empty config directory so no settings, hooks or MCP servers load;
+ * `--tools ""` removes every built-in tool (`--allowedTools ""` alone only pre-approves none,
+ * leaving the permission-free ones callable), `--max-turns 1` stops it after one reply, and the
+ * prompt goes in on stdin, since a long post would overrun the size of one command-line argument.
+ * The model it reports having used is recorded, not the alias it was asked for.
  */
 export class ClaudeCliBackend extends ClaudeBackend {
   constructor({ token = process.env.CLAUDE_CODE_OAUTH_TOKEN, model, bin } = {}) {
@@ -281,47 +415,74 @@ export class ClaudeCliBackend extends ClaudeBackend {
     this.configDir = mkdtempSync(join(tmpdir(), 'automod-claude-'));
   }
 
-  run(prompt) {
+  run(prompt, opts = {}) {
+    const timeout = remainingMs(opts.deadline, CLI_TIMEOUT_MS);
     return new Promise((resolve, reject) => {
-      execFile(
+      const child = execFile(
         this.bin,
-        ['-p', prompt, '--output-format', 'json', '--model', this.cliModel, '--allowedTools', ''],
+        ['-p', '--output-format', 'json', '--model', this.cliModel, '--tools', '', '--allowedTools', '', '--max-turns', '1'],
         {
           cwd: this.configDir,
-          timeout: 180000,
+          timeout,
           maxBuffer: 1 << 24,
-          env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: this.token, CLAUDE_CONFIG_DIR: this.configDir, HOME: this.configDir },
+          env: {
+            ...process.env,
+            CLAUDE_CODE_OAUTH_TOKEN: this.token,
+            CLAUDE_CONFIG_DIR: this.configDir,
+            HOME: this.configDir,
+            DISABLE_AUTOUPDATER: '1',
+          },
         },
-        (err, stdout) => {
-          if (err) return reject(new Error(`claude cli failed: ${String(err.message).slice(0, 200)}`));
-          try {
-            const text = JSON.parse(stdout).result || '';
-            resolve(JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)));
-          } catch (e) {
-            reject(new Error(`claude cli gave no usable answer: ${e.message}`));
+        (err, stdout, stderr) => {
+          if (err) {
+            const detail = String(stderr || '').trim().slice(0, 200);
+            return reject(new Error(`claude cli failed: ${String(err.message).slice(0, 200)}${detail ? ` (${detail})` : ''}`));
           }
+          let out;
+          try {
+            out = JSON.parse(stdout);
+          } catch (e) {
+            return reject(new Error(`claude cli output was not JSON: ${e.message}`));
+          }
+          if (out.is_error || (out.subtype && out.subtype !== 'success') || (out.terminal_reason && out.terminal_reason !== 'completed')) {
+            return reject(new Error(`claude cli ${out.terminal_reason || out.subtype || 'error'}: ${String(out.result || '').slice(0, 200)}`));
+          }
+          const text = String(out.result || '');
+          let json;
+          try {
+            json = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+          } catch (e) {
+            return reject(new Error(`claude cli gave no usable answer: ${e.message}`));
+          }
+          resolve({ json, usage: cliUsage(out, this.cliModel) });
         },
       );
+      // A closed pipe (the CLI exiting early) must not turn into an uncaught error.
+      child.stdin.on('error', () => {});
+      child.stdin.end(prompt);
     });
   }
 
-  async requestAll(text, hints) {
-    const out = await this.run(`${SYSTEM}\n\n${BATCH_JSON}\n\n${this.batchPromptFor(text, hints)}`);
-    const parsed = ClaudeAnswers.safeParse(out);
+  async requestAll(text, hints, opts = {}) {
+    const prompt = `${SYSTEM}\n\n${BATCH_JSON}\n\n${this.batchPromptFor(text, hints)}`;
+    const { json, usage } = await this.run(prompt, opts);
+    const parsed = ClaudeAnswers.safeParse(json);
     if (!parsed.success) {
       throw new Error('claude cli answer did not match the schema');
     }
-    return this.indexAnswers(parsed.data);
+    return this.entryFor(prompt, parsed.data, usage);
   }
 
   async askOne(question, text, opts = {}) {
-    const out = await this.run(
+    const { json, usage } = await this.run(
       `${SYSTEM}\n\n${SINGLE_JSON}\n\n${singlePrompt({ question, text, flagged: opts.flagged, context: opts.context })}`,
+      opts,
     );
-    const parsed = ClaudeAnswer.safeParse(out);
+    const parsed = ClaudeAnswer.safeParse(json);
     if (!parsed.success) {
       throw new Error('claude cli answer did not match the schema');
     }
+    credit(opts.acct, usage);
     return this.toResult(parsed.data);
   }
 }
@@ -345,7 +506,21 @@ export class JevBackend {
     this.questions = normaliseQuestions(questions).map((q) => q.question);
   }
 
-  async requestAll(text) {
+  async post(body, opts = {}) {
+    const r = await fetch(`${this.baseUrl}/v1/systemone`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: this.model, ...body }),
+      signal: AbortSignal.timeout(remainingMs(opts.deadline, 10 * 60 * 1000)),
+    });
+    if (!r.ok) {
+      throw new Error(`jev ${r.status}`);
+    }
+    credit(opts.acct, { model: `jev:${this.model}` });
+    return r.json();
+  }
+
+  async requestAll(text, opts = {}) {
     const questions = {};
     this.questions.forEach((q, i) => {
       questions[`q${i}`] = {
@@ -354,15 +529,7 @@ export class JevBackend {
         criteria: { true: 'Yes, for this post as written', false: 'No, for this post as written' },
       };
     });
-    const r = await fetch(`${this.baseUrl}/v1/systemone`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, state: { freegle_post: text }, questions }),
-    });
-    if (!r.ok) {
-      throw new Error(`jev ${r.status}`);
-    }
-    const j = await r.json();
+    const j = await this.post({ state: { freegle_post: text }, questions }, opts);
     const byQuestion = new Map();
     this.questions.forEach((q, i) => {
       const noul = j.answers?.[`q${i}`]?.noul;
@@ -373,20 +540,14 @@ export class JevBackend {
     return byQuestion;
   }
 
-  async askSingle(question, text, context) {
-    const r = await fetch(`${this.baseUrl}/v1/systemone`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.model,
+  async askSingle(question, text, context, opts = {}) {
+    const j = await this.post(
+      {
         state: { freegle_post: text, context: context || '' },
         questions: { q: { type: 'noul', instructions: question, criteria: { true: 'Yes, for this post as written', false: 'No, for this post as written' } } },
-      }),
-    });
-    if (!r.ok) {
-      throw new Error(`jev ${r.status}`);
-    }
-    const j = await r.json();
+      },
+      opts,
+    );
     const p = j.answers?.q?.noul;
     if (typeof p !== 'number') {
       throw new Error('jev gave no probability');
@@ -396,10 +557,10 @@ export class JevBackend {
 
   async ask(question, text, opts = {}) {
     if (opts.context || !this.questions.includes(question)) {
-      return this.askSingle(question, text, opts.context);
+      return this.askSingle(question, text, opts.context, opts);
     }
     if (!this.cache.has(text)) {
-      const pending = this.requestAll(text).catch((err) => {
+      const pending = this.requestAll(text, opts).catch((err) => {
         this.cache.delete(text);
         throw err;
       });

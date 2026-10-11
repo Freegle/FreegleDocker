@@ -14,15 +14,24 @@ const chart = JSON.parse(readFileSync(chartFile, 'utf8'))
 const claudeRows = readFileSync(claudeFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
 const jevById = new Map(JSON.parse(readFileSync(jevFile, 'utf8')).map((p) => [p.id, p.jev]))
 
-// Question groups that a moderator's recorded reason can speak to.
-const GROUPS = {
-  vague: { nodes: ['VAGUE_TEXT'], reason: /vague|anything|various/i },
-  money: { nodes: ['SELLING'], reason: /sell|money|donation/i },
-  'borrow/swap': { nodes: ['LOAN', 'SWAP'], reason: /borrow|swap|loan/i },
-  'not an item': { nodes: ['NOT_AN_ITEM'], reason: /landfill/i },
-  animals: { nodes: ['ANIMALS_OFFER', 'ANIMALS_WANTED'], reason: /pet|animal/i },
-  medicine: { nodes: ['MEDICINE', 'MEDICINE_OTC', 'MEDICINE_ANIMAL'], reason: /medic/i },
+// Question groups that a moderator's recorded reason can speak to. The nodes are found in the
+// chart by id pattern rather than named here, so a renamed question cannot leave a group silently
+// counting no votes.
+const GROUP_PATTERNS = {
+  vague: { ids: /^VAGUE$/, reason: /vague|anything|various/i },
+  money: { ids: /^MONEY$/, reason: /sell|money|donation/i },
+  'borrow/swap': { ids: /^(LOAN|SWAP)$/, reason: /borrow|swap|loan/i },
+  'not an item': { ids: /^NOT_AN_ITEM$/, reason: /landfill/i },
+  animals: { ids: /^ANIMALS_/, reason: /pet|animal/i },
+  medicine: { ids: /^MEDICINE_/, reason: /medic/i },
 }
+const GROUPS = Object.fromEntries(
+  Object.entries(GROUP_PATTERNS).map(([name, g]) => {
+    const nodes = Object.keys(chart.states).filter((id) => g.ids.test(id) && chart.states[id].check?.kind === 'text')
+    if (!nodes.length) throw new Error(`no text node in ${chartFile} matches the ${name} group`)
+    return [name, { nodes, reason: g.reason }]
+  }),
+)
 const TEXT_REASON = new RegExp(Object.values(GROUPS).map((g) => g.reason.source).join('|'), 'i')
 
 const rulesOf = (p) => (typeof p.rules === 'string' ? JSON.parse(p.rules || '{}') || {} : p.rules || {})

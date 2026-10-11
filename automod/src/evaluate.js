@@ -18,15 +18,8 @@ function arg(name, fallback) {
   return hit ? hit.slice(name.length + 3) : fallback;
 }
 
-function postText(post) {
-  return [
-    post.type ? `Type: ${post.type}` : null,
-    post.subject ? `Subject: ${post.subject}` : null,
-    post.body ? `Body: ${post.body}` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
+// The post as production sends it to a backend (sanitised and capped, src/prompt.js).
+const postText = (post) => postTextOf(post);
 
 function pct(n, d) {
   return d ? `${((100 * n) / d).toFixed(1)}%` : '-';

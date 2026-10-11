@@ -13,14 +13,21 @@
 //
 // The first question answered yes holds the post with that node's HOLD description; a post
 // that gets to the end is approved. Nothing here rejects.
-import { writeFileSync } from 'node:fs';
+//
+// chart-versions.json records a hash of NODES under each version. Changing a question without
+// changing `version` is refused here and caught by test/chart.test.js, so a decision recorded
+// against version N always means the same questions.
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const T = 0.7;
 
+export const VERSION = '5';
+
 // [id, short question, hold reason, check]
-const NODES = [
+export const NODES = [
   // What Freegle already knows about the member and the post.
   ['MOD_NOTE', 'Has a moderator left a note about this member?',
     'A moderator has left a note about this member, so their posts wait for a moderator.',
@@ -167,32 +174,59 @@ const NODES = [
       question: "One of Freegle's concern words matched this post (see the findings above). Is the post genuinely about that concern, rather than the word appearing in an innocent sense?" }],
 ];
 
-const states = {
-  START: { description: 'Entry point. Immediately continues to the first check.', nodeType: 'start' },
-};
-const transitions = [{ id: 'start', from: 'START', to: NODES[0][0], trigger: 'unconditional' }];
+/** A hash of the questions as they stand: the same questions always give the same hash. */
+export function nodesHash() {
+  return createHash('sha256').update(JSON.stringify(NODES)).digest('hex');
+}
 
-NODES.forEach(([id, description, hold, check], i) => {
-  states[id] = { description, nodeType: 'tool', check };
-  states[`HOLD_${id}`] = { description: hold, nodeType: 'end' };
-  const next = i + 1 < NODES.length ? NODES[i + 1][0] : 'APPROVE';
-  transitions.push(
-    { id: `${id}_yes`, from: id, to: `HOLD_${id}`, trigger: 'host_driven', condition: 'yes', label: 'yes', metadata: { answer: 'yes' } },
-    { id: `${id}_no`, from: id, to: next, trigger: 'host_driven', condition: 'no', label: 'no', metadata: { answer: 'no' } },
-  );
-});
-states.APPROVE = { description: "Nothing in this post needs a moderator's attention.", nodeType: 'end' };
+/** The chart as chart.json holds it. */
+export function buildChart() {
+  const states = {
+    START: { description: 'Entry point. Immediately continues to the first check.', nodeType: 'start' },
+  };
+  const transitions = [{ id: 'start', from: 'START', to: NODES[0][0], trigger: 'unconditional' }];
 
-const chart = {
-  id: 'freegle-automod',
-  name: 'Freegle automated review',
-  version: '5',
-  description: 'Fact and text checks that decide whether a Pending post can be approved automatically (plans/active/automod-flowchart.md). Built by scripts/build-chart.mjs.',
-  initialState: 'START',
-  states,
-  transitions,
-};
+  NODES.forEach(([id, description, hold, check], i) => {
+    states[id] = { description, nodeType: 'tool', check };
+    states[`HOLD_${id}`] = { description: hold, nodeType: 'end' };
+    const next = i + 1 < NODES.length ? NODES[i + 1][0] : 'APPROVE';
+    transitions.push(
+      { id: `${id}_yes`, from: id, to: `HOLD_${id}`, trigger: 'host_driven', condition: 'yes', label: 'yes', metadata: { answer: 'yes' } },
+      { id: `${id}_no`, from: id, to: next, trigger: 'host_driven', condition: 'no', label: 'no', metadata: { answer: 'no' } },
+    );
+  });
+  states.APPROVE = { description: "Nothing in this post needs a moderator's attention.", nodeType: 'end' };
 
-const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'chart.json');
-writeFileSync(out, JSON.stringify(chart, null, 2) + '\n');
-console.log(`wrote ${out}: ${NODES.length} questions, version ${chart.version}`);
+  return {
+    id: 'freegle-automod',
+    name: 'Freegle automated review',
+    version: VERSION,
+    description: 'Fact and text checks that decide whether a Pending post can be approved automatically (plans/active/automod-flowchart.md). Built by scripts/build-chart.mjs.',
+    initialState: 'START',
+    states,
+    transitions,
+  };
+}
+
+const here = dirname(fileURLToPath(import.meta.url));
+export const CHART_PATH = join(here, '..', 'chart.json');
+export const LEDGER_PATH = join(here, '..', 'chart-versions.json');
+
+export function readLedger() {
+  return existsSync(LEDGER_PATH) ? JSON.parse(readFileSync(LEDGER_PATH, 'utf8')) : {};
+}
+
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  const chart = buildChart();
+  const hash = nodesHash();
+  const ledger = readLedger();
+  if (ledger[chart.version] && ledger[chart.version] !== hash) {
+    console.error(`The questions have changed since version ${chart.version} was recorded in chart-versions.json; bump VERSION in scripts/build-chart.mjs first.`);
+    process.exit(1);
+  }
+  ledger[chart.version] = hash;
+  writeFileSync(LEDGER_PATH, JSON.stringify(ledger, null, 2) + '\n');
+  writeFileSync(CHART_PATH, JSON.stringify(chart, null, 2) + '\n');
+  console.log(`wrote ${CHART_PATH}: ${NODES.length} questions, version ${chart.version}`);
+}
