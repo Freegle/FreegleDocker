@@ -1421,7 +1421,9 @@ one community in either direction (§4a), set only via `php artisan ripple:opt-o
   the member has something to do with the community: they join it or move into its area
   (`rippling.ClearRippledMembership` in iznik-server-go), or they post on it, reply to a post
   posted on it, or write back to one of its ordinary members about their rippled post
-  (`ripple:clear-engaged`, `RippleEngagementService`, every five minutes). The clear counts
+  (`ripple:clear-engaged`, `RippleEngagementService`, every five minutes). Its first run looks back
+  30 days; `ripple:clear-engaged --since=2026-06-23`, run once, checks every membership rippling
+  has made without moving the scheduled run's saved positions. The clear counts
   towards the "Seen on many groups" spam check like any join. `memberships_history` keeps
   its flag, and `ripple:backfill-memberships` leaves a cleared membership alone.
 - A community a post rippled into may write to the poster about it once the poster is an
