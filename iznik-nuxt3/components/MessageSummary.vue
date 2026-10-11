@@ -10,6 +10,7 @@
       'mobile-landscape': isMobileLandscape,
     }"
     @click="expand"
+    @auxclick="openOnMiddleClick"
   >
     <!-- Status overlay images - outside photo-area to avoid fade filter -->
     <b-img
@@ -270,6 +271,10 @@ function expand(e) {
     viewport_height: window.innerHeight,
   })
 
+  if (openInNewTab(e)) {
+    return
+  }
+
   if (!message.value?.successful) {
     emit('expand')
 
@@ -277,6 +282,29 @@ function expand(e) {
       e.preventDefault()
       e.stopPropagation()
     }
+  }
+}
+
+// Ctrl, Cmd or Shift-click, or a middle click, opens the post on its own page in a new
+// tab, as it would for a link (issue #115). A click on a real link inside the card is
+// left to the link.
+function openInNewTab(e) {
+  if (!e || !(e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1)) {
+    return false
+  }
+  if (e.target?.closest?.('a[href]')) {
+    return false
+  }
+
+  window.open('/message/' + props.id, '_blank', 'noopener')
+  e.preventDefault()
+  e.stopPropagation()
+  return true
+}
+
+function openOnMiddleClick(e) {
+  if (e?.button === 1) {
+    openInNewTab(e)
   }
 }
 </script>

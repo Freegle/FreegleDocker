@@ -78,6 +78,25 @@ func TestIllustrationCached(t *testing.T) {
 	db.Exec("DELETE FROM ai_images WHERE name = ?", testItem)
 }
 
+// Issue #1492: an image that is not active is blanked when a post is shown, so the compose
+// lookup must not offer it - attaching it would leave the post with an empty picture.
+func TestIllustrationInactiveImageNotOffered(t *testing.T) {
+	db := database.DBConn
+	for _, status := range []string{"suppressed", "rejected", "regenerating"} {
+		testItem := fmt.Sprintf("UTTest Lamp %s %d", status, time.Now().UnixNano())
+		db.Exec("INSERT INTO ai_images (name, externaluid, status) VALUES (?, ?, ?)", testItem, "test-uid-"+status, status)
+
+		resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/illustration?item="+url.QueryEscape(testItem), nil))
+		assert.Equal(t, 200, resp.StatusCode)
+		var result misc.IllustrationResult
+		json2.Unmarshal(rsp(resp), &result)
+		assert.Equal(t, 3, result.Ret, "a %s image must not be offered", status)
+		assert.Nil(t, result.Illustration, "a %s image must not be offered", status)
+
+		db.Exec("DELETE FROM ai_images WHERE name = ?", testItem)
+	}
+}
+
 func TestIllustrationPrefixStripping(t *testing.T) {
 	// Insert a cached illustration.
 	testUid := fmt.Sprintf("test-uid-prefix-%d", time.Now().UnixNano())
