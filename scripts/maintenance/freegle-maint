@@ -14,7 +14,7 @@
 #       for hosts listed in MAINT_LIVE_HOSTS; otherwise a dry run.
 #   freegle-maint resume          at boot, after a Docker-host reboot (systemd)
 #   freegle-maint status          lock, pause, failure marker, recent runs
-#   freegle-maint report          refresh the rollout row in the SysAdmin housekeeping tab
+#   freegle-maint report          refresh the rollout row in the SysAdmin Cron Jobs tab
 #   freegle-maint pause [reason]  kill switch: no run starts while it exists
 #   freegle-maint unpause
 #   freegle-maint clear-failed    after a person has dealt with a failed run
@@ -72,27 +72,25 @@ is_live_host() { case " $MAINT_LIVE_HOSTS " in *" $1 "*) return 0;; esac; return
 
 all_hosts() { echo "$MAINT_DB_NODES $MAINT_ARBITRATOR $MAINT_LB_HOST $MAINT_MAIL_HOST docker"; }
 
-# The rollout as a housekeeping row: refreshed only when the set of live hosts
-# changes, so it goes overdue when no host has been added for
-# MAINT_HK_ROLLOUT_HOURS. Once every host is live it is greyed out.
-housekeeping_rollout() {
-  local h live="" dry="" state="$MAINT_STATE_DIR/rollout-live" st=success summary opts
+# The rollout as the Cron Jobs tab job "freegle-maint rollout". While a host is
+# still on dry runs it is refreshed only when the set of live hosts changes, so
+# it goes overdue (the registry gives it 14 days) when no host has been made
+# live for that long. Once every host is live it is refreshed on every timer
+# run, so it stays green.
+cron_rollout() {
+  local h live="" dry="" state="$MAINT_STATE_DIR/rollout-live" summary
   for h in $(all_hosts); do
     if is_live_host "$h" || { [ "$h" = docker ] && is_live_host local; }; then live="$live $h"; else dry="$dry $h"; fi
   done
   live=${live# }; dry=${dry# }
-  [ -f "$state" ] && [ "$(cat "$state")" = "live=$live" ] && return 0
+  [ -n "$dry" ] && [ -f "$state" ] && [ "$(cat "$state")" = "cron live=$live" ] && return 0
   if [ -z "$dry" ]; then
-    opts=(--disabled)
     summary="Every host is live: $live"
   else
-    opts=(--interval-hours="$MAINT_HK_ROLLOUT_HOURS")
     summary="Live: ${live:-none}. Still dry runs: $dry. Add the next to MAINT_LIVE_HOSTS in $MAINT_ENV_FILE, a week apart."
   fi
-  housekeeping_record freegle-maint-rollout "$st" "$summary" "${opts[@]}" \
-    --name="OS patching: turn on every host" \
-    --description="Shows overdue when no host has been made live for $(( MAINT_HK_ROLLOUT_HOURS / 24 )) days. Runbook: docs/ops/runbooks/automated-host-maintenance.md#turning-it-on" \
-    < /dev/null && { mkdir -p "$MAINT_STATE_DIR"; echo "live=$live" > "$state"; }
+  cron_record "freegle-maint rollout" success "$summary" < /dev/null \
+    && { mkdir -p "$MAINT_STATE_DIR"; echo "cron live=$live" > "$state"; }
 }
 
 start_run() {  # <host>
@@ -162,13 +160,13 @@ case "$cmd" in
     [ $# -eq 1 ] || usage 64
     host=$(slot_host "$1"); [ -n "$host" ] || usage 64
     SLOT=$1
-    housekeeping_rollout
+    cron_rollout
     if is_live_host "$host" || { [ "$host" = docker ] && is_live_host local; }; then DRY=false; else DRY=true; fi
     start_run "$host";;
   resume)
     docker_resume;;
   report)
-    rm -f "$MAINT_STATE_DIR/rollout-live"; housekeeping_rollout && echo "rollout reported";;
+    rm -f "$MAINT_STATE_DIR/rollout-live"; cron_rollout && echo "rollout reported";;
   status)
     cmd_status;;
   pause)

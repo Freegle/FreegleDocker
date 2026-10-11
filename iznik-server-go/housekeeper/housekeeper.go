@@ -277,9 +277,10 @@ type cronJobStatus struct {
 	LastOutput     *string    `json:"last_output"`
 }
 
-// cronJobs is the static registry of all Laravel scheduled commands.
+// cronJobs is the static registry of all Laravel scheduled commands, and of the
+// host maintenance jobs that report through `artisan cron:record` (at the end).
 //
-// To keep this in sync with the live scheduler, run:
+// To keep the Laravel entries in sync with the live scheduler, run:
 //   docker exec freegledocker-batch-prod php artisan schedule:list
 // and update the entries below to match.
 var cronJobs = []CronJob{
@@ -480,6 +481,17 @@ var cronJobs = []CronJob{
 	{Command: "ripple:expand", Name: "Rippling Expand", Description: "Maintains rippling-out reach for active posts (gated by ripple.enabled / within_groups)", Schedule: "Every minute (when rippling on)", IntervalMinutes: 1, Category: "Rippling", Active: false},
 	{Command: "ripple:release-replies", Name: "Rippling Release Replies", Description: "Releases/expires held external replies as posts ripple out", Schedule: "Every minute (when rippling on)", IntervalMinutes: 1, Category: "Rippling", Active: false},
 	{Command: "ripple:proximity-notes", Name: "Rippling Proximity Notes", Description: "Computes \"quicker to get to\" mod notes for rippled-in posts (gated by ripple.proximity_notes)", Schedule: "Every 5 minutes (when on)", IntervalMinutes: 5, Category: "Rippling", Active: false},
+
+	// Host maintenance - not Laravel: systemd timers on the Docker host run
+	// scripts/maintenance/freegle-maint, which records each run here through
+	// `artisan cron:record`. A dry run is recorded too, with "Dry run:" first in
+	// its output. Runbook: docs/ops/runbooks/automated-host-maintenance.md.
+	{Command: "freegle-maint lb", Name: "OS Patching: Load Balancer", Description: "Patches and, when needed, reboots the load balancer (ha)", Schedule: "Weekly (Mon 4am UK time)", IntervalMinutes: 10080, Category: "Host Maintenance", Active: true},
+	{Command: "freegle-maint db", Name: "OS Patching: Data Nodes", Description: "Patches and reboots one Galera data node, db2 and db3 in alternate weeks, draining it first", Schedule: "Weekly (Tue 4:40am UTC)", IntervalMinutes: 10080, Category: "Host Maintenance", Active: true},
+	{Command: "freegle-maint mail", Name: "OS Patching: Mail Relay", Description: "Patches and, when needed, reboots the mail relay (bulk2)", Schedule: "Weekly (Wed 2:15am UTC)", IntervalMinutes: 10080, Category: "Host Maintenance", Active: true},
+	{Command: "freegle-maint docker", Name: "OS Patching: Docker Host", Description: "Patches and, when needed, reboots this Docker host; the run is recorded after the reboot", Schedule: "Weekly (Wed 11:35pm UTC)", IntervalMinutes: 10080, Category: "Host Maintenance", Active: true},
+	{Command: "freegle-maint arbitrator", Name: "OS Patching: Arbitrator", Description: "Patches and, when needed, reboots the Galera arbitrator (db1), stopping garbd first", Schedule: "Weekly (Fri 4:40am UTC)", IntervalMinutes: 10080, Category: "Host Maintenance", Active: true},
+	{Command: "freegle-maint rollout", Name: "OS Patching: Turn On Every Host", Description: "Which hosts are live and which still dry runs; overdue when no host has been made live for 14 days", Schedule: "When the live hosts change", IntervalMinutes: 20160, Category: "Host Maintenance", Active: true},
 }
 
 // ActiveCronJobCount returns the number of active cron jobs in the static registry.

@@ -1,9 +1,9 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-11
 owner: Freegle ops
 covers:
   - scripts/maintenance/**
-  - iznik-batch/app/Console/Commands/Housekeeper/**
+  - iznik-batch/app/Console/Commands/Cron/**
 ---
 
 # Automated host maintenance
@@ -50,7 +50,7 @@ outside its start window.
 
 Nothing runs at the weekend, the busiest time. Slots start at least 21 hours apart. A
 run refuses when the last live run finished less than 20 hours before, so a long run can
-push the next slot to the following week; the housekeeping tab then shows it failed.
+push the next slot to the following week; the Cron Jobs tab then shows it failed.
 
 Weeks are counted from the Unix epoch, so the data nodes alternate strictly. A 53-week
 year does not repeat one. Swap the order with `MAINT_DB_ROTATION`.
@@ -237,15 +237,17 @@ per node over the run, from Loki.
 
 ### In ModTools
 
-Each timer run also writes a row to the housekeeping list on the ModTools Sysadmin page,
-through `php artisan housekeeper:record` in batch-prod:
+Each timer run is also recorded on the **Cron Jobs** tab of the ModTools Sysadmin page,
+under Host Maintenance, through `php artisan cron:record` in batch-prod. Each job's
+name, schedule and overdue interval are in the Go API's cron registry
+([`iznik-server-go/housekeeper/housekeeper.go`](../../../iznik-server-go/housekeeper/housekeeper.go)):
 
-| Task | Shows |
+| Job | Shows |
 |---|---|
-| `freegle-maint-<slot>` | The slot's last outcome and its log. A run that was skipped, stopped or failed shows as failed. A slot that has not run for a week and six hours shows overdue. |
-| `freegle-maint-rollout` | Which hosts are live and which are still dry runs. It is refreshed only when that set changes, so it shows overdue when no host has been made live for 14 days (`MAINT_HK_ROLLOUT_HOURS`). Once every host is live it is greyed out. |
+| `freegle-maint <slot>` | The slot's last outcome, with its log when the row is expanded. A run that was skipped, stopped or failed shows as failed. A dry run's log starts with "Dry run:". A slot that has not run for a week and an hour shows overdue. |
+| `freegle-maint rollout` | Which hosts are live and which are still dry runs. While any host is still on dry runs it is refreshed only when that set changes, so it shows overdue when no host has been made live for 14 days. Once every host is live it is refreshed on every timer run, so it stays green. |
 
-Runs started by hand with `freegle-maint run` do not write rows. `freegle-maint report`
+Runs started by hand with `freegle-maint run` are not recorded. `freegle-maint report`
 refreshes the rollout row straight away, for instance after editing `MAINT_LIVE_HOSTS`.
 Recording never fails a run. When batch-prod cannot be reached it logs a warning, and the
 mail still goes.

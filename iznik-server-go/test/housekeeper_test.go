@@ -503,3 +503,48 @@ func TestFinalV1CronMigrationsRegistered(t *testing.T) {
 		assert.True(t, found, cmd+" should be present in the cron registry")
 	}
 }
+
+// TestHostMaintenanceJobsShowRecordedRuns verifies the freegle-maint slots are in
+// the cron registry and pick up the row `artisan cron:record` writes for them,
+// without one slot's row standing for another whose name it starts with.
+func TestHostMaintenanceJobsShowRecordedRuns(t *testing.T) {
+	prefix := uniquePrefix("hostmaint")
+	userID := CreateTestUser(t, prefix+"_admin", "Admin")
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Moderator")
+	_, token := CreateTestSession(t, userID)
+
+	db := database.DBConn
+	db.Exec("DELETE FROM cron_job_status WHERE command IN ('freegle-maint db', 'freegle-maint docker')")
+	db.Exec("INSERT INTO cron_job_status (command, last_run_at, last_finished_at, last_exit_code, last_output) VALUES ('freegle-maint db', NOW(), NOW(), 1, 'db3-internal: monit unmonitor failed')")
+	defer db.Exec("DELETE FROM cron_job_status WHERE command IN ('freegle-maint db', 'freegle-maint docker')")
+
+	req := httptest.NewRequest("GET", "/api/housekeeper/cronjobs?jwt="+token, nil)
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var jobs []map[string]interface{}
+	assert.NoError(t, json.Unmarshal(respBody, &jobs))
+
+	found := map[string]map[string]interface{}{}
+	for _, job := range jobs {
+		if cmd, _ := job["command"].(string); cmd != "" {
+			found[cmd] = job
+		}
+	}
+
+	for _, slot := range []string{"lb", "db", "mail", "docker", "arbitrator", "rollout"} {
+		job, ok := found["freegle-maint "+slot]
+		if assert.True(t, ok, "freegle-maint "+slot+" should be in the cron registry") {
+			assert.Equal(t, "Host Maintenance", job["category"])
+			assert.Equal(t, true, job["active"])
+		}
+	}
+
+	dbJob := found["freegle-maint db"]
+	assert.Equal(t, float64(1), dbJob["last_exit_code"])
+	assert.Equal(t, "db3-internal: monit unmonitor failed", dbJob["last_output"])
+	assert.Nil(t, found["freegle-maint docker"]["last_run_at"], "the db row must not stand for the docker slot")
+}
