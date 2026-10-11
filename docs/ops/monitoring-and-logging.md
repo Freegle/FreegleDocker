@@ -6,6 +6,7 @@ covers:
   - iznik-nuxt3/modtools/components/ModStatus.vue
   - iznik-batch/app/Monitoring/PlatformStatusWriter.php
   - iznik-batch/app/Console/Commands/Monitor/ApiBackupTrafficCommand.php
+  - iznik-batch/app/Console/Commands/Monitor/ChatRosterCommand.php
 ---
 
 # Monitoring and logging
@@ -102,6 +103,22 @@ for the API backend, which should only ever pin a client to the active node.
 The whole day is checked because pinned clients drift back by themselves overnight, so a
 night-only window would miss a pin-up after a daytime deploy. If Loki cannot be queried, or
 holds no API traffic for the day, that is reported as an error too rather than as a pass.
+
+### Chat participants who are never emailed
+
+The chat mailer only emails people who have a row in `chat_roster` for the room, and
+marking a chat read only updates an existing row. A participant without one sees messages
+arrive in the chat but never gets an email, and their read state never sticks. Nothing
+reports it: old account merges left thousands of rooms like that, found only when a member
+asked why they had not been emailed.
+
+`monitor:chat-roster` looks for that every night at 05:45. It takes every member chat with a
+message in the last two days and raises a Sentry error for any live participant with no
+roster row: both members of a member-to-member chat, and the member of a chat with
+moderators (moderators are added to that roster when they are mailed). The error counts them
+and names up to ten rooms and users. Look first at whatever creates or moves rooms, such as
+account merges, for a path that leaves the roster behind. No member chat at all in two days
+is reported as an error too, not a pass.
 
 ## Development and test visibility: the status dashboard
 
