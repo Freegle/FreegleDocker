@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { ref, toValue } from 'vue'
 import ModHelpPending from '~/modtools/components/ModHelpPending.vue'
 
 const mockShowHelp = ref(true)
@@ -15,8 +15,9 @@ vi.mock('~/composables/useHelpBox', () => ({
 }))
 
 const mockInTrial = ref(true)
+const mockUseAutoapproveTrial = vi.fn(() => ({ inTrial: mockInTrial }))
 vi.mock('~/modtools/composables/useAutoapproveTrial', () => ({
-  useAutoapproveTrial: () => ({ inTrial: mockInTrial }),
+  useAutoapproveTrial: (groupid) => mockUseAutoapproveTrial(groupid),
 }))
 
 const stubs = {
@@ -60,5 +61,14 @@ describe('ModHelpPending', () => {
     const wrapper = mount(ModHelpPending, { global: { stubs } })
     expect(wrapper.find('.notice-message').exists()).toBe(false)
     expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  // A moderator of a trial community and a neighbouring one outside it must not be told,
+  // on the neighbour's queue, that posts there publish themselves.
+  it('asks about the community the page is filtered to', () => {
+    mount(ModHelpPending, { props: { groupid: 42 }, global: { stubs } })
+    expect(toValue(mockUseAutoapproveTrial.mock.calls.at(-1)[0])).toBe(42)
+    mount(ModHelpPending, { global: { stubs } })
+    expect(toValue(mockUseAutoapproveTrial.mock.calls.at(-1)[0])).toBe(0)
   })
 })

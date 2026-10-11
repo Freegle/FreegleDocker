@@ -30,7 +30,7 @@
           }}</span>
           <span class="ms-2 text-nowrap">
             <strong>{{ node.answer === 'yes' ? 'Yes' : 'No' }}</strong>
-            <span v-if="feedbackSent[index]" class="small text-muted ms-1"
+            <span v-if="feedbackSent[node.node]" class="small text-muted ms-1"
               >Thanks, noted</span
             >
             <b-button
@@ -40,7 +40,8 @@
               size="sm"
               class="p-0 ms-1 small align-baseline"
               title="This step is wrong"
-              @click="sendFeedback(node, index)"
+              :disabled="sending[node.node]"
+              @click="sendFeedback(node)"
             >
               wrong?
             </b-button>
@@ -72,7 +73,7 @@
 // asked, in order, what it decided at each one, and how sure it was. Always
 // mounted (behind the line that owns it) and shown only when triggered via
 // its exposed show().
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useMessageStore } from '@/stores/message'
 import { useOurModal } from '@/composables/useOurModal'
 
@@ -126,15 +127,38 @@ function isDeciding(index) {
   return index === decidingIndex.value
 }
 
+// Keyed by node id, not by position in the path, and seeded from automod.feedback - the
+// nodes this moderator has already marked, which the server sends back - so a mark
+// survives a reload and cannot be posted twice from here.
 const feedbackSent = reactive({})
+const sending = reactive({})
 
-async function sendFeedback(node, index) {
-  await messageStore.postAutomodFeedback({
-    msgid: props.msgid,
-    groupid: props.groupid,
-    node: node.node,
-  })
-  feedbackSent[index] = true
+watch(
+  () => props.automod?.feedback,
+  (marked) => {
+    for (const node of marked || []) {
+      feedbackSent[node] = true
+    }
+  },
+  { immediate: true }
+)
+
+async function sendFeedback(node) {
+  const id = node.node
+  if (feedbackSent[id] || sending[id]) return
+  sending[id] = true
+  try {
+    // {already: true} means the server had it from this moderator already, which
+    // is the same thing as far as the moderator is concerned: it is marked.
+    await messageStore.postAutomodFeedback({
+      msgid: props.msgid,
+      groupid: props.groupid,
+      node: id,
+    })
+    feedbackSent[id] = true
+  } finally {
+    sending[id] = false
+  }
 }
 
 defineExpose({

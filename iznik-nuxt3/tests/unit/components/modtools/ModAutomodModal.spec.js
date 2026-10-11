@@ -111,6 +111,35 @@ describe('ModAutomodModal', () => {
     )
   })
 
+  // The server sends back the nodes this moderator has already marked, so the mark
+  // survives a reload and there is no second click to make a second row.
+  it('starts with the steps this moderator already marked', () => {
+    const wrapper = mountModal({ ...held, feedback: ['LOAN'] })
+    const nodes = wrapper.findAll('.automod-node')
+    expect(nodes[1].text()).toContain('Thanks, noted')
+    expect(nodes[1].find('button').exists()).toBe(false)
+    expect(nodes[0].find('button').exists()).toBe(true)
+  })
+
+  it('posts once however many times the link is clicked', async () => {
+    let release
+    mockPostAutomodFeedback.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      })
+    )
+    const wrapper = mountModal(held)
+    const button = wrapper.findAll('.automod-node')[1].find('button')
+    await button.trigger('click')
+    await button.trigger('click')
+    release({ success: true, already: true })
+    await flushPromises()
+    expect(mockPostAutomodFeedback).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAll('.automod-node')[1].text()).toContain(
+      'Thanks, noted'
+    )
+  })
+
   it('says what happened first', () => {
     expect(mountModal(held).text()).toContain('Held: Asks to borrow')
     expect(mountModal({ ...held, mode: 'shadow' }).text()).toContain(
@@ -125,8 +154,24 @@ describe('ModAutomodModal', () => {
     const wrapper = mountModal({
       ...held,
       path: [
-        { node: 'MOD_NOTE', question: 'Has a moderator left a note about this member?', kind: 'fact', answer: 'yes', model: 'fact', evidence: 'Note left 3 Sep 2026' },
-        { node: 'LOAN', question: 'Is it a loan?', kind: 'text', answer: 'yes', p: 0.9, threshold: 0.7, model: 'claude', evidence: 'lend me a ladder' },
+        {
+          node: 'MOD_NOTE',
+          question: 'Has a moderator left a note about this member?',
+          kind: 'fact',
+          answer: 'yes',
+          model: 'fact',
+          evidence: 'Note left 3 Sep 2026',
+        },
+        {
+          node: 'LOAN',
+          question: 'Is it a loan?',
+          kind: 'text',
+          answer: 'yes',
+          p: 0.9,
+          threshold: 0.7,
+          model: 'claude',
+          evidence: 'lend me a ladder',
+        },
       ],
     })
     const text = wrapper.text()

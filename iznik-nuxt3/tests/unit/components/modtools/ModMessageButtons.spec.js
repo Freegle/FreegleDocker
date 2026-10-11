@@ -15,6 +15,16 @@ vi.mock('~/modtools/composables/useLockdown', () => ({
   useLockdown: () => ({ modsHeld: mockModsHeld, held: () => false }),
 }))
 
+// Whether a community is in the post-moderation trial; the oversight Reject is only for
+// copies that published themselves there.
+const mockIsTrialGroup = vi.fn(() => true)
+vi.mock('~/modtools/composables/useAutoapproveTrial', () => ({
+  useAutoapproveTrial: () => ({
+    isTrialGroup: mockIsTrialGroup,
+    inTrial: ref(true),
+  }),
+}))
+
 // Mock stores and composables before vi.mock calls using vi.hoisted
 const { mockMessageStore, mockModConfigStore } = vi.hoisted(() => {
   const mockMessageStore = {
@@ -1003,6 +1013,36 @@ describe('ModMessageButtons', () => {
         { groups: [{ groupid: 456, collection: 'Approved' }] }
       )
       expect(rejectBtn(wrapper)).toBeUndefined()
+    })
+
+    // The Check list is copies with no approvedby, posted directly, on a trial
+    // community. A copy outside that - one a moderator approved by hand, a rippled-in
+    // copy, or a neighbouring community outside the trial - was never in Check and must
+    // not be pulled back from it, even when the card shows both copies of a cross-post.
+    it('does NOT show Reject on a copy a moderator approved by hand', () => {
+      const wrapper = mountComponent(
+        { oversight: true, groupid: 456 },
+        { groups: [{ groupid: 456, collection: 'Approved', approvedby: 77 }] }
+      )
+      expect(rejectBtn(wrapper)).toBeUndefined()
+    })
+
+    it('does NOT show Reject on a rippled-in copy', () => {
+      const wrapper = mountComponent(
+        { oversight: true, groupid: 456 },
+        { groups: [{ groupid: 456, collection: 'Approved', rippled_in: 1 }] }
+      )
+      expect(rejectBtn(wrapper)).toBeUndefined()
+    })
+
+    it('does NOT show Reject on a community outside the trial', () => {
+      mockIsTrialGroup.mockReturnValueOnce(false)
+      const wrapper = mountComponent(
+        { oversight: true, groupid: 456 },
+        { groups: [{ groupid: 456, collection: 'Approved' }] }
+      )
+      expect(rejectBtn(wrapper)).toBeUndefined()
+      expect(mockIsTrialGroup).toHaveBeenCalledWith(456)
     })
 
     it('does NOT show Reject for Pending even with oversight=true', () => {

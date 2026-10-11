@@ -108,7 +108,7 @@
         label="Blank Reply"
       />
       <SpinButton
-        v-if="oversight && approved"
+        v-if="oversight && oversightRejectable"
         data-testid="oversight-reject"
         variant="warning"
         class="m-1"
@@ -232,6 +232,7 @@ import { useMessageStore } from '~/stores/message'
 import { useModConfigStore } from '~/stores/modconfig'
 import { copyStdMsgs, icon, variant } from '~/composables/useStdMsgs'
 import { useLockdown } from '~/modtools/composables/useLockdown'
+import { useAutoapproveTrial } from '~/modtools/composables/useAutoapproveTrial'
 
 const props = defineProps({
   messageid: {
@@ -301,6 +302,7 @@ const props = defineProps({
 })
 
 const { modsHeld } = useLockdown()
+const { isTrialGroup } = useAutoapproveTrial()
 
 const messageStore = useMessageStore()
 const modConfigStore = useModConfigStore()
@@ -365,6 +367,24 @@ const canApprove = computed(() => !props.cantpost && !lockedByHome.value)
 
 const approved = computed(() => {
   return hasCollection('Approved')
+})
+
+// The oversight Reject pulls back a copy that published itself, so it is offered only on a
+// copy that matches the Check list: Approved by nobody (approvedby null), posted directly
+// here, on a community in the trial. A copy a neighbouring community's moderator approved by
+// hand was never in Check and must not be pulled back from there, even when the same card
+// shows both copies of a TrashNothing cross-post.
+const oversightRejectable = computed(() => {
+  const groups = message.value?.groups || []
+  const gid = props.groupid || groups[0]?.groupid
+  const g = groups.find((grp) => parseInt(grp.groupid) === parseInt(gid))
+  return (
+    !!g &&
+    g.collection === 'Approved' &&
+    !g.approvedby &&
+    !parseInt(g.rippled_in) &&
+    isTrialGroup(parseInt(gid))
+  )
 })
 
 // Spam-collection messages are surfaced in the Pending review queue (Go API,

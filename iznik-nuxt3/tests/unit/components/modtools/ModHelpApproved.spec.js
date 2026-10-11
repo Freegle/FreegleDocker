@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { ref, toValue } from 'vue'
 import ModHelpApproved from '~/modtools/components/ModHelpApproved.vue'
 
 const mockShowHelp = ref(true)
@@ -15,8 +15,9 @@ vi.mock('~/composables/useHelpBox', () => ({
 }))
 
 const mockInTrial = ref(true)
+const mockUseAutoapproveTrial = vi.fn(() => ({ inTrial: mockInTrial }))
 vi.mock('~/modtools/composables/useAutoapproveTrial', () => ({
-  useAutoapproveTrial: () => ({ inTrial: mockInTrial }),
+  useAutoapproveTrial: (groupid) => mockUseAutoapproveTrial(groupid),
 }))
 
 const stubs = {
@@ -60,5 +61,14 @@ describe('ModHelpApproved', () => {
     const wrapper = mount(ModHelpApproved, { global: { stubs } })
     expect(wrapper.find('.notice-message').exists()).toBe(false)
     expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  // A moderator of a trial community and a neighbouring one outside it must not see the
+  // post-moderation help on the neighbour's Approved page.
+  it('asks about the community the page is filtered to', () => {
+    mount(ModHelpApproved, { props: { groupid: 42 }, global: { stubs } })
+    expect(toValue(mockUseAutoapproveTrial.mock.calls.at(-1)[0])).toBe(42)
+    mount(ModHelpApproved, { global: { stubs } })
+    expect(toValue(mockUseAutoapproveTrial.mock.calls.at(-1)[0])).toBe(0)
   })
 })

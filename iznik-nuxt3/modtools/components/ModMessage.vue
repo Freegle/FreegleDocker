@@ -945,6 +945,7 @@ import { useMiscStore } from '~/stores/misc'
 import { SUBJECT_REGEX } from '~/constants'
 import { useMe } from '~/composables/useMe'
 import { useModMe } from '~/composables/useModMe'
+import { useAutoapproveTrial } from '~/modtools/composables/useAutoapproveTrial'
 import { buildKeywordRegex } from '~/composables/useKeywordRegex'
 
 import { useModGroupStore } from '@/stores/modgroup'
@@ -1082,6 +1083,7 @@ const fromUser = computed(() => {
 const { typeOptions } = setupKeywords()
 const { me, myid } = useMe()
 const { myModGroups, myModGroup, amAModOn } = useModMe()
+const { isTrialGroup } = useAutoapproveTrial()
 
 const top = ref(null)
 const bottom = ref(null)
@@ -1131,6 +1133,24 @@ const currentGroupid = computed(() => {
     if (props.editreview) {
       const originPick = earliestArrivalGroupId(mine)
       if (originPick != null) return originPick
+    }
+    // A Check card is about the copy that published itself: Approved with no approvedby,
+    // posted directly here, on a community in the trial - the same conditions as the
+    // Check list. Anchoring to the generic home pick could land on a TrashNothing
+    // cross-post's other direct copy, one a neighbouring community's moderator approved by
+    // hand, and then Reject here would pull that copy back.
+    if (props.oversight) {
+      const checkRows = mine.filter(
+        (g) =>
+          g.collection === 'Approved' &&
+          !g.approvedby &&
+          !parseInt(g.rippled_in) &&
+          isTrialGroup(parseInt(g.groupid))
+      )
+      if (checkRows.length) {
+        const home = homeGroupId(checkRows)
+        return home != null ? home : parseInt(checkRows[0].groupid)
+      }
     }
     const pending = mine.filter((g) =>
       ['Pending', 'PendingOther', 'Spam'].includes(g.collection)
@@ -1443,15 +1463,23 @@ const pending = computed(() => {
   return hasCollection('Pending')
 })
 
-// The soonest non-null autoapproveat across all Pending groups for this message.
+// The soonest autoapproveat among the Pending copies this card can honestly speak for:
+// the copy being administered when there is a context group, otherwise the copies on trial
+// communities I moderate. The API computes autoapproveat for every trial copy of a post
+// whoever is looking, so without this a moderator of a neighbouring community outside the
+// trial saw a countdown on their own copy of a TrashNothing cross-post - a copy that was
+// never going to publish itself.
 const soonestAutoapproveat = computed(() => {
   if (!message.value?.groups) return null
+  const context = props.contextGroupid ? parseInt(props.contextGroupid) : null
   let best = null
   for (const g of message.value.groups) {
-    if (g.collection === 'Pending' && g.autoapproveat) {
-      const t = new Date(g.autoapproveat).getTime()
-      if (best === null || t < best) best = t
-    }
+    if (g.collection !== 'Pending' || !g.autoapproveat) continue
+    const gid = parseInt(g.groupid)
+    if (context !== null ? gid !== context : !amAModOn(gid)) continue
+    if (!isTrialGroup(gid)) continue
+    const t = new Date(g.autoapproveat).getTime()
+    if (best === null || t < best) best = t
   }
   return best
 })
@@ -1473,6 +1501,32 @@ const countdownLabel = computed(() => {
     cls: 'text-warning fw-bold',
   }
 })
+
+// Tick once a second only while there is a countdown to show. A long Pending list is one
+// card per post, and most posts have no countdown, so a timer on every card is waste.
+function stopCountdown() {
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+}
+
+watch(
+  soonestAutoapproveat,
+  (target) => {
+    if (target === null) {
+      stopCountdown()
+      return
+    }
+    now.value = Date.now()
+    if (!countdownInterval) {
+      countdownInterval = setInterval(() => {
+        now.value = Date.now()
+      }, 1000)
+    }
+  },
+  { immediate: true }
+)
 
 const eSubject = computed(() => {
   if (!message.value) return ''
@@ -1767,21 +1821,13 @@ onMounted(() => {
       userStore.fetch(heldbyId.value)
     }
   }
-
-  // Per-second ticker for the auto-approve countdown badge.
-  countdownInterval = setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
 })
 
 onBeforeUnmount(() => {
   if (message.value) {
     emit('destroy', message.value.id, props.next)
   }
-  if (countdownInterval) {
-    clearInterval(countdownInterval)
-    countdownInterval = null
-  }
+  stopCountdown()
 })
 
 function updateComments() {

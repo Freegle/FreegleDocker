@@ -2671,8 +2671,32 @@ describe('ModMessage', () => {
 
   describe('auto-approve countdown badge (A5)', () => {
     const pendingGroups = (autoapproveat) => [
-      { groupid: 789, namedisplay: 'Test Group', collection: 'Pending', autoapproveat },
+      {
+        groupid: 789,
+        namedisplay: 'Test Group',
+        collection: 'Pending',
+        autoapproveat,
+      },
     ]
+
+    // The countdown only speaks for copies on trial communities this moderator runs.
+    let savedGroups
+    beforeEach(() => {
+      savedGroups = mockAuthStore.groups
+      mockAuthStore.groups = [
+        { groupid: 789, configid: 1, autoapprovetrial: true },
+        { groupid: 790, configid: 1, autoapprovetrial: true },
+      ]
+      mockMyModGroups.push({
+        id: 790,
+        mysettings: { configid: 1 },
+        settings: {},
+      })
+    })
+    afterEach(() => {
+      mockAuthStore.groups = savedGroups
+      mockMyModGroups.pop()
+    })
 
     it('shows no badge when there is no autoapproveat', () => {
       const wrapper = mountComponent({}, { groups: pendingGroups(null) })
@@ -2700,9 +2724,9 @@ describe('ModMessage', () => {
     it('shows Auto-approving… when the time has passed', () => {
       const past = new Date(Date.now() - 5000).toISOString()
       const wrapper = mountComponent({}, { groups: pendingGroups(past) })
-      expect(
-        wrapper.find('[data-testid="autoapprove-countdown"]').text()
-      ).toBe('Auto-approving…')
+      expect(wrapper.find('[data-testid="autoapprove-countdown"]').text()).toBe(
+        'Auto-approving…'
+      )
     })
 
     it('picks the soonest autoapproveat across multiple Pending groups', () => {
@@ -2721,6 +2745,152 @@ describe('ModMessage', () => {
       expect(badge.exists()).toBe(true)
       // 10 min is <=30m, so prominent m/s formatting (the sooner one wins).
       expect(badge.text()).toMatch(/Auto-approves in \d+m \d{2}s/)
+    })
+
+    // A TrashNothing cross-post lands directly on a trial community and a neighbouring
+    // one outside the trial. The API computes autoapproveat for the trial copy whoever is
+    // looking; the neighbour's moderator must not see a countdown on their own copy, which
+    // will never publish itself.
+    it('shows no badge on a copy outside the trial even when another copy has a countdown', () => {
+      mockAuthStore.groups = [
+        { groupid: 789, configid: 1 },
+        { groupid: 790, configid: 1, autoapprovetrial: true },
+      ]
+      const soon = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      const wrapper = mountComponent(
+        { contextGroupid: 789 },
+        {
+          groups: [
+            { groupid: 789, collection: 'Pending', autoapproveat: null },
+            { groupid: 790, collection: 'Pending', autoapproveat: soon },
+          ],
+        }
+      )
+      expect(
+        wrapper.find('[data-testid="autoapprove-countdown"]').exists()
+      ).toBe(false)
+    })
+
+    it('shows no badge across all my communities when none of my copies is on a trial community', () => {
+      mockAuthStore.groups = [
+        { groupid: 789, configid: 1 },
+        { groupid: 790, configid: 1, autoapprovetrial: true },
+      ]
+      mockMyModGroups.pop() // I do not moderate 790
+      const soon = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      const wrapper = mountComponent(
+        {},
+        {
+          groups: [
+            { groupid: 789, collection: 'Pending', autoapproveat: null },
+            { groupid: 790, collection: 'Pending', autoapproveat: soon },
+          ],
+        }
+      )
+      expect(
+        wrapper.find('[data-testid="autoapprove-countdown"]').exists()
+      ).toBe(false)
+      mockMyModGroups.push({
+        id: 790,
+        mysettings: { configid: 1 },
+        settings: {},
+      })
+    })
+
+    it('reads only the context copy when the page is filtered to one community', () => {
+      const sooner = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      const later = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()
+      const wrapper = mountComponent(
+        { contextGroupid: 789 },
+        {
+          groups: [
+            { groupid: 789, collection: 'Pending', autoapproveat: later },
+            { groupid: 790, collection: 'Pending', autoapproveat: sooner },
+          ],
+        }
+      )
+      expect(
+        wrapper.find('[data-testid="autoapprove-countdown"]').text()
+      ).toMatch(/Auto-approves in ~3h/)
+    })
+
+    it('only ticks while there is a countdown to show', async () => {
+      vi.useFakeTimers()
+      try {
+        const spy = vi.spyOn(globalThis, 'setInterval')
+        mountComponent({}, { groups: pendingGroups(null) })
+        expect(spy).not.toHaveBeenCalled()
+        const soon = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+        const wrapper = mountComponent({}, { groups: pendingGroups(soon) })
+        expect(spy).toHaveBeenCalledTimes(1)
+        wrapper.unmount()
+        spy.mockRestore()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  describe('Check card anchoring', () => {
+    let savedGroups
+    beforeEach(() => {
+      savedGroups = mockAuthStore.groups
+      mockAuthStore.groups = [
+        { groupid: 789, configid: 1 },
+        { groupid: 790, configid: 1, autoapprovetrial: true },
+      ]
+      mockMyModGroups.push({
+        id: 790,
+        mysettings: { configid: 1 },
+        settings: {},
+      })
+    })
+    afterEach(() => {
+      mockAuthStore.groups = savedGroups
+      mockMyModGroups.pop()
+    })
+
+    // A TrashNothing cross-post has two direct copies. On the Check page the card must be
+    // about the one that published itself on a trial community, not the one a neighbouring
+    // community's moderator approved by hand - or Reject there pulls the wrong copy back.
+    it('anchors to the copy that published itself on a trial community', () => {
+      const wrapper = mountComponent(
+        { oversight: true, collection: 'Approved' },
+        {
+          groups: [
+            {
+              groupid: 789,
+              collection: 'Approved',
+              approvedby: 55,
+              rippled_in: 0,
+            },
+            {
+              groupid: 790,
+              collection: 'Approved',
+              approvedby: null,
+              rippled_in: 0,
+            },
+          ],
+        }
+      )
+      expect(wrapper.vm.currentGroupid).toBe(790)
+    })
+
+    it('falls back to the usual pick when no copy matches the Check filter', () => {
+      const wrapper = mountComponent(
+        { oversight: true, collection: 'Approved' },
+        {
+          groups: [
+            {
+              groupid: 789,
+              collection: 'Approved',
+              approvedby: 55,
+              rippled_in: 0,
+            },
+          ],
+        }
+      )
+      expect(wrapper.vm.currentGroupid).toBe(789)
     })
   })
 

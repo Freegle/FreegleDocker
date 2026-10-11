@@ -1,15 +1,28 @@
-import { computed } from 'vue'
+import { computed, toValue } from 'vue'
 import { useAuthStore } from '~/stores/auth'
+
+function sameGroup(a, b) {
+  return parseInt(a) === parseInt(b)
+}
 
 // Post-moderation (self-publishing posts, the countdown, the Check queue) runs only on the
 // communities in the trial. The session marks each of those memberships autoapprovetrial;
-// anything that only makes sense under post-moderation shows only when a moderator has one.
-export function useAutoapproveTrial() {
+// anything that only makes sense under post-moderation shows only where a moderator has one.
+//
+// `groupid` (a number, ref or getter; 0 or absent means "any of my communities") narrows
+// inTrial to one community: a help box on a community outside the trial must not describe
+// a countdown that community will never show, even to a moderator who also runs a trial
+// community.
+export function useAutoapproveTrial(groupid = null) {
   const authStore = useAuthStore()
-  const inTrial = computed(() =>
-    (authStore.groups || []).some((g) => g.autoapprovetrial)
-  )
-  return { inTrial }
+  const groups = () => authStore.groups || []
+  const isTrialGroup = (gid) =>
+    groups().some((g) => sameGroup(g.groupid, gid) && g.autoapprovetrial)
+  const inTrial = computed(() => {
+    const gid = parseInt(toValue(groupid)) || 0
+    return gid ? isTrialGroup(gid) : groups().some((g) => g.autoapprovetrial)
+  })
+  return { inTrial, isTrialGroup }
 }
 
 // Automated review (the flowchart) runs on a wider set of communities than autoapprove
@@ -20,6 +33,8 @@ export function useAutoapproveTrial() {
 export function useAutomod() {
   const authStore = useAuthStore()
   const isAutomodGroup = (groupid) =>
-    (authStore.groups || []).some((g) => g.groupid === groupid && g.automod)
+    (authStore.groups || []).some(
+      (g) => sameGroup(g.groupid, groupid) && g.automod
+    )
   return { isAutomodGroup }
 }

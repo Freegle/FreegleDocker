@@ -24,8 +24,18 @@
 import { useHelpBox } from '~/composables/useHelpBox'
 import { useAutoapproveTrial } from '~/modtools/composables/useAutoapproveTrial'
 
+const props = defineProps({
+  // The community the page is filtered to; 0 for all of them. The help describes
+  // post-moderation, so it shows only when that community (or, for all, any of them) is
+  // in the trial - not on a neighbouring community a trial moderator also runs.
+  groupid: {
+    type: Number,
+    required: false,
+    default: 0,
+  },
+})
+
 // Defaults to shown (useHelpBox initialises showHelp = true); a mod can hide it.
 const { toggleHelp, showHelp } = useHelpBox()
-// This help describes post-moderation, so it shows only on trial communities.
-const { inTrial } = useAutoapproveTrial()
+const { inTrial } = useAutoapproveTrial(() => props.groupid)
 </script>
