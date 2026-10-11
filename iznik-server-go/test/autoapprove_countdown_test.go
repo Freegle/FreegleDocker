@@ -1289,3 +1289,71 @@ func TestAutoapproveatDecisionMustBeStrictlyLater(t *testing.T) {
 	db.Exec("UPDATE messages SET editedat = ? WHERE id = ?", checked, msg)
 	assert.NotNil(t, getAutoapproveatField(t, msg, groupID, modToken), "decided after the edit")
 }
+
+// The lockdown stops both auto-approve crons: while posts is held neither of them runs, and a
+// post the lockdown is holding (an open lockdown_holds row) is admitted by the content check when
+// posts is lifted, not by the clock. So a held post shows no countdown, on the clean path or the
+// rippled-in path, and the card's "held by lockdown" label is what says why.
+func TestAutoapproveatNoCountdownWhileTheLockdownHoldsPosts(t *testing.T) {
+	t.Setenv("FREEGLE_AUTOAPPROVE_ENABLED", "true")
+	t.Setenv("FREEGLE_AUTOMOD_SHADOW_GROUPS", "")
+	t.Setenv("RIPPLE_RIPPLED_IN_PENDING_HOURS", "2")
+	prefix := uniquePrefix("aalockdown")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, poster, groupID, "Member")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	db.Exec("UPDATE memberships SET ourPostingStatus = NULL WHERE userid = ? AND groupid = ?", poster, groupID)
+	_, modToken := CreateTestSession(t, modID)
+
+	clean := CreateTestMessage(t, poster, groupID, prefix+" clean", 52.0, -1.0)
+	other := CreateTestMessage(t, poster, groupID, prefix+" other", 52.0, -1.0)
+	rippled := CreateTestMessage(t, poster, groupID, prefix+" rippled", 52.0, -1.0)
+	for _, m := range []uint64{clean, other, rippled} {
+		defer db.Exec("DELETE FROM messages_automod WHERE msgid = ?", m)
+		defer db.Exec("DELETE FROM messages_groups WHERE msgid = ?", m)
+		defer db.Exec("DELETE FROM messages WHERE id = ?", m)
+	}
+	for _, m := range []uint64{clean, other} {
+		db.Exec("UPDATE messages_groups SET collection='Pending', arrival=NOW() - INTERVAL 5 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 4 MINUTE, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", m)
+		insertAutomodRow(t, m, groupID, "approve", 0)
+	}
+	db.Exec("UPDATE messages_groups SET collection='Pending', rippled_in=1, arrival=NOW() - INTERVAL 30 MINUTE, contentcheck_checked_at=NOW() - INTERVAL 29 MINUTE, contentcheck_reasons=NULL, autoapprove_hold_until=NULL WHERE msgid=?", rippled)
+
+	counts := func() (c, o, r bool) {
+		return getAutoapproveatField(t, clean, groupID, modToken) != nil,
+			getAutoapproveatField(t, other, groupID, modToken) != nil,
+			getAutoapproveatField(t, rippled, groupID, modToken) != nil
+	}
+
+	c, o, r := counts()
+	assert.True(t, c && o && r, "nothing held: all three count down")
+
+	// A hold on the post itself: that post has none, and the others still do.
+	insertPostHold(t, clean)
+	c, o, r = counts()
+	assert.False(t, c, "the lockdown is holding this post: the cron skips it, so no countdown")
+	assert.True(t, o && r, "a hold on one post says nothing about the others")
+
+	// A resolved hold no longer stops it.
+	db.Exec("UPDATE lockdown_holds SET outcome = 'released' WHERE kind = 'post' AND refid = ?", clean)
+	c, _, _ = counts()
+	assert.True(t, c, "a hold with an outcome recorded is resolved")
+
+	// Posts held site-wide: neither cron runs, so no post has a countdown, whichever path it is on.
+	restore := postsHeld()
+	c, o, r = counts()
+	restore()
+	assert.False(t, c || o || r, "posts is held: nothing publishes by itself, so nothing counts down")
+	c, o, r = counts()
+	assert.True(t, c && o && r, "lifted: they count down again")
+
+	// A lockdown that holds other surfaces leaves the crons running.
+	restore = modsHeld()
+	_, o, _ = counts()
+	restore()
+	assert.True(t, o, "only posts stops the crons")
+}

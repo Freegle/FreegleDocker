@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/utils"
 	"gorm.io/gorm"
 )
@@ -104,6 +105,10 @@ func automodApproved(db *gorm.DB, msgid uint64, groupid uint64) *time.Time {
 // decision and turns it into a countdown, rather than recomputing it:
 //
 //   - Spam on ANY group, or held -> nil (no auto-approval expected).
+//   - the lockdown stopping the crons -> nil: while "posts" is held neither cron runs, and a post
+//     the lockdown is holding (an open lockdown_holds row) is admitted by the content check when
+//     posts is lifted, not by the clock. This holds for every path below, the rippled-in one
+//     included, since both crons (AutoApproveCleanService and AutoApproveService) honour it.
 //   - a rippled-in copy -> AutoApproveService's own path (arrival + rippled_in_pending_hours),
 //     unless the RECEIVING group's own rules are holding it, in which case nil - unchanged by
 //     the flowchart, since a rippled-in copy is never a flowchart candidate.
@@ -141,6 +146,13 @@ func computeAutoapproveat(db *gorm.DB, msgid uint64, groups []MessageGroup, myMo
 		}
 	}
 	if len(pendingIdx) == 0 {
+		return
+	}
+
+	// Nothing publishes itself under a lockdown that holds posts, and a post the lockdown is
+	// holding is not the clock's to release. The card says "held by lockdown" (Lockdownheld);
+	// a countdown beside it would promise a publish that will not come.
+	if lockdown.Held("posts") || lockdown.ItemHeld("post", msgid) {
 		return
 	}
 

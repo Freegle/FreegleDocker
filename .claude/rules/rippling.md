@@ -263,8 +263,8 @@ still NULL, no hold on the post or the copy, the poster not deleted, not a quali
 back, no spam reason, and the wait counted from the later of arrival and the decision, with
 `autoapprove_hold_until` as a floor. A condition added to the cron needs the same here, and the other
 way round, or a moderator is promised a publish that never comes, or gets none shown for one that does.
-Not yet mirrored: the lockdown, which stops the cron for a post with an open `lockdown_holds` row and
-for every post while `posts` is held.
+That includes the lockdown: both crons skip a post with an open `lockdown_holds` row and do nothing at
+all while `posts` is held, so there is no countdown for either (`lockdown.ItemHeld`, `lockdown.Held`).
 
 Opening the Pending queue holds every Pending copy it can show on the trial communities in the request
 for at least ten more minutes (`autoapprove_hold_until`, extend-only), not just the page fetched, so
