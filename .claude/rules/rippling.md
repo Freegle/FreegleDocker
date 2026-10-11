@@ -117,6 +117,25 @@ acts on a post in a community, decide explicitly what it does to a copy that rip
 For the same reason, statistics that count local activity must exclude memberships rippling
 created itself, or auto-joins get counted as pre-existing local members.
 
+## Writing to the poster and turning the post away are different questions
+
+`NotifyPosterFlag(home, gid) == 0` is read twice in the reject and delete handlers: once for
+whether the poster is told, and once for whether this is a receiving community turning the
+post away, which clips its reach so it cannot ripple back. A rippled-in community may now
+write to a poster who is an ordinary member there (`PosterMessagingGroups`), but its copy is
+still not a home copy. Feed only the notify flags from `PosterMessagingGroups`; leave the
+turned-away check on `HomeGroups`, or a rejection there lets the post ripple straight back.
+
+The delete handler removes the rows both are read from, so read them before the delete.
+
+## A cleared ripple flag must stay cleared
+
+`memberships.rippled` is cleared once the member joins, moves in, or deals with the community,
+and each clear writes `Ripple-created membership became ordinary: <reason>` to the log. Any
+job that sets the flag from the original `Rippled` join log, as `ripple:backfill-memberships`
+does, has to skip memberships with a later clear, or it silently makes those members
+uncontactable again.
+
 ## A held reply released to somebody who never got the post
 
 Replies held while a post spreads can be released long after, and most of them go to people the

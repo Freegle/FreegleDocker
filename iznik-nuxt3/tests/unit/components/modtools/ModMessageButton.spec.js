@@ -461,6 +461,35 @@ describe('ModMessageButton', () => {
     })
   })
 
+  // Discourse 10239: once the poster is an ordinary member of the community the post
+  // rippled into, its moderators may write to them, so a Reject there composes a message
+  // like the home community's.
+  describe('rippled-in copy where the poster can be written to', () => {
+    it('opens the compose modal for a Reject standard message', async () => {
+      const wrapper = mountComponent({
+        stdmsgid: 42,
+        isHomeGroup: false,
+        canMessagePoster: true,
+      })
+      await wrapper.vm.click()
+      await flushPromises()
+      expect(wrapper.vm.showStdMsgModal).toBe(true)
+      expect(wrapper.vm.showRejectNoMsgModal).toBe(false)
+    })
+
+    it('still removes silently when the poster cannot be written to', async () => {
+      const wrapper = mountComponent({
+        stdmsgid: 42,
+        isHomeGroup: false,
+        canMessagePoster: false,
+      })
+      await wrapper.vm.click()
+      await flushPromises()
+      expect(wrapper.vm.showRejectNoMsgModal).toBe(true)
+      expect(wrapper.vm.showStdMsgModal).toBe(false)
+    })
+  })
+
   describe('callback handling', () => {
     it('calls callback when provided', async () => {
       const callback = vi.fn()
