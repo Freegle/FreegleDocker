@@ -66,7 +66,9 @@ func GetIllustration(c *fiber.Ctx) error {
 	db := database.DBConn
 	var externalUID sql.NullString
 
-	err := db.Table("ai_images").Select("externaluid").Where("name = ?", itemName).Scan(&externalUID).Error
+	// Only an active image is offered: rejected, regenerating and suppressed ones are
+	// blanked when a post is shown, so attaching one leaves the post with an empty picture.
+	err := db.Table("ai_images").Select("externaluid").Where("name = ? AND status = 'active'", itemName).Scan(&externalUID).Error
 
 	if err != nil || !externalUID.Valid || externalUID.String == "" {
 		// Not cached - frontend should fall back to image generation.
