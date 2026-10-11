@@ -6,7 +6,6 @@ use App\Models\ChatRoom;
 use App\Models\ChatRoster;
 use App\Models\User;
 use Carbon\Carbon;
-use Mockery;
 use Tests\TestCase;
 
 /**
@@ -16,7 +15,7 @@ use Tests\TestCase;
  * command raises a Sentry error for any live participant of a recently active
  * member chat without one.
  *
- * The clock is moved to 2090 so that only this test's messages fall inside the
+ * The clock is moved to June 2037 so that only this test's messages fall inside the
  * command's window: other tests leave chats with recent messages and no roster
  * rows, which would otherwise be reported here.
  */
@@ -26,7 +25,7 @@ class ChatRosterCommandTest extends TestCase
     {
         parent::setUp();
         config()->set('freegle.chat_roster_monitor.window_hours', 48);
-        Carbon::setTestNow('2090-01-10 05:45:00');
+        Carbon::setTestNow('2037-06-15 05:45:00');
     }
 
     protected function tearDown(): void
@@ -35,17 +34,41 @@ class ChatRosterCommandTest extends TestCase
         parent::tearDown();
     }
 
+    /** Records what reaches Sentry; checked after the test in assertPostConditions(). */
+    private ?object $sentry = null;
+
+    private array $sentryExpected = [0, ''];
+
     private function expectSentry(int $times, string $contains = ''): void
     {
-        $sentry = Mockery::mock();
-        $expectation = $sentry->shouldReceive('captureMessage')->times($times);
-        if ($times > 0) {
-            $expectation->withArgs(function ($message, $severity) use ($contains) {
-                return str_contains($message, $contains)
-                    && (string) $severity === (string) \Sentry\Severity::error();
-            });
+        // A recorder rather than a mock: a mock whose arguments do not match
+        // throws inside the command, the console turns that into exit code 1,
+        // and a test expecting 1 then passes for the wrong reason.
+        $this->sentry = new class
+        {
+            public array $calls = [];
+
+            public function captureMessage($message, $severity = null): void
+            {
+                $this->calls[] = [(string) $message, (string) $severity];
+            }
+        };
+        $this->sentryExpected = [$times, $contains];
+        $this->app->instance('sentry', $this->sentry);
+    }
+
+    protected function assertPostConditions(): void
+    {
+        if ($this->sentry !== null) {
+            [$times, $contains] = $this->sentryExpected;
+            $this->assertCount($times, $this->sentry->calls, 'Sentry received: '.json_encode($this->sentry->calls));
+            foreach ($this->sentry->calls as [$message, $severity]) {
+                $this->assertStringContainsString($contains, $message);
+                $this->assertSame((string) \Sentry\Severity::error(), $severity);
+            }
         }
-        $this->app->instance('sentry', $sentry);
+
+        parent::assertPostConditions();
     }
 
     private function roster(ChatRoom $room, User ...$users): void
@@ -149,6 +172,20 @@ class ChatRosterCommandTest extends TestCase
     public function test_chats_quiet_for_longer_than_the_window_are_not_checked(): void
     {
         [$quiet] = $this->activeChat(72);
+        [$room, $a, $b] = $this->activeChat();
+        $this->roster($room, $a, $b);
+        $this->expectSentry(0);
+
+        $this->artisan('monitor:chat-roster')
+            ->expectsOutputToContain('of 1 chats')
+            ->assertExitCode(0);
+    }
+
+    public function test_messages_dated_in_the_future_are_not_checked(): void
+    {
+        // Not recent, whatever else they are; and other tests leave rows with
+        // far-future dates that would otherwise land in this window.
+        [$future] = $this->activeChat(-24);
         [$room, $a, $b] = $this->activeChat();
         $this->roster($room, $a, $b);
         $this->expectSentry(0);

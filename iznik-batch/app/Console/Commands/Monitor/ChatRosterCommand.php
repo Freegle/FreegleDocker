@@ -36,15 +36,17 @@ class ChatRosterCommand extends Command
     public function handle(): int
     {
         $hours = (int) config('freegle.chat_roster_monitor.window_hours', 48);
-        $since = now()->subHours($hours);
+        $until = now();
+        $since = $until->copy()->subHours($hours);
 
         // Rooms come from recent messages: chat_messages is indexed on date and
-        // chat_rooms.latestmessage is not. Read from the write node, which has
+        // chat_rooms.latestmessage is not. A message dated in the future is not
+        // recent, so the window ends now. Read from the write node, which has
         // every roster row the moment its room does.
         $rooms = DB::table('chat_rooms')
             ->useWritePdo()
             ->whereIn('chattype', ['User2User', 'User2Mod'])
-            ->whereIn('id', DB::table('chat_messages')->select('chatid')->where('date', '>=', $since)->distinct())
+            ->whereIn('id', DB::table('chat_messages')->select('chatid')->whereBetween('date', [$since, $until])->distinct())
             ->get(['id', 'chattype', 'user1', 'user2']);
 
         if ($rooms->isEmpty()) {
