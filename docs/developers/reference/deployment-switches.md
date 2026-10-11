@@ -2,6 +2,8 @@
 last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
+  - iznik-batch/app/Support/EnvSetting.php
+  - iznik-batch/tests/Unit/Config/BlankEnvMeansDefaultTest.php
   - iznik-batch/config/freegle.php
   - iznik-batch/routes/console.php
   - iznik-batch/app/Console/Commands/Queue/ProcessBackgroundTasksCommand.php
@@ -65,6 +67,15 @@ variables like every other Freegle setting.
 | `backup.database.bucket` | `BACKUP_DB_BUCKET` | `gs://freegle_backup_uk` | Where the compressed stream goes. |
 | `backup.database.compress_threads` | `BACKUP_DB_COMPRESS_THREADS` | `4` | xtrabackup compression threads. More finishes sooner and competes harder. |
 | `backup.database.alert_email` | `BACKUP_DB_ALERT_EMAIL` | `geek-alerts@ilovefreegle.org` | Where a failure is mailed. Plain text, no template, because this has to work when the database is unhappy. |
+
+Every setting in `config/freegle.php` is read through `EnvSetting::env`, which is Laravel's
+`env()` with one change: a variable that is unset, empty or only spaces is the default.
+docker-compose passes a variable nobody set as an empty string, and `env()` returns that
+instead of the default, so a bare `(int)` or `(bool)` cast turned a default of `30` into `0`
+and a switch that is on by default into off, with no error anywhere. Anything that is not
+blank comes back exactly as `env()` gives it, so `false` is still false and `0` is still `0`.
+`BlankEnvMeansDefaultTest` loads the file with every variable it names removed, then with every
+one blank, and fails if the two results differ, so a new bare `env()` read cannot slip in.
 
 ### The backup drain
 
