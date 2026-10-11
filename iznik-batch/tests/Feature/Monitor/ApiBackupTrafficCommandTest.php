@@ -5,7 +5,6 @@ namespace Tests\Feature\Monitor;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
-use Mockery;
 use Tests\TestCase;
 
 /**
@@ -64,17 +63,41 @@ class ApiBackupTrafficCommandTest extends TestCase
         Http::fake(['http://loki:3100/*' => Http::response($body, $status)]);
     }
 
+    /** Records what reaches Sentry; checked after the test in assertPostConditions(). */
+    private ?object $sentry = null;
+
+    private array $sentryExpected = [0, ''];
+
     private function expectSentry(int $times, string $contains = ''): void
     {
-        $sentry = Mockery::mock();
-        $expectation = $sentry->shouldReceive('captureMessage')->times($times);
-        if ($times > 0) {
-            $expectation->withArgs(function ($message, $severity) use ($contains) {
-                return str_contains($message, $contains)
-                    && (string) $severity === (string) \Sentry\Severity::error();
-            });
+        // A recorder rather than a mock: a mock whose arguments do not match
+        // throws inside the command, the console turns that into exit code 1,
+        // and a test expecting 1 then passes for the wrong reason.
+        $this->sentry = new class
+        {
+            public array $calls = [];
+
+            public function captureMessage($message, $severity = null): void
+            {
+                $this->calls[] = [(string) $message, (string) $severity];
+            }
+        };
+        $this->sentryExpected = [$times, $contains];
+        $this->app->instance('sentry', $this->sentry);
+    }
+
+    protected function assertPostConditions(): void
+    {
+        if ($this->sentry !== null) {
+            [$times, $contains] = $this->sentryExpected;
+            $this->assertCount($times, $this->sentry->calls, 'Sentry received: '.json_encode($this->sentry->calls));
+            foreach ($this->sentry->calls as [$message, $severity]) {
+                $this->assertStringContainsString($contains, $message);
+                $this->assertSame((string) \Sentry\Severity::error(), $severity);
+            }
         }
-        $this->app->instance('sentry', $sentry);
+
+        parent::assertPostConditions();
     }
 
     public function test_all_requests_on_one_node_passes(): void
