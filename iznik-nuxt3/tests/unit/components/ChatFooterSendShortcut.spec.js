@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import ChatFooter from '~/components/ChatFooter.vue'
 
 const { mockChatStore, mockMiscStore, mockChat, mockOtheruser, mockMe } =
@@ -96,8 +96,9 @@ vi.mock('textarea-caret', () => ({
 }))
 
 // A part ChatFooter loads asynchronously can finish loading after its test
-// ends; unmounting keeps it from rendering into a leftover wrapper.
-enableAutoUnmount(afterEach)
+// ends. tests/unit/setup.ts unmounts every wrapper after each test, so it
+// cannot render into a leftover one; calling enableAutoUnmount again here
+// would throw.
 
 describe('ChatFooter Ctrl+Enter / Cmd+Enter', () => {
   const stubs = {
