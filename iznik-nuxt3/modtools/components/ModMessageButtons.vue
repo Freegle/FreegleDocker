@@ -219,8 +219,9 @@
         checked it.
       </p>
       <p class="mb-0">
-        It stops spreading to further communities, and approving it again does
-        not start it spreading again. The member is not told.
+        Spreading to further communities is paused until you decide. If you
+        approve the post again it carries on spreading; if you reject it,
+        spreading ends. The member is not told.
       </p>
     </ConfirmModal>
     <div v-if="!editreview && !modsHeld" class="d-lg-inline">

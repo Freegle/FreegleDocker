@@ -1128,8 +1128,26 @@ describe('ModMessageButtons', () => {
         expect(text).toContain('held by you')
         expect(text).toContain('Pending queue')
         expect(text).toContain('already approved or checked')
-        expect(text).toContain('stops spreading')
         expect(text).toContain('not told')
+      })
+
+      // Spreading is paused, not ended: approving the post again lets it carry on, and
+      // rejecting it ends it. The question says both, and never that approving is too late.
+      it('says spreading is paused until they decide, and what each answer does', async () => {
+        const wrapper = await open()
+        const text = wrapper.find('.confirm-modal').text()
+        expect(text).toContain('paused until you decide')
+        expect(text).toContain('approve the post again it carries on spreading')
+        expect(text).toContain('reject it, spreading ends')
+        expect(text).not.toContain('stops spreading')
+        expect(text).not.toContain('does not start')
+      })
+
+      it('does not use a dash as punctuation', async () => {
+        const wrapper = await open()
+        expect(wrapper.find('.confirm-modal').text()).not.toMatch(
+          /[\u2013\u2014]/
+        )
       })
 
       it('stops the spinner as soon as the question is up', async () => {

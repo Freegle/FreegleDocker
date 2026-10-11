@@ -126,8 +126,9 @@ network-wide unchecked. When the companion "earned reach" switch is on:
   or a microvolunteer rejecting it. Pausing means the post's visible reach area stops
   growing too, not just its community placements: nobody new starts seeing it in
   browse, search or emails while it is paused. What it has already reached stays put.
-- **A human look settles it**: a moderator checking the post lifts the hold entirely,
-  and pulling it back sends it to Pending and stops it spreading further. Two different
+- **A human look settles it**: a moderator checking the post lifts the hold entirely.
+  Pulling it back sends it to Pending and pauses its spreading until a moderator decides:
+  approving it again lets it carry on, and rejecting it ends it. Two different
   microvolunteers approving the post count as a human look too, as long as no
   microvolunteer has rejected it.
 - **Posts a moderator approved by hand are exempt** - they have had their human look
@@ -437,8 +438,8 @@ These are known and not fully solved:
   moderators has approved or checked goes back to that community's own Pending queue too,
   with the note "A moderator moved this post back to pending for review.", and a copy one
   of them has approved or checked stays live. Nothing is withdrawn from a neighbouring
-  community and nothing is blocked. The post stops spreading, and approving it again does
-  not start that up again: it keeps the reach it had. The member is not told. It is
+  community and nothing is blocked. Spreading is paused until you decide: approve the post
+  again and it carries on spreading, reject it and spreading ends. The member is not told. It is
   recorded as a hold and counts towards the error rate; what you then do records the
   decision, so a post you approve does not count against the member, and one you reject
   becomes a danger signal on their next post. The Pending card you get back behaves like

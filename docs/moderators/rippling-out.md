@@ -148,7 +148,8 @@ the automated checks rather than a moderator's click. Those posts do not ripple 
   further spread**, including the visible reach area, until a moderator looks.
 - **Your look settles it**: checking the post (see the Check queue in the
   post-moderation guide) clears the gate entirely; pulling it back sends it to Pending and
-  stops it spreading further.
+  pauses its spreading until you decide (approving it lets it carry on, rejecting it ends
+  it).
 - Posts a moderator approved by hand are exempt and ripple exactly as this guide
   describes.
 
@@ -464,9 +465,10 @@ click - so a rippled copy may linger very briefly before it disappears.
 
 (**Back to Pending** works differently from Delete/Reject. From the home community it withdraws
 the rippled copies at once and the post never ripples again; from anywhere else it keeps each
-community's copy for per-group review and does **not** re-ripple on re-approval. Either way, a
-copy a community's own moderator has already approved by hand stays live there - see
-**Moving a post back to pending in ModTools** below.)
+community's copy for per-group review. If the home copy goes back to Pending too, the post's
+spreading is frozen until the home community approves it again, and then carries on (it does not
+start over). Either way, a copy a community's own moderator has already approved by hand stays
+live there - see **Moving a post back to pending in ModTools** below.)
 
 While a post is in that frozen state we stop advertising it: it is not included in daily
 digests, immediate emails or phone notifications, because it is under review and we should
@@ -588,7 +590,9 @@ by auto-approval, or by rippling in - is pulled back. Your own community's copy 
 back, whoever approved it.
 
 If you only moderate a community it rippled into, your Back to Pending does not stop anyone
-else approving theirs.
+else approving theirs. If the home community's copy goes back to Pending as well (it does
+unless one of its moderators approved it by hand), the post's spreading is paused until the
+home community approves it again.
 
 **There is one exception, when a moderator of the post's home community does it.** The
 home community is where the poster posted, and its moderators have taken the decision, so the

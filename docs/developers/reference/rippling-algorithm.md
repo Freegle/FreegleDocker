@@ -850,7 +850,7 @@ was posted to directly. `advanceDue` writes its status with `status <> 'held'`, 
 while a run is in flight survives it.
 
 `FreezeReachIfOriginPending` (`iznik-server-go/microvolunteering`) sets `status='held'` when a
-post's origin copy stops being live-Approved: Back to pending, or a report quorum. A
+post's origin copy stops being live-Approved: Back to pending, a Check pull-back or a report quorum. A
 home community's Back to pending freezes unconditionally (`FreezeReach`), because a
 hand-approved copy on a second home community can leave the origin Approved. The third writer is
 `modmessaging.RemoveUnaddressedPost`, which takes an unaddressed post off the platform on a
@@ -898,6 +898,8 @@ Freezing governs what we SEND, not who has been reached:
   a reply from them is still held. They have not been reached, and freezing does not alter that;
   the answer is the same one they would get on a post still expanding.
 
+The first two end when the reach resumes.
+
 ### Back to pending spares hand-approved and checked copies elsewhere
 
 `handleBackToPending` first lists the copies a moderator has looked at on communities other
@@ -933,11 +935,12 @@ copy. While the reach is held the post is out of the nearby feed, so a spared co
 own community's listings (which filter on that community's `messages_groups` row), not nearby.
 
 When a receiving community sends a post back and the home copy is spared, the origin is still
-Approved, so the reach is not frozen and keeps expanding.
+Approved, so the reach is not frozen and keeps expanding. When the home copy goes back to Pending
+too, the reach is held until the home community approves it again.
 
-`initialiseNew` never starts a reach for a post in `rippling_blocked`. That is what makes the
-block durable: the frozen reach row already stops expansion and every read path, but a repost
-removes the reach row, and without the block the next approval would start a new one.
+`initialiseNew` never starts a reach for a post in `rippling_blocked`, and an Approve does not
+resume a blocked post's held reach (§5a). That is what makes the block durable: a repost removes
+the reach row, and without the block the next approval would start a new one.
 
 `messages_groups.locked_by_home` is still honoured where set (`handleApprove` refuses a locked
 copy while the home row is not Approved; auto-approve, the content check, incoming mail and
@@ -982,21 +985,21 @@ outside the trial. The scout gate in `firstreply` match mail is scoped the same 
   every unreviewed copy elsewhere goes back to its own Pending queue with the neutral "moved
   this post back to pending" text; a copy another community's moderator approved or checked
   stays live. Nothing is withdrawn and nothing is written to `rippling_blocked` (that is a
-  home community's Back to pending, below). The reach is frozen (`status = 'held'`, §6) and
-  the await stamp settled, so a later Approve keeps the reach the post had and does not
-  spread it further, which is the rule for any Back to pending.
+  home community's Back to pending, below). The reach is paused (`status = 'held'`, §5a) and
+  the await stamp settled. A later Approve of the home copy resumes it (`held` goes back to
+  `expanding`) and, being a moderator's look, lifts the gate for good; a Reject ends it (§6).
 
 ## 6. Retraction
 
 As a capped reach shrinks or the reachable set changes, `retractOutOfReachCopies`
 soft-deletes rippled-in copies no longer in reach, and removes the ripple-join membership
-when the poster has no other live post there. A **held** reach (from a report or
-Back-to-Pending) is frozen: while the home copy still exists, its copies persist for per-group
-moderation and are not retracted, so re-approval restores the copy without re-rippling. Once the
-home copy is deleted or rejected there is nothing left to moderate against, so the freeze no
-longer protects the copies: `retractCopiesOrphanedByOriginRemoval` retracts them whatever the
-reach status. A frozen reach is spared only while the home row is still Pending. (Nothing clears
-`held`, so a Back to pending followed by a delete at home used to leave the copies live.)
+when the poster has no other live post there. A **held** reach (from a report, a Check
+pull-back or Back-to-Pending) is paused: while the home copy still exists, its copies persist for
+per-group moderation and are not retracted, so re-approval restores the copy without re-rippling.
+Once the home copy is deleted or rejected there is nothing left to moderate against, so the pause
+no longer protects the copies: `retractCopiesOrphanedByOriginRemoval` retracts them whatever the
+reach status. A held reach is spared only while the home row is still Pending; once the home copy
+is approved the reach has resumed (§5a) and is an ordinary one again (a blocked post's stays held).
 The same applies to `removeStaleAndRetract`, and to a reject at home.
 
 A community switching ripple-out off retracts the same way - see §4a.
