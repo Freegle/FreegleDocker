@@ -231,3 +231,29 @@ Findings fixed:
 Noted, not changed (product call): oversight Reject sets the reach `stopped` and the
 orphaned copies are retracted; master's Back-to-Pending sets `held` and leaves every copy
 Pending for its own community to decide (ac1278f7f). Two pull-back semantics coexist.
+
+## 2026-10-11 master merge + adversarial re-review (worktree autoapprove-review)
+
+Master moved 122 commits (multi-group moderation 90a1970e5; Back to Pending keeps hand-approved
+copies f2379c139/8a5924fe5; `#[AsCommand]` required on every command). Four reviewers (batch,
+Go, ModTools, automod service) read the merged tree; their reports are in the session scratchpad,
+the fixes are the five commits after the merge. The shape of what was wrong:
+
+- Timing: the clock ran from arrival only, so a late decision published a post the minute its
+  row landed with no countdown ever shown. The wait now counts from the later of arrival and the
+  decision, in the cron and the countdown alike.
+- Pull-backs: Check-queue Reject set heldby alone (Release re-published; reach stopped for
+  good; neighbour copies retracted silently). It is now Back to Pending for the origin.
+- Edits: the chart re-ran on the previous content-check facts. Decision and publish both wait
+  for the check to have re-run.
+- Write window: the publish UPDATE could flip a Reject made seconds earlier. It now only lands
+  on a copy still Pending, unheld, not pulled back and past any hold.
+- Scope: countdown, help boxes, Check actions, the hold bump and the earned-reach gate all
+  reached outside the trial; each is keyed to the community on screen or the approve list.
+- Observability: nothing reached Loki; decisions are now logged there, with a per-run line,
+  a health monitor, per-community agreement figures, latency, unavailable and late counts, and
+  neighbour disagreement.
+- Service: prompt-injection surface, unbounded prompt length, answer-id trust, no deadline,
+  no concurrency cap, liveness-only health. All bounded; one JSON line per review.
+
+Three messages_groups migrations had no SQL twin; they do now, and the raw SQL is in the PR.
