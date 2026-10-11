@@ -969,22 +969,28 @@ return [
         // When the gate is on: minimum age (seconds) an auto-published, unreviewed post must
         // reach before it may start rippling. A post with approvedby or checkedat set (a mod
         // approved or checked it) skips the hold. Default 3600 (1h); 0 disables just the hold.
-        'autoapprove_hold_seconds' => (int) EnvSetting::env('RIPPLE_AUTOAPPROVE_HOLD_SECONDS', 3600),
+        // This and the next two are whole numbers where 0 is a real setting, read by
+        // EnvSetting::wholeNumber: a blank value (docker-compose passes an unset `${NAME:-}` as
+        // "") is the default, not 0, and a typo ("1h") is the default too. Only an explicit "0"
+        // turns the hold, or the cap below, off.
+        'autoapprove_hold_seconds' => EnvSetting::wholeNumber(EnvSetting::env('RIPPLE_AUTOAPPROVE_HOLD_SECONDS'), 3600),
         // When the gate is on: distinct clean VIEWS required per community an auto-published
         // post ripples into. Reach is earned by exposure without complaint - members seeing
         // the post and nobody flagging it - not by active reviewer sign-off (a per-community
         // reviewer requirement could never keep up with post volume). Any flag (member report
         // to the mods referencing the post, or a microvolunteer Reject) pauses further spread
         // until a moderator look (approvedby/checkedat) clears it. 0 disables just the cap.
-        'clean_views_per_group' => (int) EnvSetting::env('RIPPLE_CLEAN_VIEWS_PER_GROUP', 5),
+        'clean_views_per_group' => EnvSetting::wholeNumber(EnvSetting::env('RIPPLE_CLEAN_VIEWS_PER_GROUP'), 5),
         // Hours a rippled-in (messages_groups.rippled_in=1) post, already Approved on its
         // origin group, waits before it is approved onto the rippled-in group (it was already
         // vetted on origin). Default 0 = approve AT ripple-in time, so it never even flickers
         // into the Pending mod queue - this keeps the moderation load of rippling off the
         // receiving groups, since the post was already moderated on its origin group. >0 leaves
         // it Pending for AutoApproveService to approve after the window (a mod-veto window for
-        // groups that want to eyeball rippled-in posts before they appear).
-        'rippled_in_pending_hours' => (int) EnvSetting::env('RIPPLE_RIPPLED_IN_PENDING_HOURS', 0),
+        // groups that want to eyeball rippled-in posts before they appear). The Go countdown
+        // reads the same variable (message/autoapproveat.go), so a typo is the default here, as
+        // it is there, not the leading digits.
+        'rippled_in_pending_hours' => EnvSetting::wholeNumber(EnvSetting::env('RIPPLE_RIPPLED_IN_PENDING_HOURS'), 0),
         // Wall-clock hazard schedule (hours since arrival) at which the reach
         // expands one tick. One schedule tick is requested per entry, so the
         // number of ticks equals the length of this array.
@@ -1580,7 +1586,7 @@ return [
     |    never auto-rejects.)
     |
     | - url:     base URL of the automod Node service (internal network only,
-    |            not routed through Traefik).
+    |            not routed through Traefik). Blank means http://automod:8090.
     | - timeout: HTTP timeout in seconds for the /review call (a positive whole
     |            number, else 60: a zero timeout would wait for ever). A timeout or
     |            any other failure is treated as "unavailable", not a hold:
@@ -1591,7 +1597,7 @@ return [
     |
     */
     'automod' => [
-        'url'              => EnvSetting::env('AUTOMOD_URL', 'http://automod:8090'),
+        'url'              => EnvSetting::env('AUTOMOD_URL', ''),
         'shadow_group_ids' => EnvSetting::env('FREEGLE_AUTOMOD_SHADOW_GROUPS', ''),
         // One call answers every question about a post; the frontier model takes 10 to 20 seconds.
         'timeout'          => EnvSetting::env('AUTOMOD_TIMEOUT', ''),

@@ -71,6 +71,13 @@ class AutomodService
     /** The longest subject sent (a subject is 255 characters at most; this only bounds a bad row). */
     public const MAX_SUBJECT_CHARS = 1000;
 
+    /**
+     * Where the automod service is on the internal network when nothing says otherwise. A blank
+     * setting means this too: docker-compose and an .env.background line left as AUTOMOD_URL=
+     * both give env() an empty string, and a request to "/review" fails for every post.
+     */
+    public const DEFAULT_URL = 'http://automod:8090';
+
     /** The loop name the lockdown presser sees take effect (LockdownService::ACK_LOOPS). */
     private const LOCKDOWN_LOOP = 'automod';
 
@@ -204,7 +211,7 @@ class AutomodService
             $payload['backend'] = $backend;
         }
 
-        $url = rtrim((string) config('freegle.automod.url'), '/') . '/review';
+        $url = rtrim(EnvSetting::text(config('freegle.automod.url'), self::DEFAULT_URL), '/') . '/review';
 
         try {
             $response = Http::connectTimeout(self::CONNECT_TIMEOUT_SECONDS)->timeout($timeout)->post($url, $payload);

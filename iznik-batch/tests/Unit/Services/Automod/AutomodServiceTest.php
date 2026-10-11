@@ -140,6 +140,30 @@ class AutomodServiceTest extends TestCase
         Http::assertSent(fn ($request) => !array_key_exists('backend', $request->data()));
     }
 
+    public function test_a_blank_service_address_is_the_default_not_a_request_to_nowhere(): void
+    {
+        // An .env.background line left as AUTOMOD_URL= (or compose's ${AUTOMOD_URL:-}) makes env()
+        // return "", not the default, and a request to "/review" would fail for every post.
+        [$user, $group, $message] = $this->makeCandidate();
+        $this->fakeReviewResponse(['version' => 'v1', 'verdict' => MessageAutomod::VERDICT_HOLD, 'end' => 'HOLD']);
+        config(['freegle.automod.url' => '']);
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_SHADOW);
+
+        Http::assertSent(fn ($request) => $request->url() === 'http://automod:8090/review');
+    }
+
+    public function test_the_service_address_is_trimmed_and_its_trailing_slash_dropped(): void
+    {
+        [$user, $group, $message] = $this->makeCandidate();
+        $this->fakeReviewResponse(['version' => 'v1', 'verdict' => MessageAutomod::VERDICT_HOLD, 'end' => 'HOLD']);
+        config(['freegle.automod.url' => '  http://automod-other:9000/ ']);
+
+        $this->service->review($message->id, $group->id, MessageAutomod::MODE_SHADOW);
+
+        Http::assertSent(fn ($request) => $request->url() === 'http://automod-other:9000/review');
+    }
+
     public function test_review_returns_null_for_missing_message(): void
     {
         Http::fake();
