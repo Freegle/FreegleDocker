@@ -518,6 +518,56 @@ describe('ModMessageButtons', () => {
     })
   })
 
+  // Discourse 10239: on a copy the post rippled into, the buttons whose only effect is a
+  // message to the poster come back once the poster is an ordinary member there. Outcomes
+  // and whole-post deletes still belong to the home community.
+  describe('rippled-in copy where the poster can be written to', () => {
+    const approvedOffer = {
+      groups: [{ groupid: 456, collection: 'Approved' }],
+      type: 'Offer',
+      outcomes: [],
+    }
+    const labels = (wrapper) =>
+      wrapper
+        .findAll('.mod-message-button, .spin-button')
+        .map((btn) => btn.text())
+
+    it('offers Blank Reply', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      expect(labels(wrapper).some((l) => l.includes('Blank Reply'))).toBe(true)
+    })
+
+    it('does not offer Blank Reply when the poster cannot be written to', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: false },
+        approvedOffer
+      )
+      expect(labels(wrapper).some((l) => l.includes('Blank Reply'))).toBe(false)
+    })
+
+    it('still does not offer outcomes or whole-post deletes', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      const l = labels(wrapper)
+      expect(l.some((x) => x.includes('Mark as TAKEN'))).toBe(false)
+      expect(l.some((x) => x.includes('Mark as Withdrawn'))).toBe(false)
+      expect(l.some((x) => x.includes('Delete as Spam'))).toBe(false)
+    })
+
+    it('offers the standard messages that write to the poster', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      expect(wrapper.vm.validActions).toContain('Leave Approved Message')
+    })
+  })
+
   describe('editreview buttons', () => {
     it('shows accept edit button when editreview is true', () => {
       const wrapper = mountComponent({ editreview: true })

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/messages/**
@@ -152,7 +152,10 @@ confirmation and takes the copy off your community without opening the compose b
 the poster is not told. Approve, Hold and Release stay as plain buttons. Taken, Received
 and Withdrawn are not offered either: an outcome is a fact about the whole post, so it is
 recorded by the poster or by the moderators of the community it was posted on, and the
-server refuses it from anywhere else. A rippled-in copy
+server refuses it from anywhere else. Once the poster is an ordinary member of your
+community, for example because they posted there or wrote back to one of your members
+about this post, Blank Reply and those standard messages come back, and rejecting or
+deleting the copy tells them. A rippled-in copy
 can also arrive Pending because it breaks your own keyword or worry-word rules, with the
 reason shown on the post. The whole picture is in [rippling out](rippling-out.md).
 

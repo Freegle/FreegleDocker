@@ -635,6 +635,18 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 						}
 					}
 				}
+
+				// Which of these communities may write to the poster, so ModTools offers
+				// the buttons that only send them a message where the server will accept
+				// them (Discourse 10102, 10239). For moderators of the post's communities,
+				// who load it here too, as well as for Support and Admin.
+				if len(messageGroups) > 0 && myid > 0 && (isMod || modOfAnyMessageGroup(db, myid, messageGroups)) {
+					messaging := PosterMessagingGroups(db, messageGroups[0].Msgid)
+					for i := range messageGroups {
+						can := NotifyPosterFlag(messaging, messageGroups[i].Groupid) == 1
+						messageGroups[i].CanMessagePoster = &can
+					}
+				}
 			}()
 
 			var messageAttachments []MessageAttachment
@@ -2677,7 +2689,7 @@ func handleApprove(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	// moderator's words reach the poster, so it is gated the same way: a group the post
 	// rippled into approves its own copy without writing to the freegler. Approved on
 	// several communities at once, the member still gets one message (PosterNotifyFlags).
-	notify := PosterNotifyFlags(HomeGroups(db, req.ID), authorizedGroups)
+	notify := PosterNotifyFlags(PosterMessagingGroups(db, req.ID), authorizedGroups)
 
 	for _, gid := range authorizedGroups {
 		// Identical golden to
@@ -2834,6 +2846,52 @@ func HomeGroups(db *gorm.DB, msgid uint64) map[uint64]bool {
 	return home
 }
 
+// modOfAnyMessageGroup reports whether the user moderates any community the post is on.
+func modOfAnyMessageGroup(db *gorm.DB, myid uint64, groups []MessageGroup) bool {
+	gids := make([]uint64, 0, len(groups))
+	for _, g := range groups {
+		gids = append(gids, g.Groupid)
+	}
+
+	var n int64
+	db.Table("memberships").
+		Where("userid = ? AND groupid IN ? AND role IN (?, ?) AND collection = ?",
+			myid, gids, utils.ROLE_MODERATOR, utils.ROLE_OWNER, utils.COLLECTION_APPROVED).
+		Count(&n)
+
+	return n > 0
+}
+
+// PosterMessagingGroups is HomeGroups plus every community the post rippled into where its
+// poster is an ordinary member: one they joined, moved into, or dealt with, rather than
+// one rippling joined them to (memberships.rippled = 0). Those communities may write to
+// the poster about the post, as the home community may (Discourse 10239).
+//
+// Use it only for whether the poster is written to. Whether an action is a receiving
+// community turning the post away - which stops it rippling back - still goes by
+// HomeGroups. With no known home group it is empty too, so the caller keeps notifying.
+func PosterMessagingGroups(db *gorm.DB, msgid uint64) map[uint64]bool {
+	groups := HomeGroups(db, msgid)
+	if len(groups) == 0 {
+		return groups
+	}
+
+	var ordinary []uint64
+	db.Table("messages_groups mg").
+		Select("mg.groupid").
+		Joins("JOIN messages m ON m.id = mg.msgid").
+		Joins("JOIN memberships mem ON mem.userid = m.fromuser AND mem.groupid = mg.groupid "+
+			"AND mem.rippled = 0 AND mem.collection = ?", utils.COLLECTION_APPROVED).
+		Where("mg.msgid = ? AND mg.rippled_in = 1", msgid).
+		Scan(&ordinary)
+
+	for _, gid := range ordinary {
+		groups[gid] = true
+	}
+
+	return groups
+}
+
 // NotifyPosterFlag reports whether a moderation action taken on group gid may be relayed
 // to the poster: 1 for a community the post was posted to (HomeGroups), 0 for one it
 // merely rippled into. It is written into the poster-email background task, which the
@@ -2965,7 +3023,7 @@ func handleReject(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	home := HomeGroups(db, req.ID)
 
 	// Rejected on several communities at once, the member still hears once.
-	notify := PosterNotifyFlags(home, pendingGroups)
+	notify := PosterNotifyFlags(PosterMessagingGroups(db, req.ID), pendingGroups)
 
 	// Queue the rejection task for every group actually rejected here (Pending at the
 	// time) so a group where the post had already gone live gets no phantom log (#9815).
@@ -3148,6 +3206,7 @@ func handleDeleteMessage(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	// action "Delete Approved Message", so it never went near handleReject's suppression
 	// and a Walsall moderator's note reached a Potteries poster.
 	home := HomeGroups(db, req.ID)
+	messaging := PosterMessagingGroups(db, req.ID)
 
 	// Per-group delete: remove only the authorized groups' rows.
 	// Identical golden to f90b6df0a3bb
@@ -3194,7 +3253,7 @@ func handleDeleteMessage(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	// Queue email+log+push via background task for each authorized group.
 	// The batch processor will create the mod log entry and notify group moderators.
 	// Deleted from several communities at once, the member still hears once.
-	notify := PosterNotifyFlags(home, authorizedGroups)
+	notify := PosterNotifyFlags(messaging, authorizedGroups)
 	for _, gid := range authorizedGroups {
 		if NotifyPosterFlag(home, gid) == 0 {
 			log.Printf("ripple: secondary-group delete msgid=%d groupid=%d byuser=%d (poster not notified)", req.ID, gid, myid)
@@ -3657,7 +3716,7 @@ func handleReply(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	// to the community it was posted on (Discourse 10102). Refuse rather than accept and
 	// silently drop it — the moderator wrote those words deliberately and must be told
 	// they did not go.
-	if NotifyPosterFlag(HomeGroups(db, req.ID), ctx.Groupid) == 0 {
+	if NotifyPosterFlag(PosterMessagingGroups(db, req.ID), ctx.Groupid) == 0 {
 		return fiber.NewError(fiber.StatusForbidden,
 			"Only the community this was posted on can message the freegler about it")
 	}
