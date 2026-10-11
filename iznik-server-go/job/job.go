@@ -82,7 +82,11 @@ func JobsForIDs(ids []int64, distByID map[int64]float64, lat, lng float64, categ
 		return make([]Job, 0)
 	}
 
-	categoryClause := "category IS NOT NULL"
+	// Category only narrows the list when the member picks one on the jobs
+	// page. A third of the feed carries no category, and requiring one by
+	// default hid those jobs: the nearest 50 from the spatial server were
+	// mostly uncategorised in some towns, so a member there saw three.
+	categoryClause := "1 = 1"
 	var categoryArgs []any
 	if category != "" {
 		categoryClause = "category REGEXP ?"

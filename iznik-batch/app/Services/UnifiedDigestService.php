@@ -1167,8 +1167,10 @@ class UnifiedDigestService
 
             // status <> 'held': a frozen reach belongs to a post whose origin copy has been
             // pulled back for moderation. Browse, the badge and search hide it, so mailing it
-            // would be the one surface still pushing a post that is under review. Freezing is
-            // one-way, so this is not a race that resolves.
+            // would be the one surface still pushing a post that is under review. Nobody is lost by
+            // waiting: when a moderator approves the home copy the same row goes back to
+            // 'expanding', and the pass that follows mails whoever the reach then covers and
+            // rippling_reach_notified has not recorded.
             //
             // Withdrawn joins Taken/Received: all three mean the post is gone, and a member
             // newly inside the reach of a withdrawn post has nothing to reply to.

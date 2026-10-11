@@ -2639,8 +2639,14 @@ func handleApprove(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	authorizedGroups = approvable
 
 	// The home copy is approved, so the copies it was locking go back to normal per-group
-	// moderation. The reach stays frozen: nothing is re-sent.
+	// moderation, and a reach a pull-back froze spreads again from where it had got to: nothing
+	// is re-sent to anyone already told, and a post its home community sent back stays frozen
+	// (ResumeReachIfHeld). Approving only a rippled-in copy says nothing about the post's own
+	// community, so it resumes nothing.
 	clearHomeLocksIfHomeApproved(db, req.ID, authorizedGroups)
+	if actingOnHomeGroup(db, req.ID, authorizedGroups) {
+		microvolunteering.ResumeReachIfHeld(db, req.ID)
+	}
 
 	// Release hold on the same authorised groups.
 	// Identical to cc381d7c669b

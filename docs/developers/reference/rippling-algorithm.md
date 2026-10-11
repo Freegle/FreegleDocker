@@ -2,6 +2,7 @@
 last_reviewed: 2026-10-11
 covers:
   - iznik-batch/app/Services/Ripple/**
+  - iznik-batch/tests/Unit/Services/Ripple/ResumedReachTest.php
   - iznik-batch/app/Console/Commands/Ripple/**
   - iznik-batch/app/Console/Commands/Browse/**
   - iznik-server-go/rippling/**
@@ -849,10 +850,44 @@ was posted to directly. `advanceDue` writes its status with `status <> 'held'`, 
 while a run is in flight survives it.
 
 `FreezeReachIfOriginPending` (`iznik-server-go/microvolunteering`) sets `status='held'` when a
-post's origin copy stops being live-Approved, typically Back to Pending. A home community's Back
-to pending freezes unconditionally (`FreezeReach`), because a hand-approved copy on a second home
-community can leave the origin Approved. Those are the only writers, and nothing clears it: the
-freeze exists precisely so that re-approving a copy cannot re-reach and re-notify.
+post's origin copy stops being live-Approved: Back to pending, or a report quorum. A
+home community's Back to pending freezes unconditionally (`FreezeReach`), because a
+hand-approved copy on a second home community can leave the origin Approved. The third writer is
+`modmessaging.RemoveUnaddressedPost`, which takes an unaddressed post off the platform on a
+report quorum: every copy is soft-deleted and the reach frozen directly. Those are the only
+writers of `held`.
+
+A held reach is a pause. A moderator's Approve of the post's home copy (`handleApprove`, acting on
+a group the post was posted to directly) calls `ResumeReachIfHeld` in the same package, the
+counterpart of `FreezeReachIfOriginPending`. It sets `held` back to `expanding` with
+`next_expansion_at` now, so the engine's next run carries on from the tick the reach had got to,
+caught up with the clock since the post arrived, and members already told about the post are not
+told again (`rippling_reach_notified`). It writes nothing else: `updated_at`, the reach mailer's
+signal, stays as it is until the engine next advances the row. Approving only a rippled-in copy
+resumes nothing, because it says nothing about the post's own community. Three things are not
+resumed:
+
+- a post in `rippling_blocked` (a home community's Back to pending, below), which never ripples
+  again, and whose block is also what stops a repost starting a new reach;
+- a post with no live home copy, such as a removed unaddressed post, because the engine
+  retracts the rippled copies of an `expanding` reach whose origin is not live (the check is in
+  the same statement as the write, so a send-back landing in between cannot be undone by it);
+- a reach that is not `held`: an `expanding` one keeps its schedule, and `done` and `stopped`
+  are left as they are.
+
+On the batch side a resumed reach is an ordinary due row; nothing in the engine knows it was
+frozen. `advanceDue` takes it on from the stored tick, schedule and polygon, never through
+`initialiseNew` (which needs a post with no reach row): to the tick the clock is at, back on the
+hazard schedule if the clock has not moved on, or back to `done` if it had finished. The reach
+mailer picks the row up once the engine has written `updated_at`, and `mailNewlyReachedForPost`
+mails only members who are inside the reach at the row's current tick, are absent from
+`rippling_reach_notified`, and are on a community where the post is Approved and not deleted. So a
+copy withdrawn before the freeze (`deleted = 1`) is not recreated, its members are not mailed and
+its poster is not joined to it again (`addPosterMembershipToRippledGroups` ignores deleted
+copies), and a copy pulled back to Pending stays Pending and its members are not mailed.
+`ResumedReachTest` pins this against the exact row `ResumeReachIfHeld` leaves.
+
+A Reject or Delete at home ends the reach instead (§6).
 
 Freezing governs what we SEND, not who has been reached:
 

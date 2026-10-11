@@ -558,6 +558,22 @@ Schedule::command('monitor:deprecated-endpoints')
     ->appendOutputTo(cronLog('monitor:deprecated-endpoints'))
     ->runInBackground();
 
+// Backup apiv2 node serving members: overnight, over the whole previous day, so
+// that hours of clients kept on a backup after a daytime failover reach Sentry.
+Schedule::command('monitor:api-backup-traffic')
+    ->dailyAt('05:40')
+    ->withoutOverlapping(30)
+    ->appendOutputTo(cronLog('monitor:api-backup-traffic'))
+    ->runInBackground();
+
+// Chat participants with no roster row are never emailed, silently. Overnight,
+// over chats with a message in the last two days.
+Schedule::command('monitor:chat-roster')
+    ->dailyAt('05:45')
+    ->withoutOverlapping(30)
+    ->appendOutputTo(cronLog('monitor:chat-roster'))
+    ->runInBackground();
+
 // Outcome-based monitoring — asserts that scheduled tasks actually DID their
 // work (rows written, cursor advanced), not just that the scheduler is alive.
 // Breaches escalate to Sentry. Runs inline (it's just a few aggregate queries)
