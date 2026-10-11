@@ -1563,11 +1563,14 @@ func GetSession(c *fiber.Ctx) error {
 				// Table() passes its name argument through verbatim (no quoting) once it
 				// contains a space, so a parenthesized UNION subquery can be given as the
 				// "table name" with its own bind args in Table()'s variadic args.
+				// Counted on the same terms as the Related Members list, which leaves out a
+				// pair across the TrashNothing line because the merge would be refused.
+				mergeable := user.MergeableSidesSQL("u1", "u2")
 				db.Table("(SELECT ur.user1 FROM users_related ur "+
 					"INNER JOIN memberships m ON m.userid = ur.user1 "+
 					"INNER JOIN users u1 ON ur.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = ? "+
 					"INNER JOIN users u2 ON ur.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = ? "+
-					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? "+
+					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? AND "+mergeable+" "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user1) > 0 "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user2) > 0 "+
 					"UNION "+
@@ -1575,7 +1578,7 @@ func GetSession(c *fiber.Ctx) error {
 					"INNER JOIN memberships m ON m.userid = ur.user2 "+
 					"INNER JOIN users u1 ON ur.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = ? "+
 					"INNER JOIN users u2 ON ur.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = ? "+
-					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? "+
+					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? AND "+mergeable+" "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user1) > 0 "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user2) > 0) t",
 					utils.SYSTEMROLE_USER, utils.SYSTEMROLE_USER, activeGroupIDs, utils.SYSTEMROLE_USER, utils.SYSTEMROLE_USER, activeGroupIDs).

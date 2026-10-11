@@ -3903,6 +3903,20 @@ func GetUserLogins(c *fiber.Ctx) error {
 	return c.JSON(logins)
 }
 
+// TrashNothingSQL is a SQL condition that is true when the users row aliased as alias is a
+// TrashNothing member, by the same definition as isTrashNothingAccount.
+func TrashNothingSQL(alias string) string {
+	return "(" + alias + ".tnuserid IS NOT NULL OR EXISTS (SELECT 1 FROM users_emails tne WHERE tne.userid = " +
+		alias + ".id AND tne.preferred = 1 AND tne.email LIKE '%@user.trashnothing.com'))"
+}
+
+// MergeableSidesSQL is a SQL condition that is true when the users rows aliased a and b
+// could be merged: handleMerge refuses a TrashNothing member with any other account, so a
+// related-members pair across that line is one a moderator can do nothing with.
+func MergeableSidesSQL(a, b string) string {
+	return "(" + TrashNothingSQL(a) + " = " + TrashNothingSQL(b) + ")"
+}
+
 // isTrashNothingAccount reports whether the user is a TrashNothing member: stamped with a
 // tnuserid, or with a TrashNothing address as their preferred email. A non-preferred
 // TrashNothing address does not count, since volunteers may also use TrashNothing. Same
