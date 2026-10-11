@@ -634,7 +634,6 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 							}
 						}
 					}
-
 				}
 
 				// Which of these communities may write to the poster, so ModTools offers
