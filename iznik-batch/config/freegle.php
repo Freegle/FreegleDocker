@@ -1300,6 +1300,13 @@ return [
         'min_hourly_requests' => 1000,
     ],
 
+    // monitor:chat-roster - chats with a message in this many hours are checked
+    // for participants with no roster row. Two days, so a nightly run overlaps
+    // the previous one and a late run misses nothing.
+    'chat_roster_monitor' => [
+        'window_hours' => 48,
+    ],
+
     // apiv2's deprecated-endpoint registry for monitor:deprecated-endpoints — the
     // single source of truth for which routes are deprecated + their sunset dates
     // (served from the same deprecation.Marker() calls that log the hits, so the
