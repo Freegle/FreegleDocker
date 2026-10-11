@@ -163,13 +163,16 @@ describe('messages/check/[[id]].vue page', () => {
     expect(mockGroupid.value).toBe(42)
   })
 
-  it('markAllChecked clears the checked bucket and refreshes work counts', async () => {
+  // The list is paged, and a stamp counts as a moderator's look, so only the posts on
+  // screen are marked: never the whole bucket.
+  it('markAllChecked marks the loaded posts only and refreshes work counts', async () => {
     mockGroupid.value = 7
+    mockMessages.value = [{ id: 101 }, { id: 102 }]
     const wrapper = mountComponent()
     await wrapper.vm.markAllChecked()
     expect(mockMessageStore.markChecked).toHaveBeenCalledWith({
       groupid: 7,
-      filter: 'checked',
+      ids: [101, 102],
     })
     expect(mockMessageStore.clear).toHaveBeenCalled()
     expect(mockCheckWork).toHaveBeenCalled()

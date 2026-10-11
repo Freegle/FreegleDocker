@@ -20,7 +20,7 @@
             :disabled="marking || !messages.length"
             @click="markAllChecked"
           >
-            {{ marking ? 'Marking…' : 'Mark all as checked' }}
+            {{ marking ? 'Marking…' : 'Mark these as checked' }}
           </b-button>
         </div>
       </div>
@@ -103,11 +103,17 @@ const bump = ref(0)
 const urlOverride = ref(false)
 const marking = ref(false)
 
-// Mark every post currently in this oversight queue as checked, then refresh.
+// Mark the posts on screen as checked, then refresh. Only the loaded ones: the list is
+// paged, and a stamp says a moderator looked at the post (it leaves Check, it lifts the
+// earned-reach hold, and a neighbour's Back to Pending leaves it alone), so it must never
+// land on a post further down the queue that nobody has seen.
 async function markAllChecked() {
   marking.value = true
   try {
-    await messageStore.markChecked({ groupid: groupid.value, filter: FILTER })
+    await messageStore.markChecked({
+      groupid: groupid.value,
+      ids: messages.value.map((m) => m.id),
+    })
     show.value = 0
     context.value = null
     listingIds.value = new Set()

@@ -394,12 +394,15 @@ These are known and not fully solved:
   moderate a community in the trial.
   It lists the posts that went live by themselves via automated review and that
   nobody has looked at yet. It shows a blue count of what you have not yet looked at,
-  offers **"Mark all as checked"**, and ages posts out after **7 days** so it never
+  offers **"Mark these as checked"** for the posts on screen (never ones further down
+  the queue you have not seen), and ages posts out after **7 days** so it never
   piles up. Posts that merely rippled in from another community do not appear -
   overseeing those belongs to the community they were posted on. Posts from trusted
   members go straight to Approved and are not listed here. A post that two
   microvolunteers have approved drops out of Check by itself, and comes back if a
-  microvolunteer then rejects it.
+  microvolunteer then rejects it. So does a post you approve, reject or delete on
+  another of your communities: acting on it anywhere is a look at it, and your own
+  self-published copy of it is marked checked.
 - **Microvolunteers are asked about these posts first.** While a post is still inside
   its 20-minute wait, it goes to the front of the microvolunteer review queue, and the
   "could you review this" notification says how long there is before it goes live.
@@ -456,7 +459,8 @@ These are known and not fully solved:
   for each place the flowchart ended, how often a **moderator disagreed** (a hold they
   approved, an approval they rejected, deleted or pulled back) and how often a
   **neighbour disagreed** (a copy of an approved post that a neighbouring community's
-  moderator rejected after it rippled in); the same per community; and the steps
+  moderator rejected after it rippled in); the same per community, per chart version
+  (so a new chart or model shows as its own row) and per day (the trend); and the steps
   moderators marked wrong.
 - **Your day-to-day habits are unchanged otherwise** - including the rippling ones:
   "out of area" is still never a reason to reject, and a post arriving from a
