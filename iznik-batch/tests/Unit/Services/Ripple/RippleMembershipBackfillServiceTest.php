@@ -116,6 +116,24 @@ class RippleMembershipBackfillServiceTest extends TestCase
         $this->assertSame('Welcome to our community!', $captured->welcomeGroups[0]['welcome']);
     }
 
+    public function test_a_membership_made_ordinary_since_its_ripple_join_is_not_flagged_again(): void
+    {
+        // The member later joined, moved into the area or dealt with the community, and the
+        // flag was cleared. Re-running the backfill must not make them uncontactable again.
+        [$userId, $groupId] = $this->seedPreMitigationRippledMember();
+        DB::table('logs')->insert([
+            'timestamp' => now(), 'type' => 'Group', 'subtype' => 'Joined',
+            'user' => $userId, 'groupid' => $groupId, 'byuser' => $userId,
+            'text' => 'Ripple-created membership became ordinary: joined',
+        ]);
+
+        $stats = $this->service()->backfill(null, 0, send: true);
+
+        $this->assertSame(0, $stats['flagged']);
+        $this->assertSame(0, (int) DB::table('memberships')
+            ->where('userid', $userId)->where('groupid', $groupId)->value('rippled'));
+    }
+
     public function test_user_filter_restricts_scope(): void
     {
         [$userId1] = $this->seedPreMitigationRippledMember();
