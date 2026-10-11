@@ -1285,6 +1285,21 @@ return [
         'query_url' => env('LOKI_URL', 'http://loki:3100'),
     ],
 
+    // monitor:api-backup-traffic - members' API requests should all reach the
+    // active apiv2 node; a backup serves them only while the active node is down.
+    'api_backup_traffic' => [
+        // Look back a whole day: clients pinned to a backup after a daytime
+        // deploy drift off overnight, so a night-only window would miss them.
+        'window_hours' => 24,
+        // A backup's share of an hour's requests above which that hour counts.
+        // A deploy's failover is a minute or two, under 5% of an hour; clients
+        // pinned to the backup on 2026-10-11 were 18-25% of every hour for four.
+        'max_hourly_share' => 0.10,
+        // Hours quieter than this are not judged, so a handful of requests
+        // cannot make a share. The quietest hours carry well over 100,000.
+        'min_hourly_requests' => 1000,
+    ],
+
     // apiv2's deprecated-endpoint registry for monitor:deprecated-endpoints — the
     // single source of truth for which routes are deprecated + their sunset dates
     // (served from the same deprecation.Marker() calls that log the hits, so the
