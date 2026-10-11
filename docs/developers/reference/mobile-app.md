@@ -1,10 +1,13 @@
 ---
-last_reviewed: 2026-09-13
+last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/capacitor.config.ts
   - iznik-nuxt3/fastlane/Fastfile
   - iznik-nuxt3/README-APP.md
+  - iznik-nuxt3/android/app/build.gradle
+  - iznik-nuxt3/tests/e2e/app
+  - scripts/app-e2e
   - freegle-app
 ---
 
@@ -86,6 +89,22 @@ Two traps that have bitten before:
 
 App JavaScript is baked into the package at build time, so when a member reports an old
 bug, check the build date in the app rather than assuming they have the current code.
+
+### The emulator gate
+
+The browser suite never runs the app itself, which is how a plugin missing from
+`includePlugins` once shipped unnoticed. Before the promote workflow moves anything to a
+live store track, `freegle/app-emulator-tests` builds the Android app from the checkout
+(the `e2e` build type: the release configuration, R8 included, signed with the debug key),
+boots a headless emulator on the runner and runs the Playwright `app` project through the
+app's WebView against the local stack. It checks the native plugin set, push notification
+delivery and routing (an FCM data message injected on the device, no Firebase servers
+involved), deep links, and the post and reply flows on a phone-sized screen. It runs in
+`manual-promote-submit` and on demand with the `run_app_emulator_test` pipeline parameter,
+not on every push. The scripts, the run's anatomy and its traps are in
+[`scripts/app-e2e/README.md`](../../../scripts/app-e2e/README.md); the specs are in
+`iznik-nuxt3/tests/e2e/app/`. There is no iOS equivalent: the simulator needs a macOS
+host, where the Docker stack cannot run.
 
 ## The Kotlin Multiplatform experiment
 

@@ -26,6 +26,16 @@ if (fs.existsSync(orderedTestsFile)) {
   }
 }
 
+// Specs under tests/e2e/app/ exist only for the Android app project below: they drive
+// native plugins, push notifications and deep links through adb, which the browser
+// projects cannot do. The web specs listed in APP_SHARED_SPECS run in the app project
+// too, unchanged, on the phone-sized WebView.
+const APP_ONLY_SPECS = /(^|\/)tests\/e2e\/app\/[^/]+\.spec\.js$/
+const APP_SHARED_SPECS = [
+  /(^|\/)tests\/e2e\/test-post-flow\.spec\.js$/,
+  /(^|\/)tests\/e2e\/test-reply-flow-logged-in\.spec\.js$/,
+]
+
 // Shared `use` block for the chromium browser, common to the main project
 // and the isolated 'lockdown' project below (they must behave identically,
 // just run at different times).
@@ -287,7 +297,7 @@ module.exports = defineConfig({
       // (not a `lockdown*` glob) deliberately leaves
       // lockdown-pr-screenshots.spec.js (mocked state, no real press)
       // running here as normal.
-      testIgnore: /(^|\/)lockdown\.spec\.js$/,
+      testIgnore: [/(^|\/)lockdown\.spec\.js$/, APP_ONLY_SPECS],
       dependencies: ['lockdown-order'],
       use: chromiumUse,
     },
@@ -299,5 +309,32 @@ module.exports = defineConfig({
       // run, and report its own result, even when 'chromium' has failures.
       use: chromiumUse,
     },
+    // The Android app on an emulator (FreegleDocker scripts/app-e2e/run.sh starts it
+    // and sets the APP_E2E_* variables). The project exists only in that run: the
+    // status API runs every project, and without a device these specs cannot pass.
+    // There is no browser to launch: fixtures.js attaches to the app's WebView over
+    // CDP, so one worker, no video, no trace, and screenshots come from the fixture,
+    // not the runner. The runner's own artifact hooks assume a context it created.
+    ...(process.env.APP_E2E_SERIAL
+      ? [
+          {
+            name: 'app',
+            testMatch: [APP_ONLY_SPECS, ...APP_SHARED_SPECS],
+            // Drives the desktop give page's own inputs; the phone layout redirects
+            // to the mobile flow, which the postMessage fixture (and the other
+            // tests) follow.
+            grepInvert: /Email existence check/,
+            use: {
+              baseURL: process.env.APP_E2E_ORIGIN,
+              trace: 'off',
+              screenshot: 'off',
+              video: 'off',
+              contextOptions: {},
+              navigationTimeout: timeouts.navigation.default,
+              actionTimeout: timeouts.api.default,
+            },
+          },
+        ]
+      : []),
   ],
 })

@@ -1,0 +1,84 @@
+# app-e2e: the Freegle app on an Android emulator
+
+Runs the real Android app, built from the checkout, on a headless emulator against the
+local Docker stack, and drives it with the Playwright `app` project
+(`iznik-nuxt3/playwright.config.js`). It is the gate in front of the promote workflow:
+`freegle/app-emulator-tests` runs in `manual-promote-submit` before anything moves to a
+live Play or App Store track, and on demand with the `run_app_emulator_test` pipeline
+parameter. It does not run on every push.
+
+What it exercises that the browser suite cannot:
+
+| Spec (`iznik-nuxt3/tests/e2e/app/`) | Checks |
+|---|---|
+| `plugins.spec.js` | every plugin in `capacitor.config.ts` `includePlugins` is registered natively, every plugin `cap sync` bundled survived R8, screen orientation and device info come from the native plugins, the bundle mounts |
+| `notifications.spec.js` | an FCM data message (the payload `PushNotificationService` sends) reaches the WebView in the foreground and the shade; one that reaches the backgrounded app has it on `/chats` when the tap brings it back; a message without `channel_id` is ignored |
+| `deeplink.spec.js` | an `ilovefreegle.org` link opened from outside lands on that page in the app |
+| `test-post-flow.spec.js`, `test-reply-flow-logged-in.spec.js` | the web specs, unchanged, on the phone-sized WebView (`APP_SHARED_SPECS`) |
+
+## What a run does
+
+1. **Build** (`build-apk.sh`): `npm run generate` with the release job's exports (the orb's
+   `build-android` step) and the stack's URLs in place of the live ones, then
+   `FREEGLE_APP_E2E=true npx cap sync android` and `gradlew assembleE2e`. The `e2e` build
+   type (`android/app/build.gradle`) is the release configuration, R8 included, signed with
+   the debug key; `src/e2e/AndroidManifest.xml` permits cleartext for the stack's http
+   API, and the Capacitor switch turns on WebView remote debugging and mixed content.
+   `GOOGLE_SERVICES_JSON_BASE64` (the CI secret) becomes `google-services.json`; without
+   it a placeholder is used so Firebase initialises (push *registration* then fails with
+   the plugin's `registrationError`; push *delivery* is tested without Firebase).
+2. **Boot** (`start-emulator.sh`): a cold headless boot of the `freegle-app-e2e` AVD
+   (Pixel 6, API 34, `google_apis`, not the Play Store image, because the run needs
+   `adb root`). Animations off, screen kept on, adbd restarted as root.
+3. **Launch** (`launch-app.sh`): `adb reverse` from the device's traefik port to the host's,
+   so the URLs baked into the bundle (`http://apiv2.localhost:<port>/api`) reach the stack
+   (Chromium resolves `*.localhost` to loopback itself); a fresh install with runtime
+   permissions granted; `am start`; wait for the WebView devtools socket.
+4. **Test**: `npx playwright test --project app --workers 1`. The fixtures attach to the
+   app's WebView through Playwright's Android support (`_android`), reset web storage and
+   reload from the app's origin before each test, and expose the device through
+   `tests/e2e/app/device.js` (adb shell, uiautomator, the notification shade, fake FCM,
+   deep links).
+5. **Evidence** in `~/.local/share/freegle-app-e2e/out/run-<timestamp>/` (`latest` points at
+   it): Playwright's report and junit, screenshots and failure evidence, `logcat.txt`,
+   `emulator.log`, `final-screen.png`. CI stores it under the `app-emulator` artifact.
+6. **Stop** what the run started. `--keep` leaves the emulator up.
+
+## Running it locally
+
+```bash
+scripts/app-e2e/doctor.sh                 # what this host is missing, with the fix for each
+scripts/app-e2e/setup-sdk.sh              # ~2 GB into ~/.local/share/freegle-android-sdk (JDK 17+ needed)
+scripts/app-e2e/create-avd.sh
+scripts/app-e2e/run.sh                    # build, boot, install, test, stop
+scripts/app-e2e/run.sh --no-build --keep -- tests/e2e/app/plugins.spec.js
+```
+
+The stack must be up (`apiv2` and the status API answer). The scripts read
+`PORT_TRAEFIK_HTTP` and `PORT_STATUS` from the environment, then from the checkout's
+`.env`, then default to 80 and 8081. A machine with an Android Studio SDK can point
+`ANDROID_SDK_ROOT` at it; the build also needs the compile platform and build-tools,
+which Gradle downloads once the licences are accepted by `setup-sdk.sh`.
+
+`/dev/kvm` is required. Under WSL2 that means `nestedVirtualization=true` in
+`.wslconfig`; on a cloud runner, nested virtualisation.
+
+## Traps
+
+- **`chromium.connectOverCDP` through `adb forward` drops the connection** as soon as
+  Playwright attaches to the WebView's browser target. `playwright._android` (device,
+  `webView({ pkg })`, `page()`) is the path that works, and it needs no forward.
+- **The WebView has no cookie management over CDP** (`Browser context management is not
+  supported`). Storage is cleared in the page and the app reloaded; `clearSessionData`
+  tolerates the error.
+- **A Play Store image refuses `adb root`**, which the run needs twice: to bind device
+  port 80 for the reverse tunnel, and to deliver the FCM broadcast (its receiver is
+  guarded by a Google-only permission). Use `google_apis`.
+- **Without any `google-services.json` the app dies on launch**: the push plugin's
+  `register()` throws `Default FirebaseApp is not initialized` on a plugin thread. Hence
+  the placeholder.
+- **An `adb logcat` left running holds the emulator lock**: `run.sh` starts adb itself
+  (not a subshell) with the lock descriptor closed, and kills it on exit.
+- **Quoting through `adb shell`**: values with spaces must be quoted for the device shell,
+  not only the local one, or the extras after the first space are lost. `device.js` does
+  this; a hand-typed `am broadcast` needs the whole command in one quoted string.

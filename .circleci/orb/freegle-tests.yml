@@ -5130,6 +5130,93 @@ jobs:
           name: Auto-promote Beta to Production
           command: bundle exec fastlane android auto_promote
 
+  # The Android app on an emulator against the local stack: scripts/app-e2e/run.sh in
+  # the repository builds the app's e2e variant, boots a headless emulator (KVM) and
+  # runs the Playwright `app` project through the app's WebView. It gates the
+  # promote workflow (manual-promote-submit), so it runs before anything reaches a
+  # live store track, and on demand through the run_app_emulator_test parameter.
+  # The stack comes up exactly as build-and-test brings it up; the emulator and
+  # the build run on the runner host, which must expose /dev/kvm.
+  app-emulator-tests:
+    executor: machine-executor-katapult
+    steps:
+      - run:
+          name: Reset idle-check on Katapult VMs
+          command: |
+            if [ ! -f /usr/local/bin/idle-check.sh ]; then exit 0; fi
+            sudo rm -f /tmp/.runner-idle-since
+            sudo sed -i -E 's/IDLE_SECONDS" -gt [0-9]+/IDLE_SECONDS" -gt 2100/' /usr/local/bin/idle-check.sh
+            sudo sed -i -E 's/UPTIME_SECONDS" -gt [0-9]+/UPTIME_SECONDS" -gt 9000/' /usr/local/bin/idle-check.sh
+            echo "Idle-check: cleared idle marker, patched thresholds (idle=2100s abs-age=9000s)"
+      - run:
+          name: Fix file ownership before checkout
+          command: |
+            docker compose down --remove-orphans 2>/dev/null || true
+            sudo rm -rf logs test-results ssl/certs status/data 2>/dev/null || true
+            sudo chown -R $(id -u):$(id -g) . 2>/dev/null || true
+      - checkout
+      - run:
+          name: Pre-create runtime directories
+          command: |
+            mkdir -p ssl/certs logs data status/data test-results
+            echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml"' >> $BASH_ENV
+      - run:
+          name: Check the host can run an emulator
+          command: |
+            if [ ! -e /dev/kvm ]; then
+              echo "No /dev/kvm on this runner: the emulator cannot run here."
+              echo "The gate needs a runner with nested virtualisation (see scripts/app-e2e/README.md)."
+              exit 1
+            fi
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm
+      - run:
+          name: Install JDK, Node.js 22 and the Android SDK
+          no_output_timeout: 20m
+          command: |
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq openjdk-21-jdk-headless unzip curl >/dev/null
+            if curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh \
+               && sudo -E bash /tmp/nodesource_setup.sh \
+               && sudo apt-get install -y nodejs; then
+              echo "Installed Node.js via NodeSource"
+            else
+              echo "NodeSource unavailable - installing Node 22 from nodejs.org"
+              NODE_TARBALL=$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt \
+                | grep -oE 'node-v22\.[0-9]+\.[0-9]+-linux-x64\.tar\.gz' | head -1)
+              curl -fsSLO "https://nodejs.org/dist/latest-v22.x/${NODE_TARBALL}"
+              sudo tar -xzf "${NODE_TARBALL}" -C /usr/local --strip-components=1
+            fi
+            node --version
+            java -version
+            bash scripts/app-e2e/setup-sdk.sh
+            bash scripts/app-e2e/create-avd.sh
+      - setup-dependencies
+      - start-docker-services:
+          reason: "Starting the stack for the app emulator tests"
+      - wait-for-basic-services
+      - run:
+          name: Build the app and run the Playwright app project on the emulator
+          no_output_timeout: 45m
+          command: |
+            bash scripts/app-e2e/run.sh
+      - run:
+          name: Collect app emulator evidence
+          when: always
+          command: |
+            mkdir -p ~/app-e2e-artifacts
+            latest="$HOME/.local/share/freegle-app-e2e/out/latest"
+            if [ -d "$latest" ]; then
+              cp -rL "$latest/." ~/app-e2e-artifacts/ 2>/dev/null || true
+            fi
+            docker ps --format 'table {{.Names}}\t{{.Status}}' > ~/app-e2e-artifacts/docker-ps.txt 2>&1 || true
+            ls -la ~/app-e2e-artifacts
+      - store_test_results:
+          path: ~/app-e2e-artifacts/junit.xml
+      - store_artifacts:
+          path: ~/app-e2e-artifacts
+          destination: app-emulator
+
   auto-submit-ios:
     executor: macos-executor
     working_directory: ~/project/iznik-nuxt3

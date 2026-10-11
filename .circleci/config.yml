@@ -19,6 +19,10 @@ parameters:
     type: boolean
     default: false
     description: "Set to true to manually build and publish ModTools to Play Store / TestFlight"
+  run_app_emulator_test:
+    type: boolean
+    default: false
+    description: "Set to true to run the Android app emulator tests on their own (the promote workflow runs them itself)"
 
 orbs:
   continuation: circleci/continuation@2
@@ -51,7 +55,8 @@ jobs:
             # cancelling deploy-apps would kill production build-android/build-ios jobs.
             if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || \
                [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
-               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ]; then
+               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ] || \
+               [ "<< pipeline.parameters.run_app_emulator_test >>" = "true" ]; then
               echo "Manual workflow trigger — skipping pipeline cancellation"
               exit 0
             fi
@@ -138,8 +143,10 @@ jobs:
             # forwards trigger parameters to the continuation pipeline when the same parameter
             # name is defined in both configs. Re-passing them causes "Conflicting pipeline
             # parameters". Only use_self_hosted needs to be set explicitly here.
-            if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || \
-               [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
+            # The promote and the on-demand emulator pipelines are the exception: their
+            # freegle/app-emulator-tests job runs on the ephemeral runner, so they fall
+            # through to the provisioning below like a normal push.
+            if [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
                [ "<< pipeline.parameters.build_modtools_production >>" = "true" ]; then
               echo "Manual workflow trigger — skipping self-hosted runner check"
               echo "{\"use_self_hosted\": false}" > /tmp/pipeline-params.json
@@ -337,7 +344,8 @@ jobs:
             # clean, uncontested run.
             if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || \
                [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
-               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ]; then
+               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ] || \
+               [ "<< pipeline.parameters.run_app_emulator_test >>" = "true" ]; then
               echo "Manual workflow trigger — skipping pipeline cancellation"
 
               SIBLINGS=$(curl -sf \

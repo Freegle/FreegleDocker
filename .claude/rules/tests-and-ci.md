@@ -250,6 +250,23 @@ genuinely on different lines.
 When master is red across many builds, pin the breaking commit by which **test** fails per
 build, not by bisecting the boundary.
 
+## The app emulator gate (`scripts/app-e2e`, Playwright project `app`)
+
+- **A green browser suite says nothing about the app.** The same code runs with a different
+  plugin set, origin and WebView; `tests/e2e/app/plugins.spec.js` is the check that a plugin
+  in `includePlugins` is really registered natively.
+- **`chromium.connectOverCDP` into the WebView drops with code 1006** the moment Playwright
+  attaches. Only `playwright._android` works, and it needs no `adb forward`.
+- **The app dies on launch without any `google-services.json`**: the push plugin's
+  `register()` throws on a plugin thread. The placeholder in `scripts/app-e2e` keeps a
+  machine without the CI secret running; push registration then fails by design.
+- **A Play Store system image refuses `adb root`**, and without root the device cannot bind
+  port 80 for the reverse tunnel or accept the FCM broadcast. The AVD is `google_apis`.
+- **A signed-out app answering 401 looks like a Sentry error** in the console-error check;
+  the resume handler in `stores/mobile.js` now fetches nothing while nobody is signed in.
+- **A background `adb logcat` holds the emulator lock** if it inherits the lock descriptor;
+  a later run then waits 45 minutes for a lock nobody will release.
+
 ## See also
 
 - `docs/developers/testing.md` - the four suites and how to run them.
