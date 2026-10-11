@@ -4,8 +4,9 @@
       Hide Help
     </b-button>
     <p class="mb-0">
-      Every live post on your group(s). Check is a focused oversight subset of
-      this: the posts that went live by themselves and nobody has looked at.
+      Every live post on your communities. On communities in the trial, Check
+      holds the ones that went live by themselves and that nobody has looked at
+      yet.
     </p>
   </NoticeMessage>
   <b-button

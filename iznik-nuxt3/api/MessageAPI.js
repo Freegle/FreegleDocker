@@ -81,8 +81,9 @@ export default class MessageAPI extends BaseAPI {
     return this.$getv2('/modtools/messages', params)
   }
 
-  // Mark auto-published posts (Checked/Trusted oversight queues) as reviewed by a
-  // moderator. Pass {groupid, filter} to clear a whole bucket, or {groupid, ids}.
+  // Mark auto-published posts (the Check oversight queue) as reviewed by a moderator. Pass
+  // {groupid, ids} for the posts a moderator has looked at, or {groupid, ids, reject: true} to
+  // pull them back to Pending. {groupid, filter} clears a whole bucket; ModTools does not use it.
   markChecked(params) {
     return this.$postv2('/modtools/messages/markchecked', params)
   }
@@ -95,6 +96,11 @@ export default class MessageAPI extends BaseAPI {
   // Records that a moderator thinks one node of an automated review decision was wrong.
   automodFeedback(params) {
     return this.$postv2('/modtools/automod/feedback', params)
+  }
+
+  // Takes back the caller's own mark on that node; the body is the same {msgid, groupid, node}.
+  automodFeedbackUndo(params) {
+    return this.$delv2('/modtools/automod/feedback', params)
   }
 
   // SysAdmin automated review agreement analytics for the last N days.

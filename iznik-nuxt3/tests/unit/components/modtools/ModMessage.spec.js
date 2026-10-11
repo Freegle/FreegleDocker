@@ -361,6 +361,8 @@ describe('ModMessage', () => {
               'cantpost',
               'groupid',
               'groupids',
+              'oversight',
+              'checkGroupid',
             ],
           },
           'b-form-checkbox': {
@@ -2814,6 +2816,187 @@ describe('ModMessage', () => {
       ).toMatch(/Auto-approves in ~3h/)
     })
 
+    // The badge is the text the feature exists to show, so it has to be readable: the
+    // notice palette, not Bootstrap's yellow text on white (1.6:1).
+    it('is a readable badge, announced as a timer', () => {
+      const soon = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+      const wrapper = mountComponent({}, { groups: pendingGroups(soon) })
+      const badge = wrapper.find('[data-testid="autoapprove-countdown"]')
+      expect(badge.attributes('role')).toBe('timer')
+      expect(badge.classes()).toEqual(
+        expect.arrayContaining(['badge', 'bg-warning', 'text-dark'])
+      )
+      expect(badge.classes()).not.toContain('text-warning')
+    })
+
+    it('keeps the far-off countdown muted and the due one readable', () => {
+      const later = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()
+      const far = mountComponent({}, { groups: pendingGroups(later) })
+      expect(
+        far.find('[data-testid="autoapprove-countdown"]').classes()
+      ).toContain('text-muted')
+
+      const past = new Date(Date.now() - 5000).toISOString()
+      const due = mountComponent({}, { groups: pendingGroups(past) })
+      const badge = due.find('[data-testid="autoapprove-countdown"]')
+      expect(badge.classes()).toEqual(
+        expect.arrayContaining(['badge', 'bg-info', 'text-dark'])
+      )
+      expect(badge.classes()).not.toContain('text-info')
+    })
+
+    // The list reload gives every post it loads at least 10 more minutes, so the time on
+    // the card goes back up. Say so on the card, not only in the page's help box.
+    it('explains the ten minute hold on the card', () => {
+      const soon = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+      const wrapper = mountComponent({}, { groups: pendingGroups(soon) })
+      const title = wrapper
+        .find('[data-testid="autoapprove-countdown"]')
+        .attributes('title')
+      expect(title).toContain('10 minutes')
+      expect(title).toContain('unless you act first')
+    })
+
+    it('says what the due badge means', () => {
+      const past = new Date(Date.now() - 5000).toISOString()
+      const wrapper = mountComponent({}, { groups: pendingGroups(past) })
+      expect(
+        wrapper
+          .find('[data-testid="autoapprove-countdown"]')
+          .attributes('title')
+      ).toContain('within a minute or two')
+    })
+
+    // The cron publishes within a minute of the time. A post still Pending long after it
+    // was not published for a reason the card cannot see, and a badge saying it is being
+    // approved is then wrong.
+    it('takes "Auto-approving..." down three minutes after it starts, and stops ticking', async () => {
+      vi.useFakeTimers()
+      try {
+        const clear = vi.spyOn(globalThis, 'clearInterval')
+        const soon = new Date(Date.now() + 5 * 1000).toISOString()
+        const wrapper = mountComponent({}, { groups: pendingGroups(soon) })
+        expect(
+          wrapper.find('[data-testid="autoapprove-countdown"]').exists()
+        ).toBe(true)
+
+        await vi.advanceTimersByTimeAsync(10 * 1000)
+        expect(
+          wrapper.find('[data-testid="autoapprove-countdown"]').text()
+        ).toBe('Auto-approving…')
+
+        await vi.advanceTimersByTimeAsync(2 * 60 * 1000)
+        expect(
+          wrapper.find('[data-testid="autoapprove-countdown"]').exists()
+        ).toBe(true)
+
+        await vi.advanceTimersByTimeAsync(60 * 1000)
+        expect(
+          wrapper.find('[data-testid="autoapprove-countdown"]').exists()
+        ).toBe(false)
+        expect(clear).toHaveBeenCalled()
+
+        const setSpy = vi.spyOn(globalThis, 'setInterval')
+        await vi.advanceTimersByTimeAsync(5000)
+        expect(setSpy).not.toHaveBeenCalled()
+        wrapper.unmount()
+        clear.mockRestore()
+        setSpy.mockRestore()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('shows no badge at all for a countdown that ran out long ago', () => {
+      const longAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      const wrapper = mountComponent({}, { groups: pendingGroups(longAgo) })
+      expect(
+        wrapper.find('[data-testid="autoapprove-countdown"]').exists()
+      ).toBe(false)
+    })
+
+    it('does not start ticking for a countdown that ran out long ago', () => {
+      vi.useFakeTimers()
+      try {
+        const spy = vi.spyOn(globalThis, 'setInterval')
+        const longAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+        mountComponent({}, { groups: pendingGroups(longAgo) })
+        expect(spy).not.toHaveBeenCalled()
+        spy.mockRestore()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    // The countdown is the soonest of the copies I can speak for, which may not be the
+    // community the card is anchored to. Say whose it is.
+    it('names the community when the countdown is not the one the card is about', () => {
+      const sooner = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      const later = new Date(Date.now() + 40 * 60 * 1000).toISOString()
+      const wrapper = mountComponent(
+        {},
+        {
+          groups: [
+            {
+              groupid: 789,
+              collection: 'Pending',
+              rippled_in: 0,
+              arrival: '2026-10-11T10:00:00Z',
+              autoapproveat: later,
+            },
+            {
+              groupid: 790,
+              collection: 'Pending',
+              rippled_in: 0,
+              arrival: '2026-10-11T10:00:05Z',
+              autoapproveat: sooner,
+            },
+          ],
+        }
+      )
+      expect(wrapper.vm.currentGroupid).toBe(789)
+      expect(
+        wrapper.find('[data-testid="autoapprove-countdown"]').text()
+      ).toMatch(/Auto-approves in \d+m \d{2}s \(on Group 790\)/)
+    })
+
+    it('does not name the community when the countdown is the card community itself', () => {
+      const soon = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      const wrapper = mountComponent({}, { groups: pendingGroups(soon) })
+      expect(
+        wrapper.find('[data-testid="autoapprove-countdown"]').text()
+      ).not.toContain('(on ')
+    })
+
+    it('prefers the anchored community when two countdowns are the same', () => {
+      const same = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      const wrapper = mountComponent(
+        {},
+        {
+          groups: [
+            {
+              groupid: 790,
+              collection: 'Pending',
+              rippled_in: 0,
+              arrival: '2026-10-11T10:00:05Z',
+              autoapproveat: same,
+            },
+            {
+              groupid: 789,
+              collection: 'Pending',
+              rippled_in: 0,
+              arrival: '2026-10-11T10:00:00Z',
+              autoapproveat: same,
+            },
+          ],
+        }
+      )
+      expect(wrapper.vm.currentGroupid).toBe(789)
+      expect(
+        wrapper.find('[data-testid="autoapprove-countdown"]').text()
+      ).not.toContain('(on ')
+    })
+
     it('only ticks while there is a countdown to show', async () => {
       vi.useFakeTimers()
       try {
@@ -2876,6 +3059,85 @@ describe('ModMessage', () => {
       expect(wrapper.vm.currentGroupid).toBe(790)
     })
 
+    // After a pull back the post is Pending, held by me, on the community I pulled it from.
+    // A copy that stays Approved elsewhere (another community's moderator approved it, or I
+    // had checked it) must not take the card back: it is the pulled back copy I act on.
+    describe('after a pull back', () => {
+      afterEach(() => {
+        delete mockMessageStore.pulledBack
+      })
+
+      const pulled = (survivor) => [
+        {
+          groupid: 789,
+          collection: 'Pending',
+          heldby: 999,
+          approvedby: 0,
+          rippled_in: 0,
+          arrival: '2026-10-11T10:00:00Z',
+        },
+        {
+          groupid: 790,
+          collection: 'Approved',
+          rippled_in: 0,
+          arrival: '2026-10-11T10:00:05Z',
+          ...survivor,
+        },
+      ]
+
+      it('anchors to the pulled back copy, not a hand-approved copy that stayed live', () => {
+        mockMessageStore.pulledBack = { 123: true }
+        const wrapper = mountComponent(
+          { oversight: true, collection: 'Approved' },
+          { groups: pulled({ approvedby: 55 }) }
+        )
+        expect(wrapper.vm.currentGroupid).toBe(789)
+        expect(wrapper.vm.pending).toBe(true)
+      })
+
+      it('anchors to the pulled back copy, not a copy I had already checked', () => {
+        mockMessageStore.pulledBack = { 123: true }
+        const wrapper = mountComponent(
+          { oversight: true, collection: 'Approved' },
+          { groups: pulled({ approvedby: null }) }
+        )
+        expect(wrapper.vm.currentGroupid).toBe(789)
+      })
+
+      it('anchors to the copy I hold when several came back', () => {
+        mockMessageStore.pulledBack = { 123: true }
+        const wrapper = mountComponent(
+          { oversight: true, collection: 'Approved' },
+          {
+            groups: [
+              {
+                groupid: 789,
+                collection: 'Pending',
+                rippled_in: 0,
+                arrival: '2026-10-11T10:00:00Z',
+              },
+              {
+                groupid: 790,
+                collection: 'Pending',
+                heldby: 999,
+                rippled_in: 0,
+                arrival: '2026-10-11T10:00:05Z',
+              },
+            ],
+          }
+        )
+        expect(wrapper.vm.currentGroupid).toBe(790)
+      })
+
+      it('behaves as before for a card nobody pulled back', () => {
+        const wrapper = mountComponent(
+          { oversight: true, collection: 'Approved' },
+          { groups: pulled({ approvedby: 55 }) }
+        )
+        expect(wrapper.vm.currentGroupid).toBe(790)
+      })
+    })
+
     it('falls back to the usual pick when no copy matches the Check filter', () => {
       const wrapper = mountComponent(
         { oversight: true, collection: 'Approved' },
@@ -2891,6 +3153,35 @@ describe('ModMessage', () => {
         }
       )
       expect(wrapper.vm.currentGroupid).toBe(789)
+    })
+  })
+
+  // Checked marks a post looked at for the community the Check page is filtered to, or for
+  // all of mine when it is not, the same scope as the page's own button.
+  describe('the buttons on a Check card', () => {
+    it('are given the community the page is filtered to', async () => {
+      const wrapper = mountComponent(
+        { oversight: true, contextGroupid: 789 },
+        { groups: [{ groupid: 789, collection: 'Approved' }] }
+      )
+      // expanded starts false and is flipped to true in a mounted hook.
+      await wrapper.vm.$nextTick()
+      const buttons = wrapper.findComponent({ name: 'ModMessageButtons' })
+      expect(buttons.props('oversight')).toBe(true)
+      expect(buttons.props('checkGroupid')).toBe(789)
+    })
+
+    it('are given 0 for all my communities when the page is not filtered', async () => {
+      const wrapper = mountComponent(
+        { oversight: true },
+        { groups: [{ groupid: 789, collection: 'Approved' }] }
+      )
+      await wrapper.vm.$nextTick()
+      expect(
+        wrapper
+          .findComponent({ name: 'ModMessageButtons' })
+          .props('checkGroupid')
+      ).toBe(0)
     })
   })
 
@@ -2912,6 +3203,98 @@ describe('ModMessage', () => {
       )
       const line = wrapper.findComponent({ name: 'ModAutomodLine' })
       expect(line.props('pending')).toBe(false)
+    })
+
+    // One line per card, but a post can be on a community in the trial and on a neighbour
+    // outside it. The line is about the copy that has a review to show, wherever the card
+    // is anchored, or the countdown beside it has nothing to explain it.
+    describe('on a card for a community outside the trial and one inside', () => {
+      let savedGroups
+      beforeEach(() => {
+        savedGroups = mockAuthStore.groups
+        mockAuthStore.groups = [
+          { groupid: 789, configid: 1 },
+          { groupid: 790, configid: 1, autoapprovetrial: true, automod: true },
+        ]
+        mockMyModGroups.push({
+          id: 790,
+          mysettings: { configid: 1 },
+          settings: {},
+        })
+      })
+      afterEach(() => {
+        mockAuthStore.groups = savedGroups
+        mockMyModGroups.pop()
+      })
+
+      const both = (first, second) => [
+        {
+          groupid: 789,
+          collection: 'Pending',
+          rippled_in: 0,
+          arrival: '2026-10-11T10:00:00Z',
+          ...first,
+        },
+        {
+          groupid: 790,
+          collection: 'Pending',
+          rippled_in: 0,
+          arrival: '2026-10-11T10:00:05Z',
+          automod: { verdict: 'approve', mode: 'approve', end: 'APPROVE' },
+          ...second,
+        },
+      ]
+
+      it('shows the review of the copy that has one when the card is anchored elsewhere', () => {
+        const wrapper = mountComponent({}, { groups: both({}, {}) })
+        expect(wrapper.vm.currentGroupid).toBe(789)
+        const line = wrapper.findComponent({ name: 'ModAutomodLine' })
+        expect(line.props('groupid')).toBe(790)
+        expect(line.props('pending')).toBe(true)
+      })
+
+      it('uses the review of the community in the trial that has no decision yet too', () => {
+        const wrapper = mountComponent(
+          {},
+          { groups: both({}, { automod: undefined }) }
+        )
+        const line = wrapper.findComponent({ name: 'ModAutomodLine' })
+        expect(line.props('groupid')).toBe(790)
+      })
+
+      it('keeps the anchored community when that is the one in the trial', () => {
+        const wrapper = mountComponent(
+          { contextGroupid: 790 },
+          { groups: both({}, {}) }
+        )
+        const line = wrapper.findComponent({ name: 'ModAutomodLine' })
+        expect(line.props('groupid')).toBe(790)
+      })
+
+      it('says whether that copy is pending, not whether the anchored one is', () => {
+        const wrapper = mountComponent(
+          {},
+          {
+            groups: both({ collection: 'Approved' }, { collection: 'Pending' }),
+          }
+        )
+        const line = wrapper.findComponent({ name: 'ModAutomodLine' })
+        expect(line.props('groupid')).toBe(790)
+        expect(line.props('pending')).toBe(true)
+      })
+
+      it('stays on the anchored community when none of my copies has a review', () => {
+        mockAuthStore.groups = [
+          { groupid: 789, configid: 1 },
+          { groupid: 790, configid: 1 },
+        ]
+        const wrapper = mountComponent(
+          {},
+          { groups: both({}, { automod: undefined }) }
+        )
+        const line = wrapper.findComponent({ name: 'ModAutomodLine' })
+        expect(line.props('groupid')).toBe(wrapper.vm.currentGroupid)
+      })
     })
   })
 })

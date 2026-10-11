@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import ModMessageButtons from '~/modtools/components/ModMessageButtons.vue'
 
@@ -10,6 +10,9 @@ import ModMessageButtons from '~/modtools/components/ModMessageButtons.vue'
 // already folds in the Support/Admin exemption, so this component only has
 // to ask it one question.
 const mockModsHeld = ref(false)
+
+// A stand-in for the callback a SpinButton hands its handler to stop the spinner.
+const mockSpinnerFinished = vi.fn()
 
 vi.mock('~/modtools/composables/useLockdown', () => ({
   useLockdown: () => ({ modsHeld: mockModsHeld, held: () => false }),
@@ -25,13 +28,20 @@ vi.mock('~/modtools/composables/useAutoapproveTrial', () => ({
   }),
 }))
 
+// The Check card refreshes the menu counts once it has acted.
+const mockCheckWork = vi.fn().mockResolvedValue()
+vi.mock('~/composables/useModMe', () => ({
+  useModMe: () => ({ checkWork: mockCheckWork }),
+}))
+
 // Mock stores and composables before vi.mock calls using vi.hoisted
 const { mockMessageStore, mockModConfigStore } = vi.hoisted(() => {
   const mockMessageStore = {
     byId: vi.fn(),
     fetch: vi.fn().mockResolvedValue(),
     updateMT: vi.fn().mockResolvedValue(),
-    rejectFromOversight: vi.fn().mockResolvedValue(),
+    rejectFromOversight: vi.fn().mockResolvedValue(1),
+    markCheckedPost: vi.fn().mockResolvedValue(1),
   }
   const mockModConfigStore = {
     configsById: {},
@@ -159,8 +169,20 @@ describe('ModMessageButtons', () => {
     },
     SpinButton: {
       template:
-        '<button class="spin-button" @click="$emit(\'handle\', () => {})"><slot />{{ label }}</button>',
-      props: ['variant', 'iconName', 'label', 'confirm', 'flex'],
+        '<button class="spin-button" :disabled="disabled" @click="$emit(\'handle\', mockFinish)"><slot />{{ label }}</button>',
+      props: ['variant', 'iconName', 'label', 'confirm', 'flex', 'disabled'],
+      data: () => ({ mockFinish: (...args) => mockSpinnerFinished(...args) }),
+    },
+    // Confirms by a click on its own button, as the real one confirms on its footer button.
+    ConfirmModal: {
+      template:
+        '<div class="confirm-modal"><span class="confirm-title">{{ title }}</span><slot /><button class="confirm-yes" @click="$emit(\'confirm\')">{{ confirmLabel }}</button></div>',
+      props: ['title', 'confirmLabel'],
+      emits: ['confirm', 'hidden'],
+    },
+    NoticeMessage: {
+      template: '<div class="notice-message" :class="variant"><slot /></div>',
+      props: ['variant'],
     },
     OurToggle: {
       template: '<div class="our-toggle">{{ labels.checked }}</div>',
@@ -218,6 +240,10 @@ describe('ModMessageButtons', () => {
     // Reset configsById
     mockModConfigStore.configsById = {}
     mockModsHeld.value = false
+    mockMessageStore.rejectFromOversight.mockResolvedValue(1)
+    mockMessageStore.markCheckedPost.mockResolvedValue(1)
+    mockCheckWork.mockResolvedValue()
+    mockIsTrialGroup.mockReturnValue(true)
   })
 
   describe('rendering', () => {
@@ -993,78 +1019,215 @@ describe('ModMessageButtons', () => {
     })
   })
 
-  describe('oversight context (checked/trusted pages)', () => {
-    function rejectBtn(wrapper) {
-      const btn = wrapper.find('[data-testid="oversight-reject"]')
+  describe('oversight context (the Check queue)', () => {
+    const live = (extra = {}) => [
+      { groupid: 456, collection: 'Approved', ...extra },
+    ]
+    const pullBackBtn = (wrapper) => {
+      const btn = wrapper.find('[data-testid="oversight-pullback"]')
+      return btn.exists() ? btn : undefined
+    }
+    const checkedBtn = (wrapper) => {
+      const btn = wrapper.find('[data-testid="oversight-checked"]')
       return btn.exists() ? btn : undefined
     }
 
-    it('shows Reject when oversight=true and the message is Approved', () => {
-      const wrapper = mountComponent(
-        { oversight: true },
-        { groups: [{ groupid: 456, collection: 'Approved' }] }
-      )
-      expect(rejectBtn(wrapper)).toBeDefined()
+    it('shows Pull back and Checked when oversight=true and the message is Approved', () => {
+      const wrapper = mountComponent({ oversight: true }, { groups: live() })
+      expect(pullBackBtn(wrapper)).toBeDefined()
+      expect(checkedBtn(wrapper)).toBeDefined()
+      expect(pullBackBtn(wrapper).text()).toContain('Pull back')
+      expect(checkedBtn(wrapper).text()).toContain('Checked')
     })
 
-    it('does NOT show Reject when oversight is false (default) for Approved', () => {
-      const wrapper = mountComponent(
-        {},
-        { groups: [{ groupid: 456, collection: 'Approved' }] }
-      )
-      expect(rejectBtn(wrapper)).toBeUndefined()
+    it('does not call the button Reject: it does not reject, it pulls the post back', () => {
+      const wrapper = mountComponent({ oversight: true }, { groups: live() })
+      expect(pullBackBtn(wrapper).text()).not.toContain('Reject')
+    })
+
+    it('shows neither when oversight is false (default) for Approved', () => {
+      const wrapper = mountComponent({}, { groups: live() })
+      expect(pullBackBtn(wrapper)).toBeUndefined()
+      expect(checkedBtn(wrapper)).toBeUndefined()
     })
 
     // The Check list is copies with no approvedby, posted directly, on a trial
     // community. A copy outside that - one a moderator approved by hand, a rippled-in
     // copy, or a neighbouring community outside the trial - was never in Check and must
     // not be pulled back from it, even when the card shows both copies of a cross-post.
-    it('does NOT show Reject on a copy a moderator approved by hand', () => {
+    it('shows neither on a copy a moderator approved by hand', () => {
       const wrapper = mountComponent(
         { oversight: true, groupid: 456 },
-        { groups: [{ groupid: 456, collection: 'Approved', approvedby: 77 }] }
+        { groups: live({ approvedby: 77 }) }
       )
-      expect(rejectBtn(wrapper)).toBeUndefined()
+      expect(pullBackBtn(wrapper)).toBeUndefined()
+      expect(checkedBtn(wrapper)).toBeUndefined()
     })
 
-    it('does NOT show Reject on a rippled-in copy', () => {
+    it('shows neither on a rippled-in copy', () => {
       const wrapper = mountComponent(
         { oversight: true, groupid: 456 },
-        { groups: [{ groupid: 456, collection: 'Approved', rippled_in: 1 }] }
+        { groups: live({ rippled_in: 1 }) }
       )
-      expect(rejectBtn(wrapper)).toBeUndefined()
+      expect(pullBackBtn(wrapper)).toBeUndefined()
+      expect(checkedBtn(wrapper)).toBeUndefined()
     })
 
-    it('does NOT show Reject on a community outside the trial', () => {
-      mockIsTrialGroup.mockReturnValueOnce(false)
+    it('shows neither on a community outside the trial', () => {
+      mockIsTrialGroup.mockReturnValue(false)
       const wrapper = mountComponent(
         { oversight: true, groupid: 456 },
-        { groups: [{ groupid: 456, collection: 'Approved' }] }
+        { groups: live() }
       )
-      expect(rejectBtn(wrapper)).toBeUndefined()
+      mockIsTrialGroup.mockReturnValue(true)
+      expect(pullBackBtn(wrapper)).toBeUndefined()
+      expect(checkedBtn(wrapper)).toBeUndefined()
       expect(mockIsTrialGroup).toHaveBeenCalledWith(456)
     })
 
-    it('does NOT show Reject for Pending even with oversight=true', () => {
+    it('shows neither for Pending even with oversight=true', () => {
       const wrapper = mountComponent(
         { oversight: true },
         { groups: [{ groupid: 456, collection: 'Pending' }] }
       )
-      expect(rejectBtn(wrapper)).toBeUndefined()
+      expect(pullBackBtn(wrapper)).toBeUndefined()
+      expect(checkedBtn(wrapper)).toBeUndefined()
     })
 
-    it('calls rejectFromOversight with messageid and groupid on click', async () => {
+    // While the mods surface is held the dangerous buttons are hidden. Pulling a post back
+    // withdraws copies, and a check lifts the hold on spreading: neither is for a lockdown.
+    it('hides both while the moderators surface is held', () => {
+      mockModsHeld.value = true
       const wrapper = mountComponent(
         { oversight: true, groupid: 456 },
-        { id: 123, groups: [{ groupid: 456, collection: 'Approved' }] }
+        { groups: live() }
       )
-      const btn = rejectBtn(wrapper)
-      expect(btn).toBeDefined()
-      await btn.trigger('click')
-      expect(mockMessageStore.rejectFromOversight).toHaveBeenCalledWith(
-        123,
-        456
-      )
+      expect(pullBackBtn(wrapper)).toBeUndefined()
+      expect(checkedBtn(wrapper)).toBeUndefined()
+    })
+
+    describe('Pull back', () => {
+      const open = async () => {
+        const wrapper = mountComponent(
+          { oversight: true, groupid: 456 },
+          { id: 123, groups: live() }
+        )
+        await pullBackBtn(wrapper).trigger('click')
+        return wrapper
+      }
+
+      it('asks first, and says what it does, before touching the post', async () => {
+        const wrapper = await open()
+        expect(mockMessageStore.rejectFromOversight).not.toHaveBeenCalled()
+        const modal = wrapper.find('.confirm-modal')
+        expect(modal.exists()).toBe(true)
+        expect(modal.find('.confirm-title').text()).toContain(
+          'Pull this post back'
+        )
+        const text = modal.text()
+        expect(text).toContain('held by you')
+        expect(text).toContain('Pending queue')
+        expect(text).toContain('already approved or checked')
+        expect(text).toContain('stops spreading')
+        expect(text).toContain('not told')
+      })
+
+      it('stops the spinner as soon as the question is up', async () => {
+        await open()
+        expect(mockSpinnerFinished).toHaveBeenCalled()
+      })
+
+      it('calls rejectFromOversight with messageid and groupid once confirmed, then refreshes the counts', async () => {
+        const wrapper = await open()
+        await wrapper.find('.confirm-yes').trigger('click')
+        await flushPromises()
+        expect(mockMessageStore.rejectFromOversight).toHaveBeenCalledWith(
+          123,
+          456
+        )
+        expect(mockCheckWork).toHaveBeenCalledWith(true)
+        expect(wrapper.find('[data-testid="oversight-note"]').exists()).toBe(
+          false
+        )
+      })
+
+      it('says so when the server pulled nothing back', async () => {
+        mockMessageStore.rejectFromOversight.mockResolvedValue(0)
+        const wrapper = await open()
+        await wrapper.find('.confirm-yes').trigger('click')
+        await flushPromises()
+        const note = wrapper.find('[data-testid="oversight-note"]')
+        expect(note.exists()).toBe(true)
+        expect(note.text()).toContain('Nothing was pulled back')
+        expect(note.text()).toContain('changed since')
+        expect(mockCheckWork).toHaveBeenCalledWith(true)
+      })
+
+      it('says so when the request fails, and can be tried again', async () => {
+        mockMessageStore.rejectFromOversight.mockRejectedValue(new Error('500'))
+        const wrapper = await open()
+        await wrapper.find('.confirm-yes').trigger('click')
+        await flushPromises()
+        expect(wrapper.find('[data-testid="oversight-note"]').text()).toContain(
+          "didn't go through"
+        )
+        expect(pullBackBtn(wrapper).attributes('disabled')).toBeUndefined()
+      })
+
+      it('does not ask again until the first answer is back', async () => {
+        let release
+        mockMessageStore.rejectFromOversight.mockReturnValue(
+          new Promise((resolve) => {
+            release = resolve
+          })
+        )
+        const wrapper = await open()
+        await wrapper.find('.confirm-yes').trigger('click')
+        await flushPromises()
+        expect(pullBackBtn(wrapper).attributes('disabled')).toBeDefined()
+        release(1)
+        await flushPromises()
+        expect(pullBackBtn(wrapper).attributes('disabled')).toBeUndefined()
+      })
+    })
+
+    describe('Checked', () => {
+      it('marks just that post, for the community the page is on, and refreshes the counts', async () => {
+        const wrapper = mountComponent(
+          { oversight: true, groupid: 456, checkGroupid: 456 },
+          { id: 123, groups: live() }
+        )
+        await checkedBtn(wrapper).trigger('click')
+        await flushPromises()
+        expect(mockMessageStore.markCheckedPost).toHaveBeenCalledWith(123, 456)
+        expect(mockCheckWork).toHaveBeenCalledWith(true)
+        expect(mockSpinnerFinished).toHaveBeenCalled()
+      })
+
+      it('asks for all my communities when the page is not filtered', async () => {
+        const wrapper = mountComponent(
+          { oversight: true, groupid: 456 },
+          { id: 123, groups: live() }
+        )
+        await checkedBtn(wrapper).trigger('click')
+        await flushPromises()
+        expect(mockMessageStore.markCheckedPost).toHaveBeenCalledWith(123, 0)
+      })
+
+      it('says so when it does not go through, and always stops the spinner', async () => {
+        mockMessageStore.markCheckedPost.mockRejectedValue(new Error('500'))
+        const wrapper = mountComponent(
+          { oversight: true, groupid: 456 },
+          { id: 123, groups: live() }
+        )
+        await checkedBtn(wrapper).trigger('click')
+        await flushPromises()
+        expect(wrapper.find('[data-testid="oversight-note"]').text()).toContain(
+          "didn't go through"
+        )
+        expect(mockSpinnerFinished).toHaveBeenCalled()
+        expect(mockCheckWork).not.toHaveBeenCalled()
+      })
     })
   })
 

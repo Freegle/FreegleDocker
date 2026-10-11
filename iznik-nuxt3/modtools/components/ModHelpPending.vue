@@ -4,12 +4,13 @@
       Hide Help
     </b-button>
     <p>
-      Posts waiting to go live. Clean posts from auto-moderated members publish
-      automatically after a short delay — the countdown on each post shows how
-      long you have. Opening this page guarantees at least 10 minutes on every
-      post, so nothing disappears while you're looking.
+      Posts waiting to go live. On communities in the trial, a clean post from
+      an auto-moderated member publishes by itself after a short delay, and the
+      countdown on the post shows how long you have. Opening this page gives
+      every one of those posts at least 10 more minutes, so nothing publishes
+      while you are looking.
     </p>
-    <p class="mb-0">Reject or hold anything that shouldn't go live.</p>
+    <p class="mb-0">Reject or hold anything that should not go live.</p>
   </NoticeMessage>
   <b-button
     v-else-if="inTrial"

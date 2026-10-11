@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
 import CheckPage from '~/modtools/pages/messages/check/[[id]].vue'
@@ -44,6 +44,22 @@ vi.mock('@/stores/message', () => ({
 const mockCheckWork = vi.fn().mockResolvedValue(undefined)
 vi.mock('~/composables/useModMe', () => ({
   useModMe: () => ({ checkWork: mockCheckWork }),
+}))
+
+// What the menu badge counts, and the communities of mine that have a Check queue.
+const mockAuthStore = { work: { checked: 0 } }
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => mockAuthStore,
+}))
+
+const mockTrialGroupIds = ref([3, 7])
+vi.mock('~/modtools/composables/useAutoapproveTrial', () => ({
+  useAutoapproveTrial: () => ({ trialGroupIds: mockTrialGroupIds }),
+}))
+
+const mockModsHeld = ref(false)
+vi.mock('~/modtools/composables/useLockdown', () => ({
+  useLockdown: () => ({ modsHeld: mockModsHeld }),
 }))
 
 const mockMiscStore = { get: vi.fn(), set: vi.fn() }
@@ -94,7 +110,27 @@ describe('messages/check/[[id]].vue page', () => {
           ScrollToTop: { template: '<div class="scroll-to-top" />' },
           ModGroupSelect: {
             template: '<div class="mod-group-select" />',
-            props: ['modelValue', 'all', 'modonly', 'remember', 'urlOverride'],
+            props: [
+              'modelValue',
+              'all',
+              'modonly',
+              'remember',
+              'urlOverride',
+              'onlyGroupids',
+            ],
+          },
+          'b-button': {
+            template:
+              '<button class="b-button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
+            props: ['variant', 'size', 'disabled'],
+            emits: ['click'],
+          },
+          // Confirms on its own button, as the real one does on its footer button.
+          ConfirmModal: {
+            template:
+              '<div class="confirm-modal"><span class="confirm-title">{{ title }}</span><slot /><button class="confirm-yes" @click="$emit(\'confirm\')">{{ confirmLabel }}</button></div>',
+            props: ['title', 'confirmLabel'],
+            emits: ['confirm', 'hidden'],
           },
           ModtoolsViewControl: {
             template: '<div class="modtools-view-control" />',
@@ -130,6 +166,10 @@ describe('messages/check/[[id]].vue page', () => {
     mockMessageStore.context = null
     mockMiscStore.get.mockReturnValue(undefined)
     mockRouteParams.value = { id: undefined, term: undefined }
+    mockAuthStore.work = { checked: 0 }
+    mockTrialGroupIds.value = [3, 7]
+    mockModsHeld.value = false
+    mockGroup.value = null
   })
 
   it('mounts and targets the Approved collection', () => {
@@ -176,5 +216,129 @@ describe('messages/check/[[id]].vue page', () => {
     })
     expect(mockMessageStore.clear).toHaveBeenCalled()
     expect(mockCheckWork).toHaveBeenCalled()
+  })
+
+  // Only a community in the trial has a Check queue, so only those are on offer.
+  it('offers only the communities in the trial', () => {
+    const wrapper = mountComponent()
+    expect(
+      wrapper.findComponent('.mod-group-select').props('onlyGroupids')
+    ).toEqual([3, 7])
+  })
+
+  // One click that says "I have looked at all of these" gets a question first, with the count.
+  describe('Mark these as checked', () => {
+    const bulk = (wrapper) => wrapper.find('[data-testid="mark-these-checked"]')
+
+    it('asks first, naming how many, and marks nothing yet', async () => {
+      mockMessages.value = [{ id: 101 }, { id: 102 }, { id: 103 }]
+      const wrapper = mountComponent()
+      await bulk(wrapper).trigger('click')
+      expect(mockMessageStore.markChecked).not.toHaveBeenCalled()
+      const modal = wrapper.find('.confirm-modal')
+      expect(modal.exists()).toBe(true)
+      expect(modal.find('.confirm-title').text()).toBe(
+        'Mark 3 posts as checked?'
+      )
+      expect(modal.text()).toContain('looked at every post listed here')
+      expect(modal.text()).toContain('spread')
+    })
+
+    it('says one post, not one posts', async () => {
+      mockMessages.value = [{ id: 101 }]
+      const wrapper = mountComponent()
+      await bulk(wrapper).trigger('click')
+      expect(wrapper.find('.confirm-title').text()).toBe(
+        'Mark 1 post as checked?'
+      )
+    })
+
+    it('marks the posts once the question is answered yes', async () => {
+      mockGroupid.value = 7
+      mockMessages.value = [{ id: 101 }, { id: 102 }]
+      const wrapper = mountComponent()
+      await bulk(wrapper).trigger('click')
+      await wrapper.find('.confirm-yes').trigger('click')
+      await flushPromises()
+      expect(mockMessageStore.markChecked).toHaveBeenCalledWith({
+        groupid: 7,
+        ids: [101, 102],
+      })
+      expect(mockCheckWork).toHaveBeenCalledWith(true)
+    })
+
+    it('has nothing to mark when nothing is loaded, or while the moderators surface is held', async () => {
+      const empty = mountComponent()
+      expect(bulk(empty).attributes('disabled')).toBeDefined()
+
+      mockMessages.value = [{ id: 101 }]
+      mockModsHeld.value = true
+      const held = mountComponent()
+      expect(bulk(held).attributes('disabled')).toBeDefined()
+    })
+  })
+
+  // The menu badge counts every community of mine, and the choice of community is
+  // remembered. A page that says "nothing" while the badge says there is work, with no
+  // reason given, is how a moderator concludes ModTools is broken.
+  describe('an empty list', () => {
+    const notice = (wrapper) => wrapper.find('.notice-message')
+
+    it('says there is nothing to check when there is none anywhere', () => {
+      const wrapper = mountComponent()
+      expect(notice(wrapper).text()).toContain('Nothing to check.')
+      expect(
+        wrapper.find('[data-testid="show-all-communities"]').exists()
+      ).toBe(false)
+    })
+
+    it('says what the filter is hiding, when a community is chosen and there is work in others', () => {
+      mockGroupid.value = 3
+      mockGroup.value = { id: 3, namedisplay: 'Little Hampton' }
+      mockAuthStore.work = { checked: 4 }
+      const wrapper = mountComponent()
+      const text = notice(wrapper).text()
+      expect(text).toContain('Nothing to check in Little Hampton')
+      expect(text).toContain('there are 4 waiting across your communities')
+      expect(text).toContain('filtering this page to one community')
+    })
+
+    it('says "there is 1 waiting" for one', () => {
+      mockGroupid.value = 3
+      mockAuthStore.work = { checked: 1 }
+      const wrapper = mountComponent()
+      expect(notice(wrapper).text()).toContain('there is 1 waiting')
+    })
+
+    it('does not blame the filter when all communities are shown', () => {
+      mockGroupid.value = 0
+      mockAuthStore.work = { checked: 4 }
+      const wrapper = mountComponent()
+      expect(notice(wrapper).text()).toContain('Nothing to check.')
+    })
+
+    it('does not blame the filter when there is no work anywhere', () => {
+      mockGroupid.value = 3
+      mockAuthStore.work = { checked: 0 }
+      const wrapper = mountComponent()
+      expect(notice(wrapper).text()).toContain('Nothing to check.')
+      expect(notice(wrapper).text()).not.toContain('filtering')
+    })
+
+    it('shows all my communities again, and forgets the remembered choice', async () => {
+      mockGroupid.value = 3
+      mockAuthStore.work = { checked: 2 }
+      const wrapper = mountComponent()
+      await wrapper
+        .find('[data-testid="show-all-communities"]')
+        .trigger('click')
+      // Only a choice made through the dropdown goes through its setter, so the remembered
+      // value has to be cleared as well or the filter comes straight back next visit.
+      expect(mockMiscStore.set).toHaveBeenCalledWith({
+        key: 'groupselect-check',
+        value: 0,
+      })
+      expect(mockGroupid.value).toBe(0)
+    })
   })
 })

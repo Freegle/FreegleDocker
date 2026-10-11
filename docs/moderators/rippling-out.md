@@ -146,8 +146,9 @@ the automated checks rather than a moderator's click. Those posts do not ripple 
   community requires that a number of members have already seen the post with nobody
   objecting - a member report to the mods or a microvolunteer rejection **pauses all
   further spread**, including the visible reach area, until a moderator looks.
-- **Your look settles it**: checking the post (see the oversight queues in the
-  post-moderation guide) clears the gate entirely; rejecting it pulls it back.
+- **Your look settles it**: checking the post (see the Check queue in the
+  post-moderation guide) clears the gate entirely; pulling it back sends it to Pending and
+  stops it spreading further.
 - Posts a moderator approved by hand are exempt and ripple exactly as this guide
   describes.
 

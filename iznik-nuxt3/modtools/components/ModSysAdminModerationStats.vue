@@ -3,7 +3,7 @@
     <h3>Moderation &amp; auto-approve analytics</h3>
     <p class="text-muted">
       How posts were handled over the period, and whether auto-approving is
-      working — the rate at which auto-published posts later needed a moderator,
+      working: the rate at which auto-published posts later needed a moderator,
       compared with the moderator's verdict on the quality-check sample.
     </p>
 
@@ -54,6 +54,15 @@
                 pct(stats.autoApproved, stats.arrived)
               }}</b-td>
             </b-tr>
+            <b-tr v-if="stats.autoApprovedClean !== undefined">
+              <b-td class="ps-4"
+                >…of which published after automated review's approve</b-td
+              >
+              <b-td class="text-end">{{ stats.autoApprovedClean }}</b-td>
+              <b-td class="text-muted">{{
+                pct(stats.autoApprovedClean, stats.autoApproved)
+              }}</b-td>
+            </b-tr>
             <b-tr>
               <b-td>Went live immediately (Trusted members)</b-td>
               <b-td class="text-end">{{ stats.trusted }}</b-td>
@@ -96,7 +105,7 @@
                 of the checks</b-td
               >
             </b-tr>
-            <b-tr :variant="laterActionedVariant">
+            <b-tr v-if="!trialFigures" :variant="laterActionedVariant">
               <b-td>…later rejected/deleted/edited/held after going live</b-td>
               <b-td class="text-end fw-bold">{{
                 stats.autoLaterActioned
@@ -105,13 +114,51 @@
                 >{{ autoErrorRate }} needed intervention</b-td
               >
             </b-tr>
+            <template v-else>
+              <b-tr>
+                <b-td
+                  >…later rejected/deleted/edited/held after going live</b-td
+                >
+                <b-td class="text-end">{{ stats.autoLaterActioned }}</b-td>
+                <b-td class="text-muted"
+                  >{{ pct(stats.autoLaterActioned, stats.autoApproved) }} needed
+                  intervention</b-td
+                >
+              </b-tr>
+              <!-- The trial's own: the posts automated review's approve published, and what
+                   later happened to those same posts. -->
+              <b-tr>
+                <b-td class="fw-bold"
+                  >Of those, the posts published after automated review's
+                  approve</b-td
+                >
+                <b-td class="text-end fw-bold">{{
+                  stats.autoApprovedClean
+                }}</b-td>
+                <b-td />
+              </b-tr>
+              <b-tr :variant="laterActionedVariant">
+                <b-td
+                  >…later rejected/deleted/edited/held after going live</b-td
+                >
+                <b-td class="text-end fw-bold">{{
+                  stats.autoLaterActionedClean
+                }}</b-td>
+                <b-td class="fw-bold"
+                  >{{ autoErrorRate }} needed intervention</b-td
+                >
+              </b-tr>
+            </template>
           </b-tbody>
         </b-table-simple>
         <small class="text-muted">
           "Needed intervention" counts auto-published posts that a moderator (or
-          a user-triggered removal) acted on afterwards — the closest signal we
+          a user-triggered removal) acted on afterwards, the closest signal we
           have for "auto-approve let a bad one through". A precise user-report
-          figure isn't tracked separately.
+          figure isn't tracked separately. The 48-hour fallback publishes posts
+          on every community, in the trial or not, so the rows that count every
+          auto-approved post are network-wide; the trial's own are the posts
+          automated review's approve published.
         </small>
       </b-card>
 
@@ -140,8 +187,8 @@
       >
         <p class="mb-1">
           Of the posts a moderator manually checked (the sample),
-          <strong>{{ sampleBadRate }}</strong> were bad. Of the posts we
-          auto-published, <strong>{{ autoErrorRate }}</strong> later needed a
+          <strong>{{ sampleBadRate }}</strong> were bad. Of the
+          {{ errorScope }}, <strong>{{ autoErrorRate }}</strong> later needed a
           moderator.
         </p>
         <p class="mb-0">{{ verdict }}</p>
@@ -166,26 +213,51 @@ const loading = ref(false)
 const error = ref(null)
 
 function pct(num, denom) {
-  if (!denom) return '—'
+  if (!denom) return '-'
   return ((100 * num) / denom).toFixed(1) + '%'
 }
 
+// The trial's own figures, when the API gives them: the posts automated review's approve
+// published, and what later happened to those same posts. Without both, the rate is over
+// every auto-approved post, which the 48-hour fallback fills with posts from every
+// community, trial or not. A denominator is never paired with a numerator over other posts.
+const trialFigures = computed(
+  () =>
+    !!stats.value &&
+    stats.value.autoApprovedClean !== undefined &&
+    stats.value.autoLaterActionedClean !== undefined
+)
+
+const errorNumerator = computed(() =>
+  trialFigures.value
+    ? stats.value.autoLaterActionedClean
+    : stats.value?.autoLaterActioned
+)
+const errorDenominator = computed(() =>
+  trialFigures.value ? stats.value.autoApprovedClean : stats.value?.autoApproved
+)
+
+// What the rate is a rate of, in words.
+const errorScope = computed(() =>
+  trialFigures.value
+    ? 'posts automated review approved and we auto-published'
+    : 'posts we auto-published, including the 48-hour fallback on every community'
+)
+
 // Rate of auto-published posts that later needed intervention.
 const autoErrorRate = computed(() =>
-  stats.value
-    ? pct(stats.value.autoLaterActioned, stats.value.autoApproved)
-    : '—'
+  stats.value ? pct(errorNumerator.value, errorDenominator.value) : '-'
 )
 // Rate of quality-sample posts a mod then rejected.
 const sampleBadRate = computed(() =>
   stats.value
     ? pct(stats.value.qualitySampleBad, stats.value.qualitySampled)
-    : '—'
+    : '-'
 )
 
 const autoErrorRateNum = computed(() => {
-  if (!stats.value || !stats.value.autoApproved) return 0
-  return (100 * stats.value.autoLaterActioned) / stats.value.autoApproved
+  if (!stats.value || !errorDenominator.value) return 0
+  return (100 * errorNumerator.value) / errorDenominator.value
 })
 const sampleBadRateNum = computed(() => {
   if (!stats.value || !stats.value.qualitySampled) return null
@@ -207,14 +279,14 @@ const verdictVariant = computed(() => {
 
 const verdict = computed(() => {
   if (sampleBadRateNum.value === null) {
-    return 'No quality-check sample in this period — set a quality-check percentage on some groups to start cross-checking.'
+    return 'No quality-check sample in this period. The share of approved posts held back for a moderator is one setting for every community (FREEGLE_AUTOAPPROVE_QUALITY_CHECK_PCT in the batch environment); while it is 0 there is no sample to cross-check against.'
   }
   const diff = sampleBadRateNum.value - autoErrorRateNum.value
   if (diff <= 1) {
     return 'Auto-approving looks safe: the manual sample finds about as few bad posts as we catch after auto-publishing.'
   }
   if (diff <= 5) {
-    return 'Worth watching: the manual sample is catching somewhat more bad posts than we catch after auto-publishing — some may be slipping through unnoticed.'
+    return 'Worth watching: the manual sample is catching somewhat more bad posts than we catch after auto-publishing. Some may be slipping through unnoticed.'
   }
   return 'Concern: the manual sample catches many more bad posts than we catch after auto-publishing, suggesting auto-approve is letting problems through that nobody notices. Consider tightening the checks or raising the quality-check percentage.'
 })
@@ -236,5 +308,14 @@ async function fetchStats() {
 
 onMounted(fetchStats)
 
-defineExpose({ startDate, endDate, stats, fetchStats, pct })
+defineExpose({
+  startDate,
+  endDate,
+  stats,
+  fetchStats,
+  pct,
+  trialFigures,
+  autoErrorRate,
+  autoErrorRateNum,
+})
 </script>

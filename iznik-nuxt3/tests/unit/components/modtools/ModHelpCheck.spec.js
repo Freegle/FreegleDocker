@@ -41,6 +41,26 @@ describe('ModHelpCheck', () => {
     expect(wrapper.text()).not.toContain('treated as checked')
   })
 
+  // The help names the buttons that are on the page and the cards, not ones that are not.
+  it('names the real buttons', () => {
+    const text = mount(ModHelpCheck, { global: { stubs } }).text()
+    expect(text).toContain('Checked')
+    expect(text).toContain('Mark these as checked')
+    expect(text).toContain('Pull back')
+    expect(text).toContain('Should not have published')
+    expect(text).not.toContain('"Mark as checked"')
+  })
+
+  it('says a look on another community counts', () => {
+    const text = mount(ModHelpCheck, { global: { stubs } }).text()
+    expect(text).toContain('approving, rejecting or deleting')
+  })
+
+  it('does not use a dash as punctuation', () => {
+    const wrapper = mount(ModHelpCheck, { global: { stubs } })
+    expect(wrapper.text()).not.toMatch(/[\u2013\u2014]/)
+  })
+
   it('collapses to a Help button when hidden', () => {
     mockShowHelp.value = false
     const wrapper = mount(ModHelpCheck, { global: { stubs } })

@@ -53,6 +53,24 @@ describe('useAutoapproveTrial', () => {
     mockAuthStore.groups = null
     expect(useAutoapproveTrial().inTrial.value).toBe(false)
     expect(useAutoapproveTrial().isTrialGroup(1)).toBe(false)
+    expect(useAutoapproveTrial().trialGroupIds.value).toEqual([])
+  })
+
+  // The Check page offers only these: no other community can have a Check queue.
+  it('lists the communities in the trial, as numbers', () => {
+    expect(useAutoapproveTrial().trialGroupIds.value).toEqual([1])
+    mockAuthStore.groups = [
+      { groupid: '5', autoapprovetrial: true },
+      { groupid: 6 },
+      { groupid: 7, autoapprovetrial: true },
+    ]
+    expect(useAutoapproveTrial().trialGroupIds.value).toEqual([5, 7])
+    mockAuthStore.groups = [{ groupid: 2 }]
+    expect(useAutoapproveTrial().trialGroupIds.value).toEqual([])
+  })
+
+  it('does not narrow the list to a community, which is for the help boxes', () => {
+    expect(useAutoapproveTrial(2).trialGroupIds.value).toEqual([1])
   })
 })
 

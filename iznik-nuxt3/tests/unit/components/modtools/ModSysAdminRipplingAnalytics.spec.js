@@ -526,6 +526,52 @@ describe('ModSysAdminRipplingAnalytics', () => {
       wrapper.unmount()
     })
 
+    // The gate asks for distinct clean viewers per community and no complaint. An earlier
+    // design asked for review "weight" of twice the communities reached; it was dropped, and
+    // the panel must not describe it.
+    it('describes the gate that is built: clean views per community, and no complaint', async () => {
+      mockFetchAnalytics.mockResolvedValue(fastOf(FULL))
+      mockFetchMetrics.mockResolvedValueOnce({})
+      const wrapper = mountComponent()
+      await flushPromises()
+      const text = wrapper.text()
+      expect(text).toContain('distinct members')
+      expect(text).toContain('nobody objecting')
+      expect(text).not.toContain('weight must reach')
+      wrapper.unmount()
+    })
+
+    it('shows a dash, not a number, for no current wait', async () => {
+      mockFetchAnalytics.mockResolvedValue(fastOf(FULL))
+      mockFetchMetrics.mockResolvedValueOnce({
+        review_delay: {
+          awaiting_count: 0,
+          median_await_seconds: 0,
+          post_hours_delayed: 0,
+          resumed_count: 0,
+        },
+      })
+      const wrapper = mountComponent()
+      await flushPromises()
+      const row = wrapper
+        .findAll('tr')
+        .find((r) => r.text().includes('Average current wait'))
+      expect(row.findAll('td')[1].text()).toBe('-')
+      wrapper.unmount()
+    })
+
+    it('does not use a dash in the heading of the review gate section', async () => {
+      mockFetchAnalytics.mockResolvedValue(fastOf(FULL))
+      mockFetchMetrics.mockResolvedValueOnce({})
+      const wrapper = mountComponent()
+      await flushPromises()
+      const heading = wrapper
+        .findAll('h5')
+        .find((h) => h.text().includes('Review gate'))
+      expect(heading.text()).toBe('Review gate: auto-published post holds')
+      wrapper.unmount()
+    })
+
     it('shows the empty state when review_delay is absent', async () => {
       mockFetchAnalytics.mockResolvedValue(fastOf(FULL))
       mockFetchMetrics.mockResolvedValueOnce({})

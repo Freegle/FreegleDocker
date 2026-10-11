@@ -464,13 +464,14 @@
       </b-table-simple>
 
       <!-- Earned-reach review gate (dark unless RIPPLE_EARNED_REACH_ENABLED) -->
-      <h5 class="section-h">Review gate — auto-published post holds</h5>
+      <h5 class="section-h">Review gate: auto-published post holds</h5>
       <p class="text-muted small mb-2">
         When the earned-reach gate is on, an auto-published post ripples into
-        more communities only as review accrues (weight must reach 2&times; the
-        number of communities it has reached); below that it pauses. These show
-        how many posts are gated now and how much total delay the gate has added
-        over the selected period.
+        each further community only once enough distinct members (five for each
+        community, by default) have seen it with nobody objecting. A complaint
+        pauses it, and a moderator's look lifts the pause. These show how many
+        posts are waiting now and how much total delay the gate has added over
+        the selected period.
       </p>
       <b-table-simple v-if="reviewDelay" hover responsive small>
         <b-tbody>
@@ -874,7 +875,7 @@ onBeforeUnmount(() => clearInterval(loadTimer))
 
 // Format a seconds value as a human-readable duration for the review-gate wait display.
 function formatAwaitSeconds(secs) {
-  if (!secs || secs <= 0) return '—'
+  if (!secs || secs <= 0) return '-'
   if (secs < 60) return '< 1 min'
   if (secs < 3600) return `${Math.round(secs / 60)} min`
   return `${(secs / 3600).toFixed(1)} h`

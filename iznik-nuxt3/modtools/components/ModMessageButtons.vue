@@ -107,16 +107,29 @@
         leave
         label="Blank Reply"
       />
-      <SpinButton
-        v-if="oversight && oversightRejectable"
-        data-testid="oversight-reject"
-        variant="warning"
-        class="m-1"
-        icon-name="times"
-        label="Reject"
-        :flex="false"
-        @handle="rejectFromOversight"
-      />
+      <!-- The Check queue: one post looked at, or pulled back for a decision. Hidden while
+           the moderators surface is held, like the other buttons that change what members see. -->
+      <template v-if="oversight && oversightRejectable && !modsHeld">
+        <SpinButton
+          data-testid="oversight-checked"
+          variant="white"
+          class="m-1"
+          icon-name="check"
+          label="Checked"
+          :flex="false"
+          @handle="markChecked"
+        />
+        <SpinButton
+          data-testid="oversight-pullback"
+          variant="warning"
+          class="m-1"
+          icon-name="reply"
+          label="Pull back"
+          :flex="false"
+          :disabled="pullingBack"
+          @handle="askPullBack"
+        />
+      </template>
       <ModMessageButton
         v-if="(isHomeGroup || messagesPoster) && !modsHeld"
         :messageid="message.id"
@@ -179,6 +192,37 @@
         @handle="outcome($event, 'Withdrawn')"
       />
     </div>
+    <NoticeMessage
+      v-if="oversightNote"
+      variant="warning"
+      class="mt-1 mb-1"
+      role="alert"
+      data-testid="oversight-note"
+    >
+      {{ oversightNote }}
+    </NoticeMessage>
+    <ConfirmModal
+      v-if="showPullBack"
+      title="Pull this post back to Pending?"
+      confirm-label="Pull back"
+      @confirm="pullBack"
+      @hidden="showPullBack = false"
+    >
+      <p>
+        This takes the post off the live site and puts it back in Pending, held
+        by you. You can then approve, edit or reject it like any other pending
+        post.
+      </p>
+      <p>
+        On another community it is on, the post goes back to that community's
+        Pending queue too, unless one of its moderators has already approved or
+        checked it.
+      </p>
+      <p class="mb-0">
+        It stops spreading to further communities, and approving it again does
+        not start it spreading again. The member is not told.
+      </p>
+    </ConfirmModal>
     <div v-if="!editreview && !modsHeld" class="d-lg-inline">
       <ModMessageButton
         v-for="stdmsg in filtered"
@@ -233,6 +277,7 @@ import { useModConfigStore } from '~/stores/modconfig'
 import { copyStdMsgs, icon, variant } from '~/composables/useStdMsgs'
 import { useLockdown } from '~/modtools/composables/useLockdown'
 import { useAutoapproveTrial } from '~/modtools/composables/useAutoapproveTrial'
+import { useModMe } from '~/composables/useModMe'
 
 const props = defineProps({
   messageid: {
@@ -291,18 +336,26 @@ const props = defineProps({
     required: false,
     default: true,
   },
-  // Set to true ONLY from the Check oversight page: shows a Reject button for Approved posts.
-  // It pulls the post back to Pending, held by this moderator, and the card turns into the
-  // usual Pending card so the moderator approves, edits or rejects it as normal.
+  // Set to true ONLY from the Check oversight page: shows Checked and Pull back for Approved
+  // posts. Pull back puts the post back in Pending, held by this moderator, and the card turns
+  // into the usual Pending card so the moderator approves, edits or rejects it as normal.
   oversight: {
     type: Boolean,
     required: false,
     default: false,
   },
+  // The community the Check page is filtered to, 0 for all of mine: Checked marks the post
+  // looked at for that scope, as the page's bulk button does.
+  checkGroupid: {
+    type: Number,
+    required: false,
+    default: 0,
+  },
 })
 
 const { modsHeld } = useLockdown()
 const { isTrialGroup } = useAutoapproveTrial()
+const { checkWork } = useModMe()
 
 const messageStore = useMessageStore()
 const modConfigStore = useModConfigStore()
@@ -474,10 +527,54 @@ function outcome(callback, type) {
   if (callback) callback()
 }
 
-// Oversight Reject button (Check page only): pull the post back to Pending via
-// markChecked({reject:true}); it stays in the list as a Pending card.
-async function rejectFromOversight(callback) {
-  await messageStore.rejectFromOversight(props.messageid, props.groupid)
+// Check page only. What happened, said on the card when it did not go to plan: there is
+// nowhere else for it, and a card that vanished with no word is how a mistake goes unnoticed.
+const oversightNote = ref('')
+const showPullBack = ref(false)
+const pullingBack = ref(false)
+
+const DID_NOT_GO_THROUGH = "That didn't go through. Try again in a moment."
+
+// "Checked": the post leaves the Check queue and so does the card.
+async function markChecked(callback) {
+  oversightNote.value = ''
+  try {
+    await messageStore.markCheckedPost(props.messageid, props.checkGroupid)
+    await checkWork(true)
+  } catch (e) {
+    oversightNote.value = DID_NOT_GO_THROUGH
+  } finally {
+    if (callback) callback()
+  }
+}
+
+// "Pull back": ask first, because it withdraws the post from the live site on every community
+// that has not looked at it. The button stops spinning as soon as the question is up.
+function askPullBack(callback) {
+  showPullBack.value = true
   if (callback) callback()
+}
+
+// The post goes back to Pending via markChecked({reject:true}) and stays in the list as a
+// Pending card.
+async function pullBack() {
+  oversightNote.value = ''
+  pullingBack.value = true
+  try {
+    const pulled = await messageStore.rejectFromOversight(
+      props.messageid,
+      props.groupid
+    )
+    if (!pulled) {
+      oversightNote.value =
+        'Nothing was pulled back: this post has changed since you loaded the page. It is shown as it is now.'
+    }
+  } catch (e) {
+    oversightNote.value = DID_NOT_GO_THROUGH
+  } finally {
+    pullingBack.value = false
+  }
+  // The Check and Pending counts moved either way.
+  await checkWork(true)
 }
 </script>

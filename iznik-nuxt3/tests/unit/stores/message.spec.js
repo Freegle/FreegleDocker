@@ -18,10 +18,12 @@ const mockHold = vi.fn()
 const mockRelease = vi.fn()
 const mockFetchMT = vi.fn()
 const mockUpdate = vi.fn()
+const mockMarkChecked = vi.fn()
+const mockAutomodFeedback = vi.fn()
+const mockAutomodFeedbackUndo = vi.fn()
 const mockApprove = vi.fn()
 const mockReject = vi.fn()
 const mockDelete = vi.fn()
-const mockMarkChecked = vi.fn()
 
 vi.mock('~/api', () => ({
   default: () => ({
@@ -38,10 +40,12 @@ vi.mock('~/api', () => ({
       release: mockRelease,
       fetchMT: mockFetchMT,
       update: mockUpdate,
+      markChecked: mockMarkChecked,
+      automodFeedback: mockAutomodFeedback,
+      automodFeedbackUndo: mockAutomodFeedbackUndo,
       approve: mockApprove,
       reject: mockReject,
       delete: mockDelete,
-      markChecked: mockMarkChecked,
     },
   }),
 }))
@@ -896,6 +900,158 @@ describe('message store - rejectFromOversight()', () => {
     })
     expect(store.pulledBack[700]).toBe(true)
     expect(store.list[700].groups[0].collection).toBe('Pending')
+  })
+
+  it('hands back how many copies the server pulled back', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[701] = {
+      id: 701,
+      groups: [{ groupid: 3, collection: 'Approved' }],
+    }
+    mockMarkChecked.mockResolvedValue({ success: true, rejected: 2 })
+    store.fetchMT = vi.fn().mockResolvedValue({
+      id: 701,
+      groups: [{ groupid: 3, collection: 'Pending', heldby: 9 }],
+    })
+
+    expect(await store.rejectFromOversight(701, 3)).toBe(2)
+  })
+
+  // The server did nothing because the post had changed since the page loaded. The card
+  // stays, refreshed to how the post is now, so the screen can say what happened on it.
+  it('reports nothing pulled back, and keeps the card showing the post as it is now', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[702] = {
+      id: 702,
+      groups: [{ groupid: 3, collection: 'Approved' }],
+    }
+    mockMarkChecked.mockResolvedValue({ success: true, rejected: 0 })
+    const now = {
+      id: 702,
+      groups: [{ groupid: 3, collection: 'Approved', approvedby: 55 }],
+    }
+    store.fetchMT = vi.fn().mockResolvedValue(now)
+
+    expect(await store.rejectFromOversight(702, 3)).toBe(0)
+    expect(store.list[702]).toEqual(now)
+  })
+
+  it('treats a response with no count as nothing pulled back', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[703] = {
+      id: 703,
+      groups: [{ groupid: 3, collection: 'Approved' }],
+    }
+    mockMarkChecked.mockResolvedValue({ success: true })
+    store.fetchMT = vi.fn().mockResolvedValue({
+      id: 703,
+      groups: [{ groupid: 3, collection: 'Approved' }],
+    })
+
+    expect(await store.rejectFromOversight(703, 3)).toBe(0)
+    expect(store.list[703]).toBeDefined()
+  })
+
+  it('drops a card whose post can no longer be fetched, even when nothing was pulled back', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[704] = {
+      id: 704,
+      groups: [{ groupid: 3, collection: 'Approved' }],
+    }
+    mockMarkChecked.mockResolvedValue({ success: true, rejected: 0 })
+    store.fetchMT = vi.fn().mockRejectedValue(new Error('404'))
+
+    expect(await store.rejectFromOversight(704, 3)).toBe(0)
+    expect(store.list[704]).toBeUndefined()
+  })
+})
+
+// One card's "Checked": the post leaves the Check queue, and so does the card.
+describe('message store - markCheckedPost()', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('marks just that post and takes the card out of the list', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[800] = {
+      id: 800,
+      groups: [{ groupid: 3, collection: 'Approved' }],
+    }
+    mockMarkChecked.mockResolvedValue({ success: true, checked: 1 })
+
+    expect(await store.markCheckedPost(800, 3)).toBe(1)
+    expect(mockMarkChecked).toHaveBeenCalledWith({ groupid: 3, ids: [800] })
+    expect(store.list[800]).toBeUndefined()
+  })
+
+  it('asks for all of my communities when none is named', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    mockMarkChecked.mockResolvedValue({ success: true, checked: 2 })
+
+    await store.markCheckedPost(801)
+    expect(mockMarkChecked).toHaveBeenCalledWith({ groupid: 0, ids: [801] })
+  })
+
+  it('still clears the card when somebody else had already checked it', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[802] = { id: 802 }
+    mockMarkChecked.mockResolvedValue({ success: true, checked: 0 })
+
+    expect(await store.markCheckedPost(802, 3)).toBe(0)
+    expect(store.list[802]).toBeUndefined()
+  })
+
+  it('keeps the card when the server refuses', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    store.list[803] = { id: 803 }
+    mockMarkChecked.mockRejectedValue(new Error('403'))
+
+    await expect(store.markCheckedPost(803, 3)).rejects.toThrow('403')
+    expect(store.list[803]).toBeDefined()
+  })
+})
+
+// A moderator's own mark on one step of an automated review decision can be put and taken back.
+describe('message store - automod feedback', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('records a mark', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    mockAutomodFeedback.mockResolvedValue({ success: true })
+
+    await store.postAutomodFeedback({ msgid: 5, groupid: 3, node: 'APPROVE' })
+    expect(mockAutomodFeedback).toHaveBeenCalledWith({
+      msgid: 5,
+      groupid: 3,
+      node: 'APPROVE',
+    })
+  })
+
+  it('takes the mark back with the same body', async () => {
+    const store = useMessageStore()
+    store.config = {}
+    mockAutomodFeedbackUndo.mockResolvedValue({ success: true })
+
+    await store.deleteAutomodFeedback({ msgid: 5, groupid: 3, node: 'APPROVE' })
+    expect(mockAutomodFeedbackUndo).toHaveBeenCalledWith({
+      msgid: 5,
+      groupid: 3,
+      node: 'APPROVE',
+    })
   })
 })
 

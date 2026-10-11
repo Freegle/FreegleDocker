@@ -22,7 +22,14 @@ export function useAutoapproveTrial(groupid = null) {
     const gid = parseInt(toValue(groupid)) || 0
     return gid ? isTrialGroup(gid) : groups().some((g) => g.autoapprovetrial)
   })
-  return { inTrial, isTrialGroup }
+  // Every community of mine in the trial, whatever community is asked about: the Check page
+  // offers these and no others, because no other community has a Check queue.
+  const trialGroupIds = computed(() =>
+    groups()
+      .filter((g) => g.autoapprovetrial)
+      .map((g) => parseInt(g.groupid))
+  )
+  return { inTrial, isTrialGroup, trialGroupIds }
 }
 
 // Automated review (the flowchart) runs on a wider set of communities than autoapprove

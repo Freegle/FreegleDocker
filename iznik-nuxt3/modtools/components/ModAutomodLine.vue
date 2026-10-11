@@ -3,9 +3,13 @@
     v-if="lineText"
     class="automod-line small text-muted d-flex align-items-center flex-wrap"
   >
-    <v-icon icon="robot" class="me-1" />
-    <span>{{ lineText }}</span>
+    <!-- The robot and the words are one item, so a long reason on a narrow card wraps
+         beside the icon instead of leaving it alone on a row. -->
+    <span class="automod-line__text">
+      <v-icon icon="robot" class="me-1" />{{ lineText }}
+    </span>
     <b-button
+      v-if="automod"
       variant="link"
       size="sm"
       class="p-0 ms-1 align-baseline automod-line__why"
@@ -13,25 +17,52 @@
     >
       Why?
     </b-button>
+    <!-- Announced politely when it changes, so marking or taking back a mark is not silent
+         for a screen reader. -->
     <span
-      v-if="canFlagPublished && publishedFlagged"
-      class="ms-2 automod-line__flagged"
-      data-testid="automod-flagged"
+      v-if="canFlagPublished"
+      class="ms-2 automod-line__flag"
+      aria-live="polite"
     >
-      Noted: should not have published
+      <span
+        v-if="publishedFlagged"
+        class="automod-line__flagged"
+        data-testid="automod-flagged"
+      >
+        Noted: should not have published
+        <b-button
+          variant="link"
+          size="sm"
+          class="p-0 ms-1 align-baseline automod-line__undo"
+          data-testid="automod-unflag-published"
+          :disabled="flagging"
+          @click="unflagPublished"
+        >
+          (undo)
+        </b-button>
+      </span>
+      <b-button
+        v-else
+        variant="link"
+        size="sm"
+        class="p-0 align-baseline automod-line__wrong"
+        data-testid="automod-flag-published"
+        :disabled="flagging"
+        @click="flagPublished"
+      >
+        Should not have published
+      </b-button>
     </span>
-    <b-button
-      v-else-if="canFlagPublished"
-      variant="link"
-      size="sm"
-      class="p-0 ms-2 align-baseline automod-line__wrong"
-      data-testid="automod-flag-published"
-      :disabled="flagging"
-      @click="flagPublished"
+    <span
+      v-if="feedbackError"
+      class="ms-2 text-danger automod-line__error"
+      data-testid="automod-feedback-error"
+      role="alert"
     >
-      Should not have published
-    </b-button>
+      {{ feedbackError }}
+    </span>
     <ModAutomodModal
+      v-if="automod"
       ref="modal"
       :msgid="message?.id"
       :groupid="groupid"
@@ -43,8 +74,8 @@
 // One muted line under a post showing what the automated review flowchart
 // decided (or would have decided, in shadow mode) about it, with a link to
 // the full path behind that decision. Renders nothing at all for
-// communities not in the automod trial, or when this group has no automod
-// data on it yet.
+// communities not in the automod trial. On such a community a Pending post the
+// review has not reached yet says it is waiting.
 import { computed, ref } from 'vue'
 import { useAutomod } from '@/modtools/composables/useAutoapproveTrial'
 import { useMessageStore } from '@/stores/message'
@@ -86,7 +117,30 @@ const eligible = computed(
 // not read like one.
 const unavailable = computed(() => automod.value?.end === 'UNAVAILABLE')
 
+// A community that has moderators check every post is given no decision: the batch records
+// the setting once, as a hold with this end node, so the card can say so. The chart did not
+// look at the post, so that must not read like a hold either.
+const noReview = computed(() => automod.value?.end === 'GROUP_MODERATES_ALL')
+
+// A Pending post on an automod community that the batch has not decided yet. The batch only
+// reviews a direct copy that nobody holds and nothing has flagged, so for any other Pending
+// copy no decision is coming and the card says nothing.
+const waitingForDecision = computed(() => {
+  const g = group.value
+  if (!props.pending || automod.value || !g) return false
+  if (!isAutomodGroup(props.groupid)) return false
+
+  return (
+    !parseInt(g.rippled_in) &&
+    !g.heldby &&
+    !g.spamreason &&
+    !props.message?.spamreason
+  )
+})
+
 const lineText = computed(() => {
+  if (waitingForDecision.value)
+    return 'Automated review: waiting for a decision'
   if (!eligible.value) return ''
 
   const a = automod.value
@@ -94,6 +148,10 @@ const lineText = computed(() => {
   if (props.pending) {
     if (unavailable.value) {
       return 'Automated review could not run; waiting for a moderator (it will retry)'
+    }
+
+    if (noReview.value) {
+      return 'No automated review: this community has every post checked by a moderator'
     }
 
     if (a.mode === 'shadow') {
@@ -108,9 +166,16 @@ const lineText = computed(() => {
       return 'Automated review: approved, but held back as a quality-check sample for a moderator'
     }
 
-    return a.verdict === 'approve'
-      ? 'Automated review: will publish after the wait'
-      : `Automated review: holding - ${a.reason}`
+    if (a.verdict === 'approve') {
+      // The promise is the countdown's. The API gives a copy no autoapproveat when it is
+      // held, was pulled back, was edited after the decision or the member's status has
+      // changed, and none of those publishes itself.
+      return group.value?.autoapproveat
+        ? 'Automated review: will publish after the wait'
+        : 'Automated review approved this, but it is not counting down (held, pulled back or edited since)'
+    }
+
+    return `Automated review: holding - ${a.reason}`
   }
 
   const approvedby = group.value?.approvedby
@@ -119,6 +184,20 @@ const lineText = computed(() => {
     return approvedby
       ? 'Approved by a moderator - automated review could not run'
       : 'Published without a moderator; automated review could not run'
+  }
+
+  if (noReview.value) {
+    return approvedby
+      ? 'Approved by a moderator - no automated review, as this community has every post checked'
+      : 'Published without a moderator; no automated review, as this community has every post checked'
+  }
+
+  // The sample is held back for a moderator's verdict and the 48-hour sweep is its backstop:
+  // one nobody looked at goes live with no moderator behind it. The chart did not publish
+  // it, so it is not "auto-approved by automated review" and its approval is not the chart's
+  // to answer for.
+  if (a.verdict === 'approve' && a.qualitysample && !approvedby) {
+    return 'Quality-check sample: published by the 48-hour fallback with no moderator verdict'
   }
 
   if (a.verdict === 'approve' && a.mode !== 'shadow' && !approvedby) {
@@ -151,7 +230,9 @@ const lineText = computed(() => {
 // feedback against the decision's end node, so a bad auto-approval is a single tap rather
 // than a hunt through the path for a question to mark wrong (every answer on an approved
 // post is "no"). Offered wherever the auto-approved line shows - the Check queue, and the
-// Approved list the post moves on to once checked or after a week.
+// Approved list the post moves on to once checked or after a week. Not on a quality-check
+// sample the fallback published: nobody gave it the verdict it was held for, and the chart
+// did not publish it.
 const canFlagPublished = computed(
   () =>
     eligible.value &&
@@ -160,32 +241,56 @@ const canFlagPublished = computed(
     !group.value?.approvedby &&
     automod.value.verdict === 'approve' &&
     automod.value.mode !== 'shadow' &&
-    !unavailable.value
+    !automod.value.qualitysample &&
+    !unavailable.value &&
+    !noReview.value
 )
 
 // The server lists the nodes this moderator has already marked (automod.feedback), so the
-// state survives a reload and a second click is never a second row.
-const flaggedLocally = ref(false)
+// state survives a reload and a second click is never a second row. localMark is what this
+// moderator did on this screen since the list was loaded - true after a mark, false after
+// taking it back - and wins over the list, which is only as fresh as the last load.
+const localMark = ref(null)
 const flagging = ref(false)
+const feedbackError = ref('')
 const publishedFlagged = computed(
   () =>
-    flaggedLocally.value ||
+    localMark.value ??
     (automod.value?.feedback || []).includes(automod.value?.end)
 )
 
-async function flagPublished() {
-  if (flagging.value || publishedFlagged.value) return
+function feedbackBody() {
+  return {
+    msgid: props.message?.id,
+    groupid: props.groupid,
+    node: automod.value.end,
+  }
+}
+
+// A failed request has already been reported by the API layer. The moderator is told it did
+// not go through and the screen keeps what the server holds.
+async function changeMark(send, marked) {
+  if (flagging.value) return
   flagging.value = true
+  feedbackError.value = ''
   try {
-    await messageStore.postAutomodFeedback({
-      msgid: props.message?.id,
-      groupid: props.groupid,
-      node: automod.value.end,
-    })
-    flaggedLocally.value = true
+    await send(feedbackBody())
+    localMark.value = marked
+  } catch (e) {
+    feedbackError.value = "That didn't go through. Try again in a moment."
   } finally {
     flagging.value = false
   }
+}
+
+async function flagPublished() {
+  if (publishedFlagged.value) return
+  await changeMark(messageStore.postAutomodFeedback, true)
+}
+
+async function unflagPublished() {
+  if (!publishedFlagged.value) return
+  await changeMark(messageStore.deleteAutomodFeedback, false)
 }
 
 const modal = ref(null)
@@ -199,5 +304,7 @@ defineExpose({
   canFlagPublished,
   publishedFlagged,
   flagPublished,
+  unflagPublished,
+  waitingForDecision,
 })
 </script>

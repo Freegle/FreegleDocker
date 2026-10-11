@@ -898,12 +898,13 @@ Freezing governs what we SEND, not who has been reached:
   a reply from them is still held. They have not been reached, and freezing does not alter that;
   the answer is the same one they would get on a post still expanding.
 
-### Back to pending spares hand-approved copies elsewhere
+### Back to pending spares hand-approved and checked copies elsewhere
 
-`handleBackToPending` first lists the copies a moderator approved by hand on communities other
+`handleBackToPending` first lists the copies a moderator has looked at on communities other
 than the ones the acting moderator is acting on (`moderatorApprovedElsewhere`: live, Approved,
-`approvedby IS NOT NULL`). Only `handleApprove` sets `approvedby`; the content check,
-auto-approve and the ripple insert leave it NULL. Those copies are left exactly as they are:
+`approvedby IS NOT NULL` or `checkedby IS NOT NULL`). Only `handleApprove` sets `approvedby`
+and only a moderator's check sets `checkedby`; the content check, auto-approve, the ripple
+insert and a microvolunteer check leave both NULL. Those copies are left exactly as they are:
 Approved, `approvedby`/`approvedat` kept, no `needs_moderator`, no log. Every other live copy has
 its approval cleared and goes to Pending through `SendForReviewGroupsExcept`, and the acting
 moderator's own copies always do. The member-report quorum and a moderator's report call
@@ -920,7 +921,9 @@ there, with no Group/Left. The post is then recorded in `rippling_blocked` (one 
 the home copies go to Pending, and the reach is frozen. Back to pending from a receiving
 community's moderator, or the member-report quorum (`SendForReviewAllGroups`), withdraws nothing.
 `SendForReviewAllGroups` moves only live copies (Approved, not deleted) to Pending, so a withdrawn
-copy stays withdrawn and gets no Hold log.
+copy stays withdrawn and gets no Hold log. The Check queue's Pull back is not this: it is a
+moderator pulling back their own community's self-published copy for a look, so it neither
+withdraws copies nor writes `rippling_blocked`.
 
 A spared rippled-in copy survives the ripple engine while the home copy is Pending: the reach is
 `held`, so `retractOutOfReachCopies` and the opt-out retraction skip it, and
@@ -974,11 +977,14 @@ outside the trial. The scout gate in `firstreply` match mail is scoped the same 
   current polygon has to check the gate itself. `firstreply` match mail does this by
   skipping unreviewed posts entirely while the gate is on (match mail can reach someone
   beyond the current edge, and a matched member's reply raises `min_tick`).
-- Reject from the **Check** queue (Go `markchecked.go`) reuses Back to pending: the origin
-  goes Pending, held by the moderator and marked `needs_moderator`, the reach is frozen
-  (`status = 'held'`, §6) and the await stamp settled. Rippled-in copies stay for per-group
-  moderation, a copy another community's moderator approved by hand included, so the
-  moderator's following Approve brings them back without re-rippling.
+- Pull back from the **Check** queue (Go `markchecked.go`) is a pull-back, not a home
+  decision. The origin goes Pending, held by the moderator and marked `needs_moderator`;
+  every unreviewed copy elsewhere goes back to its own Pending queue with the neutral "moved
+  this post back to pending" text; a copy another community's moderator approved or checked
+  stays live. Nothing is withdrawn and nothing is written to `rippling_blocked` (that is a
+  home community's Back to pending, below). The reach is frozen (`status = 'held'`, §6) and
+  the await stamp settled, so a later Approve keeps the reach the post had and does not
+  spread it further, which is the rule for any Back to pending.
 
 ## 6. Retraction
 

@@ -9,10 +9,20 @@ covers:
   - iznik-nuxt3/modtools/components/ModHelpCheck.vue
   - iznik-nuxt3/modtools/components/ModSysAdminAutomod.vue
   - iznik-nuxt3/modtools/components/ModSysAdminModerationStats.vue
+  - iznik-nuxt3/modtools/components/ModMessage*.vue
+  - iznik-nuxt3/modtools/components/ModGroupSelect.vue
+  - iznik-nuxt3/modtools/components/ModMenuItemLeft.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminRipplingAnalytics.vue
   - iznik-nuxt3/modtools/composables/useAutoapproveTrial.js
+  - iznik-nuxt3/modtools/composables/useModMessages.js
+  - iznik-nuxt3/modtools/layouts/default.vue
   - iznik-nuxt3/modtools/pages/messages/check/**
+  - iznik-nuxt3/stores/message.js
+  - iznik-nuxt3/api/MessageAPI.js
   - iznik-server-go/message/autoapproveat.go
   - iznik-server-go/message/markchecked.go
+  - iznik-server-go/message/message_list.go
+  - iznik-server-go/session/session.go
   - iznik-server-go/automod/**
   - iznik-server-go/utils/autoapprovetrial.go
   - iznik-server-go/utils/automod.go
@@ -117,8 +127,9 @@ network-wide unchecked. When the companion "earned reach" switch is on:
   growing too, not just its community placements: nobody new starts seeing it in
   browse, search or emails while it is paused. What it has already reached stays put.
 - **A human look settles it**: a moderator checking the post lifts the hold entirely,
-  and rejecting it pulls it back. Two different microvolunteers approving the post
-  count as a human look too, as long as no microvolunteer has rejected it.
+  and pulling it back sends it to Pending and stops it spreading further. Two different
+  microvolunteers approving the post count as a human look too, as long as no
+  microvolunteer has rejected it.
 - **Posts a moderator approved by hand are exempt** - they have had their human look
   and ripple normally.
 
@@ -131,7 +142,10 @@ active ratification does not.
 
 ModTools looks as it did before post-moderation: no countdown on Pending, no Check queue
 or badge, no post-moderation help text, and no automated review line or its explanation.
-One effect does reach a community that is not in the trial:
+The one change you will see on every community is how the notices on a pending post are
+drawn (flagged words, no location, a bulk clearance and the like): they were made
+consistent, with the same colours for the same seriousness. Their wording and the buttons
+beside them are unchanged. Two effects reach a community that is not in the trial:
 
 - **Posts from participating communities can ripple in.** This is the substantive one.
   A post that auto-published on a trial community, with no human look, can spread to
@@ -140,6 +154,11 @@ One effect does reach a community that is not in the trial:
   any complaint freezing it, a moderator look settling it). If you reject the copy on
   your community, that removes it from your area exactly as any secondary rejection
   does. The hold applies to any post no human has looked at, wherever it started.
+- **A post pulled back from Check can come back to your queue.** If a moderator of a
+  trial community pulls a post back, a copy of it on your community that none of your
+  moderators has approved or checked goes back to your Pending queue too, with the
+  note "A moderator moved this post back to pending for review." It is what Back to
+  Pending does from any community. A copy one of you has approved or checked stays live.
 
 What does **not** cross over: no member of yours starts auto-publishing because a
 neighbouring community joined the trial. Whether a post auto-publishes is decided by the
@@ -201,7 +220,7 @@ them unless they are published (see "Remaining problems").
 | Risk | What bounds it |
 |---|---|
 | Dangerous content goes live (safeguarding, personal data, illegal items) | The automated content checks still run **before** publication for every post, exactly as today; anything flagged stays in Pending. The gap is content dangerous in ways no filter recognises - which already reaches the board today via the roughly half of posts that publish instantly. |
-| A bad post is seen before a moderator can act | The delay (20 minutes from automated review's decision, the same for every community) keeps it in Pending first; opening the Pending queue holds everything on it for at least 10 more minutes; the oversight queues make it findable once live; reject is one click and pulls it back. |
+| A bad post is seen before a moderator can act | The delay (20 minutes from automated review's decision, the same for every community) keeps it in Pending first; opening the Pending queue holds everything on it for at least 10 more minutes; the oversight queues make it findable once live; Pull back takes it off the live site. |
 | A bad post spreads to neighbouring communities | The hold on spreading: about an hour before any rippling, exposure-earned spread after that, and any single complaint freezes further spread - including the visible reach area - until a moderator looks. Bounded, not sealed: the exposure it requires can be manufactured with a few accounts (below), and the ceiling is however far rippling would have carried the post anyway. |
 | Someone games the hold to spread their own post | Needs several distinct accounts rather than repeat views, and at best restores the spread the post would have had with no hold at all - so it buys speed, not extra reach. |
 | Someone uses the hold to stall other people's posts | One objection pauses a post until a moderator looks, so it is cheap to abuse - but it only pauses spread (nothing is hidden or removed), and the objection lands in the mod queue, so it is visible rather than silent. |
@@ -303,20 +322,13 @@ write notes.
   same as "the ones nobody has concerns about". Whether the check should look only at
   notes on your own community, or at what a note actually says, is a real design
   question the trial should settle rather than assume.
-- **Having the Pending queue open delays auto-approval.** Each load pushes everything on
-  the page at least 10 minutes further out. That is the intended guarantee, but it means
-  a page left open on a second screen quietly holds posts back.
-- **Rejecting a rippled-in copy is not done from the Check queue.** Those actions
-  only ever apply to a post's own community. A bad post that rippled in is rejected the
-  ordinary way, which trims it from your area alone.
-- **Reject from the oversight queue and Back to Pending do different things to the
-  copies.** Reject stops the post's spread and the copies it rippled into other
-  communities are withdrawn the next time spreading runs - the whole post comes down.
-  Back to Pending freezes the spread and puts the post back in each community's own
-  Pending queue, for that community to approve or reject - except a copy that has
-  already had a human look: one a neighbouring community's moderator approved by hand,
-  or one a moderator marked checked in Check, stays live there. Which of the two a
-  neighbouring moderator sees depends on which button the post's own community pressed.
+- **Having the Pending queue open delays auto-approval.** Each load pushes every pending
+  post on the trial communities it lists at least 10 minutes further out. That is the
+  intended guarantee, but it means a page left open on a second screen quietly holds posts
+  back.
+- **Pulling back a rippled-in copy is not done from the Check queue.** Pull back only ever
+  applies to a post's own community. A bad post that rippled in is rejected the ordinary
+  way, which trims it from your area alone.
 
 ### Things that will surprise members
 
@@ -380,23 +392,30 @@ These are known and not fully solved:
 
 - **Pending** is still the full queue, and you can still stop anything before it goes
   live. New on each post that is on the auto-approve path: a **live countdown** to
-  when it will publish (muted "~Nh" when far off, prominent minutes-and-seconds inside
-  the last half hour). Posts that are not going to auto-approve (suspect, spam, held,
+  when it will publish (muted "~Nh" when far off, a yellow badge of minutes and seconds
+  inside the last hour). Posts that are not going to auto-approve (suspect, spam, held,
   sampled for quality, or not approved by automated review) show no countdown. A
-  community outside the trial never shows one.
+  community outside the trial never shows one. When the countdown belongs to another
+  community the post is on, it says which ("(on Little Hampton)"). Hold the pointer over
+  it for the reminder that opening the list puts it back up to 10 minutes. Once the time
+  has passed it reads "Auto-approving..." for up to three minutes and then goes: a post
+  still waiting after that was held back for a reason the card cannot show.
 - **Opening Pending guarantees you a look.** Every post on the queue gets at least 10
   more minutes before it can auto-approve, extended each time you load the page.
   Nothing publishes out from under you while you are reading it.
 
-  ![The Pending queue, with the countdown on a post that is about to publish itself](assets/pending.png)
+  ![The Pending queue on a community in the trial: the help box, and automated review's line on a post it is holding](assets/pending.png)
 - **One oversight queue, Check**, sits under Approved in the menu, indented and joined
   to it by a small line, because it is a slice of Approved. It appears only if you
   moderate a community in the trial.
   It lists the posts that went live by themselves via automated review and that
-  nobody has looked at yet. It shows a blue count of what you have not yet looked at,
-  offers **"Mark these as checked"** for the posts on screen (never ones further down
-  the queue you have not seen), and ages posts out after **7 days** so it never
-  piles up. Posts that merely rippled in from another community do not appear -
+  nobody has looked at yet. It shows a blue count of what you have not yet looked at.
+  Each post has **Checked**, which clears that post, and the page has **Mark these as
+  checked** for every post listed: it asks first, naming how many, and never marks a
+  post further down the queue that you have not seen. The community choice lists only
+  communities in the trial, and if the one you last picked has nothing to check while
+  others do, the page says so and offers to show them all. Posts age out after **7
+  days** so the queue never piles up. Posts that merely rippled in from another community do not appear -
   overseeing those belongs to the community they were posted on. Posts from trusted
   members go straight to Approved and are not listed here. A post that two
   microvolunteers have approved drops out of Check by itself, and comes back if a
@@ -410,36 +429,52 @@ These are known and not fully solved:
   on communities with microvolunteering switched on.
 
   ![The Check queue: posts that published themselves, waiting for a look](assets/check.png)
-- **Reject from the oversight queue** pulls a live post back to Pending, held by you,
-  and the card turns into an ordinary Pending card where it is, so you approve, edit or
-  reject it with the usual buttons and standard messages without going to find it again.
-  It stops the post's rippling immediately and withdraws the copies it had rippled into
-  other communities. It is recorded as a hold and counts towards the error rate; what you
-  then do records the decision, so a post you approve does not count against the member,
-  and one you reject becomes a danger signal on their next post. The Pending card you get
-  back behaves like any other: if the post is also waiting on other communities you
-  moderate, its Approve and Reject act on every one of those copies at once, as the card
-  says, unless you switch that off on the card. Reject is only offered on a copy that
-  published itself here; a copy a moderator approved by hand, or one that rippled in, is
-  not pulled back from Check.
+- **Pull back**, on a post in the Check queue, takes a live post off the site and puts
+  it back in Pending, held by you. It asks first, because it takes the post down. The card
+  turns into an ordinary Pending card where it is, so you approve, edit or reject it with
+  the usual buttons and standard messages without going to find it again. This is Back to
+  Pending, the same as on any approved post: a copy on another community that none of its
+  moderators has approved or checked goes back to that community's own Pending queue too,
+  with the note "A moderator moved this post back to pending for review.", and a copy one
+  of them has approved or checked stays live. Nothing is withdrawn from a neighbouring
+  community and nothing is blocked. The post stops spreading, and approving it again does
+  not start that up again: it keeps the reach it had. The member is not told. It is
+  recorded as a hold and counts towards the error rate; what you then do records the
+  decision, so a post you approve does not count against the member, and one you reject
+  becomes a danger signal on their next post. The Pending card you get back behaves like
+  any other: if the post is also waiting on other communities you moderate, its Approve and
+  Reject act on every one of those copies at once, as the card says, unless you switch that
+  off on the card. Pull back is only offered on a copy that published itself here; a copy a
+  moderator approved by hand, or one that rippled in, is not pulled back from Check. If the
+  post had changed since you loaded the page (somebody else pulled it back first, say) the
+  card says that nothing was pulled back and shows the post as it is now.
 - **"Should not have published"** sits beside the automated review line on a post that
   went live by itself. One click records that the approval was wrong, against the
-  decision itself rather than any one question, and the line changes to say it is noted.
-  You can still use Reject to pull the post back; this is the quick way to say "wrong" when
-  you have already dealt with the post, or it was fine to leave up.
+  decision itself rather than any one question, and the line changes to say it is noted,
+  with an **undo** beside it for a click made by mistake. It is the quick way to say "wrong"
+  when you have already dealt with the post, or when it can stay up but should still have
+  waited for a moderator; Pull back is for taking the post down. It is not offered on a
+  quality-check sample that nobody looked at and the 48-hour fallback published: that is the
+  sample working as designed, not a mistake of automated review's.
 - **Automated review's reason** appears as one short line on each post on a trial
   community - on Pending ("Automated review: holding - asks to borrow") and on Approved
   ("Auto-approved by automated review", or "Approved by a moderator - automated review
   would have held: ..."). A post that went live with no moderator and no approval from
   automated review - the 48-hour fallback, or the clock running out after a late review -
-  says so: "Published without a moderator; automated review would have held: ...". If the
+  says so: "Published without a moderator; automated review would have held: ...". A post
+  the review has not reached yet says "Automated review: waiting for a decision". A post it
+  approved that is not counting down (held, pulled back, or edited since) says so, rather
+  than promising it will publish; an approved quality-check sample says it is held back for
+  a moderator, and one the fallback published says that. A community that has moderators
+  check every post is given no decision, and the line says "No automated review". If the
   review could not run at all (the service was down), the line says that rather than
   calling it a hold; the post simply waits for a moderator and the review retries.
   **Why?** opens the questions it asked, in order, what it answered, how sure it was, and
-  the words in the post that decided it. If one of those answers is wrong, **This step is
-  wrong** records it against that question, once per moderator; a step you have already
-  marked shows as noted, after a reload too. Those marks are how the questions are
-  corrected.
+  the words in the post that decided it, in quotation marks when they are the member's own;
+  for a review that did not run it says so and lists no questions. If one of those answers
+  is wrong, **This step is wrong** records it against that question, once per moderator; a
+  step you have already marked shows as noted, after a reload too, with an **undo**. Those
+  marks are how the questions are corrected.
 
   ![Automated review's reason on a Pending post](assets/automod-line.png)
 
@@ -448,20 +483,25 @@ These are known and not fully solved:
   posts in Pending. Explicit statuses always win. If you know a reason someone needs
   a human eye, write it down.
 - **Analytics** (currently SysAdmin-only, see above): where posts went, the
-  error rate for posts that published by themselves, how many of the checks were
-  two microvolunteers rather than a moderator, quality-sample verdicts against
-  it, and the time posts spent paused waiting for a moderator. The automated review
-  panel beside it, for the last 7, 30 or 90 days and for all trial communities or one
-  of them: how many posts it reviewed in shadow and in approve mode; how many times it
+  error rate for the posts automated review's approve published (the 48-hour fallback
+  publishes on every community, so it is counted separately and not allowed to dilute the
+  trial's rate), how many of the checks were two microvolunteers rather than a moderator,
+  quality-sample verdicts against it, and the time posts spent paused waiting for a
+  moderator. The automated review panel beside it, for the last 7, 30 or 90 days and for
+  all trial communities or one of them: how many posts it reviewed in shadow and in
+  approve mode; how many posts were pulled back from Check and how many of those a
+  moderator then approved (false alarms) or rejected (real catches); how many times it
   **could not run** (the service was down, so the post waited for a moderator); how many
   it decided **late**, after the wait had already run out, so the post published with no
   countdown ever shown; the time from content check to decision, average and longest;
   for each place the flowchart ended, how often a **moderator disagreed** (a hold they
   approved, an approval they rejected, deleted or pulled back) and how often a
   **neighbour disagreed** (a copy of an approved post that a neighbouring community's
-  moderator rejected after it rippled in); the same per community, per chart version
-  (so a new chart or model shows as its own row) and per day (the trend); and the steps
-  moderators marked wrong.
+  moderator rejected after it rippled in); the same per community (a community that ran
+  in shadow and then in approve mode has a row for each, and the approve mode figure is a
+  lower bound, because only a post somebody opens in Check meets a moderator), per chart
+  version (so a new chart or model shows as its own row) and per day (the trend); and the
+  steps moderators marked wrong, as the number of posts and the number of marks.
 - **Your day-to-day habits are unchanged otherwise** - including the rippling ones:
   "out of area" is still never a reason to reject, and a post arriving from a
   neighbouring community is still the system working.

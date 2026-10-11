@@ -101,14 +101,58 @@
               <b-td class="text-end">{{ row.count }}</b-td>
               <b-td class="text-end">{{ row.modDisagreed }}</b-td>
               <b-td class="text-end text-muted">
-                {{ pct(row.modDisagreed, row.count) }}
+                {{ endPct(row) }}
               </b-td>
               <b-td class="text-end">{{ row.neighbourDisagreed || 0 }}</b-td>
             </b-tr>
           </b-tbody>
         </b-table-simple>
       </b-card>
+      <b-card
+        v-if="stats.pulledBack !== undefined"
+        class="mb-3"
+        header="Pulled back from Check"
+        data-testid="automod-pulled-back"
+      >
+        <p class="small text-muted mb-2">
+          Posts that published themselves and a moderator then pulled back from
+          Check. Approved afterwards means the pull back was a false alarm;
+          rejected or deleted afterwards means the review let through a post a
+          moderator was right to stop.
+        </p>
+        <b-table-simple small responsive>
+          <b-tbody>
+            <b-tr>
+              <b-td>Pulled back</b-td>
+              <b-td class="text-end fw-bold">{{ stats.pulledBack }}</b-td>
+            </b-tr>
+            <b-tr>
+              <b-td>...then approved (false alarms)</b-td>
+              <b-td class="text-end">{{ stats.pulledBackApproved || 0 }}</b-td>
+            </b-tr>
+            <b-tr>
+              <b-td>...then rejected or deleted (real catches)</b-td>
+              <b-td class="text-end">{{ stats.pulledBackRejected || 0 }}</b-td>
+            </b-tr>
+            <b-tr>
+              <b-td>...still waiting for a decision</b-td>
+              <b-td
+                class="text-end"
+                data-testid="automod-pulled-back-waiting"
+                >{{ pulledBackWaiting }}</b-td
+              >
+            </b-tr>
+          </b-tbody>
+        </b-table-simple>
+      </b-card>
       <b-card class="mb-3" header="By community">
+        <p class="small text-muted mb-2">
+          A community that ran in shadow and then in approve mode has a row for
+          each. In shadow a moderator decides every post, so disagreement is a
+          fair measure. In approve mode only a post somebody opens in Check
+          meets a moderator, so its figures are a lower bound and are not to be
+          averaged into the shadow ones.
+        </p>
         <b-table-simple
           v-if="stats.byGroup?.length"
           small
@@ -118,6 +162,7 @@
           <b-thead>
             <b-tr>
               <b-th>Community</b-th>
+              <b-th>Mode</b-th>
               <b-th class="text-end">Decisions</b-th>
               <b-th class="text-end">Approves</b-th>
               <b-th class="text-end">Holds</b-th>
@@ -128,8 +173,12 @@
             </b-tr>
           </b-thead>
           <b-tbody>
-            <b-tr v-for="row in stats.byGroup" :key="row.groupid">
+            <b-tr
+              v-for="row in stats.byGroup"
+              :key="row.groupid + '-' + (row.mode || '')"
+            >
               <b-td>{{ row.nameshort || 'Group ' + row.groupid }}</b-td>
+              <b-td>{{ row.mode || '-' }}</b-td>
               <b-td class="text-end">{{ row.decisions }}</b-td>
               <b-td class="text-end">{{ row.approves }}</b-td>
               <b-td class="text-end">{{ row.holds }}</b-td>
@@ -138,7 +187,7 @@
               <b-td class="text-end">
                 {{ row.modDisagreed }}
                 <span class="text-muted">{{
-                  pct(row.modDisagreed, row.decisions)
+                  pct(row.modDisagreed, decidedOf(row))
                 }}</span>
               </b-td>
               <b-td class="text-end">{{ row.neighbourDisagreed }}</b-td>
@@ -182,7 +231,7 @@
               <b-td class="text-end">
                 {{ row.modDisagreed }}
                 <span class="text-muted">{{
-                  pct(row.modDisagreed, row.decided)
+                  pct(row.modDisagreed, decidedOf(row))
                 }}</span>
               </b-td>
               <b-td class="text-end">{{ row.neighbourDisagreed }}</b-td>
@@ -226,7 +275,7 @@
               <b-td class="text-end">
                 {{ row.modDisagreed }}
                 <span class="text-muted">{{
-                  pct(row.modDisagreed, row.decided)
+                  pct(row.modDisagreed, decidedOf(row))
                 }}</span>
               </b-td>
               <b-td class="text-end">{{ row.neighbourDisagreed }}</b-td>
@@ -236,14 +285,29 @@
         <p v-else class="text-muted mb-0">No decisions in this period.</p>
       </b-card>
       <b-card header="Steps flagged as wrong by moderators">
-        <b-table-simple v-if="stats.feedback?.length" small responsive>
-          <b-tbody>
-            <b-tr v-for="row in stats.feedback" :key="row.node">
-              <b-td>{{ row.node }}</b-td>
-              <b-td class="text-end">{{ row.count }}</b-td>
-            </b-tr>
-          </b-tbody>
-        </b-table-simple>
+        <template v-if="stats.feedback?.length">
+          <p class="small text-muted mb-2">
+            Posts is how many decisions had the step marked wrong. Marks counts
+            each moderator's mark, so a post several moderators marked adds more
+            than one.
+          </p>
+          <b-table-simple small responsive data-testid="automod-feedback">
+            <b-thead>
+              <b-tr>
+                <b-th>Step</b-th>
+                <b-th class="text-end">Posts</b-th>
+                <b-th class="text-end">Marks</b-th>
+              </b-tr>
+            </b-thead>
+            <b-tbody>
+              <b-tr v-for="row in stats.feedback" :key="row.node">
+                <b-td>{{ row.node }}</b-td>
+                <b-td class="text-end">{{ row.posts ?? '-' }}</b-td>
+                <b-td class="text-end">{{ row.count }}</b-td>
+              </b-tr>
+            </b-tbody>
+          </b-table-simple>
+        </template>
         <p v-else class="text-muted mb-0">No feedback in this period.</p>
       </b-card>
     </div>
@@ -269,21 +333,54 @@ const dayOptions = [
 // one community does not empty the list of the others.
 const groupid = ref(0)
 const knownGroups = ref([])
-const groupOptions = computed(() => [
-  { value: 0, text: 'All communities' },
-  ...knownGroups.value.map((g) => ({
-    value: g.groupid,
-    text: g.nameshort || 'Group ' + g.groupid,
-  })),
-])
+// A community that ran in two modes has a row for each, but is one choice.
+const groupOptions = computed(() => {
+  const seen = new Set()
+  const options = []
+  for (const g of knownGroups.value) {
+    if (seen.has(g.groupid)) continue
+    seen.add(g.groupid)
+    options.push({
+      value: g.groupid,
+      text: g.nameshort || 'Group ' + g.groupid,
+    })
+  }
+  return [{ value: 0, text: 'All communities' }, ...options]
+})
 
 const stats = ref(null)
 const loading = ref(false)
 const error = ref(null)
 
+// Of the posts pulled back from Check, the ones nobody has approved, rejected or deleted yet.
+const pulledBackWaiting = computed(() =>
+  Math.max(
+    0,
+    (stats.value?.pulledBack || 0) -
+      (stats.value?.pulledBackApproved || 0) -
+      (stats.value?.pulledBackRejected || 0)
+  )
+)
+
 function pct(num, denom) {
   if (!denom) return '-'
   return ((100 * num) / denom).toFixed(1) + '%'
+}
+
+// A disagreement is only counted against a decision about the post. A review that could not
+// run, or a community that has every post checked, is not one, so the rate is over the rows
+// that were decisions (decided), not every row written; an API that does not say gets every
+// row.
+function decidedOf(row) {
+  return row.decided ?? row.decisions
+}
+
+const UNDECIDED_ENDS = ['UNAVAILABLE', 'GROUP_MODERATES_ALL']
+
+function endPct(row) {
+  return UNDECIDED_ENDS.includes(row.end)
+    ? '-'
+    : pct(row.modDisagreed, row.count)
 }
 
 function duration(secs) {
@@ -324,6 +421,9 @@ defineExpose({
   error,
   fetchStats,
   pct,
+  decidedOf,
+  endPct,
+  pulledBackWaiting,
   duration,
 })
 </script>

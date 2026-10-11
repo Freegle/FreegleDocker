@@ -40,7 +40,17 @@ describe('ModHelpApproved', () => {
   it('explains that Approved is every live post and Check is a subset', () => {
     const wrapper = mount(ModHelpApproved, { global: { stubs } })
     expect(wrapper.text()).toContain('Every live post')
-    expect(wrapper.text()).toContain('Check is a focused oversight subset')
+    expect(wrapper.text()).toContain('Check holds')
+  })
+
+  it('says Check is for communities in the trial', () => {
+    const wrapper = mount(ModHelpApproved, { global: { stubs } })
+    expect(wrapper.text()).toContain('On communities in the trial')
+  })
+
+  it('does not use a dash as punctuation', () => {
+    const wrapper = mount(ModHelpApproved, { global: { stubs } })
+    expect(wrapper.text()).not.toMatch(/[\u2013\u2014]/)
   })
 
   it('collapses to a Help button when hidden', () => {

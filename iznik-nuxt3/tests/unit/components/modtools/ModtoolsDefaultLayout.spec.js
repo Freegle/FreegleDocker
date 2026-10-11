@@ -411,7 +411,7 @@ describe('modtools default layout: lockdown banner', () => {
   })
 })
 
-describe('modtools default layout — Check only on trial communities', () => {
+describe('modtools default layout - Check only on trial communities', () => {
   function captureLinks() {
     const links = []
     const Capturing = {

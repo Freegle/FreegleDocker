@@ -40,7 +40,19 @@ describe('ModHelpPending', () => {
   it('explains the pending queue and the 10-minute guarantee when shown', () => {
     const wrapper = mount(ModHelpPending, { global: { stubs } })
     expect(wrapper.text()).toContain('Posts waiting to go live')
-    expect(wrapper.text()).toContain('at least 10 minutes')
+    expect(wrapper.text()).toContain('at least 10 more minutes')
+  })
+
+  // Where the help is shown there are several communities, not all in the trial. It has to
+  // say which posts publish themselves rather than read as true of every post on the page.
+  it('says it is about communities in the trial', () => {
+    const wrapper = mount(ModHelpPending, { global: { stubs } })
+    expect(wrapper.text()).toContain('On communities in the trial')
+  })
+
+  it('does not use a dash as punctuation', () => {
+    const wrapper = mount(ModHelpPending, { global: { stubs } })
+    expect(wrapper.text()).not.toMatch(/[\u2013\u2014]/)
   })
 
   it('collapses to a Help button when hidden', () => {
