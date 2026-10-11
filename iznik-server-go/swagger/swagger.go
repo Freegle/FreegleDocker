@@ -6216,10 +6216,23 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/automod/agreement modtools automodAgreement
 // Automated review agreement report
 //
-// How often moderators agree with automated review, for SysAdmin
+// How often moderators agree with automated review, by end node and by community, with
+// decision latency and the decisions that came too late for a countdown, for SysAdmin
 //
 // security:
 // - BearerAuth: []
+//
+// Parameters:
+//   + name: days
+//     in: query
+//     description: Window in days (1-365, default 30)
+//     required: false
+//     type: integer
+//   + name: groupid
+//     in: query
+//     description: Only this community's decisions (default all)
+//     required: false
+//     type: integer
 //
 // Responses:
 //

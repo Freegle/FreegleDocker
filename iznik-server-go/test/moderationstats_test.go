@@ -158,7 +158,9 @@ func TestModerationStats_AllFieldsExactCounts(t *testing.T) {
 	msgA := CreateTestMessage(t, poster, groupID, prefix+" auto", 52.0, -1.0)
 	db.Exec("UPDATE messages_groups SET collection='Approved', approvedby=NULL, approvedat=?, contentcheck_checked_at=?, checkedat=?, checkedby=? WHERE msgid=?",
 		tAuto, tAuto, tAuto, mod, msgA)
-	db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, user) VALUES (?, 'Message', 'Autoapproved', ?, ?, ?)", tAuto, msgA, groupID, poster)
+	// The clean path (AutoApproveCleanService) writes text='automod' on its Autoapproved log;
+	// the 48h fallback writes none. So autoApprovedClean = 1 (msgA) of autoApproved = 2.
+	db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, user, text) VALUES (?, 'Message', 'Autoapproved', ?, ?, ?, 'automod')", tAuto, msgA, groupID, poster)
 	// autoLaterActioned = 1: a later Rejected on msgA by the mod (also +1 to manualRejected).
 	db.Exec("INSERT INTO logs (timestamp, type, subtype, msgid, groupid, byuser, user) VALUES (?, 'Message', 'Rejected', ?, ?, ?, ?)", tLater, msgA, groupID, mod, poster)
 
@@ -189,6 +191,7 @@ func TestModerationStats_AllFieldsExactCounts(t *testing.T) {
 	assert.Equal(t, float64(1), f("manualApproved"), "manualApproved")
 	assert.Equal(t, float64(3), f("manualRejected"), "manualRejected (standalone + msgA-later + msgQ-bad)")
 	assert.Equal(t, float64(2), f("autoApproved"), "autoApproved (msgA + msgV)")
+	assert.Equal(t, float64(1), f("autoApprovedClean"), "autoApprovedClean (msgA: the clean path's Autoapproved log carries text 'automod')")
 	assert.Equal(t, float64(1), f("trusted"), "trusted")
 	assert.Equal(t, float64(2), f("autoModChecked"), "autoModChecked (moderator + microvolunteers)")
 	assert.Equal(t, float64(1), f("autoModCheckedByVolunteers"), "autoModCheckedByVolunteers (msgV only)")

@@ -435,14 +435,18 @@ func ListMessagesMT(c *fiber.Ctx) error {
 	// minutes before it becomes eligible for auto-approval, so nothing vanishes while
 	// the page is open. GREATEST(COALESCE(autoapprove_hold_until, NOW()), NOW()+10m) is
 	// extend-only: an existing hold further out is never shortened. Scope: Pending,
-	// heldby IS NULL, deleted=0, only the mod's groups.
-	if collection == utils.COLLECTION_PENDING && len(groupIDs) > 0 {
-		db.Table("messages_groups").
-			Where("msgid IN ? AND groupid IN ? "+
-				"AND collection = 'Pending' AND heldby IS NULL AND deleted = 0 AND rippled_in = 0",
-				msgIDs, groupIDs).
-			Update("autoapprove_hold_until",
-				gorm.Expr("GREATEST(COALESCE(autoapprove_hold_until, NOW()), NOW() + INTERVAL 10 MINUTE)"))
+	// heldby IS NULL, deleted=0, only the mod's groups that are in the post-moderation
+	// trial: nothing reads the hold anywhere else, so outside the trial this would be a
+	// write to the hottest ModTools page's rows for nothing.
+	if collection == utils.COLLECTION_PENDING {
+		if trialGroupIDs := utils.AutoapproveTrialGroups(groupIDs); len(trialGroupIDs) > 0 {
+			db.Table("messages_groups").
+				Where("msgid IN ? AND groupid IN ? "+
+					"AND collection = 'Pending' AND heldby IS NULL AND deleted = 0 AND rippled_in = 0",
+					msgIDs, trialGroupIDs).
+				Update("autoapprove_hold_until",
+					gorm.Expr("GREATEST(COALESCE(autoapprove_hold_until, NOW()), NOW() + INTERVAL 10 MINUTE)"))
+		}
 	}
 
 	// Build pagination context from last ID.

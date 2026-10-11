@@ -5,11 +5,15 @@
 package automod
 
 import (
+	"encoding/json"
+	"log"
+
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // FeedbackRequest is the request body for POST /modtools/automod/feedback.
@@ -25,12 +29,17 @@ type FeedbackRequest struct {
 // final verdict - it is per-node signal the agreement endpoint counts, to find which
 // question is unreliable rather than just how often the chart as a whole is right.
 //
+// The node must be one the stored decision actually walked (a node in its path, or its end
+// node): the report groups by this string, so it is not left to the caller to invent. One
+// mark per moderator per node: a second click is answered with already=true and counts once.
+//
 // @Summary Record moderator feedback on one step of an automod decision
 // @Tags automod
 // @Accept json
 // @Produce json
 // @Param request body FeedbackRequest true "msgid, groupid, node"
-// @Success 200 {object} map[string]interface{}
+// @Success 200 {object} map[string]interface{} "success, already (true when this moderator had marked this step before)"
+// @Failure 400 {object} map[string]interface{} "node is not a step of this decision"
 // @Failure 401 {object} map[string]interface{}
 // @Failure 403 {object} map[string]interface{}
 // @Failure 404 {object} map[string]interface{}
@@ -62,24 +71,67 @@ func Feedback(c *fiber.Ctx) error {
 
 	// messages_automod has a UNIQUE (msgid, groupid): at most one row, no ORDER BY/LIMIT
 	// needed to find it.
-	var automodid uint64
-	db.Table("messages_automod").Select("id").
+	var decision struct {
+		ID      uint64
+		EndNode string `gorm:"column:end_node"`
+		Path    json.RawMessage
+	}
+	db.Table("messages_automod").Select("id, end_node, path").
 		Where("msgid = ? AND groupid = ?", req.Msgid, req.Groupid).
-		Scan(&automodid)
+		Scan(&decision)
 
-	if automodid == 0 {
+	if decision.ID == 0 {
 		return fiber.NewError(fiber.StatusNotFound, "No automod decision for this message and group")
 	}
 
-	row := map[string]interface{}{
-		"automodid": automodid,
-		"node":      req.Node,
-		"userid":    myid,
-		"created":   gorm.Expr("NOW()"),
+	if !decisionHasNode(decision.EndNode, decision.Path, req.Node) {
+		return fiber.NewError(fiber.StatusBadRequest, "node is not a step of this decision")
 	}
-	if err := db.Table("messages_automod_feedback").Create(row).Error; err != nil {
+
+	var already int64
+	db.Table("messages_automod_feedback").
+		Where("automodid = ? AND node = ? AND userid = ?", decision.ID, req.Node, myid).
+		Count(&already)
+	if already > 0 {
+		return c.JSON(fiber.Map{"success": true, "already": true})
+	}
+
+	// INSERT IGNORE against the unique (automodid, node, userid): two clicks that race past
+	// the count above still leave one row.
+	res := db.Table("messages_automod_feedback").Clauses(clause.Insert{Modifier: "IGNORE"}).
+		Create(map[string]interface{}{
+			"automodid": decision.ID,
+			"node":      req.Node,
+			"userid":    myid,
+			"created":   gorm.Expr("NOW()"),
+		})
+	if res.Error != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to record feedback")
 	}
 
-	return c.JSON(fiber.Map{"success": true})
+	log.Printf("automod: feedback msgid=%d groupid=%d byuser=%d node=%s", req.Msgid, req.Groupid, myid, req.Node)
+
+	return c.JSON(fiber.Map{"success": true, "already": res.RowsAffected == 0})
+}
+
+// decisionHasNode reports whether node is a step the stored decision walked: one of the
+// path entries' node ids, or the end node.
+func decisionHasNode(endNode string, path json.RawMessage, node string) bool {
+	if node == endNode && endNode != "" {
+		return true
+	}
+
+	var steps []struct {
+		Node string `json:"node"`
+	}
+	if len(path) == 0 || json.Unmarshal(path, &steps) != nil {
+		return false
+	}
+	for _, s := range steps {
+		if s.Node == node {
+			return true
+		}
+	}
+
+	return false
 }

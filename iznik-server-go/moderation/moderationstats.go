@@ -21,8 +21,13 @@ type ModerationStats struct {
 	Arrived        int64 `json:"arrived"`        // posts that arrived (Received log)
 	ManualApproved int64 `json:"manualApproved"` // approved by a moderator
 	ManualRejected int64 `json:"manualRejected"` // rejected/deleted by a moderator
-	AutoApproved   int64 `json:"autoApproved"`   // auto-approved (Checked) — Autoapproved log
-	Trusted        int64 `json:"trusted"`        // went live immediately (trusted members)
+	AutoApproved   int64 `json:"autoApproved"`   // auto-approved (Checked) — Autoapproved log, clean path and 48h fallback together
+	// Of the auto-approved, the ones the post-moderation clean path published after the
+	// automated review's approve: the Autoapproved log's text is 'automod' on that path
+	// (AutoApproveCleanService) and empty on the 48h fallback (AutoApproveService), so the
+	// trial's own error rate is not diluted by every community's fallback approvals.
+	AutoApprovedClean int64 `json:"autoApprovedClean"`
+	Trusted           int64 `json:"trusted"` // went live immediately (trusted members)
 
 	// Quality of the auto-published population (posts auto-approved in the period).
 	// NB: 'auto-approved' (Autoapproved log) covers both the Checked delay path and
@@ -97,6 +102,11 @@ func Stats(c *fiber.Ctx) error {
 		db.Table("logs l").Select("COUNT(*)").
 			Where("l.type='Message' AND l.subtype='Autoapproved' AND l.timestamp BETWEEN ? AND ?", start, end).
 			Scan(&stats.AutoApproved)
+	})
+	run(func() {
+		db.Table("logs l").Select("COUNT(*)").
+			Where("l.type='Message' AND l.subtype='Autoapproved' AND l.text='automod' AND l.timestamp BETWEEN ? AND ?", start, end).
+			Scan(&stats.AutoApprovedClean)
 	})
 	run(func() {
 		// Trusted: went live without moderation (approvedby NULL, content-checked,

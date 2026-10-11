@@ -4420,12 +4420,26 @@
   },
   "/modtools/automod/agreement": {
    "get": {
-    "description": "How often moderators agree with automated review, for SysAdmin",
+    "description": "How often moderators agree with automated review, by end node and by community, with\ndecision latency and the decisions that came too late for a countdown, for SysAdmin",
     "tags": [
      "modtools"
     ],
     "summary": "Automated review agreement report",
     "operationId": "automodAgreement",
+    "parameters": [
+     {
+      "type": "integer",
+      "description": "Window in days (1-365, default 30)",
+      "name": "days",
+      "in": "query"
+     },
+     {
+      "type": "integer",
+      "description": "Only this community's decisions (default all)",
+      "name": "groupid",
+      "in": "query"
+     }
+    ],
     "responses": {
      "200": {
       "$ref": "#/responses/genericResponse"

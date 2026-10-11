@@ -97,6 +97,9 @@ type AutomodDecision struct {
 	Version string          `json:"version"`
 	Path    json.RawMessage `json:"path"`
 	Created time.Time       `json:"created"`
+	// Feedback lists the node ids this moderator has already marked as wrong on this
+	// decision (POST /modtools/automod/feedback), so ModTools can show that after a reload.
+	Feedback []string `json:"feedback,omitempty"`
 }
 
 // effectiveHomeLocks clears LockedByHome on every row that is not actually blocked: a lock

@@ -50,18 +50,26 @@ it is worth saying plainly to moderators who notice the asymmetry.
 ## Back to pending pulls every unreviewed copy, and automation must not put them back
 
 A moderator's Back to pending on any one group pulls the post back to Pending on every group
-it is on, the home copy included (`handleBackToPending`, `SendForReviewGroupsExcept`), **except**
-a copy on another community whose own moderator approved it by hand. That copy stays Approved
-with its `approvedby`/`approvedat`, gets no log, and is not withdrawn by a home send-back. The
-acting moderator's own copies always go back. Only the acting moderator's copy is held. Every
-copy pulled back is marked `messages_groups.needs_moderator`, and only a moderator's Approve
-clears it. The content check and auto-approve both skip a flagged copy.
+it is on, the home copy included (`handleBackToPending`, `pullBackToPending`,
+`SendForReviewGroupsExcept`), **except** a copy on another community whose own moderator
+reviewed it by hand. That copy stays Approved with its `approvedby`/`approvedat`, gets no log,
+and is not withdrawn by a home send-back. The acting moderator's own copies always go back.
+Only the acting moderator's copy is held. Every copy pulled back is marked
+`messages_groups.needs_moderator`, and only a moderator's Approve clears it. The content check
+and both auto-approve crons skip a flagged copy.
 
-"Approved by hand" is `messages_groups.approvedby IS NOT NULL`, and that only holds because
-`handleApprove` is the one path that sets it: the content check and auto-approve write NULL and
-the ripple insert leaves it out. A new automatic approval path that stamps `approvedby` would make
-its copies survive every later Back to pending. A report quorum (`SendForReviewAllGroups`) is not
-a moderator's review and still pulls every copy.
+The Check queue's Reject (`MarkChecked` with `reject`) is the same pull-back on the post's own
+community, through `pullBackToPending`: it does not have its own semantics. The reach goes
+`held`, not `stopped`, so a later Approve brings the post back; `stopped` is what the engine's
+orphan retraction acts on, and it exempts only `held`.
+
+"Reviewed by hand" is `messages_groups.approvedby IS NOT NULL OR checkedby IS NOT NULL`
+(`moderatorApprovedElsewhere`). `approvedby` only holds because `handleApprove` is the one path
+that sets it: the content check and auto-approve write NULL and the ripple insert leaves it out.
+`checkedby` is a moderator marking a self-published post checked in the Check queue; two
+microvolunteers' approvals stamp `checkedat` alone, and that is not a review. A new automatic
+approval path that stamps either would make its copies survive every later Back to pending. A
+report quorum (`SendForReviewAllGroups`) is not a moderator's review and still pulls every copy.
 
 Before that flag existed, the content check re-approved every unheld copy a minute after the
 next edit, with no log entry, so a moderator's decision was quietly undone everywhere but on

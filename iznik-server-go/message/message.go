@@ -771,7 +771,9 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 
 			// Inline each group's stored automod decision (messages_groups[].automod) for a
 			// moderator of that specific group on an automod group - see populateAutomodDecisions.
-			if myid > 0 {
+			// Gated on isGroupMod so a member browsing a trial community does not pay a
+			// memberships query per post that can only ever come back empty for them.
+			if isGroupMod && myid > 0 {
 				populateAutomodDecisions(db, myid, message.ID, messageGroups)
 			}
 
@@ -3441,16 +3443,40 @@ func handleBackToPending(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 		return err
 	}
 
+	pullBackToPending(db, myid, req.ID, authorizedGroups, backToPendingReason)
+
+	// Log to each group we acted on.
+	for _, gid := range authorizedGroups {
+		ctx.Groupid = gid
+		logAndNotifyMods(db, flog.LOG_SUBTYPE_HOLD, ctx, myid, req.ID, 0, "Back to pending")
+	}
+
+	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
+}
+
+// backToPendingReason is the spamreason stored on, and the Hold log text written to, every
+// copy a moderator's Back to pending pulls back on a community the moderator did not act on.
+const backToPendingReason = "A moderator moved this post back to pending for review."
+
+// pullBackToPending is Back to pending for the groups a moderator is acting on: the one
+// pull-back semantics, shared by handleBackToPending and the Check queue's reject
+// (MarkChecked) so a post leaves the board the same way whichever button pulled it. It
+// holds the acting groups' copies, pulls every unreviewed copy back to Pending with
+// needs_moderator set, withdraws the rippled copies when acting on the home community,
+// and freezes the reach. The caller logs to the acting groups; reason is the spamreason
+// stored on, and the Hold log text written to, every OTHER copy pulled back. Returns the
+// groups whose copies were kept live because their own moderator had reviewed them.
+func pullBackToPending(db *gorm.DB, myid, msgid uint64, authorizedGroups []uint64, reason string) (kept []uint64) {
 	// Per-group hold for re-review. Unlike handleHold this is not limited to Pending
 	// copies: the copy is about to be flipped back to Pending below, so setting the hold
 	// first is what stops it ever showing as an Approved copy "Held by" someone.
-	db.Table("messages_groups").Where("msgid = ? AND groupid IN ?", req.ID, authorizedGroups).
+	db.Table("messages_groups").Where("msgid = ? AND groupid IN ?", msgid, authorizedGroups).
 		Update("heldby", myid)
 
-	// A copy on another community that one of its own moderators has approved by hand stays
-	// Approved, with its approvedby/approvedat: that community has reviewed the post and is
-	// not asked to again. Everything else is pulled back.
-	kept := moderatorApprovedElsewhere(db, req.ID, authorizedGroups)
+	// A copy on another community that one of its own moderators has approved or checked
+	// by hand stays Approved, with its approvedby/approvedat: that community has reviewed
+	// the post and is not asked to again. Everything else is pulled back.
+	kept = moderatorApprovedElsewhere(db, msgid, authorizedGroups)
 
 	// Pull the rest of the post back to Pending, not just this mod's groups: a moderator
 	// moving any copy back to pending takes the post off the board on every community that
@@ -3458,14 +3484,14 @@ func handleBackToPending(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	// visible on the neighbouring communities. Each community then approves or rejects its
 	// own copy independently. Clear approvedby/approvedat on every copy being pulled back
 	// first, then flip to Pending.
-	unapprove := db.Table("messages_groups").Where("msgid = ? AND collection = ?", req.ID, utils.COLLECTION_APPROVED)
+	unapprove := db.Table("messages_groups").Where("msgid = ? AND collection = ?", msgid, utils.COLLECTION_APPROVED)
 	if len(kept) > 0 {
 		unapprove = unapprove.Where("groupid NOT IN ?", kept)
 	}
 	unapprove.Updates(map[string]interface{}{"approvedby": gorm.Expr("NULL"), "approvedat": gorm.Expr("NULL")})
-	// The groups this moderator acted on get their own log and mod notification below;
-	// every other group whose copy is pulled back (rippled copies elsewhere) gets a Hold
-	// log from SendForReviewAllGroups, so its moderators can see why the post is back in
+	// The groups this moderator acted on get their own log and mod notification from the
+	// caller; every other group whose copy is pulled back (rippled copies elsewhere) gets a
+	// Hold log from SendForReviewAllGroups, so its moderators can see why the post is back in
 	// their queue and who did it (Discourse 10102). A kept copy gets no log.
 	//
 	// When the acting moderator moderates the post's HOME community, the post is withdrawn
@@ -3475,17 +3501,17 @@ func handleBackToPending(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	// from a receiving community's own moderator, or by a members' report quorum, withdraws
 	// nothing: those copies stay independent and come back to Pending for their own
 	// moderators.
-	fromHome := actingOnHomeGroup(db, req.ID, authorizedGroups)
+	fromHome := actingOnHomeGroup(db, msgid, authorizedGroups)
 	if fromHome {
-		withdrawRippledCopiesAndBlock(db, req.ID, myid, kept)
+		withdrawRippledCopiesAndBlock(db, msgid, myid, kept)
 	}
-	flipped := microvolunteering.SendForReviewGroupsExcept(db, req.ID, "A moderator moved this post back to pending for review.", "", &myid, authorizedGroups, kept)
+	flipped := microvolunteering.SendForReviewGroupsExcept(db, msgid, reason, "", &myid, authorizedGroups, kept)
 
 	// Every copy pulled back, and the copy this moderator acted on, now waits for a
 	// moderator of its own group: needs_moderator stops the content check and auto-approve
 	// putting it back live. Only a moderator's Approve clears it.
 	db.Table("messages_groups").
-		Where("msgid = ? AND groupid IN ? AND collection = ?", req.ID, append(flipped, authorizedGroups...), utils.COLLECTION_PENDING).
+		Where("msgid = ? AND groupid IN ? AND collection = ?", msgid, append(flipped, authorizedGroups...), utils.COLLECTION_PENDING).
 		Update("needs_moderator", 1)
 
 	// Freeze the ripple once the origin is Pending: the copies persist for per-group
@@ -3494,18 +3520,12 @@ func handleBackToPending(c *fiber.Ctx, myid uint64, req PostMessageRequest) erro
 	// home community leaves the origin Approved, and the post must still never spread
 	// further.
 	if fromHome {
-		microvolunteering.FreezeReach(db, req.ID)
+		microvolunteering.FreezeReach(db, msgid)
 	} else {
-		microvolunteering.FreezeReachIfOriginPending(db, req.ID)
+		microvolunteering.FreezeReachIfOriginPending(db, msgid)
 	}
 
-	// Log to each group we acted on.
-	for _, gid := range authorizedGroups {
-		ctx.Groupid = gid
-		logAndNotifyMods(db, flog.LOG_SUBTYPE_HOLD, ctx, myid, req.ID, 0, "Back to pending")
-	}
-
-	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
+	return kept
 }
 
 // handleRelease releases a held message.
@@ -7006,13 +7026,15 @@ const rippleBlockedReason = "home sent back to pending"
 const withdrawnByHomeLogText = "Withdrawn: the home community moved this post back to pending, so it will not ripple here again."
 
 // moderatorApprovedElsewhere returns the groups, other than the ones the moderator is acting
-// on, where the post is live and Approved by a moderator's hand (approvedby set). Automatic
-// approvals and rippled-in copies leave approvedby NULL, so they are never in the list. Read
-// from the write host, because the caller writes on its answer and an approval made moments
-// earlier may not have reached the read node yet.
+// on, where the post is live and reviewed by a moderator's hand: Approved by one (approvedby
+// set), or published by itself and then marked checked by one in the Check queue (checkedby
+// set; a microvolunteer check stamps checkedat only and does not count). Automatic approvals
+// and rippled-in copies leave both NULL, so they are never in the list. Read from the write
+// host, because the caller writes on its answer and an approval made moments earlier may not
+// have reached the read node yet.
 func moderatorApprovedElsewhere(db *gorm.DB, msgid uint64, acting []uint64) []uint64 {
 	q := db.Clauses(dbresolver.Write).Table("messages_groups").Select("groupid").
-		Where("msgid = ? AND collection = ? AND deleted = 0 AND approvedby IS NOT NULL", msgid, utils.COLLECTION_APPROVED)
+		Where("msgid = ? AND collection = ? AND deleted = 0 AND (approvedby IS NOT NULL OR checkedby IS NOT NULL)", msgid, utils.COLLECTION_APPROVED)
 	if len(acting) > 0 {
 		q = q.Where("groupid NOT IN ?", acting)
 	}

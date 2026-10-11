@@ -2,8 +2,10 @@ package message
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/freegle/iznik-server-go/database"
+	flog "github.com/freegle/iznik-server-go/log"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
@@ -18,6 +20,13 @@ type MarkCheckedRequest struct {
 	IDs     []uint64 `json:"ids,omitempty"`    // specific messages, else mark the whole bucket
 	Reject  bool     `json:"reject,omitempty"` // true = pull the specified posts back to Pending, held, for a decision
 }
+
+// checkRejectReason is the spamreason stored on, and the Hold log text written to, every
+// copy a Check-queue reject pulls back on a community other than the one acted on.
+const checkRejectReason = "A moderator pulled this post back from Check for review."
+
+// checkRejectLogText is the Hold log text on the community the moderator acted on.
+const checkRejectLogText = "Pulled back from Check"
 
 // MarkChecked records that a moderator has reviewed auto-published posts. These
 // are posts that went live without a manual approval from members with no
@@ -58,24 +67,38 @@ func MarkChecked(c *fiber.Ctx) error {
 		groupIDs = []uint64{req.Groupid}
 	}
 
+	// The Check queue exists only on communities in the post-moderation trial, and so do
+	// its actions: outside the trial the same predicate (approvedby NULL, no posting status)
+	// matches the 48-hour fallback's approvals on every community, and a stamp there would
+	// count as a review in the moderation stats and lift the earned-reach hold on a post
+	// nobody looked at. Mirrors the list filter in ListMessagesMT.
+	groupIDs = utils.AutoapproveTrialGroups(groupIDs)
+	if len(groupIDs) == 0 {
+		return c.JSON(fiber.Map{"success": true, "checked": 0, "rejected": 0})
+	}
+
 	// Reject: pull the specified auto-published posts back out of the live feed for a
 	// proper moderation decision. ModTools then shows each one as an ordinary Pending card,
 	// held by this moderator, who approves, edits or rejects it as normal; that later action
-	// writes its own log. Setting collection=Pending removes them from
-	// messages_spatial (so rippling stops drawing them), and heldby blocks the
-	// auto-approve cron from immediately re-publishing them. Targeted only — there is
-	// no bulk "reject the whole bucket" (that would be far too blunt). rippled_in = 0:
-	// oversight actions apply to a post's ORIGIN row only — rippled-in copies are the
-	// origin community's responsibility and are retracted by the reach engine, never
-	// yanked directly from another group's queue.
+	// writes its own log. This is Back to pending on the post's own community
+	// (pullBackToPending, the same path handleBackToPending uses), so a copy a neighbouring
+	// community's moderator approved by hand stays live, the unreviewed rippled copies are
+	// withdrawn, needs_moderator stops the auto-approve cron re-publishing the post if the
+	// hold is released, and the reach is frozen rather than killed, so a later Approve
+	// brings the post back without it having to earn its reach again. Targeted only — there
+	// is no bulk "reject the whole bucket" (that would be far too blunt). rippled_in = 0:
+	// oversight actions apply to a post's ORIGIN row only — rippled-in copies are the origin
+	// community's responsibility, never yanked directly from another group's queue.
 	if req.Reject {
 		if len(req.IDs) == 0 {
 			return fiber.NewError(fiber.StatusBadRequest, "reject requires specific ids")
 		}
 
-		// Snapshot the rows the reject will hit, so the log rows and the reach stop
-		// below apply to exactly the posts actually rejected (not e.g. ids the mod
-		// lacks permission for, which the WHERE filters out).
+		// Snapshot the rows the reject will hit, so the pull-back and the log rows apply
+		// to exactly the posts actually rejected (not e.g. ids the mod lacks permission
+		// for, which the WHERE filters out). approvedby IS NULL: only a copy that published
+		// by itself is in the Check queue, so only one can be pulled back through it; a copy
+		// a moderator approved by hand is undone through Back to pending, on purpose.
 		var hit []struct {
 			Msgid    uint64
 			Groupid  uint64
@@ -84,57 +107,54 @@ func MarkChecked(c *fiber.Ctx) error {
 		db.Table("messages_groups mg").
 			Select("mg.msgid, mg.groupid, m.fromuser").
 			Joins("INNER JOIN messages m ON m.id = mg.msgid").
-			Where("mg.msgid IN ? AND mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 AND mg.rippled_in = 0",
+			Where("mg.msgid IN ? AND mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 AND mg.rippled_in = 0 AND mg.approvedby IS NULL",
 				req.IDs, groupIDs, utils.COLLECTION_APPROVED).
 			Scan(&hit)
 
-		r := db.Table("messages_groups").
-			Where("msgid IN ? AND groupid IN ? AND collection = ? AND deleted = 0 AND rippled_in = 0",
-				req.IDs, groupIDs, utils.COLLECTION_APPROVED).
-			Updates(map[string]interface{}{
-				"collection": utils.COLLECTION_PENDING,
-				"heldby":     myid,
-				"checkedat":  gorm.Expr("NULL"),
-			})
-
+		acting := map[uint64][]uint64{}
+		fromuser := map[uint64]uint64{}
+		var order []uint64
 		for _, h := range hit {
-			// Logged as a Hold, not a Rejected: nothing is decided yet. The moderation-stats
-			// "later actioned" analytic counts it as an auto-published post a moderator had
-			// to act on. If the moderator then rejects it, that Reject writes the Rejected
-			// log, which is what vetoes this member's next post from auto-publishing; if they
-			// approve it, the member is not penalised.
-			db.Table("logs").Create(map[string]interface{}{
-				"timestamp": gorm.Expr("NOW()"),
-				"type":      "Message",
-				"subtype":   "Hold",
-				"msgid":     h.Msgid,
-				"groupid":   h.Groupid,
-				"user":      h.Fromuser,
-				"byuser":    myid,
-				"text":      "Pulled back from Check",
-			})
+			if _, seen := acting[h.Msgid]; !seen {
+				order = append(order, h.Msgid)
+			}
+			acting[h.Msgid] = append(acting[h.Msgid], h.Groupid)
+			fromuser[h.Msgid] = h.Fromuser
+		}
 
-			// Halt rippling immediately rather than waiting for the spatial prune +
-			// expand tick (up to ~6 minutes) to notice the post left the browsable set —
-			// in that window the reach engine could still mail newly-reached members.
-			// advanceDue only advances status='expanding' rows, so this is a hard stop;
-			// the rippled-in copies themselves are retracted by the engine's existing
-			// stale-post retraction on its next tick.
-			//
-			// The earned-reach await clock is settled in the same statement: a post the
-			// gate had paused stops waiting for review the moment a moderator rejects it,
-			// so the time waited is banked and the stamp cleared. Leaving the stamp set
-			// would keep this dead row in the SysAdmin "awaiting review now" count for ever.
-			db.Table("rippling_reach").Where("msgid = ?", h.Msgid).
+		var rejected int64
+		for _, msgid := range order {
+			groups := acting[msgid]
+			pullBackToPending(db, myid, msgid, groups, checkRejectReason)
+
+			// Check-specific: the post is no longer "checked" on the communities acted on,
+			// and the earned-reach await clock is settled. A post the gate had paused stops
+			// waiting for review the moment a moderator pulls it back, so the time waited
+			// is banked and the stamp cleared; leaving the stamp set would keep this frozen
+			// row in the SysAdmin "awaiting review now" count for ever.
+			r := db.Table("messages_groups").
+				Where("msgid = ? AND groupid IN ? AND collection = ?", msgid, groups, utils.COLLECTION_PENDING).
+				Updates(map[string]interface{}{"checkedat": gorm.Expr("NULL"), "checkedby": gorm.Expr("NULL")})
+			rejected += r.RowsAffected
+			db.Table("rippling_reach").Where("msgid = ? AND awaiting_review_since IS NOT NULL", msgid).
 				Updates(map[string]interface{}{
-					"status": gorm.Expr("'stopped'"),
 					"awaiting_review_seconds": gorm.Expr(
 						"awaiting_review_seconds + IFNULL(TIMESTAMPDIFF(SECOND, awaiting_review_since, NOW()), 0)"),
 					"awaiting_review_since": gorm.Expr("NULL"),
 				})
+
+			for _, gid := range groups {
+				// Logged as a Hold, not a Rejected: nothing is decided yet. The moderation-stats
+				// "later actioned" analytic counts it as an auto-published post a moderator had
+				// to act on. If the moderator then rejects it, that Reject writes the Rejected
+				// log, which is what vetoes this member's next post from auto-publishing; if they
+				// approve it, the member is not penalised.
+				logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_HOLD, gid, fromuser[msgid], myid, msgid, 0, checkRejectLogText)
+				log.Printf("automod: check reject msgid=%d groupid=%d byuser=%d", msgid, gid, myid)
+			}
 		}
 
-		return c.JSON(fiber.Map{"success": true, "rejected": r.RowsAffected})
+		return c.JSON(fiber.Map{"success": true, "rejected": rejected})
 	}
 
 	var rowsAffected int64
