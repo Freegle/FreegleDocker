@@ -385,6 +385,7 @@ import { useMe } from '~/composables/useMe'
 import { useTypewriter } from '~/composables/useTypewriter'
 import { isIOS } from '~/composables/useIsIOS'
 import { isSendShortcut } from '~/composables/chatSendShortcut'
+import { createAttachmentSender } from '~/composables/chatAttachmentSender'
 import JumpingDots from '~/components/JumpingDots.vue'
 import ChatNotice from '~/components/ChatNotice.vue'
 
@@ -968,22 +969,22 @@ watch(showSuggested, (newVal) => {
   }
 })
 
+// Each uploaded image is sent once, however many times the list changes while the
+// uploader is adding to it (see composables/chatAttachmentSender.js).
+const sendNewAttachments = createAttachmentSender((imageid) =>
+  chatStore.send(props.id, null, null, imageid)
+)
+
 watch(
   currentAtts,
   async (newVal) => {
-    if (newVal?.length) {
+    const sends = sendNewAttachments(newVal)
+    if (sends.length) {
       sending.value = true
 
       console.log('Upload photos', JSON.stringify(newVal))
 
-      const promises = []
-
-      newVal.forEach((att) => {
-        console.log('Send', att.id, props.id)
-        promises.push(chatStore.send(props.id, null, null, att.id))
-      })
-
-      await Promise.all(promises)
+      await Promise.all(sends)
 
       await _updateAfterSend()
       sending.value = false

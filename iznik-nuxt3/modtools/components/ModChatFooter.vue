@@ -459,6 +459,7 @@ import 'floating-vue/dist/style.css'
 import Api from '~/api'
 import { useMe } from '~/composables/useMe'
 import { isSendShortcut } from '~/composables/chatSendShortcut'
+import { createAttachmentSender } from '~/composables/chatAttachmentSender'
 import { useUserStore } from '~/stores/user'
 import { useNuxtApp } from '#app'
 const { $api } = useNuxtApp()
@@ -1010,22 +1011,22 @@ watch(showSuggested, (newVal) => {
   }
 })
 
+// Each uploaded image is sent once, however many times the list changes while the
+// uploader is adding to it (see composables/chatAttachmentSender.js).
+const sendNewAttachments = createAttachmentSender((imageid) =>
+  chatStore.send(props.id, null, null, imageid)
+)
+
 watch(
   currentAtts,
   async (newVal) => {
-    if (newVal?.length) {
+    const sends = sendNewAttachments(newVal)
+    if (sends.length) {
       sending.value = true
 
       console.log('Upload photos', JSON.stringify(newVal))
 
-      const promises = []
-
-      newVal.forEach((att) => {
-        console.log('Send', att.id, props.id)
-        promises.push(chatStore.send(props.id, null, null, att.id))
-      })
-
-      await Promise.all(promises)
+      await Promise.all(sends)
 
       await _updateAfterSend()
       sending.value = false

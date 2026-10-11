@@ -171,6 +171,44 @@ class MessageIllustrationsServiceTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $result['processed']);
     }
 
+    /**
+     * Issue #1492: a name whose image is not active must not get that image, and must not be
+     * generated again either - a fresh picture keeps the name's status and would be blanked
+     * just the same, leaving the post with an empty attachment it can never lose.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('inactiveImageStatuses')]
+    public function test_an_inactive_cached_image_is_neither_attached_nor_regenerated(string $status): void
+    {
+        $message = $this->createMessageInSpatial('OFFER: Vintage Lamp (TestTown)');
+
+        DB::table('ai_images')->insert([
+            'name' => 'Vintage Lamp',
+            'externaluid' => 'freegletusd-cached999',
+            'imagehash' => 'abc123',
+            'status' => $status,
+        ]);
+
+        $mock = $this->createMock(PollinationsService::class);
+        $mock->method('shouldSkipItem')->willReturn(false);
+        $mock->expects($this->never())->method('fetchBatch');
+
+        $this->makeService($mock)->processIllustrations();
+
+        $this->assertFalse(
+            DB::table('messages_attachments')->where('msgid', $message->id)->exists(),
+            "a $status image must not be attached"
+        );
+    }
+
+    public static function inactiveImageStatuses(): array
+    {
+        return [
+            'suppressed' => ['suppressed'],
+            'rejected' => ['rejected'],
+            'regenerating' => ['regenerating'],
+        ];
+    }
+
     public function test_courtesy_word_in_subject_reuses_clean_cached_illustration(): void
     {
         // Discourse topic 9209/98: "WANTED: iron please" generated its own illustration for

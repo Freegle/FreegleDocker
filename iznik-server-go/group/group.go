@@ -579,9 +579,15 @@ func ListGroups(c *fiber.Ctx) error {
 		var wg sync.WaitGroup
 		wg.Add(3)
 
+		// FORCE INDEX (timestamp_2), which is (timestamp, type, subtype): left to itself
+		// the optimiser reads these through the (type, subtype) index, which for
+		// "Approved" walks every approval ever logged (8 million rows) checking each date.
+		// On production that took 72 seconds and left Support Tools' community list
+		// loading for over a minute; through timestamp_2 it reads one month, in about 6.
+		// The hint names an index: TestListGroupsWithSupport checks these counts, so a renamed index fails it.
 		go func() {
 			defer wg.Done()
-			db.Table("logs").Select("COUNT(*) AS count, groupid").
+			db.Table("logs FORCE INDEX (timestamp_2)").Select("COUNT(*) AS count, groupid").
 				Where("timestamp >= ? AND type = ? AND subtype = ?", start31, "Message", "Autoapproved").
 				Group("groupid").
 				Scan(&autoApproves)
@@ -589,7 +595,7 @@ func ListGroups(c *fiber.Ctx) error {
 
 		go func() {
 			defer wg.Done()
-			db.Table("logs").Select("COUNT(*) AS count, groupid").
+			db.Table("logs FORCE INDEX (timestamp_2)").Select("COUNT(*) AS count, groupid").
 				Where("timestamp >= ? AND type = ? AND subtype = ?", start31, "Message", "Approved").
 				Group("groupid").
 				Scan(&manualApproves)
