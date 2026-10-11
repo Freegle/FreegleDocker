@@ -847,6 +847,7 @@
           :editreview="editreview"
           :cantpost="membership && membership.ourpostingstatus === 'PROHIBITED'"
           :is-home-group="isHomeGroup"
+          :can-message-poster="canMessagePoster"
           :mod-messaging-allowed="modMessagingAllowed"
         />
         <b-button
@@ -932,6 +933,7 @@ import { twem } from '~/composables/useTwem'
 import {
   isRippledInToContextGroup as isRippledIn,
   isHomeGroupRow,
+  canMessagePosterRow,
   earliestArrivalGroupId,
   homeGroupId,
 } from '~/composables/rippleStatus'
@@ -1278,6 +1280,13 @@ function copyNames(rows) {
 // offered here, not on a rippled-in copy, and only a home copy's removal tells the poster.
 const isHomeGroup = computed(() =>
   isHomeGroupRow(message.value?.groups, currentGroupid.value)
+)
+
+// Whether this community may write to the poster: its home, or one the post rippled into
+// where the poster is an ordinary member (Discourse 10239). Decides the buttons whose only
+// effect is a message; outcomes and whole-post deletes still go by isHomeGroup.
+const canMessagePoster = computed(() =>
+  canMessagePosterRow(message.value?.groups, currentGroupid.value)
 )
 
 // Rippling-out: only OFFER/WANTED posts ripple, so only offer the reach map for those.
