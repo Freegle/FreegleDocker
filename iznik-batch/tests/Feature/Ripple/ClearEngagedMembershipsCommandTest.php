@@ -322,4 +322,76 @@ class ClearEngagedMembershipsCommandTest extends TestCase
 
         $this->assertFalse($this->isRippled($poster, $group));
     }
+
+    // ------------------------------------------------------------------------- backfill
+
+    private function savedPositions(): array
+    {
+        return DB::table('config')->whereIn('key', [
+            'ripple_engaged_last_chat_message',
+            'ripple_engaged_last_post_arrival',
+        ])->orderBy('key')->pluck('value', 'key')->all();
+    }
+
+    public function test_a_backfill_clears_engagement_older_than_the_scheduled_run_looks(): void
+    {
+        $member = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->rippleMembership($member, $group);
+        DB::table('memberships')->where('userid', $member->id)->update(['added' => now()->subDays(90)]);
+        $this->createTestMessage($member, $group, ['arrival' => now()->subDays(60)]);
+
+        $this->run_();
+        $this->assertTrue($this->isRippled($member, $group), 'the scheduled run only looks back 30 days');
+
+        $this->artisan('ripple:clear-engaged', ['--since' => now()->subDays(90)->toDateString()])
+            ->assertExitCode(0);
+
+        $this->assertFalse($this->isRippled($member, $group));
+    }
+
+    public function test_a_backfill_catches_an_old_write_back(): void
+    {
+        $poster = $this->createTestUser();
+        $local = $this->createTestUser();
+        $home = $this->createTestGroup();
+        $group = $this->createTestGroup();
+        $this->rippleMembership($poster, $group);
+        $this->createMembership($local, $group);
+
+        $post = $this->rippledPost($poster, $home, $group);
+        $chat = $this->chat($local, $poster);
+        $this->say($chat, $local, $post, ['date' => now()->subDays(61)]);
+        $this->say($chat, $poster, null, ['date' => now()->subDays(60)]);
+
+        $this->artisan('ripple:clear-engaged', ['--since' => now()->subDays(90)->toDateString()])
+            ->assertExitCode(0);
+
+        $this->assertFalse($this->isRippled($poster, $group));
+    }
+
+    public function test_a_backfill_leaves_the_scheduled_run_where_it_was(): void
+    {
+        $this->run_();
+        $before = $this->savedPositions();
+
+        $member = $this->createTestUser();
+        $local = $this->createTestUser();
+        $group = $this->createTestGroup();
+        $this->rippleMembership($member, $group);
+        $this->createMembership($local, $group);
+        $post = $this->createTestMessage($local, $group);
+        $this->say($this->chat($member, $local), $member, $post->id);
+
+        $this->artisan('ripple:clear-engaged', ['--since' => now()->subDays(90)->toDateString()])
+            ->assertExitCode(0);
+
+        $this->assertSame($before, $this->savedPositions());
+    }
+
+    public function test_a_backfill_refuses_a_date_it_cannot_read(): void
+    {
+        $this->artisan('ripple:clear-engaged', ['--since' => 'not a date'])
+            ->assertExitCode(1);
+    }
 }
