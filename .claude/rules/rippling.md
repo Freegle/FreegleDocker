@@ -5,6 +5,8 @@ paths:
   - "iznik-server-go/rippling/**"
   - "iznik-batch/app/Services/ContentCheckService.php"
   - "iznik-batch/app/Services/AutoApproveService.php"
+  - "iznik-server-go/microvolunteering/microvolunteering.go"
+  - "iznik-server-go/message/message.go"
 ---
 
 # Traps when working on rippling
