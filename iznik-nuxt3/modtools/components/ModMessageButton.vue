@@ -182,13 +182,20 @@ const props = defineProps({
   },
   // Whether the group being moderated is the post's home/origin group. On a
   // rippled-in (non-home) group, anything that takes the post off this community
-  // scopes to this group and sends no message to the freegler, so we skip the
-  // compose modal; anything whose only effect would be a message is not offered
-  // at all (ModMessageButtons decides that).
+  // scopes to this group. Whether it also writes to the freegler goes by
+  // canMessagePoster, which falls back to this when not given.
   isHomeGroup: {
     type: Boolean,
     required: false,
     default: true,
+  },
+  // Whether this community may write to the poster: its home, or one the post rippled
+  // into where the poster is an ordinary member (Discourse 10239). Null means not known,
+  // which falls back to isHomeGroup.
+  canMessagePoster: {
+    type: [Boolean, null],
+    required: false,
+    default: null,
   },
   // Set when the poster must not be written to at all - a TN post whose poster never
   // joined Freegle. Takes the same silent path as a rippled-in Reject: remove the post,
@@ -289,11 +296,17 @@ const heldByOnThisGroup = computed(() => {
   return g?.heldby || null
 })
 
+// Whether this community may write to the poster about the post.
+const messagesPoster = computed(() =>
+  props.canMessagePoster === null ? props.isHomeGroup : props.canMessagePoster
+)
+
 // Whether a Reject here should quietly remove the post rather than compose a message to
-// the freegler: either it is a rippled-in copy (their home community's decision is the one
-// they hear about) or the poster never joined Freegle and cannot be written to at all.
+// the freegler: either this community may not write to them - a copy the post rippled
+// into, whose poster has nothing to do with it - or the poster never joined Freegle and
+// cannot be written to at all.
 const sendsNoMemberMessage = computed(
-  () => !props.isHomeGroup || props.noMemberMessage
+  () => !messagesPoster.value || props.noMemberMessage
 )
 
 const confirmButton = computed(() => {
@@ -463,11 +476,11 @@ async function click(callback) {
   // the SpinButton spins for the full 20 seconds and reports a forgotten callback
   // (see .claude/rules/frontend-traps.md).
   try {
-    // On a rippled-in copy every removal - the Reject and Delete buttons, and any standard
-    // message that removes - scopes to this group and says nothing to the freegler
-    // (Discourse 9862/16-17, 10102). Confirm that plainly instead of composing a message
-    // the server would refuse to send.
-    if (!props.isHomeGroup) {
+    // On a copy the post rippled into, every removal - the Reject and Delete buttons, and
+    // any standard message that removes - scopes to this group. Where this community may
+    // not write to the poster it says nothing to them (Discourse 9862/16-17, 10102), so
+    // confirm that plainly instead of composing a message the server would refuse to send.
+    if (!messagesPoster.value) {
       const kind = await scopedRemovalKind(stdmsgOnce)
 
       if (kind) {
