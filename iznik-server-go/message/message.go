@@ -638,7 +638,7 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 					// Which of these communities may write to the poster, so ModTools
 					// offers the buttons that only send them a message where the server
 					// will accept them (Discourse 10102, 10239).
-					messaging := PosterMessagingGroups(db, id)
+					messaging := PosterMessagingGroups(db, messageGroups[0].Msgid)
 					for i := range messageGroups {
 						can := NotifyPosterFlag(messaging, messageGroups[i].Groupid) == 1
 						messageGroups[i].CanMessagePoster = &can
