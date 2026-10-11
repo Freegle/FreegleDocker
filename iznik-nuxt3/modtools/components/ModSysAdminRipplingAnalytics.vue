@@ -467,10 +467,10 @@
       <h5 class="section-h">Review gate — auto-published post holds</h5>
       <p class="text-muted small mb-2">
         When the earned-reach gate is on, an auto-published post ripples into
-        more communities only as review accrues (weight must reach
-        2&times; the number of communities it has reached); below that it
-        pauses. These show how many posts are gated now and how much total
-        delay the gate has added over the selected period.
+        more communities only as review accrues (weight must reach 2&times; the
+        number of communities it has reached); below that it pauses. These show
+        how many posts are gated now and how much total delay the gate has added
+        over the selected period.
       </p>
       <b-table-simple v-if="reviewDelay" hover responsive small>
         <b-tbody>
@@ -482,7 +482,9 @@
           </b-tr>
           <b-tr>
             <b-td class="text-muted small">Average current wait</b-td>
-            <b-td>{{ formatAwaitSeconds(reviewDelay.median_await_seconds) }}</b-td>
+            <b-td>{{
+              formatAwaitSeconds(reviewDelay.median_await_seconds)
+            }}</b-td>
           </b-tr>
           <b-tr>
             <b-td class="text-muted small">Previously held, now resumed</b-td>

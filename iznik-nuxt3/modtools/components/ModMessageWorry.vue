@@ -8,9 +8,7 @@
       class="mb-2"
     >
       <p>
-        Flagged for review: "<strong>{{
-          match.worryword.keyword
-        }}</strong
+        Flagged for review: "<strong>{{ match.worryword.keyword }}</strong
         >".
       </p>
       <p v-if="substanceCopy(WORRY_TYPE_CATEGORY[match.worryword.type])">
@@ -78,9 +76,7 @@
              Only for the categorised messages above - the generic one already
              quotes the word in its detail text. -->
         <span v-if="reason.category && flaggedWord(reason)" class="d-block">
-          Triggered by the word "<strong>{{
-            flaggedWord(reason)
-          }}</strong
+          Triggered by the word "<strong>{{ flaggedWord(reason) }}</strong
           >".
         </span>
       </span>

@@ -257,7 +257,10 @@ async function capture(context, shot) {
     for (let attempt = 0; attempt < 4; attempt++) {
       await page.locator(shot.click).first().click()
       try {
-        await page.locator(shot.clip).first().waitFor({ state: 'visible', timeout: 5000 })
+        await page
+          .locator(shot.clip)
+          .first()
+          .waitFor({ state: 'visible', timeout: 5000 })
         break
       } catch {
         await page.waitForTimeout(1000)
