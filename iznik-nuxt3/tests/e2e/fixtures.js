@@ -115,6 +115,7 @@ const generateUniqueTestEmail = (prefix = 'test') => {
 // origin with its web storage wiped.
 const APP_SERIAL = process.env.APP_E2E_SERIAL
 const APP_PACKAGE = process.env.APP_E2E_PACKAGE || 'org.ilovefreegle.direct'
+const APP_ACTIVITY = process.env.APP_E2E_ACTIVITY || '.MainActivity'
 const APP_ORIGIN = (process.env.APP_E2E_ORIGIN || '').replace(/\/$/, '')
 const APP_MODE = !!APP_SERIAL
 
@@ -172,17 +173,35 @@ async function connectAppWebView() {
   // package: Playwright works out a WebView's package from the last line of
   // `ps -A | grep <pid>`, which any process whose figures contain those digits can
   // win, and then a WebView that is there is never matched (CI job 39427).
+  //
+  // The activity is brought up first: Android kills the app when a Play services
+  // process it depends on dies ("depends on provider ... FontsProvider in dying proc",
+  // a just-booted CI emulator), then restarts it for a push-plugin broadcast with no
+  // activity, so no WebView and nothing to attach to (CI job 39434).
   const attachToRunningApp = async () => {
-    const appPid = await device
-      .shell(`pidof ${APP_PACKAGE}`)
-      .then((b) => parseInt(String(b).trim(), 10))
-    if (!appPid) {
-      throw new Error(`${APP_PACKAGE} is not running, nothing to attach to`)
+    const deadline = Date.now() + 120000
+    for (;;) {
+      await device.shell(`am start -W -n ${APP_PACKAGE}/${APP_ACTIVITY}`)
+      const appPid = parseInt(
+        String(await device.shell(`pidof ${APP_PACKAGE}`)).trim(),
+        10
+      )
+      const sockets = appPid
+        ? String(await device.shell('cat /proc/net/unix'))
+        : ''
+      if (appPid && sockets.includes(`webview_devtools_remote_${appPid}`)) {
+        const webView = await device.webView({
+          socketName: `webview_devtools_remote_${appPid}`,
+        })
+        return { webView, page: await webView.page(), appPid }
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `${APP_PACKAGE} did not come up with a WebView (pid ${appPid || 'none'})`
+        )
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000))
     }
-    const webView = await device.webView({
-      socketName: `webview_devtools_remote_${appPid}`,
-    })
-    return { webView, page: await webView.page(), appPid }
   }
   const first = await attachToRunningApp()
   console.log(

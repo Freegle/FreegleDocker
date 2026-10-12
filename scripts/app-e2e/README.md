@@ -99,6 +99,12 @@ emulator job.
   to contain the app's pid can take the name, and `webView({ pkg })` then waits out its
   timeout beside a WebView that is there. The socket is `webview_devtools_remote_<pid>`
   with the pid from `pidof`.
+- **A just-booted emulator's Play services can take the app down.** On CI, about 30
+  seconds after launch, Android killed the app because "it depends on provider
+  `com.google.android.gms/.fonts.provider.FontsProvider` in dying proc", then restarted it
+  for the push plugin's boot broadcast: a process with no activity, so no WebView. Attach
+  (fixtures and `attach-check.cjs`) therefore runs `am start` for the activity and waits
+  for its devtools socket before attaching.
 - **The emulator console port must be in adb's scan range** (5554-5584). On a loaded
   machine the adb server can drop the emulator; inside the range it finds it again in
   seconds, outside it the device is gone for the rest of the run.

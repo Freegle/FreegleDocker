@@ -257,6 +257,10 @@ build, not by bisecting the boundary.
   in `includePlugins` is really registered natively.
 - **`chromium.connectOverCDP` into the WebView drops with code 1006** the moment Playwright
   attaches. Only `playwright._android` works, and it needs no `adb forward`.
+- **A running app is not necessarily a running WebView.** Android restarts the app for a
+  broadcast after killing it (on a just-booted emulator: "depends on provider ...
+  FontsProvider in dying proc"), and that process has no activity. Bring the activity up
+  with `am start` and wait for `webview_devtools_remote_<pid>` before attaching.
 - **`androidDevice.webView({ pkg })` can time out beside a WebView that is there**:
   Playwright takes the package from the last line of `ps -A | grep <pid>`, which a
   process with the same digits in its figures can win. Select by `socketName`

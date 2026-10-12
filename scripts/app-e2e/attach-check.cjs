@@ -30,11 +30,24 @@ function fail(msg) {
   console.log(`[attach-check] adb server port ${port}: ${devices.map((d) => d.serial()).join(', ') || 'no devices'}`)
   const device = devices.find((d) => d.serial() === serial)
   if (!device) fail(`${serial} is not among the devices Playwright sees`)
-  // By socket name, from the app's pid, as the fixtures do: Playwright's own package
-  // lookup for a WebView (`ps -A | grep <pid>`, last line wins) can name the wrong one.
-  const appPid = parseInt(String(await device.shell(`pidof ${pkg}`)).trim(), 10)
-  if (!appPid) fail(`${pkg} is not running`)
-  const socketName = `webview_devtools_remote_${appPid}`
+  // As the fixtures do: bring the activity up (a just-booted emulator's Play services can
+  // take the app down and leave it restarted for a broadcast with no WebView), wait for
+  // the app's devtools socket, then attach by socket name, never by package (Playwright's
+  // own package lookup, `ps -A | grep <pid>` with the last line winning, can be wrong).
+  const activity = process.env.APP_E2E_ACTIVITY || '.MainActivity'
+  let appPid = 0
+  let socketName = ''
+  for (let i = 0; i < 60 && !socketName; i++) {
+    await device.shell(`am start -W -n ${pkg}/${activity}`)
+    appPid = parseInt(String(await device.shell(`pidof ${pkg}`)).trim(), 10)
+    if (appPid && String(await device.shell('cat /proc/net/unix')).includes(`webview_devtools_remote_${appPid}`)) {
+      socketName = `webview_devtools_remote_${appPid}`
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+    }
+  }
+  if (!socketName) fail(`${pkg} did not come up with a WebView socket (pid ${appPid || 'none'})`)
+  console.log(`[attach-check] ${pkg} pid ${appPid}, socket ${socketName}`)
   device.setDefaultTimeout(60000)
   const webView = await device.webView({ socketName }).catch((e) =>
     fail(`no WebView on ${socketName}: ${e.message} (seen: ${device.webViews().map((w) => `${w.socketName()}=${w.pkg() || '?'}`).join(', ') || 'none'})`)
