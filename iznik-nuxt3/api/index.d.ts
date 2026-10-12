@@ -28,6 +28,7 @@ import DonationsAPI from './DonationsAPI.js'
 import DrivingAPI from './DrivingAPI.js'
 import ElectricalsAPI from './ElectricalsAPI.js'
 import EmailTrackingAPI from './EmailTrackingAPI.js'
+import UxAPI from './UxAPI.js'
 import ExportAPI from './ExportAPI.js'
 import GiftAidAPI from './GiftAidAPI.js'
 import GroupAPI from './GroupAPI.js'
@@ -83,6 +84,7 @@ interface API {
   driving: DrivingAPI;
   electricals: ElectricalsAPI;
   emailtracking: EmailTrackingAPI;
+  ux: UxAPI;
   export: ExportAPI;
   giftaid: GiftAidAPI;
   group: GroupAPI;

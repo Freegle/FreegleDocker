@@ -728,6 +728,10 @@ const applySuggestedAddress = async () => {
     suggestedAddress.value.address.singleline +
     ' '
   hideSuggestedAddress.value = true
+  api.bandit.chosen({
+    uid: 'SuggestedAddress',
+    variant: 'chosen',
+  })
   await nextTick()
   const el = chatarea.value?.$el
 

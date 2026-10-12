@@ -227,7 +227,10 @@ vi.mock('#app', () => ({
   useNuxtApp: () => ({
     $api: {
       chat: { referToSupport: mockReferToSupport },
-      bandit: { shown: vi.fn().mockResolvedValue() },
+      bandit: {
+        shown: vi.fn().mockResolvedValue(),
+        chosen: vi.fn().mockResolvedValue(),
+      },
     },
   }),
   useRuntimeConfig: () => ({}),
@@ -236,7 +239,7 @@ vi.mock('#app', () => ({
 // Mock API
 vi.mock('~/api', () => ({
   default: () => ({
-    bandit: { shown: vi.fn() },
+    bandit: { shown: vi.fn(), chosen: vi.fn() },
   }),
 }))
 
