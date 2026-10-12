@@ -6,8 +6,22 @@ import { useUxStore } from '~/modtools/stores/ux'
 import { uxStubs } from './uxStubs'
 
 const days = [
-  { date: '2026-10-01', searches: 100, zero_result: 20, re_searched_60s: 10, browse_sessions: 200, browse_scrolled_out: 50 },
-  { date: '2026-10-02', searches: 100, zero_result: 30, re_searched_60s: 20, browse_sessions: 200, browse_scrolled_out: 70 },
+  {
+    date: '2026-10-01',
+    searches: 100,
+    zero_result: 20,
+    re_searched_60s: 10,
+    browse_sessions: 200,
+    browse_scrolled_out: 50,
+  },
+  {
+    date: '2026-10-02',
+    searches: 100,
+    zero_result: 30,
+    re_searched_60s: 20,
+    browse_sessions: 200,
+    browse_scrolled_out: 70,
+  },
 ]
 
 describe('ModSysAdminUxSearch', () => {

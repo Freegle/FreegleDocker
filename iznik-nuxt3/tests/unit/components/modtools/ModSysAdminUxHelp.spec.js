@@ -12,10 +12,18 @@ describe('ModSysAdminUxHelp', () => {
     store = useUxStore()
     store.funnels.data = {
       flows: [
-        { flow: 'post', steps: [{ step: 'photos', entered: 200, help_sought: 30 }] },
+        {
+          flow: 'post',
+          steps: [{ step: 'photos', entered: 200, help_sought: 30 }],
+        },
       ],
       previous: {
-        flows: [{ flow: 'post', steps: [{ step: 'photos', entered: 100, help_sought: 5 }] }],
+        flows: [
+          {
+            flow: 'post',
+            steps: [{ step: 'photos', entered: 100, help_sought: 5 }],
+          },
+        ],
       },
     }
   })
@@ -33,7 +41,11 @@ describe('ModSysAdminUxHelp', () => {
 
   it('shows a dash for previous when the step is new', () => {
     store.funnels.data.previous = { flows: [] }
-    expect(make().findAll('td').map((c) => c.text())).toContain('–')
+    expect(
+      make()
+        .findAll('td')
+        .map((c) => c.text())
+    ).toContain('–')
   })
 
   it('shows the empty message', () => {

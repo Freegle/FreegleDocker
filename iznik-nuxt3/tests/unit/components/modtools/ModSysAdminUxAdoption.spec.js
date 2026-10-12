@@ -12,11 +12,19 @@ describe('ModSysAdminUxAdoption', () => {
     store = useUxStore()
     store.adoption.data = {
       features: [
-        { feature: 'saved_search', active_users: 400, using_users: 40, sessions_using: 90, share: 0.1, previous_share: 0.05 },
+        {
+          feature: 'saved_search',
+          active_users: 400,
+          using_users: 40,
+          sessions_using: 90,
+          share: 0.1,
+          previous_share: 0.05,
+        },
       ],
     }
   })
-  const make = () => mount(ModSysAdminUxAdoption, { global: { stubs: uxStubs } })
+  const make = () =>
+    mount(ModSysAdminUxAdoption, { global: { stubs: uxStubs } })
 
   it('shows users of the feature over active users, with counts', () => {
     const t = make().text()

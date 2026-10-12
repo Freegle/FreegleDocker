@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, Suspense, ref } from 'vue'
 import PromiseModal from '~/components/PromiseModal.vue'
+import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
 
 vi.mock('~/composables/useFlowTelemetry', async () => {
   const m = await import('../helpers/flowTelemetryMock')
   return m.flowTelemetryModule
 })
-import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
 
 // Mock dayjs
 vi.mock('dayjs', () => {

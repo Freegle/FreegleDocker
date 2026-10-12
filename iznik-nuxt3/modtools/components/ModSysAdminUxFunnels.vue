@@ -13,7 +13,9 @@
         Started {{ outcome(f.flow).started.toLocaleString() }}.
         {{ withCount(outcome(f.flow).submitted, outcome(f.flow).started) }}
         submitted,
-        {{ withCount(outcome(f.flow).submit_failed, outcome(f.flow).submitted) }}
+        {{
+          withCount(outcome(f.flow).submit_failed, outcome(f.flow).submitted)
+        }}
         of those failed.
         {{ withCount(outcome(f.flow).completed, outcome(f.flow).started) }}
         completed,
@@ -45,8 +47,8 @@
         {{ detail.reentered.toLocaleString() }}.
         {{ withCount(detail.completed, detail.entered) }} completed,
         {{ withCount(detail.backed, detail.entered) }} went back,
-        {{ withCount(detail.abandoned, detail.entered) }} abandoned.
-        Typical time on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
+        {{ withCount(detail.abandoned, detail.entered) }} abandoned. Typical
+        time on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
         {{ ms(detail.dwell_p90_ms) }}.
       </p>
       <div v-for="dim in dims" :key="dim.key" class="mb-2">
@@ -58,7 +60,12 @@
           responsive
         />
       </div>
-      <b-button class="sample-btn" size="sm" variant="secondary" @click="open = true">
+      <b-button
+        class="sample-btn"
+        size="sm"
+        variant="secondary"
+        @click="open = true"
+      >
         Sample sessions
       </b-button>
     </div>

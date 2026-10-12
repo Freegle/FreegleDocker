@@ -36,7 +36,9 @@
             <span v-if="e.component" class="ms-1 text-muted">
               in {{ e.component }}
             </span>
-            <span v-if="e.dwell_ms" class="ms-1">after {{ ms(e.dwell_ms) }}</span>
+            <span v-if="e.dwell_ms" class="ms-1"
+              >after {{ ms(e.dwell_ms) }}</span
+            >
             <span v-if="e.page_route" class="ms-1 text-muted">
               {{ e.page_route }}
             </span>
@@ -69,7 +71,11 @@ function time(ts) {
 }
 
 function load() {
-  store.load('samples', { date: props.date, flow: props.flow, step: props.step })
+  store.load('samples', {
+    date: props.date,
+    flow: props.flow,
+    step: props.step,
+  })
 }
 
 watch(

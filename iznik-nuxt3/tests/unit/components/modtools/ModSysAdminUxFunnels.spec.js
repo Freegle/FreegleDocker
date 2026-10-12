@@ -32,10 +32,15 @@ const funnels = {
   start: '2026-10-01',
   end: '2026-10-07',
   flows: [
-    { flow: 'post', steps: [step('item'), step('photos', { entered: 80, completed: 20 })] },
+    {
+      flow: 'post',
+      steps: [step('item'), step('photos', { entered: 80, completed: 20 })],
+    },
   ],
   previous: {
-    flows: [{ flow: 'post', steps: [step('item', { entered: 200, completed: 150 })] }],
+    flows: [
+      { flow: 'post', steps: [step('item', { entered: 200, completed: 150 })] },
+    ],
   },
 }
 

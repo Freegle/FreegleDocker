@@ -1287,9 +1287,7 @@ const testWithFixtures = test.extend({
             timeout: timeouts.navigation.default,
           })
           await page.locator('.toggle-btn:has-text("Maybe")').click()
-          await page
-            .locator('button.btn', { hasText: 'Next' })
-            .click()
+          await page.locator('button.btn', { hasText: 'Next' }).click()
         }
 
         await page.waitForURL(new RegExp(`/${flow}/mobile/whereami`), {

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import OutcomeModal from '~/components/OutcomeModal.vue'
+import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
 
 vi.mock('~/composables/useFlowTelemetry', async () => {
   const m = await import('../helpers/flowTelemetryMock')
   return m.flowTelemetryModule
 })
-import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
 
 const { mockModal, mockHide } = vi.hoisted(() => {
   const { ref } = require('vue')

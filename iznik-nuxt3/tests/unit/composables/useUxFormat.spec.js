@@ -43,8 +43,18 @@ describe('useUxFormat', () => {
 
   it('stepsWithPrevious pairs each step with the same step last period', () => {
     const rows = stepsWithPrevious({
-      flows: [{ flow: 'post', steps: [{ step: 'a', entered: 5 }, { step: 'b', entered: 6 }] }],
-      previous: { flows: [{ flow: 'post', steps: [{ step: 'a', entered: 9 }] }] },
+      flows: [
+        {
+          flow: 'post',
+          steps: [
+            { step: 'a', entered: 5 },
+            { step: 'b', entered: 6 },
+          ],
+        },
+      ],
+      previous: {
+        flows: [{ flow: 'post', steps: [{ step: 'a', entered: 9 }] }],
+      },
     })
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({ flow: 'post', step: 'a', entered: 5 })

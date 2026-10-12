@@ -34,9 +34,16 @@ import ModSysAdminUxSearch from '~/modtools/components/ModSysAdminUxSearch.vue'
 const store = useUxStore()
 
 const loading = computed(() =>
-  ['health', 'funnels', 'outcomes', 'fields', 'friction', 'adoption', 'regret', 'search'].some(
-    (k) => store[k].loading
-  )
+  [
+    'health',
+    'funnels',
+    'outcomes',
+    'fields',
+    'friction',
+    'adoption',
+    'regret',
+    'search',
+  ].some((k) => store[k].loading)
 )
 
 // The date filter fires on mount and whenever the period changes, so it drives

@@ -15,6 +15,7 @@ import { setActivePinia, createPinia } from 'pinia'
 // This test needs the real store implementation.
 import { useAuthStore } from '~/stores/auth.js'
 import { abortAllPendingRequests } from '~/api/BaseAPI'
+import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
 
 const mockLogin = vi.fn()
 const mockLogout = vi.fn()
@@ -51,7 +52,6 @@ vi.mock('~/composables/useSettingsTelemetry', () => ({
     Object.keys(params).map((field) => ({ field, kind: 'replaced' })),
   noteSettingsSave: (...args) => mockNoteSettingsSave(...args),
 }))
-import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
 
 vi.mock('~/api', () => ({
   default: () => ({
@@ -733,10 +733,7 @@ describe('auth store', () => {
       expect(mockNoteSettingsSave).toHaveBeenCalledWith([
         { field: 'displayname', kind: 'replaced' },
       ])
-      expect(flowCalls).toEqual([
-        ['submit'],
-        ['submitResult', true, 200, null],
-      ])
+      expect(flowCalls).toEqual([['submit'], ['submitResult', true, 200, null]])
     })
 
     it('records a failed result with the status, and rethrows', async () => {

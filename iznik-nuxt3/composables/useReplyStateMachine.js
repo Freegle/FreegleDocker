@@ -771,7 +771,10 @@ export function useReplyStateMachine(messageId, options = {}) {
 
   // Leaving the composer part way through is an abandon.
   onScopeDispose(() => {
-    if (ownsFlow && [...RESUMABLE_STATES, ReplyState.ERROR].includes(state.value)) {
+    if (
+      ownsFlow &&
+      [...RESUMABLE_STATES, ReplyState.ERROR].includes(state.value)
+    ) {
       flow.abandon(stayOnPage ? 'closed' : 'navigated')
       ownsFlow = false
     }

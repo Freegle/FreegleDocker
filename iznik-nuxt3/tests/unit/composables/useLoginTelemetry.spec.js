@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { effectScope, nextTick, ref } from 'vue'
 
+import { useLoginTelemetry } from '~/composables/useLoginTelemetry'
+import { _resetFlowTelemetryForTests } from '~/composables/useFlowTelemetry'
+
 const log = vi.hoisted(() => ({ action: vi.fn(), flush: vi.fn() }))
 vi.mock('~/composables/useClientLog', () => ({
   action: log.action,
@@ -8,10 +11,8 @@ vi.mock('~/composables/useClientLog', () => ({
 }))
 vi.mock('~/composables/useExperiment', () => ({ experimentVariant: () => '' }))
 
-import { useLoginTelemetry } from '~/composables/useLoginTelemetry'
-import { _resetFlowTelemetryForTests } from '~/composables/useFlowTelemetry'
-
-const events = () => log.action.mock.calls.map(([name, ctx]) => ({ name, ...ctx }))
+const events = () =>
+  log.action.mock.calls.map(([name, ctx]) => ({ name, ...ctx }))
 const names = () => events().map((e) => e.name)
 
 describe('useLoginTelemetry', () => {
@@ -89,7 +90,10 @@ describe('useLoginTelemetry', () => {
     await open()
     log.action.mockClear()
     tele.forgot()
-    expect(events().at(-1)).toMatchObject({ name: 'step_enter', step: 'forgot' })
+    expect(events().at(-1)).toMatchObject({
+      name: 'step_enter',
+      step: 'forgot',
+    })
   })
 
   it('records a submit', async () => {
@@ -191,7 +195,11 @@ describe('useLoginTelemetry', () => {
       vi.advanceTimersByTime(2000)
       loggedIn.value = true
       await nextTick()
-      expect(names()).toEqual(['flow_submit_result', 'step_complete', 'flow_complete'])
+      expect(names()).toEqual([
+        'flow_submit_result',
+        'step_complete',
+        'flow_complete',
+      ])
       vi.advanceTimersByTime(10000)
       expect(names()).not.toContain('flow_abandon')
     })
@@ -203,7 +211,10 @@ describe('useLoginTelemetry', () => {
       await nextTick()
       log.action.mockClear()
       vi.advanceTimersByTime(5001)
-      expect(events()[0]).toMatchObject({ name: 'flow_abandon', reason: 'closed' })
+      expect(events()[0]).toMatchObject({
+        name: 'flow_abandon',
+        reason: 'closed',
+      })
     })
 
     it('still abandons at once when closed with no submit', async () => {
@@ -221,7 +232,11 @@ describe('useLoginTelemetry', () => {
       scope.stop()
       loggedIn.value = true
       vi.advanceTimersByTime(1000)
-      expect(names()).toEqual(['flow_submit_result', 'step_complete', 'flow_complete'])
+      expect(names()).toEqual([
+        'flow_submit_result',
+        'step_complete',
+        'flow_complete',
+      ])
     })
 
     it('abandons if torn down with no login within five seconds', async () => {

@@ -27,7 +27,9 @@ describe('ModSysAdminUxHealth', () => {
 
   it('says nothing is wrong when every metric is ok', () => {
     store.health.data = {
-      metrics: [{ metric: 'flow_events', ok: true, days: [day('2026-10-01', 1)] }],
+      metrics: [
+        { metric: 'flow_events', ok: true, days: [day('2026-10-01', 1)] },
+      ],
     }
     const w = make()
     expect(w.find('.notice-message.danger').exists()).toBe(false)

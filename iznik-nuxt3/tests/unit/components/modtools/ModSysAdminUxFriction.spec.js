@@ -15,7 +15,13 @@ const data = {
       dead_clicks: 40,
       rage_clicks: 10,
       repeated_intent: 6,
-      previous: { impressions: 900, clicks: 180, dead_clicks: 9, rage_clicks: 2, repeated_intent: 1 },
+      previous: {
+        impressions: 900,
+        clicks: 180,
+        dead_clicks: 9,
+        rage_clicks: 2,
+        repeated_intent: 1,
+      },
       change: 3.5,
     },
   ],
@@ -27,7 +33,8 @@ describe('ModSysAdminUxFriction', () => {
     setActivePinia(createPinia())
     store = useUxStore()
   })
-  const make = () => mount(ModSysAdminUxFriction, { global: { stubs: uxStubs } })
+  const make = () =>
+    mount(ModSysAdminUxFriction, { global: { stubs: uxStubs } })
 
   it('lists components with dead and rage clicks as percentages with counts', () => {
     store.friction.data = data

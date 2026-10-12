@@ -2446,12 +2446,7 @@ describe('flow telemetry', () => {
     await flushPromises()
 
     expect(names()).toEqual(
-      expect.arrayContaining([
-        'start',
-        'submit',
-        'submitResult',
-        'complete',
-      ])
+      expect.arrayContaining(['start', 'submit', 'submitResult', 'complete'])
     )
     expect(flowCalls.calls.find((c) => c[0] === 'submitResult')).toEqual([
       'submitResult',

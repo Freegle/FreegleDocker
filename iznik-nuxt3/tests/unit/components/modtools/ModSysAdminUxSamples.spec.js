@@ -59,7 +59,8 @@ describe('ModSysAdminUxSamples', () => {
           ...uxStubs,
           'b-modal': {
             name: 'ModalStub',
-            template: '<div class="modal-stub" v-if="modelValue"><slot /></div>',
+            template:
+              '<div class="modal-stub" v-if="modelValue"><slot /></div>',
             props: ['modelValue', 'title'],
           },
         },

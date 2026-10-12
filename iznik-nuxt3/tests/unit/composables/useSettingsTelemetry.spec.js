@@ -1,13 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { effectScope } from 'vue'
 
-const log = vi.hoisted(() => ({ action: vi.fn(), flush: vi.fn() }))
-vi.mock('~/composables/useClientLog', () => ({
-  action: log.action,
-  flush: log.flush,
-}))
-vi.mock('~/composables/useExperiment', () => ({ experimentVariant: () => '' }))
-
 import {
   startSettingsFlow,
   changedFields,
@@ -19,7 +12,15 @@ import {
   _resetFlowTelemetryForTests,
 } from '~/composables/useFlowTelemetry'
 
-const events = () => log.action.mock.calls.map(([name, ctx]) => ({ name, ...ctx }))
+const log = vi.hoisted(() => ({ action: vi.fn(), flush: vi.fn() }))
+vi.mock('~/composables/useClientLog', () => ({
+  action: log.action,
+  flush: log.flush,
+}))
+vi.mock('~/composables/useExperiment', () => ({ experimentVariant: () => '' }))
+
+const events = () =>
+  log.action.mock.calls.map(([name, ctx]) => ({ name, ...ctx }))
 const names = () => events().map((e) => e.name)
 
 describe('changedFields', () => {
@@ -31,7 +32,11 @@ describe('changedFields', () => {
   it('names the settings that differ, with a kind', () => {
     expect(
       changedFields(user, {
-        settings: { notificationmails: false, simplemail: 'Basic', modmails: 1 },
+        settings: {
+          notificationmails: false,
+          simplemail: 'Basic',
+          modmails: 1,
+        },
       })
     ).toEqual([
       { field: 'notificationmails', kind: 'toggled' },
@@ -46,13 +51,18 @@ describe('changedFields', () => {
   })
 
   it('counts a setting new to the user as replaced', () => {
-    expect(changedFields(user, { settings: { ...user.settings, newone: 1 } })).toEqual([
-      { field: 'newone', kind: 'replaced' },
-    ])
+    expect(
+      changedFields(user, { settings: { ...user.settings, newone: 1 } })
+    ).toEqual([{ field: 'newone', kind: 'replaced' }])
   })
 
   it('ignores unchanged values and a missing user', () => {
-    expect(changedFields(user, { displayname: 'Sam Example', settings: user.settings })).toEqual([])
+    expect(
+      changedFields(user, {
+        displayname: 'Sam Example',
+        settings: user.settings,
+      })
+    ).toEqual([])
     expect(changedFields(null, { displayname: 'x' })).toEqual([
       { field: 'displayname', kind: 'replaced' },
     ])
@@ -60,7 +70,10 @@ describe('changedFields', () => {
 
   it('never contains a value', () => {
     const out = JSON.stringify(
-      changedFields(user, { displayname: 'Secret Name', settings: { simplemail: 'Basic' } })
+      changedFields(user, {
+        displayname: 'Secret Name',
+        settings: { simplemail: 'Basic' },
+      })
     )
     expect(out).not.toContain('Secret')
     expect(out).not.toContain('Basic')

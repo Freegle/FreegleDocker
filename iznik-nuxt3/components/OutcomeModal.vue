@@ -415,54 +415,53 @@ async function submit(callback) {
     flow.submit()
 
     try {
-    if (props.type === 'Withdrawn' || props.type === 'Received') {
-      complete = true
-    } else {
-      complete = isBulk.value ? left.value === 0 : allGone.value
+      if (props.type === 'Withdrawn' || props.type === 'Received') {
+        complete = true
+      } else {
+        complete = isBulk.value ? left.value === 0 : allGone.value
 
-      for (const u of tookUsers.value) {
-        const userid = u.userid > 0 ? u.userid : null
+        for (const u of tookUsers.value) {
+          const userid = u.userid > 0 ? u.userid : null
 
-        if (!isBulk.value) {
-          // No count: the server records one against the taker, which is all
-          // the "part gone" badge needs to know.
-          await messageStore.addBy(message.value.id, userid)
-        } else if (u.count > 0) {
-          await messageStore.addBy(message.value.id, userid, u.count)
-        } else {
-          await messageStore.removeBy(message.value.id, userid)
+          if (!isBulk.value) {
+            // No count: the server records one against the taker, which is all
+            // the "part gone" badge needs to know.
+            await messageStore.addBy(message.value.id, userid)
+          } else if (u.count > 0) {
+            await messageStore.addBy(message.value.id, userid, u.count)
+          } else {
+            await messageStore.removeBy(message.value.id, userid)
+          }
         }
       }
-    }
 
-    if (complete) {
-      // The post is being taken/received.
-      await messageStore.update({
-        action: 'Outcome',
-        id: props.id,
-        outcome: props.type,
-        happiness: happiness.value,
-        comment: comments.value,
-        message: completionMessage.value,
-      })
+      if (complete) {
+        // The post is being taken/received.
+        await messageStore.update({
+          action: 'Outcome',
+          id: props.id,
+          outcome: props.type,
+          happiness: happiness.value,
+          comment: comments.value,
+          message: completionMessage.value,
+        })
 
-      // Refetch the message to ensure the outcome is reflected in the store
-      // For withdrawn messages that were pending, the fetch may fail as they get deleted
-      try {
-        await messageStore.fetch(props.id)
-      } catch (error) {
-        if (props.type === 'Withdrawn') {
-          // Suppress fetch errors for withdrawn messages as they may have been deleted
-          console.log(
-            'Suppressed fetch error for withdrawn message:',
-            error.message
-          )
-        } else {
-          throw error
+        // Refetch the message to ensure the outcome is reflected in the store
+        // For withdrawn messages that were pending, the fetch may fail as they get deleted
+        try {
+          await messageStore.fetch(props.id)
+        } catch (error) {
+          if (props.type === 'Withdrawn') {
+            // Suppress fetch errors for withdrawn messages as they may have been deleted
+            console.log(
+              'Suppressed fetch error for withdrawn message:',
+              error.message
+            )
+          } else {
+            throw error
+          }
         }
       }
-    }
-
     } catch (e) {
       flow.submitResult(false, e?.response?.status ?? null, 'error')
       throw e

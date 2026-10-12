@@ -110,7 +110,11 @@ describe('ux store', () => {
   it('loads samples for a date, flow and step', async () => {
     fetchers.fetchSamples.mockResolvedValue({ sessions: [] })
     const store = useUxStore()
-    await store.load('samples', { date: '2026-10-07', flow: 'post', step: 'photos' })
+    await store.load('samples', {
+      date: '2026-10-07',
+      flow: 'post',
+      step: 'photos',
+    })
     expect(fetchers.fetchSamples).toHaveBeenCalledWith({
       date: '2026-10-07',
       flow: 'post',

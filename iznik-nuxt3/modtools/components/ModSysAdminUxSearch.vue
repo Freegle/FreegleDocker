@@ -50,7 +50,10 @@ const fields = [
 const days = computed(() => store.search.data?.days || [])
 
 const totals = computed(() => ({
-  zero: withCount(sumBy(days.value, 'zero_result'), sumBy(days.value, 'searches')),
+  zero: withCount(
+    sumBy(days.value, 'zero_result'),
+    sumBy(days.value, 'searches')
+  ),
   again: withCount(
     sumBy(days.value, 're_searched_60s'),
     sumBy(days.value, 'searches')

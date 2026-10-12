@@ -18,11 +18,19 @@ describe('ModSysAdminUxSecondThoughts', () => {
     }
     store.fields.data = {
       fields: [
-        { flow: 'post', step: 'item', field: 'title', revisits: 12, validation_failures: 3, choice_switches: 7 },
+        {
+          flow: 'post',
+          step: 'item',
+          field: 'title',
+          revisits: 12,
+          validation_failures: 3,
+          choice_switches: 7,
+        },
       ],
     }
   })
-  const make = () => mount(ModSysAdminUxSecondThoughts, { global: { stubs: uxStubs } })
+  const make = () =>
+    mount(ModSysAdminUxSecondThoughts, { global: { stubs: uxStubs } })
 
   it('shows the rate of going back per step with counts, and the previous period', () => {
     const t = make().text()
