@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-12
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/messages/**
@@ -155,7 +155,8 @@ recorded by the poster or by the moderators of the community it was posted on, a
 server refuses it from anywhere else. Once the poster is an ordinary member of your
 community, for example because they posted there or wrote back to one of your members
 about this post, Blank Reply and those standard messages come back, and rejecting or
-deleting the copy tells them. A rippled-in copy
+deleting the copy tells them. The rippling banner then says the poster is also a member of
+your community, so the normal reject message is not a surprise. A rippled-in copy
 can also arrive Pending because it breaks your own keyword or worry-word rules, with the
 reason shown on the post. The whole picture is in [rippling out](rippling-out.md).
 
