@@ -145,28 +145,34 @@ async function connectAppWebView() {
     )
   }
   device.setDefaultTimeout(timeouts.navigation.initial)
-  const webView = await device.webView({ pkg: APP_PACKAGE })
-  const page = await webView.page()
-  console.log(
-    `Attached to ${APP_PACKAGE} WebView (pid ${webView.pid()}) on ${APP_SERIAL}: ${page.url()}`
-  )
-  const attached = { device, webView, page }
-  // After a test kills the app (a cold start), attach to the new process's WebView,
-  // named by its pid so the old one, which Playwright may not have dropped yet,
-  // cannot answer instead.
-  attached.reattach = async () => {
+  // The WebView is chosen by its devtools socket, named after the app's pid, never by
+  // package: Playwright works out a WebView's package from the last line of
+  // `ps -A | grep <pid>`, which any process whose figures contain those digits can
+  // win, and then a WebView that is there is never matched (CI job 39427).
+  const attachToRunningApp = async () => {
     const appPid = await device
       .shell(`pidof ${APP_PACKAGE}`)
       .then((b) => parseInt(String(b).trim(), 10))
     if (!appPid) {
       throw new Error(`${APP_PACKAGE} is not running, nothing to attach to`)
     }
-    attached.webView = await device.webView({
-      pkg: APP_PACKAGE,
+    const webView = await device.webView({
       socketName: `webview_devtools_remote_${appPid}`,
     })
-    attached.page = await attached.webView.page()
-    console.log(`Re-attached to ${APP_PACKAGE} WebView (pid ${appPid})`)
+    return { webView, page: await webView.page(), appPid }
+  }
+  const first = await attachToRunningApp()
+  console.log(
+    `Attached to ${APP_PACKAGE} WebView (pid ${first.appPid}) on ${APP_SERIAL}: ${first.page.url()}`
+  )
+  const attached = { device, webView: first.webView, page: first.page }
+  // After a test kills the app (a cold start), attach to the new process's WebView;
+  // its socket carries the new pid, so the old one cannot answer instead.
+  attached.reattach = async () => {
+    const next = await attachToRunningApp()
+    attached.webView = next.webView
+    attached.page = next.page
+    console.log(`Re-attached to ${APP_PACKAGE} WebView (pid ${next.appPid})`)
     return attached.page
   }
   return attached

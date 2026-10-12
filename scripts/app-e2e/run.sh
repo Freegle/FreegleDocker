@@ -65,7 +65,9 @@ fi
 [ -f "$OUT_DIR/freegle-e2e.apk" ] || die "no APK at $OUT_DIR/freegle-e2e.apk"
 
 if ! emulator_booted; then
-	bash "$APP_E2E_DIR/start-emulator.sh"
+	# Without the lock descriptor: the emulator outlives this run under --keep, and a
+	# process that inherited it would hold the lock until the emulator stops.
+	bash "$APP_E2E_DIR/start-emulator.sh" 9>&-
 	started=1
 fi
 

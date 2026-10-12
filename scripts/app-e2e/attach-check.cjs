@@ -30,9 +30,15 @@ function fail(msg) {
   console.log(`[attach-check] adb server port ${port}: ${devices.map((d) => d.serial()).join(', ') || 'no devices'}`)
   const device = devices.find((d) => d.serial() === serial)
   if (!device) fail(`${serial} is not among the devices Playwright sees`)
-  console.log(`[attach-check] webviews: ${device.webViews().map((w) => `${w.pkg()}:${w.pid()}`).join(', ') || 'none yet'}`)
+  // By socket name, from the app's pid, as the fixtures do: Playwright's own package
+  // lookup for a WebView (`ps -A | grep <pid>`, last line wins) can name the wrong one.
+  const appPid = parseInt(String(await device.shell(`pidof ${pkg}`)).trim(), 10)
+  if (!appPid) fail(`${pkg} is not running`)
+  const socketName = `webview_devtools_remote_${appPid}`
   device.setDefaultTimeout(60000)
-  const webView = await device.webView({ pkg }).catch((e) => fail(`no WebView for ${pkg}: ${e.message}`))
+  const webView = await device.webView({ socketName }).catch((e) =>
+    fail(`no WebView on ${socketName}: ${e.message} (seen: ${device.webViews().map((w) => `${w.socketName()}=${w.pkg() || '?'}`).join(', ') || 'none'})`)
+  )
   const page = await webView.page().catch((e) => fail(`WebView page: ${e.message}`))
   const url = page.url()
   const mounted = await page
