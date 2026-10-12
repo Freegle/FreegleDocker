@@ -3,9 +3,10 @@
 Runs the real Android app, built from the checkout, on a headless emulator against the
 local Docker stack, and drives it with the Playwright `app` project
 (`iznik-nuxt3/playwright.config.js`). It is the gate in front of the promote workflow:
-`freegle/app-emulator-tests` runs in `manual-promote-submit` before anything moves to a
-live Play or App Store track, and on demand with the `run_app_emulator_test` pipeline
-parameter. It does not run on every push.
+`freegle/app-emulator-tests` runs in `manual-promote-submit` before the Freegle app moves
+to a live Play or App Store track, and on demand with the `run_app_emulator_test` pipeline
+parameter. It does not run on every push. The ModTools submission in the same workflow
+does not wait for it: the tests do not exercise ModTools.
 
 What it exercises that the browser suite cannot:
 
@@ -27,7 +28,12 @@ What it exercises that the browser suite cannot:
    API, and the Capacitor switch turns on WebView remote debugging and mixed content.
    `GOOGLE_SERVICES_JSON_BASE64` (the CI secret) becomes `google-services.json`; without
    it a placeholder is used so Firebase initialises (push *registration* then fails with
-   the plugin's `registrationError`; push *delivery* is tested without Firebase).
+   the plugin's `registrationError`; push *delivery* is tested without Firebase). The
+   stack URLs can be overridden only as `APP_E2E_API_V2`, `APP_E2E_TUS_UPLOADER`,
+   `APP_E2E_IMAGE_DELIVERY` and `APP_E2E_USER_SITE`. The build reports to no Sentry
+   project and uploads no source maps. Afterwards the placeholder is removed and the
+   native config rewritten without the e2e WebView settings, so a later build that skips
+   `cap sync` does not ship them.
 2. **Boot** (`start-emulator.sh`): a cold headless boot of the `freegle-app-e2e` AVD
    (Pixel 6, API 34, `google_apis`, not the Play Store image, because the run needs
    `adb root`). Animations off, screen kept on, adbd restarted as root.
@@ -76,18 +82,28 @@ Two orb jobs, in the promote workflow and the on-demand one:
 | Job | Executor | Does |
 |---|---|---|
 | `freegle/app-emulator-apk` | Docker Android (`cimg/android`, large) | `build-apk.sh` against the CI stack's port 9080; hands the APK on through the workspace |
-| `freegle/app-emulator-tests` | Android machine image, large (4 vCPU, 15 GB; `xlarge` is not in the plan) | brings up the stack, boots the emulator, runs `run.sh --no-build` |
+| `freegle/app-emulator-tests` | Android machine image, large (4 vCPU, 15 GB; `xlarge` is not in the plan), four in parallel | each brings up the stack, boots the emulator, runs `run.sh --no-build -- --shard=N/4` |
 
 A CircleCI cloud job is stopped after one hour, which shapes the emulator job:
 
 - The APK is built elsewhere: on the same four cores it doubled both builds.
 - The stack is build-and-test's minus the services the app never uses, swapped for idle
   placeholders by `docker-compose.app-e2e.yml` (ModTools, both dev servers, the Playwright
-  image, the AI support helper). Built in full and uncached, the stack took 31 minutes.
-- Playwright gets a 20-minute global timeout, so its reports are written before the hour.
+  image, the AI support helper). It still takes about 30 minutes, uncached, before the
+  first test starts. Built in full it took 31 minutes on its own.
+- The emulator renders in software on the cores the stack is using, so a test takes 5 to
+  10 times as long as on a workstation: deep links 28 seconds against 3, the foreground
+  push 91 against 8. All 24 tests did not fit one machine's remaining half hour.
+- So the job runs on four machines (`shards`, default 4), each its own Playwright shard.
+  Playwright keeps a spec file in one shard and balances by test count, which today gives
+  deep links, push and photos (10 tests); plugins (6); the post flow (5); the reply flow
+  (3). Each shard has a 22-minute global timeout, so its reports are written before the
+  hour.
+- Each machine samples its load once a minute into `load.txt`, the data for retuning the
+  shards or the stack.
 
-Artifacts: `freegle-e2e.apk` on the APK job; `app-emulator` (the run directory) on the
-emulator job.
+Artifacts: `freegle-e2e.apk` on the APK job; `app-emulator` (the run directory and
+`load.txt`) on each emulator machine.
 
 ## Traps
 
@@ -134,6 +150,20 @@ emulator job.
   the delivery service to fetch `tusd.localhost:<host port>`, which the delivery container
   cannot reach, so the tests stop at the tusd upload instead of the rendered thumbnail.
   The web suite has the same limitation and allows the 404.
+- **The release build's variable names are already set in CI.** CircleCI sets
+  `TUS_UPLOADER` to the public tus demo server, and an e2e build that let the environment
+  win uploaded its test photos there: every photo test failed on `net::ERR_FAILED`, and
+  their retries ate the run. `lib.sh` reads overrides only under `APP_E2E_*` names.
+- **`config.js` falls back to the live web Sentry DSN when `SENTRY_DSN` is empty**, so
+  unsetting it sends the e2e build's errors to the web project, where the monitor would
+  take them as work. `NUXT_PUBLIC_SENTRY_DSN=""` empties the runtime value, which
+  `plugins/sentry.client.ts` reads as disabled; `build-apk.sh` fails if a DSN survives.
+- **The camera drops a shutter tap that comes before it is ready.** The shutter is on
+  screen while the camera is still opening; on a CI emulator the one tap landed then and
+  the camera sat on its preview until the test gave up. `takePictureWithSystemCamera`
+  taps again each round until the review screen's done button appears.
+- **Opening the shade right after Home can be lost** while the launcher animates in.
+  `tapNotification` asks again each round until the notification is on screen.
 - **The release build has no Capacitor logging**: R8 builds drop it, so logcat says nothing
   about a plugin call. Read the WebView console, or the stores (`compose.messages` holds
   each photo's native preview path and its tusd id).

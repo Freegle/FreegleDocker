@@ -38,6 +38,9 @@ curl -sf --max-time 10 "$STACK_API_V2/online" >/dev/null || die "apiv2 not reach
 curl -sf --max-time 10 "$STATUS_API_URL/api/status/all" >/dev/null || die "status API not reachable at $STATUS_API_URL"
 
 mkdir -p "$STATE_DIR" "$OUT_DIR"
+# The adb server before the lock: a server that a later adb call started would inherit
+# the lock descriptor and go on holding the lock after this run has ended.
+"$ADB" start-server >/dev/null 2>&1 || true
 # One emulator per host: two runs never drive it at once (bounded wait).
 lock_file="$STATE_DIR/emulator.lock"
 exec 9>"$lock_file"
@@ -60,7 +63,7 @@ trap cleanup EXIT
 trap 'exit 143' TERM INT
 
 if [ "$build" = 1 ]; then
-	bash "$APP_E2E_DIR/build-apk.sh"
+	bash "$APP_E2E_DIR/build-apk.sh" 9>&-
 fi
 [ -f "$OUT_DIR/freegle-e2e.apk" ] || die "no APK at $OUT_DIR/freegle-e2e.apk"
 

@@ -28,7 +28,7 @@ command -v node >/dev/null && ok "node $(node --version)" || bad "node 22+ missi
 [ -f "$OUT_DIR/freegle-e2e.apk" ] && ok "APK $OUT_DIR/freegle-e2e.apk" || bad "APK not built: scripts/app-e2e/build-apk.sh"
 if curl -sf --max-time 5 "$STACK_API_V2/online" >/dev/null 2>&1; then ok "apiv2 answers at $STACK_API_V2"; else bad "apiv2 not reachable at $STACK_API_V2 (start the stack)"; fi
 if curl -sf --max-time 5 "$STATUS_API_URL/api/status/all" >/dev/null 2>&1; then ok "status API at $STATUS_API_URL"; else bad "status API not reachable at $STATUS_API_URL"; fi
-if [ -x "$ADB" ] && "$ADB" devices 2>/dev/null | grep -q "^${EMU_SERIAL}[[:space:]]device"; then
+if [ -x "$ADB" ] && "$ADB" devices 2>/dev/null | grep "^${EMU_SERIAL}[[:space:]]device" >/dev/null; then
 	emulator_booted && ok "$EMU_SERIAL booted" || bad "$EMU_SERIAL attached but not booted"
 else
 	echo "  info  $EMU_SERIAL not running (start-emulator.sh boots it; run.sh does so itself)"

@@ -272,8 +272,9 @@ build, not by bisecting the boundary.
   port 80 for the reverse tunnel or accept the FCM broadcast. The AVD is `google_apis`.
 - **A signed-out app answering 401 looks like a Sentry error** in the console-error check;
   the resume handler in `stores/mobile.js` now fetches nothing while nobody is signed in.
-- **A background `adb logcat` holds the emulator lock** if it inherits the lock descriptor;
-  a later run then waits 45 minutes for a lock nobody will release.
+- **A background `adb logcat`, or an adb server the run happened to start, holds the
+  emulator lock** if it inherits the lock descriptor; a later run then waits 45 minutes for
+  a lock nobody will release. `run.sh` starts the server before taking the lock.
 - **The emulator needs `/dev/kvm`, which no Hetzner Cloud VM has.** The job runs on
   CircleCI's Android machine image; on a runner it fails at its KVM check.
 - **A CircleCI cloud job is killed at one hour**, mid-step, with no `when: always` evidence
@@ -281,6 +282,21 @@ build, not by bisecting the boundary.
   uncached stack build). The APK is built in its own job and the emulator job's stack drops
   the services the app never uses (`scripts/app-e2e/docker-compose.app-e2e.yml`); keep
   anything added to it inside that hour. `xlarge` is not in the plan.
+- **On that machine a test takes 5 to 10 times as long as on a workstation** (deep links 28s
+  against 3s), because the emulator renders in software on the cores the stack is using,
+  and the stack takes about 30 minutes before the first test. One machine ran 16 of the 24
+  tests in its 20 minutes. The job is split into Playwright shards on parallel machines
+  (`shards`, whole spec files per shard); a spec added to the `app` project lands in a
+  shard by test count, so check that its shard still fits.
+- **An e2e build that reads the release build's variable names gets CircleCI's values.**
+  `TUS_UPLOADER` there is the public tus demo server, and every photo test failed on
+  `net::ERR_FAILED` until `lib.sh` took overrides only as `APP_E2E_*`.
+- **An unset `SENTRY_DSN` is not "no Sentry"**: `config.js` falls back to the live web DSN.
+  The e2e build empties the runtime value with `NUXT_PUBLIC_SENTRY_DSN=""`.
+- **The scheduled promote must not be cancelled by a push to production.** It is a CircleCI
+  scheduled pipeline (`weekly-promote-schedule`, Wednesday 22:00 UTC) that now runs for an
+  hour; the cancel passes in `.circleci/config.yml` spare `scheduled_pipeline` as well as
+  `api` triggers, or a master auto-merge would cancel it with nothing reported.
 - **A compose override that gives a service `build:` back undoes a placeholder.** The orb's
   cache overlay adds `build.cache_from` to eight services, so applying it on top of the
   emulator job's placeholders made Compose look for a Dockerfile that is not there.

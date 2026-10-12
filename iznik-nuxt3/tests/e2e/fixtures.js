@@ -119,6 +119,16 @@ const APP_ACTIVITY = process.env.APP_E2E_ACTIVITY || '.MainActivity'
 const APP_ORIGIN = (process.env.APP_E2E_ORIGIN || '').replace(/\/$/, '')
 const APP_MODE = !!APP_SERIAL
 
+// Console errors only the Android WebView produces. They are allowed in the app project
+// alone, so the browser suite still fails on them.
+const APP_ALLOWED_ERROR_PATTERNS = [
+  /Failed to load resource: net::ERR_FAILED.*delivery\.localhost/, // The test env's missing image (a 404 in Chromium), as the WebView reports it.
+  /Failed to load resource: the server responded with a status of 400.*delivery\.localhost/, // The same missing image: on the CI stack (port 9080) the delivery service answers 400 when it cannot fetch the original.
+  /Failed to load resource: net::ERR_FAILED.*\/api\/scrolldepth/, // useScrollDepth's sendBeacon on visibilitychange, cancelled when the fixture reloads the app between tests; fire-and-forget by design.
+  /Failed to save credentials.*does not support public key credentials/, // The WebView's wording of the credential errors allowed below.
+  /NotSupportedError: The user agent does not support public key credentials/,
+]
+
 async function connectAppWebView() {
   if (!APP_ORIGIN) {
     throw new Error('APP_E2E_ORIGIN must be set with APP_E2E_SERIAL')
@@ -515,9 +525,6 @@ const fixtures = {
       /Failed to load resource: the server responded with a status of 404.*api\/chat\//, // Chat API 404 errors when chat rooms are deleted between test runs.
       /Failed to load resource: the server responded with a status of 404.*api\/session/, // Session API 404 can happen when trying to logout when not logged in.
       /Failed to load resource: the server responded with a status of 404.*delivery\.localhost/, // Delivery service 404 errors for missing images can happen during normal operation.
-      /Failed to load resource: net::ERR_FAILED.*delivery\.localhost/, // The same missing test-env image as above, as the Android WebView reports it (app project).
-      /Failed to load resource: the server responded with a status of 400.*delivery\.localhost/, // The same missing test-env image again: the delivery service answers 400 when it cannot fetch the original (seen on the CI stack, port 9080).
-      /Failed to load resource: net::ERR_FAILED.*\/api\/scrolldepth/, // useScrollDepth's sendBeacon on visibilitychange, cancelled by the WebView when the app project reloads the page between tests; fire-and-forget by design.
       /Failed to load resource: the server responded with a status of 404.*\/\d+w/, // Responsive image width-variant (e.g. /320w) not generated in the test image env — same class as the delivery.localhost image 404 above.
       /FedCM get\(\) rejects with/, // Not available in test
       /Error retrieving a token./, // Also related to GSI FedCM, not available in test
@@ -549,9 +556,6 @@ const fixtures = {
       // instead of "The user agent does not support public key credentials".
       /Failed to save credentials NotSupportedError/,
       /Error connecting to Credential Management service/,
-      // The Android WebView's wording of the same thing (app project).
-      /Failed to save credentials.*does not support public key credentials/,
-      /NotSupportedError: The user agent does not support public key credentials/,
       /Refused to frame/, // Can happen in test.
       /Failed to load resource.*sentry/, // Sentry errors can happen in test environments
       /Error in map idle TypeError: Cannot read properties of undefined \(reading '_leaflet_pos'\)/, // Leaflet map errors in test environment
@@ -604,6 +608,10 @@ const fixtures = {
       /Your focus-trap must have at least one container/, // Bootstrap Vue focus-trap error during modal transitions (transient, non-critical)
       /Failed to load resource.*adtrafficquality\.google.*sodar/, // Google CSE script internally calls sodar (ad traffic quality) — external service, not our code
     ]
+
+    if (APP_MODE) {
+      originalAllowedErrorPatterns.push(...APP_ALLOWED_ERROR_PATTERNS)
+    }
 
     // Initialize the working copy of allowed error patterns
     const allowedErrorPatterns = [...originalAllowedErrorPatterns]

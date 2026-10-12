@@ -93,12 +93,13 @@ bug, check the build date in the app rather than assuming they have the current 
 ### The emulator gate
 
 The browser suite never runs the app itself, which is how a plugin missing from
-`includePlugins` once shipped unnoticed. Before the promote workflow moves anything to a
-live store track, `freegle/app-emulator-tests` builds the Android app from the checkout
-(the `e2e` build type: the release configuration, R8 included, signed with the debug key),
-boots a headless emulator on CircleCI's Android machine image (the Hetzner runners have no
-`/dev/kvm`) and runs the Playwright `app` project through the app's WebView against the
-local stack brought up on the same machine. It checks the native plugin set, push notification
+`includePlugins` once shipped unnoticed. Before the promote workflow moves the Freegle app
+to a live store track, `freegle/app-emulator-tests` builds the Android app from the checkout
+(the `e2e` build type: the release configuration, R8 included, signed with the debug key,
+reporting to no Sentry project), boots a headless emulator on CircleCI's Android machine
+image (the Hetzner runners have no `/dev/kvm`) and runs the Playwright `app` project through
+the app's WebView against the local stack brought up on the same machine, split across four
+such machines. ModTools' submission does not wait for it. It checks the native plugin set, push notification
 delivery and routing (an FCM data message injected on the device, no Firebase servers
 involved), deep links, photos from the system camera and the photo picker, images shared into
 the app from another app (with the app in the background and not running), and the post and

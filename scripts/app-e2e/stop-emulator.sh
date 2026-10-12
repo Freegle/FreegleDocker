@@ -12,11 +12,11 @@ gone() {
 	if [ -n "$pid" ]; then
 		! kill -0 "$pid" 2>/dev/null
 	else
-		! "$ADB" devices 2>/dev/null | grep -q "^${EMU_SERIAL}[[:space:]]"
+		! "$ADB" devices 2>/dev/null | grep "^${EMU_SERIAL}[[:space:]]" >/dev/null
 	fi
 }
 
-if "$ADB" devices 2>/dev/null | grep -q "^${EMU_SERIAL}[[:space:]]device"; then
+if "$ADB" devices 2>/dev/null | grep "^${EMU_SERIAL}[[:space:]]device" >/dev/null; then
 	"$ADB" -s "$EMU_SERIAL" shell sync >/dev/null 2>&1 || true
 	"$ADB" -s "$EMU_SERIAL" shell reboot -p >/dev/null 2>&1 || true
 	for _ in $(seq 1 60); do

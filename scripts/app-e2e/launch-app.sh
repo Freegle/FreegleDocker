@@ -33,13 +33,13 @@ adb_emu shell pm grant "$APP_PACKAGE" android.permission.POST_NOTIFICATIONS >/de
 adb_emu shell am start -W -n "$APP_PACKAGE/$APP_ACTIVITY" >/dev/null || die "am start failed"
 for _ in $(seq 1 60); do
 	pid="$(adb_emu shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r')"
-	if [ -n "$pid" ] && adb_emu shell cat /proc/net/unix 2>/dev/null | grep -q "webview_devtools_remote_${pid}"; then
+	if [ -n "$pid" ] && adb_emu shell cat /proc/net/unix 2>/dev/null | grep "webview_devtools_remote_${pid}" >/dev/null; then
 		break
 	fi
 	sleep 1
 done
 [ -n "${pid:-}" ] || die "$APP_PACKAGE did not start"
-adb_emu shell cat /proc/net/unix 2>/dev/null | grep -q "webview_devtools_remote_${pid}" ||
+adb_emu shell cat /proc/net/unix 2>/dev/null | grep "webview_devtools_remote_${pid}" >/dev/null ||
 	die "no WebView devtools socket for pid $pid: the APK was not built with FREEGLE_APP_E2E=true"
 log "$APP_PACKAGE running as pid $pid, WebView devtools socket present"
 

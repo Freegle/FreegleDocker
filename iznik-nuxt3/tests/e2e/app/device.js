@@ -295,29 +295,35 @@ async function takePictureWithSystemCamera() {
   const CAMERA = 'com.android.camera2'
   const FIRST_RUN =
     /^(NEXT|OK|GOT IT|NO THANKS|ALLOW|WHILE USING THE APP|ONLY THIS TIME)$/i
-  await poll(
+  // The shutter is on screen before the camera has opened, and the camera drops a tap
+  // that comes before it is ready to capture (on a CI emulator it was, and the camera
+  // sat on its preview until the test gave up). So the shutter is tapped again each
+  // round until the review screen's done button replaces it.
+  const done = await poll(
     async () => {
       const nodes = await uiNodes()
+      const doneButton = nodes.find(
+        (n) => n.resourceId === `${CAMERA}:id/done_button` && n.bounds
+      )
+      if (doneButton) {
+        return doneButton
+      }
       const shutter = nodes.find(
         (n) => n.resourceId === `${CAMERA}:id/shutter_button` && n.bounds
       )
-      if (shutter) {
-        await tapNode(shutter)
-        return true
-      }
       const prompt = nodes.find((n) => FIRST_RUN.test(n.text) && n.bounds)
-      if (prompt) {
-        await tapNode(prompt)
+      if (shutter || prompt) {
+        await tapNode(shutter || prompt)
       }
-      return false
+      return null
     },
     {
       timeoutMs: timeouts.ui.appearance,
-      intervalMs: 1000,
-      what: 'the camera shutter',
+      intervalMs: 2500,
+      what: 'the camera to take a picture (its done button)',
     }
   )
-  await tap({ resourceId: `${CAMERA}:id/done_button` })
+  await tapNode(done)
 }
 
 /**
@@ -407,10 +413,28 @@ async function clearNotifications() {
   await shell('service call notification 1 2>/dev/null || true').catch(() => {})
 }
 
-/** Opens the shade and taps the notification carrying this title. */
+/**
+ * Opens the shade and taps the notification carrying this title. The request to open
+ * the shade can be lost while the launcher is still animating in (on a CI emulator it
+ * was, just after the app was sent home), so it is repeated each round until the
+ * notification is on screen.
+ */
 async function tapNotification(title) {
-  await shell('cmd statusbar expand-notifications')
-  await tap({ text: title })
+  const node = await poll(
+    async () => {
+      const found = await findNode({ text: title })
+      if (!found) {
+        await shell('cmd statusbar expand-notifications')
+      }
+      return found
+    },
+    {
+      timeoutMs: timeouts.ui.appearance,
+      intervalMs: 1500,
+      what: `the notification "${title}" in the shade`,
+    }
+  )
+  await tapNode(node)
 }
 
 async function collapseShade() {

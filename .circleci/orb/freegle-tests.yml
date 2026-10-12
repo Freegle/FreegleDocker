@@ -5234,16 +5234,24 @@ jobs:
   # It runs on the Android machine image (android-machine-executor), the one CircleCI
   # environment with /dev/kvm, and must finish inside a cloud job's hour on four cores:
   # the stack is build-and-test's, minus the services the app never uses
-  # (scripts/app-e2e/docker-compose.app-e2e.yml).
+  # (scripts/app-e2e/docker-compose.app-e2e.yml). The stack takes about half that hour
+  # and the emulator, rendering in software beside it, runs tests 5 to 10 times slower
+  # than a workstation, so the specs are split across parallel machines (Playwright
+  # --shard, whole spec files per shard), each with its own stack and emulator.
   app-emulator-tests:
     parameters:
       size:
         type: string
         default: large
         description: "Android machine resource class (large: 4 vCPU, 15 GB)"
+      shards:
+        type: integer
+        default: 4
+        description: "Parallel machines; each runs one Playwright shard of the app project"
     executor:
       name: android-machine-executor
       size: << parameters.size >>
+    parallelism: << parameters.shards >>
     steps:
       - checkout
       - attach_workspace:
@@ -5338,8 +5346,17 @@ jobs:
           name: Run the Playwright app project on the emulator
           no_output_timeout: 30m
           command: |
-            # Ends the run, reports written, well inside the job's hour.
-            APP_E2E_GLOBAL_TIMEOUT_MIN=20 bash scripts/app-e2e/run.sh --no-build
+            # The machine's load once a minute, for tuning the shards and the stack.
+            mkdir -p ~/app-e2e-artifacts
+            (while sleep 60; do
+              echo "=== $(date -u +%H:%M:%S)"
+              top -b -n 1 | head -15
+              docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}} {{.Name}}' | sort -rn | head -10
+            done) >~/app-e2e-artifacts/load.txt 2>&1 &
+            shard="$((CIRCLE_NODE_INDEX + 1))/${CIRCLE_NODE_TOTAL}"
+            echo "Playwright shard $shard"
+            # The global timeout ends the run, reports written, inside the job's hour.
+            APP_E2E_GLOBAL_TIMEOUT_MIN=22 bash scripts/app-e2e/run.sh --no-build -- --shard="$shard"
       - run:
           name: Collect app emulator evidence
           when: always

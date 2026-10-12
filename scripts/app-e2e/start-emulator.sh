@@ -24,7 +24,7 @@ window=0
 
 [ -f "$ANDROID_AVD_HOME/$AVD_NAME.ini" ] || die "AVD $AVD_NAME not found. Run: scripts/app-e2e/create-avd.sh"
 
-if "$ADB" devices 2>/dev/null | grep -q "^${EMU_SERIAL}[[:space:]]"; then
+if "$ADB" devices 2>/dev/null | grep "^${EMU_SERIAL}[[:space:]]" >/dev/null; then
 	if emulator_booted; then
 		log "$EMU_SERIAL already running and booted"
 		exit 0

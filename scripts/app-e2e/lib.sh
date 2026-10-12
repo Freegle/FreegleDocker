@@ -58,10 +58,13 @@ if [ "$PORT_TRAEFIK_HTTP" = "80" ]; then
 else
 	STACK_PORT_SUFFIX=":$PORT_TRAEFIK_HTTP"
 fi
-STACK_API_V2="${IZNIK_API_V2:-http://apiv2.localhost${STACK_PORT_SUFFIX}/api}"
-STACK_IMAGE_DELIVERY="${IMAGE_DELIVERY:-http://delivery.localhost${STACK_PORT_SUFFIX}}"
-STACK_TUS_UPLOADER="${TUS_UPLOADER:-http://tusd.localhost${STACK_PORT_SUFFIX}/tus/}"
-STACK_USER_SITE="${USER_SITE:-http://freegle-prod-local.localhost${STACK_PORT_SUFFIX}}"
+# Overridable only under APP_E2E_* names. The release build's own names (IZNIK_API_V2,
+# TUS_UPLOADER and the rest) are set in CI and in developers' shells: CircleCI sets
+# TUS_UPLOADER to the public tus demo server, which an e2e build once picked up.
+STACK_API_V2="${APP_E2E_API_V2:-http://apiv2.localhost${STACK_PORT_SUFFIX}/api}"
+STACK_IMAGE_DELIVERY="${APP_E2E_IMAGE_DELIVERY:-http://delivery.localhost${STACK_PORT_SUFFIX}}"
+STACK_TUS_UPLOADER="${APP_E2E_TUS_UPLOADER:-http://tusd.localhost${STACK_PORT_SUFFIX}/tus/}"
+STACK_USER_SITE="${APP_E2E_USER_SITE:-http://freegle-prod-local.localhost${STACK_PORT_SUFFIX}}"
 STATUS_API_URL="${STATUS_API_URL:-http://localhost:${PORT_STATUS}}"
 
 SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"

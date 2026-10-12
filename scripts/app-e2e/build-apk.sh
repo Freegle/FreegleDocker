@@ -42,10 +42,14 @@ else
 	export IMAGE_DELIVERY="$STACK_IMAGE_DELIVERY"
 	export USER_SITE="$STACK_USER_SITE"
 	export NUXT_NITRO_PRERENDER_ROUTES=false
-	# Not the app's Sentry project (SENTRY_DSN_APP_FD in CI): its events carry no marker
-	# that separates them from members' devices. Unset, the bundle reports to the web
-	# project, as the local and CI stacks do.
-	unset SENTRY_DSN
+	# No Sentry at all. The app's project (SENTRY_DSN_APP_FD in CI) cannot tell these
+	# events from members' devices, and an unset SENTRY_DSN is no answer: config.js falls
+	# back to the web project's DSN, where the monitor would take test errors as work.
+	# plugins/sentry.client.ts skips initialisation when the runtime DSN is empty, which
+	# NUXT_PUBLIC_SENTRY_DSN sets in the generated pages. No auth token either, so the
+	# build uploads no release or source maps.
+	unset SENTRY_DSN SENTRY_AUTH_TOKEN
+	export NUXT_PUBLIC_SENTRY_DSN=""
 	# A CircleCI project variable in the release build. The app's donation component
 	# mounts Stripe with it and reports its absence to the console, so a machine
 	# without the key gets a test-mode placeholder rather than a false alarm.
@@ -54,7 +58,23 @@ else
 		export STRIPE_PUBLISHABLE_KEY="pk_test_placeholder_app_e2e"
 	fi
 	npm run generate
+	# The runtime config is inlined in the page, its values shared between keys, so look
+	# for the DSN's host rather than the key.
+	if grep -q 'sentry\.io' .output/public/index.html; then
+		die "the generated bundle still carries a Sentry DSN"
+	fi
 fi
+
+# Leave the checkout as a plain build would. The placeholder Firebase file and the e2e
+# WebView settings in the native config (debugging, mixed content) must not reach a later
+# Android Studio or `cap build` run that skips `cap sync`. The APK is copied out first.
+restore_checkout() {
+	if [ "${PLACEHOLDER_FIREBASE:-0}" = 1 ]; then rm -f android/app/google-services.json; fi
+	if [ "${E2E_SYNCED:-0}" = 1 ]; then
+		npx cap copy android >/dev/null 2>&1 || log "could not rewrite the native config without the e2e settings; run: npx cap sync android"
+	fi
+}
+trap restore_checkout EXIT
 
 if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
 	log "writing android/app/google-services.json from GOOGLE_SERVICES_JSON_BASE64"
@@ -79,6 +99,7 @@ export FREEGLE_NUXT3_KEYSTORE_PATH="${FREEGLE_NUXT3_KEYSTORE_PATH:-/dev/null}"
 export FREEGLE_NUXT3_KEYSTORE_PASSWORD="${FREEGLE_NUXT3_KEYSTORE_PASSWORD:-unused}"
 export FREEGLE_NUXT3_KEYSTORE_ALIAS="${FREEGLE_NUXT3_KEYSTORE_ALIAS:-unused}"
 export FREEGLE_NUXT3_KEYALIAS_PASSWORD="${FREEGLE_NUXT3_KEYALIAS_PASSWORD:-unused}"
+E2E_SYNCED=1
 FREEGLE_APP_E2E=true npx cap sync android
 
 cfg="android/app/src/main/assets/capacitor.config.json"
