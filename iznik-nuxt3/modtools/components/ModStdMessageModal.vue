@@ -283,7 +283,7 @@
             :flex="false"
             icon-class="pe-1"
             class="m-1 d-inline-block"
-            @handle="(callback) => guardHold(() => process(callback))"
+            @handle="send"
           />
           <b-button variant="white" @click="hide"> Cancel </b-button>
         </div>
@@ -1008,6 +1008,12 @@ async function substitutionStrings(text) {
   }
 
   return text
+}
+
+// A refused send never reaches the end of process(), so stop the spinner here.
+async function send(callback) {
+  await guardHold(() => process(callback))
+  if (heldError.value && callback) callback()
 }
 
 async function process(callback) {

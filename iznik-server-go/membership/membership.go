@@ -1599,8 +1599,9 @@ type DeleteMembershipsRequest struct {
 }
 
 // msgSelfLeaveKeepsRole is the refusal a moderator sees when they try to leave a group
-// they run. The frontend never offers that choice; this is the backstop.
-const msgSelfLeaveKeepsRole = "You are a moderator of this community, so leaving would drop that role. Ask another owner to change your role first."
+// they run. The frontend never offers that choice; this is the backstop. A moderator can
+// change their own role to Member in ModTools, so the message says so (Discourse 10242).
+const msgSelfLeaveKeepsRole = "You are a moderator of this community, so leaving would drop that role. To leave, change your own role to Member first, or ask another owner to."
 
 // selfLeaveKeepsRole reports whether leaving this group would throw away a moderator
 // role the member holds by choice. Only a membership rippling created (rippled = 1) is
