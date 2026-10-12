@@ -35,11 +35,15 @@ What it exercises that the browser suite cannot:
    so the URLs baked into the bundle (`http://apiv2.localhost:<port>/api`) reach the stack
    (Chromium resolves `*.localhost` to loopback itself); a fresh install with runtime
    permissions granted; `am start`; wait for the WebView devtools socket.
-4. **Test**: `npx playwright test --project app --workers 1`. The fixtures attach to the
-   app's WebView through Playwright's Android support (`_android`), reset web storage and
-   reload from the app's origin before each test, and expose the device through
-   `tests/e2e/app/device.js` (adb shell, uiautomator, the notification shade, fake FCM,
-   deep links).
+4. **Test**: `attach-check.cjs` first attaches to the WebView exactly as the fixtures do
+   and fails with the reason if it cannot (Playwright reports a worker fixture failure only
+   at the end of a run). Then `npx playwright test --project app --workers 1`, with the
+   line reporter (failures printed as they happen) and a global timeout
+   (`APP_E2E_GLOBAL_TIMEOUT_MIN`, default 25). The fixtures attach to the app's WebView
+   through Playwright's Android support (`_android`), reset web storage and reload from the
+   app's origin before each test, and expose the device through `tests/e2e/app/device.js`
+   (adb shell, uiautomator, the notification shade, fake FCM, deep links, the camera, the
+   photo picker, share intents).
 5. **Evidence** in `~/.local/share/freegle-app-e2e/out/run-<timestamp>/` (`latest` points at
    it): Playwright's report and junit, screenshots and failure evidence, `logcat.txt`,
    `emulator.log`, `final-screen.png`. CI stores it under the `app-emulator` artifact.
@@ -64,6 +68,15 @@ which Gradle downloads once the licences are accepted by `setup-sdk.sh`.
 `/dev/kvm` is required. Under WSL2 that means `nestedVirtualization=true` in
 `.wslconfig`. Hetzner Cloud VMs (the ephemeral CI runners) never expose it, which is why
 the CI job runs on CircleCI's Android machine image instead.
+
+## In CI
+
+`freegle/app-emulator-tests` (in the orb) runs on the Android machine image, `large` (4
+vCPU, 15 GB) unless its `size` parameter says otherwise. A CircleCI cloud job is stopped
+after one hour, so the job is arranged to fit: the app build runs as a background step
+beside the stack build, and the stack build reads the runners' image cache
+(`CI_IMAGE_CACHE=pull`; only the runners push to it). Uncached, the stack build alone took
+31 minutes. Artifacts: `app-emulator` (the run directory and `app-build.log`).
 
 ## Traps
 

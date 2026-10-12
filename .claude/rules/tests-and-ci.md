@@ -268,6 +268,10 @@ build, not by bisecting the boundary.
   a later run then waits 45 minutes for a lock nobody will release.
 - **The emulator needs `/dev/kvm`, which no Hetzner Cloud VM has.** The job runs on
   CircleCI's Android machine image; on a runner it fails at its KVM check.
+- **A CircleCI cloud job is killed at one hour**, mid-step, with no `when: always` evidence
+  and Playwright's failure summary never printed (job 39371: 59 minutes, of which 31 were an
+  uncached stack build). The emulator job reads the image cache and builds the app in the
+  background to fit; keep anything added to it inside that hour.
 - **A share sent with `am start` from a root shell is refused** with a `SecurityException` in
   `MainActivity`, and the give flow never opens: root's URI grant does not take, and `am`
   never moves `EXTRA_STREAM` into the clip data a grant covers. `shareImage` sends as the

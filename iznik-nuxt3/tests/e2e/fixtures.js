@@ -123,7 +123,9 @@ async function connectAppWebView() {
     throw new Error('APP_E2E_ORIGIN must be set with APP_E2E_SERIAL')
   }
   const { _android: android } = require('playwright')
-  const devices = await android.devices()
+  const devices = await android.devices({
+    port: Number(process.env.ANDROID_ADB_SERVER_PORT) || 5037,
+  })
   const device = devices.find((d) => d.serial() === APP_SERIAL)
   if (!device) {
     throw new Error(

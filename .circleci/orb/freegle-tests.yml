@@ -147,6 +147,9 @@ executors:
       COMPOSE_DOCKER_CLI_BUILD: 1
       COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
       COMPOSE_PROJECT_NAME: freegle-ci
+      # Read the runners' image cache (never push): uncached, the stack build alone
+      # takes half of the hour a CircleCI cloud job is allowed.
+      CI_IMAGE_CACHE: pull
       OSM_PBF_PATH: /app/testdata/bristol.osm.pbf
       DEPRIVATION_CSV: /app/testdata/bristol_lsoa.csv
       PW_WORKERS: 4
@@ -614,10 +617,18 @@ commands:
 
             echo "Building CI-required containers..."
 
+            # CI_IMAGE_CACHE=pull (the Android machine job): read the runners' image cache
+            # registry like a runner does, but never push to it - only master's runner
+            # builds keep it current.
+            PULL_IMAGE_CACHE=false
+            if [ "${SELF_HOSTED_RUNNER:-}" = "true" ] || [ "${CI_IMAGE_CACHE:-}" = "pull" ]; then
+              PULL_IMAGE_CACHE=true
+            fi
+
             CACHE_FLAG="--no-cache"
-            if [ "${SELF_HOSTED_RUNNER:-}" = "true" ]; then
+            if [ "$PULL_IMAGE_CACHE" = "true" ]; then
               CACHE_FLAG=""
-              echo "Self-hosted runner: using Docker layer cache"
+              echo "Using the Docker layer cache"
             fi
 
             IS_WSL=false
@@ -627,7 +638,7 @@ commands:
             # so BuildKit finds cache hits via --cache-from even on fresh VMs.
             # Generates a compose override that adds cache_from: to each service.
             INLINE_CACHE_FLAG=""
-            if [ "${SELF_HOSTED_RUNNER:-}" = "true" ] && [ "$IS_WSL" = "false" ]; then
+            if [ "$PULL_IMAGE_CACHE" = "true" ] && [ "$IS_WSL" = "false" ]; then
               CACHE_REG="185.44.254.6:5002"
               # Don't pre-pull full images — BuildKit fetches only matching cache layers
               # on demand via cache_from. Pre-pulling large images adds more overhead than
@@ -669,8 +680,11 @@ commands:
               } > /tmp/docker-compose.cache.yml
 
               export COMPOSE_FILE="${COMPOSE_FILE}:/tmp/docker-compose.cache.yml"
-              # Embed inline cache metadata so the pushed images can serve as --cache-from sources
-              INLINE_CACHE_FLAG="--build-arg BUILDKIT_INLINE_CACHE=1"
+              # Embed inline cache metadata so the pushed images can serve as --cache-from
+              # sources. Only the runners push.
+              if [ "${SELF_HOSTED_RUNNER:-}" = "true" ]; then
+                INLINE_CACHE_FLAG="--build-arg BUILDKIT_INLINE_CACHE=1"
+              fi
               echo "Cache-from overlay added to COMPOSE_FILE"
             fi
 
@@ -5253,16 +5267,30 @@ jobs:
             echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset} ANDROID_HOME=${ANDROID_HOME:-unset}"
             bash scripts/app-e2e/setup-sdk.sh
             bash scripts/app-e2e/create-avd.sh
+      # The app build runs beside the stack build: one CircleCI cloud job gets an hour.
       - run:
-          name: Build the app's e2e variant against the stack's URLs
-          no_output_timeout: 30m
+          name: Build the app's e2e variant against the stack's URLs (background)
+          background: true
           command: |
-            bash scripts/app-e2e/build-apk.sh
+            set +e
+            bash scripts/app-e2e/build-apk.sh > /tmp/app-e2e-build.log 2>&1
+            echo $? > /tmp/app-e2e-build.exit
       - setup-dependencies
       - start-docker-services:
           reason: "Starting the stack for the app emulator tests"
       - wait-for-basic-services
       - wait-for-prod-container
+      - run:
+          name: Wait for the app build
+          no_output_timeout: 30m
+          command: |
+            for _ in $(seq 1 180); do
+              [ -f /tmp/app-e2e-build.exit ] && break
+              sleep 10
+            done
+            tail -30 /tmp/app-e2e-build.log
+            [ -f /tmp/app-e2e-build.exit ] || { echo "The app build did not finish in 30 minutes"; exit 1; }
+            exit "$(cat /tmp/app-e2e-build.exit)"
       - run:
           name: Run the Playwright app project on the emulator
           no_output_timeout: 45m
@@ -5277,6 +5305,7 @@ jobs:
             if [ -d "$latest" ]; then
               cp -rL "$latest/." ~/app-e2e-artifacts/ 2>/dev/null || true
             fi
+            cp /tmp/app-e2e-build.log ~/app-e2e-artifacts/app-build.log 2>/dev/null || true
             docker ps --format 'table {{.Names}}\t{{.Status}}' > ~/app-e2e-artifacts/docker-ps.txt 2>&1 || true
             ls -la ~/app-e2e-artifacts
       - store_test_results:

@@ -97,9 +97,18 @@ fi
 export PLAYWRIGHT_JUNIT_OUTPUT_FILE="$run_dir/junit.xml"
 export PLAYWRIGHT_HTML_REPORT="$run_dir/playwright-report"
 export PW_WORKERS=1
+node "$APP_E2E_DIR/attach-check.cjs" "$NUXT_DIR" 9>&- ||
+	die "Playwright cannot attach to the app's WebView (above); not running the tests"
+
 log "running Playwright project 'app' against $APP_E2E_ORIGIN on $APP_E2E_SERIAL"
+# The line reporter prints each failure as it happens, so a run cut short (the CI job's
+# hour) still says what failed; the global timeout ends the run, with its reports
+# written, before that. The junit and HTML reporters take their paths from the
+# PLAYWRIGHT_* variables above.
 set +e
-npx playwright test --project app --workers 1 --output "$run_dir/test-results" "${pw_args[@]}" 9>&-
+npx playwright test --project app --workers 1 --output "$run_dir/test-results" \
+	--reporter=line,junit,html --global-timeout "$((${APP_E2E_GLOBAL_TIMEOUT_MIN:-25} * 60000))" \
+	"${pw_args[@]}" 9>&-
 rc=$?
 set -e
 adb_emu exec-out screencap -p >"$run_dir/final-screen.png" 2>/dev/null || true
