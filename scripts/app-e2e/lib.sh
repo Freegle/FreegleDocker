@@ -66,6 +66,13 @@ STACK_IMAGE_DELIVERY="${APP_E2E_IMAGE_DELIVERY:-http://delivery.localhost${STACK
 STACK_TUS_UPLOADER="${APP_E2E_TUS_UPLOADER:-http://tusd.localhost${STACK_PORT_SUFFIX}/tus/}"
 STACK_USER_SITE="${APP_E2E_USER_SITE:-http://freegle-prod-local.localhost${STACK_PORT_SUFFIX}}"
 STATUS_API_URL="${STATUS_API_URL:-http://localhost:${PORT_STATUS}}"
+# The checkout's .env wins over the shell: the profile exports COMPOSE_PROJECT_NAME for
+# the main checkout, and a worktree run must reach its own batch container.
+if [ -f "$REPO_ROOT/.env" ]; then
+	_project="$(sed -n -E "s/^COMPOSE_PROJECT_NAME=[\"']?([A-Za-z0-9_-]+).*/\\1/p" "$REPO_ROOT/.env" | head -1)"
+	[ -n "$_project" ] && COMPOSE_PROJECT_NAME="$_project"
+fi
+BATCH_CONTAINER="${COMPOSE_PROJECT_NAME:-freegle}-batch"
 
 SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"

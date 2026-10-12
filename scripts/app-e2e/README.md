@@ -97,8 +97,9 @@ A CircleCI cloud job is stopped after one hour, which shapes the emulator job:
 - So the job runs on four machines (`shards`, default 4), each its own Playwright shard.
   Playwright keeps a spec file in one shard and balances by test count, which today gives
   deep links, push and photos (10 tests); plugins (6); the post flow (5); the reply flow
-  (3). Each shard has a 22-minute global timeout, so its reports are written before the
-  hour.
+  (3). Each shard's global timeout is what the hour leaves once its stack is up (56
+  minutes from the job's start, less 4 for the emulator), so a slow stack start shortens
+  the run and its reports are still written before CircleCI ends the job.
 - Each machine samples its load once a minute into `load.txt`, the data for retuning the
   shards or the stack.
 
@@ -107,6 +108,12 @@ Artifacts: `freegle-e2e.apk` on the APK job; `app-emulator` (the run directory a
 
 ## Traps
 
+- **Replies need `chats:process-incoming`, and nothing runs it in CI.** A reply stays
+  hidden in /chats until that command marks it processed. The batch scheduler is off in CI
+  and the web suite relies on the status API running it every five seconds; `run.sh` calls
+  Playwright directly, so it runs the same commands in the batch container itself
+  (`batch-ticker.log` in the run directory). Without it the reply specs pass on a
+  workstation, whose scheduler is on, and hang in CI.
 - **`chromium.connectOverCDP` through `adb forward` drops the connection** as soon as
   Playwright attaches to the WebView's browser target. `playwright._android` (device,
   `webView()`, `page()`) is the path that works, and it needs no forward.

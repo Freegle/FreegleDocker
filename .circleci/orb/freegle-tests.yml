@@ -5259,6 +5259,8 @@ jobs:
       - run:
           name: Pre-create runtime directories
           command: |
+            # When the job started, for the test step's time budget inside the hour.
+            echo "export APP_E2E_JOB_START=$(date +%s)" >> $BASH_ENV
             mkdir -p ssl/certs logs data status/data test-results
             echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml:scripts/app-e2e/docker-compose.app-e2e.yml"' >> $BASH_ENV
             mkdir -p ~/.local/share/freegle-app-e2e/out
@@ -5355,8 +5357,18 @@ jobs:
             done) >~/app-e2e-artifacts/load.txt 2>&1 &
             shard="$((CIRCLE_NODE_INDEX + 1))/${CIRCLE_NODE_TOTAL}"
             echo "Playwright shard $shard"
-            # The global timeout ends the run, reports written, inside the job's hour.
-            APP_E2E_GLOBAL_TIMEOUT_MIN=22 bash scripts/app-e2e/run.sh --no-build -- --shard="$shard"
+            # The global timeout ends the run, reports written, inside the job's hour. It is
+            # whatever the hour leaves once the stack is up: 56 minutes from the job's start,
+            # less about 4 for the emulator boot, install and attach before Playwright, so
+            # the evidence step after this one still runs. A slow stack start shortens the
+            # run rather than letting CircleCI kill the job with no reports.
+            left_min=$(( (APP_E2E_JOB_START + 56 * 60 - $(date +%s)) / 60 - 4 ))
+            echo "Playwright budget: $left_min minutes"
+            if [ "$left_min" -lt 8 ]; then
+              echo "Only $left_min minutes left in the job's hour: too little to run the shard"
+              exit 1
+            fi
+            APP_E2E_GLOBAL_TIMEOUT_MIN=$left_min bash scripts/app-e2e/run.sh --no-build -- --shard="$shard"
       - run:
           name: Collect app emulator evidence
           when: always

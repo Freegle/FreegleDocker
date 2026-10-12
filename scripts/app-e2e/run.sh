@@ -53,7 +53,9 @@ log "run directory: $run_dir"
 
 started=0
 logcat_pid=""
+ticker_pid=""
 cleanup() {
+	[ -n "$ticker_pid" ] && kill -- "-$ticker_pid" 2>/dev/null || true
 	[ -n "$logcat_pid" ] && kill "$logcat_pid" 2>/dev/null || true
 	if [ "$started" = 1 ] && [ "$keep" = 0 ]; then bash "$APP_E2E_DIR/stop-emulator.sh" || true; fi
 	[ -f "$OUT_DIR/$EMU_SERIAL.log" ] && cp "$OUT_DIR/$EMU_SERIAL.log" "$run_dir/emulator.log" 2>/dev/null || true
@@ -104,6 +106,25 @@ export PLAYWRIGHT_HTML_REPORT="$run_dir/playwright-report"
 export PW_WORKERS=1
 node "$APP_E2E_DIR/attach-check.cjs" "$NUXT_DIR" 9>&- ||
 	die "Playwright cannot attach to the app's WebView (above); not running the tests"
+
+# A reply only shows in /chats once chats:process-incoming has marked it processed. The
+# batch scheduler that would run it is off in CI, so the status API drives it every few
+# seconds for the web suite (status-nuxt/server/api/tests/playwright.post.ts); this run
+# does not go through the status API, so it drives the same commands itself. The stale
+# command lock is cleared each tick for the same reason as there.
+docker exec "$BATCH_CONTAINER" true 2>/dev/null ||
+	die "batch container $BATCH_CONTAINER not running: replies would never be processed"
+log "processing replies through $BATCH_CONTAINER (batch-ticker.log)"
+# Without errexit: one failed tick (a slow daemon, a restarting container) must not end
+# the loop and leave the reply specs hanging. setsid gives the loop its own process
+# group, so cleanup stops a tick in flight along with it.
+setsid bash -c '
+	while true; do
+		docker exec "$1" sh -c "rm -f storage/framework/command-locks/App-Console-Commands-Chat-ProcessIncomingChatCommand.lock; php artisan chats:process-incoming; php artisan lockdown:tick" ||
+			echo "[ticker] tick failed with exit $? at $(date -u +%H:%M:%S)"
+		sleep 5
+	done' ticker "$BATCH_CONTAINER" >>"$run_dir/batch-ticker.log" 2>&1 9>&- &
+ticker_pid=$!
 
 log "running Playwright project 'app' against $APP_E2E_ORIGIN on $APP_E2E_SERIAL"
 # The line reporter prints each failure as it happens, so a run cut short (the CI job's
