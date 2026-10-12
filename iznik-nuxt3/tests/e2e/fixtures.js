@@ -123,10 +123,20 @@ async function connectAppWebView() {
     throw new Error('APP_E2E_ORIGIN must be set with APP_E2E_SERIAL')
   }
   const { _android: android } = require('playwright')
-  const devices = await android.devices({
-    port: Number(process.env.ANDROID_ADB_SERVER_PORT) || 5037,
-  })
-  const device = devices.find((d) => d.serial() === APP_SERIAL)
+  // A loaded machine can make the adb server drop the emulator for a few seconds before
+  // its port scan finds it again (scripts/app-e2e/lib.sh); wait for it rather than fail.
+  const deadline = Date.now() + 90000
+  let devices = []
+  let device = null
+  while (!device && Date.now() < deadline) {
+    devices = await android.devices({
+      port: Number(process.env.ANDROID_ADB_SERVER_PORT) || 5037,
+    })
+    device = devices.find((d) => d.serial() === APP_SERIAL) || null
+    if (!device) {
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+    }
+  }
   if (!device) {
     throw new Error(
       `Android device ${APP_SERIAL} not found (attached: ${devices
@@ -458,6 +468,7 @@ const fixtures = {
       /Failed to load resource: the server responded with a status of 404.*api\/session/, // Session API 404 can happen when trying to logout when not logged in.
       /Failed to load resource: the server responded with a status of 404.*delivery\.localhost/, // Delivery service 404 errors for missing images can happen during normal operation.
       /Failed to load resource: net::ERR_FAILED.*delivery\.localhost/, // The same missing test-env image as above, as the Android WebView reports it (app project).
+      /Failed to load resource: the server responded with a status of 400.*delivery\.localhost/, // The same missing test-env image again: the delivery service answers 400 when it cannot fetch the original (seen on the CI stack, port 9080).
       /Failed to load resource: net::ERR_FAILED.*\/api\/scrolldepth/, // useScrollDepth's sendBeacon on visibilitychange, cancelled by the WebView when the app project reloads the page between tests; fire-and-forget by design.
       /Failed to load resource: the server responded with a status of 404.*\/\d+w/, // Responsive image width-variant (e.g. /320w) not generated in the test image env — same class as the delivery.localhost image 404 above.
       /FedCM get\(\) rejects with/, // Not available in test

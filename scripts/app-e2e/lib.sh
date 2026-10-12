@@ -32,7 +32,12 @@ API_LEVEL="${APP_E2E_API:-34}"
 IMAGE_FLAVOUR="${APP_E2E_IMAGE_FLAVOUR:-google_apis}"
 ABI="x86_64"
 AVD_NAME="${APP_E2E_AVD:-freegle-app-e2e}"
-EMU_PORT="${APP_E2E_EMU_PORT:-5590}"
+# Inside the range the adb server keeps scanning (console 5554-5584, adb 5555-5585): when
+# a loaded machine makes the server drop the emulator's connection, it finds it again in
+# seconds. Outside the range (5590 was used at first) the emulator is lost for the rest of
+# the run, which is what a 4-core CI machine did to every test after the first. 5580 also
+# keeps clear of the default 5554 and of the Migrating Dragons emulator's 5584.
+EMU_PORT="${APP_E2E_EMU_PORT:-5580}"
 EMU_SERIAL="emulator-${EMU_PORT}"
 DEVICE_SERIAL="${ANDROID_SERIAL:-$EMU_SERIAL}"
 APP_PACKAGE="${APP_E2E_PACKAGE:-org.ilovefreegle.direct}"

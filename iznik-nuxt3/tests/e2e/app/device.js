@@ -17,10 +17,7 @@ function shQuote(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`
 }
 
-function adb(args, { timeoutMs = 60000, binary = false } = {}) {
-  if (!SERIAL) {
-    throw new Error('APP_E2E_SERIAL is not set: the app project needs a device')
-  }
+function adbOnce(args, { timeoutMs, binary }) {
   return new Promise((resolve, reject) => {
     execFile(
       ADB,
@@ -43,6 +40,27 @@ function adb(args, { timeoutMs = 60000, binary = false } = {}) {
       }
     )
   })
+}
+
+async function adb(args, { timeoutMs = 60000, binary = false } = {}) {
+  if (!SERIAL) {
+    throw new Error('APP_E2E_SERIAL is not set: the app project needs a device')
+  }
+  try {
+    return await adbOnce(args, { timeoutMs, binary })
+  } catch (e) {
+    // A loaded machine can make the adb server drop the emulator for a moment; its
+    // port scan finds it again (scripts/app-e2e/lib.sh). Wait for it, then retry once.
+    if (
+      !/device '[^']*' not found|device offline|no devices\/emulators found/.test(
+        e.message
+      )
+    ) {
+      throw e
+    }
+    await adbOnce(['wait-for-device'], { timeoutMs: 90000, binary: false })
+    return adbOnce(args, { timeoutMs, binary })
+  }
 }
 
 /** Runs one command in the device shell; the command is passed as a single string. */

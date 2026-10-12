@@ -532,4 +532,5 @@ workflows:
   app-emulator-test:
     when: << pipeline.parameters.run_app_emulator_test >>
     jobs:
-      - freegle/app-emulator-tests
+      - freegle/app-emulator-tests:
+          size: xlarge
