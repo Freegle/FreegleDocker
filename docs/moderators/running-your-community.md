@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-12
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/settings/**
@@ -109,7 +109,9 @@ message, telling you how you might adapt the ADMIN for your community. It is onl
 you: it is never part of the email, and editing or approving your copy does not send it.
 
 The Create tab and each pending copy also have an optional **Send after** date and time. An
-approved ADMIN is held until then. Leave it empty to send as soon as it is approved. The email's
+approved ADMIN is held until then, and the Approve button says so ("Approve to send Thu 15 Oct,
+08:15"); with it empty the button says *Approve and send now*. Who it goes to is in the note above
+the subject. The email's
 subject line starts "ADMIN:" for an Essential message and "NEWSLETTER:" for a Newsletter one, and
 a prefix typed into the subject is not doubled.
 
@@ -117,9 +119,12 @@ The message body is **plain text**, and it is required. HTML typed into it is re
 placeholders in angle brackets such as `<your names here>` are fine. If you know
 [MJML](https://mjml.io), you can also tick the box to add a **designed version**. Paste only the
 `<mj-section>` elements from inside `<mj-body>`. Freegle adds its own header, footer and
-unsubscribe links, and both versions end with the standard footer: the HMRC charity line and the
-registered address. That footer is shown under the MJML box, with a copy button that gives the
-designed version and the footer as one document for the
+unsubscribe links, and both versions end with the community's volunteers ("Your local volunteers
+are ...") and the standard footer: the HMRC charity line and the registered address. So you do not
+need to add your own names. A moderator is named if they have used Freegle in the last year and
+have *Show me as a volunteer* on in their own Settings; anyone with it off is left out. That
+footer, with the names it will use, is shown under the message box, and under the MJML box with a
+copy button that gives the designed version, the names and the footer as one document for the
 [MJML live editor](https://mjml.io/try-it-live). Members whose email shows formatted mail get the designed version and
 everyone else gets the plain text, so both must say the same. Before it is sent, scripts, forms,
 embedded frames, event handlers and links that are not http, https, mailto or tel are removed.
