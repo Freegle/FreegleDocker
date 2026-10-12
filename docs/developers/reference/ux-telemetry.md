@@ -19,6 +19,7 @@ covers:
   - iznik-batch/database/migrations/2026_10_12_000001_create_ux_telemetry_tables.php
   - iznik-server-go/ux/ux.go
   - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
+  - iznik-nuxt3/tests/e2e/test-modtools-sysadmin-ux.spec.js
 ---
 
 # UX telemetry
@@ -206,3 +207,7 @@ also returns the same figures for the preceding period of equal length as `previ
 
 The **UX** sub-tab of ModTools SysAdmin, with Data health first. `ux:weekly-report` mails the five
 largest week-on-week changes to `config('freegle.ux.report_to')` every Monday.
+
+`tests/e2e/test-ux-telemetry.spec.js` holds the flows to the event contract in section 2, and
+`tests/e2e/test-modtools-sysadmin-ux.spec.js` checks that the tab loads every panel from the read
+API without an error.
