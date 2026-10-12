@@ -358,8 +358,9 @@ monit_snapshot() {  # <host> <file>
   [ -s "$2" ] || die "$1: monit summary returned nothing (is the monit daemon running?)"
 }
 
-# Every service must be OK, except ones parked on purpose (`on reboot laststate`).
-monit_all_ok() {  # <host> <snapshot file>
+# The services in a snapshot that are not OK, as " name=status", except ones
+# parked on purpose (`on reboot laststate`). Empty when all are OK.
+monit_not_ok() {  # <host> <snapshot file>
   local bad="" name st held
   while IFS='|' read -r name st; do
     [ "$st" = OK ] && continue
@@ -369,8 +370,34 @@ monit_all_ok() {  # <host> <snapshot file>
     fi
     bad="$bad $name=$st"
   done < "$2"
+  printf '%s' "$bad"
+}
+
+# Every service must be OK, except ones parked on purpose.
+monit_all_ok() {  # <host> <snapshot file>
+  local bad; bad=$(monit_not_ok "$1" "$2")
   [ -z "$bad" ] || die "$1: monit services not OK:$bad"
   info "$1: monit all OK ($(wc -l < "$2") services)"
+}
+
+# After a reboot. Until monit has completed a check cycle it reports the services
+# it has not polled yet as "Does not exist" or "Initializing", and its cycle is
+# minutes long (two on the load balancer), so one look straight after boot fails
+# a healthy host. Poll until every service is OK, and fail only if one is still
+# not OK after MAINT_MONIT_TIMEOUT.
+monit_settled() {  # <host> <snapshot file>
+  local h=$1 f=$2 bad="" deadline=$(( $(date -u +%s) + MAINT_MONIT_TIMEOUT ))
+  while :; do
+    monit_summary "$h" > "$f"
+    if [ -s "$f" ]; then
+      bad=$(monit_not_ok "$h" "$f")
+      [ -z "$bad" ] && { info "$h: monit all OK ($(wc -l < "$f") services)"; return 0; }
+    else
+      bad=" (monit summary returned nothing)"
+    fi
+    [ "$(date -u +%s)" -ge "$deadline" ] && die "$h: monit services not OK ${MAINT_MONIT_TIMEOUT}s after boot:$bad"
+    sleep 15
+  done
 }
 
 # Every service a profile will unmonitor or monitor must exist under that name. A dry run only

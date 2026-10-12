@@ -282,8 +282,7 @@ db_verify_services() {
   case "$line" in *"$api_w"*) ;; *) die "$T: API boot line does not name its configured write node";; esac
   p=$(rq "$T" "tail -n 300 $MAINT_DB_API_LOG | grep -a -c -i -E 'panic|fatal error'")
   [ "${p:-0}" = 0 ] || die "$T: API log shows $p panic lines since start"
-  monit_snapshot "$T" "$RUN_DIR/monit-$TS.after"
-  monit_all_ok "$T" "$RUN_DIR/monit-$TS.after"
+  monit_settled "$T" "$RUN_DIR/monit-$TS.after"
   svc_compare "$T" "$RUN_DIR/services-$TS.before"
 }
 
