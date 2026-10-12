@@ -1,0 +1,208 @@
+---
+last_reviewed: 2026-10-12
+owner: Freegle dev team
+covers:
+  - iznik-nuxt3/composables/useFlowTelemetry.js
+  - iznik-nuxt3/composables/useExperiment.js
+  - iznik-nuxt3/composables/useFlowRoutes.js
+  - iznik-nuxt3/composables/useComposeTelemetry.js
+  - iznik-nuxt3/composables/useLoginTelemetry.js
+  - iznik-nuxt3/composables/useSettingsTelemetry.js
+  - iznik-nuxt3/plugins/flowTelemetry.client.js
+  - iznik-nuxt3/composables/useReplyStateMachine.js
+  - iznik-nuxt3/composables/useClientLog.js
+  - iznik-nuxt3/plugins/interactionCapture.client.js
+  - iznik-nuxt3/plugins/impressionTracker.client.js
+  - iznik-batch/app/Services/Ux/UxRollupService.php
+  - iznik-batch/app/Console/Commands/Ux/RollupDailyCommand.php
+  - iznik-batch/app/Console/Commands/Ux/WeeklyReportCommand.php
+  - iznik-batch/database/migrations/2026_10_12_000001_create_ux_telemetry_tables.php
+  - iznik-server-go/ux/ux.go
+  - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
+---
+
+# UX telemetry
+
+How we find where members get stuck, go back, change their minds, give up, or never find a
+feature. The rationale and the alternatives considered are in
+`plans/2026-10-11-ux-pain-point-instrumentation.md`; this page is the contract the code is held to.
+
+```mermaid
+flowchart LR
+    B["Browser: useFlowTelemetry,<br/>interaction and impression plugins"] -->|POST /clientlog| G["apiv2"]
+    G --> L[("Loki, source=client<br/>7 days")]
+    L -->|nightly ux:rollup-daily| M[("MySQL ux_* tables<br/>years")]
+    D[("MySQL messages, logs,<br/>chat, browse scroll")] -->|same job| M
+    M --> A["GET /modtools/ux/*"] --> T["SysAdmin UX tab"]
+    L -->|sample sessions drill-down| A
+    M -->|weekly| W["ux:weekly-report mail"]
+```
+
+## 1. Fields on every client log line
+
+`useClientLog.js` `queueLog` adds these to every entry, so no line needs a join to `session_start`:
+
+| Field | Values |
+|---|---|
+| `device_class` | `app-ios`, `app-android`, `mobile` (width < 768), `tablet` (768 to 1199), `desktop` |
+| `logged_in` | `true` / `false` |
+| `is_app` | `true` / `false` |
+| `page_route` | The Vue route **name** (`give-mobile-photos`, `message-id`), never the URL. Bounded, so it can be grouped by. |
+
+`page_view` also carries `page_id` and the modal context, like interaction events do.
+
+## 2. Flow events
+
+Emitted only through `composables/useFlowTelemetry.js`, which owns the names as exported
+constants (`FlowName`, `FlowEvent`). Each is a `/clientlog` entry with **`event_type="flow"`**
+(a Loki label, so the rollup selects them cheaply) and `action_name` set to the event.
+
+**Envelope**, added by the composable:
+
+| Field | Meaning |
+|---|---|
+| `flow` | One of `FlowName`: `give`, `ask`, `reply`, `login`, `chat_promise`, `chat_outcome`, `settings` |
+| `flow_instance_id` | uuid, new on each `flow_start` |
+| `step` | Route name for routed flows, pane or state name otherwise |
+| `step_seq` | 1, 2, 3 within the instance: the number of `step_enter`s so far, so `flow_start` carries 0 |
+| `first_visit` | On `step_enter`: true the first time this instance enters this step |
+| `dwell_ms` | On `step_complete`, `step_back`, `flow_abandon`: ms since the matching `step_enter`. On `flow_complete`: ms since `flow_start` |
+| `variant` | The member's experiment arms as `name:arm` joined by `,`, sorted; `''` when none. Frozen at `flow_start`: every event of an instance carries the same value, even if logging in at the end changes the id the arm is computed from |
+| `entry` | On `flow_start` only |
+
+**Events** (`FlowEvent`):
+
+| Event | Extra fields |
+|---|---|
+| `flow_start` | `entry` |
+| `step_enter` | `first_visit` |
+| `step_complete` | `dwell_ms` |
+| `step_back` | `dwell_ms`, `to_step` |
+| `field_revisit` | `field`, `change_kind` (`replaced`, `cleared`, `toggled`, `removed`) |
+| `validation_failed` | `field`, `rule`, `attempt` |
+| `choice_switched` | `field`, `from`, `to` (only for enumerated choices, never free text) |
+| `flow_submit` | `attempt` |
+| `flow_submit_result` | `ok`, `status`, `error_code` |
+| `flow_complete` | `dwell_ms` |
+| `flow_abandon` | `reason` (`navigated`, `closed`, `hidden`, `idle`), `last_step`, `dwell_ms` |
+| `flow_resume` | `age_ms` |
+| `help_sought` | (the live `flow` and `step` are in the envelope) |
+
+**Never** a field value typed by a member: names, kinds, rules and counts only. The vitest suite
+for the composable asserts this. The field helpers take no value arguments, and a field, rule,
+step, entry or choice that is not a plain token (letters, digits and `_:.-`, up to 40) is sent as
+`other` instead of being dropped.
+
+An instance ends at `flow_complete` or `flow_abandon`; at most one of them is sent per instance.
+A hidden tab alone is not an abandon (the camera, photo picker or an app switch hides it and the
+member returns); it only flushes the log. `flow_abandon` with `reason=hidden` is sent on a `pagehide`
+that is not persisted into the back/forward cache, `idle` after 30 minutes with
+no flow event, `navigated` when the route leaves the flow's routes, `closed` when a modal flow is
+dismissed.
+
+### Routed flows: steps from the router
+
+For `give` and `ask` the pages call nothing. `composables/useFlowRoutes.js` holds a route-name to
+rank map and `plugins/flowTelemetry.client.js` feeds it every navigation:
+
+| Flow | Routes by rank |
+|---|---|
+| give | 1 `give`, `give-mobile`, `give-mobile-photos`, `give-clearance`; 2 `give-whereami`, `give-mobile-details`; 3 `give-options`, `give-mobile-options`; 4 `give-whoami`, `give-mobile-whereami` |
+| ask | 1 `ask`, `ask-mobile`, `ask-mobile-photos`; 2 `ask-whereami`, `ask-mobile-details`; 3 `ask-whoami`, `ask-mobile-whereami` |
+
+A move to a higher rank sends `step_complete` then `step_enter`; to a lower rank `step_back` then
+`step_enter` (so `first_visit` is false); to an equal rank (a redirect between the desktop and
+mobile page of the same step) only `step_enter`. Entering the first route starts the instance, with
+`entry` taken from the last clicked component (`navbar`, `post_button`, `give_ask_buttons`,
+`myposts`, `notification`), else `home`, `post_page`, `from_<route>` or `deep_link`; a saved draft
+with content older than five seconds starts it as `draft_restored` and sends `flow_resume`.
+
+Leaving the flow's routes ends the instance: `flow_complete` if a `flow_submit_result` with
+`ok=true` was sent, otherwise `flow_abandon` with `reason=navigated`. Going from one flow to the
+other also sends a `choice_switched` on `type` (`Offer`, `Wanted`). `flow_submit` and
+`flow_submit_result` come from `stores/compose.js`, with a short `error_code`, never message text.
+
+### Flows driven by their own component
+
+| Flow | Where | Steps |
+|---|---|---|
+| `reply` | `useReplyStateMachine.js` `transitionTo` | the machine states; `entry` is the reply source, or `restored` |
+| `login` | `LoginModal.vue` via `useLoginTelemetry.js` | `signup`, `signin`, `forgot`; `entry` is `forced` or `navbar` |
+| `chat_promise` | `PromiseModal.vue` | `choose`; `entry` is `chat` or `maybe` |
+| `chat_outcome` | `OutcomeModal.vue` | `choose`; `entry` is the outcome type |
+| `settings` | `pages/settings` via `useSettingsTelemetry.js` | `settings`; a setting saved a second time in the visit is a `field_revisit` |
+
+API calls made while an instance is live carry the header `X-Freegle-Flow-Instance`, so the
+`source="api"` line for the message create can be joined to the instance.
+
+## 3. Interaction and impression fields
+
+Flow, interaction and impressions lines carry `url` as origin and path only: the query string and hash are dropped, because they can hold an auto-login key (`?u=&k=`) or search terms. `interactive` is true when the click landed in or on anything matching the control selector (button, link, form field, label, `[role=button]`, `[tabindex]`, `.btn`, `[data-bs-toggle]`).
+
+`plugins/interactionCapture.client.js` sends `label` as its own field (as well as in the message),
+and on clicks:
+
+| Field | True when |
+|---|---|
+| `rage` | This is the third or later click on the same element within 1 second |
+| `repeat_no_api` | The same labelled element was clicked 2 to 30 seconds ago and no API request started in the 1.5 seconds after that earlier click (background polling later does not count) |
+
+Anything inside an element marked `data-ux-ignore` (the ModTools UX tab) is skipped: no clicks, scrolls or impressions.
+
+Scroll interactions and `impressions` events are **sampled per session**: a coin flipped once per
+browser session (sessionStorage) at `SAMPLE_RATE = 0.1`. Sampled-out sessions send neither; sent
+lines carry `sample_rate`. Flow events, clicks, errors and `session_start` are never sampled.
+
+`/clientlog` is not logged a second time as a `source="api"` line, and is rate limited per IP
+(`CLIENTLOG_RATE_PER_MIN`, default 600 entries a minute); a tripped limit is logged once a minute.
+
+## 4. Experiments
+
+`composables/useExperiment.js`: `useExperiment(name)` returns the member's arm for a configured
+experiment. Assignment is `crc32(<id>|<name>) % 100`, the same function as
+`iznik-batch/app/Support/ExperimentBucket.php`, where `<id>` is the user id when logged in and the
+client `session_id` otherwise. Experiments and arm ranges come from runtime config
+`public.UX_EXPERIMENTS` (JSON, `{"name": {"control": [0, 49], "b": [50, 99]}}`), empty by
+default. Every flow event carries the arms in `variant`, so the funnel splits by arm with no
+per-experiment recording code. Use fixed ratios with a control arm; the epsilon-greedy bandit in
+`abtest` is for choosing between asks, not for measuring a change.
+
+## 5. Rollup tables
+
+Written by `php artisan ux:rollup-daily [--date=YYYY-MM-DD]` (scheduled 02:20 UTC for yesterday,
+and backfilling any of the previous six days that has no `ux_telemetry_health_daily` rows).
+Rerunning a day replaces it. Schema in the migration above.
+
+| Table | From | Notes |
+|---|---|---|
+| `ux_flow_daily` | flow events | `entered` counts `step_enter` with `first_visit`; `reentered` the rest |
+| `ux_flow_outcome_daily` | flow events | per flow |
+| `ux_field_daily` | `field_revisit`, `validation_failed`, `choice_switched` | per field |
+| `ux_component_daily` | `interaction`, `impressions` | impressions scaled by `1/sample_rate`; dead click = click with `interactive=false` |
+| `ux_feature_adoption_daily` | `page_view` for the routes in `config('freegle.ux.features')`, `users.lastaccess` | |
+| `ux_search_daily` | `source="vector_search"` lines, `browse_scroll_depth` | `re_searched_60s` is a floor: only logged-in searches can be linked |
+| `ux_regret_daily` | MySQL | `withdrawn_24h`, `duplicate_10m`, `promise_reneged`, `reply_after_taken`; `base` is the denominator |
+| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s; `event:<type>` against the trailing 14-day median |
+| `ux_sample_sessions` | `flow_abandon` | up to 20 per (flow, step); deleted after 8 days |
+
+## 6. Read API
+
+All Support/Admin only, `start` and `end` as `YYYY-MM-DD` (default the last 7 days), and each
+also returns the same figures for the preceding period of equal length as `previous`.
+
+| Route | Returns |
+|---|---|
+| `GET /modtools/ux/funnels?flow=` | per flow and step: entered, completed, backed, abandoned, revisits, validation_failures, help_sought, dwell p50/p90; `by` breakdown on `device_class`, `logged_in`, `variant` |
+| `GET /modtools/ux/outcomes` | per flow: started, submitted, submit_ok, submit_failed, completed, abandoned, resumed |
+| `GET /modtools/ux/fields?flow=` | per field: revisits, validation_failures, choice_switches |
+| `GET /modtools/ux/friction` | top 20 (page, component) by rage, dead, repeated intent, sorted by change against previous |
+| `GET /modtools/ux/adoption` | per feature: using_users / active_users |
+| `GET /modtools/ux/regret` | per signal, per day |
+| `GET /modtools/ux/search` | per day |
+| `GET /modtools/ux/health` | per metric, per day, with `ok` false when ratio is outside 0.7 to 1.3 |
+| `GET /modtools/ux/samples?date=&flow=&step=` | the sampled session ids and each one's client timeline from Loki (flow and interaction events, in order, with no member text) |
+
+## 7. Where to look
+
+The **UX** sub-tab of ModTools SysAdmin, with Data health first. `ux:weekly-report` mails the five
+largest week-on-week changes to `config('freegle.ux.report_to')` every Monday.

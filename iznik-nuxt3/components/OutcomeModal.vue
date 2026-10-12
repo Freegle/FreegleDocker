@@ -237,6 +237,7 @@ import { useMessageStore } from '~/stores/message'
 import { useAuthStore } from '~/stores/auth'
 import NoticeMessage from '~/components/NoticeMessage'
 import { useOurModal } from '~/composables/useOurModal'
+import { FlowName, useFlowTelemetry } from '~/composables/useFlowTelemetry'
 
 // Unique per instance so label/for pairs never clash when the component renders twice.
 const formId = useId()
@@ -263,6 +264,11 @@ const emit = defineEmits(['hidden'])
 const messageStore = useMessageStore()
 const authStore = useAuthStore()
 const { modal, hide } = useOurModal()
+
+// Flow telemetry: the modal opens as soon as it mounts, so that is where the flow starts.
+const flow = useFlowTelemetry(FlowName.CHAT_OUTCOME)
+flow.start(props.type || 'unknown')
+flow.enterStep('choose')
 
 const { $bus } = useNuxtApp()
 
@@ -389,6 +395,7 @@ function took(users) {
 
 async function submit(callback) {
   if (props.type === 'Taken' && !tookUsers.value.length) {
+    flow.validationFailed('taker', 'missing')
     chooseError.value = true
     submittedWithNoSelectedUser.value = true
     callback()
@@ -401,9 +408,13 @@ async function submit(callback) {
   let complete = false
 
   if (submitDisabled.value) {
+    flow.validationFailed('form', 'incomplete')
     chooseError.value = true
     callback()
   } else {
+    flow.submit()
+
+    try {
     if (props.type === 'Withdrawn' || props.type === 'Received') {
       complete = true
     } else {
@@ -452,12 +463,23 @@ async function submit(callback) {
       }
     }
 
+    } catch (e) {
+      flow.submitResult(false, e?.response?.status ?? null, 'error')
+      throw e
+    }
+
+    flow.submitResult(true, 200, null)
+    flow.completeStep()
+    flow.complete()
+
     callback()
     hide()
   }
 }
 
 function onHide() {
+  flow.abandon('closed')
+
   // We're having trouble capturing events from this modal, so use root as a bus.
   $bus.$emit('outcome', {
     groupid: groupid.value,

@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import OutcomeModal from '~/components/OutcomeModal.vue'
 
+vi.mock('~/composables/useFlowTelemetry', async () => {
+  const m = await import('../helpers/flowTelemetryMock')
+  return m.flowTelemetryModule
+})
+import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
+
 const { mockModal, mockHide } = vi.hoisted(() => {
   const { ref } = require('vue')
   return {
@@ -41,6 +47,7 @@ vi.stubGlobal('useNuxtApp', () => ({
 describe('OutcomeModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetFlowCalls()
     mockById.mockReturnValue({
       id: 123,
       subject: 'Test Item',
@@ -123,6 +130,55 @@ describe('OutcomeModal', () => {
       },
     })
   }
+
+  describe('flow telemetry', () => {
+    it('starts the chat_outcome flow, entered by outcome type, when it opens', () => {
+      createWrapper({ type: 'Received' })
+      expect(flowCalls.slice(0, 2)).toEqual([
+        ['start', 'Received'],
+        ['enterStep', 'choose'],
+      ])
+    })
+
+    it('reports Taken with nobody chosen as a validation failure', async () => {
+      const wrapper = createWrapper({ type: 'Taken' })
+      await wrapper.find('.spin-button').trigger('click')
+      expect(flowCalls).toContainEqual(['validationFailed', 'taker', 'missing'])
+      expect(flowCalls.map((c) => c[0])).not.toContain('submit')
+    })
+
+    it('sends submit, an ok result and complete for a withdrawal', async () => {
+      mockUpdate.mockResolvedValue()
+      mockFetch.mockResolvedValue()
+      const wrapper = createWrapper({ type: 'Withdrawn' })
+      flowCalls.length = 0
+      await wrapper.vm.submit(() => {})
+      expect(flowCalls.map((c) => c[0])).toEqual([
+        'submit',
+        'submitResult',
+        'completeStep',
+        'complete',
+      ])
+      expect(flowCalls[1]).toEqual(['submitResult', true, 200, null])
+    })
+
+    it('sends a failed result when the outcome update throws', async () => {
+      mockUpdate.mockRejectedValueOnce(
+        Object.assign(new Error('nope'), { response: { status: 500 } })
+      )
+      const wrapper = createWrapper({ type: 'Withdrawn' })
+      flowCalls.length = 0
+      await expect(wrapper.vm.submit(() => {})).rejects.toThrow('nope')
+      expect(flowCalls).toContainEqual(['submitResult', false, 500, 'error'])
+    })
+
+    it('abandons as closed when hidden without an outcome', () => {
+      const wrapper = createWrapper({ type: 'Taken' })
+      flowCalls.length = 0
+      wrapper.vm.onHide()
+      expect(flowCalls).toEqual([['abandon', 'closed']])
+    })
+  })
 
   describe('rendering', () => {
     it('renders modal container', () => {

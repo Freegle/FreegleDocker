@@ -169,6 +169,41 @@ vi.mock('~/composables/useClientLog', () => ({
   action: vi.fn(),
 }))
 
+// Flow telemetry: one fake flow so the calls can be asserted in order.
+const flowCalls = vi.hoisted(() => {
+  const calls = []
+  const flow = {
+    live: false,
+    succeeded: false,
+    isLive: () => flow.live,
+    submitSucceeded: () => flow.succeeded,
+  }
+  for (const name of [
+    'start',
+    'enterStep',
+    'completeStep',
+    'back',
+    'validationFailed',
+    'submit',
+    'submitResult',
+    'complete',
+    'abandon',
+    'resume',
+  ]) {
+    flow[name] = (...args) => {
+      calls.push([name, ...args])
+      if (name === 'start') flow.live = true
+      if (name === 'complete' || name === 'abandon') flow.live = false
+      if (name === 'submitResult') flow.succeeded = !!args[0]
+    }
+  }
+  return { calls, flow }
+})
+vi.mock('~/composables/useFlowTelemetry', () => ({
+  FlowName: { REPLY: 'reply' },
+  useFlowTelemetry: () => flowCalls.flow,
+}))
+
 // ============================================================
 // Auth store managed per-test via globalThis.__mockAuthStore
 // storeToRefs(authStore) iterates raw store keys and crashes on `null` values,
@@ -222,6 +257,9 @@ function mountComposable(messageId = MSG_ID, userAddImpl) {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
+  flowCalls.calls.length = 0
+  flowCalls.flow.live = false
+  flowCalls.flow.succeeded = false
 
   // Use Vue refs for forceLogin/loggedInEver so storeToRefs() can pick them up.
   // Omit null-valued properties — storeToRefs iterates raw keys and crashes on null.
@@ -2355,5 +2393,168 @@ describe('helpers and lifecycle', () => {
     expect(result.error.value).toBeNull()
     expect(result.previousState.value).toBeNull()
     expect(mockClearReply).toHaveBeenCalled()
+  })
+})
+
+describe('flow telemetry', () => {
+  const names = () => flowCalls.calls.map((c) => c[0])
+
+  function loggedInReady(extra = {}) {
+    mockMeValue = { id: 10 }
+    mockMyidValue = 10
+    mockMyGroupsValue = { 0: { id: 100 } }
+    mockMessageFetch.mockResolvedValue({
+      id: MSG_ID,
+      groups: [{ groupid: 100 }],
+    })
+    const m = mountComposable()
+    m.result.setRefs({
+      form: makeFormRef(true),
+      chatButton: makeChatButtonRef(),
+      ...extra,
+    })
+    return m
+  }
+
+  it('starts the reply flow on START_TYPING from IDLE, with the reply source as entry', () => {
+    const { result } = mountComposable()
+    result.setReplySource('message_page')
+    result.startTyping()
+    expect(flowCalls.calls[0]).toEqual(['start', 'message_page'])
+    expect(flowCalls.calls[1]).toEqual(['enterStep', 'COMPOSING'])
+  })
+
+  it('uses unknown as the entry when no source was set', () => {
+    const { result } = mountComposable()
+    result.startTyping()
+    expect(flowCalls.calls[0]).toEqual(['start', 'unknown'])
+  })
+
+  it('does not start a second time when typing again', () => {
+    const { result } = mountComposable()
+    result.startTyping()
+    flowCalls.calls.length = 0
+    result.startTyping()
+    expect(flowCalls.calls).toEqual([])
+  })
+
+  it('sends the whole happy path in order and ends with complete', async () => {
+    const { result } = loggedInReady()
+    result.startTyping()
+    result.replyText.value = 'Hello'
+    await result.submit()
+    await flushPromises()
+
+    expect(names()).toEqual(
+      expect.arrayContaining([
+        'start',
+        'submit',
+        'submitResult',
+        'complete',
+      ])
+    )
+    expect(flowCalls.calls.find((c) => c[0] === 'submitResult')).toEqual([
+      'submitResult',
+      true,
+      200,
+      null,
+    ])
+    expect(names().at(-1)).toBe('complete')
+    const steps = flowCalls.calls
+      .filter((c) => c[0] === 'enterStep')
+      .map((c) => c[1])
+    expect(steps[0]).toBe('COMPOSING')
+    expect(steps).toContain('VALIDATING')
+    expect(steps.at(-1)).toBe('COMPLETED')
+  })
+
+  it('sends submit once, when Send is accepted', async () => {
+    const { result } = loggedInReady()
+    result.startTyping()
+    await result.submit()
+    await flushPromises()
+    expect(names().filter((n) => n === 'submit')).toHaveLength(1)
+  })
+
+  it('reports a failed form validation against the reply field and steps back', async () => {
+    const { result } = mountComposable()
+    result.startTyping()
+    result.setRefs({ form: makeFormRef(false) })
+    await result.submit()
+    await flushPromises()
+    expect(flowCalls.calls).toContainEqual([
+      'validationFailed',
+      'reply',
+      'invalid',
+    ])
+    expect(flowCalls.calls).toContainEqual(['back', 'COMPOSING'])
+  })
+
+  it('reports an invalid email against the email field', async () => {
+    const { result } = mountComposable()
+    result.startTyping()
+    result.setRefs({ form: makeFormRef(true) })
+    result.emailValid.value = false
+    await result.submit()
+    await flushPromises()
+    expect(flowCalls.calls).toContainEqual([
+      'validationFailed',
+      'email',
+      'invalid',
+    ])
+  })
+
+  it('reports a failed send as submitResult false', async () => {
+    const { result } = loggedInReady()
+    mockReplyToPostFn.mockRejectedValue(new Error('Chat server down'))
+    result.startTyping()
+    result.replyText.value = 'Hello'
+    await result.submit()
+    await flushPromises()
+    const res = flowCalls.calls.find((c) => c[0] === 'submitResult')
+    expect(res[1]).toBe(false)
+    expect(names()).not.toContain('complete')
+  })
+
+  it('completes after the welcome modal for a new user, with the send counted as ok', async () => {
+    const { result } = loggedInReady()
+    result.startTyping()
+    result.state.value = ReplyState.SHOWING_WELCOME
+    flowCalls.calls.length = 0
+    result.closeWelcomeModal()
+    expect(names()).toContain('complete')
+  })
+
+  it('abandons when the composer is left while composing', () => {
+    const { result, wrapper } = mountComposable()
+    result.startTyping()
+    flowCalls.calls.length = 0
+    wrapper.unmount()
+    expect(flowCalls.calls).toEqual([['abandon', 'navigated']])
+  })
+
+  it('does not abandon when the reply was completed', async () => {
+    const { result, wrapper } = loggedInReady()
+    result.startTyping()
+    await result.submit()
+    await flushPromises()
+    flowCalls.calls.length = 0
+    wrapper.unmount()
+    expect(names()).not.toContain('abandon')
+  })
+
+  it('does not abandon when it never started the flow', () => {
+    const { wrapper } = mountComposable()
+    wrapper.unmount()
+    expect(flowCalls.calls).toEqual([])
+  })
+
+  it('still logs reply_state_transition', () => {
+    const { result } = mountComposable()
+    result.startTyping()
+    expect(mockAction).toHaveBeenCalledWith(
+      'reply_state_transition',
+      expect.objectContaining({ event: 'START_TYPING' })
+    )
   })
 })

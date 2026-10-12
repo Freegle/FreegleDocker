@@ -382,6 +382,9 @@ export default defineNuxtConfig({
       SENTRY_DSN: config.IS_MT ? config.SENTRY_DSN_MT : config.SENTRY_DSN,
       ENVIRONMENT: config.ENVIRONMENT,
       BUILD_DATE: new Date().toISOString(),
+      // Fixed-ratio UX experiments as JSON, e.g. {"name":{"control":[0,49],"b":[50,99]}}. Empty by
+      // default. See docs/developers/reference/ux-telemetry.md.
+      UX_EXPERIMENTS: process.env.UX_EXPERIMENTS || '{}',
       ISAPP: config.ISAPP,
       MOBILE_VERSION: config.MOBILE_VERSION,
       AI_SUPPORT_URL: config.AI_SUPPORT_URL,

@@ -1,8 +1,11 @@
 # Finding where members struggle: instrumenting for confusion, second thoughts and underuse
 
 **Date:** 2026-10-11
-**Status:** plan only, nothing implemented. Written from the code as it stands on master, not from
-the docs.
+**Status:** phases 0 to 5 built on branch feat/ux-telemetry (2026-10-12); the contract is
+docs/developers/reference/ux-telemetry.md. Not built: phase 6, the in-flow "why" prompt (section 8),
+by decision. Not done: the phase 0 production volume measurement, because the Loki tunnel was down;
+the nightly health rows record daily volumes by event type from the first run instead. No experiment
+is configured yet: the rails are in place for the first one.
 **Builds on:** `2026-07-03-photo-upload-telemetry-gap-and-give-funnel.md` (the give funnel work),
 `flow-explorer-design.md` and issue #89 (the visual layer), #107 (component names, impressions,
 interaction capture, now on master).

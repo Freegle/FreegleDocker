@@ -1241,9 +1241,11 @@ const testWithFixtures = test.extend({
         throw new Error('Email is required for posting a message')
       }
 
-      if (mobile && type.toLowerCase() === 'wanted') {
+      if (mobile) {
         // Mobile ask flow: /ask/mobile/photos → skip → /ask/mobile/details → /ask/mobile/whereami
-        await page.gotoAndVerify('/ask/mobile/photos', {
+        // Mobile give flow has /give/mobile/options between details and whereami.
+        const flow = type.toLowerCase() === 'wanted' ? 'ask' : 'give'
+        await page.gotoAndVerify(`/${flow}/mobile/photos`, {
           timeout: timeouts.navigation.initial,
           waitUntil: 'domcontentloaded',
           maxRetries: 1,
@@ -1258,7 +1260,7 @@ const testWithFixtures = test.extend({
         await skipLink.click()
 
         // Fill item and description on the details page
-        await page.waitForURL(/\/ask\/mobile\/details/, {
+        await page.waitForURL(new RegExp(`/${flow}/mobile/details`), {
           timeout: timeouts.navigation.default,
         })
 
@@ -1280,7 +1282,17 @@ const testWithFixtures = test.extend({
         })
         await mobileNextBtn.click()
 
-        await page.waitForURL(/\/ask\/mobile\/whereami/, {
+        if (flow === 'give') {
+          await page.waitForURL(/\/give\/mobile\/options/, {
+            timeout: timeouts.navigation.default,
+          })
+          await page.locator('.toggle-btn:has-text("Maybe")').click()
+          await page
+            .locator('button.btn', { hasText: 'Next' })
+            .click()
+        }
+
+        await page.waitForURL(new RegExp(`/${flow}/mobile/whereami`), {
           timeout: timeouts.navigation.default,
         })
 

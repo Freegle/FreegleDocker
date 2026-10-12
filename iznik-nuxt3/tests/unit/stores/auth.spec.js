@@ -41,6 +41,18 @@ vi.mock('~/composables/useClientLog', () => ({
   action: vi.fn(),
 }))
 
+vi.mock('~/composables/useFlowTelemetry', async () => {
+  const m = await import('../helpers/flowTelemetryMock')
+  return m.flowTelemetryModule
+})
+const mockNoteSettingsSave = vi.fn()
+vi.mock('~/composables/useSettingsTelemetry', () => ({
+  changedFields: (user, params) =>
+    Object.keys(params).map((field) => ({ field, kind: 'replaced' })),
+  noteSettingsSave: (...args) => mockNoteSettingsSave(...args),
+}))
+import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
+
 vi.mock('~/api', () => ({
   default: () => ({
     session: {
@@ -705,6 +717,50 @@ describe('auth store', () => {
   // are unaffected. saveAndGet is the single choke point both go through, so
   // it wraps the save in runLockdownAware and rethrows a tagged, readable
   // error instead of a raw 409 - see api/lockdownConflict.js.
+  describe('saveAndGet flow telemetry', () => {
+    beforeEach(() => {
+      resetFlowCalls()
+      mockNoteSettingsSave.mockClear()
+    })
+
+    it('notes which fields the save changes, then records a submit and an ok result', async () => {
+      store.setAuth('valid-jwt', 'valid-persistent')
+      mockSave.mockResolvedValue({})
+      mockFetchv2.mockResolvedValue({ me: { id: 42 }, groups: [] })
+
+      await store.saveAndGet({ displayname: 'New Name' })
+
+      expect(mockNoteSettingsSave).toHaveBeenCalledWith([
+        { field: 'displayname', kind: 'replaced' },
+      ])
+      expect(flowCalls).toEqual([
+        ['submit'],
+        ['submitResult', true, 200, null],
+      ])
+    })
+
+    it('records a failed result with the status, and rethrows', async () => {
+      const err = new Error('Server said: secret@example.com is wrong')
+      err.response = { status: 500 }
+      mockSave.mockRejectedValue(err)
+
+      await expect(store.saveAndGet({ displayname: 'x' })).rejects.toThrow()
+
+      expect(flowCalls).toContainEqual(['submitResult', false, 500, 'error'])
+      expect(JSON.stringify(flowCalls)).not.toContain('secret')
+    })
+
+    it('codes a lockdown refusal as lockdown', async () => {
+      const err = new Error('Conflict')
+      err.response = { status: 409, data: { lockdown: true, status: 'Paused' } }
+      mockSave.mockRejectedValue(err)
+
+      await expect(store.saveAndGet({ displayname: 'x' })).rejects.toThrow()
+
+      expect(flowCalls).toContainEqual(['submitResult', false, 409, 'lockdown'])
+    })
+  })
+
   describe('saveAndGet lockdown refusal', () => {
     it('rethrows a tagged, readable error when PATCH /session returns a lockdown 409', async () => {
       const err = new Error('Conflict')

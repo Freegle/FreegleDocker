@@ -116,6 +116,7 @@ import { useReplyStore } from '~/stores/reply'
 import { useMe } from '~/composables/useMe'
 import { useReplyToPost } from '~/composables/useReplyToPost'
 import { action } from '~/composables/useClientLog'
+import { FlowName, useFlowTelemetry } from '~/composables/useFlowTelemetry'
 import { milesAway } from '~/composables/useDistance'
 
 // State enum
@@ -299,6 +300,11 @@ export function useReplyStateMachine(messageId, options = {}) {
 
   // Reply source for analytics (set by component).
   const replySource = ref(null)
+
+  // Flow telemetry for the reply. Every state change is mirrored into it from transitionTo(); this
+  // machine only reports on an instance it started, because the browse page has one per card.
+  const flow = useFlowTelemetry(FlowName.REPLY)
+  let ownsFlow = false
 
   // Form data
   const replyText = ref('')
@@ -706,6 +712,71 @@ export function useReplyStateMachine(messageId, options = {}) {
     }
   }
 
+  // Mirror a state change into flow telemetry: states are steps, SUBMIT is a submit, a failed
+  // validation is a step back, and COMPLETED ends the flow.
+  function trackFlow(prev, newState, context) {
+    const event = context.event
+
+    if (!ownsFlow) {
+      const begins =
+        prev === ReplyState.IDLE &&
+        (event === ReplyEvent.START_TYPING || event === ReplyEvent.RESTORED)
+
+      if (!begins || flow.isLive()) return
+
+      flow.start(
+        event === ReplyEvent.RESTORED
+          ? 'restored'
+          : replySource.value || 'unknown'
+      )
+      ownsFlow = true
+    } else if (prev !== ReplyState.IDLE) {
+      // Leaving a step: back if the machine fell back to composing, otherwise it was completed.
+      if (event === ReplyEvent.VALIDATION_FAILED) {
+        flow.validationFailed(context.field || 'reply', 'invalid')
+        flow.back(newState)
+      } else if (
+        newState === ReplyState.COMPOSING &&
+        (event === ReplyEvent.FALLBACK || event === ReplyEvent.RETRY)
+      ) {
+        flow.back(newState)
+      } else {
+        flow.completeStep()
+      }
+    }
+
+    if (event === ReplyEvent.SUBMIT) {
+      flow.submit()
+    }
+
+    if (
+      (newState === ReplyState.SHOWING_WELCOME ||
+        newState === ReplyState.COMPLETED) &&
+      (event === ReplyEvent.CHAT_CREATED || event === ReplyEvent.MESSAGE_SENT)
+    ) {
+      flow.submitResult(true, 200, null)
+    }
+
+    if (newState === ReplyState.ERROR) {
+      flow.submitResult(false, null, 'error')
+    }
+
+    flow.enterStep(newState)
+
+    if (newState === ReplyState.COMPLETED) {
+      flow.complete()
+      ownsFlow = false
+    }
+  }
+
+  // Leaving the composer part way through is an abandon.
+  onScopeDispose(() => {
+    if (ownsFlow && [...RESUMABLE_STATES, ReplyState.ERROR].includes(state.value)) {
+      flow.abandon(stayOnPage ? 'closed' : 'navigated')
+      ownsFlow = false
+    }
+  })
+
   // Transition to a new state
   function transitionTo(newState, context = {}) {
     previousState.value = state.value
@@ -717,6 +788,7 @@ export function useReplyStateMachine(messageId, options = {}) {
       context,
       messageId
     )
+    trackFlow(previousState.value, newState, context)
 
     // Manage processing timeout
     if (isProcessing.value) {
@@ -832,6 +904,7 @@ export function useReplyStateMachine(messageId, options = {}) {
     if (!validation.valid) {
       transitionTo(ReplyState.COMPOSING, {
         event: ReplyEvent.VALIDATION_FAILED,
+        field: 'reply',
       })
       callback?.()
       return
@@ -861,6 +934,7 @@ export function useReplyStateMachine(messageId, options = {}) {
         emailValidatorRef.value?.focus?.()
         transitionTo(ReplyState.COMPOSING, {
           event: ReplyEvent.VALIDATION_FAILED,
+          field: 'email',
         })
         callback?.()
         return
