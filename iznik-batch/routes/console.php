@@ -560,7 +560,7 @@ Schedule::command('monitor:deprecated-endpoints')
 
 // UX telemetry: roll yesterday's client events (Loki, 7 days) and regret signals (MySQL) into the
 // ux_* tables, so a step can be compared with last month. 02:20 UTC is after the Loki day is
-// complete and clear of the backup drain window. It also backfills any of the six days before that
+// complete and clear of the backup drain window. It also backfills any of the five days before that
 // with no health rows, which is why a missed night is not a hole. A Loki outage exits non-zero.
 Schedule::command('ux:rollup-daily')
     ->dailyAt('02:20')
