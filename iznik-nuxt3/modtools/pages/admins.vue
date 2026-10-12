@@ -224,7 +224,11 @@
                     <div v-if="mjmlError" class="text-danger fw-bold">
                       {{ mjmlError }}
                     </div>
-                    <ModAdminFooterPreview :mjml="mjml || ''" class="mt-2" />
+                    <ModAdminFooterPreview
+                      :mjml="mjml || ''"
+                      :groupid="groupidcreate"
+                      class="mt-2"
+                    />
                   </div>
                 </div>
                 <!-- A designed (MJML) version carries its own buttons. -->

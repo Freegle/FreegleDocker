@@ -59,7 +59,8 @@
           </p>
           <ul>
             <li>
-              <strong>It's always good to put your names at the end.</strong>
+              Freegle adds your volunteers' names at the end, so you don't need
+              to.
             </li>
             <li>Any changes you make will only apply to this copy.</li>
             <li>
@@ -130,10 +131,12 @@
           class="mb-2"
         >
           <span v-if="admin.essential">
-            Essential - will be sent to {{ audience }}.
+            Essential - will be sent to {{ audience }}{{ whenSuffix }}.
           </span>
           <span v-else>
-            Newsletter - will be sent to {{ audience }} who haven't opted out.
+            Newsletter - will be sent to {{ audience }} who haven't opted out{{
+              whenSuffix
+            }}.
           </span>
         </NoticeMessage>
         <template v-if="admin.template">
@@ -204,7 +207,11 @@
                   rows="15"
                   placeholder="<mj-section>...</mj-section>"
                 />
-                <ModAdminFooterPreview :mjml="admin.mjml || ''" class="mt-2" />
+                <ModAdminFooterPreview
+                  :mjml="admin.mjml || ''"
+                  :groupid="admin.groupid"
+                  class="mt-2"
+                />
                 <b-button
                   variant="link"
                   size="sm"
@@ -230,6 +237,7 @@
                 rows="15"
               />
             </b-form-group>
+            <ModAdminFooterPreview :groupid="admin.groupid" />
             <div class="mjml-part mb-3">
               <b-form-checkbox v-model="useMjml">
                 Add a designed version using MJML (experts only)
@@ -366,12 +374,7 @@
           @click="approve"
         >
           <v-icon icon="check" />
-          <span v-if="admin.essential">
-            Approve and send to {{ audienceShort }}
-          </span>
-          <span v-else>
-            Approve and send to {{ audienceShort }} who haven't opted out
-          </span>
+          {{ approveLabel }}
         </b-button>
       </b-card-footer>
     </b-card>
@@ -440,9 +443,6 @@ const audience = computed(() =>
     ? 'members active in the last six months'
     : 'all members'
 )
-const audienceShort = computed(() =>
-  admin.value?.activeonly ? 'recently active members' : 'all members'
-)
 
 // Essential (an ADMIN everyone gets) or Newsletter (members can opt out). Saved with the rest.
 const essential = computed({
@@ -477,6 +477,31 @@ const sendafter = computed({
     }
   },
 })
+
+// When a send-after time is set and still to come, approving holds the ADMIN until then, so the
+// button and the notice say when rather than implying it goes now. Who it goes to is in the notice.
+const sendLater = computed(() => {
+  const when = admin.value?.sendafter ? new Date(admin.value.sendafter) : null
+  return when && when.getTime() > Date.now()
+    ? when.toLocaleString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null
+})
+
+const whenSuffix = computed(() =>
+  sendLater.value ? ', on ' + sendLater.value : ''
+)
+
+const approveLabel = computed(() =>
+  sendLater.value
+    ? 'Approve to send ' + sendLater.value
+    : 'Approve and send now'
+)
 
 const holder = computed(() => {
   return admin.value?.heldby ? userStore.byId(admin.value.heldby) : null

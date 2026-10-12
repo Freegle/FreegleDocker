@@ -63,6 +63,14 @@ vi.mock('@/stores/modgroup', () => ({
   useModGroupStore: () => mockModGroupStore,
 }))
 
+// The footer preview names the chosen community's volunteers from the group store.
+vi.mock('~/stores/group', () => ({
+  useGroupStore: () => ({
+    get: vi.fn().mockReturnValue(null),
+    fetch: vi.fn().mockResolvedValue(null),
+  }),
+}))
+
 // Mock composables
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({
