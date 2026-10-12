@@ -275,33 +275,6 @@ package main
 //	404: errorResponse
 //	500: errorResponse
 
-// swagger:route POST /v1/groups/intersecting spatial groupsIntersecting
-//
-// Groups whose area shares a cell with an encoded reach
-//
-// Encoded cell bytes in (Content-Type application/octet-stream); out come the
-// groups whose area shares at least one covered cell, each flagged with whether
-// the grid lies entirely within that group. The cell form of the ST_Intersects and
-// ST_Within pair, answered on the same lattice as the reach itself.
-//
-// Binds to SPATIAL_PORT (default 8194).
-//
-// Parameters:
-//   + name: body
-//     in: body
-//     description: Encoded cell set bytes (Content-Type application/octet-stream)
-//     required: true
-//     schema:
-//       type: string
-//       format: binary
-//
-// Responses:
-//
-//	200: genericResponse
-//	400: errorResponse
-//	404: errorResponse
-//	500: errorResponse
-
 // swagger:route POST /v1/{dataset}/rebuild admin rebuildDataset
 //
 // Rebuild dataset (admin)
