@@ -53,8 +53,9 @@
                   <span v-else class="text-muted">Never</span>
                 </b-td>
                 <b-td>
+                  <span v-if="!job.active" class="text-muted">Disabled</span>
                   <span
-                    v-if="job.last_run_at && job.interval_minutes"
+                    v-else-if="job.last_run_at && job.interval_minutes"
                     class="text-nowrap"
                     :class="{ 'text-danger fw-bold': isOverdue(job) }"
                   >

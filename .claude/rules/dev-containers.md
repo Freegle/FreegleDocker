@@ -264,7 +264,11 @@ relative `mime.types` include resolves against the config's own directory.
 - **Creating a worktree branches off your local master**, which may be behind or ahead of the
   remote, so the base can include unpushed local commits.
 - **Removing a worktree keeps the branch**, so the branch accumulates even when the directory
-  does not.
+  does not. `./freegle worktree prune` is the same: it removes the directory and the project's
+  volumes for a merged or closed PR and leaves the local branch behind.
+- **`./freegle worktree prune` has no `--help`.** An unrecognised flag is ignored and the real
+  prune runs. Piping its output through `head` can then cut it off part way. The only safe way
+  to see the plan is `--dry-run`, and run it unpiped.
 - **Agents sharing one clone switch branches underneath each other**, and a push can end up a
   silent no-op.
 - **The worktree guard is session-wide**, and a subagent can move it, after which commands are

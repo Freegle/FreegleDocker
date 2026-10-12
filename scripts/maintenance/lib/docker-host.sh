@@ -133,8 +133,7 @@ docker_resume() {
   batch_ripple_lock_discipline
   [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 localhost:3100/ready)" = 200 ] || die "Loki is not ready"
   [ "$(docker inspect -f '{{.State.Status}}' "$MAINT_STATUS_CONTAINER" 2>/dev/null)" = running ] || die "the status container is not running"
-  monit_snapshot local "$RUN_DIR/monit-docker.after"
-  monit_all_ok local "$RUN_DIR/monit-docker.after"
+  monit_settled local "$RUN_DIR/monit-docker.after"
   svc_compare local "$RUN_DIR/services-docker.before"
 
   phase finished

@@ -133,8 +133,7 @@ mail_run() {
     for inst in $MAINT_MAIL_INSTANCES; do info "$M: instance $inst queue now: $(mail_queue_counts "$M" "$inst")"; done
     local sp; sp=$(batch_spool_pending)
     info "batch mail spool pending: before $SPOOL_BEFORE, now ${sp:-?}"
-    monit_snapshot "$M" "$RUN_DIR/monit-mail.after"
-    monit_all_ok "$M" "$RUN_DIR/monit-mail.after"
+    monit_settled "$M" "$RUN_DIR/monit-mail.after"
     svc_compare "$M" "$RUN_DIR/services-mail.before"
   fi
 

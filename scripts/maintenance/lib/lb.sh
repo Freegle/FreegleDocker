@@ -83,8 +83,7 @@ lb_run() {
     sleep 20
     lb_backends_up
     lb_public_probe
-    monit_snapshot "$L" "$RUN_DIR/monit-lb.after"
-    monit_all_ok "$L" "$RUN_DIR/monit-lb.after"
+    monit_settled "$L" "$RUN_DIR/monit-lb.after"
     svc_compare "$L" "$RUN_DIR/services-lb.before"
   fi
 
