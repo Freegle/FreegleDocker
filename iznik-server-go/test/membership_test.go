@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -306,6 +307,13 @@ func TestDeleteMembershipsSelfLeaveRefusedForModeratorRoles(t *testing.T) {
 		resp, err := getApp().Test(req)
 		assert.NoError(t, err)
 		assert.Equal(t, 403, resp.StatusCode, role+" self-leave must be refused")
+
+		// The refusal has to tell a moderator how to get out: they can change their own role
+		// to Member in ModTools (Discourse 10242, "Hotel California for mods").
+		rawBody, _ := io.ReadAll(resp.Body)
+		msg := string(rawBody)
+		assert.Contains(t, msg, "change your own role to Member first", role+" refusal must say how to leave")
+		assert.NotContains(t, msg, "Ask another owner to change your role first")
 
 		var stillRole string
 		db.Raw("SELECT role FROM memberships WHERE userid = ? AND groupid = ? AND collection = 'Approved'",

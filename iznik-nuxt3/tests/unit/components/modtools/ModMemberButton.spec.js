@@ -429,4 +429,43 @@ describe('ModMemberButton', () => {
       expect(wrapper.find('.std-message-modal').exists()).toBe(true)
     })
   })
+
+  // A moderator removing themselves is refused by the server (403 with a message saying
+  // how to leave). It used to be swallowed, so nothing at all seemed to happen
+  // (Discourse 10242).
+  describe('removing yourself is refused', () => {
+    const MSG =
+      'You are a moderator of this community, so leaving would drop that role. To leave, change your own role to Member first, or ask another owner to.'
+
+    function refused() {
+      const e = new Error('API Error POST /memberships -> status: 403')
+      e.response = { status: 403, data: { error: 403, message: MSG } }
+      return e
+    }
+
+    it('shows the message when a confirmed delete is refused', async () => {
+      mockMemberStore.delete.mockRejectedValue(refused())
+      const wrapper = mountComponent({ delete: true })
+      await wrapper.find('button').trigger('click')
+      await wrapper.findComponent({ name: 'ConfirmModal' }).vm.$emit('confirm')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('change your own role to Member first')
+    })
+
+    it('shows the message when a silent removal is refused', async () => {
+      mockMemberStore.delete.mockRejectedValue(refused())
+      mockStdmsgStore.fetch.mockResolvedValue({
+        id: 7,
+        action: 'Delete Approved Member',
+      })
+      const wrapper = mountComponent({ stdmsgid: 7, rippleOnly: true })
+      await wrapper.find('button').trigger('click')
+      await flushPromises()
+      await wrapper.findComponent({ name: 'ConfirmModal' }).vm.$emit('confirm')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('change your own role to Member first')
+    })
+  })
 })
