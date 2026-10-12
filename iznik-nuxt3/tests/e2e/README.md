@@ -410,8 +410,12 @@ runs `npx playwright test --project app --workers 1`. It is the gate before app 
 the status API's run, which runs every project, never sees it.
 
 - `tests/e2e/app/*.spec.js` run only in this project: native plugins, push notifications,
-  deep links. They use `tests/e2e/app/device.js` for everything outside the WebView (adb
-  shell, uiautomator, the notification shade, fake FCM messages, VIEW intents).
+  deep links, photos from the camera, the photo picker and other apps' shares. They use
+  `tests/e2e/app/device.js` for everything outside the WebView (adb shell, uiautomator,
+  the notification shade, fake FCM messages, VIEW and SEND intents, the system camera and
+  photo picker).
+- A test that kills the app (the cold-start share) calls `appWebView.reattach()`; the
+  next test's `context` fixture re-attaches by itself when the old page has closed.
 - `APP_SHARED_SPECS` in `playwright.config.js` lists the web specs that also run here,
   unchanged, on a phone-sized screen (the post and reply flows).
 - With `APP_E2E_SERIAL` set, `fixtures.js` launches no browser: `appWebView` attaches to

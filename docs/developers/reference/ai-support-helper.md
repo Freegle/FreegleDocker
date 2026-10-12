@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-02
+last_reviewed: 2026-10-12
 owner: Freegle dev team
 covers:
   - claude-agent-sdk/support-agent.js

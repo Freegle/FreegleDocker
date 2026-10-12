@@ -83,6 +83,16 @@ test.describe('Push notifications', () => {
     await loginViaHomepage(page, 'test@test.com', 'freegle')
     const title = `E2E tap ${Date.now()}`
 
+    // Signing in on the home page sends a member on to /browse (pages/index.vue
+    // goHome). Let that land first: a backgrounded WebView throttles its timers, so a
+    // redirect still pending when the app is hidden can arrive after the push's route
+    // and replace it. A member who has been signed in a while has none pending.
+    await expect
+      .poll(() => new URL(page.url()).pathname, {
+        timeout: timeouts.ui.appearance,
+      })
+      .not.toBe('/')
+
     // Background the app and wait until it knows it is: stores/mobile.js decides
     // where a push goes from App.getState(), and the state flips a moment after
     // the launcher takes the screen.

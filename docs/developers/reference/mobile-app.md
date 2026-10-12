@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-12
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/capacitor.config.ts
@@ -100,7 +100,9 @@ boots a headless emulator on CircleCI's Android machine image (the Hetzner runne
 `/dev/kvm`) and runs the Playwright `app` project through the app's WebView against the
 local stack brought up on the same machine. It checks the native plugin set, push notification
 delivery and routing (an FCM data message injected on the device, no Firebase servers
-involved), deep links, and the post and reply flows on a phone-sized screen. It runs in
+involved), deep links, photos from the system camera and the photo picker, images shared into
+the app from another app (with the app in the background and not running), and the post and
+reply flows on a phone-sized screen. It runs in
 `manual-promote-submit` and on demand with the `run_app_emulator_test` pipeline parameter,
 not on every push. The scripts, the run's anatomy and its traps are in
 [`scripts/app-e2e/README.md`](../../../scripts/app-e2e/README.md); the specs are in

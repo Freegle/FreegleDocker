@@ -1289,8 +1289,10 @@ key, with cleartext permitted by `android/app/src/e2e/AndroidManifest.xml` and W
 remote debugging plus mixed content switched on by `FREEGLE_APP_E2E=true` in
 `capacitor.config.ts`. The Playwright `app` project (`tests/e2e/app/`) then drives the
 app's WebView: native plugin registration (the check behind issue 14), push notification
-delivery and routing through a fake FCM broadcast, deep links, and the post and reply
-flows. Scripts and traps: FreegleDocker `scripts/app-e2e/README.md`.
+delivery and routing through a fake FCM broadcast, deep links, the camera (the AVD's
+emulated camera through the system camera app), the photo picker, sharing an image into
+the app warm and cold (`MainActivity`'s copy and the `FreegleShare` bridge), and the post
+and reply flows. Scripts and traps: FreegleDocker `scripts/app-e2e/README.md`.
 
 </details>
 

@@ -138,7 +138,26 @@ async function connectAppWebView() {
   console.log(
     `Attached to ${APP_PACKAGE} WebView (pid ${webView.pid()}) on ${APP_SERIAL}: ${page.url()}`
   )
-  return { device, webView, page }
+  const attached = { device, webView, page }
+  // After a test kills the app (a cold start), attach to the new process's WebView,
+  // named by its pid so the old one, which Playwright may not have dropped yet,
+  // cannot answer instead.
+  attached.reattach = async () => {
+    const appPid = await device
+      .shell(`pidof ${APP_PACKAGE}`)
+      .then((b) => parseInt(String(b).trim(), 10))
+    if (!appPid) {
+      throw new Error(`${APP_PACKAGE} is not running, nothing to attach to`)
+    }
+    attached.webView = await device.webView({
+      pkg: APP_PACKAGE,
+      socketName: `webview_devtools_remote_${appPid}`,
+    })
+    attached.page = await attached.webView.page()
+    console.log(`Re-attached to ${APP_PACKAGE} WebView (pid ${appPid})`)
+    return attached.page
+  }
+  return attached
 }
 
 // A fresh start for each test without a new context: the WebView is the only page the
@@ -233,6 +252,11 @@ const fixtures = {
   // Create a new isolated context for each test
   context: async ({ browser, appWebView }, use) => {
     if (appWebView) {
+      // An earlier test may have killed the app (a cold start); start from the
+      // WebView that is there now.
+      if (appWebView.page.isClosed()) {
+        await appWebView.reattach()
+      }
       await resetAppState(appWebView.page)
       await use(appWebView.page.context())
       return
@@ -432,6 +456,7 @@ const fixtures = {
       /Failed to load resource: the server responded with a status of 404.*api\/session/, // Session API 404 can happen when trying to logout when not logged in.
       /Failed to load resource: the server responded with a status of 404.*delivery\.localhost/, // Delivery service 404 errors for missing images can happen during normal operation.
       /Failed to load resource: net::ERR_FAILED.*delivery\.localhost/, // The same missing test-env image as above, as the Android WebView reports it (app project).
+      /Failed to load resource: net::ERR_FAILED.*\/api\/scrolldepth/, // useScrollDepth's sendBeacon on visibilitychange, cancelled by the WebView when the app project reloads the page between tests; fire-and-forget by design.
       /Failed to load resource: the server responded with a status of 404.*\/\d+w/, // Responsive image width-variant (e.g. /320w) not generated in the test image env — same class as the delivery.localhost image 404 above.
       /FedCM get\(\) rejects with/, // Not available in test
       /Error retrieving a token./, // Also related to GSI FedCM, not available in test

@@ -36,4 +36,8 @@ set_cfg hw.ramSize 3072
 set_cfg disk.dataPartition.size 6G
 set_cfg hw.keyboard yes
 set_cfg hw.gpu.enabled yes
+# An emulated back camera (a moving test pattern) gives the camera test a picture to
+# take without any host camera; virtualscene would need a real GPU.
+set_cfg hw.camera.back emulated
+set_cfg hw.camera.front none
 log "AVD $AVD_NAME ready ($cfg)"

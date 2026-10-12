@@ -14,6 +14,7 @@ What it exercises that the browser suite cannot:
 | `plugins.spec.js` | every plugin in `capacitor.config.ts` `includePlugins` is registered natively, every plugin `cap sync` bundled survived R8, screen orientation and device info come from the native plugins, the bundle mounts |
 | `notifications.spec.js` | an FCM data message (the payload `PushNotificationService` sends) reaches the WebView in the foreground and the shade; one that reaches the backgrounded app has it on `/chats` when the tap brings it back; a message without `channel_id` is ignored |
 | `deeplink.spec.js` | an `ilovefreegle.org` link opened from outside lands on that page in the app |
+| `photos.spec.js` | a picture taken in the system camera, and a photo chosen in the system photo picker, reach the give flow and upload to tusd; Android offers the app as a share target for images; an image shared from another app opens the give flow with it and uploads, both with the app in the background and with it not running |
 | `test-post-flow.spec.js`, `test-reply-flow-logged-in.spec.js` | the web specs, unchanged, on the phone-sized WebView (`APP_SHARED_SPECS`) |
 
 ## What a run does
@@ -83,3 +84,18 @@ the CI job runs on CircleCI's Android machine image instead.
 - **Quoting through `adb shell`**: values with spaces must be quoted for the device shell,
   not only the local one, or the extras after the first space are lost. `device.js` does
   this; a hand-typed `am broadcast` needs the whole command in one quoted string.
+- **A share sent with `am start` needs two things a gallery app gets for free.** The read
+  grant has to come from a user that can read the image (`su shell`; root's grant does not
+  take), and the URI has to be in the intent data as well as `EXTRA_STREAM`, because `am`
+  does not copy the stream into the clip data the grant covers. Without either, the app logs
+  a `SecurityException` and the give flow never opens.
+- **A root `adb push` is invisible to the gallery** until the media scanner is told about
+  the file (`MEDIA_SCANNER_SCAN_FILE`); `addImageToGallery` also touches it, so the photo
+  picker lists it first.
+- **An uploaded photo's thumbnail is a 404 on a stack with offset ports.** The client asks
+  the delivery service to fetch `tusd.localhost:<host port>`, which the delivery container
+  cannot reach, so the tests stop at the tusd upload instead of the rendered thumbnail.
+  The web suite has the same limitation and allows the 404.
+- **The release build has no Capacitor logging**: R8 builds drop it, so logcat says nothing
+  about a plugin call. Read the WebView console, or the stores (`compose.messages` holds
+  each photo's native preview path and its tusd id).

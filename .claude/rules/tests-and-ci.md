@@ -266,6 +266,15 @@ build, not by bisecting the boundary.
   the resume handler in `stores/mobile.js` now fetches nothing while nobody is signed in.
 - **A background `adb logcat` holds the emulator lock** if it inherits the lock descriptor;
   a later run then waits 45 minutes for a lock nobody will release.
+- **The emulator needs `/dev/kvm`, which no Hetzner Cloud VM has.** The job runs on
+  CircleCI's Android machine image; on a runner it fails at its KVM check.
+- **A share sent with `am start` from a root shell is refused** with a `SecurityException` in
+  `MainActivity`, and the give flow never opens: root's URI grant does not take, and `am`
+  never moves `EXTRA_STREAM` into the clip data a grant covers. `shareImage` sends as the
+  shell user with the URI in the intent data too.
+- **An uploaded photo's thumbnail 404s on a stack with offset ports** (worktrees, CI on
+  9080): the delivery service is asked to fetch `tusd.localhost:<host port>`, which its
+  container cannot reach. The upload itself succeeded; check the tusd id in the draft.
 
 ## See also
 

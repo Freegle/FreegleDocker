@@ -203,6 +203,128 @@ async function screenshot(path) {
   require('fs').writeFileSync(path, png)
 }
 
+/** Kills the app's process, as Android does to a backgrounded app it needs memory from. */
+async function forceStop() {
+  await shell(`am force-stop ${PACKAGE}`)
+  await poll(async () => !(await pid()), {
+    timeoutMs: timeouts.ui.appearance,
+    what: 'the app process to exit',
+  })
+}
+
+// --- Photos: the camera, the gallery, sharing into the app --------------------------
+
+/**
+ * Puts a local image in the device's gallery (MediaStore) and returns its content URI,
+ * the kind of URI a gallery app hands over when it shares a photo.
+ */
+async function addImageToGallery(localPath) {
+  const ext = require('path').extname(localPath) || '.jpg'
+  const name = `app-e2e-${Date.now()}${ext}`
+  await adb(['push', localPath, `/sdcard/Pictures/${name}`])
+  // Newest in the gallery, so the photo picker shows it first (push keeps the
+  // asset's own date).
+  await shell(`touch /sdcard/Pictures/${name}`)
+  // A root `adb push` writes beneath MediaStore's notice; the scanner indexes it.
+  await shell(
+    `am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/${name}`
+  )
+  const id = await poll(
+    async () => {
+      const out = await shell(
+        `content query --uri content://media/external/images/media --projection _id --where "_display_name='${name}'"`
+      )
+      const m = /_id=(\d+)/.exec(out)
+      return m ? m[1] : null
+    },
+    { timeoutMs: timeouts.ui.appearance, what: `MediaStore to index ${name}` }
+  )
+  return `content://media/external/images/media/${id}`
+}
+
+/** True when Android offers the app as a target for sharing this MIME type. */
+async function isShareTarget(mime) {
+  const out = await shell(
+    `pm query-activities -a android.intent.action.SEND -t ${mime}`
+  )
+  return out.includes(`packageName=${PACKAGE}`)
+}
+
+/**
+ * Shares an image into the app the way a gallery app does after the member picks
+ * Freegle in the share sheet: ACTION_SEND with the image as EXTRA_STREAM and a read
+ * grant on it. Sent as the shell user, which can read MediaStore and so can grant it;
+ * a root sender's grant does not take. The URI also goes in the intent data, because
+ * `am` does not move EXTRA_STREAM into the clip data the grant applies to, as the
+ * framework does for an app's own startActivity().
+ */
+async function shareImage(uri, mime) {
+  const out = await shell(
+    `su shell am start -W -a android.intent.action.SEND -t ${mime} -d ${shQuote(uri)} --eu android.intent.extra.STREAM ${shQuote(uri)} --grant-read-uri-permission -n ${PACKAGE}/${ACTIVITY}`
+  )
+  if (!/Status: ok|Complete/.test(out)) {
+    throw new Error(`share intent did not start the app: ${out.trim()}`)
+  }
+}
+
+/**
+ * Takes a picture in the system camera app (AOSP Camera, com.android.camera2, which
+ * the google_apis images ship) once the app has handed over to it, and accepts it.
+ * The AVD's back camera is emulated, so there is always a picture to take. Any
+ * first-run prompt the camera puts up is dismissed on the way.
+ */
+async function takePictureWithSystemCamera() {
+  const CAMERA = 'com.android.camera2'
+  const FIRST_RUN =
+    /^(NEXT|OK|GOT IT|NO THANKS|ALLOW|WHILE USING THE APP|ONLY THIS TIME)$/i
+  await poll(
+    async () => {
+      const nodes = await uiNodes()
+      const shutter = nodes.find(
+        (n) => n.resourceId === `${CAMERA}:id/shutter_button` && n.bounds
+      )
+      if (shutter) {
+        await tapNode(shutter)
+        return true
+      }
+      const prompt = nodes.find((n) => FIRST_RUN.test(n.text) && n.bounds)
+      if (prompt) {
+        await tapNode(prompt)
+      }
+      return false
+    },
+    {
+      timeoutMs: timeouts.ui.appearance,
+      intervalMs: 1000,
+      what: 'the camera shutter',
+    }
+  )
+  await tap({ resourceId: `${CAMERA}:id/done_button` })
+}
+
+/**
+ * In the system photo picker (Android 13+, the MediaProvider module the camera
+ * plugin's pickImages() opens), selects the newest photo and confirms with "Add".
+ */
+async function pickNewestFromPhotoPicker() {
+  const thumb = await poll(
+    async () =>
+      (await uiNodes()).find(
+        (n) => /^Photo taken on/.test(n.desc) && n.clickable && n.bounds
+      ) || null,
+    { timeoutMs: timeouts.ui.appearance, what: 'a photo in the picker' }
+  )
+  await tapNode(thumb)
+  const add = await poll(
+    async () =>
+      (await uiNodes()).find(
+        (n) => n.resourceId.endsWith(':id/button_add') && n.bounds
+      ) || null,
+    { timeoutMs: timeouts.ui.appearance, what: "the picker's Add button" }
+  )
+  await tapNode(add)
+}
+
 // --- Push notifications -------------------------------------------------------------
 
 /**
@@ -294,6 +416,12 @@ module.exports = {
   waitForForeground,
   openUrl,
   screenshot,
+  forceStop,
+  addImageToGallery,
+  isShareTarget,
+  shareImage,
+  takePictureWithSystemCamera,
+  pickNewestFromPhotoPicker,
   sendFcmData,
   appNotifications,
   waitForNotification,
