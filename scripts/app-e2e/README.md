@@ -93,7 +93,15 @@ emulator job.
 
 - **`chromium.connectOverCDP` through `adb forward` drops the connection** as soon as
   Playwright attaches to the WebView's browser target. `playwright._android` (device,
-  `webView({ pkg })`, `page()`) is the path that works, and it needs no forward.
+  `webView()`, `page()`) is the path that works, and it needs no forward.
+- **Select the WebView by `socketName`, never by `pkg`.** Playwright names a WebView's
+  package from the last line of `ps -A | grep <pid>`, so any process whose figures happen
+  to contain the app's pid can take the name, and `webView({ pkg })` then waits out its
+  timeout beside a WebView that is there. The socket is `webview_devtools_remote_<pid>`
+  with the pid from `pidof`.
+- **The emulator console port must be in adb's scan range** (5554-5584). On a loaded
+  machine the adb server can drop the emulator; inside the range it finds it again in
+  seconds, outside it the device is gone for the rest of the run.
 - **The WebView has no cookie management over CDP** (`Browser context management is not
   supported`). Storage is cleared in the page and the app reloaded; `clearSessionData`
   tolerates the error.

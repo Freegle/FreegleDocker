@@ -257,6 +257,10 @@ build, not by bisecting the boundary.
   in `includePlugins` is really registered natively.
 - **`chromium.connectOverCDP` into the WebView drops with code 1006** the moment Playwright
   attaches. Only `playwright._android` works, and it needs no `adb forward`.
+- **`androidDevice.webView({ pkg })` can time out beside a WebView that is there**:
+  Playwright takes the package from the last line of `ps -A | grep <pid>`, which a
+  process with the same digits in its figures can win. Select by `socketName`
+  (`webview_devtools_remote_<pid>`); the fixtures and `attach-check.cjs` do.
 - **The app dies on launch without any `google-services.json`**: the push plugin's
   `register()` throws on a plugin thread. The placeholder in `scripts/app-e2e` keeps a
   machine without the CI secret running; push registration then fails by design.
