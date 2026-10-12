@@ -5,7 +5,12 @@ import ModSysAdminUxSecondThoughts from '~/modtools/components/ModSysAdminUxSeco
 import { useUxStore } from '~/modtools/stores/ux'
 import { uxStubs } from './uxStubs'
 
-const step = (name, backed, entered) => ({ step: name, entered, backed })
+const step = (name, backed, visits) => ({
+  step: name,
+  entered: visits,
+  visits,
+  backed,
+})
 
 describe('ModSysAdminUxSecondThoughts', () => {
   let store

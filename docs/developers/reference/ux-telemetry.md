@@ -86,7 +86,7 @@ constants (`FlowName`, `FlowEvent`). Each is a `/clientlog` entry with **`event_
 | `flow_submit_result` | `ok`, `status`, `error_code` |
 | `flow_complete` | `dwell_ms` |
 | `flow_abandon` | `reason` (`navigated`, `closed`, `hidden`, `idle`), `last_step`, `dwell_ms` |
-| `flow_resume` | `age_ms` |
+| `flow_resume` | `age_ms`; `reason=idle` when it brings back an instance the idle timer ended |
 | `help_sought` | (the live `flow` and `step` are in the envelope) |
 
 **Never** a field value typed by a member: names, kinds, rules and counts only. The vitest suite
@@ -94,7 +94,10 @@ for the composable asserts this. The field helpers take no value arguments, and 
 step, entry or choice that is not a plain token (letters, digits and `_:.-`, up to 40) is sent as
 `other` instead of being dropped.
 
-An instance ends at `flow_complete` or `flow_abandon`; at most one of them is sent per instance.
+An instance ends at `flow_complete` or `flow_abandon`; at most one of them is sent per instance,
+except that an `idle` abandon can be followed by a `flow_resume` with `reason=idle` if the member
+carries on, and the instance then continues to its own end. The rollup takes those abandons back
+off, and counts only the other resumes (restored drafts) as `resumed`.
 A hidden tab alone is not an abandon (the camera, photo picker or an app switch hides it and the
 member returns); it only flushes the log. `flow_abandon` with `reason=hidden` is sent on a `pagehide`
 that is not persisted into the back/forward cache, `idle` after 30 minutes with
@@ -145,7 +148,7 @@ and on clicks:
 
 | Field | True when |
 |---|---|
-| `rage` | This is the third or later click on the same element within 1 second |
+| `rage` | This click is the third on the same element within 1 second; set once per burst, not on the clicks that follow it |
 | `repeat_no_api` | The same labelled element was clicked 2 to 30 seconds ago and no API request started in the 1.5 seconds after that earlier click (background polling later does not count) |
 
 Anything inside an element marked `data-ux-ignore` (the ModTools UX tab) is skipped: no clicks, scrolls or impressions.
@@ -155,7 +158,10 @@ browser session (sessionStorage) at `SAMPLE_RATE = 0.1`. Sampled-out sessions se
 lines carry `sample_rate`. Flow events, clicks, errors and `session_start` are never sampled.
 
 `/clientlog` is not logged a second time as a `source="api"` line, and is rate limited per IP
-(`CLIENTLOG_RATE_PER_MIN`, default 600 entries a minute); a tripped limit is logged once a minute.
+(`CLIENTLOG_RATE_PER_MIN`, default 600 entries a minute). Flow events are counted separately
+against ten times that, so other traffic from a shared address cannot crowd them out; entries
+over either limit are dropped in place, keeping the batch's order. A tripped limit is logged once
+a minute.
 
 ## 4. Experiments
 
@@ -171,12 +177,14 @@ per-experiment recording code. Use fixed ratios with a control arm; the epsilon-
 ## 5. Rollup tables
 
 Written by `php artisan ux:rollup-daily [--date=YYYY-MM-DD]` (scheduled 02:20 UTC for yesterday,
-and backfilling any of the previous six days that has no `ux_telemetry_health_daily` rows).
-Rerunning a day replaces it. Schema in the migration above.
+and backfilling any of the previous five days that has no `ux_telemetry_health_daily` rows; five
+because every one of them is still wholly inside Loki's seven-day retention). Rerunning a day
+replaces it. A Loki error other than the series limit aborts the day and leaves its old rows; only
+the series limit is split or skipped. Schema in the migration above.
 
 | Table | From | Notes |
 |---|---|---|
-| `ux_flow_daily` | flow events | `entered` counts `step_enter` with `first_visit`; `reentered` the rest |
+| `ux_flow_daily` | flow events | `entered` counts `step_enter` with `first_visit`; `reentered` the rest. `completed`, `backed`, `abandoned` and `help_sought` count once per visit, so rates over them divide by `entered + reentered` |
 | `ux_flow_outcome_daily` | flow events | per flow |
 | `ux_field_daily` | `field_revisit`, `validation_failed`, `choice_switched` | per field |
 | `ux_component_daily` | `interaction`, `impressions` | impressions scaled by `1/sample_rate`; dead click = click with `interactive=false` |
@@ -193,7 +201,7 @@ also returns the same figures for the preceding period of equal length as `previ
 
 | Route | Returns |
 |---|---|
-| `GET /modtools/ux/funnels?flow=` | per flow and step: entered, completed, backed, abandoned, revisits, validation_failures, help_sought, dwell p50/p90; `by` breakdown on `device_class`, `logged_in`, `variant` |
+| `GET /modtools/ux/funnels?flow=` | per flow and step: entered, reentered, visits (their sum, the denominator for rates), completed, backed, abandoned, revisits, validation_failures, help_sought, dwell p50/p90; `by` breakdown on `device_class`, `logged_in`, `variant` |
 | `GET /modtools/ux/outcomes` | per flow: started, submitted, submit_ok, submit_failed, completed, abandoned, resumed |
 | `GET /modtools/ux/fields?flow=` | per field: revisits, validation_failures, choice_switches |
 | `GET /modtools/ux/friction` | top 20 (page, component) by rage, dead, repeated intent, sorted by change against previous |

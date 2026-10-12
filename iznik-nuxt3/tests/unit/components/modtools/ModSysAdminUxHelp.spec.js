@@ -14,14 +14,18 @@ describe('ModSysAdminUxHelp', () => {
       flows: [
         {
           flow: 'post',
-          steps: [{ step: 'photos', entered: 200, help_sought: 30 }],
+          steps: [
+            { step: 'photos', entered: 200, visits: 200, help_sought: 30 },
+          ],
         },
       ],
       previous: {
         flows: [
           {
             flow: 'post',
-            steps: [{ step: 'photos', entered: 100, help_sought: 5 }],
+            steps: [
+              { step: 'photos', entered: 100, visits: 100, help_sought: 5 },
+            ],
           },
         ],
       },

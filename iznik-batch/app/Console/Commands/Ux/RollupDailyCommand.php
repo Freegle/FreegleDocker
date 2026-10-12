@@ -12,15 +12,18 @@ use Symfony\Component\Console\Attribute\AsCommand;
  * Nightly: roll one UTC day of client telemetry (Loki) and regret signals (MySQL) into the ux_*
  * tables that the ModTools UX tab reads. Rerunning a day replaces it.
  *
- * With no --date it does yesterday, and first fills any of the six days before that which have no
- * ux_telemetry_health_daily rows, so a missed night is not a hole. Loki keeps seven days, so the
- * oldest of those may already be gone; that shows as a day of zeros on the health panel, not as
- * a silent gap.
+ * With no --date it does yesterday, and first fills any of the five days before that which have no
+ * ux_telemetry_health_daily rows, so a missed night is not a hole. Loki keeps seven days, and the
+ * whole of each of those days is still inside it when the job runs; a sixth would be partly gone
+ * and would be written as plausible-looking low counts.
  */
 #[AsCommand(name: 'ux:rollup-daily')]
 class RollupDailyCommand extends Command
 {
-    protected $signature = 'ux:rollup-daily {--date= : UTC day to roll up, YYYY-MM-DD (default yesterday, plus any missing day of the six before)}';
+    /** Days before yesterday that a missed night is filled for, all wholly inside Loki retention. */
+    private const BACKFILL_DAYS = 5;
+
+    protected $signature = 'ux:rollup-daily {--date= : UTC day to roll up, YYYY-MM-DD (default yesterday, plus any missing day of the five before)}';
 
     protected $description = 'Roll a day of UX telemetry from Loki and MySQL into the ux_* tables';
 
@@ -28,17 +31,20 @@ class RollupDailyCommand extends Command
     {
         $given = $this->option('date');
         if ($given !== null) {
-            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $given) || Carbon::createFromFormat('Y-m-d', $given) === false) {
+            // createFromFormat overflows 2026-02-31 into March rather than failing, so check it
+            // round-trips.
+            $parsed = preg_match('/^\d{4}-\d{2}-\d{2}$/', $given) ? Carbon::createFromFormat('!Y-m-d', $given, 'UTC') : false;
+            if ($parsed === false || $parsed->format('Y-m-d') !== $given) {
                 $this->error("--date must be YYYY-MM-DD, got '$given'.");
 
                 return self::FAILURE;
             }
-            $days = [Carbon::parse($given, 'UTC')->startOfDay()];
+            $days = [$parsed->startOfDay()];
         } else {
             $yesterday = Carbon::now('UTC')->startOfDay()->subDay();
             $days = [];
             // Oldest first: the health check's trailing median reads the days before it.
-            for ($back = 6; $back >= 1; $back--) {
+            for ($back = self::BACKFILL_DAYS; $back >= 1; $back--) {
                 $day = $yesterday->copy()->subDays($back);
                 if (! DB::table('ux_telemetry_health_daily')->where('date', $day->toDateString())->exists()) {
                     $days[] = $day;

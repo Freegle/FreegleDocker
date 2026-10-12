@@ -185,36 +185,65 @@ func TestClientKeyUsesRealIPNeverForwardedFor(t *testing.T) {
 	assert.NotEmpty(t, got)
 }
 
-func TestLimiterNeverDropsFlowEntries(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLIENTLOG_RATE_PER_MIN", "2")
-	useLoki(misc.NewFileLoki(dir))
-	defer useLoki(nil)
-	defaultLimiter = newLimiter()
-
-	app := fiber.New()
-	app.Post("/api/clientlog", ReceiveClientLogs)
-	body := `{"logs":[` +
-		`{"event_type":"flow","message":"f1"},{"event_type":"log","message":"a"},{"event_type":"log","message":"b"},` +
-		`{"event_type":"flow","message":"f2"},{"event_type":"log","message":"c"},{"event_type":"flow","message":"f3"}]}`
+func postBody(t *testing.T, app *fiber.App, body string) {
 	req := httptest.NewRequest("POST", "/api/clientlog", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, _ := app.Test(req)
 	assert.Equal(t, 204, resp.StatusCode)
 	waitForHandlers()
+}
 
-	flows, others := 0, 0
+func clientMessages(t *testing.T, dir string) []string {
+	var out []string
 	for _, e := range readLines(t, dir) {
 		if l, _ := e["labels"].(map[string]interface{}); l["source"] == "client" {
-			if l["event_type"] == "flow" {
-				flows++
-			} else {
-				others++
-			}
+			msg, _ := e["message"].(map[string]interface{})
+			out = append(out, fmt.Sprint(msg["message"]))
 		}
 	}
-	assert.Equal(t, 3, flows, "flow events are exempt from the limit")
-	assert.Equal(t, 2, others, "other entries are counted and the excess dropped")
+	return out
+}
+
+func TestFlowEntriesHaveTheirOwnLargerLimitAndKeepTheirOrder(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLIENTLOG_RATE_PER_MIN", "2")
+	useLoki(misc.NewFileLoki(dir))
+	defer useLoki(nil)
+	defaultLimiter = newLimiter()
+	flowLimiter = newLimiter()
+
+	app := fiber.New()
+	app.Post("/api/clientlog", ReceiveClientLogs)
+	postBody(t, app, `{"logs":[`+
+		`{"event_type":"flow","message":"f1"},{"event_type":"log","message":"a"},{"event_type":"log","message":"b"},`+
+		`{"event_type":"flow","message":"f2"},{"event_type":"log","message":"c"},{"event_type":"flow","message":"f3"}]}`)
+
+	assert.Equal(t, []string{"f1", "a", "b", "f2", "f3"}, clientMessages(t, dir),
+		"flow entries are under their own limit, the third other entry is dropped, and the order is kept")
+}
+
+func TestFlowEntriesAloneCannotBypassTheLimit(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLIENTLOG_RATE_PER_MIN", "2")
+	useLoki(misc.NewFileLoki(dir))
+	defer useLoki(nil)
+	defaultLimiter = newLimiter()
+	flowLimiter = newLimiter()
+
+	app := fiber.New()
+	app.Post("/api/clientlog", ReceiveClientLogs)
+	var b strings.Builder
+	b.WriteString(`{"logs":[`)
+	for i := 0; i < 50; i++ {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"event_type":"flow","message":"f%d"}`, i)
+	}
+	b.WriteString("]}")
+	postBody(t, app, b.String())
+
+	assert.Len(t, clientMessages(t, dir), 2*flowLimitMultiple)
 }
 
 func TestLimiterEvictionIsAmortised(t *testing.T) {

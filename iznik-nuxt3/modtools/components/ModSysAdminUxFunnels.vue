@@ -32,7 +32,7 @@
           @click="select(f.flow, s.step)"
         >
           <strong>{{ s.step }}</strong>
-          <div class="small">{{ withCount(s.completed, s.entered) }}</div>
+          <div class="small">{{ withCount(s.completed, s.visits) }}</div>
           <div class="small text-muted">
             Previous: {{ previousText(f.flow, s.step) }}
           </div>
@@ -44,11 +44,12 @@
       <h5>{{ selected.flow }} / {{ selected.step }}</h5>
       <p class="small mb-2">
         Entered {{ detail.entered.toLocaleString() }}, reentered
-        {{ detail.reentered.toLocaleString() }}.
-        {{ withCount(detail.completed, detail.entered) }} completed,
-        {{ withCount(detail.backed, detail.entered) }} went back,
-        {{ withCount(detail.abandoned, detail.entered) }} abandoned. Typical
-        time on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
+        {{ detail.reentered.toLocaleString() }}. Of the
+        {{ detail.visits.toLocaleString() }} visits,
+        {{ withCount(detail.completed, detail.visits) }} completed,
+        {{ withCount(detail.backed, detail.visits) }} went back,
+        {{ withCount(detail.abandoned, detail.visits) }} abandoned. Typical time
+        on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
         {{ ms(detail.dwell_p90_ms) }}.
       </p>
       <div v-for="dim in dims" :key="dim.key" class="mb-2">
@@ -74,7 +75,8 @@
       v-model="open"
       :flow="selected?.flow || ''"
       :step="selected?.step || ''"
-      :date="store.funnels.data?.end || ''"
+      :start="store.funnels.data?.start || ''"
+      :end="store.funnels.data?.end || ''"
     />
   </ModSysAdminUxPanel>
 </template>
@@ -97,7 +99,7 @@ const dims = [
 ]
 const breakdownFields = [
   { key: 'key', label: 'Group' },
-  { key: 'entered', label: 'Entered' },
+  { key: 'visits', label: 'Visits' },
   { key: 'completed', label: 'Completed' },
   { key: 'abandoned', label: 'Abandoned' },
 ]
@@ -113,7 +115,7 @@ function stepIn(list, flow, step) {
 
 function previousText(flow, step) {
   const p = stepIn(store.funnels.data?.previous?.flows, flow, step)
-  return p ? withCount(p.completed, p.entered) : '–'
+  return p ? withCount(p.completed, p.visits) : '–'
 }
 
 const isSelected = (flow, step) =>
@@ -132,9 +134,9 @@ const detail = computed(() =>
 function breakdown(dim) {
   return (detail.value?.by?.[dim] || []).map((r) => ({
     key: r.key,
-    entered: r.entered.toLocaleString(),
-    completed: withCount(r.completed, r.entered),
-    abandoned: withCount(r.abandoned, r.entered),
+    visits: r.visits.toLocaleString(),
+    completed: withCount(r.completed, r.visits),
+    abandoned: withCount(r.abandoned, r.visits),
   }))
 }
 </script>

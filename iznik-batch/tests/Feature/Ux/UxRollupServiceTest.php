@@ -42,9 +42,9 @@ class UxRollupServiceTest extends TestCase
         return app(UxRollupService::class);
     }
 
-    private function flowPattern(string $flow, string $action): string
+    private function flowPattern(string $flow, string $action, string $filter = ''): string
     {
-        return '/count_over_time\(\{[^}]*event_type="flow"\} \| json [a-z_, ]+ \| flow="'.$flow.'" \| action_name="'.$action.'" \[1d\]/';
+        return '/count_over_time\(\{[^}]*event_type="flow"\} \| json [a-z_, ]+ \| flow="'.$flow.'" \| action_name="'.$action.'"'.preg_quote($filter, '/').' \[1d\]/';
     }
 
     private function dims(array $extra = []): array
@@ -85,6 +85,17 @@ class UxRollupServiceTest extends TestCase
         $this->assertSame(31000, (int) $r->dwell_p90_ms);
     }
 
+    public function test_an_idle_return_takes_its_abandon_back_off_the_step(): void
+    {
+        $this->lokiMatrix($this->flowPattern('give', 'step_enter'), [[$this->dims(['step' => 'give-details', 'first_visit' => 'true']), 10]]);
+        $this->lokiMatrix($this->flowPattern('give', 'flow_abandon'), [[$this->dims(['last_step' => 'give-details']), 4]]);
+        $this->lokiMatrix($this->flowPattern('give', 'flow_resume', ' | reason="idle"'), [[$this->dims(['step' => 'give-details']), 3]]);
+
+        $this->assertTrue($this->service()->rollupLokiDay(Carbon::parse(self::DAY, 'UTC')));
+
+        $this->assertSame(1, (int) DB::table('ux_flow_daily')->where('date', self::DAY)->where('step', 'give-details')->value('abandoned'));
+    }
+
     public function test_flow_queries_never_carry_user_input_and_split_per_flow_and_event(): void
     {
         $this->service()->rollupLokiDay(Carbon::parse(self::DAY, 'UTC'));
@@ -107,7 +118,9 @@ class UxRollupServiceTest extends TestCase
         ]);
         $this->lokiMatrix($this->flowPattern('ask', 'flow_complete'), [[$d, 33]]);
         $this->lokiMatrix($this->flowPattern('ask', 'flow_abandon'), [[$d, 14]]);
-        $this->lokiMatrix($this->flowPattern('ask', 'flow_resume'), [[$d, 4]]);
+        // Restored drafts are resumes; idle returns take their abandon back off instead.
+        $this->lokiMatrix($this->flowPattern('ask', 'flow_resume', ' | reason!="idle"'), [[$d, 4]]);
+        $this->lokiMatrix($this->flowPattern('ask', 'flow_resume', ' | reason="idle"'), [[$d, 3]]);
         $this->lokiMatrix('/quantile_over_time\(0\.5, .*flow="ask" \| action_name="flow_complete" \| unwrap dwell_ms/', [[$d, 90000]]);
         $this->lokiMatrix('/quantile_over_time\(0\.9, .*flow="ask" \| action_name="flow_complete" \| unwrap dwell_ms/', [[$d, 240000]]);
 
@@ -115,7 +128,7 @@ class UxRollupServiceTest extends TestCase
 
         $r = DB::table('ux_flow_outcome_daily')->where('date', self::DAY)->where('flow', 'ask')->first();
         $this->assertNotNull($r);
-        $this->assertSame([50, 40, 35, 5, 33, 14, 4], [
+        $this->assertSame([50, 40, 35, 5, 33, 11, 4], [
             (int) $r->started, (int) $r->submitted, (int) $r->submit_ok, (int) $r->submit_failed,
             (int) $r->completed, (int) $r->abandoned, (int) $r->resumed,
         ]);
@@ -360,6 +373,18 @@ class UxRollupServiceTest extends TestCase
     {
         $this->lokiError("/step_enter/", 500, "boom");
         $this->assertFalse($this->service()->rollupLokiDay(Carbon::parse(self::DAY, "UTC")));
+    }
+
+    public function test_a_client_error_that_is_not_the_series_limit_aborts_the_day(): void
+    {
+        foreach ([[400, "parse error at line 1, col 12: syntax error"], [429, "too many outstanding requests"]] as [$status, $body]) {
+            DB::table("ux_flow_daily")->where("date", self::DAY)->delete();
+            DB::table("ux_flow_daily")->insert(["date" => self::DAY, "flow" => "give", "step" => "old", "entered" => 5]);
+            $this->lokiError($this->flowPattern("login", "step_enter"), $status, $body);
+
+            $this->assertFalse($this->service()->rollupLokiDay(Carbon::parse(self::DAY, "UTC")), "HTTP $status");
+            $this->assertSame(["old"], DB::table("ux_flow_daily")->where("date", self::DAY)->pluck("step")->all(), "HTTP $status");
+        }
     }
 
     public function test_no_metric_query_uses_a_bare_json_parser(): void

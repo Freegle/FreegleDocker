@@ -9,6 +9,7 @@ import (
 type Breakdown struct {
 	Key       string `json:"key"`
 	Entered   int64  `json:"entered"`
+	Visits    int64  `json:"visits"`
 	Completed int64  `json:"completed"`
 	Abandoned int64  `json:"abandoned"`
 }
@@ -20,9 +21,12 @@ type StepBreakdown struct {
 }
 
 type FunnelStep struct {
-	Step               string         `json:"step"`
-	Entered            int64          `json:"entered"`
-	Reentered          int64          `json:"reentered"`
+	Step      string `json:"step"`
+	Entered   int64  `json:"entered"`
+	Reentered int64  `json:"reentered"`
+	// Visits is entered plus reentered. Completed, backed, abandoned and help_sought count once
+	// per visit, so rates over them divide by this, not by entered.
+	Visits             int64          `json:"visits"`
 	Completed          int64          `json:"completed"`
 	Backed             int64          `json:"backed"`
 	Abandoned          int64          `json:"abandoned"`
@@ -70,6 +74,7 @@ type breakdownRow struct {
 	Step      string `gorm:"column:step"`
 	K         string `gorm:"column:k"`
 	Entered   int64  `gorm:"column:entered"`
+	Reentered int64  `gorm:"column:reentered"`
 	Completed int64  `gorm:"column:completed"`
 	Abandoned int64  `gorm:"column:abandoned"`
 }
@@ -103,7 +108,8 @@ func funnelFlows(p period, flow string, withBreakdown bool) ([]FunnelFlow, error
 	byFlow := map[string][]*FunnelStep{}
 	for _, r := range rows {
 		s := &FunnelStep{
-			Step: r.Step, Entered: r.Entered, Reentered: r.Reentered, Completed: r.Completed, Backed: r.Backed,
+			Step: r.Step, Entered: r.Entered, Reentered: r.Reentered, Visits: r.Entered + r.Reentered,
+			Completed: r.Completed, Backed: r.Backed,
 			Abandoned: r.Abandoned, Revisits: r.Revisits, ValidationFailures: r.ValidationFailures,
 			HelpSought: r.HelpSought, DwellP50Ms: r.DwellP50Ms, DwellP90Ms: r.DwellP90Ms,
 		}
@@ -119,7 +125,8 @@ func funnelFlows(p period, flow string, withBreakdown bool) ([]FunnelFlow, error
 			var brows []breakdownRow
 			err := rangeQuery("ux_flow_daily", p, flow).
 				Select("flow, step, " + dim.expr + " AS k, " +
-					"CAST(SUM(entered) AS SIGNED) AS entered, CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(abandoned) AS SIGNED) AS abandoned").
+					"CAST(SUM(entered) AS SIGNED) AS entered, CAST(SUM(reentered) AS SIGNED) AS reentered, " +
+					"CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(abandoned) AS SIGNED) AS abandoned").
 				Group("flow, step, k").Scan(&brows).Error
 			if err != nil {
 				return nil, err
@@ -129,7 +136,7 @@ func funnelFlows(p period, flow string, withBreakdown bool) ([]FunnelFlow, error
 				if s == nil {
 					continue
 				}
-				item := Breakdown{Key: b.K, Entered: b.Entered, Completed: b.Completed, Abandoned: b.Abandoned}
+				item := Breakdown{Key: b.K, Entered: b.Entered, Visits: b.Entered + b.Reentered, Completed: b.Completed, Abandoned: b.Abandoned}
 				switch dim.name {
 				case "device_class":
 					s.By.DeviceClass = append(s.By.DeviceClass, item)

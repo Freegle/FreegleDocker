@@ -1,13 +1,26 @@
 <template>
   <b-modal
     :model-value="modelValue"
-    :title="`Sample sessions: ${flow} / ${step} on ${date}`"
+    :title="`Sample sessions: ${flow} / ${step} on ${day}`"
     size="xl"
     scrollable
     ok-only
     ok-title="Close"
     @update:model-value="(v) => emit('update:modelValue', v)"
   >
+    <b-form-group
+      v-if="days.length > 1"
+      label="Day"
+      label-for="ux-sample-day"
+      class="mb-3"
+    >
+      <b-form-select
+        id="ux-sample-day"
+        v-model="day"
+        :options="days"
+        class="sample-day w-auto"
+      />
+    </b-form-group>
     <div v-if="store.samples.loading" class="text-center py-3">
       <b-spinner small class="me-2" />
       Loading...
@@ -50,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
 import { ms } from '~/modtools/composables/useUxFormat'
 
@@ -58,12 +71,28 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   flow: { type: String, default: '' },
   step: { type: String, default: '' },
-  date: { type: String, default: '' },
+  // The selected period, YYYY-MM-DD. Samples are kept per day, so one day is read at a time,
+  // the last day of the period first.
+  start: { type: String, default: '' },
+  end: { type: String, default: '' },
 })
 const emit = defineEmits(['update:modelValue'])
 
 const store = useUxStore()
 const sessions = computed(() => store.samples.data?.sessions || [])
+
+// Every day of the period, latest first.
+const days = computed(() => {
+  const last = Date.parse(props.end + 'T00:00:00Z')
+  if (Number.isNaN(last)) return []
+  const first = Date.parse(props.start + 'T00:00:00Z')
+  const out = []
+  for (let d = last; d >= (Number.isNaN(first) ? last : first); d -= 86400000) {
+    out.push(new Date(d).toISOString().slice(0, 10))
+  }
+  return out
+})
+const day = ref(props.end)
 
 function time(ts) {
   const m = /T(\d\d:\d\d:\d\d)/.exec(ts || '')
@@ -72,7 +101,7 @@ function time(ts) {
 
 function load() {
   store.load('samples', {
-    date: props.date,
+    date: day.value,
     flow: props.flow,
     step: props.step,
   })
@@ -80,7 +109,13 @@ function load() {
 
 watch(
   () => props.modelValue,
-  (open) => open && load()
+  (open) => {
+    if (!open) return
+    if (day.value === props.end) load()
+    // Otherwise the watch on day loads it.
+    else day.value = props.end
+  }
 )
+watch(day, () => props.modelValue && load())
 if (props.modelValue) load()
 </script>

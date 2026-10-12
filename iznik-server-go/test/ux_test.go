@@ -131,6 +131,7 @@ func TestUxFunnels(t *testing.T) {
 	assert.Equal(t, "A", a.Step, "steps are ordered by entered, largest first")
 	assert.EqualValues(t, 400, a.Entered)
 	assert.EqualValues(t, 14, a.Reentered)
+	assert.EqualValues(t, 414, a.Visits, "entered plus reentered: the denominator for completed")
 	assert.EqualValues(t, 210, a.Completed)
 	assert.EqualValues(t, 25, a.Backed)
 	assert.EqualValues(t, 130, a.Abandoned)
@@ -144,8 +145,8 @@ func TestUxFunnels(t *testing.T) {
 
 	require.NotNil(t, a.By)
 	require.Len(t, a.By.DeviceClass, 2)
-	assert.Equal(t, ux.Breakdown{Key: "mobile", Entered: 300, Completed: 150, Abandoned: 100}, a.By.DeviceClass[0])
-	assert.Equal(t, ux.Breakdown{Key: "desktop", Entered: 100, Completed: 60, Abandoned: 30}, a.By.DeviceClass[1])
+	assert.Equal(t, ux.Breakdown{Key: "mobile", Entered: 300, Visits: 304, Completed: 150, Abandoned: 100}, a.By.DeviceClass[0])
+	assert.Equal(t, ux.Breakdown{Key: "desktop", Entered: 100, Visits: 110, Completed: 60, Abandoned: 30}, a.By.DeviceClass[1])
 	require.Len(t, a.By.LoggedIn, 2)
 	assert.Equal(t, "false", a.By.LoggedIn[0].Key)
 	assert.EqualValues(t, 300, a.By.LoggedIn[0].Entered)
@@ -171,10 +172,10 @@ func TestUxFunnels(t *testing.T) {
 	var raw map[string]interface{}
 	require.Equal(t, 200, uxGet(t, token, "funnels?start=2031-03-08&end=2031-03-14&flow=give", &raw))
 	step := raw["flows"].([]interface{})[0].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
-	assert.ElementsMatch(t, []string{"step", "entered", "reentered", "completed", "backed", "abandoned", "revisits",
+	assert.ElementsMatch(t, []string{"step", "entered", "reentered", "visits", "completed", "backed", "abandoned", "revisits",
 		"validation_failures", "help_sought", "dwell_p50_ms", "dwell_p90_ms", "by"}, mapKeys(step))
 	assert.ElementsMatch(t, []string{"device_class", "logged_in", "variant"}, mapKeys(step["by"].(map[string]interface{})))
-	assert.ElementsMatch(t, []string{"key", "entered", "completed", "abandoned"},
+	assert.ElementsMatch(t, []string{"key", "entered", "visits", "completed", "abandoned"},
 		mapKeys(step["by"].(map[string]interface{})["device_class"].([]interface{})[0].(map[string]interface{})))
 	assert.ElementsMatch(t, []string{"start", "end", "flows", "previous"}, mapKeys(raw))
 	assert.Len(t, raw["flows"], 1, "flow filter")

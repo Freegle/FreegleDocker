@@ -15,6 +15,11 @@ import (
 // A busy shared address (a school, a library) can legitimately send a few hundred in a minute.
 const defaultRatePerMin = 600
 
+// flowLimitMultiple is how many times the general limit an IP may send in flow events, which are
+// counted separately. A member in a wizard sends a few a minute, so this is room for a large shared
+// address, not a licence for unlimited lines.
+const flowLimitMultiple = 10
+
 // maxTrackedIPs bounds the limiter's memory. Each entry is one IP's current minute, so the table
 // holds at most this many small structs however many addresses are thrown at it.
 const maxTrackedIPs = 20000
@@ -62,6 +67,9 @@ func newLimiter() *limiter {
 }
 
 var defaultLimiter = newLimiter()
+
+// flowLimiter counts flow events alone, against flowLimitMultiple times the limit.
+var flowLimiter = newLimiter()
 
 func (l *limiter) size() int {
 	l.mu.Lock()

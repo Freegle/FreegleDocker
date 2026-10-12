@@ -33,8 +33,8 @@ const rows = computed(() =>
   stepsWithPrevious(store.funnels.data).map((s) => ({
     flow: s.flow,
     step: s.step,
-    help: withCount(s.help_sought, s.entered),
-    previous: s.prev ? withCount(s.prev.help_sought, s.prev.entered) : '–',
+    help: withCount(s.help_sought, s.visits),
+    previous: s.prev ? withCount(s.prev.help_sought, s.prev.visits) : '–',
   }))
 )
 </script>

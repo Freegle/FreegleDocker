@@ -30,14 +30,15 @@ class RollupDailyCommandTest extends TestCase
 
     public function test_default_is_yesterday_and_backfills_missing_days_only(): void
     {
-        // The 3rd already has health rows; the 1st, 2nd, 4th and 5th do not (and neither does the 5th... yesterday).
+        // The 3rd already has health rows; the other days do not.
         DB::table('ux_telemetry_health_daily')->insert(['date' => '2026-03-03', 'metric' => 'event:page_view', 'observed' => 5]);
 
         $this->artisan('ux:rollup-daily')->assertExitCode(0);
 
         $days = DB::table('ux_search_daily')->orderBy('date')->pluck('date')->all();
-        // Yesterday is the 5th; the six days before it are 02-27..03-04, of which the 3rd has health rows.
-        $this->assertSame(['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02', '2026-03-04', '2026-03-05'], $days);
+        // Yesterday is the 5th; the five days before it are 02-28..03-04, of which the 3rd has health
+        // rows. 02-27 began more than seven days ago, past Loki retention, so it is not attempted.
+        $this->assertSame(['2026-02-28', '2026-03-01', '2026-03-02', '2026-03-04', '2026-03-05'], $days);
         $this->assertSame(1, DB::table('ux_telemetry_health_daily')->where('date', '2026-03-03')->count());
     }
 
@@ -53,6 +54,13 @@ class RollupDailyCommandTest extends TestCase
     {
         $this->artisan('ux:rollup-daily --date=yesterday')->assertExitCode(1);
         $this->assertSame(0, DB::table('ux_search_daily')->count());
+    }
+
+    public function test_impossible_date_is_refused_not_rolled_into_the_next_month(): void
+    {
+        $this->artisan('ux:rollup-daily --date=2026-02-31')->assertExitCode(1);
+        $this->assertSame(0, DB::table('ux_search_daily')->count());
+        $this->assertSame(0, DB::table('ux_regret_daily')->count());
     }
 
     public function test_loki_down_exits_nonzero_keeps_old_rows_but_still_writes_regret(): void

@@ -78,9 +78,10 @@ class WeeklyReportCommand extends Command
     {
         $rates = function (array $range) {
             $out = [];
-            $rows = DB::table('ux_flow_daily')->whereBetween('date', $range)->get(['flow', 'step', 'entered', 'completed']);
+            $rows = DB::table('ux_flow_daily')->whereBetween('date', $range)->get(['flow', 'step', 'entered', 'reentered', 'completed']);
             foreach ($rows->groupBy(fn ($r) => $r->flow.'/'.$r->step) as $key => $group) {
-                $out[$key] = [(int) $group->sum('entered'), (int) $group->sum('completed')];
+                // A step is completed once per visit, so the rate is over visits, not first visits.
+                $out[$key] = [(int) ($group->sum('entered') + $group->sum('reentered')), (int) $group->sum('completed')];
             }
 
             return $out;
@@ -89,15 +90,15 @@ class WeeklyReportCommand extends Command
         $before = $rates($prev);
 
         $out = [];
-        foreach ($now as $key => [$entered, $completed]) {
-            if (! isset($before[$key]) || $entered < self::MIN_EVENTS || $before[$key][0] < self::MIN_EVENTS) {
+        foreach ($now as $key => [$visits, $completed]) {
+            if (! isset($before[$key]) || $visits < self::MIN_EVENTS || $before[$key][0] < self::MIN_EVENTS) {
                 continue;
             }
             $a = $before[$key][1] / $before[$key][0];
-            $b = $completed / $entered;
+            $b = $completed / $visits;
             $out[] = [
                 'kind' => 'Step conversion',
-                'text' => sprintf('%s: %s (%d entered, was %d)', $key, $this->move($a, $b), $entered, $before[$key][0]),
+                'text' => sprintf('%s: %s (%d visits, was %d)', $key, $this->move($a, $b), $visits, $before[$key][0]),
                 'delta' => $b - $a,
             ];
         }

@@ -61,6 +61,11 @@ const TOKEN = /^[A-Za-z0-9_:.-]{1,40}$/
 // Flow name -> live instance. Insertion order is start order.
 const instances = new Map()
 
+// Flow name -> instance ended by the idle timer. The member may still be on the page and carry on;
+// if they do, the same instance comes back with a flow_resume (reason idle), and the rollup takes
+// that abandon back off, so a slow but successful post is not counted as given up.
+const dormant = new Map()
+
 function uuid() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
@@ -79,6 +84,22 @@ function token(value) {
 
 function live(flow) {
   return instances.get(flow) || null
+}
+
+// The live instance, reviving an idle-ended one if there is one.
+function liveOrRevive(flow) {
+  const inst = live(flow)
+  if (inst) return inst
+  const idle = dormant.get(flow)
+  if (!idle) return null
+  dormant.delete(flow)
+  idle.ended = false
+  instances.set(flow, idle)
+  emit(idle, FlowEvent.FLOW_RESUME, {
+    reason: AbandonReason.IDLE,
+    age_ms: Date.now() - idle.endedAt,
+  })
+  return idle
 }
 
 function emit(inst, event, extra = {}) {
@@ -114,6 +135,7 @@ function stepDwell(inst) {
 function end(inst, reason) {
   if (inst.ended) return
   inst.ended = true
+  inst.endedAt = Date.now()
   clearTimeout(inst.idleTimer)
 
   if (reason === null) {
@@ -131,6 +153,7 @@ function end(inst, reason) {
   clearTimeout(inst.idleTimer)
   if (instances.get(inst.flow) === inst) {
     instances.delete(inst.flow)
+    if (reason === AbandonReason.IDLE) dormant.set(inst.flow, inst)
   }
 }
 
@@ -158,6 +181,7 @@ export function _resetFlowTelemetryForTests() {
     clearTimeout(inst.idleTimer)
   }
   instances.clear()
+  dormant.clear()
 }
 
 if (typeof window !== 'undefined') {
@@ -169,6 +193,7 @@ if (typeof window !== 'undefined') {
     for (const inst of [...instances.values()]) {
       end(inst, AbandonReason.HIDDEN)
     }
+    dormant.clear()
     flush(true)
   })
   document.addEventListener('visibilitychange', () => {
@@ -184,18 +209,22 @@ if (typeof window !== 'undefined') {
  *   flow.enterStep('give-whereami')
  *
  * Every method does nothing unless an instance is live (start() was called and no terminal event
- * has been sent), so call sites need no guards.
+ * has been sent), so call sites need no guards. An instance ended only by the idle timer counts as
+ * live: the next call brings it back.
  */
 export function useFlowTelemetry(flowName) {
   const withLive = (fn) => {
-    const inst = live(flowName)
+    const inst = liveOrRevive(flowName)
     if (inst) fn(inst)
   }
+  const current = () => live(flowName) || dormant.get(flowName) || null
 
   return {
     // Begin an instance. A second start while one is live is ignored.
     start(entry) {
       if (typeof window === 'undefined' || live(flowName)) return
+      // Starting again after an idle abandon is a new attempt; the old one stays abandoned.
+      dormant.delete(flowName)
       const now = Date.now()
       const inst = {
         id: uuid(),
@@ -340,21 +369,21 @@ export function useFlowTelemetry(flowName) {
 
     // True when the open step has been entered before, i.e. the member came back to it.
     isRevisit() {
-      const inst = live(flowName)
+      const inst = current()
       return !!inst && inst.stepOpen && !inst.stepFirstVisit
     },
 
     isLive() {
-      return !!live(flowName)
+      return !!current()
     },
 
     instanceId() {
-      return live(flowName)?.id ?? null
+      return current()?.id ?? null
     },
 
     // True once a submit_result with ok=true was sent on the live instance.
     submitSucceeded() {
-      return !!live(flowName)?.submitOk
+      return !!current()?.submitOk
     },
   }
 }

@@ -569,6 +569,40 @@ describe('useFlowTelemetry', () => {
       expect(last().reason).toBe('idle')
     })
 
+    it('brings the same instance back when the member carries on after an idle abandon', () => {
+      flow.start('navbar')
+      flow.enterStep('give-details')
+      const id = flow.instanceId()
+      vi.advanceTimersByTime(30 * 60 * 1000 + 5 * 60 * 1000)
+      expect(last().name).toBe('flow_abandon')
+      expect(flow.isLive()).toBe(true)
+      log.action.mockClear()
+
+      flow.completeStep()
+      flow.complete()
+
+      expect(events().map((e) => e.name)).toEqual([
+        'flow_resume',
+        'step_complete',
+        'flow_complete',
+      ])
+      expect(events()[0].reason).toBe('idle')
+      expect(events()[0].step).toBe('give-details')
+      expect(events()[0].age_ms).toBe(5 * 60 * 1000)
+      expect(events().every((e) => e.flow_instance_id === id)).toBe(true)
+      expect(flow.isLive()).toBe(false)
+    })
+
+    it('starts a new instance, not a revival, when start is called after an idle abandon', () => {
+      flow.start('navbar')
+      const id = flow.instanceId()
+      vi.advanceTimersByTime(31 * 60 * 1000)
+      log.action.mockClear()
+      flow.start('navbar')
+      expect(events().map((e) => e.name)).toEqual(['flow_start'])
+      expect(flow.instanceId()).not.toBe(id)
+    })
+
     it('does not fire after the instance ended', () => {
       flow.start('navbar')
       flow.complete()

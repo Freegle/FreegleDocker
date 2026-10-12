@@ -80,29 +80,48 @@ func ReceiveClientLogs(c *fiber.Ctx) error {
 	clientIP := c.IP()
 	limit := ratePerMin()
 
-	// Flow events are never dropped: a shared address (CGNAT, a school) must not lose funnel
-	// data. They are neither counted nor limited; everything else is.
-	var flows, others []json.RawMessage
-	for _, raw := range req.Logs {
+	// Flow events have their own, much larger allowance, so a shared address (CGNAT, a school)
+	// does not lose funnel data to other traffic, while a client sending nothing but "flow"
+	// entries is still limited. Entries over either limit are dropped where they stand, so the
+	// batch keeps its order: Loki stamps lines as they are written.
+	isFlow := make([]bool, len(req.Logs))
+	nFlows := 0
+	for i, raw := range req.Logs {
 		var probe struct {
 			EventType string `json:"event_type"`
 		}
 		if json.Unmarshal(raw, &probe) == nil && probe.EventType == "flow" {
-			flows = append(flows, raw)
-		} else {
-			others = append(others, raw)
+			isFlow[i] = true
+			nFlows++
 		}
 	}
-	accepted, tripped := defaultLimiter.take(clientKey(c), len(others), limit, time.Now())
-	if tripped {
+	key, now := clientKey(c), time.Now()
+	flowLimit := limit * flowLimitMultiple
+	keepFlows, flowTripped := flowLimiter.take(key, nFlows, flowLimit, now)
+	keepOthers, tripped := defaultLimiter.take(key, len(req.Logs)-nFlows, limit, now)
+	if tripped || flowTripped {
 		loki.LogCustom("clientlog_ratelimit", nil, map[string]interface{}{
-			"message":       "clientlog rate limit tripped; excess entries dropped",
-			"client_ip":     clientIP,
-			"limit_per_min": limit,
-			"batch_entries": len(req.Logs),
+			"message":            "clientlog rate limit tripped; excess entries dropped",
+			"client_ip":          clientIP,
+			"limit_per_min":      limit,
+			"flow_limit_per_min": flowLimit,
+			"flow_limit_tripped": flowTripped,
+			"batch_entries":      len(req.Logs),
 		})
 	}
-	req.Logs = append(flows, others[:accepted]...)
+	kept := req.Logs[:0]
+	for i, raw := range req.Logs {
+		if isFlow[i] {
+			if keepFlows > 0 {
+				kept = append(kept, raw)
+				keepFlows--
+			}
+		} else if keepOthers > 0 {
+			kept = append(kept, raw)
+			keepOthers--
+		}
+	}
+	req.Logs = kept
 
 	// Get user ID from context if available.
 	var userId *uint64

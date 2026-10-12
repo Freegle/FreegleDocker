@@ -51,12 +51,21 @@ describe('ModSysAdminUxSamples', () => {
         modelValue: true,
         flow: 'post',
         step: 'photos',
-        date: '2026-10-07',
+        start: '2026-10-05',
+        end: '2026-10-07',
         ...props,
       },
       global: {
         stubs: {
           ...uxStubs,
+          'b-form-group': {
+            template: '<div class="form-group"><slot /></div>',
+          },
+          'b-form-select': {
+            name: 'SelectStub',
+            template: '<select class="sample-day" />',
+            props: ['modelValue', 'options'],
+          },
           'b-modal': {
             name: 'ModalStub',
             template:
@@ -66,6 +75,52 @@ describe('ModSysAdminUxSamples', () => {
         },
       },
     })
+
+  it('lists every day of the period, latest first', () => {
+    const select = make().findComponent({ name: 'SelectStub' })
+    expect(select.props('options')).toEqual([
+      '2026-10-07',
+      '2026-10-06',
+      '2026-10-05',
+    ])
+    expect(select.props('modelValue')).toBe('2026-10-07')
+  })
+
+  it('offers no day choice for a one-day period', () => {
+    const w = make({ start: '2026-10-07' })
+    expect(w.findComponent({ name: 'SelectStub' }).exists()).toBe(false)
+  })
+
+  it('loads the chosen day', async () => {
+    const w = make()
+    await flushPromises()
+    store.load.mockClear()
+    w.findComponent({ name: 'SelectStub' }).vm.$emit(
+      'update:modelValue',
+      '2026-10-05'
+    )
+    await flushPromises()
+    expect(store.load).toHaveBeenCalledWith('samples', {
+      date: '2026-10-05',
+      flow: 'post',
+      step: 'photos',
+    })
+  })
+
+  it('goes back to the last day when reopened', async () => {
+    const w = make()
+    w.findComponent({ name: 'SelectStub' }).vm.$emit(
+      'update:modelValue',
+      '2026-10-05'
+    )
+    await w.setProps({ modelValue: false })
+    await flushPromises()
+    store.load.mockClear()
+    await w.setProps({ modelValue: true })
+    await flushPromises()
+    expect(store.load).toHaveBeenCalledTimes(1)
+    expect(store.load.mock.calls[0][1].date).toBe('2026-10-07')
+  })
 
   it('loads the samples for the flow, step and date when opened', async () => {
     make()

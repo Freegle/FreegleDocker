@@ -4,18 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/misc"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -163,16 +160,6 @@ func truncate(s string, n int) string {
 	return string(r[:n])
 }
 
-type lokiStreams struct {
-	Status string `json:"status"`
-	Data   struct {
-		Result []struct {
-			Stream map[string]string `json:"stream"`
-			Values [][]string        `json:"values"`
-		} `json:"result"`
-	} `json:"data"`
-}
-
 // fetchFromLoki reads one session's flow, interaction and page_view lines from the day before to
 // the day after date. The messages here are our own and fixed, so a Loki failure never echoes a
 // URL or a response body.
@@ -186,27 +173,15 @@ func fetchFromLoki(sessionID string, date time.Time) ([]SampleEvent, error) {
 	}
 
 	day := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
-	params := url.Values{}
-	params.Set("query", `{app="freegle", source="client", event_type=~"flow|interaction|page_view"} |= "`+sessionID+`" | json session_id, event_type, action_name, interaction_type, step, dwell_ms, component, page_route | session_id="`+sessionID+`"`)
-	params.Set("start", strconv.FormatInt(day.AddDate(0, 0, -1).UnixNano(), 10))
-	params.Set("end", strconv.FormatInt(day.AddDate(0, 0, 2).UnixNano(), 10))
-	params.Set("limit", strconv.Itoa(maxSampleEvents))
-	params.Set("direction", "forward")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(strings.TrimRight(base, "/") + "/loki/api/v1/query_range?" + params.Encode())
+	query := `{app="freegle", source="client", event_type=~"flow|interaction|page_view"} |= "` + sessionID + `" | json session_id, event_type, action_name, interaction_type, step, dwell_ms, component, page_route | session_id="` + sessionID + `"`
+	streams, err := misc.LokiQueryRange(base, query, day.AddDate(0, 0, -1).UnixNano(), day.AddDate(0, 0, 2).UnixNano(),
+		maxSampleEvents, "forward", 10*time.Second)
 	if err != nil {
-		return nil, errors.New("Loki is unreachable")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-		return nil, fmt.Errorf("Loki returned status %d", resp.StatusCode)
-	}
-
-	var parsed lokiStreams
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&parsed); err != nil || parsed.Status != "success" {
-		return nil, errors.New("Loki response could not be read")
+		var status *misc.LokiStatusError
+		if errors.As(err, &status) {
+			return nil, fmt.Errorf("Loki returned status %d", status.Status)
+		}
+		return nil, errors.New("Loki is unreachable or its response could not be read")
 	}
 
 	type stamped struct {
@@ -214,7 +189,7 @@ func fetchFromLoki(sessionID string, date time.Time) ([]SampleEvent, error) {
 		ev SampleEvent
 	}
 	var all []stamped
-	for _, stream := range parsed.Data.Result {
+	for _, stream := range streams {
 		for _, v := range stream.Values {
 			if len(v) < 2 {
 				continue

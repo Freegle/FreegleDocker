@@ -44,6 +44,8 @@ class UxRollupService
 
     private const FLOW_DIMS = ['device_class', 'logged_in', 'is_app', 'variant'];
 
+    private const IDLE_RESUME = ' | reason="idle"';
+
     public function __construct(private LokiService $loki)
     {
     }
@@ -173,11 +175,14 @@ class UxRollupService
         return array_merge([$stepLabel], self::FLOW_DIMS, $extra);
     }
 
-    private function flowCount(string $flow, string $action, array $by): array
+    /** $filter is a fixed LogQL label filter on 'reason', e.g. ' | reason="idle"'; never input. */
+    private function flowCount(string $flow, string $action, array $by, string $filter = ''): array
     {
+        $parse = array_merge(['flow', 'action_name'], $by, $filter === '' ? [] : ['reason']);
+
         return $this->metric(sprintf(
-            'sum by (%s) (count_over_time(%s | json %s | flow="%s" | action_name="%s" [1d]))',
-            implode(', ', $by), $this->flowSelector(), implode(', ', array_merge(['flow', 'action_name'], $by)), $flow, $action
+            'sum by (%s) (count_over_time(%s | json %s | flow="%s" | action_name="%s"%s [1d]))',
+            implode(', ', $by), $this->flowSelector(), implode(', ', array_unique($parse)), $flow, $action, $filter
         ), true);
     }
 
@@ -229,6 +234,14 @@ class UxRollupService
                     unset($row);
                 }
             }
+            // A member who carries on after the idle timer abandoned them sends flow_resume with
+            // reason idle on the same instance. Their abandon is taken back off.
+            foreach ($this->flowCount($flow, 'flow_resume', $this->stepBy(), self::IDLE_RESUME) as [$labels, $n]) {
+                $key = array_merge([$flow, mb_substr($labels['step'] ?? '', 0, 64)], $dimKey($labels));
+                $row = &$this->flowRow($flowRows, $key);
+                $row['abandoned'] = max(0, $row['abandoned'] - $n);
+                unset($row);
+            }
             foreach ([['0.5', 'dwell_p50_ms'], ['0.9', 'dwell_p90_ms']] as [$q, $column]) {
                 foreach ($this->flowDwell($flow, 'step_complete', (float) $q, $this->stepBy()) as [$labels, $ms]) {
                     $key = array_merge([$flow, mb_substr($labels['step'] ?? '', 0, 64)], $dimKey($labels));
@@ -241,7 +254,7 @@ class UxRollupService
             // Per-flow outcomes.
             $outcomeColumns = [
                 'flow_start' => 'started', 'flow_submit' => 'submitted', 'flow_complete' => 'completed',
-                'flow_abandon' => 'abandoned', 'flow_resume' => 'resumed',
+                'flow_abandon' => 'abandoned',
             ];
             foreach ($outcomeColumns as $action => $column) {
                 foreach ($this->flowCount($flow, $action, self::FLOW_DIMS) as [$labels, $n]) {
@@ -249,6 +262,17 @@ class UxRollupService
                     $row[$column] += $n;
                     unset($row);
                 }
+            }
+            // resumed is a restored draft; an idle return instead cancels its abandon, as above.
+            foreach ($this->flowCount($flow, 'flow_resume', self::FLOW_DIMS, ' | reason!="idle"') as [$labels, $n]) {
+                $row = &$this->outcomeRow($outcomeRows, array_merge([$flow], $dimKey($labels)));
+                $row['resumed'] += $n;
+                unset($row);
+            }
+            foreach ($this->flowCount($flow, 'flow_resume', self::FLOW_DIMS, self::IDLE_RESUME) as [$labels, $n]) {
+                $row = &$this->outcomeRow($outcomeRows, array_merge([$flow], $dimKey($labels)));
+                $row['abandoned'] = max(0, $row['abandoned'] - $n);
+                unset($row);
             }
             foreach ($this->flowCount($flow, 'flow_submit_result', array_merge(self::FLOW_DIMS, ['ok'])) as [$labels, $n]) {
                 $row = &$this->outcomeRow($outcomeRows, array_merge([$flow], $dimKey($labels)));
@@ -573,9 +597,11 @@ class UxRollupService
         $end = $this->day->copy()->addDay();
         $series = $this->loki->queryMetricRange($logql, $end->copy()->subSecond(), $end, 86400);
         if ($series === null) {
-            $status = $this->loki->lastMetricStatus;
-            if ($status !== null && $status >= 400 && $status < 500) {
-                throw new UxSeriesLimit('HTTP '.$status.': '.substr($logql, 0, 200));
+            // Only the series limit is a property of the query. Any other refusal (a syntax
+            // error, a rate limit, a timeout) must abort the day rather than write it short.
+            if ($this->loki->lastMetricStatus === 400
+                && preg_match('/maximum (number )?of series/i', (string) $this->loki->lastMetricError)) {
+                throw new UxSeriesLimit('HTTP 400: '.substr($logql, 0, 200));
             }
             throw new UxLokiUnavailable('metric query failed: '.substr($logql, 0, 200));
         }

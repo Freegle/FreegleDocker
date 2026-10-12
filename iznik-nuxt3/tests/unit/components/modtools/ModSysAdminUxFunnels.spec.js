@@ -8,7 +8,8 @@ import { uxStubs } from './uxStubs'
 const step = (name, over = {}) => ({
   step: name,
   entered: 100,
-  reentered: 3,
+  reentered: 0,
+  visits: 100,
   completed: 60,
   backed: 10,
   abandoned: 30,
@@ -19,10 +20,12 @@ const step = (name, over = {}) => ({
   dwell_p90_ms: 45000,
   by: {
     device_class: [
-      { key: 'mobile', entered: 70, completed: 35, abandoned: 25 },
-      { key: 'desktop', entered: 30, completed: 25, abandoned: 5 },
+      { key: 'mobile', entered: 70, visits: 70, completed: 35, abandoned: 25 },
+      { key: 'desktop', entered: 30, visits: 30, completed: 25, abandoned: 5 },
     ],
-    logged_in: [{ key: 'true', entered: 100, completed: 60, abandoned: 30 }],
+    logged_in: [
+      { key: 'true', entered: 100, visits: 100, completed: 60, abandoned: 30 },
+    ],
     variant: [],
   },
   ...over,
@@ -34,12 +37,18 @@ const funnels = {
   flows: [
     {
       flow: 'post',
-      steps: [step('item'), step('photos', { entered: 80, completed: 20 })],
+      steps: [
+        step('item'),
+        step('photos', { entered: 80, visits: 80, completed: 20 }),
+      ],
     },
   ],
   previous: {
     flows: [
-      { flow: 'post', steps: [step('item', { entered: 200, completed: 150 })] },
+      {
+        flow: 'post',
+        steps: [step('item', { entered: 200, visits: 200, completed: 150 })],
+      },
     ],
   },
 }
@@ -76,7 +85,7 @@ describe('ModSysAdminUxFunnels', () => {
           ModSysAdminUxSamples: {
             name: 'SamplesStub',
             template: '<div class="samples-stub" />',
-            props: ['modelValue', 'flow', 'step', 'date'],
+            props: ['modelValue', 'flow', 'step', 'start', 'end'],
           },
         },
       },
@@ -136,7 +145,17 @@ describe('ModSysAdminUxFunnels', () => {
     expect(w.find('.step-detail').exists()).toBe(false)
   })
 
-  it('opens the samples modal for the selected flow, step and end date', async () => {
+  it('divides by visits, so a step entered again cannot exceed 100%', () => {
+    store.funnels.data.flows[0].steps[0] = step('item', {
+      entered: 1,
+      reentered: 1,
+      visits: 2,
+      completed: 2,
+    })
+    expect(make().findAll('.step-card')[0].text()).toContain('100.0% (2/2)')
+  })
+
+  it('opens the samples modal for the selected flow, step and period', async () => {
     const w = make()
     await w.findAll('.step-card')[1].trigger('click')
     await w.find('.sample-btn').trigger('click')
@@ -144,7 +163,8 @@ describe('ModSysAdminUxFunnels', () => {
     expect(s.props('modelValue')).toBe(true)
     expect(s.props('flow')).toBe('post')
     expect(s.props('step')).toBe('photos')
-    expect(s.props('date')).toBe('2026-10-07')
+    expect(s.props('start')).toBe('2026-10-01')
+    expect(s.props('end')).toBe('2026-10-07')
   })
 
   it('shows the empty message with no flows', () => {

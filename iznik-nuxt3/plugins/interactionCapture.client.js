@@ -25,6 +25,8 @@ const REPEAT_MAX_MS = 30000
 
 // Per element: recent click times, and when it was last clicked with the API request count then.
 const recentClicks = new WeakMap()
+// Elements whose previous click was already part of a rage burst.
+const inRageBurst = new WeakSet()
 const lastLabelledClick = new WeakMap()
 
 function clickSignals(el, label) {
@@ -48,7 +50,14 @@ function clickSignals(el, label) {
     lastLabelledClick.set(el, { time: now })
   }
 
-  return { rage: times.length >= RAGE_CLICKS, repeat_no_api: repeatNoApi }
+  // One burst is one rage click: only the click that brings the burst to the threshold is flagged,
+  // however long the hammering goes on.
+  const burst = times.length >= RAGE_CLICKS
+  const rage = burst && !inRageBurst.has(el)
+  if (burst) inRageBurst.add(el)
+  else inRageBurst.delete(el)
+
+  return { rage, repeat_no_api: repeatNoApi }
 }
 
 export default defineNuxtPlugin(() => {

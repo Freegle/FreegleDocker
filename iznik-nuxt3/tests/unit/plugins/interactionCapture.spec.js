@@ -224,6 +224,31 @@ describe('interactionCapture - click and scroll telemetry', () => {
     expect(lastClick().rage).toBe(true)
   })
 
+  it('flags one rage click per burst, not every click after the third', () => {
+    const flags = []
+    for (let i = 0; i < 6; i++) {
+      click()
+      flags.push(lastClick().rage)
+      vi.advanceTimersByTime(150)
+    }
+    expect(flags).toEqual([false, false, true, false, false, false])
+  })
+
+  it('flags a fresh burst after the first one has ended', () => {
+    for (let i = 0; i < 4; i++) {
+      click()
+      vi.advanceTimersByTime(150)
+    }
+    vi.advanceTimersByTime(2000)
+    click()
+    expect(lastClick().rage).toBe(false)
+    vi.advanceTimersByTime(150)
+    click()
+    vi.advanceTimersByTime(150)
+    click()
+    expect(lastClick().rage).toBe(true)
+  })
+
   it('is not rage when the clicks are spread over more than a second', () => {
     click()
     vi.advanceTimersByTime(600)

@@ -44,8 +44,8 @@ const stepRows = computed(() =>
   stepsWithPrevious(store.funnels.data).map((s) => ({
     flow: s.flow,
     step: s.step,
-    backed: withCount(s.backed, s.entered),
-    previous: s.prev ? withCount(s.prev.backed, s.prev.entered) : '–',
+    backed: withCount(s.backed, s.visits),
+    previous: s.prev ? withCount(s.prev.backed, s.prev.visits) : '–',
   }))
 )
 

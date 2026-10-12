@@ -38,9 +38,9 @@ class WeeklyReportCommandTest extends TestCase
         return Mail::mailer('array')->getSymfonyTransport()->messages()->all();
     }
 
-    private function step(string $date, string $step, int $entered, int $completed, string $flow = 'give'): void
+    private function step(string $date, string $step, int $entered, int $completed, string $flow = 'give', int $reentered = 0): void
     {
-        DB::table('ux_flow_daily')->insert(['date' => $date, 'flow' => $flow, 'step' => $step, 'entered' => $entered, 'completed' => $completed]);
+        DB::table('ux_flow_daily')->insert(['date' => $date, 'flow' => $flow, 'step' => $step, 'entered' => $entered, 'reentered' => $reentered, 'completed' => $completed]);
     }
 
     private function clickRow(string $date, string $component, int $clicks, int $dead = 0, int $rage = 0, int $repeat = 0): void
@@ -98,6 +98,19 @@ class WeeklyReportCommandTest extends TestCase
         // Five and only five: the smallest drift (give-a) is left out.
         $this->assertSame(5, preg_match_all('/^\s*\d\. /m', $text));
         $this->assertStringNotContainsString("give-a", $text);
+    }
+
+    public function test_conversion_is_over_visits_so_a_step_entered_again_stays_under_100_percent(): void
+    {
+        // 100 first visits and 60 more: 150 completions is 93.8% of visits, not 150% of entries.
+        $this->step('2026-02-24', 'give-photos', 100, 80, 'give', 0);
+        $this->step('2026-03-03', 'give-photos', 100, 150, 'give', 60);
+
+        $this->artisan('ux:weekly-report')->assertExitCode(0);
+
+        $text = $this->mails()[0]->getOriginalMessage()->getTextBody();
+        $this->assertStringContainsString('80.0% to 93.8%', $text);
+        $this->assertStringContainsString('160 visits', $text);
     }
 
     public function test_unhealthy_telemetry_leads_the_mail(): void
