@@ -270,8 +270,12 @@ build, not by bisecting the boundary.
   CircleCI's Android machine image; on a runner it fails at its KVM check.
 - **A CircleCI cloud job is killed at one hour**, mid-step, with no `when: always` evidence
   and Playwright's failure summary never printed (job 39371: 59 minutes, of which 31 were an
-  uncached stack build). The emulator job reads the image cache and builds the app in the
-  background to fit; keep anything added to it inside that hour.
+  uncached stack build). The APK is built in its own job and the emulator job's stack drops
+  the services the app never uses (`scripts/app-e2e/docker-compose.app-e2e.yml`); keep
+  anything added to it inside that hour. `xlarge` is not in the plan.
+- **A compose override that gives a service `build:` back undoes a placeholder.** The orb's
+  cache overlay adds `build.cache_from` to eight services, so applying it on top of the
+  emulator job's placeholders made Compose look for a Dockerfile that is not there.
 - **A share sent with `am start` from a root shell is refused** with a `SecurityException` in
   `MainActivity`, and the give flow never opens: root's URI grant does not take, and `am`
   never moves `EXTRA_STREAM` into the clip data a grant covers. `shareImage` sends as the

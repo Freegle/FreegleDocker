@@ -84,7 +84,6 @@ A CircleCI cloud job is stopped after one hour, which shapes the emulator job:
 - The stack is build-and-test's minus the services the app never uses, swapped for idle
   placeholders by `docker-compose.app-e2e.yml` (ModTools, both dev servers, the Playwright
   image, the AI support helper). Built in full and uncached, the stack took 31 minutes.
-- It reads the runners' image cache (`CI_IMAGE_CACHE=pull`; only the runners push to it).
 - Playwright gets a 20-minute global timeout, so its reports are written before the hour.
 
 Artifacts: `freegle-e2e.apk` on the APK job; `app-emulator` (the run directory) on the

@@ -147,9 +147,6 @@ executors:
       COMPOSE_DOCKER_CLI_BUILD: 1
       COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
       COMPOSE_PROJECT_NAME: freegle-ci
-      # Read the runners' image cache (never push): uncached, the stack build alone
-      # takes half of the hour a CircleCI cloud job is allowed.
-      CI_IMAGE_CACHE: pull
       OSM_PBF_PATH: /app/testdata/bristol.osm.pbf
       DEPRIVATION_CSV: /app/testdata/bristol_lsoa.csv
       PW_WORKERS: 4
@@ -617,18 +614,10 @@ commands:
 
             echo "Building CI-required containers..."
 
-            # CI_IMAGE_CACHE=pull (the Android machine job): read the runners' image cache
-            # registry like a runner does, but never push to it - only master's runner
-            # builds keep it current.
-            PULL_IMAGE_CACHE=false
-            if [ "${SELF_HOSTED_RUNNER:-}" = "true" ] || [ "${CI_IMAGE_CACHE:-}" = "pull" ]; then
-              PULL_IMAGE_CACHE=true
-            fi
-
             CACHE_FLAG="--no-cache"
-            if [ "$PULL_IMAGE_CACHE" = "true" ]; then
+            if [ "${SELF_HOSTED_RUNNER:-}" = "true" ]; then
               CACHE_FLAG=""
-              echo "Using the Docker layer cache"
+              echo "Self-hosted runner: using Docker layer cache"
             fi
 
             IS_WSL=false
@@ -638,7 +627,7 @@ commands:
             # so BuildKit finds cache hits via --cache-from even on fresh VMs.
             # Generates a compose override that adds cache_from: to each service.
             INLINE_CACHE_FLAG=""
-            if [ "$PULL_IMAGE_CACHE" = "true" ] && [ "$IS_WSL" = "false" ]; then
+            if [ "${SELF_HOSTED_RUNNER:-}" = "true" ] && [ "$IS_WSL" = "false" ]; then
               CACHE_REG="185.44.254.6:5002"
               # Don't pre-pull full images — BuildKit fetches only matching cache layers
               # on demand via cache_from. Pre-pulling large images adds more overhead than
@@ -680,11 +669,8 @@ commands:
               } > /tmp/docker-compose.cache.yml
 
               export COMPOSE_FILE="${COMPOSE_FILE}:/tmp/docker-compose.cache.yml"
-              # Embed inline cache metadata so the pushed images can serve as --cache-from
-              # sources. Only the runners push.
-              if [ "${SELF_HOSTED_RUNNER:-}" = "true" ]; then
-                INLINE_CACHE_FLAG="--build-arg BUILDKIT_INLINE_CACHE=1"
-              fi
+              # Embed inline cache metadata so the pushed images can serve as --cache-from sources
+              INLINE_CACHE_FLAG="--build-arg BUILDKIT_INLINE_CACHE=1"
               echo "Cache-from overlay added to COMPOSE_FILE"
             fi
 
