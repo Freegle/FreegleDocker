@@ -2,8 +2,6 @@ package ux
 
 import (
 	"sort"
-
-	"github.com/freegle/iznik-server-go/database"
 )
 
 // ---- funnels ----
@@ -88,16 +86,15 @@ var breakdownDims = []struct {
 }
 
 func funnelFlows(p period, flow string, withBreakdown bool) ([]FunnelFlow, error) {
-	fc, fargs := flowClause(flow)
 	var rows []funnelRow
-	err := database.DBConn.Raw("SELECT flow, step, "+
-		"CAST(SUM(entered) AS SIGNED) AS entered, CAST(SUM(reentered) AS SIGNED) AS reentered, "+
-		"CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(backed) AS SIGNED) AS backed, "+
-		"CAST(SUM(abandoned) AS SIGNED) AS abandoned, CAST(SUM(revisits) AS SIGNED) AS revisits, "+
-		"CAST(SUM(validation_failures) AS SIGNED) AS validation_failures, CAST(SUM(help_sought) AS SIGNED) AS help_sought, "+
-		weighted("dwell_p50_ms", "entered")+" AS dwell_p50_ms, "+weighted("dwell_p90_ms", "entered")+" AS dwell_p90_ms "+
-		"FROM ux_flow_daily WHERE `date` BETWEEN ? AND ?"+fc+" GROUP BY flow, step",
-		dateArgs(p, fargs)...).Scan(&rows).Error
+	err := rangeQuery("ux_flow_daily", p, flow).
+		Select("flow, step, " +
+			"CAST(SUM(entered) AS SIGNED) AS entered, CAST(SUM(reentered) AS SIGNED) AS reentered, " +
+			"CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(backed) AS SIGNED) AS backed, " +
+			"CAST(SUM(abandoned) AS SIGNED) AS abandoned, CAST(SUM(revisits) AS SIGNED) AS revisits, " +
+			"CAST(SUM(validation_failures) AS SIGNED) AS validation_failures, CAST(SUM(help_sought) AS SIGNED) AS help_sought, " +
+			weighted("dwell_p50_ms", "entered") + " AS dwell_p50_ms, " + weighted("dwell_p90_ms", "entered") + " AS dwell_p90_ms").
+		Group("flow, step").Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -120,10 +117,10 @@ func funnelFlows(p period, flow string, withBreakdown bool) ([]FunnelFlow, error
 	if withBreakdown {
 		for _, dim := range breakdownDims {
 			var brows []breakdownRow
-			err := database.DBConn.Raw("SELECT flow, step, "+dim.expr+" AS k, "+
-				"CAST(SUM(entered) AS SIGNED) AS entered, CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(abandoned) AS SIGNED) AS abandoned "+
-				"FROM ux_flow_daily WHERE `date` BETWEEN ? AND ?"+fc+" GROUP BY flow, step, k",
-				dateArgs(p, fargs)...).Scan(&brows).Error
+			err := rangeQuery("ux_flow_daily", p, flow).
+				Select("flow, step, " + dim.expr + " AS k, " +
+					"CAST(SUM(entered) AS SIGNED) AS entered, CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(abandoned) AS SIGNED) AS abandoned").
+				Group("flow, step, k").Scan(&brows).Error
 			if err != nil {
 				return nil, err
 			}
@@ -218,15 +215,14 @@ type OutcomesResponse struct {
 }
 
 func outcomeFlows(p period, flow string) ([]OutcomeFlow, error) {
-	fc, fargs := flowClause(flow)
 	rows := []OutcomeFlow{}
-	err := database.DBConn.Raw("SELECT flow, "+
-		"CAST(SUM(started) AS SIGNED) AS started, CAST(SUM(submitted) AS SIGNED) AS submitted, "+
-		"CAST(SUM(submit_ok) AS SIGNED) AS submit_ok, CAST(SUM(submit_failed) AS SIGNED) AS submit_failed, "+
-		"CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(abandoned) AS SIGNED) AS abandoned, "+
-		"CAST(SUM(resumed) AS SIGNED) AS resumed, "+weighted("total_dwell_p50_ms", "started")+" AS total_dwell_p50_ms "+
-		"FROM ux_flow_outcome_daily WHERE `date` BETWEEN ? AND ?"+fc+" GROUP BY flow ORDER BY flow",
-		dateArgs(p, fargs)...).Scan(&rows).Error
+	err := rangeQuery("ux_flow_outcome_daily", p, flow).
+		Select("flow, " +
+			"CAST(SUM(started) AS SIGNED) AS started, CAST(SUM(submitted) AS SIGNED) AS submitted, " +
+			"CAST(SUM(submit_ok) AS SIGNED) AS submit_ok, CAST(SUM(submit_failed) AS SIGNED) AS submit_failed, " +
+			"CAST(SUM(completed) AS SIGNED) AS completed, CAST(SUM(abandoned) AS SIGNED) AS abandoned, " +
+			"CAST(SUM(resumed) AS SIGNED) AS resumed, " + weighted("total_dwell_p50_ms", "started") + " AS total_dwell_p50_ms").
+		Group("flow").Order("flow").Scan(&rows).Error
 	return rows, err
 }
 
@@ -266,14 +262,14 @@ type FieldsResponse struct {
 }
 
 func fieldRows(p period, flow string) ([]FieldRow, error) {
-	fc, fargs := flowClause(flow)
 	rows := []FieldRow{}
-	err := database.DBConn.Raw("SELECT flow, step, field, "+
-		"CAST(SUM(revisits) AS SIGNED) AS revisits, CAST(SUM(validation_failures) AS SIGNED) AS validation_failures, "+
-		"CAST(SUM(choice_switches) AS SIGNED) AS choice_switches "+
-		"FROM ux_field_daily WHERE `date` BETWEEN ? AND ?"+fc+" GROUP BY flow, step, field "+
-		"ORDER BY SUM(revisits) + SUM(validation_failures) DESC, flow, step, field LIMIT ?",
-		dateArgs(p, append(fargs, maxFieldRows))...).Scan(&rows).Error
+	err := rangeQuery("ux_field_daily", p, flow).
+		Select("flow, step, field, " +
+			"CAST(SUM(revisits) AS SIGNED) AS revisits, CAST(SUM(validation_failures) AS SIGNED) AS validation_failures, " +
+			"CAST(SUM(choice_switches) AS SIGNED) AS choice_switches").
+		Group("flow, step, field").
+		Order("SUM(revisits) + SUM(validation_failures) DESC, flow, step, field").
+		Limit(maxFieldRows).Scan(&rows).Error
 	return rows, err
 }
 
@@ -330,12 +326,12 @@ type frictionDB struct {
 
 func frictionRows(p period) (map[[2]string]frictionDB, error) {
 	var rows []frictionDB
-	err := database.DBConn.Raw("SELECT page, component, "+
-		"CAST(SUM(impressions) AS SIGNED) AS impressions, CAST(SUM(clicks) AS SIGNED) AS clicks, "+
-		"CAST(SUM(dead_clicks) AS SIGNED) AS dead_clicks, CAST(SUM(rage_clicks) AS SIGNED) AS rage_clicks, "+
-		"CAST(SUM(repeated_intent) AS SIGNED) AS repeated_intent "+
-		"FROM ux_component_daily WHERE `date` BETWEEN ? AND ? GROUP BY page, component",
-		p.startStr(), p.endStr()).Scan(&rows).Error
+	err := rangeQuery("ux_component_daily", p, "").
+		Select("page, component, " +
+			"CAST(SUM(impressions) AS SIGNED) AS impressions, CAST(SUM(clicks) AS SIGNED) AS clicks, " +
+			"CAST(SUM(dead_clicks) AS SIGNED) AS dead_clicks, CAST(SUM(rage_clicks) AS SIGNED) AS rage_clicks, " +
+			"CAST(SUM(repeated_intent) AS SIGNED) AS repeated_intent").
+		Group("page, component").Scan(&rows).Error
 	out := map[[2]string]frictionDB{}
 	for _, r := range rows {
 		out[[2]string{r.Page, r.Component}] = r
@@ -423,10 +419,10 @@ func (a adoptionDB) share() float64 {
 
 func adoptionRows(p period) ([]adoptionDB, error) {
 	var rows []adoptionDB
-	err := database.DBConn.Raw("SELECT feature, CAST(SUM(active_users) AS SIGNED) AS active_users, "+
-		"CAST(SUM(using_users) AS SIGNED) AS using_users, CAST(SUM(sessions_using) AS SIGNED) AS sessions_using "+
-		"FROM ux_feature_adoption_daily WHERE `date` BETWEEN ? AND ? GROUP BY feature ORDER BY feature",
-		p.startStr(), p.endStr()).Scan(&rows).Error
+	err := rangeQuery("ux_feature_adoption_daily", p, "").
+		Select("feature, CAST(SUM(active_users) AS SIGNED) AS active_users, " +
+			"CAST(SUM(using_users) AS SIGNED) AS using_users, CAST(SUM(sessions_using) AS SIGNED) AS sessions_using").
+		Group("feature").Order("feature").Scan(&rows).Error
 	return rows, err
 }
 
@@ -482,17 +478,18 @@ type regretDB struct {
 // Regret serves GET /modtools/ux/regret.
 var Regret = serve("regret", func(r request) (interface{}, error) {
 	var rows []regretDB
-	if err := database.DBConn.Raw("SELECT `signal` AS sig, DATE_FORMAT(`date`, '%Y-%m-%d') AS d, `count` AS cnt, base "+
-		"FROM ux_regret_daily WHERE `date` BETWEEN ? AND ? ORDER BY `signal`, `date`",
-		r.cur.startStr(), r.cur.endStr()).Scan(&rows).Error; err != nil {
+	if err := rangeQuery("ux_regret_daily", r.cur, "").
+		Select("`signal` AS sig, DATE_FORMAT(`date`, '%Y-%m-%d') AS d, `count` AS cnt, base").
+		Order("`signal`, `date`").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	var prevRows []struct {
 		Sig   string `gorm:"column:sig"`
 		Total int64  `gorm:"column:total"`
 	}
-	if err := database.DBConn.Raw("SELECT `signal` AS sig, CAST(SUM(`count`) AS SIGNED) AS total FROM ux_regret_daily "+
-		"WHERE `date` BETWEEN ? AND ? GROUP BY `signal`", r.prev.startStr(), r.prev.endStr()).Scan(&prevRows).Error; err != nil {
+	if err := rangeQuery("ux_regret_daily", r.prev, "").
+		Select("`signal` AS sig, CAST(SUM(`count`) AS SIGNED) AS total").
+		Group("`signal`").Scan(&prevRows).Error; err != nil {
 		return nil, err
 	}
 	prevTotal := map[string]int64{}
@@ -532,8 +529,9 @@ type SearchResponse struct {
 // Search serves GET /modtools/ux/search.
 var Search = serve("search", func(r request) (interface{}, error) {
 	days := []SearchDay{}
-	if err := database.DBConn.Raw("SELECT DATE_FORMAT(`date`, '%Y-%m-%d') AS d, searches, zero_result, re_searched_60s, browse_sessions, browse_scrolled_out "+
-		"FROM ux_search_daily WHERE `date` BETWEEN ? AND ? ORDER BY `date`", r.cur.startStr(), r.cur.endStr()).Scan(&days).Error; err != nil {
+	if err := rangeQuery("ux_search_daily", r.cur, "").
+		Select("DATE_FORMAT(`date`, '%Y-%m-%d') AS d, searches, zero_result, re_searched_60s, browse_sessions, browse_scrolled_out").
+		Order("`date`").Scan(&days).Error; err != nil {
 		return nil, err
 	}
 	return SearchResponse{Start: r.cur.startStr(), End: r.cur.endStr(), Days: days}, nil
@@ -577,9 +575,9 @@ var Health = serve("health", func(r request) (interface{}, error) {
 		Observed float64  `gorm:"column:observed"`
 		Ratio    *float64 `gorm:"column:ratio"`
 	}
-	if err := database.DBConn.Raw("SELECT metric, DATE_FORMAT(`date`, '%Y-%m-%d') AS d, expected, observed, ratio "+
-		"FROM ux_telemetry_health_daily WHERE `date` BETWEEN ? AND ? ORDER BY metric, `date`",
-		r.cur.startStr(), r.cur.endStr()).Scan(&rows).Error; err != nil {
+	if err := rangeQuery("ux_telemetry_health_daily", r.cur, "").
+		Select("metric, DATE_FORMAT(`date`, '%Y-%m-%d') AS d, expected, observed, ratio").
+		Order("metric, `date`").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 

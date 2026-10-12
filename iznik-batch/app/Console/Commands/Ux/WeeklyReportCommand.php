@@ -78,10 +78,9 @@ class WeeklyReportCommand extends Command
     {
         $rates = function (array $range) {
             $out = [];
-            $rows = DB::table('ux_flow_daily')->whereBetween('date', $range)
-                ->selectRaw('flow, step, SUM(entered) entered, SUM(completed) completed')->groupBy('flow', 'step')->get();
-            foreach ($rows as $r) {
-                $out[$r->flow.'/'.$r->step] = [(int) $r->entered, (int) $r->completed];
+            $rows = DB::table('ux_flow_daily')->whereBetween('date', $range)->get(['flow', 'step', 'entered', 'completed']);
+            foreach ($rows->groupBy(fn ($r) => $r->flow.'/'.$r->step) as $key => $group) {
+                $out[$key] = [(int) $group->sum('entered'), (int) $group->sum('completed')];
             }
 
             return $out;
@@ -111,10 +110,9 @@ class WeeklyReportCommand extends Command
         $rates = function (array $range) {
             $out = [];
             $rows = DB::table('ux_component_daily')->whereBetween('date', $range)
-                ->selectRaw('page, component, SUM(clicks) clicks, SUM(rage_clicks + dead_clicks + repeated_intent) bad')
-                ->groupBy('page', 'component')->get();
-            foreach ($rows as $r) {
-                $out[$r->page.' / '.$r->component] = [(int) $r->clicks, (int) $r->bad];
+                ->get(['page', 'component', 'clicks', 'rage_clicks', 'dead_clicks', 'repeated_intent']);
+            foreach ($rows->groupBy(fn ($r) => $r->page.' / '.$r->component) as $key => $group) {
+                $out[$key] = [(int) $group->sum('clicks'), (int) ($group->sum('rage_clicks') + $group->sum('dead_clicks') + $group->sum('repeated_intent'))];
             }
 
             return $out;
@@ -146,10 +144,9 @@ class WeeklyReportCommand extends Command
     {
         $rates = function (array $range) {
             $out = [];
-            $rows = DB::table('ux_regret_daily')->whereBetween('date', $range)
-                ->selectRaw('`signal`, SUM(`count`) c, SUM(`base`) b')->groupBy('signal')->get();
-            foreach ($rows as $r) {
-                $out[$r->signal] = [(int) $r->b, (int) $r->c];
+            $rows = DB::table('ux_regret_daily')->whereBetween('date', $range)->get(['signal', 'count', 'base']);
+            foreach ($rows->groupBy('signal') as $key => $group) {
+                $out[$key] = [(int) $group->sum('base'), (int) $group->sum('count')];
             }
 
             return $out;

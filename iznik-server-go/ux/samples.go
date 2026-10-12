@@ -103,8 +103,9 @@ func Samples(c *fiber.Ctx) error {
 	key := fmt.Sprintf("samples|%s|%s|%s", date.Format(dateFormat), flow, step)
 	out, err := cached(key, func() (interface{}, bool, error) {
 		var ids []string
-		if err := database.DBConn.Raw("SELECT session_id FROM ux_sample_sessions WHERE `date` = ? AND flow = ? AND step = ? ORDER BY id LIMIT ?",
-			date.Format(dateFormat), flow, step, maxSampleSessions).Scan(&ids).Error; err != nil {
+		if err := database.DBConn.Table("ux_sample_sessions").Select("session_id").
+			Where("`date` = ? AND flow = ? AND step = ?", date.Format(dateFormat), flow, step).
+			Order("id").Limit(maxSampleSessions).Scan(&ids).Error; err != nil {
 			return nil, false, err
 		}
 

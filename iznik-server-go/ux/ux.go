@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/freegle/iznik-server-go/auth"
+	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 const (
@@ -123,16 +125,13 @@ func serve(name string, build func(r request) (interface{}, error)) fiber.Handle
 	}
 }
 
-// flowClause adds the optional flow filter to a WHERE clause and its arguments.
-func flowClause(flow string) (string, []interface{}) {
-	if flow == "" {
-		return "", nil
+// rangeQuery starts a query on a rollup table restricted to the period and, when given, one flow.
+func rangeQuery(table string, p period, flow string) *gorm.DB {
+	q := database.DBConn.Table(table).Where("`date` BETWEEN ? AND ?", p.startStr(), p.endStr())
+	if flow != "" {
+		q = q.Where("flow = ?", flow)
 	}
-	return " AND flow = ?", []interface{}{flow}
-}
-
-func dateArgs(p period, extra []interface{}) []interface{} {
-	return append([]interface{}{p.startStr(), p.endStr()}, extra...)
+	return q
 }
 
 // weighted is a SQL fragment: the mean of col weighted by w over the rows where col is not NULL.
