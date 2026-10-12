@@ -96,7 +96,7 @@ orbs:
   # repo already carries the fix (large + the improved logs): publish it as 1.1.386
   # from a machine with a CircleCI token (this host has none) and move this pin
   # forward again.
-  freegle: freegle/tests@1.1.391
+  freegle: freegle/tests@1.1.393
 
 jobs:
   # The CI half of the raw-SQL guard. The Claude Code PreToolUse hook only sees
@@ -351,8 +351,8 @@ workflows:
             - freegle/build-ios-modtools
 
   # Manual promotion trigger. Nothing moves to a live store track until the app has
-  # run on an emulator against the local stack (freegle/app-emulator-tests, on the
-  # ephemeral runner the setup workflow provisions for this pipeline).
+  # run on an emulator against the local stack (freegle/app-emulator-tests, on
+  # CircleCI's Android machine image: the Hetzner runners have no /dev/kvm).
   manual-promote-submit:
     when: << pipeline.parameters.run_manual_promote >>
     jobs:
@@ -419,8 +419,8 @@ workflows:
     when:
       and:
         - << pipeline.parameters.use_katapult >>
-        # A promote or an on-demand emulator pipeline also provisions a runner (it is
-        # where the emulator job runs), and must not re-run the whole suite with it.
+        # The promote and on-demand emulator pipelines never run the whole suite,
+        # whatever the setup workflow decided about runners.
         - not: << pipeline.parameters.run_manual_promote >>
         - not: << pipeline.parameters.run_app_emulator_test >>
     jobs:

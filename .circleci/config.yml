@@ -143,11 +143,12 @@ jobs:
             # forwards trigger parameters to the continuation pipeline when the same parameter
             # name is defined in both configs. Re-passing them causes "Conflicting pipeline
             # parameters". Only use_self_hosted needs to be set explicitly here.
-            # The promote and the on-demand emulator pipelines are the exception: their
-            # freegle/app-emulator-tests job runs on the ephemeral runner, so they fall
-            # through to the provisioning below like a normal push.
-            if [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
-               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ]; then
+            # The emulator job (promote and run_app_emulator_test) runs on CircleCI's
+            # Android machine image, not a runner: Hetzner Cloud VMs expose no /dev/kvm.
+            if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || \
+               [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
+               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ] || \
+               [ "<< pipeline.parameters.run_app_emulator_test >>" = "true" ]; then
               echo "Manual workflow trigger — skipping self-hosted runner check"
               echo "{\"use_self_hosted\": false}" > /tmp/pipeline-params.json
               cat /tmp/pipeline-params.json

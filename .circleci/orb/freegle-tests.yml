@@ -130,6 +130,50 @@ executors:
     # back to xlarge without confirming the plan now includes it.
     resource_class: large
 
+  # CircleCI's Android machine image: a Linux VM with /dev/kvm, the Android SDK and an
+  # emulator that runs at hardware speed. The app emulator job lives here because the
+  # ephemeral Hetzner runners are cloud VMs with no nested virtualisation. The stack
+  # environment matches machine-executor-katapult so the same orb commands bring it up.
+  android-machine-executor:
+    parameters:
+      size:
+        type: string
+        default: large
+    machine:
+      image: android:default
+    resource_class: << parameters.size >>
+    environment:
+      DOCKER_BUILDKIT: 1
+      COMPOSE_DOCKER_CLI_BUILD: 1
+      COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
+      COMPOSE_PROJECT_NAME: freegle-ci
+      OSM_PBF_PATH: /app/testdata/bristol.osm.pbf
+      DEPRIVATION_CSV: /app/testdata/bristol_lsoa.csv
+      PW_WORKERS: 4
+      VITEST_MAX_WORKERS: 4
+      PORT_TRAEFIK_HTTP: 9080
+      PORT_TRAEFIK_API: 17192
+      PORT_TRAEFIK_DASHBOARD: 17080
+      PORT_PHPMYADMIN: 17086
+      PORT_MAILPIT_WEB: 17025
+      PORT_MAILPIT_SMTP: 10025
+      PORT_SPAMASSASSIN: 9783
+      PORT_RSPAMD: 20334
+      PORT_TUSD: 10080
+      PORT_STATUS: 17081
+      PORT_AI_SUPPORT: 17083
+      PORT_APIV2: 17193
+      PORT_APIV2_LIVE: 17194
+      PORT_FREEGLE_DEV_LOCAL: 12002
+      PORT_FREEGLE_DEV_LIVE: 12005
+      PORT_FREEGLE_PROD_LOCAL: 12012
+      PORT_MODTOOLS_DEV_LOCAL: 12003
+      PORT_MODTOOLS_DEV_LIVE: 12006
+      PORT_MODTOOLS_PROD_LOCAL: 12013
+      PORT_LOKI: 12100
+      PORT_POSTFIX_SMTP: 9025
+      PORT_MCP_SANITIZER: 17084
+
   macos-executor:
     macos:
       xcode: 26.2.0
@@ -5135,25 +5179,19 @@ jobs:
   # runs the Playwright `app` project through the app's WebView. It gates the
   # promote workflow (manual-promote-submit), so it runs before anything reaches a
   # live store track, and on demand through the run_app_emulator_test parameter.
-  # The stack comes up exactly as build-and-test brings it up; the emulator and
-  # the build run on the runner host, which must expose /dev/kvm.
+  # The stack comes up exactly as build-and-test brings it up, on the Android machine
+  # image (android-machine-executor), the one CircleCI environment with /dev/kvm. The
+  # app is built first, before the stack's two Nuxt builds compete for the four cores.
   app-emulator-tests:
-    executor: machine-executor-katapult
+    parameters:
+      size:
+        type: string
+        default: large
+        description: "Android machine resource class (large: 4 vCPU, 15 GB)"
+    executor:
+      name: android-machine-executor
+      size: << parameters.size >>
     steps:
-      - run:
-          name: Reset idle-check on Katapult VMs
-          command: |
-            if [ ! -f /usr/local/bin/idle-check.sh ]; then exit 0; fi
-            sudo rm -f /tmp/.runner-idle-since
-            sudo sed -i -E 's/IDLE_SECONDS" -gt [0-9]+/IDLE_SECONDS" -gt 2100/' /usr/local/bin/idle-check.sh
-            sudo sed -i -E 's/UPTIME_SECONDS" -gt [0-9]+/UPTIME_SECONDS" -gt 9000/' /usr/local/bin/idle-check.sh
-            echo "Idle-check: cleared idle marker, patched thresholds (idle=2100s abs-age=9000s)"
-      - run:
-          name: Fix file ownership before checkout
-          command: |
-            docker compose down --remove-orphans 2>/dev/null || true
-            sudo rm -rf logs test-results ssl/certs status/data 2>/dev/null || true
-            sudo chown -R $(id -u):$(id -g) . 2>/dev/null || true
       - checkout
       - run:
           name: Pre-create runtime directories
@@ -5163,43 +5201,64 @@ jobs:
       - run:
           name: Check the host can run an emulator
           command: |
+            echo "cpu flags: $(grep -c -E 'vmx|svm' /proc/cpuinfo) of $(nproc) cores report vmx/svm"
             if [ ! -e /dev/kvm ]; then
-              echo "No /dev/kvm on this runner: the emulator cannot run here."
-              echo "The gate needs a runner with nested virtualisation (see scripts/app-e2e/README.md)."
+              echo "No /dev/kvm on this machine: the emulator cannot run here."
+              echo "The job needs the Android machine image (see scripts/app-e2e/README.md)."
               exit 1
             fi
             sudo chmod 666 /dev/kvm
             ls -l /dev/kvm
+            free -g | head -2
       - run:
-          name: Install JDK, Node.js 22 and the Android SDK
+          name: Install JDK 21, Node.js 22 and the Android SDK pieces
           no_output_timeout: 20m
           command: |
             sudo apt-get update -qq
             sudo apt-get install -y -qq openjdk-21-jdk-headless unzip curl >/dev/null
-            if curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh \
-               && sudo -E bash /tmp/nodesource_setup.sh \
-               && sudo apt-get install -y nodejs; then
-              echo "Installed Node.js via NodeSource"
+            # The image ships its own JDK on JAVA_HOME; the Capacitor 8 build needs 21.
+            JDK21=/usr/lib/jvm/java-21-openjdk-amd64
+            echo "export JAVA_HOME=$JDK21" >> "$BASH_ENV"
+            echo "export PATH=$JDK21/bin:\$PATH" >> "$BASH_ENV"
+            export JAVA_HOME=$JDK21 PATH=$JDK21/bin:$PATH
+            # The image may put an nvm Node first on PATH; make 22 the one that runs.
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              export NVM_DIR="$HOME/.nvm"
+              . "$NVM_DIR/nvm.sh"
+              nvm install 22 >/dev/null
+              nvm alias default 22 >/dev/null
+              echo 'export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 22 >/dev/null' >> "$BASH_ENV"
             else
-              echo "NodeSource unavailable - installing Node 22 from nodejs.org"
-              NODE_TARBALL=$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt \
-                | grep -oE 'node-v22\.[0-9]+\.[0-9]+-linux-x64\.tar\.gz' | head -1)
-              curl -fsSLO "https://nodejs.org/dist/latest-v22.x/${NODE_TARBALL}"
-              sudo tar -xzf "${NODE_TARBALL}" -C /usr/local --strip-components=1
+              curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+              sudo -E bash /tmp/nodesource_setup.sh
+              sudo apt-get install -y nodejs
             fi
-            node --version
-            java -version
+            node --version | grep -q '^v22\.' || { echo "Node 22 is not the active node: $(node --version)"; exit 1; }
+            java -version 2>&1 | head -1
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "No docker on this image: installing it"
+              curl -fsSL https://get.docker.com | sudo sh
+              sudo chmod 666 /var/run/docker.sock || true
+            fi
+            docker --version
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset} ANDROID_HOME=${ANDROID_HOME:-unset}"
             bash scripts/app-e2e/setup-sdk.sh
             bash scripts/app-e2e/create-avd.sh
+      - run:
+          name: Build the app's e2e variant against the stack's URLs
+          no_output_timeout: 30m
+          command: |
+            bash scripts/app-e2e/build-apk.sh
       - setup-dependencies
       - start-docker-services:
           reason: "Starting the stack for the app emulator tests"
       - wait-for-basic-services
+      - wait-for-prod-container
       - run:
-          name: Build the app and run the Playwright app project on the emulator
+          name: Run the Playwright app project on the emulator
           no_output_timeout: 45m
           command: |
-            bash scripts/app-e2e/run.sh
+            bash scripts/app-e2e/run.sh --no-build
       - run:
           name: Collect app emulator evidence
           when: always

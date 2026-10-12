@@ -42,9 +42,10 @@ else
 	export IMAGE_DELIVERY="$STACK_IMAGE_DELIVERY"
 	export USER_SITE="$STACK_USER_SITE"
 	export NUXT_NITRO_PRERENDER_ROUTES=false
-	if [ -n "${SENTRY_DSN_APP_FD:-}" ]; then
-		export SENTRY_DSN="$SENTRY_DSN_APP_FD"
-	fi
+	# Not the app's Sentry project (SENTRY_DSN_APP_FD in CI): its events carry no marker
+	# that separates them from members' devices. Unset, the bundle reports to the web
+	# project, as the local and CI stacks do.
+	unset SENTRY_DSN
 	# A CircleCI project variable in the release build. The app's donation component
 	# mounts Stripe with it and reports its absence to the console, so a machine
 	# without the key gets a test-mode placeholder rather than a false alarm.

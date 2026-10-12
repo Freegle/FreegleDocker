@@ -61,7 +61,8 @@ The stack must be up (`apiv2` and the status API answer). The scripts read
 which Gradle downloads once the licences are accepted by `setup-sdk.sh`.
 
 `/dev/kvm` is required. Under WSL2 that means `nestedVirtualization=true` in
-`.wslconfig`; on a cloud runner, nested virtualisation.
+`.wslconfig`. Hetzner Cloud VMs (the ephemeral CI runners) never expose it, which is why
+the CI job runs on CircleCI's Android machine image instead.
 
 ## Traps
 

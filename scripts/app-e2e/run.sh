@@ -88,7 +88,12 @@ export TEST_API_V2_BASE_URL="$STACK_API_V2"
 # Flows with a second member drive the web front end from a headless Chromium
 # (fixtures.js, app mode); the browser is fetched once and kept in Playwright's cache.
 export TEST_BASE_URL="${TEST_BASE_URL:-http://freegle-prod-local.localhost${STACK_PORT_SUFFIX}}"
-npx playwright install chromium >/dev/null 2>&1 || log "could not install Chromium for the second-member flows"
+if [ "${CI:-}" = "true" ]; then
+	# A fresh CI machine also lacks the libraries Chromium links against.
+	npx playwright install --with-deps chromium >/dev/null 2>&1 || log "could not install Chromium for the second-member flows"
+else
+	npx playwright install chromium >/dev/null 2>&1 || log "could not install Chromium for the second-member flows"
+fi
 export PLAYWRIGHT_JUNIT_OUTPUT_FILE="$run_dir/junit.xml"
 export PLAYWRIGHT_HTML_REPORT="$run_dir/playwright-report"
 export PW_WORKERS=1
