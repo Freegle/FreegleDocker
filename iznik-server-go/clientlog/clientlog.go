@@ -3,10 +3,25 @@ package clientlog
 
 import (
 	"encoding/json"
+	"sync"
+	"time"
+
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/gofiber/fiber/v2"
 )
+
+// inflight counts the async writers so tests can wait for them.
+var inflight sync.WaitGroup
+
+var lokiOverride *misc.LokiClient
+
+func currentLoki() *misc.LokiClient {
+	if lokiOverride != nil {
+		return lokiOverride
+	}
+	return misc.GetLoki()
+}
 
 // LogEntry represents a single client log entry.
 type LogEntry struct {
@@ -45,7 +60,7 @@ type ClientLogRequest struct {
 // @Param logs body ClientLogRequest true "Client log entries"
 // @Success 204 "No Content"
 func ReceiveClientLogs(c *fiber.Ctx) error {
-	loki := misc.GetLoki()
+	loki := currentLoki()
 
 	// Always return 204 regardless of errors - fire and forget.
 	defer func() {
@@ -60,6 +75,35 @@ func ReceiveClientLogs(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusNoContent)
 	}
 
+	// Per-IP rate limit, counted in entries. The excess is dropped without telling the client, who
+	// gets the same 204 as ever, and the first trip in a minute leaves one line in Loki.
+	clientIP := c.IP()
+	limit := ratePerMin()
+
+	// Flow events are never dropped: a shared address (CGNAT, a school) must not lose funnel
+	// data. They are neither counted nor limited; everything else is.
+	var flows, others []json.RawMessage
+	for _, raw := range req.Logs {
+		var probe struct {
+			EventType string `json:"event_type"`
+		}
+		if json.Unmarshal(raw, &probe) == nil && probe.EventType == "flow" {
+			flows = append(flows, raw)
+		} else {
+			others = append(others, raw)
+		}
+	}
+	accepted, tripped := defaultLimiter.take(clientKey(c), len(others), limit, time.Now())
+	if tripped {
+		loki.LogCustom("clientlog_ratelimit", nil, map[string]interface{}{
+			"message":       "clientlog rate limit tripped; excess entries dropped",
+			"client_ip":     clientIP,
+			"limit_per_min": limit,
+			"batch_entries": len(req.Logs),
+		})
+	}
+	req.Logs = append(flows, others[:accepted]...)
+
 	// Get user ID from context if available.
 	var userId *uint64
 	userIdInJWT, _, _ := user.GetJWTFromRequest(c)
@@ -70,10 +114,11 @@ func ReceiveClientLogs(c *fiber.Ctx) error {
 	// Extract trace headers and client IP from request.
 	traceID := c.Get("X-Trace-ID")
 	sessionID := c.Get("X-Session-ID")
-	clientIP := c.IP()
 
 	// Process each log entry asynchronously.
+	inflight.Add(1)
 	go func() {
+		defer inflight.Done()
 		for _, rawLog := range req.Logs {
 			// Parse into a generic map to preserve all fields.
 			var logData map[string]interface{}

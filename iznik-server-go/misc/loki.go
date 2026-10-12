@@ -379,10 +379,11 @@ var allowedRequestHeaders = map[string]bool{
 	"host":              true,
 	"content-length":    true,
 	// Logging context headers.
-	"x-freegle-session": true,
-	"x-freegle-page":    true,
-	"x-freegle-modal":   true,
-	"x-freegle-site":    true,
+	"x-freegle-session":       true,
+	"x-freegle-page":          true,
+	"x-freegle-flow-instance": true,
+	"x-freegle-modal":         true,
+	"x-freegle-site":          true,
 }
 
 // LogApiHeaders logs API headers to Loki (separate stream with 7-day retention).
@@ -477,6 +478,47 @@ func (l *LokiClient) LogFromLogsTable(logType, subtype string, groupId, userId, 
 	l.log(labels, string(capLogLine(logData)))
 }
 
+// userIDFromValue reads a user id of any numeric type. A client entry's user_id is a float64 when
+// it was decoded from the browser's JSON, but a uint64 when clientlog sets it from the JWT; a type
+// switch that knew only one of them silently dropped the user from the other's lines.
+func userIDFromValue(v interface{}) (uint64, bool) {
+	switch n := v.(type) {
+	case uint64:
+		return n, true
+	case uint32:
+		return uint64(n), true
+	case uint:
+		return uint64(n), true
+	case int:
+		if n >= 0 {
+			return uint64(n), true
+		}
+	case int64:
+		if n >= 0 {
+			return uint64(n), true
+		}
+	case int32:
+		if n >= 0 {
+			return uint64(n), true
+		}
+	case float64:
+		if n >= 0 && n == float64(uint64(n)) {
+			return uint64(n), true
+		}
+	case json.Number:
+		if u, err := strconv.ParseUint(n.String(), 10, 64); err == nil {
+			return u, true
+		}
+	}
+	return 0, false
+}
+
+// NewFileLoki returns an enabled client that writes its JSON lines under dir. GetLoki is the
+// production entry point; this exists so other packages' tests can read back what they logged.
+func NewFileLoki(dir string) *LokiClient {
+	return &LokiClient{enabled: true, jsonFilePath: dir}
+}
+
 // LogClientEntry logs entries from the client-side browser to Loki.
 func (l *LokiClient) LogClientEntry(level, eventType string, logData map[string]interface{}) {
 	if !l.enabled {
@@ -493,9 +535,9 @@ func (l *LokiClient) LogClientEntry(level, eventType string, logData map[string]
 	// user_id goes out as structured metadata, not a stream label - it has far
 	// too many values. user_bucket is the coarse label that keeps lookups indexed.
 	// trace_id and session_id stay in the JSON body only.
-	if userID, ok := logData["user_id"].(float64); ok && userID != 0 {
-		labels["user_id"] = strconv.FormatInt(int64(userID), 10)
-		labels["user_bucket"] = UserBucket(uint64(userID))
+	if userID, ok := userIDFromValue(logData["user_id"]); ok && userID != 0 {
+		labels["user_id"] = strconv.FormatUint(userID, 10)
+		labels["user_bucket"] = UserBucket(userID)
 	}
 
 	l.log(labels, string(capLogLine(logData)))
