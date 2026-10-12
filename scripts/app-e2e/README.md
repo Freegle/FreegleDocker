@@ -71,12 +71,24 @@ the CI job runs on CircleCI's Android machine image instead.
 
 ## In CI
 
-`freegle/app-emulator-tests` (in the orb) runs on the Android machine image, `large` (4
-vCPU, 15 GB) unless its `size` parameter says otherwise. A CircleCI cloud job is stopped
-after one hour, so the job is arranged to fit: the app build runs as a background step
-beside the stack build, and the stack build reads the runners' image cache
-(`CI_IMAGE_CACHE=pull`; only the runners push to it). Uncached, the stack build alone took
-31 minutes. Artifacts: `app-emulator` (the run directory and `app-build.log`).
+Two orb jobs, in the promote workflow and the on-demand one:
+
+| Job | Executor | Does |
+|---|---|---|
+| `freegle/app-emulator-apk` | Docker Android (`cimg/android`, large) | `build-apk.sh` against the CI stack's port 9080; hands the APK on through the workspace |
+| `freegle/app-emulator-tests` | Android machine image, large (4 vCPU, 15 GB; `xlarge` is not in the plan) | brings up the stack, boots the emulator, runs `run.sh --no-build` |
+
+A CircleCI cloud job is stopped after one hour, which shapes the emulator job:
+
+- The APK is built elsewhere: on the same four cores it doubled both builds.
+- The stack is build-and-test's minus the services the app never uses, swapped for idle
+  placeholders by `docker-compose.app-e2e.yml` (ModTools, both dev servers, the Playwright
+  image, the AI support helper). Built in full and uncached, the stack took 31 minutes.
+- It reads the runners' image cache (`CI_IMAGE_CACHE=pull`; only the runners push to it).
+- Playwright gets a 20-minute global timeout, so its reports are written before the hour.
+
+Artifacts: `freegle-e2e.apk` on the APK job; `app-emulator` (the run directory) on the
+emulator job.
 
 ## Traps
 

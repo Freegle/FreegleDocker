@@ -5188,14 +5188,67 @@ jobs:
           name: Auto-promote Beta to Production
           command: bundle exec fastlane android auto_promote
 
+  # The app the emulator job installs: scripts/app-e2e/build-apk.sh (the release build's
+  # configuration, R8 included, signed with the debug key, pointed at the CI stack's
+  # traefik port), handed over through the workspace. A job of its own, on the Docker
+  # Android executor that builds the debug APKs, so the emulator job's four cores and its
+  # hour go to the stack and the emulator.
+  app-emulator-apk:
+    executor: android-executor
+    working_directory: ~/project
+    environment:
+      PORT_TRAEFIK_HTTP: 9080
+      PORT_STATUS: 17081
+    steps:
+      - checkout
+      - run:
+          name: Install Node.js 22
+          command: |
+            if curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh \
+               && sudo -E bash /tmp/nodesource_setup.sh \
+               && sudo apt-get install -y nodejs; then
+              echo "Installed Node.js via NodeSource"
+            else
+              echo "NodeSource unavailable (likely 403) - installing Node 22 from nodejs.org"
+              NODE_TARBALL=$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt \
+                | grep -oE 'node-v22\.[0-9]+\.[0-9]+-linux-x64\.tar\.gz' | head -1)
+              curl -fsSLO "https://nodejs.org/dist/latest-v22.x/${NODE_TARBALL}"
+              sudo tar -xzf "${NODE_TARBALL}" -C /usr/local --strip-components=1
+            fi
+            node --version
+            java -version 2>&1 | head -1
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
+      - run:
+          name: Build the app's e2e variant against the CI stack's URLs
+          no_output_timeout: 30m
+          command: |
+            bash scripts/app-e2e/build-apk.sh
+      - run:
+          name: Hand the APK to the emulator job
+          command: |
+            mkdir -p /tmp/app-e2e-workspace
+            cp ~/.local/share/freegle-app-e2e/out/freegle-e2e.apk \
+               ~/.local/share/freegle-app-e2e/out/app-origin.txt /tmp/app-e2e-workspace/
+            ls -la /tmp/app-e2e-workspace
+      - persist_to_workspace:
+          root: /tmp/app-e2e-workspace
+          paths:
+            - freegle-e2e.apk
+            - app-origin.txt
+      - store_artifacts:
+          path: /tmp/app-e2e-workspace/freegle-e2e.apk
+          destination: freegle-e2e.apk
+
   # The Android app on an emulator against the local stack: scripts/app-e2e/run.sh in
-  # the repository builds the app's e2e variant, boots a headless emulator (KVM) and
-  # runs the Playwright `app` project through the app's WebView. It gates the
+  # the repository boots a headless emulator (KVM), installs the APK freegle/app-emulator-apk
+  # built and runs the Playwright `app` project through the app's WebView. It gates the
   # promote workflow (manual-promote-submit), so it runs before anything reaches a
   # live store track, and on demand through the run_app_emulator_test parameter.
-  # The stack comes up exactly as build-and-test brings it up, on the Android machine
-  # image (android-machine-executor), the one CircleCI environment with /dev/kvm. The
-  # app is built first, before the stack's two Nuxt builds compete for the four cores.
+  # It runs on the Android machine image (android-machine-executor), the one CircleCI
+  # environment with /dev/kvm, and must finish inside a cloud job's hour on four cores:
+  # the stack is build-and-test's, minus the services the app never uses
+  # (scripts/app-e2e/docker-compose.app-e2e.yml).
   app-emulator-tests:
     parameters:
       size:
@@ -5207,11 +5260,17 @@ jobs:
       size: << parameters.size >>
     steps:
       - checkout
+      - attach_workspace:
+          at: /tmp/app-e2e-workspace
       - run:
           name: Pre-create runtime directories
           command: |
             mkdir -p ssl/certs logs data status/data test-results
-            echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml"' >> $BASH_ENV
+            echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml:scripts/app-e2e/docker-compose.app-e2e.yml"' >> $BASH_ENV
+            mkdir -p ~/.local/share/freegle-app-e2e/out
+            cp /tmp/app-e2e-workspace/freegle-e2e.apk /tmp/app-e2e-workspace/app-origin.txt \
+               ~/.local/share/freegle-app-e2e/out/
+            ls -la ~/.local/share/freegle-app-e2e/out
       - run:
           name: Check the host can run an emulator
           command: |
@@ -5267,35 +5326,34 @@ jobs:
             echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset} ANDROID_HOME=${ANDROID_HOME:-unset}"
             bash scripts/app-e2e/setup-sdk.sh
             bash scripts/app-e2e/create-avd.sh
-      # The app build runs beside the stack build: one CircleCI cloud job gets an hour.
-      - run:
-          name: Build the app's e2e variant against the stack's URLs (background)
-          background: true
-          command: |
-            set +e
-            bash scripts/app-e2e/build-apk.sh > /tmp/app-e2e-build.log 2>&1
-            echo $? > /tmp/app-e2e-build.exit
+            # Playwright and the fixtures run from iznik-nuxt3 on this machine.
+            (cd iznik-nuxt3 && npm ci --no-audit --no-fund)
       - setup-dependencies
       - start-docker-services:
           reason: "Starting the stack for the app emulator tests"
       - wait-for-basic-services
-      - wait-for-prod-container
       - run:
-          name: Wait for the app build
-          no_output_timeout: 30m
+          name: Wait for the Freegle production container
+          no_output_timeout: 25m
           command: |
-            for _ in $(seq 1 180); do
-              [ -f /tmp/app-e2e-build.exit ] && break
+            # Only freegle-prod-local: the reply flow's second member uses the web front
+            # end. ModTools is an idle placeholder in this job's stack.
+            for i in $(seq 1 120); do
+              if curl -s -f -o /dev/null --max-time 5 "http://localhost:${PORT_FREEGLE_PROD_LOCAL}/"; then
+                echo "Freegle production container answering after $((i * 10))s"
+                exit 0
+              fi
               sleep 10
             done
-            tail -30 /tmp/app-e2e-build.log
-            [ -f /tmp/app-e2e-build.exit ] || { echo "The app build did not finish in 30 minutes"; exit 1; }
-            exit "$(cat /tmp/app-e2e-build.exit)"
+            docker logs "${COMPOSE_PROJECT_NAME}-prod-local" --tail 40 2>&1 || true
+            echo "Freegle production container did not answer in 20 minutes"
+            exit 1
       - run:
           name: Run the Playwright app project on the emulator
-          no_output_timeout: 45m
+          no_output_timeout: 30m
           command: |
-            bash scripts/app-e2e/run.sh --no-build
+            # Ends the run, reports written, well inside the job's hour.
+            APP_E2E_GLOBAL_TIMEOUT_MIN=20 bash scripts/app-e2e/run.sh --no-build
       - run:
           name: Collect app emulator evidence
           when: always
@@ -5305,7 +5363,6 @@ jobs:
             if [ -d "$latest" ]; then
               cp -rL "$latest/." ~/app-e2e-artifacts/ 2>/dev/null || true
             fi
-            cp /tmp/app-e2e-build.log ~/app-e2e-artifacts/app-build.log 2>/dev/null || true
             docker ps --format 'table {{.Names}}\t{{.Status}}' > ~/app-e2e-artifacts/docker-ps.txt 2>&1 || true
             ls -la ~/app-e2e-artifacts
       - store_test_results:
