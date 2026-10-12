@@ -5221,17 +5221,26 @@ jobs:
             echo "export JAVA_HOME=$JDK21" >> "$BASH_ENV"
             echo "export PATH=$JDK21/bin:\$PATH" >> "$BASH_ENV"
             export JAVA_HOME=$JDK21 PATH=$JDK21/bin:$PATH
-            # The image may put an nvm Node first on PATH; make 22 the one that runs.
-            if [ -s "$HOME/.nvm/nvm.sh" ]; then
-              export NVM_DIR="$HOME/.nvm"
-              . "$NVM_DIR/nvm.sh"
+            # The image puts its own nvm Node (24) first on PATH, from /opt/circleci/.nvm.
+            # The release builds use 22, so make 22 the node that runs in every step.
+            NVM_SH=""
+            for d in "${NVM_DIR:-}" /opt/circleci/.nvm "$HOME/.nvm"; do
+              if [ -n "$d" ] && [ -s "$d/nvm.sh" ]; then NVM_SH="$d/nvm.sh"; break; fi
+            done
+            if [ -n "$NVM_SH" ]; then
+              export NVM_DIR="$(dirname "$NVM_SH")"
+              . "$NVM_SH"
               nvm install 22 >/dev/null
               nvm alias default 22 >/dev/null
-              echo 'export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 22 >/dev/null' >> "$BASH_ENV"
+              echo "export NVM_DIR=\"$NVM_DIR\"; . \"$NVM_SH\"; nvm use 22 >/dev/null" >> "$BASH_ENV"
             else
               curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
               sudo -E bash /tmp/nodesource_setup.sh
               sudo apt-get install -y nodejs
+              mkdir -p "$HOME/node22-bin"
+              ln -sf /usr/bin/node /usr/bin/npm /usr/bin/npx "$HOME/node22-bin/"
+              echo "export PATH=\"$HOME/node22-bin:\$PATH\"" >> "$BASH_ENV"
+              export PATH="$HOME/node22-bin:$PATH"
             fi
             node --version | grep -q '^v22\.' || { echo "Node 22 is not the active node: $(node --version)"; exit 1; }
             java -version 2>&1 | head -1
