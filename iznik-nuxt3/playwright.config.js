@@ -320,6 +320,10 @@ module.exports = defineConfig({
           {
             name: 'app',
             testMatch: [APP_ONLY_SPECS, ...APP_SHARED_SPECS],
+            // One retry: a test running when the emulator dies (its software renderer
+            // has been seen to segfault) runs again once the fixture has rebooted it.
+            // A pass on retry is reported as flaky, not as a plain pass.
+            retries: 1,
             // Drives the desktop give page's own inputs; the phone layout redirects
             // to the mobile flow, which the postMessage fixture (and the other
             // tests) follow.

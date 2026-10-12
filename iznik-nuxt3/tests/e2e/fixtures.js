@@ -123,19 +123,42 @@ async function connectAppWebView() {
     throw new Error('APP_E2E_ORIGIN must be set with APP_E2E_SERIAL')
   }
   const { _android: android } = require('playwright')
-  // A loaded machine can make the adb server drop the emulator for a few seconds before
-  // its port scan finds it again (scripts/app-e2e/lib.sh); wait for it rather than fail.
-  const deadline = Date.now() + 90000
-  let devices = []
-  let device = null
-  while (!device && Date.now() < deadline) {
-    devices = await android.devices({
-      port: Number(process.env.ANDROID_ADB_SERVER_PORT) || 5037,
-    })
-    device = devices.find((d) => d.serial() === APP_SERIAL) || null
-    if (!device) {
+  const findDevice = async (waitMs) => {
+    // A loaded machine can make the adb server drop the emulator for a few seconds
+    // before its port scan finds it again (scripts/app-e2e/lib.sh); wait for it.
+    const deadline = Date.now() + waitMs
+    for (;;) {
+      const devices = await android.devices({
+        port: Number(process.env.ANDROID_ADB_SERVER_PORT) || 5037,
+      })
+      const found = devices.find((d) => d.serial() === APP_SERIAL)
+      if (found || Date.now() >= deadline) {
+        return { device: found || null, devices }
+      }
       await new Promise((resolve) => setTimeout(resolve, 3000))
     }
+  }
+  let { device, devices } = await findDevice(30000)
+  if (!device) {
+    // The emulator itself has gone: its software renderer has been seen to segfault
+    // between tests ("RenderThread: potentially unexpected fatal signal 11"). Boot it
+    // again and relaunch the app, so the rest of the run goes on; the test that was
+    // running when it died is retried (the app project has one retry).
+    const scripts = path.join(__dirname, '../../../scripts/app-e2e')
+    console.log(
+      `[RECOVERED] emulator: ${APP_SERIAL} is gone (attached: ${devices
+        .map((d) => d.serial())
+        .join(', ')}); booting it again`
+    )
+    require('child_process').execFileSync(
+      'bash',
+      [
+        '-c',
+        `bash "${scripts}/start-emulator.sh" && bash "${scripts}/launch-app.sh" >/dev/null`,
+      ],
+      { stdio: 'inherit', timeout: 600000 }
+    )
+    ;({ device, devices } = await findDevice(60000))
   }
   if (!device) {
     throw new Error(
