@@ -136,7 +136,9 @@ Artifacts: `freegle-e2e.apk` on the APK job; `app-emulator` (the run directory a
   tolerates the error.
 - **A Play Store image refuses `adb root`**, which the run needs twice: to bind device
   port 80 for the reverse tunnel, and to deliver the FCM broadcast (its receiver is
-  guarded by a Google-only permission). Use `google_apis`.
+  guarded by a Google-only permission). Use `google_apis`. On a busy runner `adb root`
+  can also fail just after boot on the right image, so
+  `start-emulator.sh` retries it and only blames the image when adbd says "production".
 - **Without any `google-services.json` the app dies on launch**: the push plugin's
   `register()` throws `Default FirebaseApp is not initialized` on a plugin thread. Hence
   the placeholder.

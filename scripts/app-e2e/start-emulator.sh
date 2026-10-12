@@ -78,12 +78,22 @@ adb_emu shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
 adb_emu shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
 # adbd as root: a Play Store image refuses this, which is why the gate uses google_apis.
-adb_emu root >/dev/null 2>&1 || die "adb root refused on $EMU_SERIAL (is the AVD a google_apis image, not google_apis_playstore?)"
+# On a loaded host adb root can fail just after boot on the right image too, so retry, and
+# only blame the image when adbd says it is a production build.
+root_out=""
+for _ in $(seq 1 10); do
+	if root_out=$(adb_emu root 2>&1); then break; fi
+	case "$root_out" in *production*) break ;; esac
+	sleep 3
+done
+case "$root_out" in
+*production*) die "adb root refused on $EMU_SERIAL (is the AVD a google_apis image, not google_apis_playstore?): $root_out" ;;
+esac
 adb_emu wait-for-device
 for _ in $(seq 1 30); do
 	[ "$(adb_emu shell id -u 2>/dev/null | tr -d '\r')" = "0" ] && break
 	sleep 1
 done
-[ "$(adb_emu shell id -u 2>/dev/null | tr -d '\r')" = "0" ] || die "adbd did not come back as root"
+[ "$(adb_emu shell id -u 2>/dev/null | tr -d '\r')" = "0" ] || die "adbd did not come back as root (adb root said: ${root_out:-nothing})"
 
 log "$EMU_SERIAL booted in ${elapsed}s (API $(adb_emu shell getprop ro.build.version.sdk | tr -d '\r'), $(adb_emu shell getprop ro.build.type | tr -d '\r'), adbd root)"

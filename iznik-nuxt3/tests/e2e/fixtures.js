@@ -270,10 +270,14 @@ async function resetAppState(page) {
     .context()
     .clearCookies()
     .catch(() => {})
+  // domcontentloaded comes before Vue mounts; a test that reads the app straight away
+  // (its Pinia store, say) would find nothing there yet.
+  const navigatedAt = Date.now()
   await page.goto(APP_ORIGIN + '/', {
     waitUntil: 'domcontentloaded',
     timeout: timeouts.navigation.initial,
   })
+  await waitForAppMount(page, '/', navigatedAt)
 }
 
 // Opening a page takes well under a second, but Chromium has been seen to leave
@@ -327,7 +331,20 @@ const fixtures = {
       if (appWebView.page.isClosed()) {
         await appWebView.reattach()
       }
-      await resetAppState(appWebView.page)
+      try {
+        await resetAppState(appWebView.page)
+      } catch (e) {
+        // The page can also close under the reset itself, with the app still running:
+        // seen after a stalled emulator restarted systemui, which changes the screen
+        // size. Attach to the page there now and reset that.
+        if (!appWebView.page.isClosed()) throw e
+        noteRecovery(
+          'app-webview-closed',
+          `the app WebView closed during the reset (${e.message.split('\n')[0]}), re-attached`
+        )
+        await appWebView.reattach()
+        await resetAppState(appWebView.page)
+      }
       await use(appWebView.page.context())
       return
     }
