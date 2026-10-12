@@ -169,6 +169,13 @@ Artifacts: `freegle-e2e.apk` on the APK job; `app-emulator` (the run directory a
   screen while the camera is still opening; on a CI emulator the one tap landed then and
   the camera sat on its preview until the test gave up. `takePictureWithSystemCamera`
   taps again each round until the review screen's done button appears.
+- **An "isn't responding" dialog covers every screen until someone answers it.** On a
+  loaded CI emulator the app or System UI stalls past Android's five seconds, and the
+  dialog then stays up after the app has recovered: in job 39544 it sat over the camera
+  and the photo picker for seven minutes, so every `uiautomator dump` was of the dialog
+  and both photo tests timed out. `uiNodes` taps Wait (`android:id/aerr_wait`) and logs
+  `[device] answered Wait to ...`. Hiding the dialogs (`hide_error_dialogs`) is not the
+  fix: Android then kills the stalled app instead.
 - **Opening the shade right after Home can be lost** while the launcher animates in.
   `tapNotification` asks again each round until the notification is on screen.
 - **The release build has no Capacitor logging**: R8 builds drop it, so logcat says nothing

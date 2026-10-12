@@ -94,8 +94,32 @@ async function poll(fn, { timeoutMs, intervalMs = 500, what = 'condition' }) {
 /**
  * The current screen as a flat list of nodes from `uiautomator dump`:
  * { text, resourceId, desc, className, clickable, bounds: {x1,y1,x2,y2} }.
+ *
+ * An "isn't responding" dialog is answered with Wait first, as a member would. On a
+ * loaded CI emulator the app or System UI stalls past Android's five seconds often
+ * enough, and the dialog then sits over everything until someone answers it: in job
+ * 39544 it covered the camera and the photo picker for seven minutes, so every dump
+ * was of the dialog. Hiding the dialogs (hide_error_dialogs) is no answer, because
+ * Android then kills the stalled app instead.
  */
 async function uiNodes() {
+  for (let answered = 0; ; answered++) {
+    const nodes = await dumpNodes()
+    const wait = nodes.find(
+      (n) => n.resourceId === 'android:id/aerr_wait' && n.bounds
+    )
+    if (!wait || answered >= 3) {
+      return nodes
+    }
+    const title = nodes.find((n) => /isn.t responding/i.test(n.text))
+    console.log(
+      `[device] answered Wait to "${title ? title.text : 'not responding'}"`
+    )
+    await tapNode(wait)
+  }
+}
+
+async function dumpNodes() {
   const xml = await poll(
     async () => {
       const out = await shell('uiautomator dump /sdcard/app-e2e-window.xml', {

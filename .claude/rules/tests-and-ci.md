@@ -304,6 +304,11 @@ build, not by bisecting the boundary.
   `MainActivity`, and the give flow never opens: root's URI grant does not take, and `am`
   never moves `EXTRA_STREAM` into the clip data a grant covers. `shareImage` sends as the
   shell user with the URI in the intent data too.
+- **Every UI dump on the emulator can be an "isn't responding" dialog.** The CI emulator
+  stalls the app or System UI past five seconds, and the dialog stays over every screen
+  after the app recovers, so the camera and photo picker helpers saw only the dialog for
+  seven minutes (job 39544). `uiNodes` in `tests/e2e/app/device.js` taps Wait and logs it;
+  `hide_error_dialogs` would make Android kill the app instead.
 - **An uploaded photo's thumbnail 404s on a stack with offset ports** (worktrees, CI on
   9080): the delivery service is asked to fetch `tusd.localhost:<host port>`, which its
   container cannot reach. The upload itself succeeded; check the tusd id in the draft.
