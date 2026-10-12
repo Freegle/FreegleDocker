@@ -186,6 +186,27 @@ describe('ModChatReview', () => {
     })
   })
 
+  describe('missing message', () => {
+    // The review list and the message lookup can briefly disagree while the
+    // queue reloads; a card whose message is not there must render nothing
+    // rather than throw reading fromuserid of undefined (Sentry 7788561616).
+    it('renders nothing and raises no error when the message is not in the store', () => {
+      globalThis.__mockChatStore.messageById = vi.fn(() => undefined)
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const warnings = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const wrapper = mountComponent()
+
+      expect(wrapper.find('.card').exists()).toBe(false)
+      const logged = [...errors.mock.calls, ...warnings.mock.calls]
+        .flat()
+        .join(' ')
+      expect(logged).not.toMatch(/fromuserid|reviewreason|widerchatreview/)
+      errors.mockRestore()
+      warnings.mockRestore()
+    })
+  })
+
   describe('View Original Email button', () => {
     it('shows when bymailid or msgid exists, hides when neither', () => {
       expect(mountComponent({ bymailid: 111 }).text()).toContain(
