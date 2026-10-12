@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-11
 **Status:** phases 0 to 5 built on branch feat/ux-telemetry (2026-10-12); the contract is
-docs/developers/reference/ux-telemetry.md. Not built: phase 6, the in-flow "why" prompt (section 8),
-by decision. Not done: the phase 0 production volume measurement, because the Loki tunnel was down;
+docs/developers/reference/ux-telemetry.md. Phase 6, the in-flow "why" prompt (section 8),
+was declined on 2026-10-12 and will never be built. Not done: the phase 0 production volume measurement, because the Loki tunnel was down;
 the nightly health rows record daily volumes by event type from the first run instead. No experiment
 is configured yet: the rails are in place for the first one.
 **Builds on:** `2026-07-03-photo-upload-telemetry-gap-and-give-funnel.md` (the give funnel work),
@@ -273,6 +273,9 @@ unattended action and this does not change that; the mail is for a person.
 
 ## 8. Ask them: the in-flow "why" prompt
 
+**Decided 2026-10-12: no. This will never be built.** The section is kept only as the record of
+what was proposed and declined.
+
 Everything above says where. Only members can say why, and the cheapest honest way to ask is at
 the moment they leave.
 
@@ -431,7 +434,7 @@ the funnel panel's variant split with sample sizes. Run the first one on the big
 finding; the obvious candidate from the 07-03 work is details before photos on mobile give.
 *Done when:* one UX change has shipped behind a holdout and its effect is read from the tab.
 
-### Phase 6: the "why" prompt (product decision first)
+### Phase 6: the "why" prompt (declined, will not be built)
 
 Section 8 as specified, behind a config switch defaulting to off, with the `ux_feedback` table,
 dump and purge wiring, and the reasons panel. Needs a yes from Edward or the board and a line in
@@ -455,5 +458,5 @@ the privacy page before the switch is turned on.
 | Promote `flow` to a Loki label | Yes, bounded set, but the rollup never depends on it | Ops, if Alloy changes on the live hosts are unwelcome |
 | Sampling rate for scroll and impressions | 10% per session, scaled in the rollup | Anyone wanting exact dead click counts on rare components |
 | Where the plan's doc lives | `docs/developers/reference/ux-telemetry.md` for the contract; this file for the rationale | |
-| The "why" prompt | Built last, off by default, needs a yes | Edward, board, data protection |
+| The "why" prompt | Declined 2026-10-12: will never be built | |
 | Flow explorer tree view (#89) | Deferred; the strip view over the rollup first | Whoever wanted the picture |
