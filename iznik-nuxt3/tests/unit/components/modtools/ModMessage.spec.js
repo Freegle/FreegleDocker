@@ -2104,6 +2104,50 @@ describe('ModMessage', () => {
       expect(warning.text()).toContain('out of area')
     })
 
+    // Discourse 9808/864: a rippled-in copy whose poster is also a member here offers the
+    // usual Reject message, so the notice says why instead of leaving it looking broken.
+    function rippledInWithPosterMessaging(canmessageposter) {
+      return mountComponent(
+        { contextGroupid: 789 },
+        {
+          groups: [
+            {
+              groupid: 999,
+              namedisplay: 'Origin',
+              collection: 'Approved',
+              rippled_in: 0,
+              arrival: rippleEarlier,
+            },
+            {
+              groupid: 789,
+              namedisplay: 'Context',
+              collection: 'Pending',
+              rippled_in: 1,
+              canmessageposter,
+              arrival: rippleLater,
+            },
+          ],
+        }
+      )
+    }
+
+    it('says when the poster of a rippled-in post is also a member here', () => {
+      const note = rippledInWithPosterMessaging(true).find(
+        '[data-test="ripple-poster-is-member-note"]'
+      )
+      expect(note.exists()).toBe(true)
+      expect(note.text()).toContain('The poster is also a member of')
+      expect(note.text()).toContain('Reject sends the usual message')
+    })
+
+    it('says nothing about membership when the poster is not a member here', () => {
+      expect(
+        rippledInWithPosterMessaging(false)
+          .find('[data-test="ripple-poster-is-member-note"]')
+          .exists()
+      ).toBe(false)
+    })
+
     it('tells the moderator the home community is reviewing a locked copy', () => {
       const wrapper = mountComponent(
         { contextGroupid: 789 },

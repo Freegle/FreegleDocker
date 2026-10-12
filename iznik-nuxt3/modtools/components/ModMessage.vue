@@ -265,6 +265,15 @@
                   rules), just not for being "out of area".
                 </span>
                 <span
+                  v-if="canMessagePoster"
+                  class="d-block mt-1"
+                  data-test="ripple-poster-is-member-note"
+                >
+                  The poster is also a member of
+                  {{ currentGroupName || 'this group' }}, so you can message
+                  them about it, and Reject sends the usual message.
+                </span>
+                <span
                   v-if="rippleProximity"
                   class="d-block mt-1"
                   data-test="ripple-proximity-note"
