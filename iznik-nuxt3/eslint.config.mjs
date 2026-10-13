@@ -18,7 +18,12 @@ export default createConfigForNuxt({
     files: ['**/*.vue'],
     plugins: { 'vuejs-accessibility': vueA11y },
     rules: {
-      'vuejs-accessibility/anchor-has-content': 'error',
+      'vuejs-accessibility/anchor-has-content': [
+        'error',
+        // The chat list wraps each ChatListEntry in a link; the entry renders
+        // the chat's name and latest message, so the link has a name.
+        { accessibleChildren: ['ChatListEntry'] },
+      ],
       'vuejs-accessibility/label-has-for': [
         'error',
         { required: { some: ['nesting', 'id'] } },

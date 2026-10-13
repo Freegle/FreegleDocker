@@ -128,38 +128,40 @@
                     </b-button>
                   </div>
                   <div v-if="showClosed">
-                    <div
+                    <a
                       v-for="c in closedChats"
                       :key="'chat-' + c.id"
+                      :href="chatHref(c.id)"
                       :class="{
                         chat: true,
                         active: selectedChatId === c?.id,
                       }"
-                      @click="gotoChat(c.id)"
+                      @click="onChatClick($event, c.id)"
                     >
                       <ChatListEntry
                         v-if="c.lastmsg > 0 || selectedChatId === c?.id"
                         :id="c.id"
                         :active="selectedChatId === c?.id"
                       />
-                    </div>
+                    </a>
                   </div>
                   <div v-else>
-                    <div
+                    <a
                       v-for="c in visibleChats"
                       :key="'chat-' + c.id"
+                      :href="chatHref(c.id)"
                       :class="{
                         chat: true,
                         active: selectedChatId === c?.id,
                       }"
-                      @click="gotoChat(c.id)"
+                      @click="onChatClick($event, c.id)"
                     >
                       <ChatListEntry
                         v-if="c.lastmsg > 0 || selectedChatId === c?.id"
                         :id="c.id"
                         :active="selectedChatId === c?.id"
                       />
-                    </div>
+                    </a>
                   </div>
                   <infinite-loading
                     :identifier="bump"
@@ -660,6 +662,34 @@ async function markAllRead() {
   chatStore.fetchChats()
 }
 
+// Each row is a real link so it can be opened in a new tab (#115): ctrl-click,
+// cmd-click, shift-click and middle-click are left to the browser, which uses
+// the href. A plain click selects the chat in place, as before.
+function chatHref(chatId) {
+  let url = '/chats/' + chatId
+
+  if (search.value) {
+    url += '?search=' + encodeURIComponent(search.value)
+  }
+
+  return url
+}
+
+function onChatClick(event, chatId) {
+  if (
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    event.altKey ||
+    event.button === 1
+  ) {
+    return
+  }
+
+  event.preventDefault()
+  gotoChat(chatId)
+}
+
 function gotoChat(chatId) {
   const router = useRouter()
   const wasSelected = Boolean(selectedChatId.value)
@@ -731,6 +761,9 @@ async function searchMore() {
 }
 
 .chat {
+  display: block;
+  color: inherit;
+  text-decoration: none;
   border-left: 3px solid transparent;
   transition: all var(--transition-fast);
 }
