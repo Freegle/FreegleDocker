@@ -11,6 +11,7 @@ const panels = [
   'SecondThoughts',
   'Help',
   'Adoption',
+  'ReplyConfirm',
   'Regret',
   'Search',
 ]

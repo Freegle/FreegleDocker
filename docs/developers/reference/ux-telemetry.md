@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-13
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/composables/useFlowTelemetry.js
@@ -18,6 +18,7 @@ covers:
   - iznik-batch/app/Console/Commands/Ux/WeeklyReportCommand.php
   - iznik-batch/database/migrations/2026_10_12_000001_create_ux_telemetry_tables.php
   - iznik-server-go/ux/ux.go
+  - iznik-server-go/ux/replyconfirm.go
   - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
   - iznik-nuxt3/tests/e2e/test-modtools-sysadmin-ux.spec.js
 ---
@@ -206,6 +207,7 @@ also returns the same figures for the preceding period of equal length as `previ
 | `GET /modtools/ux/fields?flow=` | per field: revisits, validation_failures, choice_switches |
 | `GET /modtools/ux/friction` | top 20 (page, component) by rage, dead, repeated intent, sorted by change against previous |
 | `GET /modtools/ux/adoption` | per feature: using_users / active_users |
+| `GET /modtools/ux/replyconfirm` | per reason (damaged, car, both) for the "still want it?" question asked before a reply is passed on: asked, yes_button, yes_message (wrote again, which counts as yes), no, no_answer (expired, reply dropped), waiting. Read straight from `chat_prompts`, not a rollup; see [chat-prompts.md](chat-prompts.md) |
 | `GET /modtools/ux/regret` | per signal, per day |
 | `GET /modtools/ux/search` | per day |
 | `GET /modtools/ux/health` | per metric, per day, with `ok` false when ratio is outside 0.7 to 1.3 |

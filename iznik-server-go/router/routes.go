@@ -1646,6 +1646,20 @@ func SetupRoutes(app *fiber.App) {
 		// @Failure 403 {object} fiber.Error "Forbidden"
 		rg.Get("/modtools/ux/adoption", ux.Adoption)
 
+		// @Router /modtools/ux/replyconfirm [get]
+		// @Summary Reply confirmation answers
+		// @Description Per reason (damaged, car, both): how often a replier asked whether they still want an offer said yes by button, yes by writing again, no, or never answered, with the previous period
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/replyconfirm", ux.ReplyConfirm)
+
 		// @Router /modtools/ux/regret [get]
 		// @Summary UX regret signals
 		// @Description Per regret signal per day, with the previous period total

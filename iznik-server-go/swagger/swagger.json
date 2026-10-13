@@ -5578,6 +5578,49 @@
     ]
    }
   },
+  "/modtools/ux/replyconfirm": {
+   "get": {
+    "description": "Per reason (damaged, car, both): how often a replier asked whether they still want an offer said yes by button, yes by writing again, no, or never answered, with the previous period.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "Reply confirmation answers",
+    "operationId": "getUxReplyConfirm",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
   "/modtools/ux/search": {
    "get": {
     "description": "Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs.",

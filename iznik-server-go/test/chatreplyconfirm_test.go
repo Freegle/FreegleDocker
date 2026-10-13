@@ -35,6 +35,8 @@ func ensureReplyConfirmColumns(t *testing.T) {
 	ensureFirstReplyTables(t)
 	addColumnIfMissing("chat_prompts", "userid", "BIGINT UNSIGNED NULL")
 	addColumnIfMissing("chat_prompts", "heldchatmsgid", "BIGINT UNSIGNED NULL")
+	addColumnIfMissing("chat_prompts", "reason", "VARCHAR(16) NULL")
+	addColumnIfMissing("chat_prompts", "answered_via", "VARCHAR(16) NULL")
 }
 
 // seedEee records a classification for the post, as eee:classify-new would.
@@ -151,6 +153,24 @@ func (f replyConfirmFixture) answer(t *testing.T, promptID uint64, token string,
 	return resp.StatusCode
 }
 
+// promptRecord is what the SysAdmin UX tab reads about a question: why it was asked and how it
+// was answered.
+func promptRecord(promptID uint64) (string, string) {
+	var row struct {
+		Reason      *string
+		AnsweredVia *string `gorm:"column:answered_via"`
+	}
+	database.DBConn.Table("chat_prompts").Select("reason, answered_via").Where("chatmsgid = ?", promptID).Scan(&row)
+	reason, via := "", ""
+	if row.Reason != nil {
+		reason = *row.Reason
+	}
+	if row.AnsweredVia != nil {
+		via = *row.AnsweredVia
+	}
+	return reason, via
+}
+
 func processingState(msgID uint64) (int, int) {
 	var row struct {
 		Processingrequired   int
@@ -174,6 +194,8 @@ func TestReplyConfirm_DamagedOfferAsksTheReplier(t *testing.T) {
 		assert.Contains(t, p.Message, "damaged")
 		assert.NotContains(t, p.Message, "car")
 		assert.Equal(t, 0, p.Processing, "never processed, so the poster is never shown or told about it")
+		reason, _ := promptRecord(p.Chatmsgid)
+		assert.Equal(t, "damaged", reason)
 	}
 
 	// The reply itself waits for chats:process-incoming, which waits for the answer.
@@ -196,6 +218,8 @@ func TestReplyConfirm_LargeOrHeavyAsksAboutACar(t *testing.T) {
 		if assert.NotNil(t, p, "size %s / weight %s needs a car", c.size, c.weight) {
 			assert.Contains(t, p.Message, "car")
 			assert.NotContains(t, p.Message, "damaged")
+			reason, _ := promptRecord(p.Chatmsgid)
+			assert.Equal(t, "car", reason)
 		}
 	}
 }
@@ -210,6 +234,8 @@ func TestReplyConfirm_BothReasonsInOneQuestion(t *testing.T) {
 	if assert.NotNil(t, p) {
 		assert.Contains(t, p.Message, "damaged")
 		assert.Contains(t, p.Message, "car")
+		reason, _ := promptRecord(p.Chatmsgid)
+		assert.Equal(t, "both", reason)
 	}
 }
 
@@ -298,6 +324,8 @@ func TestReplyConfirm_YesLetsTheReplyThrough(t *testing.T) {
 	if assert.NotNil(t, p) {
 		assert.Equal(t, 200, f.answer(t, p.Chatmsgid, f.replierToken, "yes"))
 		assert.Equal(t, "yes", *f.prompt(t).Answer)
+		_, via := promptRecord(p.Chatmsgid)
+		assert.Equal(t, "button", via)
 	}
 
 	// Still for chats:process-incoming to deliver, now that nothing holds it.
@@ -341,6 +369,8 @@ func TestReplyConfirm_CarryingOnTheChatCountsAsYes(t *testing.T) {
 	p := f.prompt(t)
 	if assert.NotNil(t, p) && assert.NotNil(t, p.Answer) {
 		assert.Equal(t, "yes", *p.Answer)
+		_, via := promptRecord(p.Chatmsgid)
+		assert.Equal(t, "message", via, "so SysAdmin can tell a tapped yes from carrying on the chat")
 	}
 
 	required, _ := processingState(replyID)

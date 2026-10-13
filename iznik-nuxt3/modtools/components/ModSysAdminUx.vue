@@ -13,6 +13,7 @@
     <ModSysAdminUxSecondThoughts />
     <ModSysAdminUxHelp />
     <ModSysAdminUxAdoption />
+    <ModSysAdminUxReplyConfirm />
     <ModSysAdminUxRegret />
     <ModSysAdminUxSearch />
   </div>
@@ -28,6 +29,7 @@ import ModSysAdminUxFriction from '~/modtools/components/ModSysAdminUxFriction.v
 import ModSysAdminUxSecondThoughts from '~/modtools/components/ModSysAdminUxSecondThoughts.vue'
 import ModSysAdminUxHelp from '~/modtools/components/ModSysAdminUxHelp.vue'
 import ModSysAdminUxAdoption from '~/modtools/components/ModSysAdminUxAdoption.vue'
+import ModSysAdminUxReplyConfirm from '~/modtools/components/ModSysAdminUxReplyConfirm.vue'
 import ModSysAdminUxRegret from '~/modtools/components/ModSysAdminUxRegret.vue'
 import ModSysAdminUxSearch from '~/modtools/components/ModSysAdminUxSearch.vue'
 

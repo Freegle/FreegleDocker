@@ -29,6 +29,11 @@ export default class UxAPI extends BaseAPI {
     return await this.$getv2('/modtools/ux/adoption', params)
   }
 
+  /** How repliers answer the damaged / needs-a-car question, per reason. */
+  async fetchReplyConfirm(params = {}) {
+    return await this.$getv2('/modtools/ux/replyconfirm', params)
+  }
+
   /** Regret signals per day. */
   async fetchRegret(params = {}) {
     return await this.$getv2('/modtools/ux/regret', params)

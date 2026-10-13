@@ -8,6 +8,7 @@ const PANELS = {
   fields: 'fetchFields',
   friction: 'fetchFriction',
   adoption: 'fetchAdoption',
+  replyconfirm: 'fetchReplyConfirm',
   regret: 'fetchRegret',
   search: 'fetchSearch',
   samples: 'fetchSamples',

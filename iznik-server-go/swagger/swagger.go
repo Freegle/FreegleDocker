@@ -5543,6 +5543,33 @@ type getSupportAIRunParams struct {
 //	401: errorResponse
 //	403: errorResponse
 
+// swagger:route GET /modtools/ux/replyconfirm modtools getUxReplyConfirm
+// Reply confirmation answers
+//
+// Per reason (damaged, car, both): how often a replier asked whether they still want an offer said yes by button, yes by writing again, no, or never answered, with the previous period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
 // swagger:route GET /modtools/ux/regret modtools getUxRegret
 // UX regret signals
 //

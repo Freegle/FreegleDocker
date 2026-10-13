@@ -7,6 +7,7 @@ const fetchers = {
   fetchFields: vi.fn(),
   fetchFriction: vi.fn(),
   fetchAdoption: vi.fn(),
+  fetchReplyConfirm: vi.fn(),
   fetchRegret: vi.fn(),
   fetchSearch: vi.fn(),
   fetchHealth: vi.fn(),
@@ -35,6 +36,7 @@ describe('ux store', () => {
       'fields',
       'friction',
       'adoption',
+      'replyconfirm',
       'regret',
       'search',
       'samples',
@@ -97,6 +99,7 @@ describe('ux store', () => {
       'fetchFields',
       'fetchFriction',
       'fetchAdoption',
+      'fetchReplyConfirm',
       'fetchRegret',
       'fetchSearch',
     ]) {

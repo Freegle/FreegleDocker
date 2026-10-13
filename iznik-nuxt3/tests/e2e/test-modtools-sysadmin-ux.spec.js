@@ -18,6 +18,7 @@ const PANELS = [
   'Second thoughts',
   'Help',
   'Adoption',
+  'Still want it?',
   'Regret',
   'Search and browse',
 ]
@@ -29,6 +30,7 @@ const ENDPOINTS = [
   'fields',
   'friction',
   'adoption',
+  'replyconfirm',
   'regret',
   'search',
 ]

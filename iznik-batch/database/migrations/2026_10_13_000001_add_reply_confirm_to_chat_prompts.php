@@ -17,6 +17,10 @@ use Illuminate\Support\Facades\Schema;
  * `heldchatmsgid` is the reply the answer decides. chats:process-incoming leaves it
  * unprocessed - so the poster neither sees it nor hears about it - until the prompt is
  * answered.
+ *
+ * `reason` is why it was asked ('damaged', 'car' or 'both') and `answered_via` is how it was
+ * answered ('button', or 'message' when writing again counted as a yes), so the SysAdmin UX tab
+ * can say how often each question is answered, and how.
  */
 return new class extends Migration
 {
@@ -27,6 +31,8 @@ return new class extends Migration
                 $t->unsignedBigInteger('userid')->nullable()->after('msgids');
                 $t->unsignedBigInteger('heldchatmsgid')->nullable()->after('userid')
                     ->index('chat_prompts_heldchatmsgid');
+                $t->string('reason', 16)->nullable()->after('kind');
+                $t->string('answered_via', 16)->nullable()->after('answered_at');
             });
 
             DB::statement(
@@ -50,7 +56,7 @@ return new class extends Migration
                 $t->dropForeign('chat_prompts_userid_foreign');
                 $t->dropForeign('chat_prompts_heldchatmsgid_foreign');
                 $t->dropIndex('chat_prompts_heldchatmsgid');
-                $t->dropColumn(['userid', 'heldchatmsgid']);
+                $t->dropColumn(['userid', 'heldchatmsgid', 'reason', 'answered_via']);
             });
         }
     }
