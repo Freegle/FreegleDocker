@@ -88,14 +88,15 @@ async function setBrowseLocation(page, postcode = SEEDED_POSTCODE) {
     return
   }
 
+  // Choosing the postcode saves it, and the prompt goes as soon as Browse knows the
+  // location, usually before its tick can be seen. So wait for the prompt to go.
   await input.fill(postcode)
-  await page
-    .locator('.validation-tick')
-    .first()
-    .waitFor({ state: 'visible', timeout: timeouts.api.default })
-  await expect(page.locator('.pcinp').filter({ visible: true })).toHaveCount(0, {
-    timeout: timeouts.api.default,
-  })
+  await expect(page.locator('.pcinp').filter({ visible: true })).toHaveCount(
+    0,
+    {
+      timeout: timeouts.api.default,
+    }
+  )
 }
 
 async function signUpWithLocation(page, testEmail, userName) {
@@ -334,7 +335,8 @@ test.describe('Browse Page Tests', () => {
     page,
     testEnv,
   }) => {
-    await loginViaHomepage(page, testEnv.mod.email, 'freegle')
+    // Not the mod: they posted the offer, and Browse folds a member's own posts away.
+    await loginViaHomepage(page, testEnv.user.email, 'freegle')
 
     // The member is put where the seeded posts are, so the card is in the feed.
     await setBrowseLocation(page)

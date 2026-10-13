@@ -166,6 +166,8 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
       `spatial ${ages.messages_spatial} day(s) old)\n`
   )
 
+  await seedReach(pfx, label)
+
   // The Go V2 API maintains a MySQL connection pool. Dropping and recreating the
   // database invalidates those connections. Restart the container so it starts
   // fresh — otherwise the location typeahead (used by postcode validation in the
@@ -193,6 +195,84 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
   // but clearing keeps the cache honest after a DB reset.
   clearTestEnvCache()
   appendTestLogs('playwright', `${label}Test database reset complete (apiv2 healthy)\n`)
+}
+
+/**
+ * Give the seeded posts their reach, so the Browse feed has something in it.
+ *
+ * Browse shows a post only once its reach covers the viewer, and reach rows are
+ * made by ripple:expand, not by the fixtures. The expander sizes each reach from
+ * the freeglers around the post, which it asks the spatial-knn finder for, and
+ * the fixtures have no users_approxlocs rows. With none, the finder answers 503
+ * "dataset not ready", the routing server returns an empty schedule, and every
+ * post is skipped: the feed is empty with no error anywhere.
+ *
+ * So each poster gets an approximate location at their post, the finder's user
+ * index is rebuilt (it is only ever built at startup, which ran against an empty
+ * table), the expander is run until the posts have reach, and the finder's reach
+ * index is rebuilt, because the feed answers containment from that index rather
+ * than from the table.
+ */
+async function seedReach(pfx: string, label: string) {
+  const sql = (q: string) =>
+    execSync(`docker exec -i ${pfx}-percona mysql -u root -piznik iznik -N -B`, {
+      input: q,
+      encoding: 'utf8',
+      timeout: 30000,
+    }).trim()
+  const knn = (method: 'GET' | 'POST', port: number, urlPath: string) =>
+    execSync(
+      `docker exec ${pfx}-batch curl -s -o /dev/null -w '%{http_code}' -X ${method} http://spatial-knn:${port}${urlPath}`,
+      { encoding: 'utf8', timeout: 15000 }
+    ).trim()
+  const waitFor = async (what: string, ms: number, ok: () => boolean) => {
+    const start = Date.now()
+    while (Date.now() - start < ms) {
+      try {
+        if (ok()) return
+      } catch {}
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    throw new Error(`${what} within ${ms / 1000}s`)
+  }
+
+  sql(
+    'INSERT IGNORE INTO users_approxlocs (userid, lat, lng, position) ' +
+      'SELECT fromuser, ANY_VALUE(lat), ANY_VALUE(lng), ST_SRID(POINT(ANY_VALUE(lng), ANY_VALUE(lat)), 3857) ' +
+      'FROM messages WHERE fromuser IS NOT NULL AND lat IS NOT NULL AND lng IS NOT NULL GROUP BY fromuser'
+  )
+  knn('POST', 8195, '/v1/userapproxlocs/rebuild')
+  await waitFor('spatial-knn did not serve the seeded user locations', 60000, () =>
+    knn('GET', 8194, '/v1/userapproxlocs/knn?lat=55.9533&lng=-3.1883&limit=1') === '200'
+  )
+
+  // The scheduler runs the expander every minute too, and a run that finds the
+  // lock held exits at once, so poll for the rows rather than for this command.
+  try {
+    execSync(`docker exec ${pfx}-batch php artisan ripple:expand --limit=500`, {
+      encoding: 'utf8',
+      timeout: 180000,
+    })
+  } catch {}
+  await waitFor('ripple:expand gave no seeded post a reach', 180000, () =>
+    parseInt(sql('SELECT COUNT(*) FROM rippling_reach'), 10) > 0
+  )
+
+  const [msgid, lat, lng] = sql('SELECT msgid, lat, lng FROM rippling_reach ORDER BY msgid LIMIT 1').split('\t')
+  knn('POST', 8195, '/v1/reach/rebuild')
+  await waitFor('spatial-knn did not index the seeded reach', 60000, () =>
+    JSON.parse(
+      execSync(
+        `docker exec ${pfx}-batch curl -s "http://spatial-knn:8194/v1/reach/containing?lat=${lat}&lng=${lng}"`,
+        { encoding: 'utf8', timeout: 15000 }
+      )
+    ).in.includes(Number(msgid))
+  )
+
+  appendTestLogs(
+    'playwright',
+    `${label}Seeded reach for ${sql('SELECT COUNT(*) FROM rippling_reach')} post(s)\n`
+  )
 }
 
 async function runPlaywrightTests(testFile: string | null, testName: string | null) {
