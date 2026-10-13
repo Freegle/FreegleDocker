@@ -191,11 +191,14 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 		ExpiresAt  *time.Time `gorm:"column:expires_at"`
 		User1      uint64
 		User2      uint64
+		// Set when the prompt was asked of one member in a chat between two.
+		Userid        *uint64
+		Heldchatmsgid *uint64
 	}
 
 	db.Table("chat_prompts cp").
 		Select("cp.chatmsgid, cp.msgid, cp.msgids, cp.kind, cp.options, cp.answer, "+
-			"cp.answered_at, cp.expires_at, cr.user1, cr.user2").
+			"cp.answered_at, cp.expires_at, cr.user1, cr.user2, cp.userid, cp.heldchatmsgid").
 		Joins("INNER JOIN chat_messages cm ON cm.id = cp.chatmsgid").
 		Joins("INNER JOIN chat_rooms cr ON cr.id = cm.chatid").
 		Where("cp.chatmsgid = ? AND cm.chatid = ?", chatmsgid, chatid).
@@ -205,7 +208,7 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "Prompt not found")
 	}
 
-	if row.User1 != myid && row.User2 != myid {
+	if (row.User1 != myid && row.User2 != myid) || (row.Userid != nil && *row.Userid != myid) {
 		return fiber.NewError(fiber.StatusForbidden, "Not your prompt")
 	}
 
@@ -232,7 +235,12 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Not one of the offered answers")
 	}
 
-	applied := applyPromptAnswer(db, row.Kind, payload.Answer, asRow.posts(), myid)
+	var applied bool
+	if row.Kind == utils.PROMPT_KIND_CONFIRM_REPLY && row.Heldchatmsgid != nil {
+		applied = applyReplyConfirmAnswer(db, payload.Answer, *row.Heldchatmsgid, myid)
+	} else {
+		applied = applyPromptAnswer(db, row.Kind, payload.Answer, asRow.posts(), myid)
+	}
 
 	// Record last. An answer that changed the post but was not recorded would be
 	// re-askable; one recorded but not applied would silently lose the member's

@@ -92,6 +92,11 @@ class ChatMessage extends Model implements Auditable
      */
     public const PROCESSFAIL_SPAMMER = 'Spammer';
     public const PROCESSFAIL_BANNED_IN_COMMON = 'BannedInCommonGroups';
+    // The replier was asked whether they still wanted an item that looked damaged or too big
+    // to carry, and never answered.
+    public const PROCESSFAIL_NOT_CONFIRMED = 'ReplyNotConfirmed';
+    // ...and answered that they did not want it. Set by the Go API when they answer.
+    public const PROCESSFAIL_REPLY_WITHDRAWN = 'ReplyWithdrawn';
 
     public const TYPE_DEFAULT = 'Default';
     public const TYPE_SYSTEM = 'System';

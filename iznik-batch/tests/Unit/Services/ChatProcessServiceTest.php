@@ -954,4 +954,71 @@ class ChatProcessServiceTest extends TestCase
         $this->assertEquals(1, $updated->reviewrejected, 'an allowed word inside a block keyword must not defeat the block');
         $this->assertEquals(0, $updated->reviewrequired);
     }
+
+    // --- Replies waiting for the replier to confirm (Go chat/replyconfirm.go) ---
+
+    /**
+     * A reply to an item that looked damaged or too big to carry, with the question the
+     * replier was asked about it.
+     */
+    private function replyAwaitingConfirmation(array $prompt): object
+    {
+        $poster = $this->createTestUser();
+        $replier = $this->createTestUser();
+        $freegle = $this->createTestUser();
+        $room = $this->createTestChatRoom($poster, $replier);
+        $group = $this->createTestGroup();
+        $post = $this->createTestMessage($poster, $group);
+
+        $reply = $this->createTestChatMessage($room, $replier, [
+            'type' => ChatMessage::TYPE_INTERESTED, 'refmsgid' => $post->id,
+            'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
+        ]);
+        $question = $this->createTestChatMessage($room, $freegle, [
+            'type' => 'Prompt', 'refmsgid' => $post->id,
+            'processingrequired' => 0, 'processingsuccessful' => 0,
+        ]);
+
+        DB::table('chat_prompts')->insert(array_merge([
+            'chatmsgid' => $question->id, 'msgid' => $post->id, 'msgids' => json_encode([$post->id]),
+            'userid' => $replier->id, 'heldchatmsgid' => $reply->id, 'kind' => 'confirm_reply',
+            'options' => '[]', 'expires_at' => now()->addDays(3), 'created_at' => now(),
+        ], $prompt));
+
+        return $reply;
+    }
+
+    public function test_reply_waits_while_the_replier_is_asked_to_confirm(): void
+    {
+        $reply = $this->replyAwaitingConfirmation([]);
+
+        $this->service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $reply->id)->first();
+        $this->assertEquals(1, $updated->processingrequired, 'the poster must not get the reply before the replier answers');
+        $this->assertEquals(0, $updated->processingsuccessful);
+    }
+
+    public function test_confirmed_reply_is_delivered(): void
+    {
+        $reply = $this->replyAwaitingConfirmation(['answer' => 'yes', 'answered_at' => now()]);
+
+        $this->service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $reply->id)->first();
+        $this->assertEquals(0, $updated->processingrequired);
+        $this->assertEquals(1, $updated->processingsuccessful);
+    }
+
+    public function test_reply_never_confirmed_is_dropped_with_a_reason(): void
+    {
+        $reply = $this->replyAwaitingConfirmation(['expires_at' => now()->subMinute()]);
+
+        $this->service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $reply->id)->first();
+        $this->assertEquals(0, $updated->processingrequired);
+        $this->assertEquals(0, $updated->processingsuccessful, 'they never said they still wanted it');
+        $this->assertEquals(ChatMessage::PROCESSFAIL_NOT_CONFIRMED, $updated->processingfailreason);
+    }
 }

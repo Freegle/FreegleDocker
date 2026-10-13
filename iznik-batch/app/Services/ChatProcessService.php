@@ -126,11 +126,18 @@ class ChatProcessService
                 ->flip()
                 ->all();
 
+            $awaiting = $this->awaitingConfirmation($messages->pluck('id')->all());
+
             foreach ($messages as $message) {
                 // Re-read per message (section 11.6 point 2): a press landing between two
                 // messages of this run stops the next member-to-member one at once. held()
                 // is a memory read within the five-second cache, so this costs nothing.
                 if ($message->chattype === ChatRoom::TYPE_USER2USER && $this->lockdown->held('chat')) {
+                    continue;
+                }
+
+                if (array_key_exists($message->id, $awaiting)) {
+                    $this->holdForConfirmation((int) $message->id, $awaiting[$message->id]);
                     continue;
                 }
                 $this->lockdown->ack('chat-process');
@@ -160,6 +167,49 @@ class ChatProcessService
     public function droppedCount(): int
     {
         return $this->dropped;
+    }
+
+    /**
+     * Which of these messages are replies waiting for their sender to confirm them, keyed by
+     * message id, with when the question expires.
+     *
+     * The Go API asks someone replying to an offer that looks damaged, or too big to carry,
+     * whether they still want it (chat/replyconfirm.go), and names the reply in the prompt's
+     * heldchatmsgid. Until they answer, the reply is left unprocessed, which keeps it from the
+     * poster: an unprocessed message is only ever shown to its sender.
+     *
+     * @param  array<int>  $ids
+     * @return array<int, ?string>
+     */
+    private function awaitingConfirmation(array $ids): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        return DB::table('chat_prompts')
+            ->whereIn('heldchatmsgid', $ids)
+            ->whereNull('answered_at')
+            ->pluck('expires_at', 'heldchatmsgid')
+            ->all();
+    }
+
+    /**
+     * Leave a reply that is waiting for its sender's answer, or drop it once the question has
+     * expired unanswered: the replier never said they still wanted the item, so the poster is
+     * not sent the reply.
+     */
+    private function holdForConfirmation(int $id, ?string $expiresAt): void
+    {
+        if ($expiresAt === null || now()->lessThan($expiresAt)) {
+            return;
+        }
+
+        DB::table('chat_messages')->where('id', $id)->where('processingrequired', 1)->update([
+            'processingrequired' => 0,
+            'processingsuccessful' => 0,
+            'processingfailreason' => ChatMessage::PROCESSFAIL_NOT_CONFIRMED,
+        ]);
     }
 
     /**

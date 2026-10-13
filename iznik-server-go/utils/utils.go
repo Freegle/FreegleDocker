@@ -168,6 +168,11 @@ const PROMPT_KIND_DEADLINE = "deadline"
 const PROMPT_KIND_VIEWS = "views"
 const PROMPT_KIND_PHOTO = "photo"
 
+// PROMPT_KIND_CONFIRM_REPLY asks a replier, and only them, whether they still want an offer
+// that looks damaged or too big to carry. Their reply waits for the answer - see
+// chat/replyconfirm.go.
+const PROMPT_KIND_CONFIRM_REPLY = "confirm_reply"
+
 const NEWSFEED_TYPE_ALERT = "Alert"
 const NEWSFEED_TYPE_COMMUNITY_EVENT = "CommunityEvent"
 const NEWSFEED_TYPE_VOLUNTEER_OPPORTUNITY = "VolunteerOpportunity"
