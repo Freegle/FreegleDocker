@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-13
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/give/**
@@ -106,6 +106,12 @@ Say who took some, then tell us whether that is everything:
 
 You are never asked how many each person took. If you find you have more to give away
 than you posted, change the number on the post itself with **Edit**.
+
+A post offering several of something only shows as PROMISED once as many people have
+been promised as there are items left. Promise one of seven jars and the post stays open
+with six to go; the people you have promised to still see "promised to you" in their chat.
+A promise counts as one item, so if one person is having the whole lot, mark the post
+taken once they have collected.
 
 ## Reminders and auto-reposting
 
