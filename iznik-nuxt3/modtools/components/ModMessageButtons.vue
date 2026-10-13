@@ -56,8 +56,11 @@
         reject
         label="Reject"
       />
+      <!-- Where this community may write to the poster, Reject composes a message, so
+           Delete is the way to take the post off quietly. It acts on this copy only
+           (Discourse 9808/867). -->
       <ModMessageButton
-        v-if="isHomeGroup && !modsHeld"
+        v-if="(isHomeGroup || messagesPoster) && !modsHeld"
         :messageid="message.id"
         :groupid="groupid"
         :groupids="groupids"
@@ -105,7 +108,7 @@
         label="Blank Reply"
       />
       <ModMessageButton
-        v-if="isHomeGroup && !modsHeld"
+        v-if="(isHomeGroup || messagesPoster) && !modsHeld"
         :messageid="message.id"
         :groupid="groupid"
         variant="danger"

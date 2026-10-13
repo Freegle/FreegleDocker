@@ -2104,6 +2104,47 @@ describe('ModMessage', () => {
       expect(warning.text()).toContain('out of area')
     })
 
+    // A post that rippled in is one thing; a poster who has since become one of your own
+    // members is another (Discourse 9808/867). Say so, or Reject opening a compose box
+    // looks like a fault.
+    const rippledInGroups = (canmessageposter) => [
+      {
+        groupid: 999,
+        namedisplay: 'Origin',
+        collection: 'Approved',
+        arrival: rippleEarlier,
+      },
+      {
+        groupid: 789,
+        namedisplay: 'Context',
+        collection: 'Pending',
+        arrival: rippleLater,
+        rippled_in: 1,
+        canmessageposter,
+      },
+    ]
+
+    it('says the poster is now one of your members when they can be written to', () => {
+      const wrapper = mountComponent(
+        { contextGroupid: 789 },
+        { groups: rippledInGroups(true) }
+      )
+      const note = wrapper.find('[data-test="ripple-poster-is-member-note"]')
+      expect(note.exists()).toBe(true)
+      expect(note.text()).toContain('one of your members')
+      expect(note.text()).toContain('Delete')
+    })
+
+    it('does not say that when the poster is not one of your members', () => {
+      const wrapper = mountComponent(
+        { contextGroupid: 789 },
+        { groups: rippledInGroups(false) }
+      )
+      expect(
+        wrapper.find('[data-test="ripple-poster-is-member-note"]').exists()
+      ).toBe(false)
+    })
+
     it('tells the moderator the home community is reviewing a locked copy', () => {
       const wrapper = mountComponent(
         { contextGroupid: 789 },

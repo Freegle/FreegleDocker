@@ -26,6 +26,28 @@ a post you think is out of their area.
 
 ---
 
+## A rippled-in post is not a rippled member
+
+Two different things get called "rippled", and what you can do depends on which one you
+are looking at:
+
+- **A post that rippled in.** It started on a neighbouring community and reached yours. The
+  blue "rippled in" notice on the post says so. This is about the *post*.
+- **A member whose membership rippling created.** They are on your list only because a post
+  of theirs came in. This is about the *member*, and it ends once they do something with your
+  community (below).
+
+The two are linked, because the member's membership is what carries the post. But the post
+stays "rippled in" for good, while the member can become an ordinary one within a day. So a
+rippled-in post can have a poster who is, by now, one of your own members. The notice on the
+post then says so, and **the poster is written to as any member is**: Reject sends your
+usual message, and Blank Reply and the standard messages are offered.
+
+If you just want a post gone with nothing sent, use **Delete**. It takes the post off your
+community only and sends nothing.
+
+---
+
 ## How posters appear in your community
 
 When a post ripples into your community, **the poster is automatically joined as a
@@ -379,9 +401,11 @@ whose item has rippled widely will not be incorrectly flagged as a spammer.
 
 If you reject a post that rippled in from another community, two things happen:
 
-1. **The poster is not told.** They posted to their own community and the post is still
-   visible there. A faraway community saying "not for us" is not something they need to
-   hear about.
+1. **The poster is not told** - unless they have become an ordinary member of your
+   community (see above), in which case Reject sends your usual message like any other
+   rejection, and Delete is the way to remove it silently. Otherwise they posted to
+   their own community and the post is still visible there. A faraway community saying
+   "not for us" is not something they need to hear about.
 2. **The post stops showing in your community's area.** It carries on being visible
    everywhere else it has been approved. Your rejection simply trims your patch off the map.
 
