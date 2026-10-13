@@ -94,6 +94,11 @@ from Laravel migrations - see [APIs and data](apis-and-data.md)). After adding a
 migration, rerun the test-database setup so the test schema matches. The seeded data is
 FreeglePlayground around Edinburgh (postcode EH3 6SS).
 
+`scripts/test-fixtures.sql` is a dump from the retired V1 seeders and is replaced wholesale if
+it is ever regenerated, so rows added by hand go in `scripts/test-fixtures-extra.sql`, which is
+loaded straight after it (by `setup-test-database.sh` and by the status container's Playwright
+database reset). Keep it idempotent: explicit ids and `INSERT IGNORE`.
+
 Locally the database is in memory by default (`PERCONA_STORAGE=ram`), so it is empty
 after percona restarts, including after the idle-stack sweeper stops a worktree. Rerun
 `scripts/setup-test-database.sh`; it takes about 30 seconds.
