@@ -129,7 +129,9 @@ func (f replyConfirmFixture) messageTypes(t *testing.T, token string) []string {
 	types := []string{}
 	for _, m := range msgs {
 		if m.Type == "Prompt" {
-			assert.NotNil(t, m.Prompt, "the replier needs the buttons, not just the text")
+			if assert.NotNil(t, m.Prompt, "the buttons and answer, not just the text") {
+				assert.NotEmpty(t, m.Prompt["askedname"], "so the other member reads who answered")
+			}
 		}
 		types = append(types, m.Type)
 	}
@@ -168,6 +170,7 @@ func TestReplyConfirm_DamagedOfferAsksTheReplier(t *testing.T) {
 	if assert.NotNil(t, p, "a reply to a damaged item should be held for the replier to confirm") {
 		assert.Equal(t, f.replierID, *p.Userid, "asked of the replier, not the poster")
 		assert.Equal(t, replyID, *p.Heldchatmsgid)
+		assert.True(t, strings.HasPrefix(p.Message, "@"), "addressed to the replier by name: %s", p.Message)
 		assert.Contains(t, p.Message, "damaged")
 		assert.NotContains(t, p.Message, "car")
 		assert.Equal(t, 0, p.Processing, "never processed, so the poster is never shown or told about it")
@@ -300,6 +303,9 @@ func TestReplyConfirm_YesLetsTheReplyThrough(t *testing.T) {
 	// Still for chats:process-incoming to deliver, now that nothing holds it.
 	required, _ := processingState(replyID)
 	assert.Equal(t, 1, required)
+
+	// The poster sees the question and the answer beside the reply.
+	assert.Contains(t, f.messageTypes(t, f.posterToken), "Prompt")
 }
 
 func TestReplyConfirm_NoDropsTheReply(t *testing.T) {
@@ -319,6 +325,7 @@ func TestReplyConfirm_NoDropsTheReply(t *testing.T) {
 	var reason string
 	database.DBConn.Table("chat_messages").Select("processingfailreason").Where("id = ?", replyID).Scan(&reason)
 	assert.Equal(t, "ReplyWithdrawn", reason, "so a moderator can see why it never arrived")
+	assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt", "after a no the poster sees nothing")
 }
 
 func TestReplyConfirm_CarryingOnTheChatCountsAsYes(t *testing.T) {
@@ -337,4 +344,5 @@ func TestReplyConfirm_CarryingOnTheChatCountsAsYes(t *testing.T) {
 
 	required, _ := processingState(replyID)
 	assert.Equal(t, 1, required)
+	assert.Contains(t, f.messageTypes(t, f.posterToken), "Prompt")
 }

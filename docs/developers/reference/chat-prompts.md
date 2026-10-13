@@ -35,17 +35,21 @@ member is a TrashNothing account, and only once per post per chat.
 
 | Piece | How |
 |---|---|
-| The question | A `confirm_reply` prompt by the Freegle account, with `chat_prompts.userid` = the replier |
+| The question | A `confirm_reply` prompt by the Freegle account, starting "@name," and with `chat_prompts.userid` = the replier |
 | Who sees it | Written `processingsuccessful = 0`, so no delivery path gives it to the poster; `FetchChatMessages` shows it to `chat_prompts.userid` |
 | Who answers it | Only `chat_prompts.userid`; anyone else gets 403 |
 | The hold | `chat_prompts.heldchatmsgid` names the reply; `ChatProcessService` leaves it unprocessed while the prompt is unanswered |
-| Yes | The next `chats:process-incoming` run delivers it as normal |
+| Yes | The question is marked successful, so the poster sees it and the answer; the next `chats:process-incoming` run delivers the reply as normal |
 | No | The reply is marked processed and unsuccessful, `processingfailreason = 'ReplyWithdrawn'` |
 | Another message from the replier | Counts as yes, so it cannot reach the poster ahead of the reply |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
 
 ModTools chat review explains both reasons. The `chats:process-incoming` backlog check ignores a
 reply waiting for its answer.
+
+A Freegle message in a chat between two members names who it is for with an @, so whoever reads
+it later can tell. The served prompt carries `userid` and `askedname`, and
+`ChatMessagePrompt.vue` shows "@name said:" rather than "You said:" to anyone else.
 
 `messages_eee` is filled hourly, so a reply in a post's first hour usually finds no row and goes
 straight through. The model's own accuracy is about 93% for condition, 72% for size and 65% for

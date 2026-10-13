@@ -3,8 +3,9 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import ChatMessagePrompt from '~/components/ChatMessagePrompt.vue'
 
-const { mockData, answerPrompt, routerPush } = vi.hoisted(() => {
+const { mockData, answerPrompt, routerPush, mockMe } = vi.hoisted(() => {
   return {
+    mockMe: { id: 7 },
     mockData: {
       chatmessage: {
         userid: 2,
@@ -39,6 +40,11 @@ vi.mock('~/composables/useChat', () => ({
   }),
 }))
 
+vi.mock('~/composables/useMe', async () => {
+  const { computed } = await import('vue')
+  return { useMe: () => ({ myid: computed(() => mockMe.id) }) }
+})
+
 vi.mock('~/stores/chat', () => ({
   useChatStore: () => ({
     answerPrompt,
@@ -58,6 +64,7 @@ vi.mock('#imports', async () => {
 describe('ChatMessagePrompt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockMe.id = 7
     mockData.chatmessage = {
       userid: 2,
       refmsgid: 999,
@@ -131,6 +138,35 @@ describe('ChatMessagePrompt', () => {
 
     expect(wrapper.findAll('button')).toHaveLength(0)
     expect(wrapper.text()).toContain('You said: Maybe, if it works for me')
+  })
+
+  it('says who answered when the question was asked of the other member', () => {
+    // A replier asked "do you still want it?" answers; the poster then sees the
+    // question and the answer, and "You said" would put words in their mouth.
+    mockMe.id = 7
+    mockData.chatmessage.prompt.answered = true
+    mockData.chatmessage.prompt.answer = 'maybe'
+    mockData.chatmessage.prompt.userid = 9
+    mockData.chatmessage.prompt.askedname = 'Sam Jones'
+
+    const wrapper = createWrapper()
+
+    expect(wrapper.text()).toContain(
+      '@Sam Jones said: Maybe, if it works for me'
+    )
+    expect(wrapper.text()).not.toContain('You said')
+  })
+
+  it('says "You said" to the member who was asked', () => {
+    mockMe.id = 9
+    mockData.chatmessage.prompt.answered = true
+    mockData.chatmessage.prompt.answer = 'maybe'
+    mockData.chatmessage.prompt.userid = 9
+    mockData.chatmessage.prompt.askedname = 'Sam Jones'
+
+    expect(createWrapper().text()).toContain(
+      'You said: Maybe, if it works for me'
+    )
   })
 
   it('still shows an expired prompt but stops offering the buttons', () => {

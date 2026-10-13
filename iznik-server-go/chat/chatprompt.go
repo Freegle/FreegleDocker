@@ -62,6 +62,11 @@ type ChatPrompt struct {
 	// Expired prompts still render (the conversation should not develop holes)
 	// but stop offering their buttons.
 	Expired bool `json:"expired"`
+	// Userid and Askedname are set when the prompt was asked of one member in a
+	// chat between two, so the other member reads "@name said" rather than
+	// "You said" once it is answered.
+	Userid    *uint64 `json:"userid,omitempty"`
+	Askedname string  `json:"askedname,omitempty"`
 }
 
 type promptRow struct {
@@ -73,6 +78,23 @@ type promptRow struct {
 	Answer     *string
 	AnsweredAt *time.Time `gorm:"column:answered_at"`
 	ExpiresAt  *time.Time `gorm:"column:expires_at"`
+	Userid     *uint64
+	Askedname  *string
+}
+
+// memberNameSQL is the name Freegle addresses a member by, for the users row aliased u.
+const memberNameSQL = "COALESCE(NULLIF(u.fullname, ''), " +
+	"NULLIF(TRIM(CONCAT(COALESCE(u.firstname, ''), ' ', COALESCE(u.lastname, ''))), ''), 'A freegler')"
+
+// memberName is how Freegle addresses a member in a chat: their name, as other members see it.
+func memberName(db *gorm.DB, id uint64) string {
+	var name string
+	db.Table("users u").Select(memberNameSQL).Where("u.id = ?", id).Scan(&name)
+	if name == "" {
+		name = "A freegler"
+	}
+
+	return user.SanitizeDisplayName(name, false)
 }
 
 // posts returns the set the prompt covers, falling back to the single msgid for
@@ -100,14 +122,21 @@ func (r promptRow) toPrompt() *ChatPrompt {
 		_ = json.Unmarshal(r.Options, &options)
 	}
 
-	return &ChatPrompt{
+	p := &ChatPrompt{
 		Kind:     r.Kind,
 		Msgids:   r.posts(),
 		Options:  options,
 		Answer:   r.Answer,
 		Answered: r.AnsweredAt != nil,
 		Expired:  r.ExpiresAt != nil && r.ExpiresAt.Before(time.Now()),
+		Userid:   r.Userid,
 	}
+
+	if r.Userid != nil && r.Askedname != nil {
+		p.Askedname = user.SanitizeDisplayName(*r.Askedname, false)
+	}
+
+	return p
 }
 
 // attachPrompts fills in the Prompt field on any message that has one. Batched,
@@ -130,8 +159,11 @@ func attachPrompts(db *gorm.DB, messages []ChatMessageQuery) {
 
 	var rows []promptRow
 	db.Table("chat_prompts").
-		Select("chatmsgid, msgid, msgids, kind, options, answer, answered_at, expires_at").
-		Where("chatmsgid IN ?", ids).
+		Select("chat_prompts.chatmsgid, chat_prompts.msgid, chat_prompts.msgids, chat_prompts.kind, "+
+			"chat_prompts.options, chat_prompts.answer, chat_prompts.answered_at, chat_prompts.expires_at, "+
+			"chat_prompts.userid, CASE WHEN u.id IS NULL THEN NULL ELSE "+memberNameSQL+" END AS askedname").
+		Joins("LEFT JOIN users u ON u.id = chat_prompts.userid").
+		Where("chat_prompts.chatmsgid IN ?", ids).
 		Scan(&rows)
 
 	for _, r := range rows {
@@ -237,7 +269,7 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 
 	var applied bool
 	if row.Kind == utils.PROMPT_KIND_CONFIRM_REPLY && row.Heldchatmsgid != nil {
-		applied = applyReplyConfirmAnswer(db, payload.Answer, *row.Heldchatmsgid, myid)
+		applied = applyReplyConfirmAnswer(db, payload.Answer, row.Chatmsgid, *row.Heldchatmsgid, myid)
 	} else {
 		applied = applyPromptAnswer(db, row.Kind, payload.Answer, asRow.posts(), myid)
 	}
