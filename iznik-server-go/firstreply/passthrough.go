@@ -4,7 +4,7 @@ import (
 	"hash/crc32"
 	"os"
 	"strconv"
-	"sync"
+	"sync/atomic"
 
 	"github.com/freegle/iznik-server-go/rippling"
 	"github.com/freegle/iznik-server-go/utils"
@@ -177,20 +177,25 @@ func ShouldPassThrough(db *gorm.DB, refmsgid uint64, lng, lat float64) bool {
 //
 // Returns 0 when the account does not exist yet (it is created lazily by the
 // batch app on first use), which callers treat as "no chat is a Freegle chat".
-var systemUserID uint64
-var systemUserOnce sync.Once
+// Only a real id is cached, so an account created after the API started is
+// picked up without a restart.
+var systemUserID atomic.Uint64
 
 func SystemUserID(db *gorm.DB) uint64 {
-	systemUserOnce.Do(func() {
-		email := os.Getenv("FIRSTREPLY_SYSTEM_USER_EMAIL")
-		if email == "" {
-			email = "freegle@ilovefreegle.org"
-		}
+	if id := systemUserID.Load(); id > 0 {
+		return id
+	}
 
-		var id uint64
-		db.Table("users_emails").Select("userid").Where("email = ?", email).Limit(1).Scan(&id)
-		systemUserID = id
-	})
+	email := os.Getenv("FIRSTREPLY_SYSTEM_USER_EMAIL")
+	if email == "" {
+		email = "freegle@ilovefreegle.org"
+	}
 
-	return systemUserID
+	var id uint64
+	db.Table("users_emails").Select("userid").Where("email = ?", email).Limit(1).Scan(&id)
+	if id > 0 {
+		systemUserID.Store(id)
+	}
+
+	return id
 }

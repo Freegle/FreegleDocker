@@ -335,13 +335,19 @@ class ScheduledOutcomeRegistry
 
             // chats:process-incoming (every minute) clears processingrequired
             // on every visited chat message (success or fail). A row still
-            // flagged past $backlogMin = the chat processor is stuck.
+            // flagged past $backlogMin = the chat processor is stuck. A reply
+            // waiting for its sender to confirm it (chat_prompts.heldchatmsgid)
+            // is left flagged on purpose, so it is not backlog.
             (new BacklogCheck(
                 'chats:process-incoming',
                 'chat_messages',
                 'date',
                 $backlogMin,
-                fn ($q) => $q->where('processingrequired', 1),
+                fn ($q) => $q->where('processingrequired', 1)
+                    ->whereNotExists(fn ($s) => $s->select(DB::raw(1))
+                        ->from('chat_prompts')
+                        ->whereColumn('chat_prompts.heldchatmsgid', 'chat_messages.id')
+                        ->whereNull('chat_prompts.answered_at')),
             ))
                 ->describedAs('Incoming chat-message processing queue not backing up')
                 ->inCategory('cursor-staleness'),

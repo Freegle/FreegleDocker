@@ -140,6 +140,17 @@
             Not delivered: the sender was flagged as a spammer when this was
             processed, so it never reached the recipient.
           </span>
+          <span v-else-if="message.processingfailreason === 'ReplyWithdrawn'">
+            Not delivered: Freegle asked the sender whether they still wanted an
+            item that looked damaged or too big to carry, and they said no.
+          </span>
+          <span
+            v-else-if="message.processingfailreason === 'ReplyNotConfirmed'"
+          >
+            Not delivered: Freegle asked the sender whether they still wanted an
+            item that looked damaged or too big to carry, and they never
+            answered.
+          </span>
           <span v-else>
             Not delivered ({{ message.processingfailreason }}) - this never
             reached the recipient.

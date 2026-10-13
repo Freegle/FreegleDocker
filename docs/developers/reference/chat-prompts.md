@@ -1,7 +1,8 @@
 ---
-last_reviewed: 2026-08-17
+last_reviewed: 2026-10-13
 covers:
   - iznik-server-go/chat/chatprompt.go
+  - iznik-server-go/chat/replyconfirm.go
   - iznik-nuxt3/components/ChatMessagePrompt.vue
   - iznik-nuxt3/components/ChatPromptPost.vue
 ---
@@ -15,10 +16,41 @@ notification, unread state and history all work with no new machinery.
 This page covers the **mechanism**: the message type, how a client renders it, and how an answer
 is applied. It does not cover what decides to send one; that is a separate feature.
 
-## Nothing sends prompts yet
+## What sends prompts
 
-This ships the ability to **understand** a prompt, not to create one. No code here writes a
-`Prompt` message. That is deliberate - see "Why this shipped on its own" below.
+- `App\Services\FirstReply\PromptService` asks a poster about their outstanding posts, in their
+  own chat with Freegle.
+- `chat/replyconfirm.go` asks a **replier**, in their chat with the poster - see "Confirming a
+  reply" below.
+
+The client side shipped first, on its own - see "Why this shipped on its own".
+
+## Confirming a reply
+
+When someone replies to an OFFER whose newest `messages_eee` row says it looks damaged
+(`item_condition = 'damaged'`), or needs a car (`size_bucket = 'large'`, or `weight_bucket` of
+20kg or more, unless the poster has said they might deliver), `CreateChatMessage` asks them in
+the same chat whether they still want it, and holds the reply until they answer. Not when either
+member is a TrashNothing account, and only once per post per chat.
+
+| Piece | How |
+|---|---|
+| The question | A `confirm_reply` prompt by the Freegle account, with `chat_prompts.userid` = the replier |
+| Who sees it | Written `processingsuccessful = 0`, so no delivery path gives it to the poster; `FetchChatMessages` shows it to `chat_prompts.userid` |
+| Who answers it | Only `chat_prompts.userid`; anyone else gets 403 |
+| The hold | `chat_prompts.heldchatmsgid` names the reply; `ChatProcessService` leaves it unprocessed while the prompt is unanswered |
+| Yes | The next `chats:process-incoming` run delivers it as normal |
+| No | The reply is marked processed and unsuccessful, `processingfailreason = 'ReplyWithdrawn'` |
+| Another message from the replier | Counts as yes, so it cannot reach the poster ahead of the reply |
+| No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
+
+ModTools chat review explains both reasons. The `chats:process-incoming` backlog check ignores a
+reply waiting for its answer.
+
+`messages_eee` is filled hourly, so a reply in a post's first hour usually finds no row and goes
+straight through. The model's own accuracy is about 93% for condition, 72% for size and 65% for
+weight, which is why the question says "from the photo, this looks like" and lets the member
+decide.
 
 ## The shape
 
@@ -39,7 +71,8 @@ Answering is server-side only. The server applies what the answer means (setting
 `messages.deadline`, `messages.deliverypossible`) as well as recording it, so a client never has
 to know what "by this weekend" resolves to, and two clients cannot disagree about it.
 
-Rules the endpoint enforces: only the member the prompt was sent to may answer; only an option
+Rules the endpoint enforces: only the member the prompt was sent to (or, where
+`chat_prompts.userid` is set, that member alone) may answer; only an option
 that was actually offered is accepted; only once; and not after the prompt has expired - a
 week-old "could you deliver?" on a long-gone item still renders, but its buttons no longer work.
 
@@ -75,3 +108,8 @@ sending side is switched on.
 answer rule (wrong member, unoffered option, twice, expired, picked date, out-of-range date, and
 "no rush" which records without patching the post). `ChatMessagePrompt.spec.js` and
 `ChatPromptPost.spec.js` cover rendering and the answered state.
+
+`iznik-server-go/test/chatreplyconfirm_test.go` covers confirming a reply: which posts ask and
+which do not (TrashNothing on either side, a poster who delivers, a WANTED, no classification,
+a newer classification), that only the replier sees and answers it, and yes, no and a follow-up
+message. `ChatProcessServiceTest` covers the hold, delivery after yes, and the drop on expiry.

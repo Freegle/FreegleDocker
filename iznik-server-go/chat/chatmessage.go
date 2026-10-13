@@ -226,7 +226,11 @@ func FetchChatMessages(chatID, userID uint64, limit int, excludeID uint64, desce
 		// The PHP notification paths honour this gate; the in-app chat fetch must too, or the
 		// poster reads the held reply here once chats:process-incoming flips processingsuccessful.
 		// The sender still sees their own message (userid = ? branch); only the poster is gated.
-		reviewFilter = "(userid = ? OR (reviewrequired = 0 AND reviewrejected = 0 AND processingsuccessful = 1 " +
+		//
+		// A prompt asked of one member (chat_prompts.userid) is written unsuccessful so that
+		// nothing delivers it to the other; the member it was asked of sees it here.
+		reviewFilter = "(userid = ? OR EXISTS (SELECT 1 FROM chat_prompts cpr WHERE cpr.chatmsgid = chat_messages.id AND cpr.userid = ?) " +
+			"OR (reviewrequired = 0 AND reviewrejected = 0 AND processingsuccessful = 1 " +
 			"AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released')))"
 	}
 
@@ -247,6 +251,7 @@ func FetchChatMessages(chatID, userID uint64, limit int, excludeID uint64, desce
 	whereArgs := []interface{}{chatID, userID}
 
 	if !modAccess {
+		whereArgs = append(whereArgs, userID)
 		whereSQL += " AND (users.deleted IS NULL OR users.id = ?)"
 		whereArgs = append(whereArgs, userID)
 	}
@@ -987,6 +992,14 @@ func CreateChatMessage(c *fiber.Ctx) error {
 			"event": gorm.Expr("'held'"),
 			"count": gorm.Expr("1"),
 		})
+	}
+
+	// A reply to an offer that looks damaged, or too big to carry, waits while the replier is
+	// asked whether they still want it (replyconfirm.go). Anything further they write counts as
+	// a yes, so it is settled first: a later message must not reach the poster ahead of the reply.
+	confirmEarlierReply(db, id, myid)
+	if chattype == utils.CHAT_MESSAGE_INTERESTED && payload.Refmsgid != nil && roomType == utils.CHAT_TYPE_USER2USER {
+		askReplierToConfirm(db, id, newid, *payload.Refmsgid, myid)
 	}
 
 	// Rippling reply attribution (sysadmin KPI): for a genuine Interested reply, snapshot the
